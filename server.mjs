@@ -1,3 +1,4 @@
+import {misDatabaseConfig} from './mis-database-config.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
 import {registerErpEmployees} from './erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
@@ -243,8 +244,8 @@ function sendDataUrlMedia(res,data,{name='attachment',fallbackType='application/
   res.vary('Authorization');
   return res.type(type).send(body);
 }
-const {misDatabaseConfig}=await import('./mis-database-config.mjs');
-const {connectionString,ssl:databaseSsl}=misDatabaseConfig();
+const connectionString=misDatabaseConfig().connectionString;
+const databaseSsl=misDatabaseConfig().ssl;
 const scheduledJobsEnabled=String(process.env.DISABLE_SCHEDULED_JOBS||'true').trim().toLowerCase()!=='true';
 const driverSyncIntervalMs=2*60*1000;
 const reportDateTime=(value)=>formatDisplayDateTime(value);
