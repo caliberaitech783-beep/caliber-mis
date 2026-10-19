@@ -1,0 +1,103 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_MASTER_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, adminAccessPermissions, ensureDirectoryMenuAccess, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../admin-access.mjs";
+
+test("legacy administrators retain full access when allowlists are absent", () => {
+  const permissions = adminAccessPermissions({userType: "Super Admin"});
+  assert.equal(permissions.adminLevel, "Admin");
+  assert.equal(permissions.masterAccess, null);
+  assert.deepEqual(permissions.tabAccess, ADMIN_DEFAULT_TAB_OPTIONS);
+  assert.equal(permissions.tabAccess.includes("CD"), true);
+  assert.equal(accessAllows(permissions.masterAccess, "Equipment master"), true);
+});
+
+test("Super Admin authority is normalized without becoming an ordinary Admin", () => {
+  assert.equal(adminAccessPermissions({adminLevel:" super   ADMIN "}).adminLevel, "Super Admin");
+});
+
+test("manager authority is retained in the admin session permissions", () => {
+  const permissions = adminAccessPermissions({adminLevel: "Manager", managerRole: "Maintenance Manager", tabAccess: "Dashboard"});
+  assert.equal(permissions.adminLevel, "Manager");
+  assert.equal(permissions.managerRole, "Maintenance Manager");
+  assert.deepEqual(permissions.tabAccess, ["Dashboard", "Tickets", "CD"]);
+});
+
+test("a non-admin can manage multiple operational teams", () => {
+  const roles = "Project Manager | Production Manager | Maintenance Manager | MIS Manager";
+  const permissions = adminAccessPermissions({adminLevel: "Manager", managerRole: roles});
+  assert.deepEqual(managerRoleSelection(roles), ["Project Manager", "Production Manager", "Maintenance Manager", "MIS Manager"]);
+  assert.deepEqual(permissions.managerRoles, ["Project Manager", "Production Manager", "Maintenance Manager", "MIS Manager"]);
+  assert.equal(permissions.managerRole, "Project Manager");
+});
+
+test("desktop and mobile menu selections remain independent per user",()=>{
+  const permissions=adminAccessPermissions({adminLevel:"Manager",tabAccess:"Dashboard | Tickets",masterAccess:"Equipment master",mobileTabAccess:"Masters | Tickets",mobileMasterAccess:"Region master",mobileDashboardAccess:"",mobileTicketAccess:"Tickets"});
+  assert.deepEqual(permissions.tabAccess,["Dashboard","Tickets","CD"]);
+  assert.deepEqual(permissions.mobileTabAccess,["Masters","Tickets","CD"]);
+  assert.deepEqual(navigationPermissionsForView(permissions,false).masterAccess,["Equipment master"]);
+  assert.deepEqual(navigationPermissionsForView(permissions,true).masterAccess,["Region master"]);
+});
+
+test("every main header has a conditional submenu allowlist", () => {
+  assert.deepEqual(Object.keys(ADMIN_SUBMENU_OPTIONS), ["Dashboard", "Masters", "WhatsApp Integration", "Reports", "Audit Trail", "Tickets"]);
+  assert.ok(Object.values(ADMIN_SUBMENU_OPTIONS).every(({field, options}) => field && options.length));
+  assert.deepEqual(ADMIN_SUBMENU_OPTIONS.Reports.options, ["Reports", "General Report", "Production report", "Maintenance report", "MIS Report", "Vehicle History Report", "Stock Statement", "Purchase Order", "GRN Register", "PO-GRN Reconciliation", "Accounts"]);
+});
+
+test("new administrators receive only explicitly selected masters and tabs", () => {
+  const permissions = adminAccessPermissions({
+    adminLevel: "Admin",
+    masterAccess: "Equipment master | Region master",
+    tabAccess: "Audit Trail",
+  });
+  assert.deepEqual(permissions.masterAccess, ["Equipment master", "Region master"]);
+  assert.deepEqual(permissions.tabAccess, ["Audit Trail", "Tickets", "CD"]);
+  assert.equal(accessAllows(permissions.masterAccess, "OEM master"), false);
+  assert.equal(ADMIN_MASTER_OPTIONS.includes("Privilege"), false);
+});
+
+test("Directory is mandatory for desktop and responsive mobile views", () => {
+  const desktop = adminAccessPermissions({adminLevel:"Manager",tabAccess:"Dashboard | CD"});
+  assert.deepEqual(desktop.tabAccess,["Dashboard","CD","Tickets"]);
+  assert.deepEqual(desktop.mobileTabAccess,["Dashboard","CD","Tickets"]);
+  const separateMobile = adminAccessPermissions({adminLevel:"Manager",tabAccess:"Dashboard",mobileTabAccess:"CD | Tickets"});
+  assert.deepEqual(separateMobile.tabAccess,["Dashboard","Tickets","CD"]);
+  assert.deepEqual(separateMobile.mobileTabAccess,["CD","Tickets"]);
+});
+
+test("the one-time migration adds only required Directory selections", () => {
+  const original={userType:"Super Admin",tabAccess:"Dashboard | Reports",mobileTabAccess:["Tickets"],managerRole:"MIS Manager"};
+  assert.deepEqual(ensureDirectoryMenuAccess(original),{
+    userType:"Super Admin",tabAccess:"Dashboard | Reports | CD",mobileTabAccess:["Tickets","CD"],managerRole:"MIS Manager",
+  });
+  assert.deepEqual(original.mobileTabAccess,["Tickets"]);
+});
+
+test("existing administrators can open the newly introduced Delayed Reason master", () => {
+  const legacyAdmin = adminAccessPermissions({
+    adminLevel: "Admin",
+    masterAccess: "Users & employees | Region master",
+  });
+  const manager = adminAccessPermissions({
+    adminLevel: "Manager",
+    masterAccess: "Region master",
+  });
+  assert.equal(masterAccessAllows(legacyAdmin, "Delayed Reason"), true);
+  assert.equal(masterAccessAllows(manager, "Delayed Reason"), false);
+  assert.equal(masterAccessAllows({...manager, masterAccess:["Delayed Reason"]}, "Delayed Reason"), true);
+});
+
+test("existing administrators can open Shift Master while manager access remains assignable", () => {
+  const legacyAdmin = adminAccessPermissions({
+    adminLevel: "Admin",
+    masterAccess: "Users & employees | Region master",
+  });
+  const manager = adminAccessPermissions({
+    adminLevel: "Manager",
+    masterAccess: "Region master",
+  });
+  assert.equal(ADMIN_MASTER_OPTIONS.includes("Shift Master"), true);
+  assert.equal(masterAccessAllows(legacyAdmin, "Shift Master"), true);
+  assert.equal(masterAccessAllows(manager, "Shift Master"), false);
+  assert.equal(masterAccessAllows({...manager, masterAccess:["Shift Master"]}, "Shift Master"), true);
+});

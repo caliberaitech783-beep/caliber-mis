@@ -1,0 +1,12176 @@
+import EmployeeMaster from './employee-master.jsx';
+import {requestedMisPage,misPageUrl} from './mis-navigation.mjs';
+import BulkCardScanning from './bulk-card-scanning.jsx';
+import ErpMasters from './erp-masters.jsx';
+import {reportPortalTarget,sameReportView} from './report-portal-target.mjs';
+import BdmsAssistant from './bdms-assistant.jsx';
+import {TENDER_PERMISSION_OPTIONS,TENDER_ALL_PERMISSIONS,normalizedTenderSelection} from '../tender-permissions.mjs';
+import { RequestDeleteReview } from "./workshop-selected-delete.jsx";
+import {ibossAccountsAllowed} from "../iboss-access.mjs";
+import OemEmailDeliveryStatus from './oem-email-delivery-status.jsx';
+import {requestShiftLabel,requestShiftColumns} from "../request-shift.mjs";
+import {RequestShiftProvider,useRequestShiftData,withRequestShiftCells} from "./request-shift-context.jsx";
+import {withDashboardResponsibilityCells} from "./dashboard-responsibility-cells.mjs";
+import {assignedUserRoles,ACCOUNT_PRIVILEGES,accountPrivileges} from "../account-role-access.mjs";
+import { siteReportHtml } from "./site-report.mjs";
+import { isIdleVehicleRequest } from "../request-idle.mjs";
+import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
+import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource } from "./smart-print.mjs";
+import {beginDownload,runDownloadNotice} from './download-notice.mjs';
+import {pendingPdfRows,REMOVED_REPORT_TITLES} from '../report-pending-export.mjs';
+import {transferReportTimingColumns} from '../transfer-report-timing.mjs';
+import { listPrinters, printHelperAvailable, printHelperExpected, printHelperLastFailure, printPdfDirect, rememberedPrinter } from "./direct-print.mjs";
+import { showPrintPreview } from "./print-preview.mjs";
+import { printRequestTimeline } from "./request-timeline-print.mjs";
+import requestTimelinePrintCss from "./request-timeline.css?raw";
+import dailyUpdatesPrintCss from "./daily-updates.css?raw";
+import { ORGANISATION_PAGES, ORGANISATION_PAGE_NAMES, buildOrganisationChart } from "./organisation-chart.mjs";
+import "./smart-print.css";
+import "./date-input.css";
+import { describeDateRange, encodeDateRange, looksLikeDateColumn, matchesDateRange, parseDateRange } from "./date-range-filter.mjs";
+import { cellMatchesFilterValues, describeFilterValues, filterValueSelected, parseFilterValues, toggleFilterValue } from "./multi-value-filter.mjs";
+import { recordCountLine, withSerialColumn } from "../serial-column.mjs";
+import {canViewUserSessions,isSessionViewOnlyUser} from "../user-session-access.mjs";
+import {canViewBdAgeingReport} from "../bd-ageing-report.mjs";
+import BdAgeingReport from "./bd-ageing-report.jsx";
+import { notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory } from "../notification-text.mjs";
+import { createNotificationTracker } from "./notification-alerts.mjs";
+import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from "react";
+import TelegramSiteGroups from './telegram-site-groups.jsx';
+import { ApplicationErrorBoundary, createLazyFeature } from "./lazy-feature.jsx";
+import ReportPeriodFilter from "./report-period-filter.jsx";
+import MaintenanceEtcInput from "./maintenance-etc-input.jsx";
+import { TwelveHourDateTimeInput, TwelveHourTimeInput } from "./twelve-hour-input.jsx";
+import SharedActionsTable from "./shared-actions-table.jsx";
+import { useTableLayouts, TableLayoutControls, TableLayoutSelect } from "./table-layouts.jsx";
+import { useColumnPreferences } from "./use-column-preferences.jsx";
+import ReopenBreakdownForm from "./reopen-breakdown-form.jsx";
+import {capturePhotoForInput} from "./camera-upload.mjs";
+import {ComplaintMediaInputs,ComplaintMediaView} from "./complaint-media.jsx";
+import {ProtectedAttachment,ProtectedAudio} from "./protected-media.jsx";
+import {readComplaintMedia} from "../complaint-media.mjs";
+import './camera-upload.css';
+import { filterRecordsByDate } from "./record-date-range.mjs";
+import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
+import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
+import UserProfile from "./user-profile.jsx";
+import TelegramGate from "./telegram-gate.jsx";
+import DiagnosticsPage from "./diagnostics-page.jsx";
+import { PurgeDataPage, RetentionRulesPage } from "./data-housekeeping-page.jsx";
+import StorageManagementPage from "./storage-management-page.jsx";
+import TicketResolutionNotices from "./ticket-resolution-notices.jsx";
+import ReturnedCorrectionGate from "./returned-correction-gate.jsx";
+import { PulseIcon, SearchScanIcon, BellRingIcon, DoorExitIcon } from "./motion-icons.jsx";
+import { playNotificationSound, loadNotificationSound, saveNotificationSound, NOTIFICATION_SOUNDS } from "./notification-chime.mjs";
+import LiveTemperatureChip from "./live-temperature-chip.jsx";
+import {REQUEST_CORRECTION_MANAGER_ROLES} from "../request-correction-policy.mjs";
+import EquipmentCombobox from "./equipment-combobox.jsx";
+import SearchableSelect from "./searchable-select.jsx";
+import {CDIR_MASTERS, CDIR_MASTER_FIELDS, isCdirMaster} from "../cdir-masters.mjs";
+import { preventTableAutoScroll } from "./table-scroll.mjs";
+import VehicleHistoryScroll from "./vehicle-history-scroll.jsx";
+import FleetSiteBars from "./fleet-site-bars.jsx";
+import OemBreakdownChart from "./oem-breakdown-chart.jsx";
+import OemBreakdownDetails from "./oem-breakdown-details.jsx";
+import DashboardFilterBar from "./dashboard-filter-bar.jsx";
+import MisDashboard from "./mis-dashboard.jsx";
+import ErpSidebar from "./erp-sidebar.jsx";
+import PulseMasterSync from "./pulse-master-sync.jsx";
+import LogBookForm from "./log-book-form.jsx";
+import { oemFiltersForSelection, oemRowsForLocation, groupOemRecordsBySite, oemDetailReportRows } from "./oem-dashboard-filters.mjs";
+import { buildOemBreakdownRows, buildOemBreakdownChart, createOemBreakdownSelection, oemLabel } from "./oem-breakdown-model.mjs";
+import { filterOemDelayedRows } from "./oem-delay-filter.mjs";
+import MaintenanceOemChoice from "./maintenance-oem-choice.jsx";
+import ResponsibilityRequestEditForm from "./responsibility-request-edit-form.jsx";
+import BreakdownResponsibilityHistory, {responsibilityHistoryText} from "./breakdown-responsibility-history.jsx";
+import { fleetBarHeightPercent } from "./fleet-bar-scale.mjs";
+import { dashboardCountScale } from "./dashboard-count-scale.mjs";
+import { availabilityRequestsForDate } from "./dashboard-availability.mjs";
+import { dashboardFleetSnapshot } from "../dashboard-fleet-snapshot.mjs";
+import { fleetBreakdownCategory, fleetBreakdownRequests } from "./fleet-breakdown-drilldown.mjs";
+import DailyUpdatesList, { DailyUpdatesPanel } from "./daily-updates-list.jsx";
+import { dailyUpdatesExportText, latestDailyUpdateStamp } from "./daily-updates-order.mjs";
+import { prepareXlsxExportSheets } from "./xlsx-daily-updates.mjs";
+import { dashboardListTrigger, movementRequestRows, allLifecycleRequestRows, recordedTrendRows, forecastBasisRows } from "./dashboard-card-actions.mjs";
+import { equipmentCategoryLabel, equipmentGroupLabel } from "./dashboard-drilldown-model.mjs";
+import { equipmentGroupValue, normalizeEquipmentGroup } from "../equipment-group.mjs";
+import { equipmentDoorNumber, requestsWithDoorNumbers } from "../equipment-door.mjs";
+import { visibleInProductionHistory } from "./production-history.mjs";
+import { visibleInMaintenanceHistory } from "./maintenance-history.mjs";
+import {
+  latestCompletedVehicleRepair,
+  vehicleBreakdownHistoryRows,
+  vehicleBreakdownSummaryRows,
+  vehicleCommonRemarkRows,
+  vehicleFleetRows,
+} from "./vehicle-repair-history.mjs";
+import { visibleInMisRequests, visibleInMisHistory } from "./mis-history.mjs";
+import { dashboardMisQueue, misQueueDate } from "./dashboard-mis-queue.mjs";
+import { indiaWorkflowDateTimeParts } from "./workflow-clock.mjs";
+import { watchVisibleMasterRefresh } from "./master-refresh.mjs";
+import { notifyRequestChange, watchRequestRefresh } from "./request-refresh.mjs";
+import { createDashboardRequestLoader, requestDateKey, requestEventDate, splitDashboardRequests } from "./dashboard-request-data.mjs";
+import { activeTodayBreakdowns } from "./dashboard-today-breakdowns.mjs";
+import { userMasterLocation } from "./user-master-location.mjs";
+import UserSiteFields from "./user-site-fields.jsx";
+import { userMasterRole } from "./user-master-role.mjs";
+import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
+import { formatDisplayDate, formatDisplayDateRange, formatDisplayDateTime, formatDisplayTime } from "../date-time-format.mjs";
+import { calculateBreakdownDaysUntilClose, calculateBreakdownMinutes, durationLabelMinutes } from "../breakdown-duration.mjs";
+import { delayedReasonsForRepairType } from "../delayed-reason.mjs";
+import { requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagRequired, hasArrivalRedFlagReason } from "../request-acceptance.mjs";
+import { requestDeletable } from "../request-deletion.mjs";
+import { elapsedLabel, elapsedMilliseconds } from "../report-metrics.mjs";
+import { indiaDateTimeEpoch, indiaDateTimeInputValue, reportRowsWithinRange, validReportDateRange } from "../report-date-range.mjs";
+import { IN_OUT_REPORT_TITLE } from "../in-out-report.mjs";
+import { buildDepartmentReports, TICKET_ACCEPTANCE_REPORT_TITLE } from "../department-reports.mjs";
+import { stageTimingRow, slowestStageGap } from "../stage-timing-report.mjs";
+import { HIERARCHY_REPORTS, HIERARCHY_REPORT_GROUPS, HIERARCHY_REPORT_TITLES, HIERARCHY_REPORT_CODES, normalizeHierarchyReportAccess } from "../hierarchy-report-catalogue.mjs";
+import { reportTime12 } from "../report-time-format.mjs";
+import { ALL_SHIFTS_KEY, formatShiftDateTime, shiftFilterOptions, timestampMatchesShift } from "../shift-report-time.mjs";
+import { olderThanTenDays, recentBreakdownStatus, reportPdfHeading } from "../report-refinements.mjs";
+import { matchesSmartSearch } from "../smart-search.mjs";
+import { batchMasterRecords } from "../record-batches.mjs";
+import { defaultHierarchyReportScheduleSettings, HIERARCHY_REPORT_DESIGNATIONS, hierarchyScheduleLabel } from "../hierarchy-report-flow.mjs";
+import { equipmentMetrics, equipmentRoadStatus, fleetAssetCounts, fleetAssetRequestDetails, fleetChartCounts, createFleetAssetResolver, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses } from "../dashboard-equipment-metrics.mjs";
+import { activeOpenCases } from "../dashboard-open-cases.mjs";
+import { breakdownMovementForRange, breakdownOpenedDate, breakdownTypeShare, dailyBreakdownMovement, normalizedBreakdownType } from "../dashboard-breakdown-movement.mjs";
+import { buildRecordedBreakdownTrend, recordedBreakdownRangeLength, localDateKey } from "./dashboard-breakdown-forecast.mjs";
+import { buildInfoPulseBreakdowns, buildInfoPulseFirstTripPending, isProductionFirstTripPending } from "../info-pulse-data.mjs";
+import { effectiveInfoPulseEtcTimestamp } from "../ai-feeder.mjs";
+import EtcCountdown from "./etc-countdown.jsx";
+import { etcCountdown, etcDisplayValue, etcRemainingSortValue, etcSortValue } from "./etc-countdown.mjs";
+import { recordBelongsToSite, recordsForSite } from "../site-location.mjs";
+import {
+  findRequestEquipment,
+  requestEquipmentDetails,
+  requestEquipmentCreationDetails,
+  requestEquipmentGroupOptions,
+  requestEquipmentMeterType,
+  requestEquipmentRecordsForGroup,
+  requestMeterTypeForRequest,
+  requestMeterReadings,
+  requestMeterReadingLabel,
+  requestWithEquipmentMasterDetails,
+} from "../request-equipment.mjs";
+import { breakdownMeterColumns, breakdownMeterFields, breakdownMeterValue, withBreakdownMeterColumns } from "../breakdown-meter-columns.mjs";
+import { submitMaintenanceRequest } from "../request-submit.mjs";
+import { activeRequestConflictMessage, findActiveRequestConflict } from "../request-conflict.mjs";
+import {ADMIN_MASTER_OPTIONS, ADMIN_TAB_OPTIONS, ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../admin-access.mjs";
+import {MANAGER_REGION_OPTIONS, REGION_DATA, displaySiteName, displaySiteSelection, managerRegionSelection, sitesForManagerRegions, userSiteSelection} from "../region-scope.mjs";
+import {MOBILE_USER_ROLES, GENERAL_USER_ROLE, GENERAL_USER_MENU_OPTIONS, generalUserMenuSelection, generalUserCanAccessMenu, MIS_VERIFICATION_MENU, normalizeRequestMenuLabel} from "../mobile-access.mjs";
+import {navigationLabel} from "../navigation-visibility.mjs";
+import {edgeSafeJsonInit} from "../request-body-transport.mjs";
+import {fetchPdfExport} from "./pdf-export-request.mjs";
+import {userPermissionOptions,retainedHiddenPermissions} from "./user-permission-options.mjs";
+import {maintenanceMetersRequired} from "../maintenance-meter-required.mjs";
+import {profileHeaderDesignation, profileHeaderName} from "./profile-designation.mjs";
+import {auditDeviceDetails} from "../device-details.mjs";
+import {readApiJson} from "./api-response.mjs";
+import {fetchWithTransientRetry,isNetworkFailure,isTransientStatus} from "./api-transient-retry.mjs";
+import {requestWriteConnectionMessage,requestWriteOutcomeConfirmed} from "./request-write-recovery.mjs";
+import {requestsVisibleToMisWorkspace, requestsVisibleToDashboard} from "../mis-request-visibility.mjs";
+import {adaptiveRefreshInterval, mobileTablePageSize} from "./mobile-performance.mjs";
+import {startVisiblePoll} from "./visible-poll.mjs";
+import VerificationTimeField from "./verification-time-field.jsx";
+import RequestTimelineButton from "./request-timeline.jsx";
+
+// Keep specialist administration and remote-support code out of the startup
+// bundle. Vite emits these as separate chunks and downloads them only when a
+// signed-in user opens the corresponding feature.
+const BackupAdministration=createLazyFeature(()=>import("./backup-administration.jsx"),undefined,{loadingLabel:"Loading backup administration…"});
+const VehicleTransferWorkflow=createLazyFeature(()=>import("./vehicle-transfer-workflow.jsx"),undefined,{loadingLabel:"Loading vehicle transfers…"});
+const RequestCorrections=createLazyFeature(()=>import("./request-corrections.jsx"),undefined,{loadingLabel:"Loading request corrections…"});
+const PrintHelperSetupPage=createLazyFeature(()=>import("./print-helper-setup.jsx"),undefined,{loadingLabel:"Loading print helper…"});
+const OrganisationChartView=createLazyFeature(()=>import("./organisation-chart.jsx"),undefined,{loadingLabel:"Loading organisation chart…"});
+const UserLoginHistory=createLazyFeature(()=>import("./user-login-history.jsx"),module=>module.UserLoginHistory,{loadingLabel:"Loading login history…"});
+const UserLoginActivity=createLazyFeature(()=>import("./user-login-history.jsx"),module=>module.UserLoginActivity,{loadingLabel:"Loading login activity…"});
+const RemoteAssistanceAction=createLazyFeature(()=>import("./remote-assistance.jsx"),module=>module.RemoteAssistanceAction,{compact:true,silent:true});
+const RemoteAssistanceAgent=createLazyFeature(()=>import("./remote-assistance.jsx"),module=>module.RemoteAssistanceAgent,{compact:true,silent:true});
+const SavedReportsPanel=createLazyFeature(()=>import("./saved-reports.jsx"),module=>module.SavedReportsPanel,{loadingLabel:"Loading saved reports…"});
+const HourlyBreakdownView=createLazyFeature(()=>import("./hourly-breakdown-view.jsx"),undefined,{loadingLabel:"Loading hourly breakdown…"});
+const WhatsAppReportSettingsButton=createLazyFeature(()=>import("./whatsapp-report-settings.jsx"),undefined,{compact:true,silent:true});
+const RecoveryGuide=createLazyFeature(()=>import("./recovery-guide.jsx"),undefined,{loadingLabel:"Loading recovery guide…"});
+const HelpTraining=createLazyFeature(()=>import("./help-training.jsx"),undefined,{compact:true,silent:true});
+const DashboardRecordBrowser=createLazyFeature(()=>import("./dashboard-record-browser.jsx"),undefined,{loadingLabel:"Loading records…"});
+const InfoPulseContent=createLazyFeature(()=>import("./info-pulse-content.jsx"),undefined,{loadingLabel:"Loading Info Pulse…"});
+
+const navigationFeaturePreloads = new Map([
+  ["Backup", BackupAdministration],
+  ["Export Backup", BackupAdministration],
+  ["Import Backup", BackupAdministration],
+  ["Backup Schedule", BackupAdministration],
+  ["Vehicle transfers", VehicleTransferWorkflow],
+  ["Request corrections", RequestCorrections],
+  ["Correction approvals", RequestCorrections],
+  ["Request correction", RequestCorrections],
+  ["Print helper", PrintHelperSetupPage],
+  ["Recovery guide", RecoveryGuide],
+  ...ORGANISATION_PAGE_NAMES.map((name) => [name, OrganisationChartView]),
+]);
+function preloadNavigationFeature(name) {
+  const pending = navigationFeaturePreloads.get(name)?.preload?.();
+  // Rendering still owns the recovery UI if a chunk is unavailable. Warming a
+  // route must never create an unhandled rejection before that render occurs.
+  pending?.catch?.(() => {});
+}
+import InfoPulseBirthday from './info-pulse-birthday.jsx';
+import {
+  LayoutDashboard,
+  Truck,
+  Wrench,
+  ArrowRightLeft,
+  ArrowLeft,
+  Users,
+  Building2,
+  Network,
+  LogOut,
+  Search,
+  Plus,
+  ChevronRight,
+  Bell,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  X,
+  Menu,
+  ShieldCheck,
+  UserRound,
+  CalendarDays,
+  Gauge,
+  Mic,
+  Square,
+  FileBarChart,
+  History,
+  Download,
+  FileSpreadsheet,
+  Upload,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsUp,
+  ChevronsDown,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Pencil,
+  Save,
+  Settings,
+  Trash2,
+  MessageCircle,
+  Send,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  User,
+  Activity,
+  Sun,
+  Moon,
+  Ticket,
+  Paperclip,
+  RefreshCw,
+  ListFilter,
+  Printer,
+  FolderOpen,
+  BookOpen,
+  Columns3,
+  RotateCcw,
+  Monitor,
+  Smartphone,
+  Flag,
+  HardDrive,
+  Volume2,
+  LifeBuoy,
+  ImagePlus,
+  Database,
+  Stethoscope,
+  CalendarClock,
+  Eraser,
+  BookUser,
+  Contact,
+  BadgeCheck,
+  Briefcase,
+  MapPinned,
+  Tags,
+} from "lucide-react";
+import "./style.css";
+import "./topbar.css";
+import "./site-counts.css";
+import "./dashboard-charts.css";
+import "./master-loader.css";
+import "./import-dropzone.css";
+import "./privilege.css";
+import "./sortable-table.css";
+import "./theme.css";
+import "./mobile-workflow.css";
+import "./ai-feeder.css";
+import "./info-pulse-content.css";
+import "./ideal-flow.css";
+import "./idle-status.css";
+import "./daily-updates.css";
+import "./dashboard-concept-a.css";
+import "./brand-theme.css";
+import "./report-schedule-polish.css";
+import "./reports-workspace.css";
+import "./meta-whatsapp-setup.css";
+import "./mobile-compat.css";
+import "./maintenance-mobile-compact.css";
+import "./dashboard-record-browser.css";
+import "./manager-scroll.css";
+import "./user-sessions.css";
+import "./backup-administration.css";
+import "./daily-bd-balance.css";
+import "./print-preview.css";
+import "./nav-motion.css";
+import "./dashboard-bar-motion.css";
+import "./back-button-motion.css";
+import "./dashboard-section-export.css";
+import "./workspace-night.css";
+import "./vehicle-history-density.css";
+import "./ticket-status-tabs.css";
+import "./linked-request-picker.css";
+import "./workspace-readability.css";
+import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
+import EmployeeTenureReport from "./employee-tenure-report.jsx";
+import CaliberDirectoryPage from "./caliber-directory-page.jsx";
+import CdirDeletion from "./cdir-deletion.jsx";
+import EmployeeTransfer,{CdirModule,useEmployeeTransferAccess} from "./employee-transfer.jsx";
+import StockStatement from './stock-statement.jsx';
+import PurchaseOrderReport from './purchase-order-report.jsx';
+import GrnRegister from './grn-register.jsx';
+import PoGrnReconciliation from './po-grn-reconciliation.jsx';
+import IbossAccounts from './iboss-accounts.jsx';
+import {Landmark} from 'lucide-react';
+import { breakdownTrendExport, fleetSectionExport, requestLifecycleExport, throughputSectionExport } from "./dashboard-section-export.mjs";
+import {dailyBdRecordsForMetric} from "./daily-bd-balance.mjs";
+import "./dashboard-readability.css";
+import "./dashboard-spacing.css";
+import "./mobile-phone-optimization.css";
+import "./dashboard-night.css";
+import "./no-motion.css";
+import { APP_VERSION } from "./app-version.js";
+import { formatCountDelta } from "./fleet-count-trend.mjs";
+import DateInput from "./date-input.mjs";
+
+const vehicles = [];
+const breakdowns = [];
+const storedSession = (() => {
+  if(new URLSearchParams(window.location.search).get("login")==="1")return null;
+  try {
+    return JSON.parse(
+      localStorage.getItem("nerveCenterSession") ||
+        sessionStorage.getItem("nerveCenterSession") ||
+        "null",
+    );
+  } catch {
+    return null;
+  }
+})();
+let authToken = storedSession?.token || "";
+let currentEmployeeName = storedSession?.name || "";
+// Two languages chosen at sign-in. Language 1 is the reading and default speech
+// language; Language 2 is also understood. Complaint text in either language is
+// shown as written, anything else is translated into Language 1. Audio never changes.
+const PREFERRED_LANGUAGE_KEY = "nerveCenterPreferredLanguage";
+const SECONDARY_LANGUAGE_KEY = "nerveCenterSecondaryLanguage";
+const SESSION_EXPIRED_PARAM = "session-expired";
+const LOGIN_LANDING_PAGE = "Dashboard";
+const requestedScanPage=()=>requestedMisPage(window.location.search);
+const DEVICE_ID_STORAGE_KEY = "nerveCenterDeviceId";
+const clientDeviceId = (() => {
+  try {
+    const saved = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (saved) return saved;
+    const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 16)
+      : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.slice(0, 16);
+    const generated = `BDMS-${randomPart.toUpperCase()}`;
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return "";
+  }
+})();
+const clearStoredSession = () => {
+  authToken = "";
+  currentEmployeeName = "";
+  localStorage.removeItem("nerveCenterSession");
+  sessionStorage.removeItem("nerveCenterSession");
+};
+const recordUserActivity = ({module = "Application", action = "Use application", targetReference = "", reason = ""} = {}) => {
+  if (!authToken) return;
+  void fetch("/api/user-activity", {
+    method: "POST",
+    keepalive: true,
+    headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`},
+    body: JSON.stringify({module, action, targetReference, reason}),
+  }).catch(() => {});
+};
+// An authenticated 401 means this specific token is no longer valid (for
+// example after a password change), so return to sign-in instead of surfacing
+// it as an unrelated save error. Ordinary UI deployments preserve sessions.
+if (typeof window !== "undefined" && typeof window.fetch === "function" && !window.__sessionExpiryFetch) {
+  const nativeFetch = window.fetch.bind(window);
+  window.__sessionExpiryFetch = true;
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input?.url || "";
+    let requestInit = init;
+    if (url.startsWith("/api/") && clientDeviceId) {
+      const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
+      headers.set("X-BDMS-Device-ID", clientDeviceId);
+      requestInit = {...init, headers};
+    }
+    // The edge firewall rejects some valid JSON bodies (large media and known
+    // false-positive permission text), so the transport helper uses the
+    // server's JSON-compatible text/plain path for those requests.
+    if (url.startsWith("/api/")) requestInit = edgeSafeJsonInit(requestInit);
+    // While a deployment restarts the app the gateway answers 502/503/504 for
+    // a few seconds. Read-only API calls wait and retry instead of showing an
+    // error; writes are never replayed because the server may have applied them.
+    const response = await fetchWithTransientRetry(nativeFetch, input, requestInit, {
+      onRetry: ({attempt, reason, status}) => console.warn(`Retrying ${url} after a transient ${reason === "status" ? `HTTP ${status}` : "network failure"} (attempt ${attempt + 1}).`),
+    });
+    if (response.status === 401 && authToken && url.startsWith("/api/") && !url.startsWith("/api/login")) {
+      clearStoredSession();
+      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+    }
+    return response;
+  };
+}
+const subsidiaryData = REGION_DATA;
+const nav = [
+  ["Dashboard", LayoutDashboard],
+  ["CD", BookOpen],
+  ["Tickets", Ticket],
+  ["Reports", FileBarChart],
+];
+// Administration menu (Admin and Super Admin). The four backup pages live here
+// beside the Recovery guide rather than in a header menu of their own.
+const adminNav = [
+  ["User Sessions", UserRound],
+  ["Access structure", Users],
+  ["Reporting structure", Building2],
+  ["OEM Email Delivery Status", MessageCircle],
+  ["Print helper", Printer],
+  ["Request corrections", Pencil],
+  ["Recovery guide", LifeBuoy],
+  ["Backup", HardDrive],
+  ["Export Backup", Download],
+  ["Import Backup", Upload],
+  ["Backup Schedule", CalendarDays],
+  ["Audit Trail", History],
+  ["Pulse Master Sync", RefreshCw],
+];
+const backupAdminPages = new Set(["Backup", "Export Backup", "Import Backup", "Backup Schedule"]);
+// The backup pages open from one "Database" entry in the Admin menu.
+// Diagnostics (a health check of every service), Storage management, Retention
+// rules and Purge data
+// open from the same Database clock. All are Admin and Super Admin only.
+const databaseToolPages = new Set(["Diagnostics", "Storage management", "Retention rules", "Purge data"]);
+const adminDatabaseNav = [...adminNav.filter(([name]) => backupAdminPages.has(name)), ["Diagnostics", Stethoscope], ["Storage management", HardDrive], ["Retention rules", CalendarClock], ["Purge data", Eraser]];
+// Badge colour / animation key for each Administration menu entry (topbar.css).
+const adminMenuKeys = {
+  "User Sessions": "sessions", "Access structure": "access", "Reporting structure": "reporting",
+  "Print helper": "print", "Request corrections": "corrections", "Recovery guide": "recovery",
+  "Backup": "backup", "Export Backup": "export", "Import Backup": "import", "Backup Schedule": "schedule",
+  "Audit Trail": "history", "Admin locks": "locks",
+  "Diagnostics": "diagnostics", "Storage management": "storage", "Retention rules": "retention", "Purge data": "purge",
+};
+// [page name, icon, badge key]: the key picks the badge colour and hover animation (topbar.css).
+const masterNav = [
+  ["Users & employees", Users, "users"],
+  ["Equipment master", Truck, "equipment"],
+  ["Breakdown master", Wrench, "breakdown"],
+  ["Repair type master", Wrench, "repair"],
+  ["Breakdown Sub-Category", Wrench, "subcategory"],
+  ["Region master", Building2, "region"],
+  ["Shift Master", Clock, "shift"],
+  ["Delayed Reason", Clock, "delayed"],
+  ["Vehicle transfers", ArrowRightLeft, "transfers"],
+  ["Hierarchy master", Network, "hierarchy"],
+  ["OEM master", ShieldCheck, "oem"],
+];
+// C-Dir (Caliber Directory) masters, shown under one "C-Dir Masters" entry. Admin and Super Admin only.
+const cdirMasterNavItems = [
+  [CDIR_MASTERS.employee, BookUser, "users"],
+  [CDIR_MASTERS.contact, Contact, "users"],
+  [CDIR_MASTERS.designation, BadgeCheck, "hierarchy"],
+  [CDIR_MASTERS.department, Briefcase, "hierarchy"],
+  [CDIR_MASTERS.site, Building2, "region"],
+  [CDIR_MASTERS.category, Tags, "subcategory"],
+  [CDIR_MASTERS.region, MapPinned, "region"],
+];
+const whatsappNav = [
+  ["Meta API setup", Settings],
+  ["Daily site-wise report", Building2],
+  ["Daily OEM report", ShieldCheck],
+  ["WhatsApp alert history", History],
+];
+// Badge colour / animation key for each WhatsApp Integration menu entry.
+const whatsappMenuKey = (name) => ({ "Meta API setup": "setup", "Daily site-wise report": "site", "Daily OEM report": "oem", "WhatsApp alert history": "history" })[name] || "whatsapp";
+const operationalWorkspaceNav = [
+  ["Production workspace", Truck, "Production User"],
+  ["Maintenance workspace", Wrench, "Maintenance User"],
+  ["MIS workspace", ShieldCheck, "MIS User"],
+];
+function Status({ children }) {
+  let c = children.toLowerCase().replaceAll(" ", "-");
+  return (
+    <span className={"status " + c}>
+      <i />
+      {children}
+    </span>
+  );
+}
+function ThemeToggle({ theme, onToggle, className = "" }) {
+  const isDark = theme === "dark";
+  return (
+    <button
+      type="button"
+      className={`theme-toggle ${className}`.trim()}
+      onClick={onToggle}
+      aria-label={`Switch to ${isDark ? "day" : "night"} theme`}
+      title={`Switch to ${isDark ? "day" : "night"} theme`}
+      aria-pressed={isDark}
+    >
+      <span className="theme-toggle-track" aria-hidden="true">
+        <span className="theme-toggle-thumb">{isDark ? <Moon /> : <Sun />}</span>
+      </span>
+      <span className="theme-toggle-label">{isDark ? "Night" : "Day"}</span>
+    </button>
+  );
+}
+function HeaderClock({ className = "" }) {
+  // All pages share the same time-first presentation and live clock.
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
+  useEffect(() => {
+    const updateClock = () => setCurrentDateTime(new Date());
+    const timer = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const date = formatDisplayDate(currentDateTime);
+  const time = formatDisplayTime(currentDateTime);
+  return (
+    <time className={`header-clock ${className}`.trim()} dateTime={currentDateTime.toISOString()} aria-label={`Current date and time ${date} ${time}`}>
+      <span className="header-clock-time">{time}</span>
+      <CalendarDays aria-hidden="true" />
+      <span className="header-clock-date">{date}</span>
+    </time>
+  );
+}
+function CaliberBrand({ subtitle = "All Departments Linked In One Place", className = "" }) {
+  return (
+    <div className={`caliber-app-brand ${className}`.trim()}>
+      <span className="caliber-logo-frame">
+        <img src="/caliber-erp-logo.jpg" alt="Caliber Pulse-II" />
+      </span>
+      <span className="caliber-app-name">
+        <strong>Caliber Pulse-II</strong>
+        <small>{subtitle}</small>
+      </span>
+    </div>
+  );
+}
+function AuthModeTabs({ mode, onModeChange }) {
+  const options = [
+    { id: "signin", label: "Sign in", detail: "Portal access", Icon: UserRound },
+    { id: "reset", label: "Reset password", detail: "OTP recovery", Icon: LockKeyhole },
+  ];
+  const selectFromKeyboard = (event, currentIndex) => {
+    const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : direction
+          ? (currentIndex + direction + options.length) % options.length
+          : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    onModeChange(options[nextIndex].id);
+    event.currentTarget.parentElement?.querySelectorAll('[role="tab"]')?.[nextIndex]?.focus();
+  };
+  return (
+    <div className="login-auth-tabs" role="tablist" aria-label="Login options">
+      {options.map(({ id, label, detail, Icon }, index) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={mode === id}
+          tabIndex={mode === id ? 0 : -1}
+          className={mode === id ? "active" : ""}
+          onClick={() => onModeChange(id)}
+          onKeyDown={(event) => selectFromKeyboard(event, index)}
+        >
+          <span className="login-auth-tab-icon" aria-hidden="true"><Icon /></span>
+          <span className="login-auth-tab-copy">
+            <span>{label}</span>
+            <small>{detail}</small>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+// Touch devices open the keyboard the moment a field is focused, which resizes the viewport and makes
+// the login form jump on load; only desktop browsers get the username field focused automatically.
+const coarsePointerDevice = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+function Login({ onLogin, theme, toggleTheme }) {
+  const [accountsPortal,setAccountsPortal]=useState(false);
+  const selectLoginPortal = (accounts) => {
+    setAccountsPortal(accounts);
+    setLoginRoles([]);
+    setSelectedLoginRole('');
+    setError('');
+    setPassword('');
+    setPasswordChange(null);
+    setLoginMode('signin');
+  };
+  const [loginRoles,setLoginRoles]=useState([]);
+  const [selectedLoginRole,setSelectedLoginRole]=useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const passwordInputRef = useRef(null);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState(() => preferredLanguageCodes()[0] || "en");
+  const [secondaryLanguage, setSecondaryLanguage] = useState(() => {
+    const [first, second] = preferredLanguageCodes();
+    return second || ((first || "en") === "hi" ? "en" : "hi");
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [working, setWorking] = useState(false);
+  const [passwordChange, setPasswordChange] = useState(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [loginMode, setLoginMode] = useState("signin");
+  const [resetRequest, setResetRequest] = useState(null);
+  const [resetOtp, setResetOtp] = useState("");
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has(SESSION_EXPIRED_PARAM)) {
+      setNotice("Your sign-in has expired or was closed. Please sign in again.");
+    } else if (params.has("updated")) {
+      setNotice("The application was updated. Please sign in again.");
+    } else {
+      return;
+    }
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+  const saveSession = (data) => {
+    authToken = data.token;
+    currentEmployeeName = data.name;
+    const session = JSON.stringify({
+      token: data.token,
+      role: data.role,
+      name: data.name,
+      login: data.login || "",
+      userType: data.userType || "",
+      assignedRole: data.assignedRole || "",
+      permissions: data.permissions || {},
+      accountsPortal,
+      preferredLanguage,
+      secondaryLanguage,
+    });
+    try {
+      localStorage.setItem(PREFERRED_LANGUAGE_KEY, preferredLanguage);
+      localStorage.setItem(SECONDARY_LANGUAGE_KEY, secondaryLanguage);
+    } catch {}
+    void fetch("/api/preferred-language", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
+      body: JSON.stringify({ preferredLanguage, secondaryLanguage }),
+    }).catch(() => {});
+    if (rememberMe) {
+      localStorage.setItem("nerveCenterSession", session);
+      sessionStorage.removeItem("nerveCenterSession");
+    } else {
+      sessionStorage.setItem("nerveCenterSession", session);
+      localStorage.removeItem("nerveCenterSession");
+    }
+    onLogin(JSON.parse(session));
+  };
+  const signIn = async () => {
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, portal:accountsPortal?'accounts':'operations', selectedRole:selectedLoginRole }),
+      });
+      const data = await readApiJson(response, "Could not sign in.");
+      if(data.requiresRoleSelection){setLoginRoles(data.roles||[]);setSelectedLoginRole('');return;}
+      if (data.requiresPasswordChange) {
+        setPasswordChange({ changeToken: data.changeToken, name: data.name });
+        return;
+      }
+      saveSession(data);
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  const changeInitialPassword = async () => {
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch("/api/change-initial-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ changeToken: passwordChange.changeToken, password: newPassword, confirmation }),
+      });
+      const data = await readApiJson(response, "Could not change password.");
+      saveSession(data);
+    } catch (changeError) {
+      setError(changeError.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  const requestPasswordReset = async () => {
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/password-reset/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
+      const data = await readApiJson(response, "Could not request an OTP.");
+      setResetRequest({ resetToken: data.resetToken, message: data.message });
+    } catch (resetError) {
+      setError(resetError.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  const confirmPasswordReset = async () => {
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch("/api/password-reset/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resetToken: resetRequest.resetToken, otp: resetOtp, password: newPassword, confirmation }),
+      });
+      const data = await readApiJson(response, "Could not reset the password.");
+      setNotice(data.message);
+      setLoginMode("signin");
+      setResetRequest(null);
+      setResetOtp("");
+      setNewPassword("");
+      setConfirmation("");
+      setPassword("");
+    } catch (resetError) {
+      setError(resetError.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  return (
+    <div className={`login${accountsPortal?' accounts-login':''}`}>
+      <section className="login-visual" aria-label="Caliber Pulse-II All Departments Linked In One Place">
+        <div className="login-grid" aria-hidden="true" />
+        <div className="login-schematic" aria-hidden="true">
+          <i /><i /><i /><i />
+        </div>
+        <CaliberBrand className="login-brand" subtitle="All Departments Linked In One Place" />
+        <div className="login-application-links">
+          <button type="button" className="login-mis-link" aria-pressed="true" onClick={()=>selectLoginPortal(false)}><FileBarChart /><span><strong>MIS</strong>Open MIS sign in</span></button>
+        </div>
+        <div className="login-message">
+          <div className="eyebrow"><span /> All Departments Linked In One Place</div>
+          <h1>Your enterprise.<br />One workspace.</h1>
+        <p>
+          Management information, operational records and reporting — in one place.
+        </p>
+          <div className="login-proof">
+            <div><Activity /><span><strong>Live oversight</strong>Across every site</span></div>
+            <div><ShieldCheck /><span><strong>Secure access</strong>Role-based control</span></div>
+          </div>
+        </div>
+        <div className="mine-art">
+          <Truck size={64} />
+          <span className="route-line" />
+        </div>
+        <div className="login-environment" aria-hidden="true">
+          <span>OPS / CENTRAL INDIA</span><span>SECURE NODE 01</span>
+        </div>
+      </section>
+      <main>
+        <ThemeToggle theme={theme} onToggle={toggleTheme} className="login-theme-toggle" />
+        {passwordChange ? <form
+          className="loginbox password-change-box"
+          onSubmit={(event) => { event.preventDefault(); changeInitialPassword(); }}
+        >
+          <CaliberBrand className="login-mobile-brand" subtitle="All Departments Linked In One Place" />
+          <small className="login-kicker"><LockKeyhole /> FIRST LOGIN SECURITY</small>
+          <h2>Create your password</h2>
+          <p>Welcome, {passwordChange.name}. You must replace your temporary phone-number password before continuing.</p>
+          <label className="login-label" htmlFor="new-password">New password</label>
+          <div className="login-input"><LockKeyhole /><input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck="false" minLength="8" required placeholder="Minimum 8 characters" /></div>
+          <label className="login-label" htmlFor="confirm-password">Confirm new password</label>
+          <div className="login-input"><LockKeyhole /><input id="confirm-password" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck="false" minLength="8" required placeholder="Re-enter new password" /></div>
+          <div className="login-feedback" aria-live="polite">{error && <p className="login-error" role="alert">{error}</p>}</div>
+          <button type="submit" className="primary" disabled={working || newPassword.length < 8 || confirmation.length < 8}>{working ? "Updating password…" : "Change password and continue"}<ChevronRight /></button>
+          <p className="login-help">This required step cannot be skipped.</p>
+        </form> : loginMode === "reset" ? <form
+          className="loginbox password-reset-box"
+          onSubmit={(event) => { event.preventDefault(); resetRequest ? confirmPasswordReset() : requestPasswordReset(); }}
+        >
+          <CaliberBrand className="login-mobile-brand" subtitle="All Departments Linked In One Place" />
+          <AuthModeTabs mode="reset" onModeChange={(mode) => { setLoginMode(mode); setError(""); }} />
+          <small className="login-kicker"><LockKeyhole /> ACCOUNT RECOVERY</small>
+          <h2>{resetRequest ? "Enter OTP" : "Reset password"}</h2>
+          <p>{resetRequest ? "Enter the 6-digit OTP sent to your registered WhatsApp mobile number, then create a new password." : "Enter your user name. We will send a password-reset OTP to your registered mobile number."}</p>
+          {!resetRequest ? <>
+            <label className="login-label" htmlFor="reset-username">User name</label>
+            <div className="login-input"><User aria-hidden="true" /><input id="reset-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Enter your user name" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck="false" required autoFocus /></div>
+          </> : <>
+            <div className="reset-otp-note"><MessageCircle /><span>{resetRequest.message}</span></div>
+            <label className="login-label" htmlFor="reset-otp">6-digit OTP</label>
+            <div className="login-input otp-input"><LockKeyhole aria-hidden="true" /><input id="reset-otp" value={resetOtp} onChange={(event) => setResetOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" required autoFocus /></div>
+            <label className="login-label" htmlFor="reset-new-password">New password</label>
+            <div className="login-input"><LockKeyhole aria-hidden="true" /><input id="reset-new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck="false" minLength="8" required placeholder="Minimum 8 characters" /></div>
+            <label className="login-label" htmlFor="reset-confirm-password">Confirm new password</label>
+            <div className="login-input"><LockKeyhole aria-hidden="true" /><input id="reset-confirm-password" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck="false" minLength="8" required placeholder="Re-enter new password" /></div>
+          </>}
+          <div className="login-feedback" aria-live="polite">{error && <p className="login-error" role="alert">{error}</p>}</div>
+          <button type="submit" className="primary" disabled={working || (!resetRequest && !username.trim()) || (resetRequest && (resetOtp.length !== 6 || newPassword.length < 8 || confirmation.length < 8))}>
+            {working ? "Please wait…" : resetRequest ? "Reset password" : "Send OTP"}<ChevronRight />
+          </button>
+          {resetRequest && <button type="button" className="reset-start-over" onClick={() => { setResetRequest(null); setResetOtp(""); setNewPassword(""); setConfirmation(""); setError(""); }}>Request another OTP</button>}
+        </form> : <form
+          className="loginbox"
+          onSubmit={(event) => {
+            event.preventDefault();
+            signIn();
+          }}
+        >
+          <CaliberBrand className="login-mobile-brand" subtitle="All Departments Linked In One Place" />
+          <AuthModeTabs mode="signin" onModeChange={(mode) => { setLoginMode(mode); setError(""); setNotice(""); }} />
+          <small className="login-kicker"><LockKeyhole /> {accountsPortal?'SECURE ACCOUNTS PORTAL':'SECURE OPERATIONS PORTAL'}</small>
+          <h2>{accountsPortal?'Accounts sign in':'Welcome Back'}</h2>
+          <p>{accountsPortal?'Sign in with your authorised Accounts user ID.':'Sign in to access your MIS workspace.'}</p>
+          <div className="single-login-note"><ShieldCheck /><span><b>One secure login</b><small>Your workspace and permissions are assigned by your administrator.</small></span></div>
+          {!accountsPortal&&loginRoles.length>0&&<label>Choose your assigned workspace<select required value={selectedLoginRole} onChange={event=>setSelectedLoginRole(event.target.value)}><option value="">Select workspace</option>{loginRoles.map(role=><option key={role}>{role}</option>)}</select></label>}
+          <label className="login-label" htmlFor="login-username">User name</label>
+          <div className="login-input">
+            <User aria-hidden="true" />
+            <input id="login-username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                passwordInputRef.current?.focus();
+              }}
+              placeholder="Enter your user name"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              aria-invalid={Boolean(error)}
+              required
+              autoFocus={!coarsePointerDevice()}
+            />
+          </div>
+          <label className="login-label" htmlFor="login-password">Password</label>
+          <div className="login-input">
+            <LockKeyhole aria-hidden="true" />
+            <input id="login-password"
+              ref={passwordInputRef}
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              aria-invalid={Boolean(error)}
+              required
+            />
+            <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"}>
+              {showPassword ? <EyeOff /> : <Eye />}
+            </button>
+          </div>
+          <fieldset className="login-language">
+            <legend className="login-label">Preferred languages · पसंदीदा भाषाएँ</legend>
+            <div className="login-language-options">
+              {[
+                ["preferredLanguage", "Language 1 · भाषा 1", preferredLanguage, (code) => { setPreferredLanguage(code); if (code === secondaryLanguage) setSecondaryLanguage(preferredLanguage); }],
+                ["secondaryLanguage", "Language 2 · भाषा 2", secondaryLanguage, (code) => { setSecondaryLanguage(code); if (code === preferredLanguage) setPreferredLanguage(secondaryLanguage); }],
+              ].map(([name, label, value, pick]) => (
+                <label key={name}>
+                  <small>{label}</small>
+                  <select name={name} value={value} onChange={(event) => pick(event.target.value)}>
+                    {speechLanguages.map(([, englishName, code, nativeName]) => (
+                      <option key={code} value={code}>{nativeName}{nativeName === englishName ? "" : ` · ${englishName}`}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <small className="login-language-hint">Language 1 is used to speak and to read complaints. Complaints in Language 2 are shown as written; other languages are translated into Language 1.</small>
+          </fieldset>
+          <label className="remember-me">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+            />
+            Remember me
+          </label>
+          <div className="login-feedback" aria-live="polite">
+            {notice && <p className="login-success" role="status">{notice}</p>}
+            {error && <p className="login-error" role="alert">{error}</p>}
+          </div>
+          <button
+            type="submit"
+            className="primary"
+            disabled={working || !username.trim() || !password}
+          >
+            {working ? "Signing in…" : "Sign in"} <ChevronRight />
+          </button>
+          <p className="login-help">Having trouble signing in? Contact your site administrator.</p>
+        </form>}
+      </main>
+    </div>
+  );
+}
+// A menu entry that opens a clock face of icons: pointing at or clicking the entry
+// highlights it and shows its pages as icons around a centre label, and each icon
+// shows its full page name when pointed at. Used for C-Dir Masters, Database and
+// WhatsApp Integration. "hours" places the icons on those clock hours as a half
+// clock beside the menu; one that would run off the screen opens inside the menu
+// instead. "alwaysOpen" shows only the clock (the menu itself is the entry), and
+// "down" puts the centre at the top with the icons fanning out below it.
+function ClockMenu({ label, centerLabel = label, icon: EntryIcon, items = [], active, onSelect, workspace = "users", hours = null, alwaysOpen = false, down = false, labelFor = (name) => name, keyFor = (name, key) => key || "master" }) {
+  const [openState, setOpen] = useState(false);
+  const [inside, setInside] = useState(alwaysOpen);
+  const clockRef = useRef(null);
+  const open = alwaysOpen || openState;
+  useEffect(() => {
+    if (!open || !hours) return;
+    if (!alwaysOpen) {
+      const rect = clockRef.current?.getBoundingClientRect?.();
+      if (rect && rect.right > window.innerWidth - 8) setInside(true);
+    }
+    if (inside) clockRef.current?.scrollIntoView?.({block: "nearest"});
+  }, [open, hours, inside, alwaysOpen]);
+  useEffect(() => { if (!open && !alwaysOpen) setInside(false); }, [open, alwaysOpen]);
+  if (!items.length) return null;
+  const clock = open && <div ref={clockRef} className={`cdir-clock${hours ? ` half ${inside ? "inside" : "beside"}` : ""}${down ? " down" : ""}`} role="menu" aria-label={label}>
+    <span className="cdir-clock-center" aria-hidden="true">{centerLabel}</span>
+    {items.map(([name, Icon, menuKey], index) => (
+      <button
+        key={name}
+        type="button"
+        role="menuitem"
+        className={`cdir-clock-item${active === name ? " active" : ""}`}
+        style={{"--angle": `${hours ? hours[index] * 30 : index * 360 / items.length}deg`}}
+        data-label={labelFor(name)}
+        aria-label={labelFor(name)}
+        onClick={(event) => { setOpen(false); onSelect(name, event); }}
+      >
+        {/* The same coloured badge the page has in the plain menu list. */}
+        <span className="workspace-menu-item cdir-clock-badge" data-workspace={keyFor(name, menuKey)} aria-hidden="true"><span className="workspace-icon"><Icon /><i className="workspace-icon-glow" /></span></span>
+      </button>
+    ))}
+  </div>;
+  if (alwaysOpen) return clock;
+  return <div
+    className={`cdir-masters-hub${hours ? " half" : ""}${inside ? " inside" : ""}${open ? " open" : ""}`}
+    onPointerEnter={(event) => { if (event.pointerType === "mouse") setOpen(true); }}
+    onPointerLeave={(event) => { if (event.pointerType === "mouse") setOpen(false); }}
+  >
+    <div className="nav-config-row"><button
+      type="button"
+      className={`workspace-menu-item cdir-masters-toggle${items.some(([name]) => name === active) ? " active" : ""}`}
+      data-workspace={workspace}
+      aria-expanded={open}
+      aria-haspopup="menu"
+      onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}
+    >
+      <span className="workspace-icon" aria-hidden="true"><EntryIcon /><i className="workspace-icon-glow" /></span>
+      <span className="nav-label">{label}</span>
+      <ChevronDown className="cdir-masters-chevron" aria-hidden="true" />
+    </button></div>
+    {clock}
+  </div>;
+}
+
+function Side({ active, setActive, logout, open, permissions = {}, session, profileLocation = "", activeReportCategory = "general" }) {
+  const employeeTransferAllowed=useEmployeeTransferAccess(session?.token || authToken);
+  useEffect(() => {
+    const header=document.getElementById('admin-primary-navigation');
+    if(!header)return undefined;
+    let lastHeight=0;
+    const updateHeight=(entries)=>{
+      const box=entries?.[0]?.borderBoxSize;
+      const height=Math.ceil((Array.isArray(box)?box[0]:box)?.blockSize ?? header.getBoundingClientRect().height);
+      if(height===lastHeight)return;
+      lastHeight=height;
+      document.documentElement.style.setProperty('--navigation-header-height',`${height}px`);
+    };
+    updateHeight();
+    const observer=new ResizeObserver(updateHeight);
+    observer.observe(header,{box:'border-box'});
+    return ()=>{observer.disconnect();document.documentElement.style.removeProperty('--navigation-header-height');};
+  },[]);
+  const [mastersOpen, setMastersOpen] = useState(false);
+  const [mastersSelectionClosed, setMastersSelectionClosed] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [whatsappSelectionClosed, setWhatsappSelectionClosed] = useState(false);
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
+  const [workspacesSelectionClosed, setWorkspacesSelectionClosed] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [reportsSelectionClosed, setReportsSelectionClosed] = useState(false);
+  const [cdirOpen, setCdirOpen] = useState(false);
+  const [cdirSelectionClosed, setCdirSelectionClosed] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminSelectionClosed, setAdminSelectionClosed] = useState(false);
+  const [ibossOpen, setIbossOpen] = useState(false);
+  const [ibossSelectionClosed, setIbossSelectionClosed] = useState(false);
+  const [responsiveMobile, setResponsiveMobile] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  const [collapsedNavigation, setCollapsedNavigation] = useState(() => window.matchMedia("(max-width: 1250px)").matches);
+  useEffect(() => {
+    // Match the navigation's CSS breakpoint, not the role-permission breakpoint.
+    const query = window.matchMedia("(max-width: 1250px)");
+    const update = () => setCollapsedNavigation(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 900px)");
+    const update = () => setResponsiveMobile(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const closeMenus = () => {
+    setMastersOpen(false);
+    setWhatsappOpen(false);
+    setWorkspacesOpen(false);
+    setReportsOpen(false);
+    setAdminOpen(false);
+    setCdirOpen(false);
+    setIbossOpen(false);
+  };
+  useEffect(() => {
+    const outside = event => {
+      if (!event.target.closest?.('#admin-primary-navigation nav')) closeMenus();
+    };
+    const escape = event => { if (event.key === 'Escape') closeMenus(); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
+  const selectPage = (page) => {
+    closeMenus();
+    setActive(page);
+  };
+  const selectDropdownPage = (page, event, setSelectionClosed) => {
+    closeMenus();
+    setSelectionClosed(true);
+    event.currentTarget.blur();
+    setActive(page);
+  };
+  const selectMaster = (page, event) => {
+    closeMenus();
+    setCdirSelectionClosed(true);
+    setMastersSelectionClosed(true);
+    event.currentTarget.blur();
+    setActive(page);
+  };
+  const selectReport = (category, event) => {
+    closeMenus();
+    setReportsSelectionClosed(true);
+    event.currentTarget.blur();
+    setActive({ page: "Reports", reportCategory: category.id });
+  };
+  const warmNavigationFeature = (event) => {
+    const label = event.target.closest?.("button")?.querySelector?.(".nav-label")?.textContent?.trim();
+    if (label) preloadNavigationFeature(label);
+  };
+  useEffect(() => {
+    closeMenus();
+  }, [active]);
+  if(session?.assignedRole==='HR User')permissions={...permissions,tabAccess:['Dashboard','Reports','CD','Tickets','Masters'],mobileTabAccess:['Dashboard','Reports','CD','Tickets','Masters']};
+  const viewPermissions=navigationPermissionsForView(permissions,responsiveMobile);
+  const activeManagerRoles=Array.isArray(permissions.managerRoles)&&permissions.managerRoles.length
+    ?permissions.managerRoles:[permissions.managerRole].filter(Boolean);
+  const vehicleTransferDirectAccess=permissions.adminLevel==="Manager"&&activeManagerRoles.includes("MIS Manager");
+  const vehicleTransferMasterAccess=permissions.adminLevel==="Manager"&&activeManagerRoles.includes("Project Manager");
+  const vehicleTransferRoleAccess=vehicleTransferDirectAccess||vehicleTransferMasterAccess;
+  const correctionApprovalAccess=permissions.adminLevel==="Manager"&&activeManagerRoles.includes("Project Manager");
+  const correctionRequestAccess=permissions.adminLevel==="Manager"&&activeManagerRoles.some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
+  const standardMastersAccess=accessAllows(viewPermissions.tabAccess, "Masters");
+  const visibleMasterNav = masterNav.filter(([name]) => (standardMastersAccess&&masterAccessAllows(viewPermissions, name)&&!(name==="Vehicle transfers"&&vehicleTransferDirectAccess))||(name==="Vehicle transfers"&&vehicleTransferMasterAccess));
+  const cdirMasterNav = cdirMasterNavItems.filter(([name]) => standardMastersAccess && masterAccessAllows(viewPermissions, name));
+  // Directory is a core account-scoped page. Keep it visible even for sessions
+  // issued before the required-menu migration; the API enforces their scope.
+  const canViewDirectory = true;
+  const directMenuAccess = {Dashboard: "dashboardAccess", Tickets: "ticketAccess", Reports: "reportAccess"};
+  const visibleNav = nav.filter(([name]) => (name==="Dashboard"&&permissions.adminLevel==="Manager") || (accessAllows(viewPermissions.tabAccess, name) && accessAllows(viewPermissions[directMenuAccess[name]], name)));
+  const canViewMasters = (standardMastersAccess||vehicleTransferRoleAccess) && visibleMasterNav.length > 0;
+  const visibleWhatsAppNav = whatsappNav.filter(([name]) => name !== "Meta API setup" || permissions.adminLevel !== "Manager").filter(([name]) => accessAllows(viewPermissions.whatsappAccess, name));
+  const canViewWhatsApp = accessAllows(viewPermissions.tabAccess, "WhatsApp Integration") && visibleWhatsAppNav.length > 0;
+  const visibleReportCategoryIds = reportCategoryIdsForUser(viewPermissions, session);
+  const departmentReportNav = reportCategoryTabs.filter((category) => visibleReportCategoryIds.includes(category.id));
+  const configuredReportNav = departmentReportNav.filter((category) => reportAccessAllows(viewPermissions.reportAccess, category.label));
+  const visibleReportNav = [...(configuredReportNav.length ? configuredReportNav : departmentReportNav), ...(canViewBdAgeingReport(session) ? [{id:'bd-ageing',label:'BD Ageing Report',icon:FileBarChart}] : [])];
+  const canViewReports = visibleReportNav.length > 0;
+  const visibleIbossNav = [["Accounts",Landmark,"iboss-accounts"]].filter(()=>ibossAccountsAllowed(session,viewPermissions));
+  const managerProfileLabel=permissions.managerRoles?.length===1?permissions.managerRoles[0]:"Manager Profile";
+  const canViewAdmin=session?.role==="super"&&["admin","super admin"].includes(String(permissions.adminLevel||"").trim().toLowerCase());
+  const navigationHidden = collapsedNavigation && !open;
+  return (
+    <aside id="admin-primary-navigation" className={open ? "open" : ""} aria-label="Primary navigation" aria-hidden={navigationHidden ? true : undefined} inert={navigationHidden ? true : undefined}>
+      <CaliberBrand className="logo" />
+      <nav onPointerOver={warmNavigationFeature} onPointerDownCapture={warmNavigationFeature} onFocusCapture={warmNavigationFeature}>
+        {visibleNav.filter(([name]) => name === "Dashboard").map(([n, I]) => (
+          <div className="nav-config-row" key={n}><button
+            className={`header-nav-item${active === n ? " active" : ""}`}
+            data-nav={n.toLowerCase()}
+            onClick={() => selectPage(n)}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><I /></span>
+            <span className="nav-label">{n}</span>
+          </button></div>
+        ))}
+        {permissions.adminLevel === "Manager" && <div className="nav-config-row"><button className={`header-nav-item${active === "Manager Profile" ? " active" : ""}`} data-nav="manager" onClick={() => selectPage("Manager Profile")}><span className="header-nav-icon" aria-hidden="true"><UserRound /></span><span className="nav-label">{managerProfileLabel}</span></button></div>}
+        {correctionRequestAccess && <div className="nav-config-row"><button className={`header-nav-item${active === "Request correction" ? " active" : ""}`} data-nav="correction" onClick={() => selectPage("Request correction")}><span className="header-nav-icon" aria-hidden="true"><Pencil /></span><span className="nav-label">Request correction</span></button></div>}
+        {correctionApprovalAccess && <div className="nav-config-row"><button className={`header-nav-item${active === "Correction approvals" ? " active" : ""}`} data-nav="approvals" onClick={() => selectPage("Correction approvals")}><span className="header-nav-icon" aria-hidden="true"><ShieldCheck /></span><span className="nav-label">Correction approvals</span></button></div>}
+        {canViewMasters && <div
+          className={`masters-menu${mastersOpen ? " open" : ""}${mastersSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setMastersSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button
+            className={`header-nav-item${visibleMasterNav.some(([name]) => name === active) ? " active" : ""}`}
+            data-nav="masters"
+            aria-haspopup="menu"
+            aria-expanded={mastersOpen}
+            onClick={() => {
+              setMastersSelectionClosed(false);
+              closeMenus(); setMastersOpen(!mastersOpen);
+            }}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><Menu /></span>
+            <span className="nav-label">Masters</span>
+            <ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown" role="menu">
+            {visibleMasterNav.map(([name, Icon, menuKey]) => (
+              <div className="nav-config-row" key={name}><button
+                role="menuitem"
+                className={`workspace-menu-item${active === name ? " active" : ""}`}
+                data-workspace={menuKey || "master"}
+                onClick={(event) => selectMaster(name, event)}
+              >
+                <span className="workspace-icon" aria-hidden="true"><Icon /><i className="workspace-icon-glow" /></span>
+                <span className="nav-label">{name}</span>
+              </button></div>
+            ))}
+          </div>
+        </div>}
+        {canViewWhatsApp && <div
+          className={`masters-menu${whatsappOpen ? " open" : ""}${whatsappSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setWhatsappSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button
+            className={`header-nav-item${whatsappNav.some(([name]) => name === active) ? " active" : ""}`}
+            data-nav="whatsapp"
+            aria-haspopup="menu"
+            aria-expanded={whatsappOpen}
+            onClick={() => {
+              setWhatsappSelectionClosed(false);
+              closeMenus(); setWhatsappOpen(!whatsappOpen);
+            }}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><MessageCircle /></span>
+            <span className="nav-label">WhatsApp Integration</span>
+            <ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown whatsapp-dropdown" role="menu">
+            {/* The WhatsApp pages open downward: the "WhatsApp" half circle at the top, icons evenly spaced close around its lower half so none touch. */}
+            <ClockMenu alwaysOpen down label="WhatsApp Integration" centerLabel="WhatsApp" items={visibleWhatsAppNav} hours={[3.6, 5.2, 6.8, 8.4, 6, 3].slice(0, visibleWhatsAppNav.length)} labelFor={navigationLabel} keyFor={whatsappMenuKey} active={active} onSelect={(page, event) => selectDropdownPage(page, event, setWhatsappSelectionClosed)} />
+          </div>
+        </div>}
+        {permissions.adminLevel !== "Manager" && !['HR User','HR Manager'].includes(session?.assignedRole) && <div
+          className={`masters-menu${workspacesOpen ? " open" : ""}${workspacesSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setWorkspacesSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button
+            className={`header-nav-item${operationalWorkspaceNav.some(([name]) => name === active) ? " active" : ""}`}
+            data-nav="workspaces"
+            aria-haspopup="menu"
+            aria-expanded={workspacesOpen}
+            onClick={() => {
+              setWorkspacesSelectionClosed(false);
+              closeMenus(); setWorkspacesOpen(!workspacesOpen);
+            }}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><Users /></span>
+            <span className="nav-label">Operational Workspaces</span>
+            <ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown operational-workspaces-dropdown" role="menu">
+            {operationalWorkspaceNav.map(([name, Icon, role]) => <div className="nav-config-row" key={name}><button role="menuitem" className={`workspace-menu-item${active === name ? " active" : ""}`} data-workspace={String(role).split(" ")[0].toLowerCase()} onClick={(event) => selectDropdownPage(name, event, setWorkspacesSelectionClosed)}>
+              <span className="workspace-icon" aria-hidden="true"><Icon /><i className="workspace-icon-glow" /></span><span className="nav-label">{name}</span>
+            </button></div>)}
+          </div>
+        </div>}
+        {canViewReports && <div
+          className={`masters-menu reports-menu${reportsOpen ? " open" : ""}${reportsSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setReportsSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button
+            className={`header-nav-item${active === "Reports" ? " active" : ""}`}
+            data-nav="reports"
+            aria-haspopup="menu"
+            aria-expanded={reportsOpen}
+            onClick={() => {
+              setReportsSelectionClosed(false);
+              closeMenus(); setReportsOpen(!reportsOpen);
+            }}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><FileBarChart /></span>
+            <span className="nav-label">Reports</span>
+            <ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown reports-dropdown" role="menu">
+            {visibleReportNav.map((category) => {
+              const CategoryIcon = category.icon || FileBarChart;
+              return <div className="nav-config-row" key={category.id}><button
+                role="menuitem"
+                className={`workspace-menu-item${active === "Reports" && activeReportCategory === category.id ? " active" : ""}`}
+                data-workspace={`report-${category.id}`}
+                onClick={(event) => selectReport(category, event)}
+              >
+                <span className="workspace-icon" aria-hidden="true"><CategoryIcon /><i className="workspace-icon-glow" /></span>
+                <span className="nav-label">{category.label}</span>
+              </button></div>;
+            })}
+          </div>
+        </div>}
+        {visibleNav.filter(([name]) => name !== "Dashboard" && name !== "Reports" && name !== "CD").map(([n, I]) => (
+          <div className="nav-config-row" key={n}><button
+            className={`header-nav-item${active === n ? " active" : ""}`}
+            data-nav={n.toLowerCase()}
+            onClick={() => selectPage(n)}
+          >
+            <span className="header-nav-icon" aria-hidden="true"><I /></span>
+            <span className="nav-label">{n}</span>
+          </button></div>
+        ))}
+        {vehicleTransferDirectAccess&&<div className="nav-config-row"><button className={`header-nav-item${active==="Vehicle transfers"?" active":""}`} data-nav="transfers" onClick={()=>selectPage("Vehicle transfers")}><span className="header-nav-icon" aria-hidden="true"><ArrowRightLeft /></span><span className="nav-label">Vehicle Transfer</span></button></div>}
+        {(canViewAdmin||isSessionViewOnlyUser(session)) && <div
+          className={`masters-menu${adminOpen ? " open" : ""}${adminSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setAdminSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button className={`header-nav-item${[...adminNav.map(([name])=>name),"Admin locks"].includes(active) ? " active" : ""}`} data-nav="admin" aria-haspopup="menu" aria-expanded={adminOpen} onClick={() => {setAdminSelectionClosed(false);closeMenus(); setAdminOpen(!adminOpen);}}><span className="header-nav-icon" aria-hidden="true"><ShieldCheck /></span><span className="nav-label">Admin</span><ChevronDown className="masters-chevron" /></button></div>
+          <div className="masters-dropdown admin-dropdown" role="menu">
+            {adminNav.filter(([name])=>!backupAdminPages.has(name)&&(canViewAdmin||name==="User Sessions")).map(([name,Icon])=><div className="nav-config-row" key={name}><button role="menuitem" className={`workspace-menu-item${active===name?" active":""}`} data-workspace={adminMenuKeys[name] || "admin"} onClick={(event)=>selectDropdownPage(name,event,setAdminSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><Icon /><i className="workspace-icon-glow" /></span><span className="nav-label">{name}</span></button></div>)}
+            {permissions.adminLevel === "Super Admin" && <div className="nav-config-row"><button role="menuitem" className={`workspace-menu-item${active === "Admin locks" ? " active" : ""}`} data-workspace={adminMenuKeys["Admin locks"]} onClick={(event) => selectDropdownPage("Admin locks", event, setAdminSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><ShieldCheck /><i className="workspace-icon-glow" /></span><span className="nav-label">Admin locks</span></button></div>}
+            {/* Backup, export, import and schedule open from "Database", the last Admin entry. */}
+            {canViewAdmin&&<ClockMenu label="Database" icon={Database} items={adminDatabaseNav} hours={adminDatabaseNav.map((_, index, all) => (22.5 + index * 135 / Math.max(1, all.length - 1)) / 30)} keyFor={(name) => adminMenuKeys[name] || "diagnostics"} active={active} workspace="backup" onSelect={(page, event) => selectDropdownPage(page, event, setAdminSelectionClosed)} />}
+          </div>
+        </div>}
+        {(canViewDirectory || cdirMasterNav.length > 0) && <div
+          className={`masters-menu cdir-menu${cdirOpen ? " open" : ""}${cdirSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setCdirSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button className={`header-nav-item${active === "CD" || active === "Record Deletion Approvals" || active === "Employee Transfer" || active === "Employee Tenure Report" || cdirMasterNav.some(([name]) => name === active) ? " active" : ""}`} data-nav="cd" aria-haspopup="menu" aria-expanded={cdirOpen} onClick={() => {setCdirSelectionClosed(false);closeMenus(); setCdirOpen(!cdirOpen);}}>
+            <span className="header-nav-icon" aria-hidden="true"><BookUser /></span><span className="nav-label">C-Dir</span><ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown cdir-dropdown" role="menu">
+            {canViewDirectory && <div className="nav-config-row"><button role="menuitem" className={`workspace-menu-item${active === "CD" ? " active" : ""}`} data-workspace="directory" onClick={event => selectDropdownPage("CD", event, setCdirSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><BookUser /><i className="workspace-icon-glow" /></span><span className="nav-label">Directory</span></button></div>}
+            {canViewDirectory && <div className="nav-config-row"><button role="menuitem" className={`workspace-menu-item${active === "Employee Tenure Report" ? " active" : ""}`} data-workspace="report-employee-tenure" onClick={event => selectDropdownPage("Employee Tenure Report", event, setCdirSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><Users /><i className="workspace-icon-glow" /></span><span className="nav-label">Employee Tenure Report</span></button></div>}
+            {employeeTransferAllowed && <div className="nav-config-row"><button role="menuitem" className={`workspace-menu-item${active === "Employee Transfer" ? " active" : ""}`} data-workspace="employee-transfer" onClick={event => selectDropdownPage("Employee Transfer", event, setCdirSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><Users /><i className="workspace-icon-glow" /></span><span className="nav-label">Employee Transfer</span></button></div>}
+            {employeeTransferAllowed && <div className="nav-config-row"><button role="menuitem" className={`workspace-menu-item${active === "Record Deletion Approvals" ? " active" : ""}`} data-workspace="cdir-deletion" onClick={event => selectDropdownPage("Record Deletion Approvals", event, setCdirSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><Trash2 /></span><span className="nav-label">Record Deletion Approvals</span></button></div>}
+            <ClockMenu down label="C-Dir Masters" centerLabel="C-Dir" icon={BookUser} items={cdirMasterNav} hours={cdirMasterNav.map((_, index, all) => 3.4 + index * 5.2 / Math.max(1, all.length - 1))} active={active} onSelect={selectMaster} />
+          </div>
+        </div>}
+        {session?.role === "super" && visibleIbossNav.length > 0 && <div
+          className={`masters-menu iboss-menu${ibossOpen ? " open" : ""}${ibossSelectionClosed ? " selection-closed" : ""}`}
+          onPointerLeave={() => setIbossSelectionClosed(false)}
+        >
+          <div className="nav-config-row"><button className={`header-nav-item${visibleIbossNav.some(([name]) => name === active) || ["Accounts Masters","Accounts Transactions"].includes(active) ? " active" : ""}`} data-nav="iboss" aria-haspopup="menu" aria-expanded={ibossOpen} onClick={() => {setIbossSelectionClosed(false);closeMenus(); setIbossOpen(!ibossOpen);}}>
+            <span className="header-nav-icon" aria-hidden="true"><FileBarChart /></span><span className="nav-label">Accounts</span><ChevronDown className="masters-chevron" />
+          </button></div>
+          <div className="masters-dropdown iboss-dropdown" role="menu">
+            {visibleIbossNav.map(([name,Icon,workspace]) => <div className="nav-config-row" key={name}><button role="menuitem" className={`workspace-menu-item${active === name || name === "Accounts" && ["Accounts Masters","Accounts Transactions"].includes(active) ? " active" : ""}`} data-workspace={workspace} onClick={event => selectDropdownPage(name,event,setIbossSelectionClosed)}><span className="workspace-icon" aria-hidden="true"><Icon /><i className="workspace-icon-glow" /></span><span className="nav-label">{name}</span></button></div>)}
+          </div>
+        </div>}
+        {session?.assignedRole!=='HR User'&&<BdmsAssistant session={session} token={authToken} />}<AnnouncementHistoryButton token={authToken} />
+      </nav>
+      <div className="user">
+        <span className="header-user-copy">
+          <b className="header-user-name">{profileHeaderName(session?.name, permissions.adminLevel === "Manager" ? "Manager" : "Administrator")}</b>
+          <small>{[profileHeaderDesignation({name:session?.name,permissions}), profileLocation].filter(Boolean).join(" · ")}</small>
+        </span>
+        <UserProfile session={session} role={profileHeaderDesignation({name:session?.name,permissions})} location={profileLocation} apiToken={authToken} />
+        <button onClick={logout} aria-label="Sign out" className="sign-out-button">
+          <DoorExitIcon /><span className="sign-out-label">Sign out</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+function AnnouncementHistoryButton({token}) {
+  const [open,setOpen]=useState(false);
+  const [rows,setRows]=useState([]);
+  const [cursor,setCursor]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  useEffect(()=>{
+    if(!open)return;
+    const controller=new AbortController();
+    setRows([]);setCursor(null);setLoading(true);setError('');
+    fetch('/api/announcements/history',{cache:'no-store',signal:controller.signal,headers:{Authorization:`Bearer ${token}`}})
+      .then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not load announcements.');return result;})
+      .then(result=>{setRows(result.announcements||[]);setCursor(result.nextCursor);})
+      .catch(error=>{if(!controller.signal.aborted)setError(error.message);})
+      .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[open,token]);
+  const loadMore=async()=>{
+    setLoading(true);setError('');
+    try{
+      const response=await fetch(`/api/announcements/history?before=${encodeURIComponent(cursor)}`,{cache:'no-store',headers:{Authorization:`Bearer ${token}`}});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not load announcements.');
+      setRows(previous=>[...previous,...(result.announcements||[])]);setCursor(result.nextCursor);
+    }catch(error){setError(error.message);}finally{setLoading(false);}
+  };
+  return <><button type="button" data-nav="announcements" onClick={()=>setOpen(true)}><MessageCircle /><span className="nav-label">Announcements</span></button>{open&&createPortal(<Modal title="Announcements" close={()=>setOpen(false)} className="announcement-archive-modal" overlayClassName="announcement-archive-overlay">
+    <section className="announcement-history"><p>Previously sent announcements remain available here after you close their popup.</p>
+      {error&&<p role="alert">{error}</p>}{loading&&<p role="status">Loading announcements...</p>}
+      {!loading&&!error&&!rows.length&&<p>No announcements yet.</p>}
+      <ul>{rows.map(row=><li key={row.id}>{row.message&&<p style={{whiteSpace:'pre-wrap'}}>{row.message}</p>}{row.hasImage&&<AnnouncementImage id={row.id} token={token} />}<small>{formatTwelveHourDateTime(row.createdAt)} · {row.senderName||'Administrator'}</small></li>)}</ul>
+      {cursor&&<button type="button" disabled={loading} onClick={loadMore}>Load older announcements</button>}
+    </section>
+  </Modal>,document.body)}</>;
+}
+
+function formatTwelveHourDateTime(value) {
+  if (typeof formatDisplayDateTime === "function") return formatDisplayDateTime(value);
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})[ T·]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return value || "—";
+  const [year, month, day] = match[1].split("-");
+  const hour = Number(match[2]);
+  return `${day}-${month}-${year.slice(-2)} ${hour % 12 || 12}:${match[3]}:${match[4] || "00"} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
+function dashboardRecordDate(record = {}) {
+  return requestEventDate(record, "opened");
+}
+
+function availabilityPercentFromCounts(row = {}) {
+  const total = Number(row.total) || 0;
+  return total ? Math.round((((Number(row.onRoad) || 0) + (Number(row.idle) || 0)) / total) * 100) : 0;
+}
+
+function useDashboardEquipment() {
+  const [records, setRecords] = useState([]);
+  const [scope, setScope] = useState(null);
+  const [shiftRecords, setShiftRecords] = useState([]);
+  const [breakdownCountChange, setBreakdownCountChange] = useState(null);
+  const [nextCountDayAt, setNextCountDayAt] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState(0);
+  const loadedFleetScope = useRef({token: authToken, loaded: false});
+  useEffect(() => {
+    let activeRequest = true;
+    let controller;
+    let responseEtag = "";
+    const sameScope = loadedFleetScope.current.token === authToken;
+    if (!sameScope) {
+      loadedFleetScope.current = {token: authToken, loaded: false};
+      setRecords([]);
+      setScope(null);
+      setShiftRecords([]);
+      setBreakdownCountChange(null);
+      setNextCountDayAt("");
+      setUpdatedAt(0);
+      setLoadError("");
+    }
+    setLoaded(sameScope && loadedFleetScope.current.loaded);
+    const load = async () => {
+    controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    await fetch("/api/dashboard/equipment", {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {Authorization: `Bearer ${authToken}`, ...(responseEtag ? {"If-None-Match": responseEtag} : {})},
+    })
+      .then((response) => {
+        if ([401, 403].includes(response.status)) throw Object.assign(new Error("Sign in again or check your dashboard access."), {status: response.status});
+        if (response.status === 304) return {notModified: true};
+        responseEtag = response.headers?.get?.("etag") || "";
+        return readApiJson(response, "Could not load fleet data.");
+      })
+      .then((data) => {
+        if (data?.notModified) {
+          // A 304 is deliberately a no-op: updating the timestamp here forced
+          // every dashboard chart and fleet aggregate to render again even
+          // though no fleet data had changed.
+          if (activeRequest) { setLoaded(true); setLoadError(""); }
+          return;
+        }
+        if (!Array.isArray(data.records)) throw new Error("Fleet data response was invalid. Please retry.");
+        if (!data.scope || typeof data.scope !== "object" || Array.isArray(data.scope)
+          || typeof data.scope.restrictToScope !== "boolean"
+          || (data.scope.allowedSites !== null && !Array.isArray(data.scope.allowedSites))
+          || (data.scope.allowedRegions !== null && !Array.isArray(data.scope.allowedRegions)))
+          throw new Error("Fleet scope response was invalid. Please retry.");
+        const change = data.breakdownCountChange;
+        if (!change || !Number.isSafeInteger(change.open) || !Number.isSafeInteger(change.current)
+          || change.delta !== change.current - change.open || !/^\d{4}-\d{2}-\d{2}$/.test(change.day)
+          || !Number.isFinite(Date.parse(data.nextCountDayAt)))
+          throw new Error("Fleet daily count response was invalid. Please retry.");
+        if (!activeRequest) return;
+        loadedFleetScope.current.loaded = true;
+        setBreakdownCountChange(change);
+        setNextCountDayAt(data.nextCountDayAt);
+        setRecords(data.records);
+        setScope(data.scope);
+        setLoaded(true);
+        setShiftRecords(Array.isArray(data.shiftRecords) ? data.shiftRecords : []);
+        setLoadError("");
+        setUpdatedAt(Date.now());
+      })
+      .catch((error) => {
+        if (activeRequest) {
+          if ([401, 403].includes(error.status)) {
+            loadedFleetScope.current.loaded = false;
+            setRecords([]);
+            setScope(null);
+            setShiftRecords([]);
+            setBreakdownCountChange(null);
+            setNextCountDayAt("");
+            setUpdatedAt(0);
+          }
+          setLoaded(loadedFleetScope.current.loaded);
+          setLoadError(error.name === "AbortError" ? "Live fleet loading timed out. Please retry." : error.message || "Could not load fleet data.");
+        }
+      }).finally(() => window.clearTimeout(timeout));
+    };
+    const stopRefresh = watchRequestRefresh(load, { win: window, doc: document, initial: true });
+    return () => {
+      activeRequest = false;
+      stopRefresh();
+      controller?.abort();
+    };
+  }, [loadAttempt, authToken]);
+  const sameSession = loadedFleetScope.current.token === authToken;
+  useEffect(() => {
+    if (!sameSession || !nextCountDayAt) return undefined;
+    const timer = window.setTimeout(() => setLoadAttempt((attempt) => attempt + 1), Math.max(0, Date.parse(nextCountDayAt) - Date.now() + 250));
+    return () => window.clearTimeout(timer);
+  }, [sameSession, nextCountDayAt]);
+  return {records: sameSession ? records : [], scope: sameSession ? scope : null, shiftRecords: sameSession ? shiftRecords : [], breakdownCountChange: sameSession ? breakdownCountChange : null, loaded: sameSession && loaded, loadError: sameSession ? loadError : "", updatedAt: sameSession ? updatedAt : 0, retry: () => setLoadAttempt((attempt) => attempt + 1)};
+}
+
+function FleetDataState({ error = "", retry, className = "" }) {
+  const failed = Boolean(error);
+  return <div
+    className={`dashboard-fleet-data-state${failed ? " error" : " loading"}${className ? ` ${className}` : ""}`}
+    role={failed ? "alert" : "status"}
+    aria-live={failed ? "assertive" : "polite"}
+    aria-busy={!failed}
+  >
+    {failed ? <AlertTriangle /> : <CaliberActivityMark size="small" />}
+    <span className="dashboard-fleet-data-copy"><strong>{failed ? "Fleet data is unavailable" : "Loading fleet data"}</strong><small>{failed ? error : "Retrieving the latest equipment records…"}</small></span>
+    {failed && <button type="button" onClick={retry}><RotateCcw /> Retry</button>}
+  </div>;
+}
+
+const dashboardKpiExportColumns = [
+  { label: "Section", value: (row) => row.section },
+  { label: "KPI / Measure", value: (row) => row.metric },
+  { label: "Value", value: (row) => row.value },
+  { label: "Location / Period", value: (row) => row.scope },
+  { label: "Details", value: (row) => row.details },
+];
+const masterDateFields = new Set(["acquisitionDate", "transferDate", "lastMaintenanceDate", "dob", "doj"]);
+masterDateFields.add("effectiveFrom");
+masterDateFields.add("effectiveTo");
+const masterDateTimeFields = new Set(["start", "createdAt", "updatedAt", "closedAt", "verifiedAt"]);
+const masterTimeFields = new Set(["startTime", "endTime"]);
+function formatMasterFieldValue(key, value) {
+  if (masterDateTimeFields.has(key)) return formatDisplayDateTime(value);
+  if (masterDateFields.has(key)) return formatDisplayDate(value);
+  if (masterTimeFields.has(key)) return formatDisplayTime(value);
+  return value;
+}
+
+function ManagerIdleConfirmation({ request, action, close, onConfirm, TimelineButton = null }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submitLock = useRef(false);
+  const approving = action === "approve";
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  return <Modal title={approving ? "Confirm make on road" : "Confirm cancel idle"} close={closeDialog}>
+    <form className="form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (submitLock.current) return;
+      submitLock.current = true;
+      setSubmitting(true);
+      setError("");
+      try { await onConfirm(request); close(); }
+      catch (failure) { setError(failure?.message || "Could not update this request. Please try again."); }
+      finally { submitLock.current = false; setSubmitting(false); }
+    }}>
+      <div className="details request-linked-details">
+        <div><span>Job reference</span>{TimelineButton ? <TimelineButton reference={request.ref} token={authToken} Dialog={Modal} /> : <b>{request.ref}</b>}</div>
+        <div><span>Door number</span><b>{request.door || "—"}</b></div>
+        <div><span>Site location</span><b>{request.site || "—"}</b></div>
+      </div>
+      <p>{approving ? "This will close the request, make the vehicle on road and forward it to MIS verification. Confirm only after the vehicle is ready to return to service; this dialog cannot undo the approval after it is saved." : "This will cancel Idle status and return the request to active maintenance. The request will not be closed or forwarded to MIS verification."}</p>
+      {error && <p role="alert">{error}</p>}
+      <footer><button type="button" disabled={submitting} onClick={closeDialog}>Cancel</button><button className="primary" disabled={submitting}>{submitting ? "Saving…" : approving ? "Confirm make on road" : "Confirm cancel idle"}</button></footer>
+    </form>
+  </Modal>;
+}
+
+function RequestDataState({ error, retry }) {
+  return <div className="fleet-data-state" role={error ? "alert" : "status"}>
+    <strong>{error ? "Live request data is unavailable" : "Loading live requests…"}</strong>
+    <p>{error ? "Counts are hidden until the latest requests can be checked. Retrying automatically." : "Checking current vehicle status before displaying counts."}</p>
+    {error && <button type="button" onClick={() => { void retry?.().catch(() => {}); }}><RotateCcw /> Retry</button>}
+  </div>;
+}
+
+function ConnectionRecoveryNotice({ updatedAt = 0, retry }) {
+  const timestamp = updatedAt ? formatDisplayDateTime(new Date(updatedAt)) : "not yet confirmed";
+  return <div className="dashboard-connection-notice" role="status" aria-live="polite">
+    <AlertTriangle aria-hidden="true" />
+    <div><strong>Reconnecting · Last updated {timestamp}</strong><span>Showing last successfully loaded data. Retrying automatically.</span></div>
+    <button type="button" onClick={() => { void Promise.resolve().then(() => retry?.()).catch(() => {}); }}><RotateCcw /> Retry now</button>
+  </div>;
+}
+
+function ManagerCreateRequestForm({equipmentRecords, equipmentLoaded, assignedLocation, requests, onCreate, close}) {
+  const [repairTypeRecords, , repairTypesLoaded] = useMasterRecords("Repair type master");
+  return <MaintenanceForm normal assignedLocation={assignedLocation} equipmentRecords={equipmentRecords} equipmentLoaded={equipmentLoaded} repairTypeRecords={repairTypeRecords} repairTypesLoaded={repairTypesLoaded} activeRequestRecords={requests} close={close} onSubmit={async request => { await onCreate(request); close(); }} />;
+}
+
+function ManagerDashboard({ managerRole, managerRoles = [], managerLocation = "", managerDesignationKey = "", requests = [], requestsLoaded = false, requestsError = "", requestsUpdatedAt = 0, onRefreshRequests, gotoEquipment, onApproveIdeal, onCancelIdeal, onUpdateRequest, onAddDailyRemark, TimelineButton = null, canCreateRequest = false, onCreateRequest }) {
+  const [creatingRequest, setCreatingRequest] = useState(false);
+  const [reopeningBreakdown,setReopeningBreakdown]=useState(false);
+  const [queueTab,setQueueTab]=useState("active");
+  const [firstTripReminderDismissed,setFirstTripReminderDismissed]=useState(false);
+  const [requestUpdate, setRequestUpdate] = useState(null);
+  const [productionFirstTrip, setProductionFirstTrip] = useState(null);
+  const [managerDrilldown,setManagerDrilldown]=useState("");
+  const [idleConfirmation, setIdleConfirmation] = useState(null);
+  const availableRoles=managerRoles.length?managerRoles:[managerRole].filter(Boolean);
+  const [activeManagerRole,setActiveManagerRole]=useState(availableRoles[0]||"Production Manager");
+  const {records:equipmentRecords,scope:equipmentScope,loaded:equipmentLoaded,loadError:equipmentLoadError,updatedAt:equipmentUpdatedAt = 0,retry:retryEquipmentLoad}=useDashboardEquipment();
+  const managerDataReady = equipmentLoaded && requestsLoaded;
+  const managerReconnecting = managerDataReady && Boolean(equipmentLoadError || requestsError);
+  const managerUpdatedAt = Math.min(requestsUpdatedAt || equipmentUpdatedAt, equipmentUpdatedAt || requestsUpdatedAt);
+  // The dedicated endpoint has already applied the manager's current server-side scope.
+  const siteEquipment = equipmentRecords;
+  const managerAllowedSites=Array.isArray(equipmentScope?.allowedSites)?equipmentScope.allowedSites.filter(Boolean):null;
+  const restrictManagerScope=equipmentScope?.restrictToScope===true;
+  const scopedRequests=equipmentLoaded?(managerAllowedSites?.length?requests.filter((request)=>managerAllowedSites.some((site)=>recordBelongsToSite(request,site))):restrictManagerScope?[]:requests):[];
+  const managerData=useMemo(()=>{
+    const requestRows = scopedRequests.map((request) => requestWithEquipmentMasterDetails(request, equipmentRecords));
+    const openRequests = requestRows.filter((request) => String(request.status || "").trim().toLowerCase() !== "closed");
+    const maintenanceActiveRequests = openRequests.filter((request) => !isIdleVehicleRequest(request));
+    const roadStatuses = liveEquipmentRoadStatuses(siteEquipment, requestRows);
+    const fleet = liveEquipmentMetrics(siteEquipment, requestRows, roadStatuses);
+    const typeSummary=(records,valueOf)=>Object.entries(records.reduce((counts,record)=>{const type=String(valueOf(record)||"Unspecified").trim()||"Unspecified";counts[type]=(counts[type]||0)+1;return counts},{})).sort((a,b)=>b[1]-a[1]).map(([type,count])=>`${type}: ${count}`);
+    const totalTypes=typeSummary(siteEquipment,equipmentGroupLabel);
+    const equipmentWithStatus=(status)=>siteEquipment.filter((record,index)=>roadStatuses[index]===status);
+    const offRoadTypes=typeSummary(equipmentWithStatus("offroad"),equipmentGroupLabel);
+    const idleTypes=typeSummary(equipmentWithStatus("idle"),equipmentGroupLabel);
+    const onRoadTypes=typeSummary(equipmentWithStatus("onroad"),equipmentGroupLabel);
+    const closedRequests = requestRows.filter((request) => String(request.status || "").trim().toLowerCase() === "closed");
+    const verifiedRequests = closedRequests.filter(visibleInMisHistory);
+    const pendingVerification=requestRows.filter(visibleInMisRequests);
+    return {requestRows,openRequests,maintenanceActiveRequests,roadStatuses,fleet,totalTypes,offRoadTypes,idleTypes,onRoadTypes,closedRequests,verifiedRequests,pendingVerification};
+  },[equipmentLoaded,equipmentRecords,equipmentScope,requests]);
+  const {requestRows,openRequests,maintenanceActiveRequests,roadStatuses,fleet,totalTypes,offRoadTypes,idleTypes,onRoadTypes,closedRequests,verifiedRequests,pendingVerification}=managerData;
+  const productionManagerView=["Project Manager","Production Manager"].includes(activeManagerRole);
+  const productionFirstTripRows=productionManagerView?requestRows.filter((row)=>isProductionFirstTripPending(row)):[];
+  const productionFirstTripReportRows=productionManagerView?closedRequests.filter((row)=>String(row.productionFirstTripAt||row.firstTripAt||"").trim()):[];
+  // Earliest request start in the counted intake, so the card says from which date the total runs.
+  const maintenanceIntakeSince = scopedRequests.map((request) => String(request.start || "").trim()).filter(Boolean).sort()[0] || "";
+  const cards = productionManagerView
+    ? [
+        ["Total equipment", fleet.total, fleet.unknown ? `Registered fleet · ${fleet.unknown} status needs identity review` : "Registered fleet", {kind:"fleet",key:"all"}, totalTypes],
+        ["On road", fleet.onRoad, "Available for production", {kind:"fleet",key:"onroad"}, onRoadTypes],
+        ["Off road", fleet.offRoad, "Vehicles with active maintenance requests", {kind:"fleet",key:"offroad"}, offRoadTypes],
+        ["Idle", fleet.idle, "Operational but currently idle", {kind:"fleet",key:"idle"}, idleTypes],
+      ]
+    : activeManagerRole === "Maintenance Manager"
+      ? [
+          ["Total equipment", fleet.total, "Equipment at the assigned location", {kind:"fleet",key:"all"}],
+          ["Received for maintenance", scopedRequests.length, maintenanceIntakeSince ? `Total maintenance intake since ${formatDisplayDate(maintenanceIntakeSince)}` : "Total maintenance intake", {kind:"requests",key:"maintenance-received"}],
+          ["Remaining", maintenanceActiveRequests.length, "Active maintenance requests; idle shown separately", {kind:"requests",key:"maintenance-remaining"}],
+          ["Completed", closedRequests.length, "Returned from maintenance", {kind:"requests",key:"maintenance-completed"}],
+        ]
+      : [
+          ["Awaiting verification", pendingVerification.length, "Closed requests awaiting MIS verification", {kind:"requests",key:"mis-awaiting"}],
+          ["Verified requests", verifiedRequests.length, "Requests verified at this location", {kind:"requests",key:"mis-verified"}],
+          ["First trip completed", verifiedRequests.filter((request) => request.firstTripDone).length, "Trip card confirmed", {kind:"requests",key:"mis-first-trip-completed"}],
+          ["First trip pending", verifiedRequests.filter((request) => !request.firstTripDone).length, "Verification follow-up", {kind:"requests",key:"mis-first-trip-pending"}],
+        ];
+  const canApproveIdle=true; // Every manager profile can approve within its assigned site scope.
+  const canCancelIdle=managerRoleSelection(managerRoles.length?managerRoles:managerRole).includes("Maintenance Manager");
+  const canUpdateRequests=activeManagerRole==="Maintenance Manager"&&queueTab==="active"&&!managerReconnecting&&Boolean(onUpdateRequest&&onAddDailyRemark);
+  const canUpdateResponsibility=activeManagerRole==="Project Manager"&&queueTab==="active"&&!managerReconnecting&&Boolean(onUpdateRequest);
+  const canReopenRequests=["Maintenance Manager","Project Manager"].includes(activeManagerRole)&&managerDataReady&&!managerReconnecting&&Boolean(onUpdateRequest);
+  const saveManagerProductionFirstTrip = async (payload) => {
+    await onUpdateRequest(productionFirstTrip.ref, payload, "production-first-trip");
+    setProductionFirstTrip(null);
+    setQueueTab("firstTrip");
+  };
+  // An overdue arrival needs its red-flag reason first, as in the Maintenance workspace.
+  const openRequestUpdate=(row,kind)=>setRequestUpdate(arrivalRedFlagRequired(row)?{kind:"arrival",request:row,next:kind}:{kind,request:row});
+  const idealRows=canApproveIdle?requestRows.filter((request)=>isIdleVehicleRequest(request)):[];
+  const activeRows=activeManagerRole==="MIS Manager"?pendingVerification:openRequests;
+  const visibleActiveRows=activeManagerRole==="Maintenance Manager"?maintenanceActiveRequests:activeRows;
+  const historyRows=activeManagerRole==="MIS Manager"?verifiedRequests:closedRequests;
+  const detailRows=queueTab==="history"?historyRows:activeRows;
+  const visibleDetailRows=queueTab==="ideal"?idealRows:activeManagerRole==="Maintenance Manager"&&queueTab==="active"?visibleActiveRows:detailRows;
+  const managerRequestDrilldowns = {
+    "maintenance-received": requestRows,
+    "maintenance-remaining": maintenanceActiveRequests,
+    "maintenance-completed": closedRequests,
+    "mis-awaiting": pendingVerification,
+    "mis-verified": verifiedRequests,
+    "mis-first-trip-completed": verifiedRequests.filter((request) => request.firstTripDone),
+    "mis-first-trip-pending": verifiedRequests.filter((request) => !request.firstTripDone),
+  };
+  const managerDrilldownCard=cards.find(([, , , action])=>action?.key===managerDrilldown);
+  const managerDrilldownAction=managerDrilldownCard?.[3];
+  const managerFleetDrilldownRows=managerDrilldownAction?.kind==="fleet"
+    ? fleetAssetRequestDetails(managerDrilldownAction.key==="all"?siteEquipment:siteEquipment.filter((record,index)=>roadStatuses[index]===managerDrilldownAction.key),requestRows)
+    : [];
+  const managerRequestDrilldownRows=managerDrilldownAction?.kind==="requests"?(managerRequestDrilldowns[managerDrilldownAction.key]||[]):[];
+  const title = activeManagerRole || "Manager";
+  const description = productionManagerView
+    ? `${managerReconnecting ? "Last checked" : managerDataReady ? "Live" : "Loading"} fleet availability for ${managerLocation || "the assigned sites"}.`
+    : activeManagerRole === "Maintenance Manager"
+      ? "Site equipment, maintenance intake, remaining workload, and completed equipment."
+      : "Location-wise verified requests and first-trip status.";
+  const managerScopeLabel = managerLocation || managerAllowedSites?.join(", ") || "Assigned locations";
+  const managerDashboardExportRows = [
+    ...cards.map(([label, value, hint]) => ({ section: "Dashboard KPI", metric: label, value: equipmentLoaded ? value : "Loading", scope: managerScopeLabel, details: hint })),
+    { section: "Request queue", metric: "Active requests", value: visibleActiveRows.length, scope: managerScopeLabel, details: "Requests currently requiring action" },
+    ...(canApproveIdle ? [{ section: "Request queue", metric: "Idle approvals", value: idealRows.length, scope: managerScopeLabel, details: "Idle vehicles awaiting on-road approval" }] : []),
+    { section: "Request queue", metric: "Closed history", value: historyRows.length, scope: managerScopeLabel, details: "Closed or verified requests" },
+  ];
+  return <section className="manager-dashboard" onPointerDown={preventTableAutoScroll}>
+    {canCreateRequest && <div className="manager-dashboard-actions"><button type="button" className="primary" disabled={!equipmentLoaded || !requestsLoaded} onClick={() => setCreatingRequest(true)}><Plus /> Create request</button></div>}
+    {canCreateRequest && creatingRequest && <ManagerCreateRequestForm assignedLocation={(restrictManagerScope ? managerAllowedSites || [] : [...new Set(siteEquipment.map(record => requestEquipmentCreationDetails(record).site).filter(Boolean))]).join(" | ")} equipmentRecords={siteEquipment} equipmentLoaded={equipmentLoaded} requests={scopedRequests} onCreate={onCreateRequest} close={() => setCreatingRequest(false)} />}
+    <header className="manager-dashboard-head"><div><span>Role dashboard</span><h1>{title}</h1><p>{description}</p></div><div className="manager-dashboard-actions"><div className="manager-dashboard-badge"><ShieldCheck /> Manager view</div>{typeof ExportMenu === "function" && <ExportMenu title={`${title} dashboard KPI report`} columns={dashboardKpiExportColumns} rows={managerDashboardExportRows} className="dashboard-export-trigger" label="Print/Export" dashboardPdf />}</div></header>
+    {availableRoles.length>1&&<div className="mobile-tabs manager-role-tabs" role="tablist" aria-label="Manager dashboard role">{availableRoles.map((role)=><button type="button" key={role} data-nav="role" className={activeManagerRole===role?"active":""} onClick={()=>{setActiveManagerRole(role);setQueueTab("active");setManagerDrilldown("")}}>{role}</button>)}</div>}
+    {!equipmentLoaded&&<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="manager-fleet-data-state" />}
+    {!requestsLoaded&&<RequestDataState error={requestsError} retry={onRefreshRequests} />}
+    {managerReconnecting && <ConnectionRecoveryNotice updatedAt={managerUpdatedAt} retry={() => { retryEquipmentLoad(); return onRefreshRequests?.(); }} />}
+    {managerDataReady && !managerReconnecting && <p className="manager-live-status">Live status · Updated {formatDisplayTime(new Date(managerUpdatedAt))} · Refreshes automatically and when you return to this tab.</p>}
+    {productionManagerView&&productionFirstTripRows.length>0&&!firstTripReminderDismissed&&<div className="manager-first-trip-alert first-trip-pending-alert" role="alert"><CheckCircle2 /><span>{productionFirstTripRows.length} vehicle/equipment first-trip entry pending after Maintenance made on road.</span><button type="button" className="primary" onClick={()=>setQueueTab("firstTrip")}>Open</button><button type="button" className="first-trip-reminder-close" aria-label="Dismiss first-trip reminder" title="Close reminder" onClick={()=>setFirstTripReminderDismissed(true)}><X aria-hidden="true" /></button></div>}
+    <div className="manager-kpi-grid">{cards.map(([label, value, hint, action, types]) => <button type="button" key={label} onClick={() => managerDataReady&&action&&setManagerDrilldown(action.key)} disabled={!action||!managerDataReady} aria-busy={!managerDataReady} aria-haspopup="dialog" aria-label={`${label}: ${managerDataReady?Number(value||0).toLocaleString():"loading"}. View details`}>
+      <span>{label}</span><strong>{managerDataReady?Number(value || 0).toLocaleString():"—"}</strong><small>{hint}</small><ChevronRight className="manager-kpi-drilldown-icon" aria-hidden="true" />{productionManagerView&&managerDataReady && <div className="manager-kpi-tooltip"><b>Equipment types</b>{types?.length ? types.map((line)=><i key={line}>{line}</i>) : <i>No equipment</i>}</div>}
+    </button>)}</div>
+    {managerDataReady&&managerDrilldownCard&&<Modal className="dashboard-asset-modal manager-kpi-modal" overlayClassName="dashboard-asset-overlay" title={`${managerDrilldownCard[0]} · ${managerDrilldownAction.kind==="fleet"?managerFleetDrilldownRows.length:managerRequestDrilldownRows.length} records`} close={()=>setManagerDrilldown("")}>
+      {managerDrilldownAction.kind==="fleet"
+        ? <DashboardRecordBrowser key={managerDrilldown} rows={managerFleetDrilldownRows} regions={REGION_DATA} rowsAreScoped title={`${title} · ${managerDrilldownCard[0]}`} ActionsTable={ActionsTable} Status={Status} formatDate={formatTwelveHourDateTime} RequestTimelineButton={RequestTimelineButton} timelineToken={authToken} Dialog={Modal} Remarks={MaintenanceRemarks} />
+        : activeManagerRole==="MIS Manager"
+          ? <MobileWorkflowTable rows={managerRequestDrilldownRows} exportTitle={`${title} · ${managerDrilldownCard[0]}`} showMakeModel showReason showClosedBy showClosedAt closedAtLabel="Maintenance Closing Time" showVerifiedBy showVerifiedAt showTripCard showMeterData showTurnaroundTime startedFirst closedTimeAfterStarted />
+          : <BreakdownTable rows={managerRequestDrilldownRows} exportTitle={`${title} · ${managerDrilldownCard[0]}`} showMakeModel showReason showClosedBy showClosedAt={managerDrilldownAction.key==="maintenance-completed"} showBreakdownDays={managerDrilldownAction.key!=="maintenance-completed"} />}
+    </Modal>}
+    <div className="mobile-tabs manager-queue-tabs" role="tablist"><button data-nav="active" className={queueTab==="active"?"active":""} onClick={()=>setQueueTab("active")}>Active requests</button>{canApproveIdle&&<button data-nav="idle" className={queueTab==="ideal"?"active":""} onClick={()=>setQueueTab("ideal")}>Idle approvals ({managerDataReady?idealRows.length:"—"})</button>}{productionManagerView&&<button data-nav="productionFirstTrip" className={`${queueTab==="firstTrip"?"active":""}${productionFirstTripRows.length?" first-trip-pending-tab first-trip-pending-alert":""}`} onClick={()=>setQueueTab("firstTrip")}>First trip entry ({managerDataReady?productionFirstTripRows.length:"—"})</button>}<button data-nav="history" className={queueTab==="history"?"active":""} onClick={()=>setQueueTab("history")}>Closed history</button>{canReopenRequests&&<button type="button" data-nav="reopen" onClick={()=>setReopeningBreakdown(true)}>Reopen Breakdown</button>}</div>
+    {managerDataReady && <>
+<article className="panel manager-detail-panel"><header><div><h2>{queueTab==="history"?"Closed request history":queueTab==="ideal"?"Idle requests awaiting on-road approval":queueTab==="firstTrip"?"Production first-trip entries":productionManagerView ? "Active production interruptions" : activeManagerRole === "Maintenance Manager" ? "Maintenance workload details" : "Requests awaiting verification"}</h2><p>{(queueTab==="firstTrip"?productionFirstTripRows:visibleDetailRows).length} record{(queueTab==="firstTrip"?productionFirstTripRows:visibleDetailRows).length === 1 ? "" : "s"} in this view</p></div></header>{queueTab==="firstTrip"?<><MobileWorkflowTable rows={productionFirstTripRows} exportTitle="Production First Trip Entry" showMakeModel showReason showClosedBy showClosedAt closedAtLabel="Closed date & time" closedTimeAfterStarted showMeterData showProductionFirstTrip showActions actionsFirst onProductionFirstTrip={setProductionFirstTrip} /><h3 className="sectiontitle">Production and MIS First Trip Timing Report</h3><MobileWorkflowTable rows={productionFirstTripReportRows} exportTitle="Production and MIS First Trip Timing Report" showStatusFilter={false} showMakeModel showClosedBy showClosedAt closedAtLabel="Maintenance on-road time" showVerifiedBy showVerifiedAt showProductionFirstTrip showMeterData startedFirst /></>:<BreakdownTable rows={visibleDetailRows} showMakeModel showReason showClosedBy={queueTab==="history"} showClosedAt={queueTab==="history"} showCompletionDetails={queueTab==="history"} showBreakdownDays={activeManagerRole !== "MIS Manager"} showTurnaroundTime={activeManagerRole === "MIS Manager"} onApproveIdeal={!managerReconnecting&&queueTab==="ideal"&&onApproveIdeal?(row)=>setIdleConfirmation({request:row,action:"approve"}):null} onCancelIdeal={!managerReconnecting&&queueTab==="ideal"&&canCancelIdle&&onCancelIdeal?(row)=>setIdleConfirmation({request:row,action:"cancel"}):null} onEdit={canUpdateRequests?(row)=>openRequestUpdate(row,"edit"):canUpdateResponsibility?(row)=>{if(row.acceptedAt) setRequestUpdate({kind:"responsibility",request:row});else alert("Maintenance must accept this vehicle before breakdown responsibility can be edited.");}:null} onRemark={canUpdateRequests?(row)=>openRequestUpdate(row,"remark"):null} stableToolbar />}</article>
+    </>}
+    {reopeningBreakdown&&canReopenRequests&&<Modal className="reopen-breakdown-modal" title="Reopen Breakdown" close={()=>setReopeningBreakdown(false)}><ReopenBreakdownForm requests={historyRows} close={()=>setReopeningBreakdown(false)} onSave={(reference,payload)=>onUpdateRequest(reference,payload,"reopen-breakdown")} /></Modal>}
+    {requestUpdate && <ManagerRequestUpdate update={requestUpdate} request={requestRows.find((row) => row.ref === requestUpdate.request.ref) || requestUpdate.request} equipmentRecords={equipmentRecords} onChange={setRequestUpdate} onUpdateRequest={onUpdateRequest} onAddDailyRemark={onAddDailyRemark} />}
+    {productionFirstTrip && <ProductionFirstTripForm request={requestRows.find((row) => row.ref === productionFirstTrip.ref) || productionFirstTrip} close={() => setProductionFirstTrip(null)} onSave={saveManagerProductionFirstTrip} />}
+    {managerDataReady && !managerReconnecting && idleConfirmation && <ManagerIdleConfirmation request={idleConfirmation.request} action={idleConfirmation.action} close={() => setIdleConfirmation(null)} onConfirm={idleConfirmation.action === "approve" ? onApproveIdeal : onCancelIdeal} TimelineButton={TimelineButton} />}
+  </section>;
+}
+// Edit, Daily update and arrival red-flag dialogs opened from the Maintenance Manager's workload table.
+function ManagerRequestUpdate({ update, request, equipmentRecords = [], onChange, onUpdateRequest, onAddDailyRemark }) {
+  const [repairTypeRecords, , repairTypesLoaded] = useMasterRecords("Repair type master");
+  const close = () => onChange(null);
+  const requireArrival = (error, next) => {
+    if (error?.code !== "ARRIVAL_RED_FLAG_REQUIRED") return false;
+    onChange({ kind: "arrival", request, next });
+    return true;
+  };
+  const saveEdit = async (payload) => {
+    try { await onUpdateRequest(payload.ref, payload, update.kind === "responsibility" ? "breakdown-responsibility" : "edit"); close(); }
+    catch (error) { if (update.kind === "responsibility" || !requireArrival(error, "edit")) throw error; }
+  };
+  const saveRemark = async (payload) => {
+    try { await onAddDailyRemark(request.ref, payload); close(); }
+    catch (error) { if (!requireArrival(error, "remark")) alert(error.message); }
+  };
+  const saveArrivalFlag = async (payload) => {
+    const saved = await onUpdateRequest(request.ref, payload, "arrival-flag");
+    onChange(update.next ? { kind: update.next, request: saved } : null);
+  };
+  if (update.kind === "responsibility") return <ResponsibilityRequestEditForm request={request} close={close} onSave={saveEdit} Dialog={Modal} />;
+  if (update.kind === "edit") return <RequestEditForm canEditResponsibility onAddDailyRemark={onAddDailyRemark} request={request} equipmentRecords={equipmentRecords} repairTypeRecords={repairTypeRecords} repairTypesLoaded={repairTypesLoaded} close={close} onSave={saveEdit} onRequireArrivalFlag={(row) => onChange({ kind: "arrival", request: row, next: "edit" })} />;
+  if (update.kind === "remark") return <DailyRemarkForm request={request} close={close} onSave={saveRemark} />;
+  return <RequestRedFlagForm flagKind="arrival" request={request} close={close} onSave={saveArrivalFlag} />;
+}
+const OEM_CHART_VIEWPORT_GAP = 24;
+// Room left on screen for the OEM bars: what is below the plot's own top, less the
+// axis headroom and site captions it reserves and whatever the panel keeps under it.
+function oemChartPlotSpace(article) {
+  const root = article?.querySelector(".mine-oem-dashboard");
+  const layout = article?.querySelector(".mine-oem-chart-layout");
+  if (!root || !layout) return 0;
+  const styles = window.getComputedStyle(root);
+  const axisChrome = (parseFloat(styles.getPropertyValue("--mine-oem-chart-headroom")) || 0)
+    + (parseFloat(styles.getPropertyValue("--mine-oem-chart-caption")) || 0);
+  const rect = layout.getBoundingClientRect();
+  const below = Math.max(0, article.getBoundingClientRect().bottom - rect.bottom);
+  let room = window.innerHeight - (rect.top + window.scrollY);
+  for (let parent = layout.parentElement; parent; parent = parent.parentElement) {
+    const { overflowY } = window.getComputedStyle(parent);
+    if ((overflowY === "auto" || overflowY === "scroll") && parent.scrollHeight > parent.clientHeight) {
+      room = parent.clientHeight - (rect.top - parent.getBoundingClientRect().top + parent.scrollTop);
+      break;
+    }
+  }
+  return Math.round(room - axisChrome - below - OEM_CHART_VIEWPORT_GAP);
+}
+
+function DashboardCardSearch({ cards, onSelect, close }) {
+  const [query, setQuery] = useState("");
+  const matchingCards = cards.filter((card) => matchesSmartSearch(query, card.title));
+  return <Modal title="Search dashboard cards" close={close}>
+    <div className="dashboard-card-search">
+      <label>Card name<input autoFocus type="search" aria-label="Search dashboard cards" placeholder="e.g. Daily BD Balance" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <div className="dashboard-card-search-results">{matchingCards.map((card) => <button type="button" key={card.title} onClick={() => onSelect(card)}>{card.title}<ChevronRight /></button>)}</div>
+      {!matchingCards.length && <p role="status">No matching dashboard cards.</p>}
+    </div>
+  </Modal>;
+}
+
+function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFleet = () => {}, requests: sourceRequests = [], requestsError = "", requestsUpdatedAt = 0, onRefreshRequests, theme = "light" }) {
+  const requests = useMemo(() => requestsVisibleToDashboard(sourceRequests), [sourceRequests]);
+  const [dashboardRepairTypes] = useMasterRecords("Repair type master");
+  const throughputFiltersRef = useRef(null);
+  const dashboardBannerRef = useRef(null);
+  useEffect(() => {
+    const filters = throughputFiltersRef.current;
+    const banner = dashboardBannerRef.current;
+    if (!banner) return;
+    const header = document.querySelector('.top') || document.querySelector('.normal > header');
+    const updateOffset = () => {
+      const offset = header ? (parseFloat(getComputedStyle(header).top) || 0) + header.getBoundingClientRect().height : 0;
+      banner.style.setProperty('--dashboard-banner-top', `${offset}px`);
+      banner.parentElement?.style.setProperty('--throughput-sticky-top', `${offset + banner.getBoundingClientRect().height}px`);
+      filters?.style.setProperty('--throughput-sticky-top', `${offset + banner.getBoundingClientRect().height}px`);
+    };
+    updateOffset();
+    const observer = new ResizeObserver(updateOffset);
+    if (header) observer.observe(header);
+    observer.observe(banner);
+    window.addEventListener('resize', updateOffset);
+    return () => { observer.disconnect(); window.removeEventListener('resize', updateOffset); };
+  }, []);
+  const {records:equipmentRecords,scope:equipmentScope,shiftRecords,breakdownCountChange,loaded:equipmentLoaded,loadError:equipmentLoadError,updatedAt:equipmentUpdatedAt = 0,retry:retryEquipmentLoad}=useDashboardEquipment();
+  const dashboardReconnecting = equipmentLoaded && Boolean(requestsError || equipmentLoadError);
+  const dashboardUpdatedAt = Math.min(requestsUpdatedAt || equipmentUpdatedAt, equipmentUpdatedAt || requestsUpdatedAt);
+  const [assetDrilldown, setAssetDrilldown] = useState("");
+  const [cardSearchOpen, setCardSearchOpen] = useState(false);
+  const dashboardSearchCards = [
+    {title: "Total Fleet", selector: ".mine-fleet-region-chart"},
+    {title: "Daily BD Balance", selector: ".daily-bd-balance"},
+    {title: "Site-wise BD Movement", selector: ".mine-maintenance-availability-panel", tab: "breakdown"},
+    {title: "Availability Count", selector: ".mine-maintenance-availability-panel", tab: "road"},
+    {title: "Total Equipment Intelligence", selector: ".mine-fleet-command"},
+    {title: "Request Lifecycle", selector: ".mine-request-lifecycle"},
+    {title: "Breakdown Trend", selector: ".mine-breakdown-trend"},
+    {title: "Overall Fleet Performance", selector: ".mine-fleet-performance"},
+  ];
+  const showDashboardCard = (card) => {
+    setCardSearchOpen(false);
+    setFleetChartMode("total");
+    if (card.tab) setMaintenanceAvailabilityTab(card.tab);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const target = document.querySelector(`.mine-dashboard ${card.selector}`);
+      if (!target) return;
+      target.setAttribute("tabindex", "-1");
+      target.focus({preventScroll: true});
+      target.scrollIntoView({behavior: "auto", block: "center"});
+    }));
+  };
+  useEffect(() => {
+    const openSearch = () => setCardSearchOpen(true);
+    window.addEventListener("dashboard-smart-search", openSearch);
+    return () => window.removeEventListener("dashboard-smart-search", openSearch);
+  }, []);
+  const [dashboardRegion, setDashboardRegion] = useState("all");
+  const [dashboardSite, setDashboardSite] = useState("all");
+  const [dashboardShift, setDashboardShift] = useState("all");
+  // From/To start on today in this header only; shared record tables retain all-days defaults.
+  const [dashboardFrom, setDashboardFrom] = useState(() => localDateKey(new Date()));
+  const [dashboardTo, setDashboardTo] = useState(() => localDateKey(new Date()));
+  const [stagePipelineRegion, setStagePipelineRegion] = useState("all");
+  const [stagePipelineSite, setStagePipelineSite] = useState("all");
+  const [stagePipelineShift, setStagePipelineShift] = useState("all");
+  const [stagePipelineFrom, setStagePipelineFrom] = useState("");
+  const [stagePipelineTo, setStagePipelineTo] = useState("");
+  const [breakdownTrendDays, setBreakdownTrendDays] = useState(7);
+  const [breakdownTrendSite, setBreakdownTrendSite] = useState("all");
+  const [breakdownTrendAnchor, setBreakdownTrendAnchor] = useState(() => localDateKey(new Date()));
+  const [breakdownTrendFrom, setBreakdownTrendFrom] = useState(() => localDateKey(new Date()));
+  const [breakdownTrendRangeError, setBreakdownTrendRangeError] = useState("");
+  // Open the current breakdown fleet by default after login.
+  const [fleetChartMode, setFleetChartMode] = useState("breakdown");
+  const [dashboardOem, setDashboardOem] = useState("all");
+  const [oemDrilldownKind, setOemDrilldownKind] = useState(null);
+  useEffect(() => {
+    // Dashboard navigation always exits detail views and restores the full breakdown chart.
+    const showBreakdownDashboard = () => {
+      setFleetChartMode("breakdown");
+      setAssetDrilldown("");
+      setOemDrilldownKind(null);
+      requestAnimationFrame(() => dashboardBannerRef.current?.scrollIntoView({block: "start", behavior: "auto"}));
+    };
+    window.addEventListener("nerve-center:dashboard-home", showBreakdownDashboard);
+    return () => window.removeEventListener("nerve-center:dashboard-home", showBreakdownDashboard);
+  }, []);
+  const [oemView, setOemView] = useState("chart");
+  const [oemDrilldownCategory, setOemDrilldownCategory] = useState({});
+  const [oemToolbarTarget, setOemToolbarTarget] = useState(null);
+  const [oemViewToolbarTarget, setOemViewToolbarTarget] = useState(null);
+  const [hourlyBreakdownVisible, setHourlyBreakdownVisible] = useState(false);
+  const openBreakdownList = () => setAssetDrilldown("fleet-breakdown:account");
+  const [showFleetWatermark, setShowFleetWatermark] = useState(() => localStorage.getItem("nerveCenterFleetWatermark") !== "false");
+  const [fleetIntelligenceView, setFleetIntelligenceView] = useState(() => localStorage.getItem("nerveCenterFleetIntelligenceView") || "combined");
+  const [requestTrendDays, setRequestTrendDays] = useState(7);
+  const [requestTrendFrom, setRequestTrendFrom] = useState(() => localDateKey(new Date()));
+  const [requestTrendRegion, setRequestTrendRegion] = useState("all");
+  const [requestTrendTo, setRequestTrendTo] = useState(() => localDateKey(new Date()));
+  const [maintenanceAvailabilityTab, setMaintenanceAvailabilityTab] = useState("breakdown");
+  const [throughputFiltersHidden, setThroughputFiltersHidden] = useState(false);
+  // Site-wise BD movement defaults to today to show the opening balance.
+  const [breakdownSummaryFrom, setBreakdownSummaryFrom] = useState(() => localDateKey(new Date()));
+  const [breakdownSummaryTo, setBreakdownSummaryTo] = useState(() => localDateKey(new Date()));
+  const [breakdownSummaryManual, setBreakdownSummaryManual] = useState(false);
+  const [throughputRegion, setThroughputRegion] = useState("all");
+  const [throughputSite, setThroughputSite] = useState("all");
+  const [breakdownDetailSite, setBreakdownDetailSite] = useState("");
+  const [breakdownDetailDays, setBreakdownDetailDays] = useState(5);
+  const [breakdownDetailFrom, setBreakdownDetailFrom] = useState("");
+  const [breakdownDetailTo, setBreakdownDetailTo] = useState("");
+  const [breakdownDayReturnSite, setBreakdownDayReturnSite] = useState("");
+  const [breakdownCustomDays, setBreakdownCustomDays] = useState(7);
+  const [breakdownFiltersHidden, setBreakdownFiltersHidden] = useState(false);
+  const [roadFocusSite, setRoadFocusSite] = useState("");
+  useEffect(() => localStorage.setItem("nerveCenterFleetWatermark", String(showFleetWatermark)), [showFleetWatermark]);
+  useEffect(() => localStorage.setItem("nerveCenterFleetIntelligenceView", fleetIntelligenceView), [fleetIntelligenceView]);
+  const now = new Date();
+  const todayKey = localDateKey(now);
+  // The top From/To range scopes opening-date analysis; a range ending today is the live view.
+  const dashboardRangeActive = Boolean(dashboardFrom && dashboardTo);
+  const dashboardIsLive = !dashboardTo || dashboardTo === todayKey;
+  const filteredDateLabel = !dashboardRangeActive ? "All time" : dashboardFrom === dashboardTo ? formatDisplayDate(dashboardTo) : formatDisplayDateRange(dashboardFrom, dashboardTo);
+  const shiftOptionsForDashboard = typeof shiftFilterOptions === "function" ? shiftFilterOptions : () => [];
+  const timestampMatchesDashboardShift = typeof timestampMatchesShift === "function" ? timestampMatchesShift : (_value, {shift = "all"} = {}) => !shift || shift === "all";
+  const dashboardShiftOptions = useMemo(() => shiftOptionsForDashboard(shiftRecords), [shiftRecords]);
+  useEffect(() => {
+    if (dashboardShift === "all" || dashboardShiftOptions.some((option) => option.key === dashboardShift)) return;
+    setDashboardShift("all");
+  }, [dashboardShift, dashboardShiftOptions.map((option) => option.key).join("|")]);
+  const dashboardShiftLabel = dashboardShiftOptions.find((option) => option.key === dashboardShift)?.label || "All shifts";
+  const dashboardShiftDetail = dashboardShift === "all" ? "" : `; ${dashboardShiftLabel}`;
+  const updateDashboardRange = (bound, value) => {
+    if (!value) { setDashboardFrom(""); setDashboardTo(""); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value > todayKey) return;
+    setDashboardFrom((from) => bound === "from" || !from || value < from ? value : from);
+    setDashboardTo((to) => bound === "to" || !to || value > to ? value : to);
+  };
+  const normalizedAllowedSites=Array.isArray(equipmentScope?.allowedSites)?equipmentScope.allowedSites.filter(Boolean):null;
+  const normalizedAllowedRegions=Array.isArray(equipmentScope?.allowedRegions)?equipmentScope.allowedRegions.filter((region)=>region&&region!=="All"):null;
+  const restrictToScope=equipmentScope?.restrictToScope===true;
+  const scopedEquipment=normalizedAllowedSites?.length?equipmentRecords.filter((record)=>normalizedAllowedSites.some((site)=>recordBelongsToSite(record,site))):restrictToScope?[]:equipmentRecords;
+  const scopedBreakdowns=equipmentLoaded?(normalizedAllowedSites?.length?requests.filter((record)=>normalizedAllowedSites.some((site)=>recordBelongsToSite(record,site))):restrictToScope?[]:requests):[];
+  const requestMatchesDashboardShift = (record = {}, value) => timestampMatchesDashboardShift(value,{site:record.site||record.reportSite||record.currentLocation||record.location,shifts:shiftRecords,shift:dashboardShift});
+  const requestHasSelectedDashboardShift = (record = {}) => dashboardShift === "all" || [
+    record.start,record.createdAt,record.acceptedAt,record.inProgressAt,record.closedAt,record.verifiedAt,record.firstTripAt,record.productionFirstTripAt,record.idealRequestedAt,record.idealApprovedAt,
+  ].some((value)=>requestMatchesDashboardShift(record,value));
+  const dashboardMovementShiftTimestamp = (record = {}, metric = "") => {
+    if (metric === "outgoing") return record.closedAt || record.completedAt;
+    if (metric === "idle") return record.idealRequestedAt || record.idleRequestedAt || record.start || record.startedAt || record.createdAt;
+    return record.start || record.startedAt || record.createdAt;
+  };
+  const requestMatchesMovementShift = (record = {}, metric = "") => dashboardShift === "all" || requestMatchesDashboardShift(record, dashboardMovementShiftTimestamp(record, metric));
+  const dashboardLifecycleShiftTimestamp = (record = {}, event = "") => {
+    if (event === "closed" || event === "mis") return record.closedAt || record.completedAt;
+    if (event === "verified") return record.verifiedAt;
+    if (event === "idle") return record.idealRequestedAt || record.idleRequestedAt || record.start || record.startedAt || record.createdAt;
+    return record.start || record.startedAt || record.createdAt;
+  };
+  const requestMatchesLifecycleShift = (record = {}, event = "") => dashboardShift === "all" || requestMatchesDashboardShift(record, dashboardLifecycleShiftTimestamp(record, event));
+  const availableRegions=subsidiaryData.filter((region)=>{
+    if(normalizedAllowedRegions?.length&&!normalizedAllowedRegions.includes(region.code))return false;
+    return !normalizedAllowedSites?.length||region.sites.some((site)=>normalizedAllowedSites.some((allowed)=>recordBelongsToSite({site:allowed},site)));
+  });
+  const selectedRegion = availableRegions.find((region) => region.code === dashboardRegion);
+  const selectedSites = (selectedRegion?.sites || [...new Set([...availableRegions.flatMap(region => region.sites), ...scopedEquipment.map(record => record.currentLocation || record.location || record.site), ...scopedBreakdowns.map(record => record.site)].filter(Boolean))]).filter((site) => !normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({ site: allowed }, site)));
+  const activeSites = dashboardSite !== "all" ? [dashboardSite] : selectedSites;
+  const visibleEquipment = selectedRegion || dashboardSite !== "all" ? scopedEquipment.filter((record) => activeSites.some((site) => recordBelongsToSite(record, site))) : scopedEquipment;
+  const resolveEquipment = createFleetAssetResolver(visibleEquipment);
+  const equipmentForRequest = (request = {}) => {
+    const {assetIndex} = resolveEquipment(request);
+    return assetIndex === null ? undefined : visibleEquipment[assetIndex];
+  };
+  const locationBreakdowns = selectedRegion || dashboardSite !== "all" ? scopedBreakdowns.filter((record) => activeSites.some((site) => recordBelongsToSite(record, site)) && requestHasSelectedDashboardShift(record)) : scopedBreakdowns.filter(requestHasSelectedDashboardShift);
+  const {liveRequests: liveBreakdowns, historicalRequests} = splitDashboardRequests(locationBreakdowns, dashboardFrom, dashboardTo);
+  const visibleBreakdowns = historicalRequests
+    .map((record)=>{const equipment=equipmentForRequest(record);return {...record,make:equipment?.make||record.make||"",model:equipment?.model||record.model||""}});
+  const liveFleetCounts = fleetChartCounts(visibleEquipment, liveBreakdowns);
+  const liveBreakdownAssetCount = liveFleetCounts.breakdown.total;
+  const breakdownCountReady = dashboardShift === "all" && equipmentLoaded && Boolean(breakdownCountChange);
+  const accountBreakdownCount = breakdownCountChange?.current ?? liveBreakdownAssetCount;
+  const todayBreakdownRows = activeTodayBreakdowns(scopedBreakdowns, todayKey);
+  const todayBreakdownDirection = todayBreakdownRows.length ? "up" : "flat";
+  const trendAvailableSites = [...new Set((selectedRegion || dashboardSite !== "all" ? activeSites : availableRegions.flatMap((region) => region.sites))
+    .filter((site) => !normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({ site: allowed }, site))))];
+  const activeTrendSite = breakdownTrendSite === "all" || trendAvailableSites.includes(breakdownTrendSite) ? breakdownTrendSite : "all";
+  const trendRequests = activeTrendSite === "all" ? locationBreakdowns : locationBreakdowns.filter((record) => recordBelongsToSite(record, activeTrendSite));
+  const trendRequestsForShift = trendRequests.filter((record) => requestMatchesMovementShift(record, "incoming"));
+  const breakdownDateCounts = trendRequestsForShift.reduce((counts, record) => {
+    const date = dashboardRecordDate(record);
+    if (date) counts[date] = (counts[date] || 0) + 1;
+    return counts;
+  }, {});
+  const breakdownTrendAnchorKey = breakdownTrendAnchor || dashboardTo || todayKey;
+  const breakdownTrendStartDate = new Date(`${breakdownTrendAnchorKey}T12:00:00`);
+  breakdownTrendStartDate.setDate(breakdownTrendStartDate.getDate() - breakdownTrendDays + 1);
+  const breakdownTrendStartKey = breakdownTrendFrom || localDateKey(breakdownTrendStartDate);
+  const updateBreakdownTrendRange = (bound, value) => {
+    if (!value) { setBreakdownTrendFrom(""); setBreakdownTrendAnchor(""); setBreakdownTrendRangeError(""); return; }
+    const from = bound === "from" ? value : (value < breakdownTrendStartKey ? value : breakdownTrendStartKey);
+    const to = bound === "to" ? value : (value > breakdownTrendAnchorKey ? value : breakdownTrendAnchorKey);
+    if (to > todayKey || !recordedBreakdownRangeLength(from, to)) {
+      setBreakdownTrendRangeError("Select valid dates, no later than today, within a period of 10 years.");
+      return;
+    }
+    setBreakdownTrendFrom(from); setBreakdownTrendAnchor(to); setBreakdownTrendRangeError("");
+  };
+  const breakdownTrend = buildRecordedBreakdownTrend({ counts: breakdownDateCounts, startDate: breakdownTrendStartKey, endDate: breakdownTrendAnchorKey });
+  const breakdownTrendScale = dashboardCountScale(breakdownTrend.map((day) => day.count));
+  const maxBreakdownTrend = breakdownTrendScale.maximum;
+  const actualTrendDays = breakdownTrend;
+  const breakdownTrendPeriodDays = actualTrendDays.length;
+  const breakdownTrendTotal = actualTrendDays.reduce((total, day) => total + day.count, 0);
+  const breakdownTrendAverage = breakdownTrendPeriodDays ? (breakdownTrendTotal / breakdownTrendPeriodDays).toFixed(1) : "0.0";
+  const kpis = liveEquipmentMetrics(visibleEquipment, liveBreakdowns);
+  const throughputRegions = availableRegions.filter((region) => !selectedRegion || region.code === selectedRegion.code);
+  const selectedThroughputRegion = throughputRegions.find((region) => region.code === throughputRegion);
+  const throughputSiteOptions = (selectedThroughputRegion?.sites || []).filter((site) => trendAvailableSites.includes(site));
+  const activeThroughputSite = selectedThroughputRegion && throughputSiteOptions.includes(throughputSite) ? throughputSite : "all";
+  const throughputSites = selectedThroughputRegion ? (activeThroughputSite === "all" ? throughputSiteOptions : [activeThroughputSite]) : trendAvailableSites;
+  const inThroughputScope = (record) => !selectedThroughputRegion || throughputSites.some((site) => recordBelongsToSite(record, site));
+  const throughputRequests = locationBreakdowns.filter(inThroughputScope);
+  const throughputEquipment = visibleEquipment.filter(inThroughputScope);
+  const throughputScopeLabel = activeThroughputSite !== "all" ? activeThroughputSite : selectedThroughputRegion?.code || (dashboardSite !== "all" ? dashboardSite : selectedRegion?.code) || "All regions";
+  const movementRequestRowsForShift = (records, start, end, metric = "all", type = "") => movementRequestRows(records, start, end, metric, type)
+    .filter((record) => requestMatchesMovementShift(record, metric));
+  const breakdownMovementForRangeForShift = (records, startDate = "", endDate = "") => Object.fromEntries(["open", "incoming", "outgoing", "balance"].map((metric) => [
+    metric, movementRequestRowsForShift(records, startDate, endDate, metric).length,
+  ]));
+  const dailyBreakdownMovementForShift = (records = [], startDate = "", endDate = "") => {
+    if (!startDate || !endDate || startDate > endDate) return [];
+    const rows = [];
+    const cursor = new Date(`${startDate}T12:00:00`);
+    const end = new Date(`${endDate}T12:00:00`);
+    while (cursor <= end) {
+      const date = [cursor.getFullYear(), String(cursor.getMonth() + 1).padStart(2, "0"), String(cursor.getDate()).padStart(2, "0")].join("-");
+      rows.push({ date, ...breakdownMovementForRangeForShift(records, date, date) });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return rows;
+  };
+  // Availability follows the site-wise To date; today (or no date) is the live fleet status.
+  const availabilityDate = breakdownSummaryTo === todayKey ? "" : breakdownSummaryTo;
+  const availabilityDateLabel = formatDisplayDate(availabilityDate || todayKey);
+  const availabilityStatusLabel = availabilityDate ? `Availability as of ${availabilityDateLabel}` : dashboardReconnecting ? "Availability: last checked data" : `Availability: live · ${availabilityDateLabel}`;
+  const availabilityRequests = availabilityRequestsForDate(throughputRequests, availabilityDate);
+  // A selected historical day must not reuse today's server-derived status.
+  const availabilityEquipment = availabilityDate ? dashboardFleetSnapshot(throughputEquipment, availabilityRequests) : throughputEquipment;
+  const availabilityKpis = liveEquipmentMetrics(availabilityEquipment, availabilityRequests);
+  const breakdownSummaryEndKey = breakdownSummaryTo;
+  const breakdownSummaryStartKey = breakdownSummaryFrom;
+  const breakdownSummaryPeriodLabel = breakdownSummaryFrom ? formatDisplayDateRange(breakdownSummaryStartKey, breakdownSummaryEndKey) : "All time";
+  const breakdownSummaryIsToday = breakdownSummaryFrom === todayKey && breakdownSummaryTo === todayKey;
+  const resetBreakdownSummaryRange = () => { setBreakdownSummaryManual(false); setBreakdownSummaryFrom(todayKey); setBreakdownSummaryTo(todayKey); };
+  const updateBreakdownSummaryRange = (bound, value) => {
+    setBreakdownSummaryManual(true);
+    if (!value) { setBreakdownSummaryFrom(""); setBreakdownSummaryTo(""); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value > todayKey) return;
+    // The first selection is one day; subsequent changes can extend the range.
+    setBreakdownSummaryFrom((from) => bound === "from" || !from || value < from ? value : from);
+    setBreakdownSummaryTo((to) => bound === "to" || !to || value > to ? value : to);
+  };
+  const breakdownSiteSummary = throughputSites.map((site) => {
+    const siteRequests = throughputRequests.filter((record) => recordBelongsToSite(record, site));
+    return {
+      site,
+      ...(dashboardShift === "all"
+        ? breakdownMovementForRange(siteRequests, breakdownSummaryStartKey, breakdownSummaryEndKey)
+        : breakdownMovementForRangeForShift(siteRequests, breakdownSummaryStartKey, breakdownSummaryEndKey)),
+      // Movement idle counts follow the selected idle dates, independently of live availability.
+      idle: movementRequestRowsForShift(siteRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "idle").length,
+    };
+  });
+  // Match the linked request list, including authorized historical/unassigned sites.
+  const breakdownMovementTotals = breakdownMovementForRangeForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey);
+  // Match the open balance card: retain carryover, exclude closed and idle cases.
+  const breakdownTypeSummary = dashboardShift === "all"
+    ? breakdownTypeShare(movementRequestRows(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "active-balance"), "", "", dashboardRepairTypes)
+    : breakdownTypeShare(movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "active-balance"), "", "", dashboardRepairTypes);
+  const availabilityCountBySite = throughputSites.map((site) => ({
+    site,
+    ...liveEquipmentMetrics(availabilityEquipment.filter((record) => recordBelongsToSite(record, site)), availabilityRequests),
+  }));
+  const roadAvailabilityBySiteName = new Map(availabilityCountBySite.map((site) => [site.site, site]));
+  const selectedBreakdownSiteRequests = breakdownDetailSite
+    ? throughputRequests.filter((record) => recordBelongsToSite(record, breakdownDetailSite))
+    : [];
+  const validBreakdownDetailRange = breakdownDetailFrom && breakdownDetailTo && breakdownDetailFrom <= breakdownDetailTo;
+  const breakdownDetailEndKey = validBreakdownDetailRange ? breakdownDetailTo : dashboardTo || todayKey;
+  const breakdownDetailStartDate = new Date(`${breakdownDetailEndKey}T12:00:00`);
+  breakdownDetailStartDate.setDate(breakdownDetailStartDate.getDate() - (Math.max(1, breakdownDetailDays) - 1));
+  const breakdownDetailStartKey = validBreakdownDetailRange ? breakdownDetailFrom : localDateKey(breakdownDetailStartDate);
+  const breakdownDetailRows = dailyBreakdownMovementForShift(selectedBreakdownSiteRequests, breakdownDetailStartKey, breakdownDetailEndKey);
+  const breakdownDetailTotals = breakdownMovementForRangeForShift(selectedBreakdownSiteRequests, breakdownDetailStartKey, breakdownDetailEndKey);
+  const breakdownDetailTypeSummary = breakdownTypeShare(movementRequestRowsForShift(selectedBreakdownSiteRequests, breakdownDetailStartKey, breakdownDetailEndKey, "active-balance"), "", "", dashboardRepairTypes);
+  const selectedBreakdownSiteRoad = roadAvailabilityBySiteName.get(breakdownDetailSite) || { total: 0, onRoad: 0, offRoad: 0, idle: 0, availability: 0 };
+  const [sortedBreakdownDetailRows, breakdownDaySort, changeBreakdownDaySort] = useSortableRows(breakdownDetailRows, "date", (day, key) => key === "percentage" ? (selectedBreakdownSiteRoad.total ? day.balance / selectedBreakdownSiteRoad.total * 100 : 0) : day[key]);
+  const roadStatusTotal = availabilityKpis.total;
+  const roadStatusShare = (value) => roadStatusTotal ? (value / roadStatusTotal) * 100 : 0;
+  const utilizationPercent = kpis.total ? Math.round((kpis.onRoad / kpis.total) * 100) : 0;
+  const availableFleet = kpis.onRoad + kpis.idle;
+  const availabilityPercent = kpis.total ? Math.round((availableFleet / kpis.total) * 100) : 0;
+  const openCaseRequests = activeOpenCases(visibleBreakdowns);
+  const assetCounts = fleetAssetCounts(visibleEquipment);
+  const unclassifiedAssets = assetCounts.total - assetCounts.equipment - assetCounts.vehicles;
+  const summarizeEquipment = (records = [], valueOf = equipmentGroupLabel) => Object.entries(records.reduce((counts, record) => {
+    const label = String(valueOf(record) || "Unclassified").trim() || "Unclassified";
+    counts[label] = (counts[label] || 0) + 1;
+    return counts;
+  }, {})).sort((a, b) => b[1] - a[1]);
+  const fleetGroupInsights = summarizeEquipment(visibleEquipment).map(([label, total]) => {
+    const records = visibleEquipment.filter((record) => equipmentGroupLabel(record) === label);
+    return { label, total, ...fleetAssetCounts(records) };
+  });
+  const fleetPieColors = ["#4f86c6", "#2ca57c", "#8b5cf6", "#f59e0b", "#ef6461", "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#6366f1", "#14b8a6", "#a855f7", "#64748b"];
+  const pieSlices = (items) => items.reduce((result, item, index) => {
+    const start = result.reduce((sum, slice) => sum + slice.percent, 0);
+    const percent = assetCounts.total ? item.total / assetCounts.total * 100 : 0;
+    return [...result, { ...item, start, percent, color: item.color || fleetPieColors[index % fleetPieColors.length] }];
+  }, []);
+  const assetCategoryPieSlices = pieSlices([
+    { label: "Equipment", total: assetCounts.equipment, key: "equipment", color: "#f04e53" },
+    { label: "Vehicles", total: assetCounts.vehicles, key: "vehicle", color: "#522e90" },
+    ...(unclassifiedAssets ? [{label:"Unclassified",total:unclassifiedAssets,key:"unclassified",color:"#64748b"}] : []),
+  ]);
+  const fleetGroupPieSlices = pieSlices(fleetGroupInsights.map((group) => ({ ...group, key: `group:${group.label}` })));
+  const fleetHierarchyCategories = [
+    { key: "equipment", label: "Equipment", category: "Total equipment", color: "#f04e53", palette: ["#f04e53", "#d83c66", "#f4777b", "#b72d6e", "#ed8b8f", "#a92566"] },
+    { key: "vehicle", label: "Vehicles", category: "Total vehicles", color: "#522e90", palette: ["#522e90", "#6d43a1", "#8054b5", "#9c7ac4", "#3d1d70", "#a67bd3"] },
+  ];
+  const fleetHierarchySlices = pieSlices(fleetHierarchyCategories.flatMap((category) => summarizeEquipment(
+    visibleEquipment.filter((record) => equipmentCategoryLabel(record) === category.category),
+  ).map(([label, total], index) => ({
+    key: `${category.key}:${label}`,
+    drilldownKey: `category-group:${category.key}|${label}`,
+    label,
+    total,
+    category: category.label,
+    color: category.palette[index % category.palette.length],
+  }))));
+  const fleetRegionInsights = availableRegions
+    .filter((region) => !selectedRegion || region.code === selectedRegion.code)
+    .map((region) => {
+      const sites = region.sites
+        .filter((site) => !normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({ site: allowed }, site)))
+        .filter((site) => dashboardSite === "all" || site === dashboardSite)
+        .map((site) => {
+          const records = scopedEquipment.filter((record) => recordBelongsToSite(record, site));
+          const siteRequests = liveBreakdowns.filter((request) => recordBelongsToSite(request, site));
+          return { name: site, ...fleetChartCounts(records, siteRequests) };
+        });
+      const records = scopedEquipment.filter((record) => sites.some((site) => recordBelongsToSite(record, site.name)));
+      const regionRequests = liveBreakdowns.filter((request) => sites.some((site) => recordBelongsToSite(request, site.name)));
+      return { ...region, sites, ...fleetChartCounts(records, regionRequests) };
+    }).filter(region => region.sites.length > 0);
+  const showFleetBreakdowns = fleetChartMode === "breakdown";
+  const showOemBreakdowns = fleetChartMode === "oem";
+  const oemLive = !dashboardRangeActive || (dashboardFrom === todayKey && dashboardTo === todayKey);
+  const oemFrom = oemLive ? "" : dashboardFrom;
+  const oemTo = oemLive ? "" : dashboardTo;
+  const oemBreakdownRows = filterOemDelayedRows(buildOemBreakdownRows({ equipment: scopedEquipment, requests: scopedBreakdowns, from: oemFrom, to: oemTo }), Boolean(oemFrom || oemTo));
+  const oemLocationRows = oemRowsForLocation(oemBreakdownRows, dashboardRegion, dashboardSite, availableRegions);
+  const oemChart = buildOemBreakdownChart({ rows: oemLocationRows, equipment: scopedEquipment, regions: fleetRegionInsights, oem: dashboardOem });
+  const oemFleetEquipment = visibleEquipment.filter(record => dashboardOem === "all" || oemLabel(record).toLowerCase() === dashboardOem);
+  // Measure the space the OEM chart may use so the panel never needs a page scroll.
+  const fleetChartRef = useRef(null);
+  const dailyBdExportRef = useRef(null);
+  const [oemPlotSpace, setOemPlotSpace] = useState(0);
+  useEffect(() => {
+    const fitOemChart = () => setOemPlotSpace(oemChartPlotSpace(fleetChartRef.current));
+    fitOemChart();
+    window.addEventListener("resize", fitOemChart);
+    return () => window.removeEventListener("resize", fitOemChart);
+  }, [showOemBreakdowns, equipmentLoaded, oemChart.axisMax, oemChart.sites.length]);
+  const openOemDrilldown = (selection = {}) => {
+    const filters = oemFiltersForSelection({ region: dashboardRegion, site: dashboardSite, oem: dashboardOem }, selection, availableRegions);
+    setDashboardRegion(filters.region);
+    setDashboardSite(filters.site);
+    setDashboardOem(filters.oem);
+    setOemDrilldownCategory(selection.equipmentGroup ? { equipmentGroup: selection.equipmentGroup, equipmentGroupLabel: selection.equipmentGroupLabel } : {});
+    setOemDrilldownKind("breakdown");
+  };
+  const filterOemChart = oem => { setDashboardOem(oem); setOemDrilldownCategory({}); };
+  const resetOemFilters = () => { setDashboardRegion("all"); setDashboardSite("all"); setDashboardShift("all"); setDashboardOem("all"); setOemDrilldownCategory({}); setDashboardFrom(todayKey); setDashboardTo(todayKey); };
+  // Derive the open list from the current filters and data on every render.
+  const oemSelection = createOemBreakdownSelection(oemChart, oemDrilldownCategory);
+  const oemSiteDetailSelection = {
+    ...createOemBreakdownSelection(oemChart),
+    site: dashboardSite !== "all" ? dashboardSite : "",
+    periodLabel: oemLive ? "Current breakdowns" : filteredDateLabel,
+  };
+  const oemDrilldown = oemDrilldownKind ? {
+    ...oemSelection,
+    site: dashboardSite !== "all" ? dashboardSite : "",
+    rows: oemDrilldownKind === "fleet" ? oemFleetEquipment : oemSelection.rows,
+    records: oemDrilldownKind === "fleet" ? fleetAssetRequestDetails(oemFleetEquipment, locationBreakdowns) : oemSelection.records,
+    fleetOnly: oemDrilldownKind === "fleet",
+    periodLabel: oemDrilldownKind === "fleet" ? "Current fleet" : oemLive ? "Current breakdowns" : filteredDateLabel,
+    title: (oemDrilldownKind === "fleet" ? "Total fleet" : "OEM BD") + " · " + oemSelection.label + (oemDrilldownKind === "breakdown" && oemSelection.equipmentGroupLabel ? " · " + oemSelection.equipmentGroupLabel : "") + " · " + (dashboardSite !== "all" ? dashboardSite : dashboardRegion === "all" ? "All selected sites" : dashboardRegion) + " · " + (oemDrilldownKind === "fleet" ? oemFleetEquipment.length : oemSelection.rows.length) + " assets",
+  } : null;
+  const fleetChartAllKey = showFleetBreakdowns ? "fleet-breakdown:all" : "all";
+  // The fleet chart uses fixed 25-unit grid steps on one linear scale, so every bar is proportional to its count.
+  const fleetChartStep = 25;
+  const fleetChartPeak = fleetRegionInsights.flatMap((region) => region.sites.flatMap((site) => [site.equipment, site.vehicles])).reduce((maximum, value) => Math.max(maximum, Number(value) || 0), 0);
+  const fleetChartAxisMax = Math.max(fleetChartStep, Math.ceil(fleetChartPeak / fleetChartStep) * fleetChartStep);
+  const fleetChartTicks = Array.from({ length: fleetChartAxisMax / fleetChartStep + 1 }, (_, index) => index * fleetChartStep);
+  const equipmentShare = assetCounts.total ? Math.round((assetCounts.equipment / assetCounts.total) * 100) : 0;
+  const vehicleShare = assetCounts.total ? Math.round((assetCounts.vehicles / assetCounts.total) * 100) : 0;
+  const requestTrendEndKey = requestTrendTo || dashboardTo || localDateKey(now);
+  const requestTrendEarliest = new Date(`${requestTrendEndKey}T12:00:00`);
+  requestTrendEarliest.setDate(requestTrendEarliest.getDate() - 365);
+  const requestTrendEarliestKey = localDateKey(requestTrendEarliest);
+  const presetTrendStart = new Date(`${requestTrendEndKey}T12:00:00`);
+  presetTrendStart.setDate(presetTrendStart.getDate() - (requestTrendDays - 1));
+  const requestTrendStartKey = requestTrendFrom || localDateKey(presetTrendStart);
+  const safeTrendStartKey = requestTrendStartKey > requestTrendEndKey ? requestTrendEndKey : requestTrendStartKey < requestTrendEarliestKey ? requestTrendEarliestKey : requestTrendStartKey;
+  const requestTrendDateKeys = [];
+  for (const cursor = new Date(`${safeTrendStartKey}T12:00:00`), end = new Date(`${requestTrendEndKey}T12:00:00`); cursor <= end && requestTrendDateKeys.length < 366; cursor.setDate(cursor.getDate() + 1)) {
+    requestTrendDateKeys.push(localDateKey(cursor));
+  }
+  const requestLifecycleRegions = (selectedRegion ? [selectedRegion] : availableRegions).map((region) => ({
+    ...region,
+    sites: region.sites.filter((site) => (!normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({site: allowed}, site))) && (dashboardSite === "all" || recordBelongsToSite({site: dashboardSite}, site))),
+  }));
+  const requestLifecycleRegion = requestLifecycleRegions.find((region) => region.code === requestTrendRegion);
+  const requestLifecycleSite = requestLifecycleRegions.flatMap((region) => region.sites).find((site) => `site:${site}` === requestTrendRegion);
+  // Maintenance count and drilldown share these rows; idle cases have their own card.
+  // Equivalent predicates retained for source audits; the implementation below evaluates them together in one pass.
+  // production: locationBreakdowns.filter((record) => ["production user", "maintenance user"].includes(String(record.requesterRole || "").trim().toLowerCase()) && requestEventDate(record, "opened") >= safeTrendStartKey && requestEventDate(record, "opened") <= requestTrendEndKey),
+  // opened: locationBreakdowns.filter((record) => !["closed", "idle", "ideal"].includes(String(record.status || "").trim().toLowerCase()) && requestEventDate(record, "opened") >= safeTrendStartKey && requestEventDate(record, "opened") <= requestTrendEndKey),
+  // closed: locationBreakdowns.filter((record) => String(record.status || "").trim().toLowerCase() === "closed"),
+  const requestLifecycleRows = (() => {
+    const rows = { production: [], opened: [], closed: [], verified: [], idle: [] };
+    const dateCounts = Object.fromEntries(Object.keys(rows).map((metric) => [metric, new Map()]));
+    const lifecycleSites = requestLifecycleRegion || requestLifecycleSite ? (requestLifecycleSite ? [requestLifecycleSite] : requestLifecycleRegion.sites) : null;
+    const inRange = (date) => date >= safeTrendStartKey && date <= requestTrendEndKey;
+    const add = (metric, record, date) => {
+      rows[metric].push(record);
+      dateCounts[metric].set(date, (dateCounts[metric].get(date) || 0) + 1);
+    };
+    for (const record of locationBreakdowns) {
+      if (lifecycleSites && !lifecycleSites.some((site) => recordBelongsToSite(record, site))) continue;
+      const status = String(record.status || "").trim().toLowerCase();
+      const requesterRole = String(record.requesterRole || "").trim().toLowerCase();
+      const openedDate = requestEventDate(record, "opened");
+      const closedDate = requestEventDate(record, "closed");
+      const verifiedDate = requestEventDate(record, "verified");
+      const idleDate = requestEventDate(record, "idle");
+      const shiftMatches = (event) => typeof requestMatchesLifecycleShift !== "function" || requestMatchesLifecycleShift(record, event);
+      if (["production user", "maintenance user"].includes(requesterRole) && inRange(openedDate) && shiftMatches("opened")) add("production", record, openedDate);
+      if (!["closed", "idle", "ideal"].includes(status) && inRange(openedDate) && shiftMatches("opened")) add("opened", record, openedDate);
+      if (status === "closed" && inRange(closedDate) && shiftMatches("closed")) add("closed", record, closedDate);
+      if (inRange(verifiedDate) && shiftMatches("verified")) add("verified", record, verifiedDate);
+      if (isIdleVehicleRequest(record) && inRange(idleDate) && shiftMatches("idle")) add("idle", record, idleDate);
+    }
+    Object.defineProperty(rows, "dateCounts", { value: dateCounts });
+    return rows;
+  })();
+  // Pending MIS work uses workspace eligibility, not dashboard history exclusions.
+  const maintenanceClosedRows = dashboardMisQueue(sourceRequests, {
+    from: safeTrendStartKey,
+    to: requestTrendEndKey,
+    inScope: (record) => equipmentLoaded
+      && (normalizedAllowedSites?.length ? normalizedAllowedSites.some(site => recordBelongsToSite(record, site)) : !restrictToScope)
+      && (!(selectedRegion || dashboardSite !== "all") || activeSites.some(site => recordBelongsToSite(record, site)))
+      && requestHasSelectedDashboardShift(record)
+      && requestMatchesLifecycleShift(record, "closed")
+      && (!(requestLifecycleRegion || requestLifecycleSite) || (requestLifecycleSite ? [requestLifecycleSite] : requestLifecycleRegion.sites).some(site => recordBelongsToSite(record, site))),
+  });
+  const requestLifecycleAvailability = {
+    maintenance: requestLifecycleRows.opened.length,
+    mis: maintenanceClosedRows.length,
+  };
+  const misLifecycleDateCounts = maintenanceClosedRows.reduce((counts, record) => {
+    const date = misQueueDate(record);
+    if (date) counts.set(date, (counts.get(date) || 0) + 1);
+    return counts;
+  }, new Map());
+  const requestLifecycleTrend = requestTrendDateKeys.map((date) => ({
+    date,
+    production: requestLifecycleRows.dateCounts.production.get(date) || 0,
+    mis: misLifecycleDateCounts.get(date) || 0,
+    opened: requestLifecycleRows.dateCounts.opened.get(date) || 0,
+    closed: requestLifecycleRows.dateCounts.closed.get(date) || 0,
+    verified: requestLifecycleRows.dateCounts.verified.get(date) || 0,
+    idle: requestLifecycleRows.dateCounts.idle.get(date) || 0,
+  }));
+  // Keep all six compact series together for each date in the selected site and range.
+  const requestLifecycleReadings = [
+    { key: "production", color: "opened", label: "Production Request", value: requestLifecycleRows.production.length },
+    { key: "closed", color: "closed", label: "Closed", value: requestLifecycleRows.closed.length },
+    { key: "verified", color: "verified", label: "Verified", value: requestLifecycleRows.verified.length },
+    { key: "idle", color: "idle", label: "Idle Vehicles", value: requestLifecycleRows.idle.length },
+    { key: "opened", color: "maintenance", label: "Open in Maintenance", value: requestLifecycleAvailability.maintenance },
+    { key: "closed", color: "mis", label: "Open in MIS", value: requestLifecycleAvailability.mis },
+  ];
+  const requestLifecycleScale = dashboardCountScale(requestLifecycleTrend.flatMap((day) => [day.production, day.closed, day.verified, day.idle, day.opened, day.mis]));
+  const requestLifecycleMaximum = requestLifecycleScale.maximum;
+  const requestLifecycleRangeLabel = formatDisplayDateRange(safeTrendStartKey, requestTrendEndKey, " - ");
+  const stagePipelineStages = [
+    { key: "offroad", label: "Off road / request", shortLabel: "Request", className: "request" },
+    { key: "acceptance", label: "Acceptance", shortLabel: "Acceptance", className: "acceptance" },
+    { key: "onroad", label: "On road", shortLabel: "On road", className: "onroad" },
+    { key: "productionFirstTrip", label: "First trip production verification", shortLabel: "Production first trip", className: "production" },
+    { key: "misFirstTrip", label: "First trip MIS verification", shortLabel: "MIS first trip", className: "mis" },
+    { key: "idle", label: "Idle Vehicles", shortLabel: "Idle", className: "idle" },
+  ];
+  const stagePipelineField = (...values) => values.map((value) => String(value || "").trim()).find(Boolean) || "";
+  const stagePipelineRequestStage = (record = {}) => {
+    const status = String(record.status || "").trim().toLowerCase();
+    if (["idle", "ideal"].includes(status)) return "idle";
+    if (["verified"].includes(status) || String(record.verifiedAt || "").trim()) return "";
+    const stages = {
+      acceptedAt: stagePipelineField(record.acceptedAt, record.accepted_at),
+      closedAt: stagePipelineField(record.closedAt, record.closed_at, record.completedAt),
+      productionFirstTripAt: stagePipelineField(record.productionFirstTripAt, record.production_first_trip_at, record.productionFirstTripDate ? `${record.productionFirstTripDate} ${record.productionFirstTripTime || "00:00:00"}` : ""),
+      misFirstTripAt: stagePipelineField(record.firstTripAt, record.first_trip_at, record.firstTripDate ? `${record.firstTripDate} ${record.firstTripTime || "00:00:00"}` : ""),
+      verifiedAt: stagePipelineField(record.verifiedAt, record.verified_at),
+    };
+    if (!stages.acceptedAt && !stages.closedAt) return "offroad";
+    if (!stages.closedAt) return "acceptance";
+    if (!stages.productionFirstTripAt) return "onroad";
+    if (!stages.misFirstTripAt) return "productionFirstTrip";
+    if (!stages.verifiedAt) return "misFirstTrip";
+    return "";
+  };
+  const stagePipelineStageTimestamp = (record = {}, stage = "") => {
+    if (stage === "offroad") return stagePipelineField(record.start, record.startedAt, record.createdAt);
+    if (stage === "acceptance") return stagePipelineField(record.acceptedAt, record.accepted_at, record.start, record.startedAt, record.createdAt);
+    if (stage === "onroad") return stagePipelineField(record.closedAt, record.closed_at, record.completedAt);
+    if (stage === "productionFirstTrip") return stagePipelineField(record.productionFirstTripAt, record.production_first_trip_at, record.productionFirstTripDate ? `${record.productionFirstTripDate} ${record.productionFirstTripTime || "00:00:00"}` : "");
+    if (stage === "misFirstTrip") return stagePipelineField(record.firstTripAt, record.first_trip_at, record.firstTripDate ? `${record.firstTripDate} ${record.firstTripTime || "00:00:00"}` : "");
+    if (stage === "idle") return stagePipelineField(record.idealRequestedAt, record.idleRequestedAt, record.closedAt, record.closed_at, record.start, record.startedAt, record.createdAt);
+    return "";
+  };
+  const stagePipelineSelectedRegion = availableRegions.find((region) => region.code === stagePipelineRegion);
+  const stagePipelineRegionSites = stagePipelineSelectedRegion ? stagePipelineSelectedRegion.sites.filter(site => trendAvailableSites.includes(site)) : trendAvailableSites;
+  const stagePipelineSiteOptions = [...new Set(stagePipelineRegionSites.filter((site) => !normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({ site: allowed }, site))))];
+  const activeStagePipelineSite = stagePipelineSite === "all" || stagePipelineSiteOptions.includes(stagePipelineSite) ? stagePipelineSite : "all";
+  const stagePipelineScopeSites = activeStagePipelineSite === "all" ? stagePipelineSiteOptions : [activeStagePipelineSite];
+  const stagePipelineMatchesShift = (record = {}, stage = "") => stagePipelineShift === "all" || timestampMatchesShift(stagePipelineStageTimestamp(record, stage), { site: record.site || record.reportSite || record.currentLocation || record.location, shifts: shiftRecords, shift: stagePipelineShift });
+  const stagePipelineMatchesDate = (record = {}, stage = "") => {
+    if (!stagePipelineFrom && !stagePipelineTo) return true;
+    const date = requestDateKey(stagePipelineStageTimestamp(record, stage));
+    if (!date) return false;
+    return (!stagePipelineFrom || date >= stagePipelineFrom) && (!stagePipelineTo || date <= stagePipelineTo);
+  };
+  const stagePipelineRequests = locationBreakdowns.filter((record) => {
+    const stage = stagePipelineRequestStage(record);
+    return stage
+      && stagePipelineScopeSites.some((site) => recordBelongsToSite(record, site))
+      && stagePipelineMatchesShift(record, stage)
+      && stagePipelineMatchesDate(record, stage);
+  });
+  const stagePipelineRows = stagePipelineSiteOptions.map((site) => {
+    const stageCounts = Object.fromEntries(stagePipelineStages.map((stage) => [stage.key, stagePipelineRequests.filter((record) => recordBelongsToSite(record, site) && stagePipelineRequestStage(record) === stage.key).length]));
+    return { site, counts: stageCounts, total: Object.values(stageCounts).reduce((sum, value) => sum + value, 0) };
+  }).filter((row) => row.total > 0 || stagePipelineSiteOptions.length <= 8);
+  const stagePipelineTotals = Object.fromEntries(stagePipelineStages.map((stage) => [stage.key, stagePipelineRequests.filter((record) => stagePipelineRequestStage(record) === stage.key).length]));
+  const stagePipelineTotal = Object.values(stagePipelineTotals).reduce((sum, value) => sum + value, 0);
+  const stagePipelineDisplayRows = [...stagePipelineRows, { site: "All sites", siteKey: "all", counts: stagePipelineTotals, total: stagePipelineTotal }];
+  const stagePipelineKey = (stage, site = "all") => `stage-pipeline:${stage}|${encodeURIComponent(site || "all")}`;
+  const stagePipelineDateLabel = stagePipelineFrom || stagePipelineTo ? formatDisplayDateRange(stagePipelineFrom || stagePipelineTo, stagePipelineTo || stagePipelineFrom) : "All dates";
+  const stagePipelineScopeLabel = activeStagePipelineSite !== "all" ? activeStagePipelineSite : stagePipelineSelectedRegion?.code || "All regions";
+  const stagePipelineShiftLabel = stagePipelineShift === "all" ? "All shifts" : dashboardShiftOptions.find((shift) => shift.key === stagePipelineShift)?.label || stagePipelineShift;
+  const resetStagePipelineDates = () => { setStagePipelineFrom(""); setStagePipelineTo(""); };
+  const requestAssetRows = (requestRows = []) => requestRows.map((request, index) => {
+    const equipment = equipmentForRequest(request);
+    return {
+      ...(equipment || {}),
+      id: `${request.ref || request.reference || request.id || "request"}-${index}`,
+      equipmentName: equipment?.equipmentName || request.equipment || request.door || "Unclassified equipment",
+      door: requestEquipmentDetails(equipment || {}).door || request.door || "",
+      category: equipment?.category || request.equipmentCategory || "Unclassified",
+      group: equipmentGroupValue(equipment || {}) || normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || "Unclassified",
+      make: equipment?.make || request.make || "",
+      model: equipment?.model || request.model || "",
+      currentLocation: equipment?.currentLocation || equipment?.location || request.site || "",
+      manufacturerSerialNo: equipment?.manufacturerSerialNo || equipment?.chassisNo || request.chassis || "",
+      requestSite: request.site || request.location || equipment?.currentLocation || equipment?.location || "",
+      requestReference: request.ref || request.reference || "—",
+      requestStatus: requestStatusLabel(request),
+      repairCategory: request.category || "—",
+      delayedReason: request.delayedReason || "—",
+      breakdownReason: request.complaint || "—",
+      idleReason: request.idleReason || "—",
+      ...breakdownMeterFields(request, equipment ? [equipment] : []),
+      dailyRemarks: Array.isArray(request.dailyRemarks) ? request.dailyRemarks : [],
+      requestIdleAt: request.idealRequestedAt || request.idleRequestedAt || "",
+      requestStart: request.start || "—",
+      requestExpectedCompletion: request.expectedCompletionAt || "—",
+      requestClosed: request.closedAt || request.completedAt || "—",
+      requestVerified: request.verifiedAt || "—",
+      requestFirstTrip: firstTripTimestamp(request) || "—",
+    };
+  });
+  const rowsForAssetDrilldown = (key = "") => {
+    if (key.startsWith("entered-today:")) {
+      const day = key.slice(14);
+      return requestAssetRows(day === todayKey ? todayBreakdownRows : activeTodayBreakdowns(scopedBreakdowns, day));
+    }
+    if (key.startsWith("balance:")) {
+      const [metric, from, to, site] = key.slice(8).split("|");
+      const records = site ? locationBreakdowns.filter((record) => recordBelongsToSite(record, site)) : locationBreakdowns;
+      return requestAssetRows(dailyBdRecordsForMetric(records, from, to, metric, { matchesShift: requestMatchesMovementShift }).map((record) => metric === "undated" ? record : ({
+        ...record,
+        start: [record.start, record.startedAt, record.createdAt].find((value) => requestDateKey(value)),
+        closedAt: [record.closedAt, record.completedAt].find((value) => requestDateKey(value)),
+      })));
+    }
+    if (key.startsWith("site-total:")) {
+      const [site, category] = key.slice(11).split("|");
+      const categories = category === "vehicles" ? ["vehicle", "vehicles"] : ["equipment", "equipments"];
+      return visibleEquipment.filter((record) => recordBelongsToSite(record, site)
+        && categories.includes(String(record.category || "").trim().toLowerCase()));
+    }
+    if (key.startsWith("fleet-breakdown:") || key.startsWith("offroad-site:")) {
+      const accountWide = key === "fleet-breakdown:account" || key === "fleet-breakdown:balance";
+      const region = key.startsWith("fleet-breakdown:region:") ? availableRegions.find((item) => item.code === key.slice(23)) : null;
+      const [offroadSite, offroadCategory = ""] = key.startsWith("offroad-site:") ? key.slice(13).split("|") : ["", ""];
+      return (accountWide ? scopedEquipment : visibleEquipment).filter((record) => liveEquipmentRoadStatus(record, accountWide ? scopedBreakdowns : liveBreakdowns) === "offroad"
+        && (key !== "fleet-breakdown:balance" || !oemChart.rows.some(row => row.record === record))
+        && (!offroadSite || recordBelongsToSite(record, offroadSite))
+        && (!key.startsWith("fleet-breakdown:region:") || region?.sites.some((site) => recordBelongsToSite(record, site)))
+        && ((key !== "fleet-breakdown:equipment" && offroadCategory !== "equipment") || ["equipment", "equipments"].includes(String(record.category || "").trim().toLowerCase()))
+        && ((key !== "fleet-breakdown:vehicles" && offroadCategory !== "vehicles") || ["vehicle", "vehicles"].includes(String(record.category || "").trim().toLowerCase())));
+    }
+    if (key === "road-availability") return availabilityEquipment;
+    if (!key || key === "all") return visibleEquipment;
+    if (key === "unclassified") return visibleEquipment.filter((record) => !["equipment","equipments","vehicle","vehicles"].includes(String(record.category || "").trim().toLowerCase()));
+    if (key === "equipment") return visibleEquipment.filter((record) => ["equipment","equipments"].includes(String(record.category || "").trim().toLowerCase()));
+    if (key === "vehicle") return visibleEquipment.filter((record) => ["vehicle","vehicles"].includes(String(record.category || "").trim().toLowerCase()));
+    if (key === "available") return visibleEquipment.filter((record) => ["onroad", "idle"].includes(liveEquipmentRoadStatus(record, liveBreakdowns)));
+    if (key === "unavailable") return visibleEquipment.filter((record) => !["onroad", "idle"].includes(liveEquipmentRoadStatus(record, liveBreakdowns)));
+    if (["onroad","offroad","idle","unknown"].includes(key)) return availabilityEquipment.filter((record) => liveEquipmentRoadStatus(record, availabilityRequests) === key);
+    if (key.startsWith("region:")) {
+      const region = availableRegions.find((item) => item.code === key.slice(7));
+      return region ? visibleEquipment.filter((record) => region.sites.some((site) => recordBelongsToSite(record, site))) : [];
+    }
+    if (key.startsWith("site:")) return visibleEquipment.filter((record) => recordBelongsToSite(record, key.slice(5)));
+    if (key.startsWith("category-group:")) {
+      const [category, ...group] = key.slice(15).split("|");
+      return visibleEquipment.filter((record) => equipmentCategoryLabel(record) === (category === "vehicle" ? "Total vehicles" : "Total equipment")
+        && equipmentGroupLabel(record) === group.join("|"));
+    }
+    if (key.startsWith("group:")) return visibleEquipment.filter((record) => equipmentGroupLabel(record) === key.slice(6));
+    // Site is already known from the panel that opened this, so these keys carry it.
+    if (key.startsWith("site-repair:")) {
+      const [site, type] = key.slice(12).split("|");
+      return requestAssetRows(movementRequestRowsForShift(throughputRequests, breakdownDetailStartKey, breakdownDetailEndKey, "active-balance").filter((record) => recordBelongsToSite(record, site)
+        && normalizedBreakdownType(record.category || record.repairType || record.type) === type));
+    }
+    if (key.startsWith("site-status:")) {
+      const [site, status] = key.slice(12).split("|");
+      const atSite = availabilityEquipment.filter((record) => recordBelongsToSite(record, site));
+      return status === "all" ? atSite : atSite.filter((record) => liveEquipmentRoadStatus(record, availabilityRequests) === status);
+    }
+    if (key === "open-cases") return requestAssetRows(openCaseRequests);
+    if (key.startsWith("repair:")) return requestAssetRows(visibleBreakdowns.filter((record) => String(record.category || "").trim().toLowerCase() === key.slice(7).toLowerCase()));
+    if (key.startsWith("status:")) return requestAssetRows(visibleBreakdowns.filter((record) => requestStatusLabel(record).toLowerCase() === key.slice(7).toLowerCase()));
+    if (key.startsWith("movement:")) {
+      const [metric, start, end, site, type] = key.slice(9).split("|");
+      const records = site ? throughputRequests.filter((record) => recordBelongsToSite(record, site)) : throughputRequests;
+      return requestAssetRows(movementRequestRowsForShift(records, start, end, metric, type));
+    }
+    if (key.startsWith("trend:")) {
+      const [, kind, date] = key.split(":");
+      return requestAssetRows(kind === "forecast" ? forecastBasisRows(trendRequestsForShift, breakdownTrendAnchorKey, dashboardRecordDate) : recordedTrendRows(trendRequestsForShift, actualTrendDays, dashboardRecordDate, kind === "actual" ? date : ""));
+    }
+    if (key.startsWith("stage-pipeline:")) {
+      const [stage, siteValue = "all"] = key.slice(15).split("|");
+      const site = decodeURIComponent(siteValue || "all");
+      return requestAssetRows(stagePipelineRequests.filter((record) => (site === "all" || recordBelongsToSite(record, site)) && stagePipelineRequestStage(record) === stage));
+    }
+    if (key.startsWith("event:")) {
+      const [, event, date] = key.split(":");
+      if (event === "all") return requestAssetRows(allLifecycleRequestRows(requestLifecycleRows, requestEventDate, date));
+      // Daily bars count every closure; the undated Closed / Open in MIS cards count only pending verification.
+      if (event === "production" && date) return requestAssetRows(requestLifecycleRows.production.filter((record) => requestEventDate(record, "opened") === date));
+      if (event === "mis") return requestAssetRows(date ? maintenanceClosedRows.filter((record) => misQueueDate(record) === date) : maintenanceClosedRows);
+      const rows = requestLifecycleRows[event] || [];
+      return requestAssetRows(date ? rows.filter((record) => requestEventDate(record, event) === date) : rows);
+    }
+    return [];
+  };
+  // Drilldown keys whose rows are requests (or request lifecycle events) rather than fleet assets.
+  const requestDrilldownKey = (key = "") => key === "open-cases" || key.startsWith("stage-pipeline:") || ["site-repair:", "repair:", "status:", "event:", "movement:", "balance:", "trend:"].some((prefix) => key.startsWith(prefix)) || key.startsWith("entered-today:");
+  const fleetDrilldownRequests = (key = "") => ["fleet-breakdown:account", "fleet-breakdown:balance"].includes(key) ? scopedBreakdowns : ["road-availability", "onroad", "offroad", "idle", "unknown"].includes(key) || key.startsWith("site-status:") ? availabilityRequests : liveBreakdowns;
+  // Fleet (asset) lists carry each asset's current breakdown request so they show Status, Started and Days of breakdown too.
+  // Building fleetAssetRequestDetails links every visible asset to its active
+  // request. Do it only while a drilldown is open; the closed dashboard does
+  // not consume these rows at all.
+  const assetDrilldownRows = !assetDrilldown ? [] : requestDrilldownKey(assetDrilldown) ? rowsForAssetDrilldown(assetDrilldown) : fleetAssetRequestDetails(rowsForAssetDrilldown(assetDrilldown), fleetDrilldownRequests(assetDrilldown));
+  const assetDrilldownRegions = availableRegions.map((region) => ({
+    ...region,
+    sites: region.sites.filter((site) => !normalizedAllowedSites?.length || normalizedAllowedSites.some((allowed) => recordBelongsToSite({ site: allowed }, site))),
+  }));
+  const siteScopedDrilldown = assetDrilldown.startsWith("site-repair:") || assetDrilldown.startsWith("site-status:");
+  const showFleetSiteTabs = ["all", "fleet-breakdown:account", "fleet-breakdown:balance", "fleet-breakdown:all"].includes(assetDrilldown) || assetDrilldown.startsWith("entered-today:");
+  const fleetSiteTabRows = showFleetSiteTabs ? oemDetailReportRows(groupOemRecordsBySite(assetDrilldownRows, assetDrilldownRegions), true) : assetDrilldownRows;
+  const siteScopedParts = siteScopedDrilldown ? assetDrilldown.slice(12).split("|") : [];
+  const siteScopedSite = siteScopedParts[0] || "";
+  const siteScopedFocus = siteScopedParts[1] || "";
+  const siteScopedFocusLabel = !siteScopedDrilldown ? ""
+    : assetDrilldown.startsWith("site-repair:") ? `${siteScopedFocus} requests`
+    : siteScopedFocus === "all" ? "All fleet"
+    : siteScopedFocus === "onroad" ? "On road"
+    : siteScopedFocus === "offroad" ? "Off road"
+    : siteScopedFocus === "idle" ? "Idle" : siteScopedFocus;
+  const movementDrilldownParts = assetDrilldown.startsWith("movement:") ? assetDrilldown.slice(9).split("|") : assetDrilldown.startsWith("balance:") ? assetDrilldown.slice(8).split("|") : [];
+  const siteTotalDrilldownParts = assetDrilldown.startsWith("site-total:") ? assetDrilldown.slice(11).split("|") : [];
+  const stagePipelineDrilldownParts = assetDrilldown.startsWith("stage-pipeline:") ? assetDrilldown.slice(15).split("|") : [];
+  const stagePipelineDrilldownStage = stagePipelineStages.find((stage) => stage.key === stagePipelineDrilldownParts[0]);
+  const stagePipelineDrilldownSite = stagePipelineDrilldownParts.length ? decodeURIComponent(stagePipelineDrilldownParts[1] || "all") : "";
+  // These Total Fleet chart lists already name their single site in the modal title.
+  const hideFleetChartLocation = ["site-total:", "site:", "offroad-site:"].some((prefix) => assetDrilldown.startsWith(prefix));
+  const hideFleetChartCategory = /^(?:site-total|offroad-site):.+\|(equipment|vehicles)$/.test(assetDrilldown);
+  const initialDrilldownSite = siteScopedSite || siteTotalDrilldownParts[0] || movementDrilldownParts[3] || (stagePipelineDrilldownSite && stagePipelineDrilldownSite !== "all" ? stagePipelineDrilldownSite : "") || (assetDrilldown.startsWith("trend:") && activeTrendSite !== "all" ? activeTrendSite : "") || (assetDrilldown.startsWith("offroad-site:") ? assetDrilldown.slice(13).split("|")[0] : assetDrilldown.startsWith("site:") ? assetDrilldown.slice(5) : "");
+  const initialDrilldownRegion = assetDrilldown.startsWith("fleet-breakdown:region:") ? assetDrilldown.slice(23) : assetDrilldown.startsWith("region:") ? assetDrilldown.slice(7) : assetDrilldownRegions.find((region) => region.sites.some((site) => recordBelongsToSite({ site: initialDrilldownSite }, site)))?.code || "";
+  const fleetBreakdownDrilldown = assetDrilldown.startsWith("fleet-breakdown:") || assetDrilldown.startsWith("offroad-site:");
+  const requestAssetDrilldown = assetDrilldown.startsWith("entered-today:") || assetDrilldown === "open-cases" || assetDrilldown.startsWith("site-repair:") || assetDrilldown.startsWith("repair:") || assetDrilldown.startsWith("status:") || assetDrilldown.startsWith("event:") || assetDrilldown.startsWith("movement:") || assetDrilldown.startsWith("balance:") || assetDrilldown.startsWith("trend:");
+  const lifecycleDrilldownParts = assetDrilldown.startsWith("event:") ? assetDrilldown.split(":") : [];
+  const lifecycleDrilldownLabel = lifecycleDrilldownParts[1] === "mis" ? "Open in MIS" : lifecycleDrilldownParts[1] === "all" ? `All lifecycle requests · ${requestLifecycleRangeLabel}` : lifecycleDrilldownParts[1] === "production" ? "Production requests" : lifecycleDrilldownParts[1] === "opened" ? "Opened requests" : lifecycleDrilldownParts[1] === "closed" ? "Closed requests" : lifecycleDrilldownParts[1] === "idle" ? "Idle vehicles" : "Verified requests";
+  const movementLabels = { all: "All BD movement requests", open: "BD Open", incoming: "BD In", outgoing: "BD Out", balance: "BD Balance", "active-balance": "BD Balance", idle: "Idle Vehicles", runningbd: "Running with BD", undated: "Requests needing date correction" };
+  const movementDrilldownTitle = movementDrilldownParts.length ? `${movementDrilldownParts[3] ? `${movementDrilldownParts[3]} · ` : ""}${movementDrilldownParts[4] || movementLabels[movementDrilldownParts[0]]} · ${movementDrilldownParts[1] ? formatDisplayDateRange(movementDrilldownParts[1], movementDrilldownParts[2]) : "All time"}` : "";
+  const trendDrilldownTitle = assetDrilldown.startsWith("trend:")
+    ? assetDrilldown.startsWith("trend:forecast") ? `Forecast basis · Recorded requests · 56 days through ${formatDisplayDate(breakdownTrendAnchorKey)}`
+      : `Recorded breakdown requests · ${assetDrilldown.startsWith("trend:actual:") ? formatDisplayDate(assetDrilldown.split(":")[2]) : formatDisplayDateRange(actualTrendDays[0]?.date, breakdownTrendAnchorKey)}`
+    : "";
+  const stagePipelineDrilldownTitle = stagePipelineDrilldownStage ? `${stagePipelineDrilldownSite === "all" ? "All sites" : stagePipelineDrilldownSite} · ${stagePipelineDrilldownStage.label}` : "";
+  const fleetBreakdownDrilldownTitle = fleetBreakdownDrilldown ? `${assetDrilldown === "fleet-breakdown:account" ? "All assigned sites · " : assetDrilldown.startsWith("offroad-site:") ? assetDrilldown.slice(13).split("|")[0] + " · " + (assetDrilldown.endsWith("|vehicles") ? "Vehicles · " : assetDrilldown.endsWith("|equipment") ? "Equipment · " : "") : assetDrilldown.startsWith("fleet-breakdown:region:") ? assetDrilldown.slice(23) + " · " : assetDrilldown === "fleet-breakdown:equipment" ? "Equipment · " : assetDrilldown === "fleet-breakdown:vehicles" ? "Vehicles · " : ""}BD Balance` : "";
+  // The account count opens the breakdown fleet across every assigned site.
+  const siteTotalDrilldownTitle = assetDrilldown.startsWith("category-group:")
+    ? `${assetDrilldown.slice(15).split("|").slice(1).join("|")} · ${assetDrilldown.startsWith("category-group:vehicle|") ? "Vehicles" : "Equipment"}`
+    : siteTotalDrilldownParts.length ? `${siteTotalDrilldownParts[0]} · ${siteTotalDrilldownParts[1] === "vehicles" ? "Vehicle" : "Equipment"} records` : "";
+  const assetDrilldownTitle = assetDrilldown.startsWith("entered-today:") ? `Today’s active breakdown requests · ${formatDisplayDate(assetDrilldown.slice(14))}` : siteTotalDrilldownTitle || fleetBreakdownDrilldownTitle || movementDrilldownTitle || trendDrilldownTitle || stagePipelineDrilldownTitle || (assetDrilldown === "unavailable" ? "Unavailable fleet" : siteScopedDrilldown ? `${siteScopedSite} · ${siteScopedFocusLabel}` : assetDrilldown.startsWith("offroad-site:") ? `${assetDrilldown.slice(13)} off-road equipment and vehicles` : assetDrilldown === "equipment" ? "Total equipment" : assetDrilldown === "vehicle" ? "Total vehicles" : assetDrilldown === "road-availability" ? "Availability Count" : assetDrilldown === "available" ? "Available fleet" : assetDrilldown === "onroad" ? "On road equipment" : assetDrilldown === "offroad" ? "Off road equipment" : assetDrilldown === "idle" ? "Idle equipment" : assetDrilldown === "unknown" ? "Status not set" : assetDrilldown === "open-cases" ? "Open cases" : assetDrilldown.startsWith("event:") ? `${lifecycleDrilldownLabel}${lifecycleDrilldownParts[2] ? ` · ${formatDisplayDate(lifecycleDrilldownParts[2])}` : ""}` : assetDrilldown.startsWith("repair:") ? `${assetDrilldown.slice(7)} cases` : assetDrilldown.startsWith("status:") ? `${assetDrilldown.slice(7)} workload` : assetDrilldown.startsWith("region:") ? `${assetDrilldown.slice(7)} equipment` : assetDrilldown.startsWith("site:") ? `${assetDrilldown.slice(5)} equipment` : assetDrilldown.startsWith("group:") ? assetDrilldown.slice(6) : "Total equipment and vehicles");
+  const dashboardScopeLabel = dashboardSite !== "all" ? dashboardSite : selectedRegion?.code || (restrictToScope ? "All assigned locations" : "All regions");
+  const dashboardPeriodLabel = breakdownSummaryPeriodLabel;
+  const dashboardExportRows = [
+    { section: "Fleet", metric: "Total fleet", value: kpis.total, scope: dashboardScopeLabel, details: `${assetCounts.equipment} equipment; ${assetCounts.vehicles} vehicles` },
+    { section: "Fleet", metric: "On road", value: kpis.onRoad, scope: dashboardScopeLabel, details: `${utilizationPercent}% utilization` },
+    { section: "Fleet", metric: "Off road", value: kpis.offRoad, scope: dashboardScopeLabel, details: "Unavailable for operations" },
+    { section: "Fleet", metric: "Idle", value: kpis.idle, scope: dashboardScopeLabel, details: "Available but not utilized" },
+    { section: "Fleet", metric: "Overall availability", value: `${availabilityPercent}%`, scope: dashboardScopeLabel, details: `${availableFleet} on-road and idle assets` },
+    { section: "Breakdown movement", metric: "BD Open", value: breakdownMovementTotals.open, scope: dashboardPeriodLabel, details: `${throughputScopeLabel}${dashboardShiftDetail}` },
+    { section: "Breakdown movement", metric: "BD In", value: breakdownMovementTotals.incoming, scope: dashboardPeriodLabel, details: `${throughputScopeLabel}${dashboardShiftDetail}` },
+    { section: "Breakdown movement", metric: "BD Out", value: breakdownMovementTotals.outgoing, scope: dashboardPeriodLabel, details: `${throughputScopeLabel}${dashboardShiftDetail}` },
+    { section: "Breakdown movement", metric: "BD Balance", value: breakdownMovementTotals.balance, scope: dashboardPeriodLabel, details: `${throughputScopeLabel}${dashboardShiftDetail}` },
+    ...breakdownTypeSummary.map((type) => ({ section: "Breakdown type", metric: type.label, value: type.count, scope: dashboardPeriodLabel, details: `${type.percentage}% of open BD balance${dashboardShiftDetail}` })),
+    ...breakdownSiteSummary.map((site) => {
+      const road = roadAvailabilityBySiteName.get(site.site) || { total: 0, onRoad: 0, offRoad: 0, idle: 0, availability: 0 };
+      return { section: "Site summary", metric: site.site, value: site.balance, scope: dashboardPeriodLabel, details: `Open ${site.open}; In ${site.incoming}; Out ${site.outgoing}; Availability ${availabilityPercentFromCounts(road)}%; On road ${road.onRoad}; Off road ${road.offRoad}; Idle ${road.idle}; Total ${road.total}` };
+    }),
+    { section: "Request lifecycle", metric: "Opened", value: requestLifecycleRows.opened.length, scope: requestLifecycleRangeLabel, details: `${dashboardScopeLabel}${dashboardShiftDetail}` },
+    { section: "Request lifecycle", metric: "Closed", value: requestLifecycleRows.closed.length, scope: requestLifecycleRangeLabel, details: `${dashboardScopeLabel}${dashboardShiftDetail}` },
+    { section: "Request lifecycle", metric: "MIS verified", value: requestLifecycleRows.verified.length, scope: requestLifecycleRangeLabel, details: `${dashboardScopeLabel}${dashboardShiftDetail}` },
+    { section: "Request lifecycle", metric: "Idle", value: requestLifecycleRows.idle.length, scope: requestLifecycleRangeLabel, details: `${dashboardScopeLabel}${dashboardShiftDetail}` },
+  ];
+  const openAssetDrilldown = (key) => {
+    setBreakdownDayReturnSite("");
+    setAssetDrilldown(key);
+  };
+  const openRoadAvailabilityForSite = (site) => {
+    setRoadFocusSite(site);
+    setBreakdownDetailSite("");
+    setMaintenanceAvailabilityTab("road");
+  };
+  // Site is already chosen, so hand the drilldown a site-scoped key and close this modal.
+  const openSiteScopedDrilldown = (key) => {
+    setBreakdownDetailSite("");
+    openAssetDrilldown(key);
+  };
+  const movementKey = (metric = "all", site = "", type = "", start = breakdownSummaryStartKey, end = breakdownSummaryEndKey) => `movement:${metric}|${start}|${end}|${site}|${type}`;
+  const openBreakdownDay = (day, metric) => {
+    setBreakdownDayReturnSite(breakdownDetailSite);
+    setAssetDrilldown(movementKey(metric, breakdownDetailSite, "", day.date, day.date));
+    setBreakdownDetailSite("");
+  };
+  const closeAssetDrilldown = () => {
+    setAssetDrilldown("");
+    if (breakdownDayReturnSite) setBreakdownDetailSite(breakdownDayReturnSite);
+    setBreakdownDayReturnSite("");
+  };
+  const listAction = (key, label) => dashboardListTrigger(openSiteScopedDrilldown, key, label, equipmentLoaded);
+  const trendPointAction = (key, label) => dashboardListTrigger(openSiteScopedDrilldown, key, label, equipmentLoaded, "button", { selector: "i, b, small", backgroundKey: "trend:all" });
+  const cardAction = (key, label) => dashboardListTrigger(openSiteScopedDrilldown, key, `${label}. Open full list`, equipmentLoaded, "group");
+  if (hourlyBreakdownVisible) return <HourlyBreakdownView ActionsTable={ActionsTable} requests={scopedBreakdowns.map(request => ({ ...request, door: request.door || equipmentForRequest(request)?.door }))} sites={availableRegions.flatMap(region => region.sites).filter(site => !restrictToScope || normalizedAllowedSites?.some(allowed => recordBelongsToSite({site: allowed}, site)))} onBack={() => setHourlyBreakdownVisible(false)} />;
+  // Each section's export table: its Export menu offers it, and the whole dashboard's Excel workbook has a sheet
+  // per section (both Tracking Vehicle Throughput tabs) after the KPI sheet. Tables are built only when asked for.
+  const fleetSectionTable = () => fleetSectionExport({ mode: fleetChartMode, place: dashboardScopeLabel, regions: fleetRegionInsights, totals: liveFleetCounts, oemChart, stale: dashboardReconnecting, oemLabel: dashboardOem === "all" ? "All OEMs" : oemChart.oems.find((oem) => oem.key === dashboardOem)?.label || dashboardOem, period: oemLive ? "Current breakdowns" : filteredDateLabel });
+  const throughputSectionTable = (tab = maintenanceAvailabilityTab) => throughputSectionExport({ tab, place: throughputScopeLabel, period: breakdownSummaryPeriodLabel, availabilityLabel: availabilityStatusLabel, sites: breakdownSiteSummary, roadBySite: roadAvailabilityBySiteName, movementTotals: breakdownMovementTotals, openBalance: movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "active-balance").length, idleRequests: movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "idle").length, typeMix: breakdownTypeSummary, availabilitySites: availabilityCountBySite, availabilityTotals: availabilityKpis });
+  const lifecycleSectionTable = () => requestLifecycleExport({ trend: requestLifecycleTrend, readings: requestLifecycleReadings, place: `${requestLifecycleSite || requestLifecycleRegion?.code || dashboardScopeLabel}${dashboardShiftDetail}`, rangeLabel: requestLifecycleRangeLabel });
+  const trendSectionTable = () => breakdownTrendExport({ trend: breakdownTrend, place: `${activeTrendSite === "all" ? dashboardScopeLabel : activeTrendSite}${dashboardShiftDetail}`, from: breakdownTrendStartKey, to: breakdownTrendAnchorKey, total: breakdownTrendTotal, average: breakdownTrendAverage });
+  const dashboardExcelSheets = () => [
+    { name: "KPIs", title: "Fleet control dashboard KPIs", columns: dashboardKpiExportColumns, rows: dashboardExportRows },
+    ...(!equipmentLoaded ? [] : [
+      { name: showOemBreakdowns ? "OEM BD" : "Total Fleet", ...fleetSectionTable() },
+      ...(showOemBreakdowns ? [] : [
+        dailyBdExportRef.current && { name: "Daily BD balance", ...dailyBdExportRef.current },
+        { name: "BD Movement", ...throughputSectionTable("breakdown") },
+        { name: "Availability Count", ...throughputSectionTable("road") },
+        { name: "Request Lifecycle", ...lifecycleSectionTable() },
+        breakdownTrend.length > 0 && { name: "Breakdown trend", ...trendSectionTable() },
+      ]),
+    ]),
+  ].filter(Boolean);
+  // The whole dashboard: PDF and Smart Print capture it as it is on screen; Excel has every section.
+  const dashboardExportMenu = (className) => <ExportMenu title="Fleet control dashboard" columns={dashboardKpiExportColumns} rows={dashboardExportRows} excelSheets={dashboardExcelSheets} className={className} label="Print/Export" dashboardPdf />;
+  const renderDashboardHeader = (inDialog = false) => <DashboardFilterBar inDialog={inDialog} bannerRef={inDialog ? undefined : dashboardBannerRef} collapsedAction={inDialog ? null : dashboardExportMenu("dashboard-banner-export")}><label><span>Region</span><select aria-label="Region" value={dashboardRegion} onChange={(event) => { setDashboardRegion(event.target.value); setDashboardSite("all"); }}><option value="all">{restrictToScope?"All assigned sites":"All regions"}</option>{availableRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</select></label>{<label className="mine-site-filter"><span>Site</span><select aria-label="Site" value={dashboardSite} onChange={(event) => setDashboardSite(event.target.value)}><option value="all">All {selectedRegion?.code || ""} sites</option>{selectedSites.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>}<label className="mine-shift-filter"><span>Shift Master</span><select aria-label="Shift Master" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label><label className="mine-date-filter"><span>From</span><DateInput aria-label="Dashboard from date" value={dashboardFrom} max={dashboardTo || todayKey} onChange={(event) => updateDashboardRange("from", event.target.value)} /></label><label className="mine-date-filter"><span>To</span><DateInput aria-label="Dashboard to date" value={dashboardTo} min={dashboardFrom || undefined} max={todayKey} onChange={(event) => updateDashboardRange("to", event.target.value)} /></label>{showOemBreakdowns && <label className="mine-oem-filter"><span>OEM</span><select aria-label="OEM" value={dashboardOem} onChange={(event) => filterOemChart(event.target.value)}><option value="all">All OEMs</option>{oemChart.oems.map((oem) => <option key={oem.key} value={oem.key}>{oem.label}</option>)}</select></label>}<span className="mine-updated"><Activity /> {!equipmentLoaded ? (equipmentLoadError ? "Unavailable" : "Loading") : dashboardReconnecting ? "Reconnecting" : dashboardIsLive ? "Live" : "Filtered"} · {filteredDateLabel}{dashboardShift !== "all" ? ` · ${dashboardShiftLabel}` : ""}</span>{dashboardExportMenu("dashboard-export-trigger")}{inDialog && <button type="button" className="dashboard-export-trigger dashboard-filter-reset" onClick={resetOemFilters}>Reset filters</button>}</DashboardFilterBar>;
+  return (
+    <div className={`mine-dashboard ${theme === "dark" ? "mine-dashboard-night" : "mine-dashboard-day"}${showFleetBreakdowns ? " breakdown-dashboard-view" : ""}${showOemBreakdowns ? " mine-oem-view" : ""}`}>
+      {renderDashboardHeader()}
+      {cardSearchOpen && <DashboardCardSearch cards={dashboardSearchCards} onSelect={showDashboardCard} close={() => setCardSearchOpen(false)} />}
+      {dashboardReconnecting && <ConnectionRecoveryNotice updatedAt={dashboardUpdatedAt} retry={() => { retryEquipmentLoad(); return onRefreshRequests?.(); }} />}
+      <section className="mine-dashboard-feature-row" aria-label="Fleet and repair overview">
+        <article className={`mine-panel mine-fleet-region-chart${showFleetWatermark ? " watermarked" : ""}`} ref={fleetChartRef} data-mode={fleetChartMode} aria-label={`${showOemBreakdowns ? "OEM breakdown" : showFleetBreakdowns ? "Fleet with breakdowns" : "Total fleet"} by region and site graph`}>
+          <header>
+            <div className="mine-fleet-chart-heading">
+              <h2>{showOemBreakdowns ? "OEM BD" : "Total Fleet"}</h2>
+              <div className="mine-fleet-chart-toggle" role="group" aria-label="Fleet chart view">
+                {[["total", "Total"], ["oem", "OEM BD"], ["breakdown", "Breakdown"]].map(([mode, label]) => <React.Fragment key={mode}>{mode === "oem" && <div className="mine-fleet-view-option mine-bd-balance" title="Breakdown minus OEM BD"><button type="button" disabled={!equipmentLoaded} onClick={() => openAssetDrilldown("fleet-breakdown:balance")}>BD Balance</button><button type="button" className="mine-fleet-toggle-count" disabled={!equipmentLoaded} aria-label="View BD Balance list" onClick={() => openAssetDrilldown("fleet-breakdown:balance")}>{equipmentLoaded ? (accountBreakdownCount - oemChart.rows.length).toLocaleString() : "—"}</button></div>}<div className={`mine-fleet-view-option ${fleetChartMode === mode ? "active" : ""} ${mode === "oem" ? "mine-oem-tab" : mode === "breakdown" && !showOemBreakdowns && breakdownCountReady ? `${mode} trend-${todayBreakdownDirection}` : mode}`}>
+                  <button type="button" disabled={!equipmentLoaded} aria-pressed={fleetChartMode === mode} aria-controls={mode === "oem" ? "oem-breakdown-plot" : "fleet-region-plot"} onClick={() => setFleetChartMode(mode)}>{label}</button>
+                  <button type="button" className="mine-fleet-toggle-count" disabled={!equipmentLoaded} aria-label={`View ${label} list: ${mode === "oem" ? oemChart.rows.length : mode === "total" ? (showOemBreakdowns ? oemFleetEquipment.length : assetCounts.total) : accountBreakdownCount} assets${mode === "breakdown" && !showOemBreakdowns ? " across all assigned sites" : ""}`} onClick={() => {
+                    if (mode === "oem") { setFleetChartMode("oem"); openOemDrilldown(); }
+                    else if (mode === "total") { if (showOemBreakdowns) setOemDrilldownKind("fleet"); else openAssetDrilldown("all"); }
+                    else openBreakdownList();
+                  }}>{equipmentLoaded ? (mode === "oem" ? oemChart.rows.length : mode === "total" ? (showOemBreakdowns ? oemFleetEquipment.length : assetCounts.total) : accountBreakdownCount).toLocaleString() : "—"}</button>
+                  {mode === "breakdown" && !showOemBreakdowns && breakdownCountReady && <button type="button" onClick={() => openAssetDrilldown(`entered-today:${todayKey}`)} aria-label="View today’s active breakdown requests" key={`${todayKey}:${todayBreakdownRows.length}`} className={`mine-fleet-count-trend ${todayBreakdownDirection}`} title="Today’s breakdown requests still off-road across all assigned sites">{todayBreakdownRows.length > 0 ? <ArrowUp aria-hidden="true" /> : null}<span>{formatCountDelta(todayBreakdownRows.length)}</span></button>}
+                </div></React.Fragment>)}
+
+              </div>
+            </div>
+            <div className="mine-fleet-chart-tools">{!showOemBreakdowns && <div className="mine-fleet-chart-legend"><span {...listAction(showFleetBreakdowns ? "fleet-breakdown:equipment" : "equipment", showFleetBreakdowns ? "Equipment breakdown requests" : "Equipment records")}><i className="equipment" />Equipment</span><span {...listAction(showFleetBreakdowns ? "fleet-breakdown:vehicles" : "vehicle", showFleetBreakdowns ? "Vehicle breakdown requests" : "Vehicle records")}><i className="vehicles" />Vehicles</span>{showFleetBreakdowns && <span {...listAction(fleetChartAllKey, "All breakdown requests")}><i className="breakdown" />Breakdown</span>}</div>}{equipmentLoaded && <ExportMenu {...fleetSectionTable()} className="mine-section-export" printSection />}<button type="button" className="mine-fleet-watermark-toggle" aria-pressed={showFleetWatermark} title={`${showFleetWatermark ? "Hide" : "Show"} Caliber watermark`} onClick={() => setShowFleetWatermark((visible) => !visible)}>{showFleetWatermark ? <Eye /> : <EyeOff />}<span>Watermark</span></button></div>
+          </header>
+          {showOemBreakdowns && <div className="mine-oem-view-tabs" role="group" aria-label="OEM BD report view">{[["chart", "Chart"], ["details", "Site-wise detailing"]].map(([view, label]) => <button type="button" key={view} aria-pressed={oemView === view} onClick={() => setOemView(view)}>{label}</button>)}<div className="mine-oem-view-toolbar" ref={setOemViewToolbarTarget} /></div>}
+          {equipmentLoaded ? (showOemBreakdowns ? (oemView === "details" ? <section className="mine-oem-inline-details" aria-label="Site-wise OEM breakdown detailing"><OemBreakdownDetails viewToolbarTarget={oemViewToolbarTarget} key={[dashboardRegion, dashboardSite, dashboardOem, dashboardFrom, dashboardTo, dashboardShift].join("|")} selection={oemSiteDetailSelection} title={`OEM BD · Site-wise detailing · ${oemSiteDetailSelection.label}`} ActionsTable={ActionsTable} Status={Status} formatDate={formatTwelveHourDateTime} RequestTimelineButton={RequestTimelineButton} timelineToken={authToken} Dialog={Modal} MaintenanceRemarks={MaintenanceRemarks} /></section> : <OemBreakdownChart chart={oemChart} toolbarTarget={oemViewToolbarTarget} from={oemFrom} to={oemTo} availableHeight={oemPlotSpace} onSelect={openOemDrilldown} onFilterOem={filterOemChart} onReset={resetOemFilters} />) : <><div className="mine-fleet-chart-layout" id="fleet-region-plot" aria-label={showFleetBreakdowns ? "Total fleet with breakdowns included at the bottom of each bar" : "Total fleet by region and site"}>
+            <div className="mine-fleet-chart-plot">
+              <div className="mine-fleet-chart-regions" style={{ minWidth: `${fleetRegionInsights.reduce((count, region) => count + Math.max(1, region.sites.length), 0) * 108}px` }}><div className="mine-fleet-chart-grid" aria-hidden="true">{fleetChartTicks.map((tick) => <i key={tick} style={{ bottom: `${fleetBarHeightPercent(tick, fleetChartAxisMax)}%` }} />)}</div>{fleetRegionInsights.map((region) => <section key={region.code} style={{ flexGrow: Math.max(1, region.sites.length), minWidth: `${Math.max(1, region.sites.length) * 108}px` }} aria-label={`${region.code} fleet sites`}>
+                <div className="mine-fleet-chart-sites">{region.sites.map((site) => <div className="mine-fleet-site-entry" key={site.name}>
+                  <button type="button" className="mine-fleet-bars-trigger" onClick={(event) => {
+                    const segmentColumn = showFleetBreakdowns && event.detail !== 0 ? event.target.closest(".mine-fleet-breakdown-segment")?.closest(".mine-fleet-bar-column") : null;
+                    const totalColumn = event.target.closest(".mine-fleet-bar")?.closest(".mine-fleet-bar-column");
+                    if (event.detail !== 0 && !segmentColumn && !totalColumn) return;
+                    openAssetDrilldown(segmentColumn ? `offroad-site:${site.name}|${segmentColumn.classList.contains("vehicles") ? "vehicles" : "equipment"}` : totalColumn ? `site-total:${site.name}|${totalColumn.classList.contains("vehicles") ? "vehicles" : "equipment"}` : `${fleetChartMode === "total" ? "site" : "offroad-site"}:${site.name}`);
+                  }} aria-label={showFleetBreakdowns ? `${site.name}: ${site.equipment} equipment (${site.breakdown.equipment} breakdown) and ${site.vehicles} vehicles (${site.breakdown.vehicles} breakdown)` : `${site.name}: ${site.equipment} equipment and ${site.vehicles} vehicles`}><FleetSiteBars site={site} axisMax={fleetChartAxisMax} showBreakdown={showFleetBreakdowns} /></button>
+                  <small className="mine-fleet-site-summary"><b>{site.name}</b><button type="button" onClick={() => openAssetDrilldown(`offroad-site:${site.name}`)}>BD Balance {site.breakdown.total.toLocaleString()}</button><button type="button" onClick={() => openAssetDrilldown(`site:${site.name}`)}>Total Fleet {site.total.toLocaleString()}</button><button type="button" className="bd-percent" title={`BD Balance ${site.breakdown.total} of ${site.total} total fleet`} onClick={() => openAssetDrilldown(`offroad-site:${site.name}`)}>BD (%) {(site.total ? site.breakdown.total / site.total * 100 : 0).toFixed(1)}</button></small>
+                </div>)}</div>
+                <footer {...listAction(showFleetBreakdowns ? `fleet-breakdown:region:${region.code}` : `region:${region.code}`, `All ${region.code} ${showFleetBreakdowns ? "breakdown requests" : "fleet records"}`)}><b>{region.code}</b><span>{region.total.toLocaleString()} fleet</span><span className="mine-region-bd-summary">BD Balance {region.breakdown.total.toLocaleString()}<br />BD (%) {(region.total ? region.breakdown.total / region.total * 100 : 0).toFixed(1)}</span></footer>
+              </section>)}</div>
+            </div>
+          </div>
+          <div className="mine-fleet-chart-x" aria-hidden="true">Region and site</div></>) : <FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-fleet-chart-state" />}
+        </article>
+        {!showOemBreakdowns && <DailyBdBalanceChart records={locationBreakdowns} sites={trendAvailableSites} scopeLabel={dashboardSite !== "all" ? dashboardSite : selectedRegion?.code || "All regions"} today={todayKey} ready={equipmentLoaded} error={!equipmentLoaded ? equipmentLoadError : ""} stale={dashboardReconnecting} shift={dashboardShift} shiftOptions={dashboardShiftOptions} shiftRecords={shiftRecords} onShiftChange={setDashboardShift} onRefresh={() => { retryEquipmentLoad(); return onRefreshRequests?.(); }} onInspect={(metric, from, to, site) => openAssetDrilldown(`balance:${metric}|${from}|${to}|${site}`)} ExportMenu={ExportMenu} exportRef={dailyBdExportRef} />}
+        {!showOemBreakdowns && <article {...cardAction(maintenanceAvailabilityTab === "breakdown" ? movementKey() : "road-availability", "Tracking Vehicle Throughput")} className="mine-panel mine-maintenance-availability-panel" aria-label="Tracking vehicle throughput">
+          <header className="mine-maintenance-availability-head">
+            <div><h2>Tracking Vehicle Throughput</h2></div>
+            <div className="mine-maintenance-availability-tabs" role="tablist" aria-label="Tracking vehicle throughput views">
+              <button type="button" role="tab" aria-selected={maintenanceAvailabilityTab === "breakdown"} className={maintenanceAvailabilityTab === "breakdown" ? "active" : ""} onClick={() => setMaintenanceAvailabilityTab("breakdown")}><Wrench />Site-wise BD Movement</button>
+              <button type="button" role="tab" aria-selected={maintenanceAvailabilityTab === "road"} className={maintenanceAvailabilityTab === "road" ? "active" : ""} onClick={() => setMaintenanceAvailabilityTab("road")}><Gauge />Availability Count</button>
+            </div>
+            {equipmentLoaded && <ExportMenu {...throughputSectionTable()} className="mine-section-export" printSection />}
+            <button type="button" className="throughput-filter-eye" title={throughputFiltersHidden ? "Show region and date filters" : "Hide region and date filters"} aria-label={throughputFiltersHidden ? "Show region and date filters" : "Hide region and date filters"} aria-expanded={!throughputFiltersHidden} aria-controls="throughput-region-date-filters" onClick={(event) => { event.stopPropagation(); setThroughputFiltersHidden(hidden => !hidden); }}>{throughputFiltersHidden ? <EyeOff /> : <Eye />}</button>
+          </header>
+          <div id="throughput-region-date-filters" hidden={throughputFiltersHidden} ref={throughputFiltersRef} className="dashboard-breakdown-period-controls dashboard-breakdown-summary-controls" role="group" aria-label="Site-wise BD date range">
+            <label><span>Region</span><select aria-label="Vehicle throughput region" value={selectedThroughputRegion?.code || "all"} onChange={(event) => { setThroughputRegion(event.target.value); setThroughputSite("all"); setRoadFocusSite(""); }}><option value="all">All regions</option>{throughputRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</select></label>
+            {selectedThroughputRegion && <label><span>Site</span><select aria-label="Vehicle throughput site" value={activeThroughputSite} onChange={(event) => { setThroughputSite(event.target.value); setRoadFocusSite(""); }}><option value="all">All sites</option>{throughputSiteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>}
+            {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Vehicle throughput shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>}
+            <label><span>From date</span><DateInput aria-label="Site-wise BD from date" value={breakdownSummaryStartKey} max={todayKey} onChange={(event) => updateBreakdownSummaryRange("from", event.target.value)} /></label>
+            <label><span>To date</span><DateInput aria-label="Site-wise BD to date" value={breakdownSummaryEndKey} max={todayKey} onChange={(event) => updateBreakdownSummaryRange("to", event.target.value)} /></label>
+            <button type="button" onClick={resetBreakdownSummaryRange} disabled={breakdownSummaryIsToday && !breakdownSummaryManual}>Reset dates</button>
+          </div>
+          {equipmentLoaded ? maintenanceAvailabilityTab === "breakdown" ? <div className="mine-breakdown-movement-view">
+            <div className="mine-breakdown-movement-kpis">
+{[{ label: "BD In (opening + new)", value: breakdownMovementTotals.open + breakdownMovementTotals.incoming, className: "all" }, { label: "BD Out", value: breakdownMovementTotals.outgoing, className: "outgoing" }, { label: "BD Balance", value: movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "active-balance").length, className: "active-balance" }, { label: "Running with BD", value: movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "runningbd").length, className: "runningbd" }, { label: "Idle Vehicles", value: movementRequestRowsForShift(throughputRequests, breakdownSummaryStartKey, breakdownSummaryEndKey, "idle").length, className: "idle" }].map((item) => <div {...listAction(movementKey(item.className), `${item.label} requests`)} className={item.className === "all" ? "incoming" : item.className === "active-balance" ? "balance" : item.className} key={item.label}><span>{item.label}</span><strong>{item.value.toLocaleString()}</strong><small>{item.className === "all" && breakdownSummaryIsToday && !breakdownSummaryManual && <span aria-label="BD In opening and new counts">Opening: {breakdownMovementTotals.open.toLocaleString()} + New: {breakdownMovementTotals.incoming.toLocaleString()} · </span>}{breakdownSummaryPeriodLabel}</small></div>)}
+            </div>
+            <section {...cardAction(movementKey("active-balance"), "All open BD balance types")} className="mine-breakdown-type-mix" aria-label="Breakdown type percentage of open BD balance">
+              <header><div><b>BD Type Mix</b><small>Open BD balance · all maintenance types</small></div><span>Percentage share of open BD balance</span></header>
+              <div>{breakdownTypeSummary.map((type) => <article {...listAction(movementKey("active-balance", "", type.label), `${type.label} requests`)} key={type.label}><span><b>{type.label}</b><strong>{type.percentage}%</strong></span><i aria-hidden="true"><b style={{ width: `${type.percentage}%` }} /></i><small>{type.count} request{type.count === 1 ? "" : "s"}</small></article>)}</div>
+            </section>
+            <div className="mine-breakdown-site-table" role="table" aria-label="Site-wise breakdown opening, inward, outward and balance">
+              <div className="dashboard-breakdown-table-period" role="caption" aria-label="Site-wise BD table period">{breakdownSummaryFrom ? <><span>From: <b>{formatDisplayDate(breakdownSummaryStartKey)}</b></span><span>To: <b>{formatDisplayDate(breakdownSummaryEndKey)}</b></span></> : <span><b>All time</b></span>}<small>{availabilityStatusLabel}</small></div>
+              <div className="mine-breakdown-site-head" role="row"><span>Site name</span><span>BD Open</span><span>BD In</span><span>BD Out</span><span>BD Balance</span><span>Idle Vehicles</span><span>Availability count impact<small>{availabilityDateLabel}</small></span><span aria-hidden="true" /></div>
+              <div className="mine-breakdown-site-body">
+                {breakdownSiteSummary.length ? breakdownSiteSummary.map((site) => {
+                  const road = roadAvailabilityBySiteName.get(site.site) || { total: 0, onRoad: 0, offRoad: 0, idle: 0, availability: 0 };
+                  const roadAvailability = availabilityPercentFromCounts(road);
+                  return <button type="button" role="row" key={site.site} className="mine-breakdown-site-row" onClick={() => { setBreakdownDetailSite(site.site); setBreakdownDetailDays(5); setBreakdownDetailFrom(breakdownSummaryStartKey || throughputRequests.filter((record) => recordBelongsToSite(record, site.site)).map(breakdownOpenedDate).filter(Boolean).reduce((earliest, date) => date < earliest ? date : earliest, todayKey)); setBreakdownDetailTo(breakdownSummaryEndKey || todayKey); }} aria-label={`${site.site}: ${site.open} open, ${site.incoming} in, ${site.outgoing} out, ${site.balance} balance; ${roadAvailability}% availability count with ${road.onRoad} on road, ${road.offRoad} off road and ${road.idle} idle. Open linked day-wise details.`}>
+                    <span className="site"><MapPin /><b>{site.site}</b></span><span className="metric open"><b>{site.open}</b></span><span className="metric incoming"><b>+{site.incoming}</b></span><span className="metric outgoing"><b>-{site.outgoing}</b></span><span className="metric balance"><b>{site.balance}</b></span><span className="metric idle"><b>{site.idle}</b></span>
+                    <span className="mine-breakdown-road-impact"><span><b>{roadAvailability}%</b><small>{road.onRoad} On · {road.offRoad} Off · {road.idle} Idle</small></span><span className="mine-road-site-bar" aria-hidden="true"><i className="onroad" style={{ width: `${road.total ? (road.onRoad / road.total) * 100 : 0}%` }} /><i className="offroad" style={{ width: `${road.total ? (road.offRoad / road.total) * 100 : 0}%` }} /><i className="idle" style={{ width: `${road.total ? (road.idle / road.total) * 100 : 0}%` }} /></span><em>Availability count <ChevronRight /></em></span><ChevronRight />
+                  </button>;
+                }) : <div className="mine-empty">No sites are available for the selected dashboard scope.</div>}
+              </div>
+              {breakdownSiteSummary.length > 0 && (() => {
+                // Column sums of the site rows above, so the total always matches what is shown.
+                const total = breakdownSiteSummary.reduce((sum, site) => {
+                  const road = roadAvailabilityBySiteName.get(site.site);
+                  sum.open += site.open; sum.incoming += site.incoming; sum.outgoing += site.outgoing; sum.balance += site.balance; sum.idle += site.idle;
+                  if (road) { sum.road.total += road.total; sum.road.onRoad += road.onRoad; sum.road.offRoad += road.offRoad; sum.road.idle += road.idle; }
+                  return sum;
+                }, { open: 0, incoming: 0, outgoing: 0, balance: 0, idle: 0, road: { total: 0, onRoad: 0, offRoad: 0, idle: 0 } });
+                const road = total.road;
+                const roadAvailability = availabilityPercentFromCounts(road);
+                return <div role="row" className="mine-breakdown-site-row mine-breakdown-site-total" aria-label={`Total: ${total.open} open, ${total.incoming} in, ${total.outgoing} out, ${total.balance} balance; ${roadAvailability}% availability count with ${road.onRoad} on road, ${road.offRoad} off road and ${road.idle} idle.`}>
+                  <span className="site"><b>Total :</b></span><span className="metric open"><b>{total.open.toLocaleString()}</b></span><span className="metric incoming"><b>+{total.incoming.toLocaleString()}</b></span><span className="metric outgoing"><b>-{total.outgoing.toLocaleString()}</b></span><span className="metric balance"><b>{total.balance.toLocaleString()}</b></span><span className="metric idle"><b>{total.idle.toLocaleString()}</b></span>
+                  <span className="mine-breakdown-road-impact"><span><b>{roadAvailability}%</b><small>{road.onRoad} On · {road.offRoad} Off · {road.idle} Idle</small></span><span className="mine-road-site-bar" aria-hidden="true"><i className="onroad" style={{ width: `${road.total ? (road.onRoad / road.total) * 100 : 0}%` }} /><i className="offroad" style={{ width: `${road.total ? (road.offRoad / road.total) * 100 : 0}%` }} /><i className="idle" style={{ width: `${road.total ? (road.idle / road.total) * 100 : 0}%` }} /></span></span><span aria-hidden="true" />
+                </div>;
+              })()}
+            </div>
+          </div> : <div className="mine-site-road-view">
+            <div className="mine-site-road-summary">
+              <button type="button" className="availability" onClick={() => openAssetDrilldown("road-availability")}><span className="mine-site-road-gauge" style={{ "--availability": `${roadStatusShare(availabilityKpis.onRoad + availabilityKpis.idle) * 3.6}deg` }}><b>{availabilityPercentFromCounts(availabilityKpis)}%</b><small>Available</small></span><span><strong>{roadStatusTotal.toLocaleString()}</strong><small>Total fleet</small></span></button>
+              <button type="button" className="onroad" onClick={() => openAssetDrilldown("onroad")}><CheckCircle2 /><span><small>On road</small><strong>{availabilityKpis.onRoad.toLocaleString()}</strong></span></button>
+              <button type="button" className="offroad" onClick={() => openAssetDrilldown("offroad")}><AlertTriangle /><span><small>Off road</small><strong>{availabilityKpis.offRoad.toLocaleString()}</strong></span></button>
+              <button type="button" className="idle" onClick={() => openAssetDrilldown("idle")}><Clock /><span><small>Idle</small><strong>{availabilityKpis.idle.toLocaleString()}</strong></span></button>
+            </div>
+            <div className="mine-road-site-table" role="table" aria-label="Site-wise availability count">
+              <div className="dashboard-breakdown-table-period" role="caption" aria-label="Availability table period">{breakdownSummaryFrom ? <><span>From: <b>{formatDisplayDate(breakdownSummaryStartKey)}</b></span><span>To: <b>{formatDisplayDate(breakdownSummaryEndKey)}</b></span></> : <span><b>All time</b></span>}<small>{availabilityStatusLabel}</small></div>
+              <div className="mine-road-site-head" role="row"><span>Site name</span><span>Total fleet</span><span>On road</span><span>Off road</span><span>Idle</span><span>Availability</span><span>Status distribution</span><span aria-hidden="true" /></div>
+              <div className="mine-road-site-body">{availabilityCountBySite.length ? availabilityCountBySite.map((site) => {
+                const siteAvailability = availabilityPercentFromCounts(site);
+                return <button type="button" role="row" key={site.site} className={`mine-road-site-row${roadFocusSite === site.site ? " focused" : ""}`} onClick={() => openAssetDrilldown(`site-status:${site.site}|all`)} aria-label={`${site.site}: ${site.onRoad} on road, ${site.offRoad} off road and ${site.idle} idle. Open fleet details.`}>
+                <span className="site"><MapPin /><b>{site.site}</b></span><span className="metric total"><b>{site.total}</b></span><span className="metric onroad"><b>{site.onRoad}</b></span><span className="metric offroad"><b>{site.offRoad}</b></span><span className="metric idle"><b>{site.idle}</b></span><span className="availability"><b>{siteAvailability}%</b></span><span className="mine-road-site-bar" aria-hidden="true"><i className="onroad" style={{ width: `${site.total ? (site.onRoad / site.total) * 100 : 0}%` }} /><i className="offroad" style={{ width: `${site.total ? (site.offRoad / site.total) * 100 : 0}%` }} /><i className="idle" style={{ width: `${site.total ? (site.idle / site.total) * 100 : 0}%` }} /></span><ChevronRight />
+              </button>;
+              }) : <div className="mine-empty">No sites are available for the selected dashboard scope.</div>}</div>
+            </div>
+          </div> : <FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-maintenance-availability-state" />}
+        </article>}
+      </section>
+      {!showOemBreakdowns && <section className="mine-dashboard-grid mine-dashboard-core">
+        <article {...cardAction("all", "Total Equipment Intelligence")} className="mine-panel mine-fleet-command">
+          <header className="mine-fleet-command-head">
+            <div><h2>Total Equipment Intelligence</h2></div>
+            <div className="mine-fleet-command-actions">
+              <div className="mine-intelligence-view-switch" role="group" aria-label="Equipment intelligence chart view">
+                <button type="button" className={fleetIntelligenceView === "combined" ? "active" : ""} aria-pressed={fleetIntelligenceView === "combined"} onClick={() => setFleetIntelligenceView("combined")}><Network />Combined</button>
+                <button type="button" className={fleetIntelligenceView === "split" ? "active" : ""} aria-pressed={fleetIntelligenceView === "split"} onClick={() => setFleetIntelligenceView("split")}><Columns3 />Split</button>
+              </div>
+              <button type="button" className="mine-view-full-fleet" onClick={() => openAssetDrilldown("all")} disabled={!equipmentLoaded}>View full fleet <ChevronRight /></button>
+            </div>
+          </header>
+          {equipmentLoaded?<div className={`mine-fleet-command-body ${fleetIntelligenceView === "combined" ? "combined" : "split"}`}>
+            {fleetIntelligenceView === "combined" ? <section className="mine-fleet-combined" aria-label="Combined asset category and equipment group chart">
+              <div className="mine-fleet-section-title"><span>Fleet composition</span><b>Combined view</b></div>
+              <div className="mine-hierarchy-layout">
+                <div className="mine-hierarchy-chart-wrap">
+                  <svg className="mine-hierarchy-chart" viewBox="0 0 42 42" aria-label="Equipment and vehicle groups in one hierarchical chart">
+                    <circle className="mine-hierarchy-track" cx="21" cy="21" r="17" pathLength="100" fill="none" strokeWidth="4.5" />
+                    {fleetHierarchySlices.map((slice) => <circle key={slice.key} className="mine-hierarchy-slice outer" cx="21" cy="21" r="17" pathLength="100" fill="none" stroke={slice.color} strokeWidth="4.5" strokeDasharray={`${slice.percent} ${100 - slice.percent}`} strokeDashoffset={-slice.start} role="button" tabIndex="0" onClick={() => openAssetDrilldown(slice.drilldownKey)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openAssetDrilldown(slice.drilldownKey); }}><title>{slice.category} · {slice.label}: {slice.total} ({Math.round(slice.percent)}%)</title></circle>)}
+                    <circle className="mine-hierarchy-track inner" cx="21" cy="21" r="11.5" pathLength="100" fill="none" strokeWidth="5" />
+                    {assetCategoryPieSlices.map((slice) => <circle key={slice.key} className="mine-hierarchy-slice inner" cx="21" cy="21" r="11.5" pathLength="100" fill="none" stroke={slice.color} strokeWidth="5" strokeDasharray={`${slice.percent} ${100 - slice.percent}`} strokeDashoffset={-slice.start} role="button" tabIndex="0" onClick={() => openAssetDrilldown(slice.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openAssetDrilldown(slice.key); }}><title>{slice.label}: {slice.total} ({Math.round(slice.percent)}%)</title></circle>)}
+                  </svg>
+                  <span className="mine-pie-center"><b>{assetCounts.total.toLocaleString()}</b><small>Total fleet</small></span>
+                </div>
+                <div className="mine-hierarchy-details">
+                  <div className="mine-hierarchy-categories">{assetCategoryPieSlices.map((slice) => <button type="button" key={slice.key} onClick={() => openAssetDrilldown(slice.key)}><i style={{ background: slice.color }} /><span><b>{slice.label}</b><small>{Math.round(slice.percent)}% of fleet</small></span><strong>{slice.total.toLocaleString()}</strong></button>)}</div>
+                  <div className="mine-hierarchy-groups">{fleetHierarchySlices.map((slice) => <button type="button" key={slice.key} onClick={() => openAssetDrilldown(slice.drilldownKey)}><i style={{ background: slice.color }} /><span><b>{slice.label}</b><small>{slice.category}</small></span><strong>{slice.total.toLocaleString()}</strong></button>)}</div>
+                </div>
+              </div>
+            </section> : <>
+              <section className="mine-fleet-category mine-fleet-pie-panel" aria-label="Interactive asset category pie chart">
+                <div className="mine-fleet-section-title"><span>Asset category</span><b>{assetCounts.total.toLocaleString()} total</b></div>
+                <div className="mine-pie-chart-wrap"><svg className="mine-pie-chart" viewBox="0 0 42 42" aria-label={`${equipmentShare}% equipment and ${vehicleShare}% vehicles`}>{assetCategoryPieSlices.map((slice) => <circle key={slice.key} className="mine-pie-slice" cx="21" cy="21" r="15.9155" pathLength="100" fill="none" stroke={slice.color} strokeWidth="7" strokeDasharray={`${slice.percent} ${100 - slice.percent}`} strokeDashoffset={-slice.start} onClick={() => openAssetDrilldown(slice.key)} role="button" tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openAssetDrilldown(slice.key); }}><title>{slice.label}: {slice.total} ({Math.round(slice.percent)}%)</title></circle>)}</svg><span className="mine-pie-center"><b>{assetCounts.total.toLocaleString()}</b><small>Total fleet</small></span></div>
+                <div className="mine-pie-legend">{assetCategoryPieSlices.map((slice) => <button type="button" key={slice.key} onClick={() => openAssetDrilldown(slice.key)}><i style={{ background: slice.color }} /><span>{slice.label}</span><b>{slice.total.toLocaleString()}</b><em>{Math.round(slice.percent)}%</em></button>)}</div>
+              </section>
+              <section className="mine-fleet-groups mine-fleet-pie-panel" aria-label="Interactive equipment groups pie chart">
+                <div className="mine-fleet-section-title"><span>Equipment groups</span><b>{fleetGroupInsights.length} groups</b></div>
+                {fleetGroupPieSlices.length ? <><div className="mine-pie-chart-wrap"><svg className="mine-pie-chart" viewBox="0 0 42 42" aria-label={`${fleetGroupInsights.length} equipment groups`}>{fleetGroupPieSlices.map((slice) => <circle key={slice.key} className="mine-pie-slice" cx="21" cy="21" r="15.9155" pathLength="100" fill="none" stroke={slice.color} strokeWidth="7" strokeDasharray={`${slice.percent} ${100 - slice.percent}`} strokeDashoffset={-slice.start} onClick={() => openAssetDrilldown(slice.key)} role="button" tabIndex="0" onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openAssetDrilldown(slice.key); }}><title>{slice.label}: {slice.total}</title></circle>)}</svg><span className="mine-pie-center"><b>{fleetGroupInsights.length}</b><small>Groups</small></span></div><div className="mine-pie-legend mine-group-pie-legend">{fleetGroupPieSlices.map((slice) => <button type="button" key={slice.key} onClick={() => openAssetDrilldown(slice.key)}><i style={{ background: slice.color }} /><span>{slice.label}</span><b>{slice.total.toLocaleString()}</b></button>)}</div></> : <p className="mine-empty">No equipment groups available</p>}
+              </section>
+            </>}
+          </div>:<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-fleet-command-state" />}
+        </article>
+        <article {...cardAction("event:all", "Request Lifecycle")} className="mine-panel mine-request-lifecycle" aria-label="Opened, closed, verified and idle request trend">
+          <header>
+            <div><span className="mine-eyebrow">Workflow throughput</span><h2>Request Lifecycle</h2><p>{requestLifecycleRangeLabel}</p></div>
+            <div className="mine-request-lifecycle-controls">
+              <div className="mine-trend-period" role="group" aria-label="Request lifecycle period">{[7, 14, 30].map((days) => <button type="button" key={days} className={!requestTrendFrom && !requestTrendTo && requestTrendDays === days ? "active" : ""} onClick={() => { setRequestTrendDays(days); setRequestTrendFrom(""); setRequestTrendTo(""); }}>{days}D</button>)}</div>
+              <label className="mine-lifecycle-custom"><span>Custom</span><input type="number" aria-label="Request lifecycle custom days" min="1" max="365" placeholder="Days" defaultValue="" onChange={(event) => { const days = Number(event.target.value); if (Number.isInteger(days) && days >= 1 && days <= 365) { setRequestTrendDays(days); setRequestTrendFrom(""); setRequestTrendTo(""); } }} /></label>
+              <label><span>From</span><DateInput aria-label="Request lifecycle from date" value={requestTrendFrom || safeTrendStartKey} min={requestTrendEarliestKey} max={requestTrendTo || requestTrendEndKey} onChange={(event) => setRequestTrendFrom(event.target.value)} /></label>
+              <div className="mine-request-lifecycle-end-controls">
+                <label><span>To</span><DateInput aria-label="Request lifecycle to date" value={requestTrendTo || requestTrendEndKey} min={requestTrendFrom || undefined} max={localDateKey(now)} onChange={(event) => setRequestTrendTo(event.target.value)} /></label>
+                <label><span>Region</span><select aria-label="Request lifecycle region" value={requestLifecycleRegion || requestLifecycleSite ? requestTrendRegion : "all"} onChange={(event) => setRequestTrendRegion(event.target.value)}><option value="all">All regions</option>{requestLifecycleRegions.map((region) => <optgroup key={region.code} label={region.code}><option value={region.code}>{region.code}</option>{region.sites.map((site) => <option key={site} value={`site:${site}`}>{site}</option>)}</optgroup>)}</select></label>
+                {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Request lifecycle shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</select></label>}
+              </div>
+              {equipmentLoaded && <ExportMenu {...lifecycleSectionTable()} className="mine-section-export" printSection />}
+            </div>
+          </header>
+          {equipmentLoaded?<><div className="mine-request-lifecycle-summary">
+            {[{ key: "production", className: "opened", label: "Production Request", note: "Production + Maintenance", value: requestLifecycleRows.production.length }, { key: "closed", label: "Closed", note: "Maintenance completed", value: requestLifecycleRows.closed.length }, { key: "verified", label: "Verified", note: "MIS verified", value: requestLifecycleRows.verified.length }, { key: "idle", label: "Idle Vehicles", note: "Available, not working", value: requestLifecycleRows.idle.length }, { key: "maintenance", label: "Open in Maint", note: "Active in Maintenance", value: requestLifecycleAvailability.maintenance }, { key: "mis", label: "Open in MIS", note: "Closed - Verified", value: requestLifecycleAvailability.mis }].map((item) => <button type="button" key={item.key} className={item.className || item.key} onClick={() => item.key === "maintenance" ? openAssetDrilldown("event:opened") : openAssetDrilldown(`event:${item.key}`)}><i /><span><b>{item.label}</b><small>{item.note}</small></span><strong>{item.value.toLocaleString()}</strong></button>)}
+          </div>
+          <div className="mine-request-lifecycle-chart" aria-label={`Request lifecycle chart from ${safeTrendStartKey} to ${requestTrendEndKey}`}>
+            <div className="mine-request-chart-days mine-request-grouped-readings" style={{ gridTemplateColumns: `repeat(${requestLifecycleTrend.length}, minmax(100px, 1fr))` }}>
+              <div className="mine-request-chart-grid" aria-hidden="true">{requestLifecycleScale.ticks.map((tick) => <i key={tick} style={{ bottom: `${tick / requestLifecycleMaximum * 100}%` }} />)}</div>
+              {requestLifecycleTrend.map((day) => <div className="mine-request-chart-day" key={day.date}>
+                <span>
+                  {requestLifecycleReadings.map((reading) => { const key = reading.color === "mis" ? "mis" : reading.key; const value = day[key]; return <button type="button" key={reading.color} className={reading.color} disabled={!value} style={{ height: `${value ? Math.max(7, (value / requestLifecycleMaximum) * 100) : 2}%` }} aria-label={`${formatDisplayDate(day.date)}: ${value} ${reading.label} requests`} title={`${formatDisplayDate(day.date)}: ${reading.label}: ${value}`} onClick={() => openAssetDrilldown(`event:${key}:${day.date}`)}><b>{value || ""}</b></button>; })}
+                </span>
+                <small {...listAction(`event:all:${day.date}`, `All lifecycle requests on ${formatDisplayDate(day.date)}`)}>{formatDisplayDate(day.date)}</small>
+              </div>)}
+            </div>
+          </div></>:<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-request-lifecycle-state" />}
+        </article>
+      </section>}
+      {breakdownDetailSite && <Modal className="dashboard-breakdown-movement-modal" overlayClassName="dashboard-breakdown-movement-overlay" title={<><span className="dashboard-breakdown-site-title">{breakdownDetailSite}</span> · Day-wise BD Movement</>} close={() => setBreakdownDetailSite("")}><div className="dashboard-breakdown-movement-detail">
+        <div className="dashboard-breakdown-filter-toggle"><button type="button" aria-label={breakdownFiltersHidden ? "Show movement filters" : "Hide movement filters"} title={breakdownFiltersHidden ? "Show movement filters" : "Hide movement filters"} aria-expanded={!breakdownFiltersHidden} aria-controls="breakdown-movement-filters" onClick={() => setBreakdownFiltersHidden(hidden => !hidden)}>{breakdownFiltersHidden ? <EyeOff /> : <Eye />}</button></div>
+        <div id="breakdown-movement-filters" className="dashboard-breakdown-period-controls" hidden={breakdownFiltersHidden}>
+          <div className="mine-trend-period" role="group" aria-label="Breakdown movement day range">{[2, 5, 10].map((days) => <button type="button" key={days} className={!validBreakdownDetailRange && breakdownDetailDays === days ? "active" : ""} onClick={() => { setBreakdownDetailDays(days); setBreakdownDetailFrom(""); setBreakdownDetailTo(""); }}>{days} Days</button>)}</div>
+          <label><span>From date</span><DateInput aria-label="Breakdown movement from date" value={breakdownDetailFrom} max={breakdownDetailTo || breakdownDetailEndKey} onChange={(event) => setBreakdownDetailFrom(event.target.value)} /></label>
+          <label><span>To date</span><DateInput aria-label="Breakdown movement to date" value={breakdownDetailTo} min={breakdownDetailFrom || undefined} max={todayKey} onChange={(event) => setBreakdownDetailTo(event.target.value)} /></label>
+          <label className="dashboard-breakdown-custom-days"><span>Custom days</span><input type="number" aria-label="Custom breakdown movement days" min="1" max="31" value={breakdownCustomDays} onChange={(event) => setBreakdownCustomDays(Math.max(1, Math.min(31, Number(event.target.value) || 1)))} /></label>
+          <button type="button" className="dashboard-breakdown-apply" onClick={() => { setBreakdownDetailDays(breakdownCustomDays); setBreakdownDetailFrom(""); setBreakdownDetailTo(""); }}>Apply custom</button>
+          <button type="button" className="dashboard-breakdown-road-shortcut" onClick={() => openRoadAvailabilityForSite(breakdownDetailSite)}><Gauge />Availability count <ChevronRight /></button>
+        </div>
+        <div className="dashboard-breakdown-detail-kpis">
+          {[{ label: "BD Open", value: breakdownDetailTotals.open, className: "open" }, { label: "BD In", value: breakdownDetailTotals.incoming, className: "incoming" }, { label: "BD Out", value: breakdownDetailTotals.outgoing, className: "outgoing" }, { label: "BD Balance", value: breakdownDetailTotals.balance, className: "balance" }, { label: "Idle Vehicles", value: movementRequestRowsForShift(selectedBreakdownSiteRequests, breakdownDetailStartKey, breakdownDetailEndKey, "idle").length, className: "idle" }].map((item) => <div {...listAction(movementKey(item.className, breakdownDetailSite, "", breakdownDetailStartKey, breakdownDetailEndKey), `${item.label} requests at ${breakdownDetailSite}`)} className={item.className} key={item.label}><span>{item.label}</span><strong>{item.value.toLocaleString()}</strong><small>{formatDisplayDateRange(breakdownDetailStartKey, breakdownDetailEndKey)}</small></div>)}
+        </div>
+        <section {...cardAction(movementKey("active-balance", breakdownDetailSite, "", breakdownDetailStartKey, breakdownDetailEndKey), `${breakdownDetailSite} open BD balance types`)} className="mine-breakdown-type-mix detail" aria-label={`${breakdownDetailSite} breakdown type percentage of open BD balance`}>
+          <header><div><b>BD Type Mix</b><small>{breakdownDetailSite}</small></div><span>Percentage share of open BD balance</span></header>
+          <div>{breakdownDetailTypeSummary.map((type) => <button type="button" key={type.label} onClick={() => openSiteScopedDrilldown(`site-repair:${breakdownDetailSite}|${type.label}`)} aria-label={`${type.label}: ${type.count} requests. Drill into equipment and vehicles.`}><span><b>{type.label}</b><strong>{type.percentage}%</strong></span><i aria-hidden="true"><b style={{ width: `${type.percentage}%` }} /></i><small>{type.count} request{type.count === 1 ? "" : "s"}</small></button>)}</div>
+        </section>
+        <section {...cardAction(`site-status:${breakdownDetailSite}|all`, `${breakdownDetailSite} fleet`)} className="mine-breakdown-type-mix detail dashboard-breakdown-road-mix" aria-label={`${breakdownDetailSite} road status`}>
+          <header><div><b>Road Status</b><small>{breakdownDetailSite}</small></div><span>Drill into equipment and vehicles</span></header>
+          <div>{[{ key: "onroad", label: "On road", value: selectedBreakdownSiteRoad.onRoad }, { key: "offroad", label: "Off road", value: selectedBreakdownSiteRoad.offRoad }, { key: "idle", label: "Idle", value: selectedBreakdownSiteRoad.idle }].map((item) => <button type="button" key={item.key} onClick={() => openSiteScopedDrilldown(`site-status:${breakdownDetailSite}|${item.key}`)} aria-label={`${item.label}: ${item.value}. Drill into equipment and vehicles.`}><span><b>{item.label}</b><strong>{item.value}</strong></span><i aria-hidden="true"><b style={{ width: `${selectedBreakdownSiteRoad.total ? (item.value / selectedBreakdownSiteRoad.total) * 100 : 0}%` }} /></i><small>of {selectedBreakdownSiteRoad.total} fleet</small></button>)}</div>
+        </section>
+        <p className="dashboard-breakdown-day-help">Click a heading to sort. Click a date for that day's movement report, or a number for its entries. BD % opens the closing balance used in the percentage.</p>
+        <div className="dashboard-breakdown-day-table"><ActionsTable printTitle={`${breakdownDetailSite} · Day-wise BD Movement · ${formatDisplayDateRange(breakdownDetailStartKey, breakdownDetailEndKey)}`} exportTitle={`${breakdownDetailSite} · Day-wise BD Movement · ${formatDisplayDateRange(breakdownDetailStartKey, breakdownDetailEndKey)}`}><thead><tr>{[["date", "Date"], ["open", "BD Open"], ["incoming", "BD In"], ["outgoing", "BD Out"], ["balance", "BD Balance"], ["percentage", "BD %"]].map(([key, label]) => <SortableHeader key={key} label={label} sortKey={key} sort={breakdownDaySort} onSort={changeBreakdownDaySort} />)}</tr></thead><tbody>{sortedBreakdownDetailRows.length ? sortedBreakdownDetailRows.map((day) => {
+          const breakdownPercentage = selectedBreakdownSiteRoad.total ? (day.balance / selectedBreakdownSiteRoad.total) * 100 : 0;
+          const dayLabel = formatDisplayDate(day.date);
+          return <tr key={day.date}><td><button type="button" className="dashboard-breakdown-day-link" onClick={() => openBreakdownDay(day, "all")} aria-label={`${breakdownDetailSite} · ${dayLabel}: open day movement report`}><b>{dayLabel}</b></button></td>{[["open", "BD Open", ""], ["incoming", "BD In", "+"], ["outgoing", "BD Out", "-"], ["balance", "BD Balance", ""]].map(([metric, label, prefix]) => <td key={metric} className={metric}><button type="button" className="dashboard-breakdown-day-link" onClick={() => openBreakdownDay(day, metric)} aria-label={`${breakdownDetailSite} · ${dayLabel}: ${label}, ${day[metric]} entries`}>{prefix}{day[metric]}</button></td>)}<td className="percentage"><button type="button" className="dashboard-breakdown-day-link" onClick={() => openBreakdownDay(day, "balance")} aria-label={`${breakdownDetailSite} · ${dayLabel}: BD ${breakdownPercentage.toFixed(1)}%, show ${day.balance} balance entries`} title={`BD Balance ${day.balance} ÷ ${selectedBreakdownSiteRoad.total} registered fleet × 100`}><b>{breakdownPercentage.toFixed(1)}%</b><small>of {selectedBreakdownSiteRoad.total} fleet</small></button></td></tr>;
+        }) : <tr><td colSpan="6">No breakdown movement found for this period.</td></tr>}</tbody></ActionsTable></div>
+      </div></Modal>}
+      {oemDrilldown && <Modal className="dashboard-asset-modal mine-oem-modal" overlayClassName="dashboard-asset-overlay" topBar={renderDashboardHeader(true)} title={oemDrilldown.title} close={() => setOemDrilldownKind(null)} headerActions={<div className="modal-header-actions" ref={setOemToolbarTarget} />}>
+        <OemBreakdownDetails key={[dashboardRegion, dashboardSite, dashboardOem, dashboardFrom, dashboardTo, oemDrilldownKind].join("|")} selection={oemDrilldown} title={oemDrilldown.title} toolbarTarget={oemToolbarTarget} ActionsTable={ActionsTable} Status={Status} formatDate={formatTwelveHourDateTime} RequestTimelineButton={RequestTimelineButton} timelineToken={authToken} Dialog={Modal} MaintenanceRemarks={MaintenanceRemarks} />
+      </Modal>}
+      {assetDrilldown && <Modal className={`dashboard-asset-modal${showFleetSiteTabs ? " fleet-site-tabs-modal" : ""}`} overlayClassName="dashboard-asset-overlay" title={initialDrilldownSite && assetDrilldownTitle.startsWith(initialDrilldownSite) ? <><span className="dashboard-heading-site">{initialDrilldownSite}</span>{assetDrilldownTitle.slice(initialDrilldownSite.length)}</> : assetDrilldownTitle} close={closeAssetDrilldown}>
+        {breakdownDayReturnSite && <button type="button" className="dashboard-breakdown-day-back" onClick={closeAssetDrilldown}>Back to day-wise report</button>}
+        <DashboardRecordBrowser key={assetDrilldown} rows={fleetSiteTabRows} groupBySite={showFleetSiteTabs} hideHierarchyFilters={showFleetSiteTabs} regions={assetDrilldownRegions} rowsAreScoped={true} title={assetDrilldownTitle} initialRegion={initialDrilldownRegion} initialSite={initialDrilldownSite} hideCurrentLocation={hideFleetChartLocation} hideEquipmentCategory={hideFleetChartCategory} requestRecords={requestAssetDrilldown} lifecycleRecords={assetDrilldown.startsWith("event:")} lifecycleEvent={lifecycleDrilldownParts[1]} showBdClosingTime={movementDrilldownParts[0] === "outgoing"} ActionsTable={ActionsTable} Status={Status} formatDate={formatTwelveHourDateTime} RequestTimelineButton={RequestTimelineButton} timelineToken={authToken} onHourlyReport={["fleet-breakdown:all", "fleet-breakdown:account"].includes(assetDrilldown) ? () => setHourlyBreakdownVisible(true) : undefined} bdBalanceColumns={fleetBreakdownDrilldown} Dialog={Modal} Remarks={MaintenanceRemarks}
+          movementDateControl={movementDrilldownParts[0] === "open" ? {
+            label: "Opening balance date",
+            value: encodeDateRange(movementDrilldownParts[1], movementDrilldownParts[2]),
+            onChange: (value) => {
+              const range = parseDateRange(value);
+              const start = range?.from || range?.to || todayKey;
+              const end = range?.to || start;
+              const parts = [...movementDrilldownParts];
+              parts[1] = start;
+              parts[2] = end;
+              setAssetDrilldown(`${assetDrilldown.startsWith("balance:") ? "balance" : "movement"}:${parts.join("|")}`);
+            },
+          } : null}
+        />
+      </Modal>}
+      {!showOemBreakdowns && <section className="mine-dashboard-lower-grid">
+      <section {...cardAction("trend:all", "Breakdown trend")} className="mine-panel mine-breakdown-trend">
+        <header><div><span className="mine-eyebrow">Reliability intelligence</span><h2>Breakdown trend</h2><p>Recorded breakdown history</p></div><div className="mine-trend-controls"><label><MapPin /><select aria-label="Breakdown trend site" value={activeTrendSite} onChange={(event) => setBreakdownTrendSite(event.target.value)}><option value="all">All visible sites</option>{trendAvailableSites.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>{dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Breakdown trend shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</select></label>}<label className="mine-trend-anchor"><span>From</span><DateInput aria-label="Breakdown trend from date" max={todayKey} value={breakdownTrendStartKey} onChange={(event) => updateBreakdownTrendRange("from", event.target.value)} /></label><label className="mine-trend-anchor"><span>To</span><DateInput aria-label="Breakdown trend to date" max={todayKey} value={breakdownTrendAnchorKey} onChange={(event) => updateBreakdownTrendRange("to", event.target.value)} /></label><div className="mine-trend-summary-row"><div className="mine-trend-period" role="group" aria-label="Breakdown trend period">{[7, 14, 30].map((days) => <button type="button" key={days} className={breakdownTrendPeriodDays === days ? "active" : ""} onClick={() => { setBreakdownTrendDays(days); setBreakdownTrendFrom(""); setBreakdownTrendRangeError(""); }}>{days}D</button>)}</div>{equipmentLoaded && breakdownTrend.length > 0 && <ExportMenu {...trendSectionTable()} className="mine-section-export" printSection />}<button type="button" className="mine-trend-view-all" onClick={() => openAssetDrilldown("trend:all")}>View all <ChevronRight /></button>{equipmentLoaded && <div className="mine-trend-summary"><article {...listAction("trend:all", "All recorded breakdown requests")}><span>Recorded</span><strong>{breakdownTrendTotal.toLocaleString()}</strong><small>{breakdownTrendPeriodDays} selected days</small></article><article {...listAction("trend:all", "Recorded requests for the daily baseline")}><span>Daily baseline</span><strong>{breakdownTrendAverage}</strong><small>Recorded per day</small></article></div>}</div></div>{breakdownTrendRangeError && <small role="alert">{breakdownTrendRangeError}</small>}</header>
+        {equipmentLoaded?<div className="mine-breakdown-trend-body">
+          <section className="mine-trend-visual"><div className="mine-trend-legend"><span {...listAction("trend:all", "All recorded breakdown requests")}><i className="actual" />Actual</span><b aria-label="Breakdown trend selected period">From: {formatDisplayDate(breakdownTrendStartKey)} · To: {formatDisplayDate(breakdownTrendAnchorKey)}</b></div><div className="mine-trend-chart" aria-label={`${breakdownTrendPeriodDays} day recorded breakdown chart`}><div className="mine-trend-chart-days" style={{ minWidth: `${Math.max(0, breakdownTrend.length * 26 - 4)}px` }}><div className="mine-trend-chart-grid" aria-hidden="true">{breakdownTrendScale.ticks.map((tick) => <i key={tick} style={{ bottom: `${tick / maxBreakdownTrend * 100}%` }} />)}</div>{breakdownTrend.map((day, index) => <div {...trendPointAction(`trend:${day.kind}:${day.date}`, `${formatDisplayDate(day.date)}: ${day.count} ${day.kind === "forecast" ? "forecast, open supporting records" : "recorded breakdown requests"}`)} className={`mine-trend-day ${day.kind}${day.anchor ? " anchor" : ""}`} key={`${day.kind}-${day.date}`} title={`${formatDisplayDate(day.date)}: ${day.count} ${day.kind === "forecast" ? "forecast" : "recorded"} breakdown${day.count === 1 ? "" : "s"}`}><span><i style={{ height: `${day.count / maxBreakdownTrend * 100}%` }}><b>{day.count}</b></i></span><small>{index === 0 || index === breakdownTrend.length - 1 || breakdownTrendPeriodDays <= 14 || index % 5 === 0 || day.anchor ? formatDisplayDate(day.date) : ""}</small></div>)}</div></div></section>
+        </div>:<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-breakdown-trend-state" />}
+      </section>
+      <article {...cardAction("all", "Overall Fleet Performance")} className="mine-panel mine-fleet-performance" aria-label="Overall utilization and availability">
+        <header><div><span className="mine-eyebrow">Fleet efficiency</span><h2>Overall Fleet Performance</h2><p>Utilization and operational availability at a glance</p></div><strong><Gauge />{equipmentLoaded?kpis.total.toLocaleString():"—"} fleet</strong></header>
+        {equipmentLoaded?<div className="mine-fleet-performance-body">
+          <div className="mine-performance-gauges">{[
+            { key: "onroad", label: "Overall Utilization", value: utilizationPercent, count: kpis.onRoad, note: "On road / total fleet", color: "#315fd4" },
+            { key: "available", label: "Overall Availability", value: availabilityPercent, count: availableFleet, note: "On road + idle / total fleet", color: "#26956f" },
+          ].map((gauge) => <button type="button" key={gauge.label} onClick={() => openAssetDrilldown(gauge.key)} style={{ "--gauge-angle": `${gauge.value * 2.7}deg`, "--gauge-color": gauge.color }}><span>{gauge.label}</span><div className="mine-radial-gauge"><strong>{gauge.value}%</strong><small>{gauge.count}/{kpis.total}</small></div><p>{gauge.note}</p><em>View details <ChevronRight /></em></button>)}</div>
+          <div className="mine-performance-composition"><div><span>Fleet composition</span><b>{kpis.total.toLocaleString()} assets</b></div><div className="mine-performance-bar" aria-label={`${kpis.onRoad} utilized, ${kpis.idle} idle and ${Math.max(0, kpis.total - availableFleet)} unavailable`}><i {...listAction("onroad", "Utilized fleet records")} className="utilized" style={{ width: `${kpis.total ? (kpis.onRoad / kpis.total) * 100 : 0}%` }} /><i {...listAction("idle", "Idle fleet records")} className="idle" style={{ width: `${kpis.total ? (kpis.idle / kpis.total) * 100 : 0}%` }} /><i {...listAction("unavailable", "Unavailable fleet records")} className="unavailable" style={{ width: `${kpis.total ? (Math.max(0, kpis.total - availableFleet) / kpis.total) * 100 : 0}%` }} /></div><div className="mine-performance-legend"><span {...listAction("onroad", "Utilized fleet records")}><i className="utilized" />Utilized <b>{kpis.onRoad}</b></span><span {...listAction("idle", "Idle fleet records")}><i className="idle" />Idle <b>{kpis.idle}</b></span><span {...listAction("unavailable", "Unavailable fleet records")}><i className="unavailable" />Unavailable <b>{Math.max(0, kpis.total - availableFleet)}</b></span></div></div>
+        </div>:<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-fleet-performance-state" />}
+      </article>
+      </section>}
+    </div>
+  );
+}
+const PRODUCTION_REQUEST_COLUMNS = ["door", "equipment", "model", "site", "breakdownDays", "category", "delayedReason", "complaint", "openingHmr", "openingKmr", "start", "expectedCompletionAt", "status", "dailyRemarks", "ref", "createdBy", "requesterRole"];
+function ResponsibilityHistoryCell({request}) {
+  return <BreakdownResponsibilityHistory request={request} formatDate={formatTwelveHourDateTime} />;
+}
+function breakdownCell(key, r, { showReadOnlyAction = false, onApproveIdeal, onCancelIdeal, requestActions = null } = {}) {
+  switch (key) {
+    case "requestAction": return showReadOnlyAction ? <td className="row-actions">{requestActions ? requestActions(r) : <span>Read only</span>}</td> : null;
+    case "ref": return <td><RequestTimelineButton reference={r.ref} token={authToken} Dialog={Modal} /></td>;
+    case "equipment": return <td>{normalizeEquipmentGroup(r.equipmentGroup) || r.equipment || "—"}</td>;
+    case "door": return <td>{r.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openVehicleRepairHistory(r); }} aria-label={`View repair history for door number ${r.door}`} title="View breakdown and repair history">{r.door}</a> : "—"}</td>;
+    case "make": return <td>{r.make || "—"}</td>;
+    case "model": return <td>{r.model || "—"}</td>;
+    case "site": return <td><MapPin /> {r.site}</td>;
+    case "complaint": return <td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text={r.complaint} language={r.complaintLanguage} /></div>{r.complaintMediaAvailable && <ComplaintMediaView request={r} token={authToken} Dialog={Modal} />}</td>;
+    case "openingHmr": return <td>{breakdownMeterValue(r, "HMR")}</td>;
+    case "openingKmr": return <td>{breakdownMeterValue(r, "KMR")}</td>;
+    case "closingHmr": return <td>{breakdownMeterValue(r, "HMR", "closing")}</td>;
+    case "closingKmr": return <td>{breakdownMeterValue(r, "KMR", "closing")}</td>;
+    case "createdBy": return <td>{r.owner || r.requesterLogin || "—"}</td>;
+    case "requesterRole": return <td>{r.requesterRole || "—"}</td>;
+    case "closedBy": return <td>{r.closedBy || "—"}</td>;
+    case "chassis": return <td>{r.chassis || "—"}</td>;
+    case "breakdownDays": return <td><RequestTimelineButton reference={r.ref} token={authToken} Dialog={Modal} label={`${r.breakdownDays} ${r.breakdownDays === 1 ? "day" : "days"}`} /></td>;
+    case "category": return <td>{r.category}</td>;
+    case "delayedReason": return <td>{r.delayedReason || "—"}</td>;
+    case "start": return <td>{formatTwelveHourDateTime(r.start)}</td>;
+    case "expectedCompletionAt": return <td>{formatTwelveHourDateTime(r.expectedCompletionAt)}</td>;
+    case "closedAt": return <td>{formatTwelveHourDateTime(r.closedAt)}</td>;
+    case "hours": return <td>{r.hours}</td>;
+    case "status": return <td><Status>{requestStatusLabel(r)}</Status></td>;
+    case "idleReason": return <td>{r.idleReason || "—"}</td>;
+    case "dailyRemarks": return <td><MaintenanceRemarks remarks={r.dailyRemarks} category={r.category} /></td>;
+    case "oemResponsibilityHistory": return <td><ResponsibilityHistoryCell request={r} /></td>;
+    case "audio": return <td><div className="request-audio-list">
+      {r.complaintAudioAvailable && <label><span>Complaint</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(r.ref)}/audio/complaint`} token={authToken} label="Complaint audio" /></label>}
+      {r.maintenanceAudioAvailable && <label><span>Maintenance</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(r.ref)}/audio/maintenance`} token={authToken} label="Maintenance audio" /></label>}
+      {!r.complaintAudioAvailable && !r.maintenanceAudioAvailable && "—"}
+    </div></td>;
+    case "owner": return <td>{r.owner}</td>;
+    case "idealAction": return (onApproveIdeal || onCancelIdeal) ? <td><div className="idle-approval-actions">{onApproveIdeal && <button type="button" className="primary compact" onClick={() => onApproveIdeal(r)}><CheckCircle2 /> Make on road</button>}{onCancelIdeal && <button type="button" className="compact" onClick={() => onCancelIdeal(r)}><X /> Cancel</button>}</div></td> : null;
+    default: return null;
+  }
+}
+function BreakdownTable({ rows = breakdowns, showBreakdownDays = false, stickyHeader = false, showAudio = false, showTurnaroundTime = false, showReason = true, showCreatedBy = false, showUserRole = true, showClosedBy = false, showClosedAt = false, closedAtLabel = "Closing time", showCompletionDetails = false, showMakeModel = false, showDateFilter = false, rowLimit = 0, showStatusFilter = true, onApproveIdeal, onCancelIdeal, showReadOnlyAction = false, stableToolbar = false, actionsBesideSearch = true, statusPanelId = "", statusPanelLabelledBy = "", onDelete, onDeleteSelected, canDeleteRow, onEdit, onRemark, exportTitle = "Breakdown report", columnOrder = null }) {
+  if (exportTitle === "Closed Production Requests") showStatusFilter = false;
+  const showActionColumn = showReadOnlyAction || Boolean(onDelete || onDeleteSelected || onEdit || onRemark);
+  // Edits and daily updates apply only to active, unverified requests, matching the server's rule.
+  const rowUpdatable = (row) => !["closed", "idle", "ideal"].includes(String(row.status || "").trim().toLowerCase()) && !row.verifiedAt;
+  const rowDeletable = (row) => Boolean(canDeleteRow ? canDeleteRow(row) : !isIdleVehicleRequest(row));
+  const [selectedRefs, setSelectedRefs] = useState(() => new Set());
+  const toggleSelected = (ref, checked) => setSelectedRefs((current) => { const next = new Set(current); if (checked) next.add(ref); else next.delete(ref); return next; });
+  useEffect(() => { setSelectedRefs((current) => { const present = new Set(rows.map((row) => row.ref)); const next = new Set([...current].filter((ref) => present.has(ref))); return next.size === current.size ? current : next; }); }, [rows]);
+  const requestActions = (onDelete || onDeleteSelected || onEdit || onRemark) ? (row) => {
+    const canEdit = onEdit && rowUpdatable(row), canRemark = onRemark && rowUpdatable(row), canDelete = onDelete && rowDeletable(row);
+    return <>
+      {onDeleteSelected && <label className="request-select" title={rowDeletable(row) ? `Select ${row.ref} for deletion` : "This request cannot be deleted"}><input type="checkbox" aria-label={`Select ${row.ref} for deletion`} checked={selectedRefs.has(row.ref)} disabled={!rowDeletable(row)} onChange={(event) => toggleSelected(row.ref, event.target.checked)} /></label>}
+      {canEdit && <button type="button" onClick={() => onEdit(row)}><Pencil /> Edit</button>}
+      {canDelete && <button type="button" className="danger" onClick={() => onDelete(row)}><Trash2 /> Delete</button>}
+      {canRemark && <button type="button" onClick={() => onRemark(row)}><MessageCircle /> Daily update</button>}
+      {!canEdit && !canRemark && !canDelete && <span>Read only</span>}
+    </>;
+  } : null;
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const mobileControlsId = React.useId();
+  const [breakdownNow, setBreakdownNow] = useState(() => Date.now());
+  const [query, setQuery] = useState(""), [statusFilter, setStatusFilter] = useState(""), [dateFilter, setDateFilter] = useState(""), [parameterFilters, setParameterFilters] = useState({});
+  const deferredQuery = useDeferredValue(query);
+  const [openFilter, setOpenFilter] = useState(null);
+  const [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  useEffect(() => {
+    if (!showBreakdownDays) return undefined;
+    const timer = window.setInterval(() => setBreakdownNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [showBreakdownDays]);
+  const columns = [
+      ...(showActionColumn ? [["requestAction", "Actions"]] : []), ["ref", "Job reference"], ["equipment", "Equipment group"], ["door", "Door no."], ...(showMakeModel ? [["make", "Make"], ["model", "Model"]] : []), ["site", "Site location"],
+      ...(showReason ? [["complaint", "BD reason"]] : []), ["openingHmr", "Opening HMR"], ["openingKmr", "Opening KMR"], ...(showCreatedBy ? [["createdBy", "Created by"]] : []), ...(showUserRole ? [["requesterRole", "User role"]] : []), ...(showClosedBy ? [["closedBy", "Closed by"]] : []),
+      ...(showAudio ? [["chassis", "Chassis no."]] : []),
+      ...(showCompletionDetails ? [["maintenanceWork", "Work completion action taken"], ["closingHmr", "Closing HMR"], ["closingKmr", "Closing KMR"]] : []),
+      ...(showBreakdownDays ? [["breakdownDays", "Days of BD"]] : []),
+      ["category", "BD type"], ["delayedReason", "Delayed reason"], ["start", "Started"], ["expectedCompletionAt", "ETC"], ...(showClosedAt ? [["closedAt", closedAtLabel], ...(showCompletionDetails ? [] : [["closingHmr", "Closing HMR"], ["closingKmr", "Closing KMR"]])] : []), ["hours", showTurnaroundTime ? "Turn around time (TAT)" : "Downtime"],
+      ["status", "Status"], ["idleReason", "Idle reason"], ["dailyRemarks", "Daily remarks"], ...(showAudio ? [["audio", "Audio clips"]] : []), ["owner", "Responsibility"], ...(onApproveIdeal || onCancelIdeal ? [["idealAction", "Action"]] : []),
+    ],
+    orderedColumns = columnOrder ? [...columns.filter(([key]) => key === "requestAction"), ...columnOrder.map((orderKey) => columns.find(([key]) => key === orderKey)).filter(Boolean), ["oemResponsibilityHistory", "Breakdown responsibility history"]] : [...columns, ["oemResponsibilityHistory", "Breakdown responsibility history"]],
+    dateFilteredRows = showDateFilter && dateFilter ? rows.filter((row) => dashboardRecordDate(row) === dateFilter) : rows,
+    sourceRows = rowLimit > 0 && !dateFilter ? dateFilteredRows.slice(0, rowLimit) : dateFilteredRows,
+    displayRows = showBreakdownDays
+      ? sourceRows.map((row) => ({
+          ...row,
+          breakdownDays: calculateBreakdownDaysUntilClose(row.start, row.closedAt, breakdownNow),
+        }))
+      : sourceRows,
+    filterColumns = orderedColumns.filter(([key]) => !["idealAction", "requestAction"].includes(key)).map(([key, label]) => ({
+      key,
+      label,
+      value: (row) => {
+        if (key === "status") return requestStatusLabel(row);
+        if (key === "equipment") return normalizeEquipmentGroup(row.equipmentGroup) || row.equipment;
+        if (key === "createdBy") return row.owner || row.requesterLogin;
+        if (key === "requesterRole") return row.requesterRole || "—";
+        if (key === "openingHmr") return breakdownMeterValue(row, "HMR");
+        if (key === "openingKmr") return breakdownMeterValue(row, "KMR");
+        if (key === "closingHmr") return breakdownMeterValue(row, "HMR", "closing");
+        if (key === "closingKmr") return breakdownMeterValue(row, "KMR", "closing");
+        if (key === "start") return formatTwelveHourDateTime(row.start);
+        if (key === "expectedCompletionAt") return formatTwelveHourDateTime(row.expectedCompletionAt);
+        if (key === "closedAt") return formatTwelveHourDateTime(row.closedAt || row.runningBdAt);
+        if (key === "audio") return row.complaintAudioAvailable || row.maintenanceAudioAvailable ? "Available" : "Not available";
+        if (key === "dailyRemarks") return dailyUpdatesExportText(row.dailyRemarks, { category: row.category });
+        if (key === "oemResponsibilityHistory") return responsibilityHistoryText(row, formatTwelveHourDateTime);
+        return row[key];
+      },
+    })),
+    searchedRows = displayRows.filter((row) => matchesSmartSearch(deferredQuery, row.ref, row.equipmentGroup, row.equipment, row.door, row.site, requestStatusLabel(row), row.complaint, row.owner, row.closedBy, row.make, row.model, row.expectedCompletionAt, showUserRole ? row.requesterRole : "") && (!statusFilter || requestStatusLabel(row) === statusFilter) && tableRowMatchesFilters(row, filterColumns, parameterFilters)),
+    [sortedRows, sort, changeSort] = useSortableRows(searchedRows, defaultDurationSort(filterColumns), (row, key) => key === "status" ? requestStatusSortRank(requestStatusLabel(row)) : key === "hours" ? durationLabelMinutes(row.hours) : key === "breakdownDays" ? calculateBreakdownMinutes(row.start, row.closedAt, breakdownNow) : key === "dailyRemarks" ? latestDailyUpdateStamp(row.dailyRemarks) : row[key]);
+  const [tableFilteredRefs, setTableFilteredRefs] = useState(null);
+  const trackFilteredRows = tableRows => {
+    const refs = tableRows.map(row => row.props["data-request-reference"]).filter(Boolean);
+    setTableFilteredRefs(current => current?.join("\n") === refs.join("\n") ? current : refs);
+  };
+  const deletionRows = sortedRows.filter(row => rowDeletable(row) && (!tableFilteredRefs || tableFilteredRefs.includes(row.ref)));
+  const selectedRows = deletionRows.filter(row => selectedRefs.has(row.ref));
+  const updateColumnFilter = (key, value) => setParameterFilters((current) => {
+    const next = { ...current };
+    if (value) next[key] = value;
+    else delete next[key];
+    return next;
+  });
+  const activeFilterColumn = openFilter ? filterColumns.find((column) => column.key === openFilter) : null;
+  const columnValues = activeFilterColumn ? {[activeFilterColumn.key]: tableColumnValues(displayRows, activeFilterColumn)} : {};
+  useEffect(() => {
+    if (!openFilter) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".column-filter-header, .column-filter-popover")) setOpenFilter(null);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [openFilter]);
+  return (
+    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className={`table-search-toolbar${stableToolbar ? " manager-table-search-toolbar" : ""}`}><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(requestStatusLabel).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label>}{showDateFilter && <label className="table-date-filter"><CalendarDays /><DateInput aria-label="Filter by started date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>}<div className="toolbar-actions-end">{actionsBesideSearch && <div className="master-actions-slot" ref={setActionsToolbarTarget} />}{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}{!stableToolbar && <ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} smartPrintItem />}</div></div><div id={statusPanelId || undefined} role={statusPanelId ? "tabpanel" : undefined} aria-labelledby={statusPanelLabelledBy || undefined} className={`${showBreakdownDays ? "scroll mobile-breakdown-table" : "scroll"}${stickyHeader ? " master-table-scroll" : ""}`}>
+      <ActionsTable className="breakdown-table-auto-fit" closedTimeAfterStarted={showClosedAt} onFilteredRows={onDeleteSelected ? trackFilteredRows : null} exportTitle={stableToolbar ? exportTitle : ""} printTitle={stableToolbar ? "Manager dashboard requests" : ""} toolbarTarget={actionsBesideSearch ? actionsToolbarTarget : null} toolbarPortal={actionsBesideSearch} onClearToolbarFilters={() => { setStatusFilter(""); setDateFilter(""); }}>
+        <thead>
+          <tr>
+            {orderedColumns.map(([key, label]) => (
+              key === "idealAction" ? <SortableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} /> : <FilterableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} open={openFilter === key} onToggle={(filterKey) => setOpenFilter((current) => current === filterKey ? null : filterKey)} values={columnValues[key] || []} filterValue={parameterFilters[key] || ""} onFilterChange={(value) => updateColumnFilter(key, value)} />
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.length ? (
+            sortedRows.map((r) => (
+              <tr data-oem-responsibility={r.oemResponsibility} data-request-reference={r.ref} key={r.ref} className={requestAwaitingAcceptance(r, breakdownNow) ? "request-awaiting-acceptance" : ""}>
+                {columnOrder ? orderedColumns.map(([key]) => <React.Fragment key={key}>{breakdownCell(key, r, { showReadOnlyAction: showActionColumn, onApproveIdeal, onCancelIdeal, requestActions })}</React.Fragment>) : <>
+                {showActionColumn && <td className="row-actions">{requestActions ? requestActions(r) : <span>Read only</span>}</td>}
+                <td><RequestTimelineButton reference={r.ref} token={authToken} Dialog={Modal} /></td>
+                <td>{normalizeEquipmentGroup(r.equipmentGroup) || r.equipment || "—"}</td>
+                <td>{r.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openVehicleRepairHistory(r); }} aria-label={`View repair history for door number ${r.door}`} title="View breakdown and repair history">{r.door}</a> : "—"}</td>
+                {showMakeModel && <><td>{r.make || "—"}</td><td>{r.model || "—"}</td></>}
+                <td>
+                  <MapPin /> {r.site}
+                </td>
+                {showReason && <td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text={r.complaint} language={r.complaintLanguage} /></div>{r.complaintMediaAvailable && <ComplaintMediaView request={r} token={authToken} Dialog={Modal} />}</td>}
+                <td>{breakdownMeterValue(r, "HMR")}</td>
+                <td>{breakdownMeterValue(r, "KMR")}</td>
+                {showCreatedBy && <td>{r.owner || r.requesterLogin || "—"}</td>}
+                {showUserRole && <td>{r.requesterRole || "—"}</td>}
+                {showClosedBy && <td>{r.closedBy || "—"}</td>}
+                {showAudio && <td>{r.chassis || "—"}</td>}
+                {showCompletionDetails && <><td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text={r.maintenanceWork || "—"} language={r.maintenanceWorkLanguage} /></div></td><td>{requestMeterReadings(r, "closing").HMR || "—"}</td><td>{requestMeterReadings(r, "closing").KMR || "—"}</td></>}
+                {showBreakdownDays && <td><RequestTimelineButton reference={r.ref} token={authToken} Dialog={Modal} label={`${r.breakdownDays} ${r.breakdownDays === 1 ? "day" : "days"}`} /></td>}
+                <td>{r.category}</td>
+                <td>{r.delayedReason || "—"}</td>
+                <td>{formatTwelveHourDateTime(r.start)}</td>
+                <td>{formatTwelveHourDateTime(r.expectedCompletionAt)}</td>
+                {showClosedAt && <td>{formatTwelveHourDateTime(r.closedAt)}</td>}
+                {showClosedAt && !showCompletionDetails && <><td>{breakdownMeterValue(r, "HMR", "closing")}</td><td>{breakdownMeterValue(r, "KMR", "closing")}</td></>}
+                <td>{showBreakdownDays ? r.hours : <RequestTimelineButton reference={r.ref} token={authToken} Dialog={Modal} label={r.hours || "—"} />}</td>
+                <td>
+                  <Status>{requestStatusLabel(r)}</Status>
+                </td>
+                <td>{r.idleReason || "—"}</td>
+                <td><MaintenanceRemarks remarks={r.dailyRemarks} category={r.category} /></td>
+                {showAudio && <td><div className="request-audio-list">
+                  {r.complaintAudioAvailable && <label><span>Complaint</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(r.ref)}/audio/complaint`} token={authToken} label="Complaint audio" /></label>}
+                  {r.maintenanceAudioAvailable && <label><span>Maintenance</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(r.ref)}/audio/maintenance`} token={authToken} label="Maintenance audio" /></label>}
+                  {!r.complaintAudioAvailable && !r.maintenanceAudioAvailable && "—"}
+                </div></td>}
+                <td>{r.owner}</td>
+                {(onApproveIdeal||onCancelIdeal)&&<td><div className="idle-approval-actions">{onApproveIdeal&&<button type="button" className="primary compact" onClick={()=>onApproveIdeal(r)}><CheckCircle2 /> Make on road</button>}{onCancelIdeal&&<button type="button" className="secondary danger compact" onClick={()=>onCancelIdeal(r)}><X /> Cancel idle</button>}</div></td>}
+                <td><ResponsibilityHistoryCell request={r} /></td></>}
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={orderedColumns.length} className="empty-state">
+                No records available
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </ActionsTable>
+    </div></>
+  );
+}
+const masterFields = {
+  "Equipment master": [
+    ["door", "Door / registration"],
+    ["reg", "Registration no."],
+    ["currentLocation", "Current location"],
+    ["equipmentName", "Equipment name"],
+    ["category", "Equipment category"],
+    ["group", "Equipment group"],
+    ["itemName", "Item name"],
+    ["itemSpecification", "Item specification name"],
+    ["acquisitionDate", "Acquisition date"],
+    ["make", "Make"],
+    ["model", "Model"],
+    ["manufacturerSerialNo", "Manufacturer serial no."],
+    ["engineNo", "Engine no."],
+    ["chassisNo", "Chassis no."],
+    ["documentStatus", "Document status"],
+    ["asset", "Asset no."],
+    ["status", "Equipment status"],
+  ],
+  "Vehicle transfers": [
+    ["transferNo", "Equipment Transfer No."],
+    ["transferDate", "Equipment Transfer Date"],
+    ["source", "From Location"],
+    ["destination", "To Location"],
+    ["equipment", "Equipment"],
+    ["modelNo", "Model No."],
+    ["manufacturerSerialNo", "Manufacturing Serial No."],
+    ["lastMaintenanceDate", "Last Maintenance Date"],
+    ["driver", "Driver"],
+    ["chassisNo", "Chasis No"],
+    ["dieselQty", "Diesel QTY"],
+    ["kmr", "KMR"],
+    ["hmr", "HMR"],
+  ],
+  "Breakdown master": [
+    ["ref", "Job reference"],
+    ["door", "Door no."],
+    ["site", "Site location"],
+    ["category", "Repair category"],
+    ["start", "Started"],
+    ["expectedCompletionAt", "ETC"],
+    ["hours", "Downtime"],
+    ["status", "Status"],
+    ["owner", "Responsibility"],
+  ],
+  "Repair type master": [
+    ["repairType", "Repair type"],
+  ],
+  "Breakdown Sub-Category": [
+    ["subCategory", "Sub-Category"],
+  ],
+  "Delayed Reason": [
+    ["delayedReason", "Delayed reason"],
+    ["repairTypes", "Breakdown types (comma separated, or All)"],
+  ],
+  "Shift Master": [
+    ["site", "Site Name", "site-select"],
+    ["shiftName", "Shift"],
+    ["shiftCode", "Shift Code"],
+    ["startTime", "Start", "time"],
+    ["endTime", "End", "time"],
+    ["effectiveFrom", "Effective From", "date"],
+    ["effectiveTo", "Effective To", "date"],
+    ["status", "Status", "shift-status"],
+    ["remarks", "Remarks"],
+  ],
+  "Users & employees": [
+    ["login", "Login name"],
+    ["employee", "Employee name"],
+    ["superior", "Superior", "multi-text"],
+    ["site", "Location"],
+    ["email", "Mail ID"],
+    ["phone", "Phone no."],
+    ["userType", "User role"],
+    ["masterAccess", "Visible masters", "multi-checkbox"],
+    ["tabAccess", "Visible tabs", "multi-checkbox"],
+  ],
+  "Region master": [
+    ["name", "Region name"],
+    ["code", "Short name"],
+    ["state", "State code"],
+    ["sites", "Sites (separate with |)"],
+  ],
+  "Hierarchy master": [
+    ["section", "Section"],
+    ["designation", "Designation"],
+    ["level", "User level (L1 / L2 / L3 / L4)"],
+    ["schedule", "Schedule"],
+    ["scheduleDays", "Scheduled days (separate with |)"],
+    ["scheduleTimes", "IST times (h:mm AM/PM, separate with |)"],
+    ["reportAccess", "Report ticks (separate with |)"],
+    ["siteAccess", "Site ticks (separate with |)"],
+  ],
+  "OEM master": [
+    ["oem", "OEM name"],
+    ["contact", "Contact name"],
+    ["designation", "Designation"],
+    ["phone", "Phone no."],
+    ["email", "Email ID"],
+    ["location", "Location"],
+    ["level", "Level (L1 / L2 / L3 / L4)"],
+  ],
+  Privilege: [
+    ["username", "Username", "user-select"],
+    ["userGroup", "User Group", "mobile-role-select"],
+    ["accessType", "Super User / Mobile User", "role-radio"],
+    ["location", "Location", "site-select"],
+    ["read", "Read", "checkbox"],
+    ["edit", "Edit", "checkbox"],
+    ["delete", "Delete", "checkbox"],
+    ["verify", "Verify", "checkbox"],
+    ["print", "Print", "checkbox"],
+  ],
+};
+const isCheckedValue = (value) =>
+  value === true || ["true", "yes", "1", "enabled", "checked"].includes(String(value || "").trim().toLowerCase());
+const privilegeAccessOptions = ["Super User", "Mobile User"];
+const mobileUserRoleOptions = [...MOBILE_USER_ROLES,"Account User", "Tender User"];
+const mobileRoleAuthority = {
+  "Tender User":"Tender login with custom menus, submenus and actions",
+  "Production User": "Create request only",
+  "Maintenance User": "Edit and delete requests",
+  "MIS User": "Verify requests only",
+  "General User": "Choose from all menus",
+  "HR Manager": "Office HR approvals, C-Directory and C-Dir Masters",
+  "HR User": "Complete C-Directory, tenure report and C-Dir Masters",
+  "Account User": "Accounts workspace only",
+  "Tender User": "Tender login with menus and actions customised for this user",
+};
+const accountRoleOptions = ["User", ...mobileUserRoleOptions];
+const userAuthorityOptions = ["Admin", "Manager"];
+const managerRoleOptions = ["Project Manager", "Production Manager", "Maintenance Manager", "MIS Manager"];
+const persistedUserTypeOptions = ["Mobile User", "Super Admin"];
+const userPrivilegeFields = [
+  ["tenderAccess","Tender application access","checkbox"],
+  ["tenderDesktopAccess","Tender desktop menus","multi-checkbox"],
+  ["tenderMobileAccess","Tender mobile menus","multi-checkbox"],
+  ["tenderBusinessUnit","Tender business unit"],
+  ["userGroup", "User Group", "mobile-role-select"],
+  ["adminLevel", "User authority"],
+  ["managerRole", "Manager role", "multi-checkbox"],
+  ["managerRegion", "Report regions", "multi-checkbox"],
+  ["managerSites", "Report sites", "multi-checkbox"],
+  ["read", "Read", "checkbox"],
+  ["edit", "Edit", "checkbox"],
+  ["delete", "Delete", "checkbox"],
+  ["verify", "Verify", "checkbox"],
+  ["print", "Print", "checkbox"],
+];
+const mobileAccessKey=(key)=>`mobile${key[0].toUpperCase()}${key.slice(1)}`;
+const desktopSubmenuFields = Object.values(ADMIN_SUBMENU_OPTIONS).map(({field, label}) => [field, label, "multi-checkbox"]);
+const mobileSubmenuFields = Object.values(ADMIN_SUBMENU_OPTIONS).map(({field, label}) => [mobileAccessKey(field), `Mobile ${label}`, "multi-checkbox"]);
+const userSubmenuFields = [...desktopSubmenuFields, ...mobileSubmenuFields, ["mobileTabAccess", "Mobile visible tabs", "multi-checkbox"]];
+userSubmenuFields.push(["userRoles","Assigned roles","multi-checkbox"],["accountAccess","Accounts privileges","multi-checkbox"]);
+userSubmenuFields.push(["desktopManagerCreateRequest", "Desktop manager create request", "checkbox"], ["mobileManagerCreateRequest", "Mobile manager create request", "checkbox"]);
+const operationalViewFields = [
+  ["desktopUserMenuAccess","Desktop user menus","multi-checkbox"],
+  ["desktopUserRequestAccess","Desktop request submenus","multi-checkbox"],
+  ["mobileUserMenuAccess","Mobile user menus","multi-checkbox"],
+  ["mobileUserRequestAccess","Mobile request submenus","multi-checkbox"],
+];
+userSubmenuFields.push(...operationalViewFields);
+const operationalDefaultMenuOptions=["Requests","Tickets","CD"];
+const operationalMenuOptions=[...operationalDefaultMenuOptions];
+const userMenuOptionLabel=(option)=>option==="CD"?"Directory (CD)":option;
+const operationalRequestOptions={
+  "Production User":["View requests","Create request","Closed history"],
+  "Maintenance User":["View requests","Create request","Close request form","Closed history"],
+  "MIS User":["View requests",MIS_VERIFICATION_MENU,"Closed history"],
+  "General User":["View requests","Closed history"],
+};
+const userAccessOptions = {
+  tenderDesktopAccess:TENDER_ALL_PERMISSIONS,
+  tenderMobileAccess:TENDER_ALL_PERMISSIONS,
+  masterAccess: ADMIN_MASTER_OPTIONS,
+  tabAccess: ADMIN_DEFAULT_TAB_OPTIONS,
+  ...Object.fromEntries(Object.values(ADMIN_SUBMENU_OPTIONS).map(({field, options}) => [field, options])),
+  mobileTabAccess: ADMIN_DEFAULT_TAB_OPTIONS,
+  ...Object.fromEntries(Object.values(ADMIN_SUBMENU_OPTIONS).map(({field, options}) => [mobileAccessKey(field), options])),
+  desktopUserMenuAccess:GENERAL_USER_MENU_OPTIONS,
+  mobileUserMenuAccess:GENERAL_USER_MENU_OPTIONS,
+  desktopUserRequestAccess:[...new Set(Object.values(operationalRequestOptions).flat())],
+  mobileUserRequestAccess:[...new Set(Object.values(operationalRequestOptions).flat())],
+};
+const selectedAccessValues = (record, key, fallbackKey = "") => {
+  if (!Object.prototype.hasOwnProperty.call(record || {}, key)) return fallbackKey ? selectedAccessValues(record,fallbackKey) : userAccessOptions[key] || [];
+  return [...new Set(String(record[key] || "").split(/\s*[|,]\s*/).map(normalizeRequestMenuLabel).filter(Boolean))];
+};
+const privilegeSiteOptions = [...new Set(subsidiaryData.flatMap((region) => region.sites))];
+// Hierarchy report headings mirror the Reports menu (General, Production, Maintenance, MIS); see hierarchy-report-catalogue.mjs.
+const hierarchyReports = { ...HIERARCHY_REPORTS, inOut: IN_OUT_REPORT_TITLE };
+const hierarchyReportGroups = HIERARCHY_REPORT_GROUPS;
+const hierarchyReportTitles = HIERARCHY_REPORT_TITLES;
+const hierarchyReportCodes = HIERARCHY_REPORT_CODES;
+const hierarchyReportsIn = (...groups) => hierarchyReportGroups.filter((group) => groups.includes(group.viewKey)).flatMap((group) => group.reports);
+const hierarchyManagerReports = hierarchyReportTitles.filter((report) => ![hierarchyReports.vehicleTransfer, hierarchyReports.locationWise, hierarchyReports.inOut].includes(report));
+const hierarchyDefaults = [
+  {section:"Management", designation:"Director's", level:"1", schedule:"Daily 07:00:00 PM; weekly fleet Sat 07:00:00 PM", reportAccess:hierarchyReportTitles.join(" | ")},
+  {section:"Management", designation:"Project Manager (P.M)", level:"2", schedule:"08:00:00 AM & 06:00:00 PM common; 07:00:00 PM operational; weekly fleet Sat 07:00:00 PM", reportAccess:hierarchyReportTitles.join(" | ")},
+  {section:"Production Dept.", designation:"Production Manager", level:"3", schedule:"Every event for opening/closing/MIS; 08:00:00 AM & 06:00:00 PM road status; 07:00:00 PM operational", reportAccess:hierarchyManagerReports.join(" | ")},
+  {section:"Production Dept.", designation:"Production Incharge / Supervisor", level:"4", schedule:"Every event", reportAccess:hierarchyReportsIn("P").join(" | ")},
+  {section:"Maintenance Dept.", designation:"Maintenance Manager", level:"3", schedule:"Every event for opening/closing/MIS; 08:00:00 AM & 06:00:00 PM road status; 07:00:00 PM operational", reportAccess:hierarchyManagerReports.join(" | ")},
+  {section:"Maintenance Dept.", designation:"Maintenance Incharge / Supervisor", level:"4", schedule:"Every event", reportAccess:hierarchyReportsIn("M").join(" | ")},
+  {section:"MIS Dept.", designation:"MIS Manager", level:"3", schedule:"Every event for closing/MIS; 08:00:00 AM & 06:00:00 PM road status; 07:00:00 PM operational", reportAccess:hierarchyManagerReports.join(" | ")},
+  {section:"MIS Dept.", designation:"MIS Incharge / Supervisor", level:"4", schedule:"Every event", reportAccess:hierarchyReportsIn("S").join(" | ")},
+  {section:"OEM", designation:"National Head", level:"1", schedule:"Every 7th day consolidate", reportAccess:hierarchyReports.repairTat},
+  {section:"OEM", designation:"Regional Head / Zonal Head", level:"2", schedule:"Every 5th day consolidate", reportAccess:hierarchyReports.repairTat},
+  {section:"OEM", designation:"Area Service engineer", level:"3", schedule:"Every 3rd day consolidate", reportAccess:hierarchyReports.repairTat},
+  {section:"OEM", designation:"Service Engineer / Site Service Engineer", level:"4", schedule:"Every day consolidate", reportAccess:hierarchyReports.repairTat},
+];
+const hierarchySiteGroups = subsidiaryData.map((region) => ({code:region.code, name:region.name, sites:region.sites}));
+const hierarchySiteTitles = hierarchySiteGroups.flatMap((region) => region.sites);
+const hierarchyColumnViewOptions = [
+  {key:"A", label:"Designation / level / schedule", shortLabel:"Identity"},
+  {key:"C", label:"General reports", shortLabel:"General"},
+  {key:"P", label:"Production report", shortLabel:"Production"},
+  {key:"M", label:"Maintenance reports", shortLabel:"Maintenance"},
+  {key:"S", label:"MIS reports", shortLabel:"MIS"},
+  {key:"W", label:"WCL and NCL site-wise controls", shortLabel:"Site wise"},
+];
+const hierarchyRowViewOptions = [
+  {key:"D", label:"Director", shortLabel:"Director"},
+  {key:"P", label:"Project Manager", shortLabel:"PM"},
+  {key:"M", label:"Production, Maintenance and MIS managers", shortLabel:"Managers"},
+  {key:"U", label:"Users, supervisors and OEM roles", shortLabel:"Users"},
+];
+function hierarchyRowViewKey(row = {}) {
+  const designation = String(row.designation || "").toLowerCase();
+  if (designation.includes("director")) return "D";
+  if (designation.includes("project manager")) return "P";
+  if (designation.includes("manager")) return "M";
+  return "U";
+}
+const legacyPrivilegeFlagValues = new Set(["true", "false", "yes", "no", "1", "0", "enabled", "checked"]);
+function privilegeSelectionValue(value) {
+  if (typeof value !== "string") return "";
+  const selected = value.trim();
+  return legacyPrivilegeFlagValues.has(selected.toLowerCase()) ? "" : selected;
+}
+function privilegeAccessValue(value) {
+  const normalized = privilegeSelectionValue(value).toLowerCase();
+  if (normalized.includes("mobile") || normalized.includes("normal")) return "Mobile User";
+  if (normalized.includes("super") || normalized === "admin") return "Super User";
+  return "";
+}
+function normalizeEquipmentRecord(record = {}) {
+  const currentLocation = record.currentLocation || record.location || "";
+  const acquisitionDate = record.acquisitionDate || record.acquired || "";
+  return {
+    ...record,
+    location: currentLocation,
+    currentLocation,
+    acquired: acquisitionDate,
+    acquisitionDate,
+  };
+}
+const sortCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+function comparableValue(value) {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return value;
+  const text = String(value ?? "").trim();
+  const indianDate = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(.*))?$/);
+  if (indianDate) {
+    const [, day, month, year, time = "00:00:00"] = indianDate;
+    const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${time}`);
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
+  return text;
+}
+function useSortableRows(rows, defaultSort = "", valueForKey = (row, key) => row[key], durationSorting = true) {
+  const [sort, setSort] = useState(() => typeof defaultSort === "string" ? { key: defaultSort, direction: "asc" } : defaultSort);
+  const sortedRows = useMemo(() => {
+    if (!sort.key) return rows;
+    const durationColumn = typeof durationSorting === "function" ? durationSorting(sort.key) : durationSorting && isDurationColumn("", sort.key);
+    return rows.map((row, index) => ({ row, index })).sort((left, right) => {
+      const a = comparableValue(valueForKey(left.row, sort.key));
+      const b = comparableValue(valueForKey(right.row, sort.key));
+      if (durationColumn) return compareDurationValues(a, b, sort.direction) || left.index - right.index;
+      let result;
+      if (typeof a === "number" && typeof b === "number") result = a - b;
+      else result = sortCollator.compare(String(a), String(b));
+      if (!result) result = left.index - right.index;
+      return sort.direction === "asc" ? result : -result;
+    }).map(({ row }) => row);
+  }, [rows, sort, valueForKey, durationSorting]);
+  const changeSort = (key, direction) => setSort((current) => ({
+    key,
+    direction: direction || (current.key === key && current.direction === "asc" ? "desc" : "asc"),
+  }));
+  return [sortedRows, sort, changeSort];
+}
+const WORKFLOW_INITIAL_RENDER_ROWS = 100;
+const WORKFLOW_RENDER_BATCH = 100;
+function SortableHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey,
+    Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button className={`sort-header ${active ? "active" : ""}`} onClick={() => onSort(sortKey)} type="button">
+        <span>{label}</span><Icon aria-hidden="true" /><ListFilter className="header-filter-icon" aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+function visibleViewportBounds() {
+  const viewport = window.visualViewport;
+  const left = viewport?.offsetLeft || 0;
+  const top = viewport?.offsetTop || 0;
+  const width = viewport?.width || window.innerWidth;
+  const height = viewport?.height || window.innerHeight;
+  return { left, top, width, height, right: left + width, bottom: top + height };
+}
+function observeVisibleViewport(listener) {
+  window.addEventListener("resize", listener);
+  window.visualViewport?.addEventListener("resize", listener);
+  window.visualViewport?.addEventListener("scroll", listener);
+  return () => {
+    window.removeEventListener("resize", listener);
+    window.visualViewport?.removeEventListener("resize", listener);
+    window.visualViewport?.removeEventListener("scroll", listener);
+  };
+}
+function FilterableHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  open = false,
+  onToggle,
+  values = [],
+  filterValue = "",
+  onFilterChange,
+  durationSortOnly = isDurationColumn(label, sortKey),
+  dateSortOnly = false,
+  wrapHeader = false,
+}) {
+  const [valueSearch, setValueSearch] = useState("");
+  const triggerRef = useRef(null);
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
+  const active = sort.key === sortKey,
+    Icon = active ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown,
+    visibleValues = values.filter((value) => matchesSmartSearch(valueSearch, value)),
+    // Date columns open only From / To pickers that filter the column by day.
+    dateColumn = looksLikeDateColumn(values),
+    dateRange = parseDateRange(filterValue) || { from: "", to: "" };
+  const chooseDurationSort = (direction) => {
+    onFilterChange?.("");
+    onSort(direction ? sortKey : "", direction || "asc");
+    onToggle(sortKey);
+  };
+  useEffect(() => {
+    if (!open) setValueSearch("");
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const positionPopover = () => {
+      const bounds = triggerRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const viewport = visibleViewportBounds();
+      const width = Math.min(240, viewport.width - 24);
+      const height = Math.min(420, viewport.height - 24);
+      const below = bounds.bottom + 5;
+      setPopoverPosition({
+        top: below + height > viewport.bottom - 12 ? Math.max(viewport.top + 12, bounds.top - height - 5) : below,
+        left: Math.max(viewport.left + 12, Math.min(bounds.left, viewport.right - width - 12)),
+      });
+    };
+    positionPopover();
+    const stopObservingViewport = observeVisibleViewport(positionPopover);
+    window.addEventListener("scroll", positionPopover, true);
+    return () => {
+      stopObservingViewport();
+      window.removeEventListener("scroll", positionPopover, true);
+    };
+  }, [open]);
+  return (
+    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""}`} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        ref={triggerRef}
+        className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
+        onClick={(event) => { event.stopPropagation(); onToggle(sortKey); }}
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        <span>{label}</span><Icon aria-hidden="true" />
+        {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
+      </button>
+      {open && createPortal(
+        <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <div className="column-filter-popover-head">
+            <strong>{label}</strong>
+            <button type="button" className="column-filter-close" onClick={() => onToggle(sortKey)} aria-label={`Close ${label} filter`} title="Close">
+              <X aria-hidden="true" />
+            </button>
+          </div>
+          {dateSortOnly ? <div className="column-filter-sort duration-sort-options" aria-label={`Sort ${label}`}>
+            <button type="button" className={active && sort.direction === "asc" ? "active" : ""} aria-pressed={active && sort.direction === "asc"} onClick={() => chooseDurationSort("asc")}><ArrowUp /><span>Oldest to latest</span></button>
+            <button type="button" className={active && sort.direction === "desc" ? "active" : ""} aria-pressed={active && sort.direction === "desc"} onClick={() => chooseDurationSort("desc")}><ArrowDown /><span>Latest to oldest</span></button>
+            <button type="button" onClick={() => chooseDurationSort("")}><X /><span>Clear sort</span></button>
+          </div> : dateColumn ? <div className="column-filter-range" role="group" aria-label={`${label} date range`}>
+            <label><span>From</span><DateInput autoFocus value={dateRange.from} max={dateRange.to || undefined} onChange={(event) => onFilterChange(encodeDateRange(event.target.value, dateRange.to))} /></label>
+            <label><span>To</span><DateInput value={dateRange.to} min={dateRange.from || undefined} onChange={(event) => onFilterChange(encodeDateRange(dateRange.from, event.target.value))} /></label>
+          </div> : durationSortOnly ? <div className="column-filter-sort duration-sort-options" aria-label={`Sort ${label}`}>
+            <button type="button" className={active && sort.direction === "asc" ? "active" : ""} aria-pressed={active && sort.direction === "asc"} onClick={() => chooseDurationSort("asc")}><ArrowUp /><span>Lowest to highest time taken</span></button>
+            <button type="button" className={active && sort.direction === "desc" ? "active" : ""} aria-pressed={active && sort.direction === "desc"} onClick={() => chooseDurationSort("desc")}><ArrowDown /><span>Highest to lowest time taken</span></button>
+            <button type="button" onClick={() => chooseDurationSort("")}><X /><span>Clear sort</span></button>
+          </div> : <><div className="column-filter-sort" aria-label={`Sort ${label}`}>
+            <button type="button" className={active && sort.direction === "asc" ? "active" : ""} onClick={() => onSort(sortKey, "asc")} title="Sort ascending"><ArrowUp /></button>
+            <button type="button" className={active && sort.direction === "desc" ? "active" : ""} onClick={() => onSort(sortKey, "desc")} title="Sort descending"><ArrowDown /></button>
+            <button type="button" onClick={() => onFilterChange("")} title="Clear this filter"><X /></button>
+          </div>
+          <label className="column-filter-search">
+            <Search aria-hidden="true" />
+            <input data-smart-search autoFocus value={valueSearch} onChange={(event) => setValueSearch(event.target.value)} placeholder="Filter..." />
+          </label>
+          <button type="button" className={`column-filter-all ${!filterValue ? "selected" : ""}`} onClick={() => onFilterChange("")}>All values</button>
+          {parseFilterValues(filterValue).length > 1 && <span className="column-filter-selection-note">{describeFilterValues(filterValue)} · tap a value to add or remove it</span>}
+          <div className="column-filter-values">
+            {visibleValues.length ? visibleValues.map((value) => (
+              <button type="button" key={value || "__blank__"} className={filterValueSelected(filterValue, value || EMPTY_TABLE_FILTER_VALUE) ? "selected" : ""} aria-pressed={filterValueSelected(filterValue, value || EMPTY_TABLE_FILTER_VALUE)} onClick={() => onFilterChange(toggleFilterValue(filterValue, value || EMPTY_TABLE_FILTER_VALUE))}>
+                {value || "(Blank)"}
+              </button>
+            )) : <span className="column-filter-empty">No matching values</span>}
+          </div></>}
+        </div>,
+        reportPortalTarget(),
+      )}
+    </th>
+  );
+}
+const EMPTY_TABLE_FILTER_VALUE = "__empty_table_filter_value__";
+function tableFilterText(value) {
+  if (Array.isArray(value)) return value.map(tableFilterText).filter(Boolean).join(" · ");
+  if (value && typeof value === "object") return Object.values(value).map(tableFilterText).filter(Boolean).join(" · ");
+  return String(value ?? "").trim();
+}
+function tableColumnValues(rows, column) {
+  return [...new Set(rows.map((row) => tableFilterText(column.value?.(row))))].sort((a, b) => sortCollator.compare(a, b));
+}
+function tableRowMatchesFilters(row, columns, filters) {
+  return columns.every((column) => {
+    const selected = filters[column.key];
+    if (!selected) return true;
+    const value = tableFilterText(column.value?.(row));
+    const range = parseDateRange(selected);
+    if (range) return matchesDateRange(value, range);
+    return cellMatchesFilterValues(value, selected);
+  });
+}
+function TableParameterFilter({ columns = [], rows = [], filters = {}, onFilterChange, onClearFilters, label = "Filter", open: controlledOpen, onOpenChange, hideTrigger = false, dialogMode = false }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (value) => {
+    const next = typeof value === "function" ? value(open) : value;
+    if (onOpenChange) onOpenChange(next);
+    else setInternalOpen(next);
+  };
+  const triggerRef = useRef(null);
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
+  const activeFilterCount = columns.filter((column) => filters[column.key]).length;
+  const columnValues = useMemo(() => open ? Object.fromEntries(
+    columns.map((column) => [column.key, tableColumnValues(rows, column)]),
+  ) : {}, [open, columns, rows]);
+  useEffect(() => {
+    if (!open || dialogMode) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".table-parameter-filter, .table-parameter-filter-popover")) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const positionPopover = () => {
+      const bounds = triggerRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const viewport = visibleViewportBounds();
+      const width = Math.min(560, viewport.width - 24);
+      const height = Math.min(620, viewport.height * 0.7);
+      const top = bounds.bottom + 6;
+      setPopoverPosition({
+        top: top + height > viewport.bottom - 12 ? Math.max(viewport.top + 12, bounds.top - height - 6) : top,
+        left: Math.max(viewport.left + 12, Math.min(bounds.left, viewport.right - width - 12)),
+      });
+    };
+    positionPopover();
+    const stopObservingViewport = observeVisibleViewport(positionPopover);
+    window.addEventListener("scroll", positionPopover, true);
+    return () => {
+      stopObservingViewport();
+      window.removeEventListener("scroll", positionPopover, true);
+    };
+  }, [open, dialogMode]);
+  const filterDialog = (
+    <div className={`table-parameter-filter-popover ${dialogMode ? "dialog-mode" : ""}`} style={dialogMode ? undefined : popoverPosition} role="dialog" aria-modal={dialogMode || undefined} aria-label="Filter report parameters" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+      <div className="table-parameter-filter-head"><div><strong>Filter report</strong><span>Choose values to compare report records.</span></div><button type="button" onClick={() => setOpen(false)} aria-label="Close report filters" title="Close"><X /></button></div>
+      <div className="table-parameter-filter-fields">
+        {columns.map((column) => (
+          <label key={column.key}><span>{column.label}</span><select value={filters[column.key] || ""} onChange={(event) => onFilterChange(column.key, event.target.value)}>
+            <option value="">All {column.label}</option>
+            {parseDateRange(filters[column.key]) && <option value={filters[column.key]}>{describeDateRange(parseDateRange(filters[column.key]))}</option>}
+            {parseFilterValues(filters[column.key]).length > 1 && <option value={filters[column.key]}>{describeFilterValues(filters[column.key])}</option>}
+            {(columnValues[column.key] || []).map((value) => <option key={value || EMPTY_TABLE_FILTER_VALUE} value={value || EMPTY_TABLE_FILTER_VALUE}>{value || "(Blank)"}</option>)}
+          </select></label>
+        ))}
+      </div>
+      <div className="table-parameter-filter-foot"><button type="button" onClick={onClearFilters} disabled={!activeFilterCount}><X /> Clear filters</button>{dialogMode && <button type="button" className="primary" onClick={() => setOpen(false)}>Apply</button>}</div>
+    </div>
+  );
+  return (
+    <div className="table-parameter-filter">
+      {!hideTrigger && <button ref={triggerRef} type="button" className={`table-parameter-filter-trigger ${activeFilterCount ? "active" : ""}`} onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-haspopup="dialog">
+        <ListFilter aria-hidden="true" /><span>{label}{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
+      </button>}
+      {open && createPortal(
+        dialogMode ? <div className="report-action-dialog-backdrop" onPointerDown={() => setOpen(false)}>{filterDialog}</div> : filterDialog,
+        reportPortalTarget(),
+      )}
+    </div>
+  );
+}
+function exportCellText(value) {
+  const text = tableFilterText(value).split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+  return reportTime12(text) || "—";
+}
+function exportFileName(title, extension) {
+  const safeTitle = String(title || "caliber-pulse-report").toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "caliber-pulse-report";
+  return `${safeTitle}-${formatDisplayDate(new Date())}.${extension}`;
+}
+function CaliberActivityMark({ size = "medium" }) {
+  return (
+    <span className={`caliber-activity-mark ${size}`} aria-hidden="true">
+      <span className="caliber-activity-ring" />
+      <img src="/pulse-icon-192.png" alt="" />
+    </span>
+  );
+}
+function CaliberActivityOverlay({ message = "", className = "" }) {
+  if (!message) return null;
+  return createPortal(
+    <div className={`caliber-activity-overlay${className ? ` ${className}` : ""}`} role="status" aria-live="polite" aria-label={message}>
+      <div className="caliber-activity-panel">
+        <CaliberActivityMark size="large" />
+        <strong>{message}</strong>
+        <span>Please wait while Caliber Pulse-II prepares your file.</span>
+      </div>
+    </div>,
+    reportPortalTarget(),
+  );
+}
+function downloadExportFile(blob, filename) {
+  const url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+function escapeExportHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[character]));
+}
+// SpreadsheetML uses _xHHHH_ escapes for XML control characters. Literal text
+// that already looks like one of those escapes must have its underscore escaped
+// first, otherwise Excel silently changes the user's text while opening the file.
+function escapeXlsxText(value) {
+  return escapeExportHtml(String(value ?? "")
+    .replace(/_x[0-9a-f]{4}_/gi, (match) => `_x005F_${match.slice(1)}`)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff\r]/g, (character) => `_x${character.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}_`));
+}
+function crc32(bytes) {
+  let crc = -1;
+  for (const byte of bytes) {
+    crc = (crc >>> 8) ^ crc32.table[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ -1) >>> 0;
+}
+crc32.table = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  return value >>> 0;
+});
+function uint16(value) {
+  return [value & 0xff, (value >>> 8) & 0xff];
+}
+function uint32(value) {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+}
+function zipStoredFiles(files, mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  const encoder = new TextEncoder();
+  const chunks = [], centralDirectory = [];
+  let offset = 0;
+  files.forEach(({ name, content }) => {
+    const filename = encoder.encode(name);
+    const data = content instanceof Uint8Array
+      ? content
+      : content instanceof ArrayBuffer
+        ? new Uint8Array(content)
+        : encoder.encode(String(content));
+    const checksum = crc32(data);
+    const localHeader = new Uint8Array([
+      0x50, 0x4b, 0x03, 0x04, ...uint16(20), ...uint16(0), ...uint16(0), ...uint16(0), ...uint16(0),
+      ...uint32(checksum), ...uint32(data.length), ...uint32(data.length), ...uint16(filename.length), ...uint16(0),
+    ]);
+    chunks.push(localHeader, filename, data);
+    centralDirectory.push({ filename, checksum, size: data.length, offset });
+    offset += localHeader.length + filename.length + data.length;
+  });
+  const centralStart = offset;
+  centralDirectory.forEach((entry) => {
+    const header = new Uint8Array([
+      0x50, 0x4b, 0x01, 0x02, ...uint16(20), ...uint16(20), ...uint16(0), ...uint16(0), ...uint16(0), ...uint16(0),
+      ...uint32(entry.checksum), ...uint32(entry.size), ...uint32(entry.size), ...uint16(entry.filename.length),
+      ...uint16(0), ...uint16(0), ...uint16(0), ...uint16(0), ...uint32(0), ...uint32(entry.offset),
+    ]);
+    chunks.push(header, entry.filename);
+    offset += header.length + entry.filename.length;
+  });
+  const centralSize = offset - centralStart;
+  chunks.push(new Uint8Array([
+    0x50, 0x4b, 0x05, 0x06, ...uint16(0), ...uint16(0), ...uint16(files.length), ...uint16(files.length),
+    ...uint32(centralSize), ...uint32(centralStart), ...uint16(0),
+  ]));
+  return new Blob(chunks, { type: mimeType });
+}
+function excelCellReference(columnIndex, rowIndex) {
+  let column = "", value = columnIndex + 1;
+  while (value) {
+    value -= 1;
+    column = String.fromCharCode(65 + (value % 26)) + column;
+    value = Math.floor(value / 26);
+  }
+  return `${column}${rowIndex + 1}`;
+}
+// An Excel workbook with one worksheet per table ({name, title, columns, rows, highlightedRows}): each sheet
+// has its title, record count, column headings with the Sr. No. column, and rows, highlighted rows filled.
+// Sheet names are made Excel-safe and unique.
+function buildXlsxSheetsWorkbook(title, sheets = []) {
+  const usedNames = new Set();
+  const sheetName = (name, index) => {
+    const base = String(name || "").replace(/[\u0000-\u001f\u007f-\u009f\ufffe\uffff[\]:*?/\x5c]/g, " ").replace(/\s+/g, " ").replace(/^[\s']+|[\s']+$/g, "").slice(0, 31) || `Sheet ${index + 1}`;
+    let unique = base;
+    for (let copy = 2; usedNames.has(unique.toLowerCase()); copy++) unique = `${base.slice(0, 27)} ${copy}`;
+    usedNames.add(unique.toLowerCase());
+    return unique;
+  };
+  const worksheets = sheets.map(({ name, title: sheetTitle, columns = [], rows: exportRows = [], highlightedRows = new Set() }, sheetIndex) => {
+    const serial = withSerialColumn(columns, exportRows);
+    const usedLabels = new Set();
+    const labels = serial.columns.map((column, index) => {
+      const base = String(column.label || `Column ${index + 1}`).slice(0, 240);
+      let label = base;
+      for (let suffix = 2; usedLabels.has(label.toLowerCase()); suffix++) label = `${base} (${suffix})`;
+      usedLabels.add(label.toLowerCase());
+      return label;
+    });
+    const summaryRows = [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];
+    const firstDataRow = summaryRows.length + 1;
+    const worksheetRows = [...summaryRows, labels, ...serial.rows];
+    const sheetData = worksheetRows.map((row, rowIndex) => {
+      const style = rowIndex === 0 ? 3 : rowIndex === 1 ? 4 : rowIndex === 2 ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
+      const height = rowIndex === 0 ? ' ht="24" customHeight="1"' : rowIndex === 2 ? ' ht="30" customHeight="1"' : "";
+      return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => `<c r="${excelCellReference(columnIndex, rowIndex)}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`).join("")}</row>`;
+    }).join("");
+    const widths = labels.map((label, index) => {
+      const maxLength = Math.max(String(label || "").length, ...serial.rows.map((row) => Math.max(...String(row[index] || "").split(/\r?\n/).map((line) => line.length))));
+      return `<col min="${index + 1}" max="${index + 1}" width="${Math.min(48, Math.max(12, maxLength + 2))}" customWidth="1"/>`;
+    }).join("");
+    const lastCell = excelCellReference(Math.max(0, labels.length - 1), Math.max(2, worksheetRows.length - 1));
+    const filterRange = `A3:${excelCellReference(Math.max(0, labels.length - 1), Math.max(2, worksheetRows.length - 1))}`;
+    const mergedTo = excelCellReference(Math.max(0, labels.length - 1), 0).replace(/1$/, "");
+    // SpreadsheetML requires autoFilter before mergeCells. Excel repairs (and may
+    // discard) the complete worksheet when these otherwise valid elements are reversed.
+    return { name: sheetName(name, sheetIndex), part: `xl/worksheets/sheet${sheetIndex + 1}.xml`, tableRange: filterRange, printLastCell: lastCell, tableLabels: labels, content: `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${lastCell}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widths}</cols><sheetData>${sheetData}</sheetData><autoFilter ref="${filterRange}"/>${labels.length > 1 ? `<mergeCells count="2"><mergeCell ref="A1:${mergedTo}1"/><mergeCell ref="A2:${mergedTo}2"/></mergeCells>` : ""}<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>` };
+  });
+  const workbookTitle = escapeXlsxText(title || "Caliber Pulse-II report");
+  return zipStoredFiles([
+    { name: "[Content_Types].xml", content: `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${worksheets.map((sheet) => `<Override PartName="/${sheet.part}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}${worksheets.map((_, index) => `<Override PartName="/xl/tables/table${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>`).join("")}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>` },
+    { name: "_rels/.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` },
+    { name: "docProps/core.xml", content: `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${workbookTitle}</dc:title><dc:creator>Caliber Pulse-II</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>` },
+    { name: "docProps/app.xml", content: `<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse-II</Application></Properties>` },
+    { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${worksheets.map((sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}<Relationship Id="rId${worksheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF000000"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
+    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${worksheets.map((sheet, index) => `<sheet name="${escapeXlsxText(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets><definedNames>${worksheets.map((sheet,index)=>{const name="'"+sheet.name.replaceAll("'","''")+"'";const cell=sheet.printLastCell.replace(/^([A-Z]+)([0-9]+)$/,(match,col,row)=>String.fromCharCode(36)+col+String.fromCharCode(36)+row);return `<definedName name="_xlnm.Print_Area" localSheetId="${index}">${escapeXlsxText(name+'!$A$1:'+cell)}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeXlsxText(name+'!$1:$3')}</definedName>`;}).join('')}</definedNames></workbook>` },
+    ...worksheets.flatMap((sheet, index) => [
+      {name: `xl/worksheets/_rels/sheet${index + 1}.xml.rels`, content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index + 1}.xml"/></Relationships>`},
+      {name: `xl/tables/table${index + 1}.xml`, content: `<?xml version="1.0" encoding="UTF-8"?><table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="${index + 1}" name="ReportTable${index + 1}" displayName="ReportTable${index + 1}" ref="${sheet.tableRange}" totalsRowShown="0"><autoFilter ref="${sheet.tableRange}"/><tableColumns count="${sheet.tableLabels.length}">${sheet.tableLabels.map((label, i) => `<tableColumn id="${i + 1}" name="${escapeXlsxText(label)}"/>`).join("")}</tableColumns><tableStyleInfo name="TableStyleLight15" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`},
+    ]),
+    ...worksheets.map((sheet) => ({ name: sheet.part, content: sheet.content })),
+  ]);
+}
+function buildXlsxWorkbook(title, columns, exportRows, highlightedRows = new Set(), sourceRows = null) {
+  const sheets = sourceRows
+    ? prepareXlsxExportSheets({ title, sheets: [{ name: "Report", title, columns, rows: sourceRows, highlightedRows }], formatCell: exportCellText })
+    : [{ name: "Report", title, columns, rows: exportRows, highlightedRows }];
+  return buildXlsxSheetsWorkbook(title, sheets);
+}
+// Smart Print goes straight to the printer through the print helper (QZ Tray) when it is installed on this PC:
+// the helper, unlike a web page, can set the paper to the chosen A3 / A4. Without the helper, or if the job
+// cannot be sent, the normal browser print window is used.
+function printTableReport(report) {
+  void printReportDirect(report).then((sent) => { if (!sent) printTableReportInBrowser(report); });
+}
+async function printReportDirect({ title, columns = [], rows = [], highlightRow, appendices = [], pageSize, printOptions = {} }, buildPdf = null) {
+  try {
+    if (!(await printHelperAvailable({ token: () => authToken }))) {
+      // A PC that never used the helper prints through the browser. Where it has been used, never fall back silently.
+      if (!printHelperExpected()) return false;
+      const failure = printHelperLastFailure();
+      const reason = failure === "not-running"
+        ? "The print helper (QZ Tray) is not running on this PC, so the paper size cannot be set automatically.\n\nStart \"QZ Tray\" from the Windows Start menu, wait for its icon near the clock, then click OK to try again."
+        : `The print helper (QZ Tray) did not accept the connection: ${failure || "no answer"}.\n\nIf QZ Tray asked for permission, click Allow (not Block), then click OK to try again.`;
+      return window.confirm(`${reason}\n\nClick Cancel to use the browser print window instead and choose the Paper size there.`)
+        ? printReportDirect({ title, columns, rows, highlightRow, appendices, pageSize, printOptions }, buildPdf) : false;
+    }
+    const page = printPageSize(pageSize);
+    // A dashboard brings a PDF of itself as it is on screen; every other report is the server-built table.
+    let pdf;
+    if (buildPdf) pdf = await buildPdf(page);
+    else {
+      const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
+      const highlights = rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []);
+      const appendixTables = appendices.map((appendix) => ({
+        title: appendix.title,
+        columns: appendix.columns.map((column) => ({ label: column.label })),
+        rows: appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row)))),
+      }));
+      const response = await fetchPdfExport("/api/exports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify(appendixTables.length ? {
+          title: reportPdfHeading(title, rows, columns),
+          tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights }, ...appendixTables],
+          pageSize: page.name,
+        } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights, pageSize: page.name }),
+      });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(details.error || `The report PDF could not be prepared (HTTP ${response.status}).`);
+      }
+      pdf = await response.blob();
+    }
+    // The finished PDF is shown first; nothing reaches the printer until the user clicks Print in the preview.
+    const confirmed = await showPrintPreview({ pdf, title, page, printOptions, printer: printOptions.printer || rememberedPrinter() });
+    if (!confirmed) return true;
+    const printer = await printPdfDirect({ pdf, page, jobName: title, token: () => authToken, printOptions });
+    recordUserActivity({module:"Reports",action:"Print report",targetReference:title,reason:`${buildPdf ? "Dashboard as shown on screen" : `${rows.length} records`} · ${page.name} · ${printer}${printOptions.pages ? ` · pages ${printOptions.pages}` : ""}${printOptions.duplex && printOptions.duplex !== "one-sided" ? ` · ${printOptions.duplex}` : ""}${Number(printOptions.copies) > 1 ? ` · ${printOptions.copies} copies` : ""}`});
+    alert(`Sent to ${printer} on ${page.name} paper.`);
+    return true;
+  } catch (error) {
+    console.warn("Direct printing was not possible; using the browser print window.", error);
+    if (printHelperExpected()) alert(`The report could not be sent through the print helper (${error?.message || error || "unknown reason"}).\n\nThe browser print window opens instead; choose the Paper size there.`);
+    return false;
+  }
+}
+// Smart Print of a dashboard prints the dashboard itself, captured as it is on screen, never a KPI table.
+// Through the print helper it gets the same preview, paper, printer, pages, sides and copies as any report;
+// without the helper the captured dashboard opens in the browser print window. A section's Smart Print passes its panel,
+// and only that panel is captured, laid out and coloured as it is on screen.
+function printDashboardReport({ dashboard, section = null, title, pageSize, printOptions }) {
+  if (!dashboard) {
+    alert("Dashboard is not available. Please reopen it and try again.");
+    return;
+  }
+  const loadCapture = () => import("./dashboard-pdf.mjs");
+  void printReportDirect({ title, pageSize, printOptions }, async (page) => (await loadCapture()).dashboardPrintPdf(dashboard, page, section))
+    .then(async (sent) => { if (!sent) await (await loadCapture()).printDashboard(dashboard, title, section); })
+    .catch((error) => alert(error?.message || "The dashboard could not be printed."));
+}
+function printTableReportInBrowser({ title, columns = [], rows = [], highlightRow, reportGrouping, appendices = [], pageSize }) {
+  // The chosen A3/A4 size sets the fit-to-page scale. @page stays a generic landscape so the browser keeps its
+  // Paper size option and the report fills whichever paper the printer really uses.
+  const page = printPageSize(pageSize);
+  recordUserActivity({module:"Reports",action:"Print report",targetReference:title,reason:`${rows.length} records`});
+  const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
+  const serial = withSerialColumn(columns, exportRows);
+  const headings = serial.columns.map((column) => `<th>${escapeExportHtml(column.label)}</th>`).join("");
+  const body = serial.rows.length ? serial.rows.map((row, index) => `<tr${highlightRow?.(rows[index]) ? ' class="highlight-row"' : ""}>${row.map((cell) => `<td>${escapeExportHtml(cell)}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${serial.columns.length}">No records available</td></tr>`;
+  const groupedReport = reportGrouping ? siteReportHtml({ rows, columns: serial.columns, cells: serial.rows, grouping: reportGrouping, escape: escapeExportHtml }) : "";
+  const appendixHtml = appendices.map((appendix) => {
+    const appendixRows = appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row))));
+    const appendixSerial = withSerialColumn(appendix.columns, appendixRows);
+    const appendixHeadings = appendixSerial.columns.map((column) => `<th>${escapeExportHtml(column.label)}</th>`).join("");
+    const appendixBody = appendixSerial.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeExportHtml(cell)}</td>`).join("")}</tr>`).join("");
+    const tableOpen = "<" + "table>";
+    return `<section class="print-appendix"><h2>${escapeExportHtml(appendix.title || "Daily Updates")}</h2><p>${appendixRows.length.toLocaleString("en-IN")} update row${appendixRows.length === 1 ? "" : "s"}</p>${tableOpen}<thead><tr>${appendixHeadings}</tr></thead><tbody>${appendixBody}</tbody></table></section>`;
+  }).join("");
+  const frame = document.createElement("iframe");
+  frame.title = `${title} print frame`;
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  // Lay the hidden frame out at the chosen page width so the fit-to-page scale is measured on the real layout.
+  frame.style.width = `${page.widthMm}mm`;
+  frame.style.pointerEvents = "none";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  document.body.appendChild(frame);
+  const printDocument = frame.contentDocument || frame.contentWindow?.document;
+  if (!printDocument) {
+    frame.remove();
+    alert("Could not open the system print dialog. Please try again.");
+    return;
+  }
+  printDocument.open();
+  printDocument.write(`<!doctype html><html><head><title>${escapeExportHtml(title)}</title><style>body{font-family:Arial,sans-serif;color:#17233c;margin:12mm}h1{font-size:20px;margin:0 0 5px}h2{font-size:16px;margin:0 0 5px}p{color:#65758b;font-size:12px;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:10px}th,td{padding:8px;border:1px solid #000;text-align:left;vertical-align:top}th{background:#fff;color:#000;font-size:9px;text-transform:uppercase}tr:nth-child(even){background:#f2f2f2}tr.highlight-row td{background:#f8caca}.site-print-table{margin:16px 0;table-layout:fixed}.site-print-table td{overflow-wrap:anywhere;white-space:pre-wrap}.site-print-table tr{break-inside:avoid}.site-print-title th{background:#eee8f6;color:#522e90;font-size:12px;text-transform:none}.site-print-summary{margin:12px 0 16px;font-size:11px;line-height:1.5;color:#17233c}.print-appendix{break-before:page;page-break-before:always;padding-top:2mm}.print-appendix table{table-layout:auto}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}td,th{overflow-wrap:break-word}td{white-space:pre-wrap}tr{break-inside:avoid}html,body{height:auto}body>:last-child{margin-bottom:0}.paper-warning{display:none;margin:6px 0 10px;padding:8px 10px;border:2px solid #c62828;border-radius:4px;color:#c62828;font-size:13px;font-weight:700}@media print{@page{size:landscape;margin:0}body{margin:12mm}thead{display:table-header-group}}@media print and (${page.name === "A3" ? "max-width" : "min-width"}:350mm){.paper-warning{display:block}}</style></head><body><h1>${escapeExportHtml(title)}</h1><div class="paper-warning">Paper size does not match: this report was prepared for ${page.name}. In this print window open More settings and set Paper size to ${page.name}. This notice disappears once it matches.</div><p>${exportRows.length.toLocaleString("en-IN")} record${exportRows.length === 1 ? "" : "s"} · Generated ${escapeExportHtml(formatDisplayDateTime(new Date()))}</p>${groupedReport || `<table><thead><tr>${headings}</tr></thead><tbody>${body}</tbody></table>`}${appendixHtml}</body></html>`);
+  printDocument.close();
+  window.setTimeout(() => {
+    frame.contentWindow?.focus();
+    // Scale a report wider than the page down to the printable width, so no column is cut off or pushed to a blank page.
+    const printBody = printDocument.body, tables = [...printDocument.querySelectorAll("table")];
+    const scale = printFitScale(Math.max(0, ...tables.map((table) => Math.max(table.offsetWidth, table.scrollWidth))), printBody.clientWidth);
+    if (scale < 1) {
+      printBody.style.zoom = String(scale);
+      printBody.style.margin = `${12 / scale}mm`;
+    }
+    frame.contentWindow?.print();
+    window.setTimeout(() => frame.remove(), 1000);
+  }, 150);
+}
+// Smart Print exports: exactly the chosen columns, their order and the table's filtered rows, as PDF or Excel.
+async function exportSmartPrintSelection({ format, title, sourceTitle=title, columns = [], rows = [], highlightRow, appendices = [] }) {
+  const pending=format==='pdf'?pendingPdfRows(sourceTitle,rows):{rows,summary:null};
+  rows=pending.rows;
+  const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
+  const highlightedRows = new Set(rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
+  if (format === "xlsx") {
+    recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:`${rows.length} records`});
+    downloadExportFile(buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), exportFileName(title, "xlsx"));
+    return;
+  }
+  recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
+  const appendixTables = appendices.map((appendix) => ({
+    title: appendix.title,
+    columns: appendix.columns.map((column) => ({ label: column.label })),
+    rows: appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row)))),
+  }));
+  if(pending.summary)appendixTables.unshift(pending.summary);
+  const response = await fetchPdfExport("/api/exports/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify(appendixTables.length ? {
+      title: reportPdfHeading(title, rows, columns),
+      tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }, ...appendixTables],
+    } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }),
+  });
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({}));
+    throw new Error(details.error || "Could not create the PDF report.");
+  }
+  downloadExportFile(await response.blob(), exportFileName(title, "pdf"));
+}
+setSmartPrintExporter(exportSmartPrintSelection);
+// The printer list in Smart Print comes from the print helper; without it the browser print window chooses.
+setSmartPrintPrinterSource(async () => (await printHelperAvailable({ token: () => authToken })) ? listPrinters({ token: () => authToken }) : null);
+function PrintButton({ title, columns = [], rows = [], className = "secondary", highlightRow }) {
+  return <button type="button" className={`${className} print-table-trigger`} onClick={() => openSmartPrint({ title, columns, rows, highlightRow, onPrint: printTableReport, formatCell: exportCellText })}><Printer /><span>Smart Print</span></button>;
+}
+// portalClassName reaches the export menu and the "preparing file" overlay, both portaled to the body: a caller inside a higher overlay (Info Pulse) uses it to raise them above itself.
+// printSection: Smart Print captures the dashboard section (.mine-panel) holding the menu, as it is on screen.
+// excelSheets: a function returning [{name, title, columns, rows}]; Excel then has one sheet per table.
+function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Print/Export", printOnly = false, smartPrintItem = true, smartLabels = false, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null }) {
+  const {shifts}=useRequestShiftData();
+  columns=requestShiftColumns(columns,rows,shifts);
+  smartPrintColumns=requestShiftColumns(smartPrintColumns,smartPrintRows,shifts);
+  const [open, setOpen] = useState(false), [downloadActivity, setDownloadActivity] = useState("");
+  const triggerRef = useRef(null);
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
+  const buildExportRows = () => rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
+  const highlightedRows = new Set(rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeMenu = (event) => {
+      if (!event.target.closest?.(".export-menu, .export-menu-popover")) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeMenu);
+    return () => document.removeEventListener("pointerdown", closeMenu);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const positionMenu = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewport = visibleViewportBounds();
+      setPopoverPosition({
+        top: Math.max(viewport.top + 12, Math.min(viewport.bottom - 176, rect.bottom + 6)),
+        left: Math.max(viewport.left + 12, Math.min(rect.right - 214, viewport.right - 226)),
+      });
+    };
+    positionMenu();
+    const stopObservingViewport = observeVisibleViewport(positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      stopObservingViewport();
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [open]);
+  const runDownload = (message, task) => {
+    if (downloadActivity) return;
+    setOpen(false);
+    setDownloadActivity(message);
+    const downloadNotice=beginDownload(message.replace(/Preparing | report\.\.\./g,''));
+    window.setTimeout(async () => {
+      const startedAt = Date.now();
+      try { await task(); downloadNotice.success(); }
+      catch (error) { downloadNotice.error(error); alert(error.message); }
+      finally {
+        window.setTimeout(() => setDownloadActivity(""), Math.max(0, 450 - (Date.now() - startedAt)));
+      }
+    }, 50);
+  };
+  const smartExport = (format) => {
+    setOpen(false);
+    openSmartPrint({ title, columns: smartPrintColumns, rows: smartPrintRows, highlightRow, reportGrouping, formatCell: exportCellText, exportFormat: format, exportOnly: true });
+  };
+  const downloadExcel = () => {
+    if (!excelSheets) {
+      smartExport("xlsx");
+      return;
+    }
+    runDownload("Preparing Excel report...", () => {
+      const sheets = excelSheets?.();
+      recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${rows.length} records`});
+      if (sheets) downloadExportFile(buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), exportFileName(title, "xlsx"));
+      else {
+        const exportRows = buildExportRows();
+        downloadExportFile(buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), exportFileName(title, "xlsx"));
+      }
+    });
+  };
+  const downloadPdf = () => {
+    if (!dashboardPdf) {
+      smartExport("pdf");
+      return;
+    }
+    runDownload("Preparing PDF report...", async () => {
+      recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
+      if (dashboardPdf) {
+        const {downloadDashboardPdf} = await import("./dashboard-pdf.mjs");
+        await downloadDashboardPdf(triggerRef.current?.closest(".mine-dashboard, .manager-dashboard"), exportFileName(title, "pdf"));
+        return;
+      }
+      const exportRows = buildExportRows();
+      const response = await fetchPdfExport("/api/exports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }),
+      });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(details.error || "Could not create the PDF report.");
+      }
+      downloadExportFile(await response.blob(), exportFileName(title, "pdf"));
+    });
+  };
+  const printReport = () => {
+    setOpen(false);
+    if (printSection) {
+      const dashboard = triggerRef.current?.closest(".mine-dashboard, .manager-dashboard");
+      const section = triggerRef.current?.closest(".mine-panel");
+      openSmartPrint({ title, snapshot: "This section prints exactly as it looks on screen, with its chart and figures. Choose the paper and printer next.", onPrint: ({ pageSize, printOptions }) => printDashboardReport({ dashboard, section, title, pageSize, printOptions }) });
+      return;
+    }
+    if (dashboardPdf) {
+      const dashboard = triggerRef.current?.closest(".mine-dashboard, .manager-dashboard");
+      openSmartPrint({ title, snapshot: "The dashboard prints exactly as it looks on screen, with every panel and chart. Choose the paper and printer next.", onPrint: ({ pageSize, printOptions }) => printDashboardReport({ dashboard, title, pageSize, printOptions }) });
+      return;
+    }
+    openSmartPrint({ title, columns: smartPrintColumns, rows: smartPrintRows, highlightRow, reportGrouping, onPrint: printTableReport, formatCell: exportCellText });
+  };
+  if (printOnly) return <button type="button" className={className} onClick={printReport} aria-label={`Smart Print ${title}`}><Printer /><span>Smart Print</span></button>;
+  return <><div className="export-menu"><button ref={triggerRef} type="button" className={`${className} export-menu-trigger`} onClick={() => setOpen((current) => !current)} disabled={Boolean(downloadActivity)} aria-expanded={open} aria-haspopup="menu"><Download /><span>{label}</span><ChevronDown /></button>{open && createPortal(<div className={`export-menu-popover${portalClassName ? ` ${portalClassName}` : ""}`} style={popoverPosition} role="menu" aria-label={`${title} export options`}>{smartLabels && smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}<button type="button" role="menuitem" onClick={downloadPdf} disabled={Boolean(downloadActivity)}><Download /> {smartLabels ? "Smart PDF" : "Download as PDF"}</button><button type="button" role="menuitem" onClick={downloadExcel} disabled={Boolean(downloadActivity)}><FileSpreadsheet /> {smartLabels ? "Smart Excel" : "Download as Excel"}</button>{!smartLabels && smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}</div>, reportPortalTarget())}</div><CaliberActivityOverlay message={downloadActivity} className={portalClassName} /></>;
+}
+function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStore, onApply, onClose }) {
+  const [draftKeys, setDraftKeys] = useState(visibleColumnKeys);
+  const [selectedHidden, setSelectedHidden] = useState("");
+  const [selectedVisible, setSelectedVisible] = useState("");
+  const hiddenColumns = columns.filter((column) => !draftKeys.includes(column.key));
+  const displayedColumns = draftKeys.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
+  const addColumn = (key) => {
+    if (!key || draftKeys.includes(key)) return;
+    setDraftKeys((current) => [...current, key]);
+    setSelectedHidden("");
+  };
+  const removeColumn = (key) => {
+    if (!key) return;
+    setDraftKeys((current) => current.filter((item) => item !== key));
+    setSelectedVisible("");
+  };
+  const moveColumn = (position) => {
+    const index = draftKeys.indexOf(selectedVisible);
+    if (index < 0) return;
+    let destination = position === "top" ? 0 : position === "bottom" ? draftKeys.length - 1 : index + (position === "up" ? -1 : 1);
+    destination = Math.max(0, Math.min(draftKeys.length - 1, destination));
+    if (destination === index) return;
+    setDraftKeys((current) => {
+      const next = [...current], [moved] = next.splice(index, 1);
+      next.splice(destination, 0, moved);
+      return next;
+    });
+  };
+  return createPortal(
+    <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
+      <section className="report-columns-dialog" role="dialog" aria-modal="true" aria-labelledby="report-columns-title" onPointerDown={(event) => event.stopPropagation()}>
+        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-columns-title">Select Columns</h2><button type="button" onClick={onClose} aria-label="Close column selector" title="Close"><X /></button></header>
+        {layoutStore && <TableLayoutControls store={layoutStore} draftKeys={draftKeys} defaultKeys={columns.map(column => column.key)} onSelect={keys => { setDraftKeys(keys); setSelectedHidden(""); setSelectedVisible(""); }} />}
+        <div className="report-columns-body">
+          <div className="report-column-list-panel">
+            <h3>Do Not Display</h3>
+            <div className="report-column-list" role="listbox" aria-label="Hidden report columns">
+              {hiddenColumns.length ? hiddenColumns.map((column) => <button key={column.key} type="button" role="option" aria-selected={selectedHidden === column.key} className={selectedHidden === column.key ? "selected" : ""} onClick={() => setSelectedHidden(column.key)} onDoubleClick={() => addColumn(column.key)}>{column.label}</button>) : <p>All columns are displayed.</p>}
+            </div>
+          </div>
+          <div className="report-column-transfer-controls" aria-label="Move report columns">
+            <button type="button" onClick={() => setDraftKeys(columns.map((column) => column.key))} disabled={!hiddenColumns.length} aria-label="Display all columns" title="Display all"><ChevronsRight /></button>
+            <button type="button" onClick={() => addColumn(selectedHidden)} disabled={!selectedHidden} aria-label="Display selected column" title="Display selected"><ChevronRight /></button>
+            <button type="button" onClick={() => removeColumn(selectedVisible)} disabled={!selectedVisible} aria-label="Hide selected column" title="Hide selected"><ChevronLeft /></button>
+            <button type="button" onClick={() => { setDraftKeys([]); setSelectedVisible(""); }} disabled={!draftKeys.length} aria-label="Hide all columns" title="Hide all"><ChevronsLeft /></button>
+          </div>
+          <div className="report-column-list-panel">
+            <h3>Display in Report</h3>
+            <div className="report-column-list" role="listbox" aria-label="Displayed report columns">
+              {displayedColumns.map((column) => <button key={column.key} type="button" role="option" aria-selected={selectedVisible === column.key} className={selectedVisible === column.key ? "selected" : ""} onClick={() => setSelectedVisible(column.key)} onDoubleClick={() => removeColumn(column.key)}>{column.label}</button>)}
+            </div>
+          </div>
+          <div className="report-column-order-controls" aria-label="Reorder displayed columns">
+            <button type="button" onClick={() => moveColumn("top")} disabled={!selectedVisible || draftKeys[0] === selectedVisible} aria-label="Move column to top" title="Move to top"><ChevronsUp /></button>
+            <button type="button" onClick={() => moveColumn("up")} disabled={!selectedVisible || draftKeys[0] === selectedVisible} aria-label="Move column up" title="Move up"><ChevronUp /></button>
+            <button type="button" onClick={() => moveColumn("down")} disabled={!selectedVisible || draftKeys.at(-1) === selectedVisible} aria-label="Move column down" title="Move down"><ChevronDown /></button>
+            <button type="button" onClick={() => moveColumn("bottom")} disabled={!selectedVisible || draftKeys.at(-1) === selectedVisible} aria-label="Move column to bottom" title="Move to bottom"><ChevronsDown /></button>
+          </div>
+        </div>
+        <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!draftKeys.length} onClick={() => onApply(draftKeys)}>Apply</button></footer>
+      </section>
+    </div>,
+    reportPortalTarget(),
+  );
+}
+function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
+  const [columnKey, setColumnKey] = useState(sort.key || columns[0]?.key || "");
+  const [direction, setDirection] = useState(sort.direction || "asc");
+  return createPortal(
+    <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
+      <section className="report-sort-dialog" role="dialog" aria-modal="true" aria-labelledby="report-sort-title" onPointerDown={(event) => event.stopPropagation()}>
+        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close"><X /></button></header>
+        <div><label><span>Column</span><select value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select></label><label><span>Direction</span><select value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label></div>
+        <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!columnKey} onClick={() => onApply(columnKey, direction)}>Apply</button></footer>
+      </section>
+    </div>,
+    reportPortalTarget(),
+  );
+}
+function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort, onClearSort, onReset, resetLabel = "Reset report", onSaveReport, onSavedReports }) {
+  const [open, setOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const reportTriggerRef = useRef(null);
+  const [submenuSide, setSubmenuSide] = useState("right");
+  const triggerRef = useRef(null), popoverRef = useRef(null), dataTriggerRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const close = ({restoreFocus = false} = {}) => {
+    setOpen(false);
+    setDataOpen(false);
+    setReportOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeMenu = (event) => {
+      if (!event.target.closest?.(".report-actions-menu, .report-actions-popover")) close();
+    };
+    const placeMenu = () => {
+      const bounds = triggerRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const viewport = visibleViewportBounds();
+      const below = bounds.bottom + 6;
+      const popoverLeft = Math.max(viewport.left + 12, Math.min(bounds.left, viewport.right - 244));
+      setPosition({
+        top: below + 250 > viewport.bottom - 12 ? Math.max(viewport.top + 12, bounds.top - 256) : below,
+        left: popoverLeft,
+      });
+      setSubmenuSide(popoverLeft + 232 + 186 > viewport.right - 12 ? "left" : "right");
+    };
+    placeMenu();
+    const focusFrame = window.requestAnimationFrame(() => popoverRef.current?.querySelector('[role="menuitem"]')?.focus());
+    document.addEventListener("pointerdown", closeMenu);
+    const stopObservingViewport = observeVisibleViewport(placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      window.cancelAnimationFrame(focusFrame);
+      stopObservingViewport();
+      window.removeEventListener("scroll", placeMenu, true);
+    };
+  }, [open]);
+  const handleMenuKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close({restoreFocus: true});
+      return;
+    }
+    if (event.key === "Tab") {
+      close();
+      return;
+    }
+    if (event.key === "ArrowLeft" && event.target.closest?.(".report-actions-submenu")) {
+      event.preventDefault();
+      const parent = reportOpen ? reportTriggerRef : dataTriggerRef;
+      setDataOpen(false);
+      setReportOpen(false);
+      parent.current?.focus();
+      return;
+    }
+    if (event.key === "ArrowRight" && (event.target === dataTriggerRef.current || event.target === reportTriggerRef.current)) {
+      event.preventDefault();
+      if (event.target === dataTriggerRef.current) { setDataOpen(true); setReportOpen(false); }
+      else { setReportOpen(true); setDataOpen(false); }
+      window.requestAnimationFrame(() => popoverRef.current?.querySelector('.report-actions-submenu [role="menuitem"]')?.focus());
+      return;
+    }
+    const items = Array.from(event.currentTarget.querySelectorAll('[role="menuitem"]')).filter((item) => item.offsetParent !== null);
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === "Home" ? 0
+      : event.key === "End" ? items.length - 1
+        : event.key === "ArrowDown" ? (currentIndex + 1 + items.length) % items.length
+          : event.key === "ArrowUp" ? (currentIndex - 1 + items.length) % items.length
+            : -1;
+    if (nextIndex < 0 || !items.length) return;
+    event.preventDefault();
+    items[nextIndex]?.focus();
+  };
+  const run = (callback) => { setOpen(false); setDataOpen(false); setReportOpen(false); callback(); };
+  return <div className="report-actions-menu">
+    <button ref={triggerRef} type="button" className="report-actions-trigger" onClick={() => { if (open) close(); else setOpen(true); }} aria-expanded={open} aria-haspopup="menu"><span>Actions</span><ChevronDown /></button>
+    {open && createPortal(<div ref={popoverRef} className="report-actions-popover" style={position} role="menu" aria-label="Report actions" onKeyDown={handleMenuKeyDown}>
+      <button type="button" role="menuitem" onClick={() => run(onColumns)}><Columns3 /><span>Columns</span></button>
+      <button type="button" role="menuitem" onClick={() => run(onFilter)}><ListFilter /><span>Filter</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
+      <div className="report-actions-divider" />
+      <button ref={dataTriggerRef} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={dataOpen} onClick={() => { setDataOpen((current) => !current); setReportOpen(false); }}><ArrowUpDown /><span>Data</span><ChevronRight /></button>
+      {dataOpen && <div className={`report-actions-submenu open-${submenuSide}`} role="menu" aria-label="Report data actions"><button type="button" role="menuitem" onClick={() => run(onSort)}><ArrowUpDown /><span>Sort</span></button><button type="button" role="menuitem" onClick={() => run(onClearSort)}><X /><span>Clear sort</span></button></div>}
+      {onSaveReport && <>
+        <div className="report-actions-divider" />
+        <button ref={reportTriggerRef} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={reportOpen} onClick={() => { setReportOpen((current) => !current); setDataOpen(false); }}><Save /><span>Report</span><ChevronRight /></button>
+        {reportOpen && <div className={`report-actions-submenu open-${submenuSide}`} role="menu" aria-label="Saved report actions"><button type="button" role="menuitem" onClick={() => run(onSaveReport)}><Save /><span>Save report…</span></button><button type="button" role="menuitem" onClick={() => run(onSavedReports)}><FolderOpen /><span>Saved reports</span></button></div>}
+      </>}
+      <div className="report-actions-divider" />
+      <button type="button" role="menuitem" onClick={() => run(onReset)}><RotateCcw /><span>{resetLabel}</span></button>
+    </div>, reportPortalTarget())}
+  </div>;
+}
+const printSavedReport = ({ title, columns, rows, reportGrouping }) => openSmartPrint({ title, columns, rows, reportGrouping, onPrint: printTableReport, formatCell: exportCellText });
+function ActionsTable(props) {
+  const shiftData=useRequestShiftData();
+  const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
+  return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
+}
+function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null }) {
+  const {shifts}=useRequestShiftData();
+  columns=requestShiftColumns(columns,rows,shifts);
+  const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
+  const notifyColumnsChange = onVisibleColumnsChange;
+  visibleColumnKeys = appliedColumns;
+  onVisibleColumnsChange = keys => { applyColumns(keys); notifyColumnsChange?.(keys); };
+  if(columns[0]?.key==='requestShift'&&visibleColumnKeys.length)visibleColumnKeys=['requestShift',...visibleColumnKeys.filter(key=>key!=='requestShift')];
+  const [columnFilters, setColumnFilters] = useState({});
+  const [savedReportDialog, setSavedReportDialog] = useState("");
+  const [openFilter, setOpenFilter] = useState(null);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [columnDialogOpen, setColumnDialogOpen] = useState(false);
+  const [sortDialogOpen, setSortDialogOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(() => mobileTablePageSize() || 50);
+  const [page, setPage] = useState(0);
+  const deferredQuery = useDeferredValue(query);
+  const columnValue = (row, column) => tableFilterText(column.value?.(row));
+  const allColumnKeys = columns.map((column) => column.key);
+  const displayedColumnKeys = ensureJobReferenceVisibleKeys(visibleColumnKeys.length ? visibleColumnKeys : allColumnKeys, columns);
+  const displayedColumns = displayedColumnKeys.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
+  const activeFilterColumn = openFilter ? columns.find((column) => column.key === openFilter) : null;
+  const columnValues = activeFilterColumn ? {[activeFilterColumn.key]: tableColumnValues(rows, activeFilterColumn)} : {};
+  const filteredRows = rows.filter((row) =>
+    matchesSmartSearch(deferredQuery, row) &&
+    tableRowMatchesFilters(row, columns, columnFilters),
+  );
+  const [sortedRows, sort, changeSort] = useSortableRows(
+    filteredRows,
+    defaultDurationSort(columns),
+    (row, key) => {
+      const column = columns.find((item) => item.key === key);
+      return column?.sortValue?.(row) ?? column?.value?.(row);
+    },
+    (key) => isDurationColumn(columns.find((column) => column.key === key)?.label, key),
+  );
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  };
+  const activeFilterCount = columns.filter((column) => columnFilters[column.key]).length;
+  const exportViewRef = useRef(null);
+  useEffect(() => {
+    if (!onExportViewChange) return;
+    const next = {sourceRows: rows, rows: sortedRows, columns: displayedColumns};
+    if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
+  });
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pagedRows = sortedRows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const firstVisibleRow = sortedRows.length ? currentPage * pageSize + 1 : 0;
+  const lastVisibleRow = Math.min((currentPage + 1) * pageSize, sortedRows.length);
+  useEffect(() => { setPage(0); }, [query, columnFilters, sort.key, sort.direction, pageSize, rows.length]);
+  useEffect(() => {
+    if (!openFilter) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".column-filter-header, .column-filter-popover")) setOpenFilter(null);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [openFilter]);
+  // Saved reports for this Reports-page table: columns, filters, sort and rows per page.
+  const reportTitle = title || (typeof document !== "undefined" ? document.title : "") || "Report";
+  const layoutStore = useTableLayouts(layoutKey || reportTitle, columns);
+  const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize });
+  const applySavedView = (view) => {
+    onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(view.visible.length ? view.visible : allColumnKeys, columns));
+    setColumnFilters(view.filters);
+    changeSort(view.sort.key, view.sort.direction);
+    if (view.pageSize) setPageSize(view.pageSize);
+    setPage(0);
+  };
+  const printSavedView = () => openSmartPrint({ title: reportTitle, columns: displayedColumns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
+  const reportTableToolbar = (
+      <div className="report-table-filter-toolbar">
+        <label className="report-row-limit"><span>Rows</span><select aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
+        <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
+        <ReportActionsMenu activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <SavedReportsPanel title={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint onPrint={printSavedView} />
+        {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
+      </div>
+  );
+  return (
+    <>
+      {toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
+      <table className="report-filter-table">
+        <thead><tr>{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
+          <React.Fragment key={column.key}>
+          <FilterableHeader
+            key={column.key}
+            durationSortOnly={false}
+            wrapHeader={column.wrapHeader}
+            label={column.label}
+            sortKey={column.key}
+            sort={sort}
+            onSort={changeSort}
+            open={openFilter === column.key}
+            onToggle={(key) => setOpenFilter((current) => current === key ? null : key)}
+            values={columnValues[column.key] || []}
+            filterValue={columnFilters[column.key] || ""}
+            onFilterChange={(value) => updateColumnFilter(column.key, value)}
+          />{column.key==='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}
+          </React.Fragment>
+        ))}</tr></thead>
+        <tbody>
+          {pagedRows.length ? pagedRows.map((row, index) => (
+            <tr key={rowKey?.(row, index) ?? index} className={rowClassName?.(row, index) || ""}>
+              {displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
+              {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={column.key === "complaint" || column.wrap ? "report-complaint-cell" : undefined}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
+            </tr>
+          )) : <tr><td colSpan={displayedColumns.length + 1} className="empty-state">{emptyMessage}</td></tr>}
+        </tbody>
+      </table>
+      <div className="report-table-pagination"><span>{firstVisibleRow}-{lastVisibleRow} of {sortedRows.length.toLocaleString("en-IN")}</span><div><button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={currentPage === 0} aria-label="Previous report page" title="Previous page"><ChevronLeft /></button><b>{currentPage + 1} / {pageCount}</b><button type="button" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next report page" title="Next page"><ChevronRight /></button></div></div>
+      <TableParameterFilter columns={columns} rows={rows} filters={columnFilters} onFilterChange={updateColumnFilter} onClearFilters={() => setColumnFilters({})} open={filterDialogOpen} onOpenChange={setFilterDialogOpen} hideTrigger dialogMode />
+      {columnDialogOpen && <ReportColumnSelector columns={columns} visibleColumnKeys={displayedColumns.map((column) => column.key)} layoutStore={layoutStore} onApply={(keys) => { onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns)); setColumnDialogOpen(false); }} onClose={() => setColumnDialogOpen(false)} />}
+      {sortDialogOpen && <ReportSortDialog columns={displayedColumns} sort={sort} onApply={(key, direction) => { changeSort(key, direction); setSortDialogOpen(false); }} onClose={() => setSortDialogOpen(false)} />}
+    </>
+  );
+}
+function parseCsv(text, fields) {
+  const lines = text
+      .replace(/^\uFEFF/, "")
+      .split(/\r?\n/)
+      .filter(Boolean),
+    split = (line) =>
+      line.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/).map((v) =>
+        v
+          .trim()
+          .replace(/^\"|\"$/g, "")
+          .replace(/\"\"/g, '\"'),
+      );
+  if (lines.length < 2)
+    throw new Error(
+      "The CSV must contain a header row and at least one data row.",
+    );
+  const headers = split(lines[0]).map((h) => h.toLowerCase()),
+    aliases = new Map(
+      fields.flatMap(([key, label]) => [
+        [key.toLowerCase(), key],
+        [label.toLowerCase(), key],
+      ]),
+    );
+  if (fields === masterFields["Equipment master"]) {
+    aliases.set("location", "currentLocation");
+    aliases.set("site location", "currentLocation");
+    aliases.set("acquired", "acquisitionDate");
+    aliases.set("acquired date", "acquisitionDate");
+    aliases.set("item name / equipment category", "category");
+    aliases.set("manufacteror sr no.", "manufacturerSerialNo");
+    aliases.set("chasis no", "chassisNo");
+  }
+  return lines
+    .slice(1)
+    .map((line) => {
+      const values = split(line),
+        record = {};
+      headers.forEach((header, index) => {
+        const key = aliases.get(header);
+        if (key) record[key] = values[index] || "";
+      });
+      return record;
+    })
+    .filter((record) => Object.values(record).some(Boolean));
+}
+function UserPrivilegeFields({ record = {}, siteOptions = [] }) {
+  return <>
+    <div className="user-privilege-heading full"><h3>Additional privileges</h3><p>Fine-tune the operational authorities for this user. Core access is assigned automatically from the selected role.</p></div>
+    {userPrivilegeFields.filter(([key, , type]) => type === "checkbox" && key !== "tenderAccess").map(([key, label]) => <label key={key}><span className="privilege-checkbox-field"><input type="checkbox" name={key} defaultChecked={isCheckedValue(record[key])} /><span><b>{label}</b><small>Enable this privilege</small></span></span></label>)}
+  </>;
+}
+
+function AccessSelectAll({label,options=[],selected=[],onChange}){
+  const control=useRef(null);
+  const selectedCount=options.filter((option)=>selected.includes(option)).length;
+  const allSelected=options.length>0&&selectedCount===options.length;
+  useEffect(()=>{if(control.current)control.current.indeterminate=selectedCount>0&&!allSelected},[selectedCount,allSelected]);
+  return <label className="access-select-all"><input ref={control} type="checkbox" checked={allSelected} onChange={(event)=>onChange(event.target.checked?[...options]:[])} /><span>{label}</span></label>;
+}
+
+function UserViewMenuFields({record={},view="desktop",visibleTabs,setVisibleTabs,isManager=false,managerRequestPrivileges=false,hasTender=false,onTenderToggle}){
+  const prefix=view==="mobile"?"mobile":"";
+  const keyFor=(field)=>prefix?mobileAccessKey(field):field;
+  const requiredTabs=["CD",...(isManager?["Dashboard","Tickets"]:[])];
+  const shownTabs=[...new Set([...visibleTabs.filter(tab=>tab!=="Tender"),...requiredTabs,...(hasTender?["Tender"]:[])])];
+  const [submenuSelections,setSubmenuSelections]=useState(()=>Object.fromEntries(Object.values(ADMIN_SUBMENU_OPTIONS).map(({field,options})=>{
+    const saved=selectedAccessValues(record,keyFor(field),prefix?field:"").filter((option)=>options.includes(option));
+    return [field,saved];
+  })));
+  const toggleTab=(tab,checked)=>tab==="Tender"?onTenderToggle?.(checked):setVisibleTabs((current)=>checked?[...new Set([...current,tab])]:current.filter((item)=>item!==tab));
+  const setSubmenu=(field,selection)=>setSubmenuSelections((current)=>({...current,[field]:selection}));
+  const toggleSubmenu=(field,option,checked)=>setSubmenuSelections((current)=>({...current,[field]:checked?[...new Set([...(current[field]||[]),option])]:(current[field]||[]).filter((item)=>item!==option)}));
+  return <section className={`view-menu-access full ${view}-view-access`}>
+    <header><div><b>{view==="mobile"?"Mobile View":"Desktop View"}</b><small>{view==="mobile"?"Menus shown at responsive mobile width":"Menus shown on desktop and laptop screens"}</small></div><span>{shownTabs.length} selected</span></header>
+    {managerRequestPrivileges && <fieldset className="user-access-field access-section-card"><legend>Manager request privileges</legend><label><input type="checkbox" name={`${view}ManagerCreateRequest`} defaultChecked={isCheckedValue(record[`${view}ManagerCreateRequest`])} /><span><b>Create request</b><small>Allow all assigned manager profiles to create maintenance requests for their assigned sites in this view.</small></span></label></fieldset>}
+    <fieldset className="user-access-field access-section-card">
+      <legend>Selected menus</legend>
+      {requiredTabs.map((tab)=><input key={tab} type="hidden" name={keyFor("tabAccess")} value={tab} />)}
+      <div><AccessSelectAll label="Select all menus" options={ADMIN_TAB_OPTIONS} selected={shownTabs} onChange={selection=>{setVisibleTabs(selection.filter(tab=>tab!=="Tender"));onTenderToggle?.(selection.includes("Tender"));}} />{ADMIN_TAB_OPTIONS.map((option)=>{const required=requiredTabs.includes(option);return <label key={option}><input type="checkbox" name={keyFor("tabAccess")} value={option} checked={shownTabs.includes(option)} disabled={required} onChange={(event)=>toggleTab(option,event.target.checked)} /><span>{userMenuOptionLabel(option)}{required?" · Required":""}</span></label>})}</div>
+    </fieldset>
+    {hasTender&&<TenderSubmenuFields record={record} view={view}/>}
+    {shownTabs.map((tab)=>{const submenu=ADMIN_SUBMENU_OPTIONS[tab];if(!submenu)return null;const field=keyFor(submenu.field),selected=submenuSelections[submenu.field]||[],options=userPermissionOptions(submenu),retained=retainedHiddenPermissions(submenu,selected);return <fieldset key={tab} className="user-access-field access-section-card access-submenu-card">
+      <legend>{tab} · Submenus</legend>
+      {retained.map(option=><input key={option} type="hidden" name={field} value={option} />)}
+      <div><AccessSelectAll label="Select all submenus" options={options} selected={selected} onChange={(selection)=>setSubmenu(submenu.field,[...retained,...selection])} />{options.map((option)=><label key={option}><input type="checkbox" name={field} value={option} checked={selected.includes(option)} onChange={(event)=>toggleSubmenu(submenu.field,option,event.target.checked)} /><span>{navigationLabel(option)}</span></label>)}</div>
+    </fieldset>})}
+  </section>;
+}
+
+function OperationalViewMenuFields({record={},view="desktop",role="",hasTender=false,onTenderToggle}){
+  const menuField=view==="mobile"?"mobileUserMenuAccess":"desktopUserMenuAccess";
+  const requestField=view==="mobile"?"mobileUserRequestAccess":"desktopUserRequestAccess";
+  const isGeneral = role === GENERAL_USER_ROLE;
+  const roleRecord = privilegeSelectionValue(record.userGroup) === role ? record : {};
+  const menuOptions = [...new Set([...(role === "Tender User"||role === "Account User" ? ["CD"] : isGeneral ? GENERAL_USER_MENU_OPTIONS : operationalMenuOptions),"Tender"])];
+  const [menus,setMenus]=useState(() => [...new Set([...(isGeneral ? generalUserMenuSelection(roleRecord, view) : Object.hasOwn(roleRecord,menuField) ? selectedAccessValues(roleRecord,menuField).filter((option)=>menuOptions.includes(option)) : operationalDefaultMenuOptions),"CD"])]);
+  const shownMenus=[...menus.filter(menu=>menu!=="Tender"&&menuOptions.includes(menu)),...(hasTender?["Tender"]:[])];
+  const requestOptions=operationalRequestOptions[role]||[];
+  const [selectedRequests,setSelectedRequests]=useState(()=>selectedAccessValues(roleRecord,requestField).filter((option)=>requestOptions.includes(option)));
+  if(["HR User","HR Manager"].includes(role))return <section className="view-menu-access full"><b>{view==="mobile"?"Mobile View":"Desktop View"}</b><p>{role==='HR User'?'Dashboard, Reports, C-Directory, C-Dir Masters, Announcements and Tickets are included.':'Full C-Directory, Employee Tenure Report and all C-Dir Masters are included.'}</p><input type="hidden" name={menuField} value={role==='HR User'?'Dashboard | Reports | CD | Tickets | Masters':'CD'} /></section>;
+  const toggleRequest=(option,checked)=>setSelectedRequests((current)=>checked?[...new Set([...current,option])]:current.filter((item)=>item!==option));
+  return <section className={`view-menu-access full ${view}-view-access`}>
+    <header><div><b>{view==="mobile"?"Mobile View":"Desktop View"}</b><small>{view==="mobile"?"Menus shown at responsive mobile width":"Menus shown on desktop and laptop screens"}</small></div><span>{menus.length} selected</span></header>
+    <fieldset className="user-access-field access-section-card"><legend>Selected menus</legend><input type="hidden" name={menuField} value="CD"/><div><AccessSelectAll label="Select all menus" options={menuOptions} selected={shownMenus} onChange={(selection)=>{setMenus([...new Set([...selection,"CD"])]);onTenderToggle?.(selection.includes("Tender"));}} />{menuOptions.map((option)=>{const required=option==="CD";return <label key={option}><input type="checkbox" name={menuField} value={option} checked={shownMenus.includes(option)} disabled={required} onChange={(event)=>option==="Tender"?onTenderToggle?.(event.target.checked):setMenus((current)=>event.target.checked?[...new Set([...current,option])]:current.filter((item)=>item!==option))}/><span>{userMenuOptionLabel(option)}{required?" · Required":""}</span></label>})}</div></fieldset>
+    {hasTender&&<TenderSubmenuFields record={record} view={view}/>}
+    {shownMenus.includes("Requests")&&<fieldset className="user-access-field access-section-card access-submenu-card"><legend>Requests · Submenus</legend><div><AccessSelectAll label="Select all submenus" options={requestOptions} selected={selectedRequests} onChange={setSelectedRequests} />{requestOptions.map((option)=><label key={option}><input type="checkbox" name={requestField} value={option} checked={selectedRequests.includes(option)} onChange={(event)=>toggleRequest(option,event.target.checked)}/><span>{option}</span></label>)}</div></fieldset>}
+  </section>;
+}
+
+function TenderSubmenuFields({record={},view}){const field=view==='mobile'?'tenderMobileAccess':'tenderDesktopAccess';const previouslyEnabled=assignedUserRoles(record).includes('Tender User')||isCheckedValue(record.tenderAccess);const [selected,setSelected]=useState(()=>previouslyEnabled&&Object.hasOwn(record,field)?normalizedTenderSelection(record[field]):[...TENDER_ALL_PERMISSIONS]);return <fieldset className="user-access-field access-section-card access-submenu-card"><legend>Tender · Menus and submenus</legend><input type="hidden" name={field} value=""/><div><AccessSelectAll label="Select all Tender permissions" options={TENDER_ALL_PERMISSIONS} selected={selected} onChange={setSelected}/>{TENDER_PERMISSION_OPTIONS.map(option=><label key={option.key}><input type="checkbox" name={field} value={option.key} checked={selected.includes(option.key)} onChange={event=>setSelected(current=>event.target.checked?[...current,option.key]:current.filter(key=>key!==option.key))}/><span><b>{option.label}</b><small>{option.group}</small></span></label>)}</div>{view==='desktop'&&<label>Business unit scope (blank allows all)<input name="tenderBusinessUnit" defaultValue={record.tenderBusinessUnit||''}/></label>}</fieldset>;}
+function UserTypeAccessFields({ record = {}, siteOptions = [], canCreateSuperAdmin = false }) {
+  const initialRole = String(record.userType || "").toLowerCase().includes("super")
+    ? "User"
+    : record.userType === "Account User" ? "Account User" : privilegeSelectionValue(record.userGroup);
+  const [accountRole, setAccountRole] = useState(initialRole);
+  const [selectedRoles,setSelectedRoles]=useState(()=>[...new Set([...assignedUserRoles(record),...(isCheckedValue(record.tenderAccess)?['Tender User']:[])])]);
+  const [selectedAccounts,setSelectedAccounts]=useState(()=>accountPrivileges(record));
+  const toggleRole=(role,checked)=>{
+    const next=checked?[...new Set([...selectedRoles,role])]:selectedRoles.filter(value=>value!==role);
+    setSelectedRoles(next);
+    if(roleSection==='team')setAccountRole(next.find(value=>!['Account User','Tender User'].includes(value))||next[0]||'');
+  };
+  const [roleSection, setRoleSection] = useState(initialRole && initialRole !== "User" ? "team" : "manager");
+  const [userAuthority, setUserAuthority] = useState(record.adminLevel || (initialRole === "User" ? "Admin" : ""));
+  const [managerRoles, setManagerRoles] = useState(managerRoleSelection(record.managerRole));
+  const [managerRegions, setManagerRegions] = useState(managerRegionSelection(record.managerRegion));
+  const [managerSites, setManagerSites] = useState(() => {
+    const saved=displaySiteSelection(record.managerSites);
+    return saved.length?saved:sitesForManagerRegions(record.managerRegion).map(displaySiteName);
+  });
+  const [visibleTabs, setVisibleTabs] = useState(selectedAccessValues(record, "tabAccess"));
+  const [mobileVisibleTabs, setMobileVisibleTabs] = useState(selectedAccessValues(record,"mobileTabAccess","tabAccess"));
+  const isDesktopUser = accountRole === "User";
+  const isAdmin = isDesktopUser && (userAuthority === "Admin" || userAuthority === "Super Admin");
+  const isSuperAdmin = isDesktopUser && userAuthority === "Super Admin";
+  const isManager = isDesktopUser && userAuthority === "Manager";
+  return <>
+    <input type="hidden" name="userRoles" value={(isDesktopUser?selectedRoles.filter(role=>['Account User','Tender User'].includes(role)):selectedRoles).join(' | ')} />
+    <input type="checkbox" name="tenderAccess" checked={selectedRoles.includes('Tender User')} readOnly hidden />
+    {!selectedRoles.includes('Account User')&&<input type="hidden" name="accountAccess" value={accountPrivileges(record).join(' | ')} />}
+    <input type="hidden" name="userType" value={isDesktopUser ? "Super Admin" : accountRole === "Account User" ? "Account User" : accountRole ? "Mobile User" : ""} />
+    <fieldset className="account-role-field full">
+      <legend>User role *</legend>
+      <p>Select one or more team roles, or configure an Admin / Non Admin account with optional Accounts and Tender access.</p>
+      <div className="role-category-tabs" role="tablist" aria-label="User category">
+        <button type="button" role="tab" aria-selected={roleSection === "manager"} className={roleSection === "manager" ? "active" : ""} onClick={() => { setRoleSection("manager"); setAccountRole("User"); }}>Manager User</button>
+        <button type="button" role="tab" aria-selected={roleSection === "team"} className={roleSection === "team" ? "active" : ""} onClick={() => { setRoleSection("team"); setAccountRole(selectedRoles.find(role=>!['Account User','Tender User'].includes(role))||selectedRoles[0]||''); }}>Team User</button>
+      </div>
+      {roleSection === "manager" && <input type="hidden" name="userGroup" value="User" />}
+      {roleSection === "team" && <input type="hidden" name="userGroup" value={accountRole} />}
+      {roleSection === "team" && <div className="role-option-grid">{mobileUserRoleOptions.map((option) => <label key={option} className={selectedRoles.includes(option) ? "selected" : ""}>
+        <input type="checkbox" value={option} checked={selectedRoles.includes(option)} onChange={event=>toggleRole(option,event.target.checked)} />
+        <span><b>{option}</b><small>{mobileRoleAuthority[option]}</small></span>
+      </label>)}</div>}
+    </fieldset>
+    {isDesktopUser&&<fieldset className="account-role-field full"><legend>Additional workspaces</legend>{['Account User','Tender User'].map(role=><label key={role}><input type="checkbox" checked={selectedRoles.includes(role)} onChange={event=>toggleRole(role,event.target.checked)} /> {role}</label>)}</fieldset>}
+    {selectedRoles.includes('Account User')&&<fieldset className="account-role-field full"><legend>Accounts privileges</legend><p>Only selected Accounts sections will be accessible.</p><input type="hidden" name="accountAccess" value="" /><div>{ACCOUNT_PRIVILEGES.map(option=><label key={option}><input type="checkbox" name="accountAccess" value={option} checked={selectedAccounts.includes(option)} onChange={event=>setSelectedAccounts(current=>event.target.checked?[...current,option]:current.filter(value=>value!==option))} /><span>{option}</span></label>)}</div></fieldset>}
+    {isDesktopUser && <fieldset className="account-role-field user-authority-field full">
+      <legend>User authority *</legend>
+      <p>Choose whether this desktop user is a full Admin or a configurable Manager.</p>
+      <div>{[...userAuthorityOptions,...(canCreateSuperAdmin?["Super Admin"]:[])].map((option) => <label key={option} className={userAuthority === option ? "selected" : ""}>
+        <input type="radio" name="adminLevel" value={option} required checked={userAuthority === option} onChange={() => setUserAuthority(option)} />
+        <span><b>{option === "Manager" ? "Non Admin" : option}</b><small>{option === "Super Admin" ? "All Admin features plus Admin lock and Super Admin management" : option === "Admin" ? "All screens, menus and administrative functions" : "Only the selected menus and screens"}</small></span>
+      </label>)}</div>
+    </fieldset>}
+    {isManager && <fieldset className="account-role-field manager-role-field full">
+      <legend>Whose manager is this user? *</legend>
+      <p>Select one or more operational teams this Non Admin supervises. Their dashboard will include every selected role.</p>
+      <div>{managerRoleOptions.map((option) => <label key={option} className={managerRoles.includes(option) ? "selected" : ""}>
+        <input type="checkbox" name="managerRole" value={option} checked={managerRoles.includes(option)} onChange={(event) => setManagerRoles((current) => event.target.checked ? [...new Set([...current, option])] : current.filter((role) => role !== option))} />
+      <span><b>{option}</b><small>{option === "Project Manager" ? "Site-wide fleet status and Idle Make On Road approval" : option === "Production Manager" ? "On-road, off-road, idle and production fleet status" : option === "Maintenance Manager" ? "Maintenance intake, remaining work and completion" : "Pending verification and completed MIS checks"}</small></span>
+      </label>)}</div>
+    </fieldset>}
+    {isDesktopUser && <fieldset className="account-role-field manager-region-field full">
+      <legend>Consolidated WhatsApp report regions</legend>
+      <p>Select one or more regions, or select All. Non Admin users may leave every option clear to receive only their assigned site's report.</p>
+      <div>{MANAGER_REGION_OPTIONS.map((option) => <label key={option} className={managerRegions.includes(option) ? "selected" : ""}>
+        <input type="checkbox" name="managerRegion" value={option} checked={managerRegions.includes(option)} onChange={(event) => {
+          const nextRegions=option==="All"
+            ? event.target.checked?["All"]:[]
+            : event.target.checked?[...new Set([...managerRegions.filter((region)=>region!=="All"),option])]:managerRegions.filter((region)=>region!==option&&region!=="All");
+          const nextAvailable=sitesForManagerRegions(nextRegions).map(displaySiteName);
+          setManagerRegions(nextRegions);
+          setManagerSites((current)=>event.target.checked?[...new Set([...current,...nextAvailable])]:current.filter((site)=>nextAvailable.includes(site)));
+        }} />
+        <span><b>{option}</b><small>{option==="All"?"Receive reports for every configured region":`${option} sites only`}</small></span>
+      </label>)}</div>
+      {!!managerRegions.length&&<div className="manager-site-options">
+        <b>Included sites</b><small>All sites are checked initially. Uncheck a site to exclude its requests and tickets for this user.</small>
+        <div>{sitesForManagerRegions(managerRegions).map(displaySiteName).map((site)=><label key={site} className={managerSites.includes(site)?"selected":""}>
+          <input type="checkbox" name="managerSites" value={site} checked={managerSites.includes(site)} onChange={(event)=>setManagerSites((current)=>event.target.checked?[...new Set([...current,site])]:current.filter((item)=>item!==site))}/>
+          <span><b>{site}</b><small>{managerSites.includes(site)?"Included":"Excluded"}</small></span>
+        </label>)}</div>
+      </div>}
+    </fieldset>}
+    {accountRole && !isDesktopUser && accountRole!=="Tender User" && <UserSiteFields record={record} siteOptions={siteOptions} />}
+    {isAdmin && <div className="super-role-summary full"><ShieldCheck /><span><b>{isSuperAdmin?"Super Admin access":"Admin menu access"}</b><small>All menus are selected by default. You can tailor this account’s desktop and mobile menus below.</small></span></div>}
+    {isDesktopUser && <>
+      <div className="user-privilege-heading full"><h3>Selected menus for each view</h3><p>Configure this user’s header menus and submenus separately for desktop and responsive mobile screens.</p></div>
+      <UserViewMenuFields record={record} view="desktop" visibleTabs={visibleTabs} setVisibleTabs={setVisibleTabs} isManager managerRequestPrivileges={isManager} hasTender={selectedRoles.includes('Tender User')} onTenderToggle={checked=>toggleRole('Tender User',checked)} />
+      <UserViewMenuFields record={record} view="mobile" visibleTabs={mobileVisibleTabs} setVisibleTabs={setMobileVisibleTabs} isManager managerRequestPrivileges={isManager} hasTender={selectedRoles.includes('Tender User')} onTenderToggle={checked=>toggleRole('Tender User',checked)} />
+    </>}
+    {accountRole && !isDesktopUser && <>
+      <div className="user-privilege-heading full"><h3>Selected menus for each view</h3><p>{accountRole === "Account User" ? "Directory is required for every account. Accounts remains this role’s only additional workspace." : accountRole === GENERAL_USER_ROLE ? "Directory is required. Select any additional menus this General User should see." : `Choose this ${accountRole} account’s menus and request actions separately for desktop and responsive mobile screens.`}</p></div>
+      <OperationalViewMenuFields key={`${accountRole}-desktop`} record={record} view="desktop" role={accountRole} hasTender={selectedRoles.includes('Tender User')} onTenderToggle={checked=>toggleRole('Tender User',checked)}/>
+      <OperationalViewMenuFields key={`${accountRole}-mobile`} record={record} view="mobile" role={accountRole} hasTender={selectedRoles.includes('Tender User')} onTenderToggle={checked=>toggleRole('Tender User',checked)}/>
+    </>}
+    {accountRole && !isDesktopUser && accountRole !== "Account User" && accountRole !== "Tender User" && accountRole !== GENERAL_USER_ROLE && !["HR User","HR Manager"].includes(accountRole) && <UserPrivilegeFields record={record} siteOptions={siteOptions} />}
+  </>;
+}
+
+function applyUserRoleDefaults(record) {
+  if(Object.hasOwn(record,'userRoles')){
+    const selected=assignedUserRoles(record);
+    if(record.userGroup!=='User')record.userGroup=selected.find(role=>!['Account User','Tender User'].includes(role))||selected[0]||'';
+    record.userRoles=selected.join(' | ');
+  }
+  const role = privilegeSelectionValue(record.userGroup);
+  if (role === "User") {
+    record.userType = "Super Admin";
+    record.userGroup = "";
+    record.location = "";
+    if (record.adminLevel === "Admin" || record.adminLevel === "Super Admin") {
+      record.site = "";
+      record.managerRole = "";
+      record.managerRegion = managerRegionSelection(record.managerRegion).join(" | ");
+      record.managerSites = displaySiteSelection(record.managerSites).join(" | ");
+      if(!Object.prototype.hasOwnProperty.call(record,"mobileTabAccess")&&!Object.prototype.hasOwnProperty.call(record,"dashboardAccess")){
+        record.masterAccess = ADMIN_MASTER_OPTIONS.join(" | ");
+        record.tabAccess = ADMIN_DEFAULT_TAB_OPTIONS.join(" | ");
+        Object.values(ADMIN_SUBMENU_OPTIONS).forEach(({field, options}) => { record[field] = options.join(" | "); });
+        record.mobileTabAccess = ADMIN_DEFAULT_TAB_OPTIONS.join(" | ");
+        Object.values(ADMIN_SUBMENU_OPTIONS).forEach(({field, options}) => { record[mobileAccessKey(field)] = options.join(" | "); });
+      }
+    } else {
+      const selectedManagerRoles=managerRoleSelection(record.managerRole);
+      record.managerRole=selectedManagerRoles.join(" | ");
+      record.managerRegion=managerRegionSelection(record.managerRegion).join(" | ");
+      record.managerSites=displaySiteSelection(record.managerSites).join(" | ");
+      const tabs = new Set(String(record.tabAccess || "").split(/\s*\|\s*/).filter(Boolean));
+      tabs.add("Dashboard");
+      tabs.add("Reports");
+      tabs.add("Tickets");
+      record.tabAccess = [...tabs].join(" | ");
+      record.dashboardAccess = "Dashboard";
+      const departmentReportLabels = new Set(["Reports", "General Report"]);
+      departmentReportLabels.add("Vehicle History Report");
+      if (!selectedManagerRoles.length || selectedManagerRoles.includes("Production Manager")) departmentReportLabels.add("Production report");
+      if (!selectedManagerRoles.length || selectedManagerRoles.includes("Maintenance Manager")) departmentReportLabels.add("Maintenance report");
+      if (!selectedManagerRoles.length || selectedManagerRoles.includes("MIS Manager")) departmentReportLabels.add("MIS Report");
+      record.reportAccess = [...departmentReportLabels].join(" | ");
+      const mobileTabs = new Set(String(record.mobileTabAccess || record.tabAccess || "").split(/\s*\|\s*/).filter(Boolean));
+      mobileTabs.add("Dashboard");
+      mobileTabs.add("Reports");
+      mobileTabs.add("Tickets");
+      record.mobileTabAccess = [...mobileTabs].join(" | ");
+      record.mobileDashboardAccess = "Dashboard";
+      record.mobileReportAccess = record.reportAccess;
+      if(!selectedManagerRoles.length)return record;
+      if (selectedManagerRoles.some((role)=>role !== "MIS Manager")) {
+        const masters = new Set(String(record.masterAccess || "").split(/\s*\|\s*/).filter(Boolean));
+        masters.add("Equipment master");
+        record.masterAccess = [...masters].join(" | ");
+        const mobileMasters = new Set(String(record.mobileMasterAccess || record.masterAccess || "").split(/\s*\|\s*/).filter(Boolean));
+        mobileMasters.add("Equipment master");
+        record.mobileMasterAccess = [...mobileMasters].join(" | ");
+      }
+    }
+  } else if (mobileUserRoleOptions.includes(role)) {
+    record.userType = role === "Account User" ? "Account User" : "Mobile User";
+    record.site = displaySiteSelection(record.site || record.location).join(" | ");
+    record.location = record.site;
+    record.adminLevel = "";
+    record.managerRole = "";
+    record.managerRegion = "";
+    record.managerSites = "";
+    record.masterAccess = "";
+    record.tabAccess = "";
+    Object.values(ADMIN_SUBMENU_OPTIONS).forEach(({field}) => { record[field] = ""; });
+    record.mobileTabAccess = "";
+    Object.values(ADMIN_SUBMENU_OPTIONS).forEach(({field}) => { record[mobileAccessKey(field)] = ""; });
+    for(const view of ["desktop","mobile"]){
+      const menuField=`${view}UserMenuAccess`,requestField=`${view}UserRequestAccess`;
+      if(["HR User","HR Manager"].includes(role)){record[menuField]=role==='HR User'?"Dashboard | Reports | CD | Tickets | Masters":"CD";record[requestField]="";
+      }else if(role === "Account User"||role === "Tender User"){
+        record[menuField]=assignedUserRoles(record).includes("Tender User")?"CD | Tender":"CD";record[requestField]="";
+      }else if(role === GENERAL_USER_ROLE){
+        record[menuField]=generalUserMenuSelection(record,view).join(" | ");
+        if(!Object.hasOwn(record,requestField))record[requestField]=operationalRequestOptions[role].join(" | ");
+      }else{
+        if(!record[menuField])record[menuField]=operationalDefaultMenuOptions.join(" | ");
+        if(!record[requestField])record[requestField]=(operationalRequestOptions[role]||[]).join(" | ");
+      }
+    }
+    if(["HR User","HR Manager"].includes(role) || role === GENERAL_USER_ROLE || role === "Account User" || role === "Tender User")for(const key of ["read","edit","delete","verify","print"])record[key]=false;
+  }
+  return record;
+}
+
+function missingViewSubmenu(record){
+  for(const [view,prefix] of [["Desktop View",""],["Mobile View","mobile"]]){
+    const tabField=prefix?"mobileTabAccess":"tabAccess";
+    const missing=String(record[tabField]||"").split(/\s*\|\s*/).filter(Boolean).find((tab)=>{
+      const submenu=ADMIN_SUBMENU_OPTIONS[tab];
+      return submenu&&!record[prefix?mobileAccessKey(submenu.field):submenu.field];
+    });
+    if(missing)return {view,tab:missing};
+  }
+  return null;
+}
+
+const splitMultiTextValues = (value = "") => String(value)
+  .split(/\s*\|\s*/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+function MultiTextField({ name, label, value = "" }) {
+  const [values, setValues] = useState(() => {
+    const existing = splitMultiTextValues(value);
+    return existing.length ? existing : [""];
+  });
+  const updateValue = (index, nextValue) => setValues((current) => current.map((item, itemIndex) => itemIndex === index ? nextValue : item));
+  const removeValue = (index) => setValues((current) => current.length === 1 ? [""] : current.filter((_, itemIndex) => itemIndex !== index));
+  return (
+    <fieldset className="multi-text-field full">
+      <legend>{label} *</legend>
+      <div className="multi-text-values">
+        {values.map((item, index) => (
+          <div className="multi-text-row" key={`${name}-${index}`}>
+            <input name={name} value={item} onChange={(event) => updateValue(index, event.target.value)} placeholder={`Enter ${label.toLowerCase()} name`} />
+            {values.length > 1 && <button type="button" onClick={() => removeValue(index)} aria-label={`Remove ${label.toLowerCase()} ${index + 1}`}>Remove</button>}
+          </div>
+        ))}
+      </div>
+      <button className="multi-text-add" type="button" onClick={() => setValues((current) => [...current, ""])}><Plus /> Add another superior</button>
+    </fieldset>
+  );
+}
+
+// C-Dir master fields: "ref:<master>:<key>" picks a value kept in another master,
+// "options:A|B" is a fixed list. A saved value missing from the list stays selectable.
+Object.assign(masterFields, CDIR_MASTER_FIELDS);
+const cdirFieldKind = (type) => /^(ref|options):/.test(String(type || ""));
+function CDirFieldInput({ name, label, type, defaultValue = "", required = false }) {
+  const [, refMaster = "", refKey = ""] = String(type).startsWith("ref:") ? String(type).split(":") : [];
+  const [records] = useMasterRecords(refMaster || "C-Dir none", [], {enabled: Boolean(refMaster)});
+  const current = String(defaultValue ?? "");
+  if (!refMaster) {
+    const options = String(type).slice("options:".length).split("|");
+    return <label>{label}{required ? " *" : ""}<select name={name} required={required} defaultValue={current}>
+      {current && !options.includes(current) && <option value={current}>{current}</option>}
+      {options.map((option) => <option key={option} value={option}>{option || "Not set"}</option>)}
+    </select></label>;
+  }
+  const values = [...new Set(records.map((record) => String(record[refKey] ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return <SearchableSelect label={label} name={name} required={required} defaultValue={current}
+    options={[...(current && !values.includes(current) ? [current] : []), ...values].map((value) => ({value, label: value}))}
+    placeholder={`Search ${label.toLowerCase()}`} emptyText={`Not in the ${refMaster}. Add it there first.`} />;
+}
+
+function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelected, selectedRecords = [], onSaveAll, saveAllDisabled = false, userOptions = [], siteOptions = [], canCreateSuperAdmin = false }) {
+  const [mode, setMode] = useState(null),
+    [selectedFile, setSelectedFile] = useState(null),
+    [importing, setImporting] = useState(false),
+    [dragActive, setDragActive] = useState(false),
+    [syncingOracle, setSyncingOracle] = useState(false),
+    [deletingSelected, setDeletingSelected] = useState(false),
+    [deleteSelectedReason, setDeleteSelectedReason] = useState(""),
+    [deleteSelectedError, setDeleteSelectedError] = useState(""),
+    fileInput = useRef(null),
+    fields = masterFields[name],
+    formFields = name === "Users & employees" ? [...fields, ...userPrivilegeFields, ...userSubmenuFields] : fields,
+    exportColumns = fields?.map(([key, label, type]) => ({ label, value: (record) => name === "Users & employees" && key === "site" ? userMasterLocation(record) : name === "Users & employees" && key === "userType" ? userMasterRole(record) : name === "Users & employees" && ["login", "employee"].includes(key) ? String(record[key] || "").toUpperCase() : type === "checkbox" ? (isCheckedValue(record[key]) ? "Yes" : "No") : formatMasterFieldValue(key, record[key]) })) || [],
+    selectedEquipmentRecords = [...new Map(selectedRecords.filter((record) => record.id).map((record) => [String(record.id), record])).values()],
+    selectedRecordCount = selectedEquipmentRecords.length;
+  if (!fields) return null;
+  const saveManual = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget),
+      record = Object.fromEntries(
+        formFields.map(([key, , type]) => [
+          key,
+          type === "checkbox"
+            ? fd.has(key)
+            : type === "multi-checkbox" || type === "multi-text"
+              ? fd.getAll(key).map((value) => String(value).trim()).filter(Boolean).join(" | ")
+              : String(fd.get(key) || "").trim(),
+        ]),
+      );
+    if (name === "Users & employees") {
+      record.login = record.login.toUpperCase();
+      record.employee = record.employee.toUpperCase();
+      applyUserRoleDefaults(record);
+      if(!record.userType){alert('Select at least one user role.');return;}
+    }
+    if (name === "Users & employees" && record.userType === "Mobile User" && assignedUserRoles(record).some(role=>!["Tender User","Account User"].includes(role)) && !record.site) {
+      alert("Select at least one site for this user.");
+      return;
+    }
+    if (name === "Users & employees" && record.userType === "Super Admin" && record.adminLevel === "Manager" && !record.managerRole) {
+      alert("Select at least one manager role for this Non Admin user.");
+      return;
+    }
+    if (name === "Users & employees" && record.userType === "Super Admin" && record.adminLevel === "Manager" && (!record.managerRegion || !record.managerSites)) {
+      alert("Select at least one region and keep at least one site included for this Non Admin user.");
+      return;
+    }
+    if (name === "Equipment master" && !record.status)
+      record.status = "Operational";
+    if (name === "Users & employees" && record.userType === "Super Admin" && !record.masterAccess && !record.tabAccess) {
+      alert("Select at least one visible master or tab for this Super Admin.");
+      return;
+    }
+    if (name === "Users & employees" && record.userType === "Super Admin") {
+      const missing = missingViewSubmenu(record);
+      if (missing) { alert(`Select at least one ${missing.tab} submenu for ${missing.view}.`); return; }
+    }
+    try {
+      await onAdd([record]);
+      setMode(null);
+    } catch (error) {
+      alert(error?.message || "Could not add this record.");
+    }
+  };
+  const chooseFile = (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      alert("Please select a CSV file.");
+      return;
+    }
+    setSelectedFile(file);
+  };
+  const importFile = async () => {
+    const file = selectedFile;
+    if (!file || importing) return;
+    setImporting(true);
+    try {
+      const records = parseCsv(await file.text(), fields);
+      if (!records.length) throw new Error("No usable rows were found.");
+      await onAdd(records);
+      setSelectedFile(null);
+      setMode(null);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+  const closeImport = () => {
+    if (importing) return;
+    setSelectedFile(null);
+    setDragActive(false);
+    setMode(null);
+  };
+  const template = () => runDownloadNotice('CSV template',() => {
+    const csv =
+      fields
+        .map(([, label]) => '"' + label.replaceAll('"', '""') + '"')
+        .join(",") + "\n";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    link.download = name.toLowerCase().replaceAll(" ", "-") + "-template.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+  const syncOracle = async () => {
+    if (syncingOracle) return;
+    setSyncingOracle(true);
+    try {
+      const response = await fetch(name === "Equipment master" ? "/api/oracle/fleet-details/sync" : "/api/oracle/equipment-transfers/sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const details = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(details.error || "Could not synchronize equipment transfers.");
+      alert(name === "Equipment master"
+        ? `ERP sync completed. ${details.updated || 0} vehicles updated. Driver names available: ${details.driversFound || 0}/${details.total || 0}. Models available: ${details.modelsFound || 0}/${details.total || 0}. ${details.missingDrivers || 0} driver names and ${details.missingModels || 0} models still need source data or matching ERP records.`
+        : `${details.transfersImported || 0} Oracle transfers imported. ${details.equipmentUpdated || 0} Equipment Master locations updated.`);
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || "Could not synchronize equipment transfers.");
+      setSyncingOracle(false);
+    }
+  };
+  const openDeleteSelectedReview = () => {
+    setDeleteSelectedReason("");
+    setDeleteSelectedError("");
+    setMode("delete-selected");
+  };
+  const deleteSelected = async () => {
+    const reason = deleteSelectedReason.trim();
+    if (!onDeleteSelected || !selectedRecordCount || deletingSelected) return;
+    if (!reason) {
+      setDeleteSelectedError("Enter a reason for the Audit Trail before deleting these records.");
+      return;
+    }
+    setDeleteSelectedError("");
+    setDeletingSelected(true);
+    try {
+      await onDeleteSelected(selectedEquipmentRecords, reason);
+      setMode(null);
+    } catch (error) {
+      setDeleteSelectedError(error.message || "Could not delete the selected equipment records.");
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+  return (
+    <>
+      <div className="master-actions">
+        {["Vehicle transfers", "Equipment master"].includes(name) && (
+          <button className="secondary" type="button" onClick={syncOracle} disabled={syncingOracle}>
+            <RefreshCw /> {syncingOracle ? "Syncing Oracle..." : name === "Equipment master" ? "Sync drivers & models" : "Sync Oracle"}
+          </button>
+        )}
+        {onDeleteAll && (
+          <button className="secondary danger" onClick={onDeleteAll}>
+            <Trash2 /> Delete all
+          </button>
+        )}
+        {name === "Equipment master" && onDeleteSelected && (
+          <button className="secondary danger" type="button" onClick={openDeleteSelectedReview} disabled={!selectedRecordCount || deletingSelected} title="Review and delete every saved record matching the current Equipment Master filters">
+            <Trash2 /> {deletingSelected ? "Deleting..." : `Delete selected (${selectedRecordCount})`}
+          </button>
+        )}
+        {name === "Privilege" && onSaveAll && (
+          <button className="primary" type="button" onClick={onSaveAll} disabled={saveAllDisabled}>
+            <Save /> Save all
+          </button>
+        )}
+        <button className="secondary" onClick={() => setMode("import")}>
+          <Upload />
+          Import
+        </button>
+        <ExportMenu title={name==='Users & employees'?'Login Details':name} columns={exportColumns} rows={records} />
+        <button className="primary" onClick={() => setMode("manual")}>
+          <Plus />
+          Add record
+        </button>
+      </div>
+      {mode === "delete-selected" && (
+        <Modal title={`Review ${selectedRecordCount} selected equipment record${selectedRecordCount === 1 ? "" : "s"}`} close={() => !deletingSelected && setMode(null)} className="delete-selected-modal">
+          <div className="delete-selected-review">
+            <div className="delete-selected-warning" role="alert">
+              <Trash2 />
+              <div>
+                <strong>Are you sure you want to delete all of the records listed below?</strong>
+                <span>This permanently deletes {selectedRecordCount} record{selectedRecordCount === 1 ? "" : "s"} matching the current filters and cannot be undone.</span>
+              </div>
+            </div>
+            <ol className="delete-selected-list" aria-label="Equipment records selected for deletion">
+              {selectedEquipmentRecords.map((record) => {
+                const equipmentName = record.equipmentName || record.door || record.reg || record.manufacturerSerialNo || `Equipment record ${record.id}`;
+                const details = [
+                  record.currentLocation || record.location ? `Location: ${record.currentLocation || record.location}` : "",
+                  record.manufacturerSerialNo ? `Serial: ${record.manufacturerSerialNo}` : "",
+                  record.chassisNo ? `Chassis: ${record.chassisNo}` : "",
+                  equipmentGroupValue(record) ? `Group: ${equipmentGroupValue(record)}` : "",
+                ].filter(Boolean);
+                return <li key={record.id}><b>{equipmentName}</b><span>{details.join(" · ") || "No additional equipment details"}</span></li>;
+              })}
+            </ol>
+            <label className="delete-selected-reason">Reason for deletion *<textarea value={deleteSelectedReason} onChange={(event) => setDeleteSelectedReason(event.target.value)} maxLength="500" placeholder="Enter the reason recorded in the Audit Trail" disabled={deletingSelected} /></label>
+            {deleteSelectedError && <p className="delete-selected-error" role="alert">{deleteSelectedError}</p>}
+            <footer className="delete-selected-actions">
+              <button type="button" className="secondary" onClick={() => setMode(null)} disabled={deletingSelected}>Cancel</button>
+              <button type="button" className="primary delete-selected-confirm" onClick={deleteSelected} disabled={deletingSelected || !selectedRecordCount || !deleteSelectedReason.trim()}>
+                <Trash2 /> {deletingSelected ? "Deleting selected records..." : "Yes, delete selected"}
+              </button>
+            </footer>
+          </div>
+        </Modal>
+      )}
+      {mode === "manual" && (
+        <Modal title={"Add to " + name} close={() => setMode(null)}>
+          <form className="form master-form" onSubmit={saveManual}>
+            <div className="formgrid">
+              {fields.map(([key, label, type]) =>
+                cdirFieldKind(type) ? <CDirFieldInput key={key} name={key} label={label} type={type} required={key === fields[0][0]} /> :
+                name === "Users & employees" && ["site", "userType", "masterAccess", "tabAccess"].includes(key) ? null : type === "multi-text" ? (
+                  <MultiTextField key={key} name={key} label={label} />
+                ) : type === "multi-checkbox" ? (
+                  <fieldset key={key} className="user-access-field full">
+                    <legend>{label}</legend>
+                    <p>Select exactly which {key === "masterAccess" ? "masters" : "navigation tabs"} this user can open.</p>
+                    <div>
+                      {userAccessOptions[key].map((option) => (
+                        <label key={option}>
+                          <input type="checkbox" name={key} value={option} />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : type === "role-radio" ? (
+                  <fieldset key={key} className="privilege-role-field">
+                    <legend>{label} *</legend>
+                    <div>
+                      {privilegeAccessOptions.map((option) => (
+                        <label key={option}>
+                          <input type="radio" name={key} value={option} required />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : type === "mobile-role-select" ? (
+                  <label key={key}>
+                    {label}
+                    <select name={key} defaultValue="">
+                      <option value="">Not assigned</option>
+                      {mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option} — {mobileRoleAuthority[option]}</option>)}
+                      </select>
+                    </label>
+                ) : name === "Users & employees" && key === "site" ? (
+                  <label key={key}>
+                    {label} *
+                    <select name={key} required defaultValue="">
+                      <option value="" disabled>Select location</option>
+                      {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                    </select>
+                  </label>
+                ) : name === "Users & employees" && key === "userType" ? (
+                  <label key={key}>
+                    {label} *
+                    <select name={key} required defaultValue="">
+                      <option value="" disabled>Select user type</option>
+                      {persistedUserTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </label>
+                ) : type === "user-select" ? (
+                  <SearchableSelect key={key} label={label} name={key} required defaultValue=""
+                    options={userOptions.map((user) => ({
+                      value: user.login || user.employee,
+                      label: user.employee || user.login,
+                      description: user.login && user.employee ? user.login : "",
+                      keywords: [user.employee, user.login, user.site, user.mobile].filter(Boolean).join(" "),
+                    }))}
+                    placeholder="Search employee name, login, site, or mobile" emptyText="No matching user found." />
+                ) : (
+                <label key={key}>
+                  {type === "checkbox" ? (
+                    <span className="privilege-checkbox-field">
+                      <input type="checkbox" name={key} />
+                      <span>
+                        <b>{label}</b>
+                        <small>Enable this privilege</small>
+                      </span>
+                    </span>
+                  ) : type === "site-select" ? (
+                    <>{label} *
+                    <select name={key} required defaultValue="">
+                      <option value="" disabled>Select a site</option>
+                      {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                    </select></>
+                  ) : type === "time" ? (
+                    <>{label} (12-hour) *<TwelveHourTimeInput includeSeconds name={key} required /></>
+                  ) : type === "date" ? (
+                    <>{label}<DateInput name={key} /></>
+                  ) : type === "shift-status" ? (
+                    <>{label} *<select name={key} required defaultValue="Active"><option>Active</option><option>Inactive</option></select></>
+                  ) : name === "Equipment master" && key === "status" ? (
+                    <>{label} *
+                    <select name={key} required defaultValue="Operational"><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></select></>
+                  ) : key === "level" ? (
+                    <>{label} *
+                    <select name={key} required defaultValue="">
+                      <option value="" disabled>
+                        Select level
+                      </option>
+                      {["L1", "L2", "L3", "L4"].map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                    </>
+                  ) : (
+                    <>{label}{key === fields[0][0] ? " *" : ""}
+                    <input
+                      className={name === "Users & employees" && ["login", "employee"].includes(key) ? "uppercase-user-field" : ""}
+                      name={key}
+                      required={key === fields[0][0]}
+                      placeholder={"Enter " + label.toLowerCase()}
+                    />
+                    </>
+                  )}
+                </label>
+                ),
+              )}
+              {name === "Users & employees" && <UserTypeAccessFields siteOptions={siteOptions} canCreateSuperAdmin={canCreateSuperAdmin} />}
+            </div>
+            <footer>
+              <button type="button" onClick={() => setMode(null)}>
+                Cancel
+              </button>
+              <button className="primary">Save record</button>
+            </footer>
+          </form>
+        </Modal>
+      )}
+      {mode === "import" && (
+        <Modal title={"Import " + name} close={closeImport}>
+          <div className="import-dropbox">
+            <div
+              className={`import-dropzone${dragActive ? " drag-active" : ""}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                if (!event.currentTarget.contains(event.relatedTarget)) setDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+                chooseFile(event.dataTransfer.files?.[0]);
+              }}
+            >
+              <div className="import-file-icons" aria-hidden="true">
+                <FileBarChart />
+                <Upload />
+                <Download />
+              </div>
+              <h3>Drop your CSV file here</h3>
+              <p>
+                or{" "}
+                <button type="button" onClick={() => fileInput.current?.click()}>
+                  Browse file
+                </button>
+              </p>
+              <div className="import-file-notes">
+                <span>CSV files only</span>
+                <span>Uses the master template</span>
+              </div>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => chooseFile(event.target.files?.[0])}
+              />
+            </div>
+
+            {selectedFile && (
+              <div className={`import-selected-file${importing ? " uploading" : ""}`}>
+                <div className="import-file-type"><FileBarChart /></div>
+                <div>
+                  <strong>{selectedFile.name}</strong>
+                  <span>{(selectedFile.size / 1024).toFixed(1)} KB</span>
+                </div>
+                {importing ? (
+                  <div className="import-progress" aria-label="Importing CSV records">
+                    <span />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Remove selected file"
+                    onClick={() => setSelectedFile(null)}
+                  >
+                    <X />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {importing && (
+              <div className="import-loading" role="status" aria-live="polite">
+                <CaliberActivityMark size="small" />
+                <div>
+                  <strong>Importing records...</strong>
+                  <span>Please keep this window open while data is saved.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="import-actions">
+              <button type="button" className="secondary" onClick={template} disabled={importing}>
+                <Download /> Download CSV template
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={importFile}
+                disabled={!selectedFile || importing}
+              >
+                {importing ? "Importing..." : "Import records"}
+                {!importing && <Upload />}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+function Equipment({
+  initialFilter = "all",
+  initialLocation = "",
+  initialCategory = "all",
+  pageTitle = "Equipment master",
+  statusRequests = null,
+  allowedLocations = [],
+  records = [],
+  onAdd,
+  onEdit,
+  onDelete,
+  onDeleteAll,
+  onDeleteSelected,
+}) {
+  const [q, setQ] = useState(""),
+    [road, setRoad] = useState(initialFilter),
+    [location, setLocation] = useState(initialLocation),
+    [assetCategory, setAssetCategory] = useState(initialCategory),
+    [columnFilters, setColumnFilters] = useState({}),
+    [openFilter, setOpenFilter] = useState(null),
+    [detail, setDetail] = useState(null),
+    [editing, setEditing] = useState(null),
+    [savingEdit, setSavingEdit] = useState(false),
+    [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  const equipmentColumns = [
+      ["currentLocation", "Current location"], ["equipmentName", "Equipment name"],
+      ["category", "Equipment category"], ["group", "Equipment group"],
+      ["itemName", "Item name"], ["itemSpecification", "Item specification name"],
+      ["acquisitionDate", "Acquisition date"], ["make", "Make"], ["model", "Model"],
+      ["manufacturerSerialNo", "Manufacturer serial no."], ["engineNo", "Engine no."],
+      ["chassisNo", "Chassis no."], ["documentStatus", "Document status"], ["status", "Fleet status"],
+    ],
+    equipmentValue = (record, key) => {
+      if (key === "group") return equipmentGroupValue(record);
+      if (key === "currentLocation") return record.currentLocation || record.location;
+      if (key === "equipmentName") return record.equipmentName || record.door;
+      if (key === "acquisitionDate") return record.acquisitionDate || record.acquired;
+      return record[key];
+    },
+    filterText = (value) => tableFilterText(value),
+    filterColumns = equipmentColumns.map(([key, label]) => ({ key, label, value: (record) => equipmentValue(record, key) })),
+    equipmentColumnValues = Object.fromEntries(
+      equipmentColumns.map(([key]) => [
+        key,
+        [...new Set(records.map((record) => filterText(equipmentValue(record, key))))].sort((a, b) => sortCollator.compare(a, b)),
+      ]),
+    );
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (!openFilter) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".column-filter-header, .column-filter-popover")) setOpenFilter(null);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [openFilter]);
+  const locations = [
+      ...new Set([
+        ...subsidiaryData.flatMap((s) => s.sites),
+        ...records
+          .map((v) => v.currentLocation || v.location)
+          .filter(Boolean),
+      ]),
+    ];
+  const roadStatusFor = (record) => Array.isArray(statusRequests)
+    ? liveEquipmentRoadStatus(record, statusRequests)
+    : equipmentRoadStatus(record);
+  let rows = records.filter(
+    (v) =>
+      (road === "all" ||
+        roadStatusFor(v) === road) &&
+      (assetCategory === "all" || String(v.category || "").trim().toLowerCase() === assetCategory) &&
+      (!allowedLocations.length || allowedLocations.some((site) => recordBelongsToSite(v, site))) &&
+      (!location || recordBelongsToSite(v, location)) &&
+      matchesSmartSearch(q, v) &&
+      tableRowMatchesFilters(v, filterColumns, columnFilters),
+  );
+  const [sortedRows, sort, changeSort] = useSortableRows(rows, "", equipmentValue);
+  const equipmentEditFields = masterFields["Equipment master"];
+  const saveEquipmentEdit = async (event) => {
+    event.preventDefault();
+    if (!editing?.id || savingEdit) return;
+    const form = new FormData(event.currentTarget),
+      values = Object.fromEntries(
+        equipmentEditFields.map(([key]) => [key, String(form.get(key) || "").trim()]),
+      ),
+      { id, ...existing } = editing;
+    setSavingEdit(true);
+    try {
+      await onEdit(id, normalizeEquipmentRecord({ ...existing, ...values }));
+      setEditing(null);
+    } catch (error) {
+      alert(error.message || "Could not update this equipment record.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  const deleteEquipment = async (record) => {
+    if (!record.id) return;
+    const recordName = record.equipmentName || record.door || record.manufacturerSerialNo || "this equipment record";
+    if (!confirm(`Delete ${recordName}? This cannot be undone.`)) return;
+    try {
+      await onDelete(record.id);
+      if (detail?.id === record.id) setDetail(null);
+    } catch (error) {
+      alert(error.message || "Could not delete this equipment record.");
+    }
+  };
+  return (
+    <section className="panel table pagepanel">
+      <header>
+        <div>
+          <h1>{pageTitle}</h1>
+          <p>
+            {location ? location + " · " : ""}
+            {road === "all"
+              ? "All equipment"
+              : road === "onroad"
+                ? "On Road equipment"
+                : road === "offroad"
+                  ? "Off Road equipment"
+                  : "Idle equipment"}{" "}
+            · {rows.length} records shown
+          </p>
+        </div>
+        <MasterActions name="Equipment master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} onDeleteSelected={onDeleteSelected} selectedRecords={rows} />
+      </header>
+      <div className="toolbar">
+        <div>
+          <Search />
+          <input
+            data-smart-search
+            type="search"
+            placeholder="Search equipment, category, serial no...."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <div className="master-actions-slot" ref={setActionsToolbarTarget} />
+        <select value={road} onChange={(e) => setRoad(e.target.value)}>
+          <option value="all">All road statuses</option>
+          <option value="onroad">On Road</option>
+          <option value="offroad">Off Road</option>
+          <option value="idle">Idle</option>
+        </select>
+        <select value={location} onChange={(e) => setLocation(e.target.value)}>
+          <option value="">All locations</option>
+          {locations.map((site) => (
+            <option key={site}>{site}</option>
+          ))}
+        </select>
+        <select value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)}>
+          <option value="all">All categories</option>
+          <option value="equipment">Equipment</option>
+          <option value="vehicle">Vehicles</option>
+        </select>
+        <TableParameterFilter columns={filterColumns} rows={records} filters={columnFilters} onFilterChange={updateColumnFilter} onClearFilters={() => setColumnFilters({})} />
+      </div>
+      <div className="scroll master-table-scroll" onClick={() => setOpenFilter(null)}>
+        <ActionsTable toolbarTarget={actionsToolbarTarget} toolbarPortal>
+          <thead>
+            <tr>
+              {equipmentColumns.map(([key, label]) => (
+                <FilterableHeader
+                  key={key}
+                  label={label}
+                  sortKey={key}
+                  sort={sort}
+                  onSort={changeSort}
+                  open={openFilter === key}
+                  onToggle={(column) => setOpenFilter((current) => current === column ? null : column)}
+                  values={equipmentColumnValues[key]}
+                  filterValue={columnFilters[key] || ""}
+                  onFilterChange={(value) => updateColumnFilter(key, value)}
+                />
+              ))}
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.length ? (
+              sortedRows.map((v, i) => (
+                <tr
+                  key={v.id || v.door || i}
+                  onClick={() => setDetail(v)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+                    event.preventDefault();
+                    setDetail(v);
+                  }}
+                  tabIndex={0}
+                  aria-haspopup="dialog"
+                  aria-label={`View details for ${v.equipmentName || v.door || "equipment"}`}
+                  className="click"
+                >
+                  <td>
+                    <MapPin /> {v.currentLocation || v.location}
+                  </td>
+                  <td>
+                    <b>{v.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openVehicleRepairHistory(v); }} aria-label={`View repair history for door number ${v.door}`} title="View breakdown and repair history">{v.equipmentName || v.door}</a> : v.equipmentName || "—"}</b>
+                    <small>{v.reg}</small>
+                  </td>
+                  <td>
+                    {v.category}
+                  </td>
+                  <td>{equipmentGroupValue(v)}</td>
+                  <td>{v.itemName}</td>
+                  <td>{v.itemSpecification}</td>
+                  <td>{v.acquisitionDate || v.acquired}</td>
+                  <td>{v.make}</td>
+                  <td>{v.model}</td>
+                  <td>{v.manufacturerSerialNo}</td>
+                  <td>{v.engineNo}</td>
+                  <td>{v.chassisNo}</td>
+                  <td>{v.documentStatus}</td>
+                  <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>
+                  <td className="row-actions" onClick={(event) => event.stopPropagation()}>
+                    {v.id ? (
+                      <>
+                        <button type="button" aria-label={`Edit ${v.equipmentName || v.door || "equipment"}`} onClick={() => setEditing(normalizeEquipmentRecord(v))}>
+                          <Pencil /> Edit
+                        </button>
+                        <button type="button" className="delete" aria-label={`Delete ${v.equipmentName || v.door || "equipment"}`} onClick={() => deleteEquipment(v)}>
+                          <Trash2 /> Delete
+                        </button>
+                      </>
+                    ) : "—"}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="15" className="empty-state">
+                  No equipment or vehicle records for this selection
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </ActionsTable>
+      </div>
+      {detail && (
+        <Modal title="Equipment details" close={() => setDetail(null)}>
+          <div className="detailhead">
+            <div className="truckicon">
+              <Truck />
+            </div>
+            <div>
+              <h2>{detail.equipmentName || detail.door}</h2>
+              <p>
+                {detail.make} {detail.model} · {detail.reg}
+              </p>
+            </div>
+            <Status>{roadStatusFor(detail)==="onroad"?"On road":roadStatusFor(detail)==="offroad"?"Off road":roadStatusFor(detail)==="idle"?"Idle":"Status not set"}</Status>
+          </div>
+          <div className="details">
+            {Object.entries(detail)
+              .filter(([k]) => k !== "id")
+              .map(([k, v]) => (
+                <div key={k}>
+                  <span>{k.replace(/([A-Z])/g, " $1")}</span>
+                  <b>{["group", "equipmentGroup"].includes(k) ? normalizeEquipmentGroup(v) : v}</b>
+                </div>
+              ))}
+          </div>
+        </Modal>
+      )}
+      {editing && (
+        <Modal title="Edit equipment record" close={() => !savingEdit && setEditing(null)}>
+          <form className="form master-form" onSubmit={saveEquipmentEdit}>
+            <div className="formgrid">
+              {equipmentEditFields.map(([key, label]) => (
+                <label key={key}>{label}
+                  {key==="status"?<select name={key} defaultValue={editing[key]||"Operational"}><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></select>:<input name={key} defaultValue={editing[key] || ""} />}
+                </label>
+              ))}
+            </div>
+            <footer>
+              <button type="button" disabled={savingEdit} onClick={() => setEditing(null)}>Cancel</button>
+              <button className="primary" disabled={savingEdit}>{savingEdit ? "Saving..." : "Save changes"}</button>
+            </footer>
+          </form>
+        </Modal>
+      )}
+    </section>
+  );
+}
+function Breakdown({ requests = [] }) {
+  const statusCount = (label) => requests.filter((request) => requestStatusLabel(request).toLowerCase() === label.toLowerCase()).length;
+  const open = statusCount("Open"),
+    accepted = statusCount("Accepted"),
+    inProgress = statusCount("In progress"),
+    awaiting = statusCount("Awaiting parts"),
+    closed = statusCount("Closed");
+  return (
+    <section className="panel table pagepanel">
+      <header>
+        <div>
+          <h1>Mobile User requests</h1>
+          <p>
+            Read-only view · Super Users cannot edit or delete submitted
+            requests
+          </p>
+        </div>
+        <span className="readonly-badge">
+          <ShieldCheck />
+          Read only
+        </span>
+      </header>
+      <div className="tabs">
+        {[
+          `All requests ${requests.length}`,
+          `Open ${open}`,
+          `Accepted ${accepted}`,
+          `In progress ${inProgress}`,
+          `Awaiting parts ${awaiting}`,
+          `Closed ${closed}`,
+        ].map((x, i) => (
+          <button key={x} className={i === 0 ? "active" : ""}>
+            {x}
+          </button>
+        ))}
+      </div>
+      <BreakdownTable rows={requests} showAudio />
+    </section>
+  );
+}
+// [speech locale, English name, code, native name]. Order is the order shown in
+// the login dropdowns. Mirrors SUPPORTED_LANGUAGES in text-translation.mjs.
+const speechLanguages = [
+  ["en-IN", "English", "en", "English"],
+  ["hi-IN", "Hindi", "hi", "हिंदी"],
+  ["mr-IN", "Marathi", "mr", "मराठी"],
+  ["bn-IN", "Bengali", "bn", "বাংলা"],
+  ["or-IN", "Odia", "or", "ଓଡ଼ିଆ"],
+  ["te-IN", "Telugu", "te", "తెలుగు"],
+  ["gu-IN", "Gujarati", "gu", "ગુજરાતી"],
+  ["pa-IN", "Punjabi", "pa", "ਪੰਜਾਬੀ"],
+  ["ta-IN", "Tamil", "ta", "தமிழ்"],
+  ["kn-IN", "Kannada", "kn", "ಕನ್ನಡ"],
+];
+const languageScripts = [["hi", /[\u0900-\u097F]/], ["bn", /[\u0980-\u09FF]/], ["pa", /[\u0A00-\u0A7F]/], ["gu", /[\u0A80-\u0AFF]/], ["or", /[\u0B00-\u0B7F]/], ["ta", /[\u0B80-\u0BFF]/], ["te", /[\u0C00-\u0C7F]/], ["kn", /[\u0C80-\u0CFF]/], ["en", /[A-Za-z]/]];
+// Language helpers shared by the login form, speech input and complaint display.
+// They stay dependency-free so the browser bundle needs no server module.
+function languageCode(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return "";
+  const match = speechLanguages.find(([, name, code, native]) => text === code || text.startsWith(`${code}-`) || text === name.toLowerCase() || text === native.toLowerCase());
+  return match ? match[2] : "";
+}
+function languageLabel(code) {
+  const entry = speechLanguages.find(([, , value]) => value === code);
+  return entry ? entry[3] : code;
+}
+// [Language 1, Language 2] of the signed-in user; empty when nothing is stored.
+function preferredLanguageCodes() {
+  try {
+    const raw = localStorage.getItem("nerveCenterSession") || sessionStorage.getItem("nerveCenterSession");
+    const stored = raw ? JSON.parse(raw) : null;
+    const first = languageCode(stored?.preferredLanguage) || languageCode(localStorage.getItem("nerveCenterPreferredLanguage"));
+    const second = languageCode(stored?.secondaryLanguage) || languageCode(localStorage.getItem("nerveCenterSecondaryLanguage"));
+    return [first, second && second !== first ? second : ""].filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function speechLocaleForLanguage(code) {
+  const entry = speechLanguages.find(([, , value]) => value === languageCode(code));
+  return entry ? entry[0] : "hi-IN";
+}
+// The speech box offers the user's own two languages; every language when none is stored.
+function speechLanguageOptions() {
+  const codes = preferredLanguageCodes();
+  const own = speechLanguages.filter(([, , code]) => codes.includes(code));
+  return own.length ? own : speechLanguages;
+}
+function textLanguageCode(text, spokenLocale = "") {
+  const value = String(text ?? "");
+  const hit = languageScripts.find(([, pattern]) => pattern.test(value));
+  const spoken = languageCode(spokenLocale);
+  // Devanagari is shared by Hindi and Marathi; trust the spoken language there.
+  if (hit && hit[0] === "hi" && spoken === "mr") return "mr";
+  return hit ? hit[0] : spoken;
+}
+const translationRequests = new Map();
+function requestTranslation(text, from, to) {
+  const key = `${from}|${to}|${text}`;
+  if (!translationRequests.has(key)) {
+    translationRequests.set(key, fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ text, from, to }),
+    }).then((response) => readApiJson(response, "Could not translate this text.")).catch((error) => {
+      translationRequests.delete(key);
+      throw error;
+    }));
+  }
+  return translationRequests.get(key);
+}
+// Shows stored complaint text in the reader's Language 1. Text already in either
+// of the reader's languages is shown as written; the original wording is always
+// one tap away and the recorded audio is never changed.
+function TranslatedText({ text, language = "", as: Tag = "span", className = "", helper = false, fallback = "—" }) {
+  const value = String(text ?? "").trim();
+  const readers = preferredLanguageCodes();
+  const reader = readers[0] || "";
+  const source = languageCode(language) || textLanguageCode(value);
+  const wanted = Boolean(value && reader && source && !readers.includes(source));
+  const key = `${source}|${reader}|${value}`;
+  const [translation, setTranslation] = useState({ key: "", text: "", status: "idle" });
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => {
+    if (!wanted) return undefined;
+    let active = true;
+    setTranslation({ key, text: "", status: "loading" });
+    requestTranslation(value, source, reader).then((data) => {
+      if (!active) return;
+      setTranslation({ key, text: data?.translated ? String(data.text || "") : "", status: data?.translated ? "done" : "unavailable" });
+    }).catch(() => { if (active) setTranslation({ key, text: "", status: "failed" }); });
+    return () => { active = false; };
+  }, [key, wanted]);
+  if (!value) return helper ? null : <Tag className={className}>{fallback}</Tag>;
+  if (!wanted) return helper ? null : <Tag className={className}>{value}</Tag>;
+  const translated = translation.key === key && translation.status === "done" ? translation.text : "";
+  const sourceName = languageLabel(source);
+  if (helper) {
+    return translated ? <small className="translated-helper"><b>{reader === "hi" ? "आपकी भाषा में:" : "In your language:"}</b> {translated}</small> : null;
+  }
+  if (!translated) {
+    return <Tag className={className} lang={source}>{value}{translation.key === key && translation.status === "loading" ? <i className="translated-pending" aria-label="Translating"> …</i> : null}</Tag>;
+  }
+  return (
+    <Tag className={`${className} translated-text`.trim()}>
+      {showOriginal ? <span lang={source}>{value}</span> : <span lang={reader}>{translated}</span>}
+      <button type="button" className="translated-toggle" onClick={(event) => { event.stopPropagation(); setShowOriginal((current) => !current); }} title={showOriginal ? "Show translation" : `Show original (${sourceName})`}>
+        {showOriginal ? (reader === "hi" ? "अनुवाद" : "Translation") : (reader === "hi" ? `मूल · ${sourceName}` : `Original · ${sourceName}`)}
+      </button>
+    </Tag>
+  );
+}
+function EnhancedSpeechComplaint({
+  initialText = "",
+  label = "Reason / complaint *",
+  name = "complaint",
+  audioName = "complaintAudio",
+  buttonLabel = "Speak complaint",
+  placeholder = "Type here, or select Hindi / English and speak in that language.",
+  required = true,
+}) {
+  const [text, setText] = useState(initialText),
+    [lang, setLang] = useState(() => speechLocaleForLanguage(preferredLanguageCodes()[0] || "hi")),
+    [listening, setListening] = useState(false),
+    [working, setWorking] = useState(false),
+    [note, setNote] = useState(""),
+    [audioData, setAudioData] = useState("");
+  const recognition = useRef(null),
+    starting = useRef(false),
+    mounted = useRef(true),
+    audioOnlyMode = useRef(false),
+    silenceTimer = useRef(null),
+    maxTimer = useRef(null),
+    recorder = useRef(null),
+    mediaStream = useRef(null),
+    audioChunks = useRef([]);
+  const clearTimers = () => {
+    clearTimeout(silenceTimer.current);
+    clearTimeout(maxTimer.current);
+  };
+  const stopAudio = () => {
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    else mediaStream.current?.getTracks().forEach((track) => track.stop());
+  };
+  const finishAudioOnly = (message = "Audio recording saved. You can play it back before submitting.") => {
+    clearTimers();
+    audioOnlyMode.current = false;
+    recognition.current = null;
+    stopAudio();
+    setListening(false);
+    if (required) setText((current) => current.trim() ? current : lang === "hi-IN"
+      ? "विवरण संलग्न ऑडियो में रिकॉर्ड किया गया है।"
+      : "Details recorded in the attached audio.");
+    setNote(message);
+  };
+  const stop = () => {
+    if (recognition.current) recognition.current.stop();
+    else if (audioOnlyMode.current) finishAudioOnly();
+  };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimers();
+      if (recognition.current) {
+        recognition.current.onend = null;
+        recognition.current.onerror = null;
+        recognition.current.abort?.();
+      }
+      stopAudio();
+    };
+  }, []);
+  const start = async () => {
+    if (starting.current || listening) return;
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setNote("Audio recording is not supported here. Please use current Chrome or Edge.");
+      return;
+    }
+    starting.current = true;
+    setWorking(true);
+    const languageName = speechLanguages.find(([code]) => code === lang)?.[1] || "selected language";
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mounted.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      mediaStream.current = stream;
+      audioChunks.current = [];
+      const preferredType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((type) => window.MediaRecorder.isTypeSupported?.(type));
+      const mediaRecorder = preferredType ? new MediaRecorder(stream, { mimeType: preferredType }) : new MediaRecorder(stream);
+      recorder.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data?.size) audioChunks.current.push(event.data);
+      };
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const recordedType = String(mediaRecorder.mimeType || preferredType || "audio/webm").split(";")[0];
+        const blob = new Blob(audioChunks.current, { type: recordedType });
+        if (!blob.size) {
+          setAudioData("");
+          setNote("No audio was captured. Please try recording again.");
+          return;
+        }
+        if (blob.size > 3 * 1024 * 1024) {
+          setAudioData("");
+          setNote("Recording is too large. Please record a shorter message.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => { if (mounted.current) setAudioData(String(reader.result || "")); };
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorder.start();
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+      setNote("Microphone permission is required to save the audio clip.");
+      return;
+    } finally {
+      starting.current = false;
+      setWorking(false);
+    }
+    if (!Speech) {
+      audioOnlyMode.current = true;
+      setListening(true);
+      setNote("Recording audio… live transcription is unavailable in this browser. Tap Stop when finished.");
+      maxTimer.current = setTimeout(() => finishAudioOnly("Recording stopped after 45 seconds. Audio saved."), 45000);
+      return;
+    }
+    const r = new Speech();
+    recognition.current = r;
+    setListening(true);
+    r.lang = lang;
+    r.interimResults = true;
+    r.continuous = true;
+    let final = "", latestTranscript = "", recognitionFailed = false;
+    const originalText = text.trim();
+    const writeTranscript = () => {
+      if (!latestTranscript || !mounted.current) return;
+      setText([originalText, latestTranscript].filter(Boolean).join(" "));
+    };
+    const resetSilence = () => {
+      clearTimeout(silenceTimer.current);
+      silenceTimer.current = setTimeout(stop, 12000);
+    };
+    r.onstart = () => {
+      audioOnlyMode.current = false;
+      setListening(true);
+      setNote(`Listening in ${languageName}… pause up to 12 seconds while speaking.`);
+      resetSilence();
+      maxTimer.current = setTimeout(stop, 45000);
+    };
+    r.onresult = (e) => {
+      if (!mounted.current) return;
+      // Results are cumulative; rebuilding avoids duplicating revised results.
+      const finalized = [], pending = [];
+      for (let i = 0; i < e.results.length; i++) {
+        const words = String(e.results[i][0]?.transcript || "").trim();
+        if (!words) continue;
+        (e.results[i].isFinal ? finalized : pending).push(words);
+      }
+      final = finalized.join(" ");
+      const received = [...finalized, ...pending].join(" ").trim();
+      // Some engines retract interim results when stopped. Keep the last words.
+      if (received) latestTranscript = received;
+      writeTranscript();
+      setNote(pending.join(" ") || "Processing speech…");
+      resetSilence();
+    };
+    r.onerror = (e) => {
+      recognitionFailed = true;
+      writeTranscript();
+      recognition.current = null;
+      audioOnlyMode.current = true;
+      finishAudioOnly(
+        e.error === "not-allowed"
+          ? "Audio saved, but speech transcription permission was denied."
+          : e.error === "no-speech"
+            ? "Audio saved, but no clear speech was detected for transcription."
+            : "Audio saved, but speech transcription was unavailable.",
+      );
+    };
+    r.onend = () => {
+      recognition.current = null;
+      audioOnlyMode.current = false;
+      if (recognitionFailed) return;
+      clearTimers();
+      stopAudio();
+      setListening(false);
+      if (!latestTranscript.trim()) {
+        setNote("No clear speech was detected. Review your audio, then type the text or record again.");
+        return;
+      }
+      // Keep every recognized detail and the selected language, including negations.
+      writeTranscript();
+      setNote(final.trim() === latestTranscript.trim()
+        ? `Transcribed in ${languageName}. Review and edit the text before submitting.`
+        : `Speech captured in ${languageName}. Review and edit the text before submitting.`);
+    };
+    try {
+      r.start();
+    } catch {
+      recognition.current = null;
+      audioOnlyMode.current = true;
+      setListening(true);
+      setNote("Recording audio… live transcription could not start. Tap Stop when finished.");
+      maxTimer.current = setTimeout(() => finishAudioOnly("Recording stopped after 45 seconds. Audio saved."), 45000);
+    }
+  };
+  return (
+    <label className="full speechfield">
+      <span>{label}</span>
+      <div className="speechtools">
+        <select
+          aria-label="Spoken language"
+          value={lang}
+          disabled={listening || working}
+          onChange={(e) => setLang(e.target.value)}
+        >
+          {speechLanguageOptions().map(([code, name, , nativeName]) => (
+            <option key={code} value={code}>
+              {nativeName === name ? name : `${nativeName} · ${name}`}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className={listening ? "recording" : ""}
+          onClick={listening ? stop : start}
+          disabled={working}
+        >
+          {listening ? <Square /> : <Mic />}
+          {listening
+            ? "Stop recording"
+            : working
+              ? "Processing…"
+              : buttonLabel}
+        </button>
+      </div>
+      <textarea
+        name={name}
+        aria-label={label.replace(/\s*\*$/, "")}
+        lang={lang}
+        required={required}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={placeholder}
+      />
+      <input type="hidden" name={audioName} value={audioData} />
+      <input type="hidden" name={`${name}Language`} value={textLanguageCode(text, lang)} />
+      {audioData && <audio className="request-audio-preview" controls src={audioData} aria-label={`${label.replace(/\s*\*$/, "")} audio`}>Recorded audio</audio>}
+      <small className={listening ? "voice-note live" : "voice-note"}>
+        {note ||
+          "Choose Hindi or English and speak in that language. The text stays in your selected language; your audio is also saved."}
+      </small>
+    </label>
+  );
+}
+const SpeechComplaint = EnhancedSpeechComplaint;
+function readMeterEvidence(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error("Select a KMR/HMR evidence file."));
+    if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      return reject(new Error("Upload a JPEG, PNG, WebP, or PDF KMR/HMR file up to 5 MB."));
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read the selected KMR/HMR file."));
+    reader.readAsDataURL(file);
+  });
+}
+function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [], equipmentLoaded = false, repairTypeRecords = [], repairTypesLoaded = false, assignedLocation = "", activeRequestRecords = [] }) {
+  const shiftData=useRequestShiftData();
+  const displayTime = (value) => typeof formatDisplayTime === "function" ? formatDisplayTime(value) : String(value || "");
+  const [equipmentGroup, setEquipmentGroup] = useState(""),
+    [equipmentId, setEquipmentId] = useState(""),
+    [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [openedAt] = useState(() => new Date());
+  const {date: systemDate, time: systemTime} = indiaWorkflowDateTimeParts(openedAt);
+  const locationEquipmentRecords = recordsForSite(equipmentRecords, assignedLocation),
+    equipmentGroups = requestEquipmentGroupOptions(locationEquipmentRecords),
+    groupRecords = requestEquipmentRecordsForGroup(locationEquipmentRecords, equipmentGroup),
+    v = findRequestEquipment(groupRecords, equipmentId),
+    equipmentDetails = requestEquipmentCreationDetails(v || {}),
+    door = equipmentDetails.door,
+    currentLocation = equipmentDetails.site || (displaySiteSelection(assignedLocation).length === 1 ? assignedLocation : "");
+  const [requestTime, setRequestTime] = useState(systemTime);
+  const [requestDate, setRequestDate] = useState(systemDate);
+  const [driverLookup, setDriverLookup] = useState({status: "idle", name: "", source: ""});
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [checkingConflict, setCheckingConflict] = useState(false);
+  const [duplicateConflict, setDuplicateConflict] = useState(null);
+  const conflictAlerted = useRef("");
+  const [existingReason,setExistingReason]=useState("");
+  useEffect(() => {
+    const timer = window.setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const equipmentNo = equipmentDetails.door || equipmentDetails.equipment;
+    if (!equipmentNo || !currentLocation || !requestDate || !requestTime) {
+      setDriverLookup({status: "idle", name: "", source: ""});
+      return undefined;
+    }
+    let cancelled = false;
+    setDriverLookup({status: "loading", name: "", source: ""});
+    const timer = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({date: requestDate, time: requestTime, location: currentLocation, equipmentNo});
+        const response = await fetch(`/api/oracle/driver?${query}`, {headers: {Authorization: `Bearer ${authToken}`}});
+        const result = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) setDriverLookup({status: "temporary", name: "", source: "Lookup unavailable"});
+        else if (result.found) setDriverLookup({status: "found", name: result.driverName || "", source: result.source || "Oracle logbook"});
+        else setDriverLookup({status: "temporary", name: "", source: "Not found"});
+      } catch {
+        if (!cancelled) setDriverLookup({status: "temporary", name: "", source: "Lookup unavailable"});
+      }
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [equipmentDetails.door, equipmentDetails.equipment, currentLocation, requestDate, requestTime]);
+  useEffect(() => {
+    // Polling can see this form's saved request before its POST completes.
+    // The create response decides the outcome while submission is in flight.
+    if (submittingRef.current) {
+      setCheckingConflict(false);
+      return undefined;
+    }
+    const selectedDoor = String(door || "").trim();
+    const selectedChassis = String(equipmentDetails.chassis || "").trim();
+    if (!selectedDoor) {
+      setDuplicateConflict(null);
+      setCheckingConflict(false);
+      conflictAlerted.current = "";
+      return undefined;
+    }
+
+    let cancelled = false;
+    const showConflict = (conflict) => {
+      if (cancelled || submittingRef.current || !conflict) return;
+      const normalizedConflict = {
+        ...conflict,
+        duplicate: true,
+        idleApprovalPending: conflict.idleApprovalPending || isIdleVehicleRequest(conflict),
+        existingReference: conflict.existingReference || conflict.ref || conflict.reference || "",
+      };
+      const message = conflict.message || activeRequestConflictMessage(normalizedConflict, selectedDoor);
+      setDuplicateConflict({...normalizedConflict, message});
+      setExistingReason("");
+      const alertKey = `${selectedDoor.toLocaleLowerCase()}|${normalizedConflict.existingReference}`;
+      if (conflictAlerted.current !== alertKey) {
+        conflictAlerted.current = alertKey;
+        // The inline choice lets the user resume this ticket.
+      }
+    };
+
+    const localConflict = findActiveRequestConflict(activeRequestRecords, {door: selectedDoor, chassis: selectedChassis});
+    if (localConflict) {
+      setCheckingConflict(false);
+      showConflict(localConflict);
+      return () => { cancelled = true; };
+    }
+
+    setDuplicateConflict(null);
+    setCheckingConflict(true);
+    conflictAlerted.current = "";
+    const timer = window.setTimeout(async () => {
+      if (cancelled || submittingRef.current) return;
+      try {
+        const query = new URLSearchParams({door: selectedDoor});
+        if (selectedChassis) query.set("chassis", selectedChassis);
+        const response = await fetch(`/api/requests/conflict?${query}`, {
+          cache: "no-store",
+          headers: {Authorization: `Bearer ${authToken}`},
+        });
+        const result = await response.json().catch(() => ({}));
+        if (cancelled || submittingRef.current) return;
+        if (!response.ok) throw new Error(result.error || "Could not check the selected door number.");
+        if (result.duplicate) showConflict(result);
+        else setDuplicateConflict(null);
+      } catch (error) {
+        if (!cancelled && !submittingRef.current) setDuplicateConflict({checkFailed: true, message: error.message});
+      } finally {
+        if (!cancelled && !submittingRef.current) setCheckingConflict(false);
+      }
+    }, 200);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [door, equipmentDetails.chassis, activeRequestRecords, submitting]);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (submittingRef.current || submitting || checkingConflict) return;
+    if (!v) {
+      alert("Select an equipment or vehicle from the selected equipment group.");
+      return;
+    }
+    if (duplicateConflict && (duplicateConflict.idleApprovalPending || duplicateConflict.checkFailed || !existingReason)) {
+      alert(duplicateConflict.message || "This door number already has an active maintenance request.");
+      return;
+    }
+    const fd = new FormData(e.currentTarget),
+      meterType = requestEquipmentMeterType(v || {});
+    const request = {
+        existingReason, existingReference: duplicateConflict?.existingReference,
+        ref: "REQ-" + Date.now(),
+        equipment: equipmentDetails.equipment,
+        equipmentGroup: equipmentDetails.group || equipmentGroup,
+        door: equipmentDetails.door,
+        site: currentLocation || "Not assigned",
+        category: String(fd.get("category") || "").trim(),
+        complaint: fd.get("complaint"),
+        complaintAudio: fd.get("complaintAudio"),
+        complaintLanguage: fd.get("complaintLanguage"),
+        start: fd.get("date") + " · " + fd.get("time"),
+        hours: "—",
+        status: "Open",
+        owner: "Mobile User",
+        reg: equipmentDetails.reg,
+        chassis: equipmentDetails.chassis,
+        driverName: driverLookup.name,
+        driverNameSource: driverLookup.name.trim() ? (driverLookup.status === "found" ? `Oracle - ${driverLookup.source}` : "Manual") : "",
+        meterType,
+      };
+    if (!request.door) {
+      alert("The selected equipment has no door, registration or chassis identifier. Contact the admin team to update Equipment Master before creating this request.");
+      return;
+    }
+    submittingRef.current = true;
+    setSubmitting(true);
+    setCheckingConflict(false);
+    setDuplicateConflict(null);
+    try {
+      if (fd.get("complaintPhoto")?.size || fd.get("complaintVideo")?.size) request.complaintMedia = await readComplaintMedia(fd);
+      await submitMaintenanceRequest(onSubmit, request);
+      close();
+    } catch (error) {
+      if (error?.duplicate) {
+        const conflict = {...error, message: error.message || activeRequestConflictMessage(error, request.door)};
+        setDuplicateConflict(conflict);
+        alert(conflict.message);
+      } else alert(error?.message || "Could not save request. Please retry.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+  return (
+    <Modal
+      title={<span className="request-modal-title"><span className="request-form-timer"><Clock /> {String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}</span>{normal ? "Push vehicle for maintenance" : "Create breakdown case"}<small><MapPin /> {currentLocation || "Location not assigned"}</small></span>}
+      close={close}
+    >
+      <form className="form" onSubmit={submit}>
+        <div className="formgrid">
+          <label style={{gridColumn:"1 / -1"}}>Shift<input readOnly aria-label="Shift" value={shiftData.loading?'Loading shift…':requestShiftLabel({site:currentLocation,start:`${requestDate} ${requestTime}`},shiftData.shifts)} /></label>
+          <label>
+            Equipment group *
+            <select
+              name="equipmentGroup"
+              required
+              value={equipmentGroup}
+              disabled={!equipmentLoaded || !equipmentGroups.length}
+              aria-busy={!equipmentLoaded}
+              onChange={(event) => {
+                const selectedGroup = event.target.value,
+                  matches = requestEquipmentRecordsForGroup(locationEquipmentRecords, selectedGroup),
+                  onlyRecord = matches.length === 1 ? matches[0] : null;
+                setEquipmentGroup(selectedGroup);
+                setEquipmentId(onlyRecord?.id != null ? String(onlyRecord.id) : "");
+              }}
+            >
+              <option value="" disabled>
+                {!equipmentLoaded
+                  ? "Loading equipment..."
+                  : equipmentGroups.length
+                    ? "Select equipment group"
+                    : "No equipment available"}
+              </option>
+              {equipmentGroups.map((group) => (
+                <option key={group.key} value={group.label}>
+                  {group.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Type of breakdown *
+            <select
+              name="category"
+              required
+              defaultValue=""
+              disabled={!repairTypesLoaded || !repairTypeRecords.length}
+              aria-busy={!repairTypesLoaded}
+            >
+              <option value="" disabled>
+                {!repairTypesLoaded
+                  ? "Loading repair types..."
+                  : repairTypeRecords.length
+                    ? "Select repair type"
+                    : "No repair types available"}
+              </option>
+              {repairTypeRecords
+                .filter((record) => record.id != null && String(record.repairType || "").trim())
+                .map((record) => (
+                  <option key={record.id} value={String(record.repairType).trim()}>
+                    {String(record.repairType).trim()}
+                  </option>
+                ))}
+              {!repairTypeRecords.some(record => /^others?$/i.test(String(record.repairType || "").trim())) && <option value="Other">Other</option>}
+            </select>
+          </label>
+          <div>
+            <EquipmentCombobox key={`${assignedLocation}|${equipmentGroup}`} records={groupRecords}
+              group={equipmentGroup} value={equipmentId} loading={!equipmentLoaded}
+              disabled={!equipmentLoaded || !equipmentGroup}
+              onSelect={(selected) => {
+                setEquipmentId(selected?.id != null ? String(selected.id) : "");
+              }} />
+            <input type="hidden" name="door" value={v ? equipmentDetails.door : ""} />
+          </div>
+          <label>
+            Date *<DateInput name="date" value={requestDate} readOnly aria-readonly="true" />
+          </label>
+          {!normal && (
+            <label>
+              User name
+              <input placeholder="Signed-in user" readOnly />
+            </label>
+          )}
+          <label>
+            Time (12-hour with seconds)
+            <input name="time" type="hidden" value={requestTime} />
+            <input
+              type="text"
+              value={displayTime(requestTime)}
+              readOnly
+              aria-readonly="true"
+            />
+          </label>
+          <label>
+            Chassis number (optional)
+            <input value={equipmentDetails.chassis || ""} readOnly placeholder={v ? "Not recorded in Equipment Master" : "Select equipment to fetch chassis number"} />
+          </label>
+          <label>
+            Make
+            <input value={equipmentDetails.make} readOnly placeholder={v ? "Not recorded in Equipment Master" : "Select equipment to fetch make"} />
+          </label>
+          <label>
+            Model
+            <input value={equipmentDetails.model} readOnly placeholder={v ? "Not recorded in Equipment Master" : "Select equipment to fetch model"} />
+          </label>
+          <label>
+            Driver / operator name
+            <input
+              name="driverName"
+              value={driverLookup.name}
+              readOnly={driverLookup.status === "found" || driverLookup.status === "loading" || driverLookup.status === "idle"}
+              onChange={(event) => setDriverLookup({status: "temporary", name: event.target.value, source: "Manual"})}
+              aria-busy={driverLookup.status === "loading"}
+              placeholder={driverLookup.status === "loading" ? "Fetching from Oracle logbook…" : driverLookup.status === "temporary" ? "Enter driver name if known (optional)" : "Select equipment to fetch driver"}
+            />
+            {driverLookup.status === "found" && <small>Fetched from {driverLookup.source}</small>}
+            {driverLookup.status === "temporary" && <small>{driverLookup.source === "Lookup unavailable" ? "Driver lookup is temporarily unavailable." : driverLookup.source === "Not found" ? "No driver was found for this vehicle and time." : "Manually entered driver."} Enter the actual name if known, or leave it blank. Oracle will retry the lookup automatically.</small>}
+          </label>
+          <SpeechComplaint />
+          <ComplaintMediaInputs />
+        </div>
+        {v && (
+          <div className="autofetch">
+            <CheckCircle2 />
+            <span>
+              <b>Equipment details fetched</b>
+              {[v.make, v.model, v.category, currentLocation].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+        )}
+        {checkingConflict && <div className="request-conflict-check" role="status"><RefreshCw /> Checking active requests for this door number...</div>}
+        {duplicateConflict && (
+          <div className={`request-conflict-warning${duplicateConflict.checkFailed ? " check-failed" : ""}`} role="alert">
+            <AlertTriangle />
+            <span>
+              <b>{duplicateConflict.idleApprovalPending ? "Pending idle approval" : duplicateConflict.checkFailed ? "Door-number check unavailable" : "Already off road / under maintenance"}</b>
+              {duplicateConflict.idleApprovalPending || duplicateConflict.checkFailed ? duplicateConflict.message : <>Request {duplicateConflict.existingReference} remains open.<p>{duplicateConflict.complaint}</p><label>Is this breakdown for the same reason?<select required value={existingReason} onChange={event=>setExistingReason(event.target.value)}><option value="">Select reason</option><option value="same">Same reason — create linked ticket</option><option value="different">Different reason — create linked ticket</option></select></label></>}
+            </span>
+          </div>
+        )}
+        <footer>
+          <button type="button" onClick={close}>
+            Cancel
+          </button>
+          <button className="primary" disabled={submitting || checkingConflict || Boolean(duplicateConflict && (duplicateConflict.idleApprovalPending || duplicateConflict.checkFailed || !existingReason))}>
+            {submitting ? "Submitting…" : checkingConflict ? "Checking door…" : duplicateConflict?.idleApprovalPending ? "Resolve idle approval first" : duplicateConflict ? (existingReason ? "Create linked request" : "Select breakdown reason") : "Submit request"} <ChevronRight />
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+function Subsidiaries({ gotoEquipment }) {
+  const [open, setOpen] = useState(null),
+    [q, setQ] = useState("");
+  const data = subsidiaryData.filter((x) => matchesSmartSearch(q, x.name, x.code, x.sites));
+  return (
+    <section className="panel pagepanel generic">
+      <header>
+        <div>
+          <h1>Region master</h1>
+          <p>
+            Click a region, then select Total, On Road, Off Road or Idle for any
+            site
+          </p>
+        </div>
+        <button className="primary">
+          <Plus />
+          Add record
+        </button>
+      </header>
+      <div className="toolbar">
+        <div>
+          <Search />
+          <input
+            data-smart-search
+            type="search"
+            placeholder="Search regions or sites"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="emptytable">
+        <ActionsTable>
+          <thead>
+            <tr>
+              <th>Region name</th>
+              <th>Short name</th>
+              <th>State code</th>
+              <th>Sites</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((s) => (
+              <React.Fragment key={s.code}>
+                <tr
+                  className="click drill-parent"
+                  onClick={() => setOpen(open === s.code ? null : s.code)}
+                >
+                  <td>
+                    <b>{s.name}</b>
+                  </td>
+                  <td>{s.code}</td>
+                  <td>{s.state}</td>
+                  <td>{s.sites.length} sites</td>
+                  <td>
+                    <ChevronRight
+                      className={open === s.code ? "drill-open" : ""}
+                    />
+                  </td>
+                </tr>
+                {open === s.code && (
+                  <tr className="drill-row">
+                    <td colSpan="5">
+                      <div className="site-drill">
+                        <div>
+                          <Building2 />
+                          <span>
+                            <b>{s.code} sites</b>
+                            <small>
+                              Equipment and vehicle road status by site
+                            </small>
+                          </span>
+                        </div>
+                        <div className="site-linked-list">
+                          {s.sites.map((site) => {
+                            const list = vehicles.filter(
+                                (v) => (v.currentLocation || v.location) === site,
+                              ),
+                              metrics=equipmentMetrics(list),
+                              on=metrics.onRoad,
+                              off=metrics.offRoad,
+                              idle=metrics.idle;
+                            return (
+                              <div className="site-linked" key={site}>
+                                <button
+                                  className="site-title"
+                                  onClick={() => gotoEquipment("all", site)}
+                                >
+                                  <MapPin />
+                                  {site}
+                                </button>
+                                <button
+                                  onClick={() => gotoEquipment("all", site)}
+                                >
+                                  <strong>{list.length}</strong>
+                                  <span>Total</span>
+                                </button>
+                                <button
+                                  className="on"
+                                  onClick={() => gotoEquipment("onroad", site)}
+                                >
+                                  <strong>{on}</strong>
+                                  <span>On Road</span>
+                                </button>
+                                <button
+                                  className="off"
+                                  onClick={() => gotoEquipment("offroad", site)}
+                                >
+                                  <strong>{off}</strong>
+                                  <span>Off Road</span>
+                                </button>
+                                <button
+                                  className="idle"
+                                  onClick={() => gotoEquipment("idle", site)}
+                                >
+                                  <strong>{idle}</strong>
+                                  <span>Idle</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </ActionsTable>
+      </div>
+    </section>
+  );
+}
+function Generic({ name, requests = [] }) {
+  const [q, setQ] = useState("");
+  const isReport = name === "Reports",
+    isAudit = name === "Audit Trail";
+  const columns = {
+    "Vehicle transfers": [
+      "Equipment Transfer No.",
+      "Equipment Transfer Date",
+      "From Location",
+      "To Location",
+      "Equipment",
+      "Model No.",
+      "Manufacturing Serial No.",
+      "Last Maintenance Date",
+      "Driver",
+      "Chasis No",
+      "Diesel QTY",
+      "KMR",
+      "HMR",
+    ],
+    "Users & employees": [
+      "Login name",
+      "Employee name",
+      "Location",
+      "Mail ID",
+      "Phone no.",
+      "User type (Mobile User / Super Admin)",
+    ],
+    "Hierarchy master": [
+      "Region",
+      "Area",
+      "Site / Mine",
+      "Department",
+      "Reporting head",
+    ],
+    "OEM master": [
+      "OEM name",
+      "Contact name",
+      "Designation",
+      "Phone no.",
+      "Email ID",
+      "Location",
+    ],
+    Reports: [
+      "Report name",
+      "Category",
+      "Region",
+      "Period",
+      "Generated by",
+      "Last generated",
+      "Format",
+    ],
+    "Audit Trail": [
+      "Date & time",
+      "User",
+      "Role",
+      "Module",
+      "Action",
+      "Record reference",
+      "IP / Device",
+    ],
+  }[name];
+  const reportNames = [
+    ["Executive dashboard summary", "Dashboard"],
+    ["Fleet availability: On Road / Off Road / Idle", "Dashboard"],
+    ["Equipment master register", "Equipment master"],
+    ["Equipment category, group & make report", "Equipment master"],
+    ["Vehicle transfer history", "Vehicle transfers"],
+    ["Breakdown case register", "Breakdown master"],
+    ["Breakdown downtime & responsibility analysis", "Breakdown master"],
+    ["Preventive maintenance report", "Breakdown master"],
+    ["Users & employees directory", "Users & employees"],
+    ["Region and site-wise fleet report", "Region master"],
+    ["Organisation hierarchy report", "Hierarchy master"],
+    ["OEM contact and responsibility report", "OEM master"],
+    ["Audit activity report", "Audit Trail"],
+  ];
+  const generate = () => {
+    const started = performance.now();
+    alert("Report generation started. Estimated time: 2 seconds.");
+    setTimeout(
+      () =>
+        alert(
+          "Report generated in " +
+            ((performance.now() - started) / 1000).toFixed(1) +
+            " seconds.",
+        ),
+      1200,
+    );
+  };
+  const rows = isReport
+    ? reportNames.map(([report, category]) => [
+        report,
+        category,
+        "All regions",
+        "Select period",
+        "—",
+        "Not generated",
+        "PDF / Excel",
+      ])
+    : [];
+  const visibleRows = rows.filter((row) => matchesSmartSearch(q, row));
+  const visibleRequests = requests.filter((request) => matchesSmartSearch(q, request));
+  const requestAgeInDays = (request) => {
+    const startedAt = new Date(String(request.start || "").replace(" ", "T"));
+    if (Number.isNaN(startedAt.getTime())) return 0;
+    return Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 86400000));
+  };
+  const requestAgeClass = (age) =>
+    age > 5 ? "request-age-red" : age >= 2 && age <= 4 ? "request-age-orange" : age === 1 ? "request-age-yellow" : "";
+  return (
+    <section className="panel pagepanel generic">
+      <header>
+        <div>
+          <h1>{name==='Users & employees'?'Login Details':name}</h1>
+          <p>
+            {isReport
+              ? "Available reports for all application modules"
+              : isAudit
+                ? "User activity will appear here"
+                : "No records added yet"}
+          </p>
+        </div>
+        <button className="primary" onClick={isReport ? generate : undefined}>
+          {isReport || isAudit ? (
+            <>
+              <Download />
+              Print/Export
+            </>
+          ) : (
+            <>
+              <Plus />
+              Add record
+            </>
+          )}
+        </button>
+      </header>
+      <div className="toolbar">
+        <div>
+          <Search />
+          <input data-smart-search type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder={"Search " + name.toLowerCase()} />
+        </div>
+        {isReport && (
+          <select>
+            <option>All regions</option>
+            <option>WCL</option>
+            <option>NCL</option>
+          </select>
+        )}
+      </div>
+      {isReport && (
+        <div className="request-age-report">
+          <div className="request-age-heading">
+            <div>
+              <h2>Service and maintenance request ageing</h2>
+              <p>Requests are highlighted automatically according to their age.</p>
+            </div>
+            <div className="request-age-legend">
+              <span className="yellow">1 day</span>
+              <span className="orange">2–4 days</span>
+              <span className="red">More than 5 days</span>
+            </div>
+          </div>
+          <div className="emptytable">
+            <ActionsTable>
+              <thead><tr><th>Job reference</th><th>Door no.</th><th>Site</th><th>Complaint</th><th>Created</th><th>ETC</th><th>Age</th><th>Status</th></tr></thead>
+              <tbody>
+                {visibleRequests.length ? visibleRequests.map((request) => {
+                  const age = requestAgeInDays(request);
+                  return (
+                    <tr key={request.ref} className={requestAgeClass(age)}>
+                      <td><RequestTimelineButton reference={request.ref} token={authToken} Dialog={Modal} /></td><td>{request.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); openVehicleRepairHistory(request); }} aria-label={`View repair history for door number ${request.door}`} title="View breakdown and repair history">{request.door}</a> : "—"}</td><td>{request.site}</td><td><TranslatedText text={request.complaint} language={request.complaintLanguage} fallback="" /></td>
+                      <td>{formatTwelveHourDateTime(request.start)}</td><td>{formatTwelveHourDateTime(request.expectedCompletionAt)}</td><td><RequestTimelineButton reference={request.ref} token={authToken} Dialog={Modal} label={`${age} ${age === 1 ? "day" : "days"}`} /></td><td><Status>{requestStatusLabel(request)}</Status></td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan="8" className="empty-state">No service or maintenance requests available</td></tr>}
+              </tbody>
+            </ActionsTable>
+          </div>
+        </div>
+      )}
+      <div className="emptytable">
+        <ActionsTable>
+          <thead>
+            <tr>
+              {columns.map((x) => (
+                <th key={x}>{x}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.length ? (
+              visibleRows.map((row, ri) => (
+                <tr key={ri}>
+                  {row.map((cell, ci) => (
+                    <td key={ci}>{ci === 0 ? <b>{cell}</b> : cell}</td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length} className="empty-state">
+                  No records available
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </ActionsTable>
+      </div>
+    </section>
+  );
+}
+const reportCategoryTabs = [
+  {id: "general", label: "General Report", description: "Common road status, fleet location, transfer, and recent breakdown reports.", icon: FileBarChart},
+  {id: "production", label: "Production report", description: "Submitted requests, maintenance acceptance, and no-remark cases.", icon: Gauge},
+  {id: "maintenance", label: "Maintenance report", description: "Repair turnaround, open off-road cases, and availability. Oracle utilization pending.", icon: Wrench},
+  {id: "mis", label: "MIS Report", description: "Verification, first-trip mismatch, transfers, fleet, and daily in/out reports.", icon: ShieldCheck},
+  {id: "vehicle-history", label: "Vehicle History Report", description: "Fleet history, repeat breakdown analysis, and common maintenance remarks.", icon: History},
+];
+const VEHICLE_HISTORY_REPORT = "Vehicle History";
+const MAXIMUM_VEHICLE_BREAKDOWN_REPORT = "Maximum Vehicle Breakdown";
+const VEHICLE_COMMON_REMARK_REPORT = "Vehicle Common Remarks";
+const reportWeekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const reportDesignationOptions = Object.entries(HIERARCHY_REPORT_DESIGNATIONS).map(([key, designation]) => ({key, ...designation}));
+function reportScheduleKind(schedule) {
+  if (schedule.cadence === "interval") return `Every ${schedule.intervalDays} days`;
+  if (schedule.cadence === "weekly") return "Weekly";
+  return "Daily";
+}
+function reportAccessAllows(selection, label) {
+  return accessAllows(selection, "Reports") || accessAllows(selection, label);
+}
+
+function auditChangesLabel(changes = []) {
+  return Array.isArray(changes) && changes.length
+    ? changes.map((change) => `${change.field}: ${change.before || "—"} → ${change.after || "—"}`).join("; ")
+    : "—";
+}
+
+function auditChangeAfter(changes = [], field = "") {
+  return Array.isArray(changes) ? changes.find((change) => change.field === field)?.after || "—" : "—";
+}
+
+function auditTimestampLabel(value) {
+  return formatDisplayDateTime(value);
+}
+
+const auditDeviceTypeOptions = [
+  {value:"All", label:"All", icon:null},
+  {value:"Computer", label:"Computer", icon:Monitor},
+  {value:"Mobile", label:"Mobile", icon:Smartphone},
+];
+const auditPlatformOptions = ["All", "Windows", "macOS", "Android", "iOS", "Linux"];
+function AuditToggleGroup({label, value, options, onChange}) {
+  return <div className="audit-toggle-group"><span>{label}</span><div className="audit-toggle-track" role="group" aria-label={`${label} filter`}>{options.map((option) => {
+    const item = typeof option === "string" ? {value:option,label:option,icon:null} : option;
+    const Icon = item.icon;
+    return <button key={item.value} type="button" aria-pressed={value === item.value} onClick={() => onChange(item.value)}>{Icon && <Icon />}<span>{item.label}</span></button>;
+  })}</div></div>;
+}
+
+// Shared by the Audit Trail and User Sessions housekeeping dialogs. The
+// deletion window is either "older than N days" or "up to a calendar date"
+// (India day, inclusive). Today can never be chosen, so today always stays.
+const PURGE_MAX_DAYS = 3650;
+const indiaDateKey = (value = new Date()) => indiaDateTimeInputValue(value).slice(0, 10);
+const yesterdayDateKey = () => indiaDateKey(new Date(Date.now() - 86400000));
+function purgeWindow({ mode, days, date }) {
+  if (mode === "date") {
+    const key = String(date || "").trim();
+    const start = Date.parse(`${key}T00:00:00+05:30`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || Number.isNaN(start)) return { error: "Select a valid date." };
+    if (key >= indiaDateKey()) return { error: "Select a date before today. Today's records are never deleted." };
+    return { cutoff: new Date(start + 86400000), query: `upToDate=${key}`, label: `up to ${formatDisplayDate(new Date(start))}` };
+  }
+  const count = Number(days);
+  if (!Number.isInteger(count) || count < 1 || count > PURGE_MAX_DAYS) return { error: `Enter a whole number of days (1 to ${PURGE_MAX_DAYS}).` };
+  return { cutoff: new Date(Date.now() - count * 86400000), query: `olderThanDays=${count}`, label: `older than ${count} day${count === 1 ? "" : "s"}` };
+}
+function PurgeWindowFields({ mode, setMode, days, setDays, date, setDate, window: selected, noun, verb = "recorded" }) {
+  return <>
+    <div className="purge-mode" role="radiogroup" aria-label="Delete by">
+      <label><input type="radio" name="purgeMode" checked={mode === "days"} onChange={() => setMode("days")} /> Older than a number of days</label>
+      <label><input type="radio" name="purgeMode" checked={mode === "date"} onChange={() => setMode("date")} /> Up to a date</label>
+    </div>
+    <div className="formgrid">
+      {mode === "date"
+        ? <label>Delete {noun} up to and including *<DateInput value={date} max={yesterdayDateKey()} onChange={(event) => setDate(event.target.value)} required autoFocus /></label>
+        : <label>Delete {noun} older than (days) *<input type="number" min="1" max={PURGE_MAX_DAYS} step="1" value={days} onChange={(event) => setDays(event.target.value)} required autoFocus /></label>}
+    </div>
+    <p className="audit-purge-note">{selected.cutoff ? `Everything ${verb} before ${formatTwelveHourDateTime(selected.cutoff)} will be deleted.` : selected.error}</p>
+  </>;
+}
+
+// Audit Trail performance: the page shows hundreds of events in 26 columns.
+// Each event's display values (formatted time, device details, change labels)
+// are computed once and cached, so cells, filters, sorting and header value
+// lists read them instead of recomputing them on every render.
+const auditValueCache = new WeakMap();
+const NO_FILTER_VALUES = Object.freeze([]);
+const AUDIT_PAGE_SIZE = 500;
+function auditEventValues(event) {
+  let values = auditValueCache.get(event);
+  if (!values) {
+    const systemEvent = String(event.requestMethod || "").toUpperCase() === "SYSTEM";
+    const device = systemEvent && !event.userAgent ? {type: "Server", platform: "Not applicable", browser: "Not applicable"} : auditDeviceDetails(event.userAgent);
+    const notRecorded = systemEvent ? "Not applicable" : "Not recorded";
+    const changeValue = field => { const value = auditChangeAfter(event.changedFields, field); return value === "—" ? notRecorded : value; };
+    values = {
+      device,
+      deviceType: device.type, platform: device.platform, browser: device.browser,
+      occurredAt: auditTimestampLabel(event.occurredAt),
+      eventType: event.eventType,
+      actor: event.actorName ? `${event.actorName} (${event.actorLogin || "no login"})` : event.actorLogin,
+      actorRole: event.actorRole,
+      module: event.module,
+      action: event.action,
+      target: [event.targetType, event.targetReference].filter(Boolean).join(" · "),
+      sourceLocation: changeValue("Source location"),
+      destinationLocation: changeValue("Destination location"),
+      workCompleted: changeValue("Work completed"),
+      workPending: changeValue("Work pending"),
+      outcome: event.outcome,
+      requestMethod: event.requestMethod,
+      requestPath: event.requestPath,
+      statusCode: event.statusCode || notRecorded,
+      durationMs: Number.isFinite(Number(event.durationMs)) ? `${Number(event.durationMs).toLocaleString("en-IN")} ms` : "—",
+      errorCode: event.errorCode,
+      requestId: event.requestId,
+      reason: event.reason,
+      changes: event.changedFields?.length ? auditChangesLabel(event.changedFields) : "No field changes recorded",
+      ipAddress: event.ipAddress || notRecorded,
+      deviceId: event.deviceId || notRecorded,
+      sessionId: event.sessionId || notRecorded,
+    };
+    auditValueCache.set(event, values);
+  }
+  return values;
+}
+
+function AuditTrailPage({ session }) {
+  const auditLoadSequence = useRef(0);
+  const today = indiaDateTimeInputValue().slice(0,10);
+  const appliedDateRange = useRef({fromDate:"",toDate:""});
+  const [fromDate,setFromDate] = useState(""), [toDate,setToDate] = useState("");
+  const [events, setEvents] = useState([]), [summary, setSummary] = useState(null), [nextCursor, setNextCursor] = useState(null), [hasMore, setHasMore] = useState(false), [loading, setLoading] = useState(true), [loadingMore, setLoadingMore] = useState(false), [query, setQuery] = useState(""), [filters, setFilters] = useState({}), [deviceType, setDeviceType] = useState("All"), [platform, setPlatform] = useState("All"), [openFilter, setOpenFilter] = useState(null), [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  const [purgeOpen, setPurgeOpen] = useState(false), [purgeDays, setPurgeDays] = useState("2"), [purging, setPurging] = useState(false);
+  const [purgeMode, setPurgeMode] = useState("days"), [purgeDate, setPurgeDate] = useState(yesterdayDateKey);
+  const [retention, setRetention] = useState(null), [retentionOpen, setRetentionOpen] = useState(false), [retentionDraft, setRetentionDraft] = useState({auditDays:"5", activityDays:"0", whatsappDays:"0", notificationDays:"0", mediaDays:"0"}), [savingRetention, setSavingRetention] = useState(false);
+  const load = async ({append=false,dateRange=appliedDateRange.current} = {}) => {
+    const loadSequence = append ? auditLoadSequence.current : ++auditLoadSequence.current;
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setEvents([]);
+      setSummary(null);
+      setNextCursor(null);
+      setHasMore(false);
+    }
+    try {
+      const params = new URLSearchParams({paged:"true",limit:String(AUDIT_PAGE_SIZE)});
+      params.set("fromDate",dateRange.fromDate);
+      params.set("toDate",dateRange.toDate);
+      if (!dateRange.fromDate && !dateRange.toDate) params.set("allDates","true");
+      if (!append) params.set("summary","true");
+      if (append && nextCursor) { params.set("beforeAt",nextCursor.beforeAt); params.set("beforeId",String(nextCursor.beforeId)); }
+      const response = await fetch(`/api/audit-events?${params}`, {cache:"no-store", headers:{Authorization:`Bearer ${session?.token || authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not load the Audit Trail.");
+      if (loadSequence !== auditLoadSequence.current) return;
+      const incoming = Array.isArray(result.events) ? result.events : [];
+      setEvents((current) => append ? [...current,...incoming] : incoming);
+      if (result.summary) setSummary(result.summary);
+      setNextCursor(result.nextCursor || null);
+      setHasMore(result.hasMore === true);
+    } catch (error) { if (loadSequence === auditLoadSequence.current) alert(error.message); }
+    finally { if (loadSequence === auditLoadSequence.current) {setLoading(false);setLoadingMore(false);} }
+  };
+  useEffect(() => { load(); }, [session?.token]);
+  const applyDateRange = (event) => {
+    event.preventDefault();
+    if (Boolean(fromDate) !== Boolean(toDate)) return alert("Select both From and To dates, or clear both for all days.");
+    if (fromDate && fromDate > toDate) return alert("From date cannot be after To date.");
+    appliedDateRange.current={fromDate,toDate};
+    load({dateRange:appliedDateRange.current});
+  };
+  const showToday = () => {
+    const current=indiaDateTimeInputValue().slice(0,10);
+    setFromDate(current);setToDate(current);
+    appliedDateRange.current={fromDate:current,toDate:current};
+    load({dateRange:appliedDateRange.current});
+  };
+  const valueFor = (event, key) => auditEventValues(event)[key] || "—";
+  const columns = [
+    ["occurredAt", "Date & time"], ["eventType", "Event"], ["actor", "User / login"], ["actorRole", "Role"],
+    ["module", "Module"], ["action", "Action"], ["target", "Target / record"], ["sourceLocation", "Source location"], ["destinationLocation", "Destination location"],
+    ["workCompleted", "Work completed"], ["workPending", "Work pending"], ["outcome", "Outcome"], ["statusCode", "HTTP status"],
+    ["requestMethod", "Method"], ["requestPath", "Endpoint"], ["durationMs", "Duration"], ["errorCode", "Error code"], ["requestId", "Request ID"],
+    ["reason", "Reason / details"], ["changes", "Changes"], ["ipAddress", "IP address"], ["deviceId", "App Device ID"],
+    ["deviceType", "Device type"], ["platform", "Platform"], ["browser", "Browser"], ["sessionId", "Session ID"],
+  ];
+  const filterColumns = columns.map(([key, label]) => ({key, label, value:(event) => valueFor(event, key)}));
+  const filtered = useMemo(() => events.filter((event) => {
+    const { device } = auditEventValues(event);
+    return (deviceType === "All" || device.type === deviceType)
+      && (platform === "All" || device.platform === platform)
+      && matchesSmartSearch(query, event, device.type, device.platform, device.browser)
+      && tableRowMatchesFilters(event, filterColumns, filters);
+  }), [events, deviceType, platform, query, filters]);
+  const [rows, sort, changeSort] = useSortableRows(filtered, defaultDurationSort(filterColumns), (event, key) => key === "durationMs" ? event.durationMs : key === "occurredAt" ? event.occurredAt : valueFor(event, key));
+  const exportColumns = columns.map(([key, label]) => ({label, value:(event) => valueFor(event, key)}));
+  const headerValueCache = useMemo(() => new Map(), [events]);
+  const headerValuesFor = (key) => {
+    if (!headerValueCache.has(key)) headerValueCache.set(key, [...new Set(events.map((event) => valueFor(event,key)))].sort((a,b) => sortCollator.compare(a,b)));
+    return headerValueCache.get(key);
+  };
+  // The sort hook returns a new array each render; keep the previous one while its contents are unchanged.
+  const stableRows = useRef(rows);
+  if (rows.length !== stableRows.current.length || rows.some((row, index) => row !== stableRows.current[index])) stableRows.current = rows;
+  const tableRows = stableRows.current;
+  const updateFilter = (key, value) => setFilters((current) => value ? {...current,[key]:value} : Object.fromEntries(Object.entries(current).filter(([field]) => field !== key)));
+  // Automatic clean-up: the server keeps only the configured days, once per day.
+  const retentionHeaders = {Authorization:`Bearer ${session?.token || authToken}`};
+  useEffect(() => {
+    let active = true;
+    fetch("/api/log-retention", {cache:"no-store", headers:retentionHeaders}).then((response) => response.ok ? response.json() : null)
+      .then((result) => { if (active && result) { setRetention(result); setRetentionDraft({auditDays:String(result.auditDays), activityDays:String(result.activityDays), whatsappDays:String(result.whatsappDays ?? 0), notificationDays:String(result.notificationDays ?? 0), mediaDays:String(result.mediaDays ?? 0)}); } })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [session?.token]);
+  const retentionLabel = (days) => Number(days) > 0 ? `${Number(days)} day${Number(days) === 1 ? "" : "s"}` : "off";
+  const saveRetention = async (event) => {
+    event.preventDefault();
+    setSavingRetention(true);
+    try {
+      const response = await fetch("/api/log-retention", {method:"PUT", cache:"no-store", headers:{...retentionHeaders, "Content-Type":"application/json"}, body:JSON.stringify({auditDays:Number(retentionDraft.auditDays), activityDays:Number(retentionDraft.activityDays), whatsappDays:Number(retentionDraft.whatsappDays), notificationDays:Number(retentionDraft.notificationDays), mediaDays:Number(retentionDraft.mediaDays)})});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not save the automatic clean-up setting.");
+      setRetention(result);
+      setRetentionOpen(false);
+      alert(`Automatic clean-up saved: Audit Trail keeps ${retentionLabel(result.auditDays)}, user activity ${retentionLabel(result.activityDays)}, WhatsApp history ${retentionLabel(result.whatsappDays)}, notifications ${retentionLabel(result.notificationDays)}, verified-request photos and audio ${retentionLabel(result.mediaDays)}. It runs within a few minutes and then once every day.`);
+    } catch (error) { alert(error.message); }
+    finally { setSavingRetention(false); }
+  };
+  // Permanently deletes the entries older than the chosen number of days. The
+  // server records the deletion itself as an Audit Trail entry.
+  const purgeSelection = purgeWindow({ mode: purgeMode, days: purgeDays, date: purgeDate });
+  const deleteOldLogs = async (event) => {
+    event.preventDefault();
+    if (!purgeSelection.cutoff) return alert(purgeSelection.error);
+    if (!window.confirm(`Permanently delete every Audit Trail entry ${purgeSelection.label} (recorded before ${formatTwelveHourDateTime(purgeSelection.cutoff)})? This cannot be undone.`)) return;
+    setPurging(true);
+    try {
+      const response = await fetch(`/api/audit-events?${purgeSelection.query}`, {method:"DELETE", cache:"no-store", headers:{Authorization:`Bearer ${session?.token || authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not delete the old audit logs.");
+      setPurgeOpen(false);
+      alert(`${Number(result.deleted || 0).toLocaleString("en-IN")} audit entr${Number(result.deleted) === 1 ? "y" : "ies"} ${purgeSelection.label} deleted.`);
+      load();
+    } catch (error) { alert(error.message); }
+    finally { setPurging(false); }
+  };
+  const auditTable = useMemo(() => (
+      <ActionsTable className="audit-table" toolbarTarget={actionsToolbarTarget} toolbarPortal recordDateFilter={false}>
+        <thead><tr>{columns.map(([key,label]) => <FilterableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} open={openFilter === key} onToggle={(field) => setOpenFilter((current) => current === field ? null : field)} values={openFilter === key ? headerValuesFor(key) : NO_FILTER_VALUES} filterValue={filters[key] || ""} onFilterChange={(value) => updateFilter(key,value)} />)}</tr></thead>
+        <tbody>{tableRows.length ? tableRows.map((event) => <tr key={event.id}>
+          <td><b>{valueFor(event,"occurredAt")}</b></td><td>{event.eventType}</td><td><b>{event.actorName || event.actorLogin || "Unknown"}</b><small>{event.actorLogin || "—"}</small></td><td>{event.actorRole || "—"}</td>
+          <td>{event.module}</td><td><b>{event.action}</b></td><td>{valueFor(event,"target")}</td><td>{valueFor(event,"sourceLocation")}</td><td>{valueFor(event,"destinationLocation")}</td>
+          <td className="audit-wrap-cell">{valueFor(event,"workCompleted")}</td><td className="audit-wrap-cell">{valueFor(event,"workPending")}</td><td><span className={`audit-outcome ${String(event.outcome).toLowerCase()}`}>{event.outcome}</span></td>
+          <td>{valueFor(event,"statusCode")}</td><td><code>{event.requestMethod || "—"}</code></td><td className="audit-wrap-cell">{event.requestPath || "—"}</td><td>{valueFor(event,"durationMs")}</td><td><code>{event.errorCode || "—"}</code></td><td><code>{event.requestId || "—"}</code></td>
+          <td className="audit-wrap-cell">{event.reason || "—"}</td><td className="audit-wrap-cell" title={valueFor(event,"changes")}>{valueFor(event,"changes")}</td><td>{valueFor(event,"ipAddress")}</td><td><code>{valueFor(event,"deviceId")}</code></td>
+          <td><span className={`audit-device-badge ${valueFor(event,"deviceType").toLowerCase()}`}>{valueFor(event,"deviceType")}</span></td><td>{valueFor(event,"platform")}</td><td title={event.userAgent || ""}>{valueFor(event,"browser")}</td><td><code>{valueFor(event,"sessionId")}</code></td>
+        </tr>) : <tr><td colSpan={columns.length} className="empty-state">{loading ? "Loading audit events..." : "No audit events found."}</td></tr>}</tbody>
+      </ActionsTable>
+  ), [tableRows, sort, openFilter, filters, actionsToolbarTarget, loading, headerValueCache]);
+  return <section className="panel pagepanel generic audit-page">
+    <header><div><h1>Audit Trail</h1><p>Today’s administration, user changes, account security, backup, and vehicle transfer activity</p></div><div className="audit-header-actions"><button type="button" className="secondary" onClick={() => setRetentionOpen(true)} title="Automatic daily clean-up"><Clock /> Auto clean-up{retention ? ` · ${retentionLabel(retention.auditDays)}` : ""}</button><button type="button" className="secondary danger" onClick={() => setPurgeOpen(true)} disabled={loading || purging}><Trash2 /> Delete old logs</button><button type="button" className="secondary" onClick={() => load()} disabled={loading}><RefreshCw /> {loading ? "Refreshing..." : "Refresh"}</button></div></header>
+    {retentionOpen && <Modal title="Automatic log clean-up" close={() => !savingRetention && setRetentionOpen(false)} className="audit-purge-modal">
+      <form className="form master-form" onSubmit={saveRetention}>
+        <p className="audit-purge-help">Once a day the system deletes everything older than the number of days you keep. It also runs within a few minutes of saving and after each deployment. Enter 0 to turn a part off. The run is recorded in the Audit Trail.</p>
+        <div className="formgrid">
+          <label>Audit Trail · days to keep *<input type="number" min="0" max="3650" step="1" value={retentionDraft.auditDays} onChange={(event) => setRetentionDraft((current) => ({...current, auditDays:event.target.value}))} required autoFocus /></label>
+          <label>User activity · days to keep *<input type="number" min="0" max="3650" step="1" value={retentionDraft.activityDays} onChange={(event) => setRetentionDraft((current) => ({...current, activityDays:event.target.value}))} required /></label>
+          <label>WhatsApp delivery history · days to keep *<input type="number" min="0" max="3650" step="1" value={retentionDraft.whatsappDays} onChange={(event) => setRetentionDraft((current) => ({...current, whatsappDays:event.target.value}))} required /></label>
+          <label>In-app notifications and dismissed messages · days to keep *<input type="number" min="0" max="3650" step="1" value={retentionDraft.notificationDays} onChange={(event) => setRetentionDraft((current) => ({...current, notificationDays:event.target.value}))} required /></label>
+          <label className="full">Photos and audio on MIS-verified requests · days to keep *<input type="number" min="0" max="3650" step="1" value={retentionDraft.mediaDays} onChange={(event) => setRetentionDraft((current) => ({...current, mediaDays:event.target.value}))} required /><small>Counted from MIS verification. The request, its readings, remarks and history are kept; only the complaint photos, complaint and maintenance audio and the trip card image are removed. They can be recovered only from a backup taken before the removal.</small></label>
+        </div>
+        <p className="audit-purge-note">{retention?.lastRunAt ? `Last automatic run ${formatTwelveHourDateTime(retention.lastRunAt)}.` : "Not run yet."}{retention?.updatedBy ? ` Setting last changed by ${retention.updatedBy}.` : ""}</p>
+        <footer><button type="button" onClick={() => setRetentionOpen(false)} disabled={savingRetention}>Cancel</button><button className="primary" disabled={savingRetention}><Save /> {savingRetention ? "Saving..." : "Save"}</button></footer>
+      </form>
+    </Modal>}
+    {purgeOpen && <Modal title="Delete old audit logs" close={() => !purging && setPurgeOpen(false)} className="audit-purge-modal">
+      <form className="form master-form" onSubmit={deleteOldLogs}>
+        <p className="audit-purge-help">Choose how far back to keep: everything older than a number of days, or everything up to and including a date. Today always stays. The deletion itself is recorded in the Audit Trail with the number of entries removed.</p>
+        <PurgeWindowFields mode={purgeMode} setMode={setPurgeMode} days={purgeDays} setDays={setPurgeDays} date={purgeDate} setDate={setPurgeDate} window={purgeSelection} noun="entries" />
+        <footer><button type="button" onClick={() => setPurgeOpen(false)} disabled={purging}>Cancel</button><button className="danger" disabled={purging || !purgeSelection.cutoff}><Trash2 /> {purging ? "Deleting..." : "Delete permanently"}</button></footer>
+      </form>
+    </Modal>}
+    <div className="audit-summary"><span><b>{Number(summary?.total ?? events.length).toLocaleString("en-IN")}</b> recorded events</span><span><b>{Number(summary?.failed ?? events.filter((event) => event.outcome === "Failed").length).toLocaleString("en-IN")}</b> failed actions</span><span><b>{Number(summary?.users ?? new Set(events.map((event) => event.actorLogin).filter(Boolean)).size).toLocaleString("en-IN")}</b> users</span><span><b>{Number(summary?.devices ?? new Set(events.map((event) => event.deviceId).filter(Boolean)).size).toLocaleString("en-IN")}</b> devices</span></div>
+    <div className="audit-device-filter-band"><AuditToggleGroup label="Device" value={deviceType} options={auditDeviceTypeOptions} onChange={setDeviceType} /><AuditToggleGroup label="Platform" value={platform} options={auditPlatformOptions} onChange={setPlatform} /><span className="audit-visible-count"><b>{rows.length.toLocaleString("en-IN")}</b> visible · {events.length.toLocaleString("en-IN")} loaded</span></div>
+    <div className="toolbar audit-toolbar"><div><Search /><input data-smart-search type="search" placeholder="Search audit trail" value={query} onChange={(event) => setQuery(event.target.value)} /></div><form className="audit-date-range" onSubmit={applyDateRange}><label>From date<DateInput value={fromDate} max={toDate||undefined} onChange={(event)=>setFromDate(event.target.value)} /></label><label>To date<DateInput value={toDate} min={fromDate||undefined} onChange={(event)=>setToDate(event.target.value)} /></label><button type="submit" className="secondary" disabled={loading}><ListFilter /> Apply dates</button><button type="button" className="secondary" onClick={showToday} disabled={loading}><CalendarDays /> Today</button></form><div className="toolbar-actions-end"><div className="master-actions-slot" ref={setActionsToolbarTarget} /><TableParameterFilter columns={filterColumns} rows={events} filters={filters} onFilterChange={updateFilter} onClearFilters={() => {setFilters({});setDeviceType("All");setPlatform("All");}} /><ExportMenu title="Audit Trail" columns={exportColumns} rows={rows} /></div></div>
+    <div className="emptytable master-table-scroll audit-table-wrap" onClick={() => setOpenFilter(null)}>
+      {auditTable}
+    </div>
+    {hasMore && <div className="audit-history-actions"><button type="button" className="secondary" onClick={() => load({append:true})} disabled={loadingMore}>{loadingMore ? "Loading older records..." : "Load older audit records"}</button></div>}
+  </section>;
+}
+
+function sessionAgeLabel(value) {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ${minutes % 60} min`;
+  return `${Math.floor(hours / 24)} day${hours < 48 ? "" : "s"}`;
+}
+
+function SessionMessageComposer({row,session,onClose,onSent}) {
+  const [message,setMessage]=useState("");
+  const [audioData,setAudioData]=useState("");
+  const [recording,setRecording]=useState(false);
+  const [recordingSeconds,setRecordingSeconds]=useState(0);
+  const [recordingNote,setRecordingNote]=useState("");
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState("");
+  const recorderRef=useRef(null);
+  const streamRef=useRef(null);
+  const chunksRef=useRef([]);
+  const elapsedTimerRef=useRef(null);
+  const maximumTimerRef=useRef(null);
+  const mountedRef=useRef(true);
+  const releaseMicrophone=()=>{
+    streamRef.current?.getTracks().forEach((track)=>track.stop());
+    streamRef.current=null;
+  };
+  const clearRecordingTimers=()=>{
+    window.clearInterval(elapsedTimerRef.current);
+    window.clearTimeout(maximumTimerRef.current);
+  };
+  const stopRecording=()=>{
+    clearRecordingTimers();
+    if(recorderRef.current?.state==='recording')recorderRef.current.stop();
+    else releaseMicrophone();
+    setRecording(false);
+  };
+  useEffect(()=>()=>{
+    mountedRef.current=false;
+    clearRecordingTimers();
+    if(recorderRef.current?.state==='recording'){
+      recorderRef.current.onstop=null;
+      recorderRef.current.stop();
+    }
+    releaseMicrophone();
+  },[]);
+  const startRecording=async()=>{
+    setError("");setRecordingNote("");
+    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){
+      setError("Voice recording is not supported here. Use the current Chrome or Edge browser.");
+      return;
+    }
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      if(!mountedRef.current){stream.getTracks().forEach((track)=>track.stop());return;}
+      streamRef.current=stream;
+      chunksRef.current=[];
+      setAudioData("");
+      setRecordingSeconds(0);
+      const preferredType=["audio/mp4","audio/webm;codecs=opus","audio/webm"].find((type)=>window.MediaRecorder.isTypeSupported?.(type));
+      const recorder=preferredType?new MediaRecorder(stream,{mimeType:preferredType}):new MediaRecorder(stream);
+      recorderRef.current=recorder;
+      recorder.ondataavailable=(event)=>{if(event.data?.size)chunksRef.current.push(event.data);};
+      recorder.onstop=()=>{
+        clearRecordingTimers();
+        releaseMicrophone();
+        if(!mountedRef.current)return;
+        setRecording(false);
+        const mimeType=String(recorder.mimeType||preferredType||"audio/webm").split(";")[0];
+        const blob=new Blob(chunksRef.current,{type:mimeType});
+        if(!blob.size){setError("No voice was captured. Please record again.");return;}
+        if(blob.size>3*1024*1024){setError("Voice message is too large. Record a shorter message.");return;}
+        const reader=new FileReader();
+        reader.onload=()=>{if(mountedRef.current){setAudioData(String(reader.result||""));setRecordingNote("Voice message ready. Play it before sending if needed.");}};
+        reader.onerror=()=>{if(mountedRef.current)setError("Could not prepare the voice message. Please record again.");};
+        reader.readAsDataURL(blob);
+      };
+      recorder.start(250);
+      setRecording(true);
+      setRecordingNote("Recording from your microphone...");
+      elapsedTimerRef.current=window.setInterval(()=>setRecordingSeconds((value)=>value+1),1000);
+      maximumTimerRef.current=window.setTimeout(stopRecording,60000);
+    }catch{
+      releaseMicrophone();
+      setRecording(false);
+      setError("Allow microphone access to record a voice message.");
+    }
+  };
+  const submit=async(event)=>{
+    event.preventDefault();
+    const text=message.trim();
+    if(recording)return setError("Stop the recording before sending.");
+    if(!text&&!audioData)return setError("Record a voice message or write a message before sending.");
+    setSending(true);
+    try{
+      const response=await fetch(`/api/user-sessions/${encodeURIComponent(row.sessionId)}/messages`,{
+        method:'POST',headers:{Authorization:`Bearer ${session?.token||authToken}`,'Content-Type':'application/json'},body:JSON.stringify({message:text,audioData}),
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||'Could not send the session message.');
+      onSent?.(row);
+    }catch(sendError){setError(sendError.message||'Could not send the session message.');}
+    finally{setSending(false);}
+  };
+  return <Modal title={`Message · ${row.name||row.login||'Active user'}`} close={sending?()=>{}:onClose} className="session-message-compose-modal">
+    <form className="session-message-compose" onSubmit={submit}>
+      <div className="session-message-recipient"><span><UserRound /></span><div><small>Send to active session</small><b>{row.name||'Unknown user'}</b><p>{row.login||'No login name'} · {row.location||'Not assigned'}</p></div><i>Online</i></div>
+      <label><span>Short message <small>Optional with voice</small></span><textarea autoFocus rows="5" maxLength="500" value={message} onChange={(event)=>{setMessage(event.target.value);setError("");}} placeholder="Write a clear message or record your voice..." /></label>
+      <div className={`session-voice-recorder${recording?' recording':''}`}>
+        <div><button type="button" onClick={recording?stopRecording:startRecording} disabled={sending}>{recording?<Square />:<Mic />}{recording?'Stop recording':'Record voice message'}</button><span>{recording?`Recording ${Math.floor(recordingSeconds/60)}:${String(recordingSeconds%60).padStart(2,'0')} · maximum 1 minute`:recordingNote||'The user can play your voice note inside the message popup.'}</span></div>
+        {audioData&&<div className="session-voice-preview"><audio controls preload="metadata" src={audioData}>Recorded voice message</audio><button type="button" onClick={()=>{setAudioData("");setRecordingNote("");}} disabled={sending} aria-label="Remove recorded voice message"><X /></button></div>}
+      </div>
+      <div className="session-message-compose-meta"><span>{message.length} / 500 characters</span>{error&&<b role="alert">{error}</b>}</div>
+      <footer><button type="button" onClick={onClose} disabled={sending}>Cancel</button><button type="submit" className="primary" disabled={sending||recording||(!message.trim()&&!audioData)}><Send />{sending?'Sending...':audioData?'Send voice message':'Send message'}</button></footer>
+    </form>
+  </Modal>;
+}
+
+// Pasted screenshots and photos are scaled to at most 1600 px and re-encoded as
+// JPEG on a white background, so an announcement image stays a few hundred KB.
+const ANNOUNCEMENT_IMAGE_MAX_SIDE=1600;
+function shrinkAnnouncementImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file||!/^image\/(png|jpeg|webp|gif)$/.test(file.type))return reject(new Error('Paste or choose a PNG, JPEG, WebP or GIF image.'));
+    const url=URL.createObjectURL(file),image=new Image();
+    image.onload=()=>{
+      const scale=Math.min(1,ANNOUNCEMENT_IMAGE_MAX_SIDE/Math.max(image.naturalWidth,image.naturalHeight));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const context=canvas.getContext('2d');
+      context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+      context.drawImage(image,0,0,canvas.width,canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg',0.85));
+    };
+    image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('This image could not be read.'));};
+    image.src=url;
+  });
+}
+
+// Loads an announcement image with the signed-in token (an <img src> cannot send it).
+function AnnouncementImage({id,token,className="announcement-image"}) {
+  const [src,setSrc]=useState("");
+  useEffect(()=>{
+    let objectUrl="",active=true;
+    fetch(`/api/announcements/${encodeURIComponent(id)}/image`,{headers:{Authorization:`Bearer ${token}`}})
+      .then((response)=>response.ok?response.blob():null)
+      .then((blob)=>{if(blob&&active){objectUrl=URL.createObjectURL(blob);setSrc(objectUrl);}})
+      .catch(()=>{});
+    return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[id,token]);
+  if(!src)return <span className={`${className} loading`}>Loading image...</span>;
+  return <a className={className} href={src} target="_blank" rel="noreferrer" title="Open the full image"><img src={src} alt="Announcement attachment" /></a>;
+}
+
+function AnnouncementComposer({session,onClose,onSent}) {
+  const [message,setMessage]=useState("");
+  const [image,setImage]=useState("");
+  const [sending,setSending]=useState(false);
+  const [error,setError]=useState("");
+  const imageInput=useRef(null);
+  const attachImage=async(file)=>{
+    setError("");
+    try{setImage(await shrinkAnnouncementImage(file));}
+    catch(imageError){setError(imageError.message);}
+  };
+  const pasteImage=(event)=>{
+    const item=[...(event.clipboardData?.items||[])].find((entry)=>entry.kind==='file'&&entry.type.startsWith('image/'));
+    if(!item)return;
+    event.preventDefault();
+    void attachImage(item.getAsFile());
+  };
+  const [history,setHistory]=useState([]);
+  const [withdrawingId,setWithdrawingId]=useState("");
+  const token=session?.token||authToken;
+  const loadHistory=async()=>{
+    try{
+      const response=await fetch('/api/announcements',{cache:'no-store',headers:{Authorization:`Bearer ${token}`}});
+      const result=await response.json().catch(()=>({}));
+      if(response.ok)setHistory(Array.isArray(result.announcements)?result.announcements:[]);
+    }catch(loadError){console.warn('Announcement history could not be loaded.',loadError);}
+  };
+  useEffect(()=>{void loadHistory();},[]);
+  const send=async(event)=>{
+    event.preventDefault();
+    const text=message.trim();
+    if(!text&&!image){setError('Write the announcement or add an image before sending.');return;}
+    setSending(true);setError("");
+    try{
+      const response=await fetch('/api/announcements',{method:'POST',headers:{'Content-Type':'text/plain; charset=utf-8',Authorization:`Bearer ${token}`},body:JSON.stringify({message:text,image})});
+      const responseText=await response.text();
+      let result={};
+      try{result=responseText?JSON.parse(responseText):{};}catch{}
+      if(!response.ok)throw new Error(result.error||responseText.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160)||`Could not send the announcement. HTTP ${response.status}`);
+      onSent?.(result);
+    }catch(sendError){setError(sendError.message||'Could not send the announcement.');}
+    finally{setSending(false);}
+  };
+  const withdraw=async(row)=>{
+    if(!window.confirm('Withdraw this announcement? Users who have not closed it yet will stop seeing it.'))return;
+    setWithdrawingId(String(row.id));setError("");
+    try{
+      const response=await fetch(`/api/announcements/${encodeURIComponent(row.id)}/withdraw`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`}});
+      if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Could not withdraw the announcement.');}
+      await loadHistory();
+    }catch(withdrawError){setError(withdrawError.message||'Could not withdraw the announcement.');}
+    finally{setWithdrawingId("");}
+  };
+  return <Modal title="Announce to all users" close={onClose}>
+    <form className="form announcement-compose" onSubmit={send}>
+      <div className="session-message-recipient"><span><Users /></span><div><small>Send to</small><b>All users</b><p>Every signed-in user sees this as a popup until they close it. Users who sign in later also see it, for 30 days.</p></div></div>
+      <label><span>Announcement</span><textarea autoFocus rows="5" maxLength="2000" value={message} onPaste={pasteImage} onChange={(event)=>{setMessage(event.target.value);setError("");}} placeholder="Write a short, clear announcement for everyone... You can also paste an image here (Ctrl + V)." /></label>
+      <div className="announcement-image-picker">
+        <input ref={imageInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event)=>{void attachImage(event.target.files?.[0]);event.target.value="";}} />
+        {image
+          ?<figure><img src={image} alt="Image to send with the announcement" /><button type="button" onClick={()=>setImage("")} disabled={sending}><X />Remove image</button></figure>
+          :<button type="button" onClick={()=>imageInput.current?.click()} disabled={sending}><ImagePlus />Add image</button>}
+      </div>
+      <div className="session-message-compose-meta"><span>{message.length} / 2,000 characters{image?' · 1 image':''}</span>{error&&<b role="alert">{error}</b>}</div>
+      <footer><button type="button" onClick={onClose} disabled={sending}>Cancel</button><button type="submit" className="primary" disabled={sending||(!message.trim()&&!image)}><Send />{sending?'Sending...':'Send to all users'}</button></footer>
+    </form>
+    {history.length>0&&<section className="announcement-history"><h3>Recent announcements</h3><ul>{history.map((row)=><li key={row.id} className={row.withdrawnAt?'withdrawn':''}>{row.message&&<p>{row.message}</p>}{row.hasImage&&<AnnouncementImage id={row.id} token={token} className="announcement-image thumbnail" />}<small>{formatTwelveHourDateTime(row.createdAt)} · {row.senderName||row.senderLogin||'Administrator'} · closed by {Number(row.acknowledgedCount||0).toLocaleString('en-IN')} {Number(row.acknowledgedCount||0)===1?'user':'users'}{row.withdrawnAt?` · withdrawn ${formatTwelveHourDateTime(row.withdrawnAt)}`:''}</small>{!row.withdrawnAt&&<button type="button" onClick={()=>withdraw(row)} disabled={withdrawingId===String(row.id)}>{withdrawingId===String(row.id)?'Withdrawing...':'Withdraw'}</button>}</li>)}</ul></section>}
+  </Modal>;
+}
+
+function SessionMessageInbox({session}) {
+  const [messages,setMessages]=useState([]);
+  const [closingId,setClosingId]=useState("");
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(!session?.token){setMessages([]);return undefined;}
+    const controller=new AbortController();
+    const load=async()=>{
+      try{
+        const headers={Authorization:`Bearer ${session.token}`};
+        const [messageResponse,announcementResponse]=await Promise.all([
+          fetch('/api/session-messages',{cache:'no-store',signal:controller.signal,headers}),
+          fetch('/api/announcements/pending',{cache:'no-store',signal:controller.signal,headers}),
+        ]);
+        const messageResult=await messageResponse.json().catch(()=>({}));
+        const announcementResult=await announcementResponse.json().catch(()=>({}));
+        if(!messageResponse.ok)throw new Error(messageResult.error||'Could not check session messages.');
+        if(!announcementResponse.ok)throw new Error(announcementResult.error||'Could not check announcements.');
+        // Direct messages first (they name one person), then announcements for everyone.
+        if(!controller.signal.aborted)setMessages([
+          ...(Array.isArray(messageResult.messages)?messageResult.messages:[]).map((item)=>({...item,kind:'message'})),
+          ...(Array.isArray(announcementResult.announcements)?announcementResult.announcements:[]).map((item)=>({...item,kind:'announcement'})),
+        ]);
+      }catch(loadError){if(loadError.name!=='AbortError')console.warn('Session message check failed.',loadError);}
+    };
+    void load();
+    const stopPolling=startVisiblePoll(load,3000);
+    return()=>{controller.abort();stopPolling();};
+  },[session?.token]);
+  const current=messages[0];
+  if(!current)return null;
+  const isAnnouncement=current.kind==='announcement';
+  const dismiss=async()=>{
+    setClosingId(String(current.id));setError("");
+    try{
+      const endpoint=isAnnouncement?`/api/announcements/${encodeURIComponent(current.id)}/acknowledge`:`/api/session-messages/${encodeURIComponent(current.id)}/dismiss`;
+      const response=await fetch(endpoint,{method:'PATCH',headers:{Authorization:`Bearer ${session.token}`}});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||'Could not close the message.');
+      setMessages((items)=>items.filter((item)=>!(item.kind===current.kind&&String(item.id)===String(current.id))));
+    }catch(closeError){setError(closeError.message||'Could not close the message. Please try again.');}
+    finally{setClosingId("");}
+  };
+  return createPortal(<div className="session-message-inbox-overlay">
+    <section className={`session-message-inbox${isAnnouncement?' announcement':''}`} role="alertdialog" aria-modal="true" aria-labelledby="session-message-title" aria-describedby="session-message-body">
+      <header><span><MessageCircle /></span><div><small>{isAnnouncement?'Announcement to all users':'Direct message'}</small><h2 id="session-message-title">{isAnnouncement?'Announcement':'Message'} from {current.senderName||current.senderLogin||'Administrator'}</h2></div>{messages.length>1&&<b>{messages.length} messages</b>}</header>
+      <div className="session-message-inbox-body" id="session-message-body">{current.message&&<p>{current.message}</p>}{isAnnouncement&&current.hasImage&&<AnnouncementImage id={current.id} token={session.token} />}{current.audioData&&<audio controls preload="metadata" src={current.audioData}>Voice message from the administrator</audio>}<small>Sent {formatTwelveHourDateTime(current.createdAt)}</small></div>
+      {error&&<div className="session-message-inbox-error" role="alert"><AlertTriangle />{error}</div>}
+      <footer><span>This message will remain open until you close it.</span><button type="button" onClick={dismiss} disabled={closingId===String(current.id)}><X />{closingId===String(current.id)?'Closing...':'Close message'}</button></footer>
+    </section>
+  </div>,document.body);
+}
+
+function UserSessionsPage({session}) {
+  const viewOnly=isSessionViewOnlyUser(session);
+  const [historyTarget,setHistoryTarget]=useState(null);
+  const [announcing,setAnnouncing]=useState(false);
+  const [sessions,setSessions]=useState([]);
+  const [summary,setSummary]=useState({active:0,online:0,users:0,devices:0});
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const [query,setQuery]=useState("");
+  const [status,setStatus]=useState("All");
+  const [closingId,setClosingId]=useState("");
+  const [messageTarget,setMessageTarget]=useState(null);
+  const [messageNotice,setMessageNotice]=useState("");
+  const [actionsToolbarTarget,setActionsToolbarTarget]=useState(null);
+  const [activityPurgeOpen,setActivityPurgeOpen]=useState(false),[activityPurgeDays,setActivityPurgeDays]=useState("2"),[activityPurging,setActivityPurging]=useState(false);
+  const [activityPurgeMode,setActivityPurgeMode]=useState("days"),[activityPurgeDate,setActivityPurgeDate]=useState(yesterdayDateKey);
+  const activitySelection=purgeWindow({mode:activityPurgeMode,days:activityPurgeDays,date:activityPurgeDate});
+  // Permanently deletes login history and session activity in the chosen window; the server audits the deletion.
+  const deleteOldActivity=async(event)=>{
+    event.preventDefault();
+    if(!activitySelection.cutoff)return alert(activitySelection.error);
+    if(!window.confirm(`Permanently delete every user activity record ${activitySelection.label} (last active before ${formatTwelveHourDateTime(activitySelection.cutoff)})? This cannot be undone.`))return;
+    setActivityPurging(true);
+    try{
+      const response=await fetch(`/api/user-login-history?${activitySelection.query}`,{method:"DELETE",cache:"no-store",headers:{Authorization:`Bearer ${session?.token||authToken}`}});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||"Could not delete the old user activity.");
+      setActivityPurgeOpen(false);
+      setMessageNotice(`${Number(result.deleted||0).toLocaleString("en-IN")} user activity record${Number(result.deleted)===1?"":"s"} ${activitySelection.label} deleted.`);
+      await load({quiet:true});
+    }catch(error){alert(error.message);}
+    finally{setActivityPurging(false);}
+  };
+  const load=async({quiet=false}={})=>{
+    if(!quiet)setLoading(true);
+    try{
+      const response=await fetch('/api/user-sessions',{cache:'no-store',headers:{Authorization:`Bearer ${session?.token||authToken}`}});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||'Could not load user sessions.');
+      setSessions(Array.isArray(result.sessions)?result.sessions:[]);
+      setSummary(result.summary||{active:0,online:0,users:0,devices:0});
+      setError("");
+    }catch(loadError){setError(loadError.message||'Could not load user sessions.');}
+    finally{if(!quiet)setLoading(false);}
+  };
+  useEffect(()=>{
+    load();
+    const timer=window.setInterval(()=>load({quiet:true}),3000);
+    return()=>window.clearInterval(timer);
+  },[session?.token]);
+  const forceClose=async(row)=>{
+    if(row.current)return;
+    const reason=window.prompt(`Enter the reason for force closing ${row.name||row.login}'s session:`,"");
+    if(reason===null)return;
+    if(!reason.trim())return window.alert('A reason is required for the Audit Trail.');
+    setClosingId(row.sessionId);
+    try{
+      const response=await fetch(`/api/user-sessions/${encodeURIComponent(row.sessionId)}`,{method:'DELETE',headers:{Authorization:`Bearer ${session?.token||authToken}`,'X-Audit-Reason':reason.trim()}});
+      if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Could not force close the session.');}
+      await load({quiet:true});
+    }catch(closeError){window.alert(closeError.message);}
+    finally{setClosingId("");}
+  };
+  const visible=sessions.filter((row)=>{
+    const device=auditDeviceDetails(row.userAgent);
+    return (status==='All'||(status==='Online'&&row.online)||(status==='Inactive'&&!row.online))
+      && matchesSmartSearch(query,row.name,row.login,row.roleLabel,row.location,row.ipAddress,row.deviceId,device.type,device.platform,device.browser,row.application);
+  });
+  return <section className="panel pagepanel user-sessions-page">
+    <header><div><h1>User Sessions</h1></div><div className="user-session-header-actions">{!viewOnly&&<button type="button" className="primary" onClick={()=>setAnnouncing(true)}><MessageCircle /> Announce to all users</button>}<button type="button" className="secondary" onClick={()=>load()} disabled={loading}><RefreshCw /> {loading?'Refreshing...':'Refresh'}</button>{!viewOnly&&<button type="button" className="secondary danger" onClick={()=>setActivityPurgeOpen(true)} disabled={loading||activityPurging}><Trash2 /> Delete old activity</button>}</div></header>
+    <div className="user-session-summary" aria-label="Session summary">
+      <article><span className="user-session-kpi-icon online"><Activity /></span><div><small>Online now</small><b>{Number(summary.online||0).toLocaleString('en-IN')}</b><p>Active in the last 2 minutes</p></div></article>
+      <article><span className="user-session-kpi-icon"><Monitor /></span><div><small>Active sessions</small><b>{Number(summary.active||0).toLocaleString('en-IN')}</b><p>No inactivity logout</p></div></article>
+      <article><span className="user-session-kpi-icon users"><Users /></span><div><small>Signed-in users</small><b>{Number(summary.users||0).toLocaleString('en-IN')}</b><p>Unique user accounts</p></div></article>
+      <article><span className="user-session-kpi-icon devices"><Smartphone /></span><div><small>Known devices</small><b>{Number(summary.devices||0).toLocaleString('en-IN')}</b><p>Identified app devices</p></div></article>
+    </div>
+    <div className="user-session-toolbar"><div className="user-session-search"><Search /><input data-smart-search type="search" placeholder="Search user, role, location, device or IP" value={query} onChange={(event)=>setQuery(event.target.value)} /></div><div className="user-session-status" role="group" aria-label="Session status filter">{['All','Online','Never logged in','Inactive'].map(option=><button type="button" key={option} className={status===option?'active':''} aria-pressed={status===option} onClick={()=>setStatus(option)}>{option}</button>)}</div>{status!=='Never logged in'&&<span className="user-session-visible"><b>{visible.length}</b> visible</span>}<div className="user-session-actions" ref={setActionsToolbarTarget} /></div>
+    {error&&<div className="user-session-error" role="alert"><AlertTriangle /> <span>{error}</span><button type="button" onClick={()=>load()}>Retry</button></div>}
+    {messageNotice&&<div className="user-session-sent" role="status"><CheckCircle2 /><span>{messageNotice}</span><button type="button" aria-label="Dismiss message confirmation" onClick={()=>setMessageNotice("")}><X /></button></div>}
+    {status==='Never logged in'?<UserLoginActivity token={session?.token||authToken} Table={ActionsTable} formatDate={formatTwelveHourDateTime} query={query} />:<div className="user-session-table-wrap" data-session-view={status}><ActionsTable className="user-session-table" toolbarTarget={actionsToolbarTarget} toolbarPortal><thead><tr><th>User</th><th>Status</th><th>Message</th><th>Action</th><th>Role</th><th>Location</th><th>Assistance</th><th>Device</th><th>IP address</th><th>Signed in</th><th>Last activity</th><th>Session age</th></tr></thead><tbody>{visible.length?visible.map(row=>{const device=auditDeviceDetails(row.userAgent);const DeviceIcon=device.type==='Mobile'?Smartphone:Monitor;return <tr key={row.sessionId} className={row.current?'current-session':''}><td><div className="session-user-cell"><span><UserRound /></span><div><b>{row.name||'Unknown user'}</b><small>{row.login||'No login name'}{row.application==='Tender'?' · Tender':''}{row.current?' · Current session':''}</small></div></div></td><td><button type="button" className={`session-state ${row.online?'online':'inactive'}`} disabled={!row.login} aria-label={`View last 24 hours of login sessions for ${row.name||row.login}`} onClick={()=>setHistoryTarget(row)}><i />{row.online?'Online':'Inactive'}</button></td><td>{viewOnly?"View only":<button type="button" className="session-message-button" onClick={()=>setMessageTarget(row)} disabled={!row.online||row.current}><MessageCircle />{row.current?'Current':row.online?'Message':'Offline'}</button>}</td><td>{viewOnly?<span>View only</span>:row.current?<span className="current-session-label"><ShieldCheck /> Protected</span>:<button type="button" className="force-close-session" onClick={()=>forceClose(row)} disabled={closingId===row.sessionId}><LogOut />{closingId===row.sessionId?'Closing...':'Force close'}</button>}</td><td><b>{row.roleLabel||row.assignedRole||row.userType||'User'}</b><small>{row.userType||'Application user'}</small></td><td><span className="session-location"><MapPin />{row.location||'Not assigned'}</span></td><td>{row.application==='Tender'?<span>BDMS workspace only</span>:viewOnly?"View only":<RemoteAssistanceAction row={row} token={session?.token||authToken} onChanged={()=>load({quiet:true})} />}</td><td><div className="session-device"><DeviceIcon /><div><b>{device.type}</b><small>{device.platform} · {device.browser}</small><code>{row.deviceId||'Device ID unavailable'}</code></div></div></td><td><code>{row.ipAddress||'Unavailable'}</code></td><td>{formatTwelveHourDateTime(row.createdAt)}</td><td>{formatTwelveHourDateTime(row.lastSeenAt)}</td><td>{sessionAgeLabel(row.createdAt)}</td></tr>}):<tr><td colSpan="12" className="empty-state">{loading?'Loading user sessions...':'No sessions match this view.'}</td></tr>}</tbody></ActionsTable></div>}
+    <footer className="user-session-note"><ShieldCheck /><span>Remote assistance starts only after user approval, stays inside the Caliber Pulse-II tab, and ends automatically after the selected duration. Inactivity does not sign users out.</span></footer>
+    {historyTarget&&<UserLoginHistory token={session?.token||authToken} row={historyTarget} Modal={Modal} Table={ActionsTable} formatDate={formatTwelveHourDateTime} deviceDetails={auditDeviceDetails} onClose={()=>setHistoryTarget(null)} />}
+    {messageTarget&&<SessionMessageComposer row={messageTarget} session={session} onClose={()=>setMessageTarget(null)} onSent={(row)=>{setMessageTarget(null);setMessageNotice(`Message sent to ${row.name||row.login||'the active user'}.`);}} />}
+    {announcing&&<AnnouncementComposer session={session} onClose={()=>setAnnouncing(false)} onSent={()=>{setAnnouncing(false);setMessageNotice('Announcement sent to all users. Each user will see it until they close it.');}} />}
+    {activityPurgeOpen&&<Modal title="Delete old user activity" close={()=>!activityPurging&&setActivityPurgeOpen(false)} className="audit-purge-modal">
+      <form className="form master-form" onSubmit={deleteOldActivity}>
+        <p className="audit-purge-help">Choose how far back to keep: login history and session activity older than a number of days, or up to and including a date. Live sessions and today always stay. The deletion itself is recorded in the Audit Trail with the number of records removed.</p>
+        <PurgeWindowFields mode={activityPurgeMode} setMode={setActivityPurgeMode} days={activityPurgeDays} setDays={setActivityPurgeDays} date={activityPurgeDate} setDate={setActivityPurgeDate} window={activitySelection} noun="activity" verb="last active" />
+        <footer><button type="button" onClick={()=>setActivityPurgeOpen(false)} disabled={activityPurging}>Cancel</button><button className="danger" disabled={activityPurging||!activitySelection.cutoff}><Trash2 /> {activityPurging?"Deleting...":"Delete permanently"}</button></footer>
+      </form>
+    </Modal>}
+  </section>;
+}
+function reportCategoryIdsForUser(permissions = {}, session = {}) {
+  const adminLevel = String(permissions.adminLevel || "").trim();
+  if (["Admin", "Super Admin"].includes(adminLevel) || (session.role === "super" && adminLevel !== "Manager")) return reportCategoryTabs.map((category) => category.id);
+  const roleText = [
+    ...(Array.isArray(permissions.managerRoles) ? permissions.managerRoles : []),
+    permissions.managerRole,
+    permissions.department,
+    session.assignedRole,
+    session.department,
+    session.designation,
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (adminLevel === "Manager" && (!roleText || roleText.includes("project manager") || roleText.includes("director"))) {
+    return reportCategoryTabs.map((category) => category.id);
+  }
+  const categoryIds = new Set(["general", "vehicle-history"]);
+  if (roleText.includes("production")) categoryIds.add("production");
+  if (roleText.includes("maintenance")) categoryIds.add("maintenance");
+  if (roleText.includes("mis")) categoryIds.add("mis");
+  return reportCategoryTabs
+    .filter((category) => categoryIds.has(category.id))
+    .map((category) => category.id);
+}
+function firstTripTimestamp(request) {
+  if (String(request.firstTripAt || "").trim()) return String(request.firstTripAt).trim();
+  const date = String(request.firstTripDate || "").trim();
+  const time = String(request.firstTripTime || "").trim();
+  return date ? [date, time].filter(Boolean).join(" ") : "";
+}
+function productionFirstTripTimestamp(request) {
+  if (String(request.productionFirstTripAt || "").trim()) return String(request.productionFirstTripAt).trim();
+  const date = String(request.productionFirstTripDate || "").trim();
+  const time = String(request.productionFirstTripTime || "").trim();
+  return date ? [date, time].filter(Boolean).join(" ") : "";
+}
+function roadStatusLabel(record, requests = []) {
+  const status = liveEquipmentRoadStatus(record, requests);
+  return roadStatusDisplayLabel(status);
+}
+function roadStatusDisplayLabel(status) {
+  return status === "onroad" ? "On road" : status === "offroad" ? "Off road" : status === "idle" ? "Idle" : "Status not set";
+}
+function locationCountRows(records = []) {
+  const groups = new Map();
+  records.forEach((record) => {
+    const location = displaySiteName(record.currentLocation || record.location) || "Not assigned";
+    const type = ["vehicle", "vehicles"].includes(String(record.category || "").trim().toLowerCase()) ? "vehicles" : "equipment";
+    const current = groups.get(location) || { location, equipment: 0, vehicles: 0, total: 0 };
+    current[type] += 1;
+    current.total += 1;
+    groups.set(location, current);
+  });
+  return [...groups.values()].sort((a, b) => sortCollator.compare(a.location, b.location));
+}
+const VEHICLE_HISTORY_OPEN_EVENT = "nerve-center:open-vehicle-history";
+function openVehicleRepairHistory(record) {
+  window.dispatchEvent(new CustomEvent(VEHICLE_HISTORY_OPEN_EVENT, {detail: record}));
+}
+function vehicleRepairHistoryColumns(token) {
+  return [
+    {key: "reference", label: "Request ID", value: (request) => request.ref, render: (request) => <RequestTimelineButton reference={request.ref} token={token} Dialog={Modal} />},
+    {key: "nextBreakdown", label: "Time since previous BD", value: (request) => request.timeSincePreviousBreakdown, sortValue: (request) => request.gapMilliseconds ?? -1, render: (request) => request.breakdownSequence === 1 ? "—" : <strong>{request.timeSincePreviousBreakdown || "—"}</strong>},
+    {key: "complaint", label: "BD problem / reason", value: (request) => request.complaint || request.category},
+    ...breakdownMeterColumns({stage: "opening"}),
+    {key: "site", label: "BD location", value: (request) => request.reportSite || request.site},
+    {key: "driver", label: "Driver at that time", value: (request) => request.driverName || request.driver},
+    {key: "openedAt", label: "BD opened", value: (request) => request.start, sortValue: (request) => request.start, render: (request) => request.start ? formatTwelveHourDateTime(request.start) : "—"},
+    {key: "expectedCompletionAt", label: "ETC", value: (request) => request.expectedCompletionAt, sortValue: (request) => request.expectedCompletionAt, render: (request) => formatTwelveHourDateTime(request.expectedCompletionAt)},
+    {key: "closedAt", label: "Maintenance closed", value: (request) => request.closedAt, sortValue: (request) => request.closedAt, render: (request) => request.closedAt ? formatTwelveHourDateTime(request.closedAt) : "—"},
+    ...breakdownMeterColumns({stage: "closing"}),
+    {key: "tat", label: "Downtime / TAT", value: (request) => request.hours || elapsedLabel(request.start, request.closedAt), sortValue: (request) => elapsedMilliseconds(request.start, request.closedAt)},
+    {key: "repair", label: "Work completed", value: (request) => request.maintenanceWork},
+    {key: "status", label: "Status", value: requestStatusLabel, sortValue: (request) => requestStatusSortRank(requestStatusLabel(request)), render: (request) => <Status>{requestStatusLabel(request)}</Status>},
+  ];
+}
+
+function BreakdownOccurrencesModal({ summary, onClose }) {
+  const rows = summary?.breakdowns || [];
+  const columns = [
+    {key: "reference", label: "Request ID", value: (request) => request.ref, render: (request) => <RequestTimelineButton reference={request.ref} token={authToken} Dialog={Modal} />},
+    {key: "opened", label: "BD time", value: (request) => request.start, sortValue: (request) => request.start, render: (request) => request.start ? formatTwelveHourDateTime(request.start) : "—"},
+    {key: "expectedCompletionAt", label: "ETC", value: (request) => request.expectedCompletionAt, sortValue: (request) => request.expectedCompletionAt, render: (request) => formatTwelveHourDateTime(request.expectedCompletionAt)},
+    {key: "reason", label: "BD reason", value: (request) => request.complaint || request.category},
+    ...breakdownMeterColumns({stage: "opening"}),
+    ...breakdownMeterColumns({stage: "closing"}),
+    {key: "location", label: "Location", value: (request) => request.reportSite || request.site},
+    {key: "driver", label: "Driver", value: (request) => request.driverName || request.driver},
+    {key: "status", label: "Status", value: requestStatusLabel, sortValue: (request) => requestStatusSortRank(requestStatusLabel(request)), render: (request) => <Status>{requestStatusLabel(request)}</Status>},
+  ];
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
+  if (!summary) return null;
+  const vehicle = summary.reportDoor || summary.reportEquipment || "Vehicle";
+  return <Modal title={`${vehicle} · ${rows.length} breakdown${rows.length === 1 ? "" : "s"}`} close={onClose} className="breakdown-occurrences-modal">
+    <div className="breakdown-occurrences-header"><div><History /><span><b>Breakdown occurrences</b><small>Each recorded visit in the selected month and location scope</small></span></div><ExportMenu title={`${vehicle} breakdown occurrences`} columns={columns} rows={rows} /></div>
+    <div className="reports-detail-table emptytable"><ReportTable title={`${vehicle} breakdown occurrences`} layoutKey="Vehicle Breakdown Occurrences" rows={rows} columns={columns} visibleColumnKeys={visibleColumnKeys} onVisibleColumnsChange={setVisibleColumnKeys} emptyMessage="No matching breakdowns" rowKey={(request, index) => request.ref || index} /></div>
+  </Modal>;
+}
+
+function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Back to maintenance" }) {
+  const historyRows = vehicleBreakdownHistoryRows(rows, vehicle);
+  const latestRepair = latestCompletedVehicleRepair(rows, vehicle);
+  const vehicleDetails = { ...(historyRows.at(-1) || {}), ...(typeof vehicle === "object" && vehicle ? vehicle : {}) };
+  // Fleet master status must not override the newest maintenance lifecycle.
+  const latestStatus = requestStatusLabel(historyRows.at(-1) || vehicleDetails);
+  const door = vehicleDetails.reportDoor || vehicleDetails.door || "Vehicle";
+  const equipment = normalizeEquipmentGroup(vehicleDetails.equipmentGroup) || vehicleDetails.reportEquipment || vehicleDetails.equipment || "Equipment details not available";
+  const model = vehicleDetails.reportModel || vehicleDetails.model || "";
+  const completedRepairs = historyRows.filter((request) => ["closed", "verified"].includes(String(request.status || "").toLowerCase()) || request.closedAt);
+  const columns = vehicleRepairHistoryColumns(authToken);
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
+  const [tableToolbarTarget, setTableToolbarTarget] = useState(null);
+  const averageRepeatGap = historyRows.length > 1 ? historyRows.slice(1).reduce((sum, row) => sum + (row.gapMilliseconds || 0), 0) / (historyRows.length - 1) : 0;
+  const averageRepeatDays = Math.floor(averageRepeatGap / 86400000);
+  const averageRepeatHours = Math.round((averageRepeatGap % 86400000) / 3600000);
+  const averageRepeatLabel = averageRepeatGap ? [averageRepeatDays ? `${averageRepeatDays}d` : "", `${averageRepeatHours}h`].filter(Boolean).join(" ") : "No repeat breakdown";
+  const identity = [
+    ["Make", vehicleDetails.reportMake || vehicleDetails.make], ["Model", model], ["Driver", vehicleDetails.driverName || vehicleDetails.driver],
+    ["Current location", vehicleDetails.reportSite || vehicleDetails.site || vehicleDetails.currentLocation], ["Registration", vehicleDetails.reg || vehicleDetails.registrationNumber],
+    ["Chassis / serial no.", vehicleDetails.chassis || vehicleDetails.chassisNo || vehicleDetails.manufacturerSerialNo], ["Equipment group", equipment], ["Latest status", latestStatus],
+  ];
+  return <section className="vehicle-history-page" aria-labelledby="vehicle-history-title">
+    <header className="vehicle-history-header">
+      <div className="vehicle-history-heading">
+        <button type="button" className="vehicle-history-back" onClick={onBack}><ArrowLeft /> {backLabel}</button>
+        <span><History /></span>
+        <div><small>Complete vehicle history</small><h1 id="vehicle-history-title">Door no. {door}</h1><p>{[equipment, vehicleDetails.reportMake || vehicleDetails.make, model].filter(Boolean).join(" · ")}</p></div>
+      </div>
+      <div className="vehicle-history-header-side">
+        <div className="vehicle-history-header-actions"><div ref={setTableToolbarTarget} /><ExportMenu title={`${VEHICLE_HISTORY_REPORT} - ${door}`} columns={columns} rows={historyRows} label="Download history" disabled={!historyRows.length} /></div>
+        <div className="vehicle-history-summary">
+          <article><History /><span><small>Total breakdowns</small><b>{historyRows.length}</b></span></article>
+          <article><CheckCircle2 /><span><small>Completed repairs</small><b>{completedRepairs.length}</b></span></article>
+          <article><Clock /><span><small>Average time between breakdowns</small><b>{averageRepeatLabel}</b></span></article>
+        </div>
+      </div>
+    </header>
+    <dl className="vehicle-history-identity">{identity.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}</dl>
+    <article className={`vehicle-last-repair${latestRepair ? "" : " empty"}`}>
+      <div className="vehicle-last-repair-title"><Wrench /><span><small>What was done last time</small><h2>{latestRepair ? latestRepair.maintenanceWork || "Work details were not recorded" : "No completed repair has been recorded"}</h2></span></div>
+      {latestRepair && <dl>
+        <div><dt>Job reference</dt><dd><RequestTimelineButton reference={latestRepair.ref} token={authToken} Dialog={Modal} /></dd></div>
+        <div><dt>Reported problem</dt><dd>{latestRepair.complaint || "—"}</dd></div>
+        <div><dt>Repair category</dt><dd>{latestRepair.category || "—"}</dd></div>
+        <div><dt>Completed by</dt><dd>{latestRepair.closedBy || "—"}</dd></div>
+      </dl>}
+    </article>
+    <div className="vehicle-history-table">
+      <div className="vehicle-history-table-title"><div><h2>Complete breakdown history</h2><p>Oldest to newest. The interval shows how long after the previous breakdown this vehicle returned.</p></div><span>{historyRows.length} record{historyRows.length === 1 ? "" : "s"}</span></div>
+      <div className="reports-detail-table emptytable"><ReportTable title={`${VEHICLE_HISTORY_REPORT} - ${door}`} layoutKey="Vehicle History Detail" columns={columns} visibleColumnKeys={visibleColumnKeys} onVisibleColumnsChange={setVisibleColumnKeys} rows={historyRows} emptyMessage="No maintenance history is available for this vehicle" rowKey={(request, index) => request.ref || `${door}-${index}`} toolbarTarget={tableToolbarTarget} toolbarPortal /></div>
+    </div>
+  </section>;
+}
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", children }) {
+  if (category === "iboss-accounts") exportLabel = "Print/Export";
+  const [exportView, setExportView] = useState(null);
+  const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
+  const [searchQuery, setSearchQuery] = useState(query);
+  const [tableToolbarTarget, setTableToolbarTarget] = useState(null);
+  const visibleColumns = visibleColumnKeys.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
+  return (
+    <div className="reports-section generated-report-section" data-category={category}>
+      <div className="reports-section-heading">
+        <div className="generated-report-title">
+          <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>
+          <div>
+            <h2>{title}</h2>
+            <p>{description}</p>
+          </div>
+        </div>
+        <div className="generated-report-heading-actions">
+          {headingControl}
+          <div className="report-heading-table-actions" ref={setTableToolbarTarget} />
+          <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} smartLabels={category === "employee-tenure"} className="secondary" label={exportLabel} />
+        </div>
+      </div>
+      {controls}
+      {!children && showSearch && <div className="generated-report-search"><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{rows.length.toLocaleString("en-IN")} record{rows.length === 1 ? "" : "s"}</span></div>}
+      {children || (
+        <TableViewport className="reports-detail-table emptytable">
+          <ReportTable
+            layoutKey={title}
+            title={title}
+            onExportViewChange={setExportView}
+            onResetSearch={() => setSearchQuery("")}
+            query={showSearch ? searchQuery : query}
+            rows={rows}
+            rowKey={rowKey}
+            rowClassName={rowClassName}
+            emptyMessage={emptyMessage}
+            columns={columns}
+            visibleColumnKeys={visibleColumnKeys}
+            onVisibleColumnsChange={setVisibleColumnKeys}
+            toolbarTarget={tableToolbarTarget}
+            toolbarPortal
+          />
+        </TableViewport>
+      )}
+    </div>
+  );
+}
+// The step a request waited in longest is marked in the table. Exports and
+// prints keep the plain duration, and the Slowest stage column names it there.
+function withStageGapHighlights(columns) {
+  if (!columns.some((column) => column.gap)) return columns;
+  return columns.map((column) => column.gap ? { ...column, render: (row) => {
+    const slowest = slowestStageGap(stageTimingRow(row));
+    const highlighted = slowest?.gap.key === column.gap.key;
+    return <span className={`stage-gap${highlighted ? " slowest" : ""}`} title={highlighted ? "Longest wait of this request" : undefined}>{String(column.value?.(row) ?? "—")}</span>;
+  } } : column);
+}
+// Job references always open the complete lifecycle. Duration cells stay clickable as a second entry point.
+function withTimelineLinks(columns, token) {
+  const timeKey = ["days", "tat", "hours"].find((key) => columns.some((column) => column.key === key));
+  return columns.map((column) => {
+    if (["ref", "reference"].includes(column.key)) return { ...column, render: (row) => row.ref
+      ? <RequestTimelineButton reference={row.ref} token={token} Dialog={Modal} label={String(column.value?.(row) ?? row.ref)} />
+      : column.render?.(row) ?? column.value?.(row) ?? "—" };
+    if (timeKey && column.key === timeKey) return { ...column, render: (row) => <RequestTimelineButton reference={row.ref} token={token} Dialog={Modal} label={String(column.value?.(row) ?? row[column.key] ?? "—")} /> };
+    return column;
+  });
+}
+function ReportsPage(props) {
+  if (props.activeReportCategory === 'bd-ageing') return <BdAgeingReport key={props.session?.token} session={props.session} ReportSection={ReportSection} onBack={()=>props.setActiveReportCategory?.('general')} />;
+  return <StandardReportsPage {...props} />;
+}
+function StandardReportsPage({ requests = [], activeReportCategory = "general", setActiveReportCategory = () => {}, permissions = {}, session = {} }) {
+  const [reportMasterData,setReportMasterData] = useState({equipmentRecords:[],transferRecords:[],shiftRecords:[],loading:true,error:""});
+  const {equipmentRecords,transferRecords,shiftRecords} = reportMasterData;
+  useEffect(() => {
+    const controller = new AbortController();
+    setReportMasterData(previous => ({...previous,loading:true}));
+    fetch(`/api/reports/master-data${activeReportCategory === "vehicle-history" ? "?includeDrivers=1" : ""}`,{signal:controller.signal,cache:"no-store",headers:{Authorization:`Bearer ${session?.token || authToken}`}})
+      .then(async response => {
+        const data = await response.json();
+        if(!response.ok) throw new Error(data.error || "Could not load report master data.");
+        if(!Array.isArray(data.equipmentRecords)||!Array.isArray(data.transferRecords)) throw new Error("Invalid report master data response.");
+        if(!controller.signal.aborted) setReportMasterData({...data,loading:false,error:""});
+      }).catch(error => {if(!controller.signal.aborted) setReportMasterData({equipmentRecords:[],transferRecords:[],shiftRecords:[],loading:false,error:error.message});});
+    return () => controller.abort();
+  },[session?.token,activeReportCategory]);
+  const [selectedReportByCategory, setSelectedReportByCategory] = useState({});
+  const [directorTimingOpen, setDirectorTimingOpen] = useState(false);
+  const [reportScheduleScope, setReportScheduleScope] = useState("personal");
+  const [reportScheduleSettings, setReportScheduleSettings] = useState(defaultHierarchyReportScheduleSettings);
+  const [reportScheduleRecipients, setReportScheduleRecipients] = useState({});
+  const [selectedScheduleDesignation, setSelectedScheduleDesignation] = useState("director");
+  const [reportScheduleLoading, setReportScheduleLoading] = useState(false);
+  const [reportScheduleError, setReportScheduleError] = useState("");
+  const [reportScheduleSaving, setReportScheduleSaving] = useState(false);
+  // Everyone can edit a personal schedule; administrators can also select the shared role defaults.
+  const [userReportSchedule, setUserReportSchedule] = useState({ enabled: true, schedules: [] });
+  const [userScheduleCustomised, setUserScheduleCustomised] = useState(false);
+  const [reportScheduleOwner, setReportScheduleOwner] = useState({ name: "", login: "" });
+  const reportAdministrator = session?.role === "super" && session?.permissions?.adminLevel !== "Manager";
+  const [reportAccess, setReportAccess] = useState({ canManageAll: reportAdministrator, allowedDesignationKeys: [], allowedReports: [] });
+  const [reportZipOpen, setReportZipOpen] = useState(false);
+  const [selectedZipReports, setSelectedZipReports] = useState([]);
+  const [reportZipDownloading, setReportZipDownloading] = useState(false);
+  const [reportVehicleHistoryTarget, setReportVehicleHistoryTarget] = useState(null);
+  const [breakdownOccurrencesTarget, setBreakdownOccurrencesTarget] = useState(null);
+  const [breakdownMonth, setBreakdownMonth] = useState(() => indiaDateTimeInputValue(new Date()).slice(0, 7));
+  const [breakdownRegion, setBreakdownRegion] = useState("all");
+  const [breakdownSite, setBreakdownSite] = useState("");
+  const [reportZipFrom, setReportZipFrom] = useState(() => indiaDateTimeInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+  const [reportZipTo, setReportZipTo] = useState(() => indiaDateTimeInputValue(new Date(Date.now() + 60 * 1000)));
+  const reportGeneratedAt = useMemo(() => indiaDateTimeInputValue(new Date()), []);
+  const [availabilityFrom, setAvailabilityFrom] = useState(() => `${indiaDateTimeInputValue(new Date()).slice(0,7)}-01`);
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
+  const [selectedReportShift, setSelectedReportShift] = useState(ALL_SHIFTS_KEY);
+  const [offRoadAge, setOffRoadAge] = useState("all");
+  const [showAllAcceptances, setShowAllAcceptances] = useState(false);
+  const [reportNow, setReportNow] = useState(() => new Date());
+  useEffect(() => { const timer = window.setInterval(() => setReportNow(new Date()), 60000); return () => window.clearInterval(timer); }, []);
+  const [availabilityTo, setAvailabilityTo] = useState(() => indiaDateTimeInputValue(new Date()).slice(0,10));
+  const allowedReportCategoryIds = reportCategoryIdsForUser(permissions, session);
+  const departmentReportCategoryTabs = reportCategoryTabs.filter((category) => allowedReportCategoryIds.includes(category.id));
+
+  const equipmentByReference = useMemo(() => {
+    const records = new Map();
+    const addReference = (value, record) => {
+      const reference = String(value || "").trim().toLowerCase();
+      if (!reference) return;
+      if (!records.has(reference)) records.set(reference, record);
+      else if (records.get(reference) !== record) records.set(reference, null);
+    };
+    equipmentRecords.forEach((record) => {
+      [record.manufacturerSerialNo, record.chassisNo, record.door, equipmentDoorNumber(record), record.reg, record.equipmentName]
+        .forEach((value) => addReference(value, record));
+    });
+    return records;
+  }, [equipmentRecords]);
+  const reportRequests = useMemo(() => requestsWithDoorNumbers(requests, equipmentRecords).map((request) => {
+    const equipment = [request.chassis, request.door, request.reg, request.equipment]
+      .map((value) => equipmentByReference.get(String(value || "").trim().toLowerCase()))
+      .find(Boolean);
+    return {
+      ...request,
+      reportEquipment: request.equipment || request.door || equipment?.equipmentName || "",
+      reportDoor: request.door || equipmentDoorNumber(equipment || {}) || "",
+      reportMake: request.make || equipment?.make || "",
+      reportModel: request.model || equipment?.model || "",
+      chassis: request.chassis || equipment?.chassisNo || equipment?.manufacturerSerialNo || "",
+      equipmentGroup: normalizeEquipmentGroup(request.equipmentGroup) || equipmentGroupValue(equipment || {}),
+      reportSite: displaySiteName(request.site || equipment?.currentLocation || equipment?.location),
+    };
+  }), [requests, equipmentRecords, equipmentByReference]);
+  const reportShiftOptions = useMemo(() => shiftFilterOptions(shiftRecords), [shiftRecords]);
+  useEffect(() => {
+    if (selectedReportShift === ALL_SHIFTS_KEY || reportShiftOptions.some((option) => option.key === selectedReportShift)) return;
+    setSelectedReportShift(ALL_SHIFTS_KEY);
+  }, [selectedReportShift, reportShiftOptions.map((option) => option.key).join("|")]);
+  const rowShiftSite = (row = {}) => row.reportSite || row.site || row.currentLocation || row.location || row.destination || row.source;
+  const eventMatchesSelectedReportShift = (row, value, shift = selectedReportShift) => timestampMatchesShift(value,{site:rowShiftSite(row),shifts:shiftRecords,shift});
+  const requestMatchesSelectedReportShift = (row, shift = selectedReportShift) => shift === ALL_SHIFTS_KEY || [
+    row.start,row.createdAt,row.acceptedAt,row.inProgressAt,row.closedAt,row.verifiedAt,row.firstTripAt,row.productionFirstTripAt,row.arrivalFlaggedAt,row.misFlaggedAt,row.idealRequestedAt,row.idealApprovedAt,
+  ].some((value) => eventMatchesSelectedReportShift(row,value,shift));
+  const shiftFilterExemptReports = new Set(["Report for On Road / Off Road & Idle","Vehicle Transfer Report","Total Equipment / Vehicle Location Wise","Total Fleet"]);
+  const reportRowsForShift = (report, rows, shift = selectedReportShift) => shift === ALL_SHIFTS_KEY ? rows : rows.filter((row) => {
+    if (shiftFilterExemptReports.has(report?.title)) return true;
+    const value = report?.dateValue?.(row);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim())) return true;
+    if (!Number.isFinite(indiaDateTimeEpoch(value))) return true;
+    return eventMatchesSelectedReportShift(row,value,shift);
+  });
+  const shiftScopedReportRequests = useMemo(() => selectedReportShift === ALL_SHIFTS_KEY ? reportRequests : reportRequests.filter((row) => requestMatchesSelectedReportShift(row)), [reportRequests, selectedReportShift, shiftRecords]);
+  const { elapsedRows, openBreakdownRows, closedBreakdownRows, misVerificationRows, idleRequestRows } = useMemo(() => ({
+    elapsedRows: reportRequests.filter((request) => request.start || request.closedAt || request.verifiedAt),
+    openBreakdownRows: reportRequests.filter((request) => String(request.status || "").trim().toLowerCase() !== "closed"),
+    closedBreakdownRows: reportRequests.filter((request) => String(request.closedAt || "").trim() || String(request.status || "").trim().toLowerCase() === "closed"),
+    misVerificationRows: reportRequests.filter((request) => String(request.verifiedAt || "").trim() || String(request.verifiedBy || "").trim()),
+    idleRequestRows: reportRequests.filter((request) => String(request.status || "").trim().toLowerCase() === "idle" || String(request.idleReason || "").trim()),
+  }), [reportRequests]);
+  const formatTimestamp = (value, row = {}) => shiftRecords?.length
+    ? formatShiftDateTime(value,{site:row.reportSite||row.site||row.currentLocation||row.location,shifts:shiftRecords,emptyValue:"—"})
+    : formatDisplayDateTime(value);
+  const reportRequestStatus = requestStatusLabel;
+  const activeCategory = departmentReportCategoryTabs.find((category) => category.id === activeReportCategory) || departmentReportCategoryTabs[0] || reportCategoryTabs[0];
+  const vehicleHistoryReportRows = useMemo(() => vehicleFleetRows(equipmentRecords, reportRequests, transferRecords), [equipmentRecords, reportRequests, transferRecords]);
+  const breakdownRegionSites = breakdownRegion === "all" ? null : REGION_DATA.find((region) => region.code === breakdownRegion)?.sites || [];
+  const breakdownSiteOptions = useMemo(() => {
+    const configured = breakdownRegion === "all" ? REGION_DATA.flatMap((region) => region.sites) : breakdownRegionSites;
+    const recorded = reportRequests.map((request) => request.reportSite || request.site).filter(Boolean);
+    return [...new Set([...configured, ...recorded])]
+      .filter((site) => !breakdownRegionSites || breakdownRegionSites.some((allowed) => displaySiteName(allowed) === displaySiteName(site)))
+      .sort((left, right) => sortCollator.compare(left, right));
+  }, [breakdownRegion, reportRequests]);
+  const maximumVehicleBreakdownRows = useMemo(() => vehicleBreakdownSummaryRows(reportRequests, {month: breakdownMonth, sites: breakdownRegionSites, site: breakdownSite}), [reportRequests, breakdownMonth, breakdownRegion, breakdownSite]);
+  const vehicleCommonRemarksRows = useMemo(() => vehicleCommonRemarkRows(equipmentRecords, reportRequests, transferRecords, vehicleHistoryReportRows), [equipmentRecords, reportRequests, transferRecords, vehicleHistoryReportRows]);
+  const fleetStatusRows = useMemo(() => {
+    const roadStatuses = liveEquipmentRoadStatuses(equipmentRecords, reportRequests);
+    return equipmentRecords.map((record, index) => ({
+      ...record,
+      reportId: record.id || `${record.equipmentName || record.door || "equipment"}-${index}`,
+      reportEquipment: record.equipmentName || record.equipment || record.door || "",
+      reportDoor: record.door || "",
+      reportMake: record.make || "",
+      reportModel: record.model || record.modelNo || "",
+      reportSite: displaySiteName(record.currentLocation || record.location),
+      reportRoadStatus: roadStatusDisplayLabel(roadStatuses[index]),
+    }));
+  }, [equipmentRecords, reportRequests]);
+  const transferRows = useMemo(() => transferRecords.map((record, index) => {
+    const asset = [record.door, record.chassisNo, record.manufacturerSerialNo, record.equipment, record.equipmentName]
+      .map((value) => equipmentByReference.get(String(value || "").trim().toLowerCase()))
+      .find(Boolean);
+    return {
+      ...record,
+      reportId: record.id || `${record.transferNo || "transfer"}-${index}`,
+      reportDoor: record.door || asset?.door || "",
+      reportEquipment: record.equipment || record.equipmentName || record.door || "",
+      reportSite: displaySiteName(record.destination || record.currentLocation || record.location),
+    };
+  }), [transferRecords, equipmentByReference]);
+  const locationWiseRows = useMemo(() => locationCountRows(equipmentRecords), [equipmentRecords]);
+  const recentBreakdownRows = useMemo(() => [...reportRequests]
+    .sort((a, b) => (new Date(String(b.start || b.closedAt || b.verifiedAt || 0).replace(" ", "T")).getTime() || 0) - (new Date(String(a.start || a.closedAt || a.verifiedAt || 0).replace(" ", "T")).getTime() || 0))
+    .slice(0, 250), [reportRequests]);
+  const requestColumns = withBreakdownMeterColumns([
+    {key: "reference", label: "Job reference", value: (request) => request.ref, render: (request) => <RequestTimelineButton reference={request.ref} token={session?.token || authToken} Dialog={Modal} />},
+    {key: "equipment", label: "Equipment / vehicle", value: (request) => request.reportEquipment},
+    {key: "door", label: "Door no.", value: (request) => request.reportDoor},
+    {key: "make", label: "Make", value: (request) => request.reportMake},
+    {key: "model", label: "Model", value: (request) => request.reportModel},
+    {key: "site", label: "Location", value: (request) => request.reportSite},
+    {key: "category", label: "Category", value: (request) => request.equipmentGroup || request.category || request.type},
+    {key: "status", label: "Status", value: reportRequestStatus, sortValue: (request) => requestStatusSortRank(reportRequestStatus(request)), render: (request) => <Status>{reportRequestStatus(request)}</Status>},
+    {key: "createdBy", label: "Production user", value: (request) => request.owner || request.requesterLogin},
+    {key: "started", label: "Opened at", value: (request) => formatTimestamp(request.start,request), sortValue: (request) => request.start, render: (request) => formatTimestamp(request.start,request)},
+    {key: "expectedCompletionAt", label: "ETC", value: (request) => formatTimestamp(request.expectedCompletionAt,request), sortValue: (request) => request.expectedCompletionAt, render: (request) => formatTimestamp(request.expectedCompletionAt,request)},
+  ]);
+  const idleVehicleColumns = [
+    {...requestColumns.find((column) => column.key === "site"), render: (request) => <b>{request.reportSite || "—"}</b>},
+    ...requestColumns.filter((column) => !["site", "equipment"].includes(column.key)),
+  ];
+  const closureColumns = [
+    ...requestColumns,
+    {key: "closedBy", label: "Maintenance user", value: (request) => request.closedBy},
+    {key: "closedAt", label: "Closed at", value: (request) => formatTimestamp(request.closedAt,request), sortValue: (request) => request.closedAt, render: (request) => formatTimestamp(request.closedAt,request)},
+    ...breakdownMeterColumns({stage: "closing"}),
+  ];
+  const misColumns = [
+    ...closureColumns,
+    {key: "verifiedBy", label: "MIS user", value: (request) => request.verifiedBy},
+    {key: "verifiedAt", label: "MIS verified at", value: (request) => formatTimestamp(request.verifiedAt,request), sortValue: (request) => request.verifiedAt, render: (request) => formatTimestamp(request.verifiedAt,request)},
+    {key: "firstTripAt", label: "First trip time", value: (request) => formatTimestamp(firstTripTimestamp(request),request), sortValue: firstTripTimestamp, render: (request) => formatTimestamp(firstTripTimestamp(request),request)},
+  ];
+  const fleetColumns = [
+    {key: "location", label: "Location", value: (record) => record.reportSite, render: (record) => <b>{record.reportSite || "—"}</b>},
+    {key: "door", label: "Door no.", value: (record) => record.reportDoor},
+    {key: "category", label: "Category", value: (record) => record.category || record.group || record.itemName},
+    {key: "make", label: "Make", value: (record) => record.reportMake},
+    {key: "model", label: "Model", value: (record) => record.reportModel},
+    {key: "roadStatus", label: "Road status", value: (record) => record.reportRoadStatus, render: (record) => <Status>{record.reportRoadStatus}</Status>},
+  ];
+  const transferColumns = [
+    ...transferReportTimingColumns,
+    {key: "door", label: "Door no.", value: (record) => record.reportDoor, render: (record) => <b>{record.reportDoor || "—"}</b>},
+    {key: "transferNo", label: "Transfer no.", value: (record) => record.transferNo},
+    {key: "transferDate", label: "Transfer date", value: (record) => formatDisplayDate(record.transferDate), sortValue: (record) => record.transferDate, render: (record) => formatDisplayDate(record.transferDate)},
+    {key: "from", label: "From location", value: (record) => displaySiteName(record.source)},
+    {key: "to", label: "To location", value: (record) => displaySiteName(record.destination)},
+    {key: "model", label: "Model", value: (record) => record.modelNo || record.model},
+    {key: "driver", label: "Driver", value: (record) => record.driver},
+  ];
+  const recentBreakdownColumns = withBreakdownMeterColumns([
+    {key: "status", label: "Status", value: (request) => recentBreakdownStatus(request, reportNow), render: (request) => <Status>{recentBreakdownStatus(request, reportNow)}</Status>},
+    {key: "site", label: "Location", value: (request) => request.reportSite, render: (request) => <b>{request.reportSite || "—"}</b>},
+    {key: "door", label: "Door no.", value: (request) => request.reportDoor},
+    {key: "model", label: "Model", value: (request) => request.reportModel},
+    {key: "complaint", label: "Reason / Complaint", value: (request) => request.complaint || "—"},
+    {key: "started", label: "Opened at", value: (request) => formatTimestamp(request.start,request), sortValue: (request) => request.start, render: (request) => formatTimestamp(request.start,request)},
+    {key: "expectedCompletionAt", label: "ETC", value: (request) => formatTimestamp(request.expectedCompletionAt,request), sortValue: (request) => request.expectedCompletionAt, render: (request) => formatTimestamp(request.expectedCompletionAt,request)},
+    {key: "closedAt", label: "Closed at", value: (request) => formatTimestamp(request.closedAt,request), sortValue: (request) => request.closedAt, render: (request) => formatTimestamp(request.closedAt,request)},
+    {key: "tat", label: "TAT", value: (request) => elapsedLabel(request.start, request.closedAt), sortValue: (request) => elapsedMilliseconds(request.start, request.closedAt), render: (request) => <RequestTimelineButton reference={request.ref} token={session?.token || authToken} Dialog={Modal} label={elapsedLabel(request.start, request.closedAt)} />},
+    {key: "reference", label: "Job reference", value: (request) => request.ref, render: (request) => <RequestTimelineButton reference={request.ref} token={session?.token || authToken} Dialog={Modal} />},
+    {key: "createdBy", label: "Production user", value: (request) => request.owner || request.requesterLogin},
+    {key: "closedBy", label: "Maintenance user", value: (request) => request.closedBy},
+  ], {closing: true});
+  const vehicleHistoryOverviewColumns = [
+    {key: "door", label: "Door number", value: (record) => record.reportDoor, render: (record) => <button type="button" className="vehicle-history-link" onClick={() => setReportVehicleHistoryTarget(record)} aria-label={`Open complete history for ${record.reportDoor || record.reportEquipment}`}><History />{record.reportDoor || "View history"}</button>},
+    {key: "driver", label: "Current / latest driver", value: (record) => record.driverName},
+    {key: "make", label: "Make", value: (record) => record.reportMake},
+    {key: "model", label: "Model", value: (record) => record.reportModel},
+    {key: "location", label: "Current location", value: (record) => record.reportSite},
+    {key: "equipment", label: "Vehicle / equipment", value: (record) => record.reportEquipment},
+    {key: "registration", label: "Registration no.", value: (record) => record.registrationNumber},
+    {key: "chassis", label: "Chassis / serial no.", value: (record) => record.chassisNumber},
+    {key: "breakdowns", label: "Total BD", value: (record) => record.breakdownCount, sortValue: (record) => record.breakdownCount, render: (record) => <strong>{record.breakdownCount}</strong>},
+    {key: "latest", label: "Latest BD", value: (record) => record.latestBreakdownAt, sortValue: (record) => record.latestBreakdownAt, render: (record) => record.latestBreakdownAt ? formatTwelveHourDateTime(record.latestBreakdownAt) : "No breakdown recorded"},
+    {key: "expectedCompletionAt", label: "Latest ETC", value: (record) => record.expectedCompletionAt, sortValue: (record) => record.expectedCompletionAt, render: (record) => formatTwelveHourDateTime(record.expectedCompletionAt)},
+    ...breakdownMeterColumns({stage: "latest", source: (record) => record.latestBreakdownAt ? record : null}),
+  ];
+  const maximumBreakdownColumns = [
+    {key: "door", label: "Vehicle number", value: (row) => row.reportDoor || row.reportEquipment, render: (row) => <b>{row.reportDoor || row.reportEquipment || "—"}</b>},
+    {key: "count", label: "Number of BD", value: (row) => row.breakdownCount, sortValue: (row) => row.breakdownCount, render: (row) => <button type="button" className="breakdown-count-link" onClick={() => setBreakdownOccurrencesTarget(row)} aria-label={`View ${row.breakdownCount} breakdowns for ${row.reportDoor || row.reportEquipment}`}>{row.breakdownCount}<Eye /></button>},
+    {key: "equipment", label: "Vehicle / equipment", value: (row) => row.reportEquipment},
+    {key: "site", label: "Latest location", value: (row) => row.reportSite},
+    {key: "latestReason", label: "Latest BD reason", value: (row) => row.breakdowns.at(-1)?.complaint || row.breakdowns.at(-1)?.category},
+    ...breakdownMeterColumns({stage: "latest", source: (row) => row.breakdowns.at(-1)}),
+  ];
+  const vehicleCommonRemarkColumns = [
+    {key: "door", label: "Vehicle number", value: (row) => row.reportDoor || row.reportEquipment, render: (row) => <button type="button" className="vehicle-history-link" onClick={() => setReportVehicleHistoryTarget(row)}><History />{row.reportDoor || row.reportEquipment || "View history"}</button>},
+    {key: "driver", label: "Driver", value: (row) => row.driverName},
+    {key: "notice", label: "Notice", value: (row) => row.notice, render: (row) => <span className={`vehicle-notice${row.notice.includes("open") ? " attention" : ""}`}>{row.notice}</span>},
+    {key: "remark", label: "Latest maintenance remark", value: (row) => row.remark},
+    {key: "site", label: "Site", value: (row) => row.reportSite},
+    {key: "reason", label: "Common BD reason", value: (row) => row.breakdownReason, render: (row) => row.breakdownReason ? <span>{row.breakdownReason}{row.commonReasonCount > 1 ? <small className="reason-frequency">Repeated {row.commonReasonCount} times</small> : null}</span> : "—"},
+  ];
+  const legacyReportGroups = [
+    {category: "production", title: "Location wise opened BD", description: "Open production breakdown cases grouped with location and category details.", rows: openBreakdownRows, columns: requestColumns, dateValue: (row) => row.start, emptyMessage: "No open breakdown cases available"},
+    {category: "maintenance", title: "Location wise closing BD", description: "Closed maintenance breakdown cases with location, category, closure user, and closure time.", rows: closedBreakdownRows, columns: closureColumns, dateValue: (row) => row.closedAt, emptyMessage: "No closed maintenance cases available"},
+    {category: "mis", title: "MIS Verification Report", description: "Requests verified by MIS, including maintenance close and MIS verification timestamps.", rows: misVerificationRows, columns: misColumns, dateValue: (row) => row.verifiedAt, emptyMessage: "No MIS verification records available"},
+    {category: "general", title: "Report for On Road / Off Road & Idle", description: "Current road status of equipment and vehicles from the Equipment Master.", rows: fleetStatusRows, columns: fleetColumns, dateValue: () => reportGeneratedAt, emptyMessage: "No equipment road-status records available", rowKey: (record) => `road-${record.reportId}`},
+    {category: "general", title: "Vehicle Transfer Report", description: "Vehicle transfer history with source, destination, equipment, model, driver, and chassis details.", rows: transferRows, columns: transferColumns, dateValue: (row) => row.transferDate, emptyMessage: "No vehicle transfer records available", rowKey: (record) => `transfer-${record.reportId}`},
+    {category: "general", title: "Total Equipment / Vehicle Location Wise", description: "Location-wise count of equipment, vehicles, and total fleet records.", rows: locationWiseRows, columns: [
+      {key: "location", label: "Location", value: (row) => row.location, render: (row) => <b>{row.location}</b>},
+      {key: "equipment", label: "Equipment", value: (row) => row.equipment},
+      {key: "vehicles", label: "Vehicles", value: (row) => row.vehicles},
+      {key: "total", label: "Total equipment / vehicle", value: (row) => row.total},
+    ], dateValue: () => reportGeneratedAt, emptyMessage: "No location-wise equipment records available", rowKey: (row) => `location-${row.location}`},
+    {category: "maintenance", title: "Idle Vehicle Report", description: "Idle breakdown requests and idle fleet records that need follow-up.", rows: idleRequestRows, columns: [
+      ...idleVehicleColumns,
+      {key: "idleReason", label: "Idle reason", value: (request) => request.idleReason},
+      {key: "closedAt", label: "Maintenance close / idle at", value: (request) => formatTimestamp(request.closedAt,request), sortValue: (request) => request.closedAt, render: (request) => formatTimestamp(request.closedAt,request)},
+    ], dateValue: (row) => row.closedAt || row.start, emptyMessage: "No idle vehicle records available"},
+    {category: "general", title: "Recent Breakdown Cases", description: "Latest breakdown cases by recorded workflow timestamp. Status shows Pending when maintenance has not accepted an open request within 24 hours; TAT is closed at minus opened at.", rows: recentBreakdownRows, columns: recentBreakdownColumns, dateValue: (row) => row.start || row.closedAt || row.verifiedAt, emptyMessage: "No recent breakdown cases available"},
+    {category: "production", title: "Off Road to MIS Veri.", description: "Elapsed time from Production off-road marking to MIS verification.", rows: elapsedRows.filter((row) => row.start && row.verifiedAt), columns: [
+      ...misColumns,
+      {key: "prodToMis", label: "Prod to MIS verification", value: (request) => elapsedLabel(request.start, request.verifiedAt), sortValue: (request) => elapsedMilliseconds(request.start, request.verifiedAt), render: (request) => <strong>{elapsedLabel(request.start, request.verifiedAt)}</strong>},
+    ], dateValue: (row) => row.verifiedAt, emptyMessage: "No Production to MIS verification timings available"},
+    {category: "maintenance", title: "Off Road to Maint. Close", description: "Turnaround time from Production opening to Maintenance close.", rows: elapsedRows.filter((row) => row.start && row.closedAt), columns: [
+      ...closureColumns,
+      {key: "tat", label: "TAT", value: (request) => elapsedLabel(request.start, request.closedAt), sortValue: (request) => elapsedMilliseconds(request.start, request.closedAt), render: (request) => <RequestTimelineButton reference={request.ref} token={session?.token || authToken} Dialog={Modal} label={elapsedLabel(request.start, request.closedAt)} />},
+    ], dateValue: (row) => row.closedAt, emptyMessage: "No Production-open to Maintenance-close timings available"},
+    {category: "maintenance", title: "Event close Report - Maint. Closing to MIS Verif.", description: "Elapsed time from Maintenance close to MIS verification.", rows: elapsedRows.filter((row) => row.closedAt && row.verifiedAt), columns: [
+      ...misColumns,
+      {key: "maintToMis", label: "Maintenance close to MIS verification", value: (request) => elapsedLabel(request.closedAt, request.verifiedAt), sortValue: (request) => elapsedMilliseconds(request.closedAt, request.verifiedAt), render: (request) => <strong>{elapsedLabel(request.closedAt, request.verifiedAt)}</strong>},
+    ], dateValue: (row) => row.verifiedAt, emptyMessage: "No Maintenance to MIS verification timings available"},
+    {category: "maintenance", title: "Idle with PM verif.", description: "Idle cases with maintenance idle time and verification timestamp.", rows: idleRequestRows, columns: [
+      ...misColumns,
+      {key: "idleReason", label: "Idle reason", value: (request) => request.idleReason},
+      {key: "idleTime", label: "Idle to PM verification time", value: (request) => elapsedLabel(request.closedAt || request.start, request.verifiedAt), sortValue: (request) => elapsedMilliseconds(request.closedAt || request.start, request.verifiedAt), render: (request) => <strong>{elapsedLabel(request.closedAt || request.start, request.verifiedAt)}</strong>},
+    ], dateValue: (row) => row.verifiedAt || row.closedAt || row.start, emptyMessage: "No idle verification timings available"},
+    {category: "mis", title: "On Road with first trip veri.", description: "Comparison of MIS verification against first-trip confirmation for idle cases.", rows: idleRequestRows.filter((row) => row.verifiedAt || firstTripTimestamp(row)), columns: [
+      ...misColumns,
+      {key: "firstTripDone", label: "First trip done", value: (request) => request.firstTripDone ? "Yes" : "No"},
+      {key: "misToFirstTrip", label: "MIS to first trip", value: (request) => elapsedLabel(request.verifiedAt, firstTripTimestamp(request)), sortValue: (request) => elapsedMilliseconds(request.verifiedAt, firstTripTimestamp(request)), render: (request) => <strong>{elapsedLabel(request.verifiedAt, firstTripTimestamp(request))}</strong>},
+    ], dateValue: (row) => firstTripTimestamp(row) || row.verifiedAt, emptyMessage: "No idle first-trip verification records available"},
+  ];
+  const departmentReports = useMemo(() => buildDepartmentReports({ requests: shiftScopedReportRequests, equipmentRecords, transferRecords, shiftRecords, from: reportFrom || availabilityFrom, to: reportTo || availabilityTo, now: reportNow, showAllAcceptances }).map((report) => ({
+    ...report,
+    // Department reports return plain status text; render it as the same coloured pill the other reports use.
+    columns: report.columns.map((column) => column.key === "status" && !column.render ? { ...column, render: (row) => <Status>{column.value(row) || "—"}</Status> } : column),
+  })), [shiftScopedReportRequests, equipmentRecords, transferRecords, shiftRecords, reportFrom, availabilityFrom, reportTo, availabilityTo, reportNow, showAllAcceptances]);
+  const reportGroups = [
+    ...legacyReportGroups.filter((report) => report.category === "general"&&!REMOVED_REPORT_TITLES.has(report.title)),
+    {category: "vehicle-history", title: VEHICLE_HISTORY_REPORT, description: "Every vehicle with its door number, latest available driver, make, model, location, identity details, and lifetime breakdown count. Select a door number for the complete chronology.", rows: vehicleHistoryReportRows, columns: vehicleHistoryOverviewColumns, dateValue: (row) => row.latestBreakdownAt || reportGeneratedAt, emptyMessage: "No vehicles are available in the equipment master or request history", rowKey: (row) => `vehicle-${row.vehicleKey}`},
+    {category: "vehicle-history", title: MAXIMUM_VEHICLE_BREAKDOWN_REPORT, description: "Month-wise repeat-breakdown ranking. Narrow the result by region and site, then select a count to see every time and reason.", rows: maximumVehicleBreakdownRows, columns: maximumBreakdownColumns, dateValue: (row) => row.breakdowns.at(-1)?.start, emptyMessage: "No vehicle breakdowns match the selected month and location", rowKey: (row) => `maximum-${row.vehicleKey}`, breakdownScopeFilter: true},
+    {category: "vehicle-history", title: VEHICLE_COMMON_REMARK_REPORT, description: "One operational summary per vehicle using the latest driver and maintenance note, current notice, site, and the most frequently recorded breakdown reason.", rows: vehicleCommonRemarksRows, columns: vehicleCommonRemarkColumns, dateValue: (row) => row.latestBreakdownAt || reportGeneratedAt, emptyMessage: "No vehicles are available for the common-remarks summary", rowKey: (row) => `remark-${row.vehicleKey}`},
+    ...departmentReports.filter(report=>!REMOVED_REPORT_TITLES.has(report.title)),
+  ].map((report) => ({
+    ...report,
+    columns: report.columns.map((column) => column.key === "door" ? {
+      ...column,
+      render: (record) => {
+        const door = column.value?.(record) || record.reportDoor || record.door;
+        return door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); setReportVehicleHistoryTarget(record); }} aria-label={`View repair history for door number ${door}`} title="View breakdown and repair history"><History />{door}</a> : "—";
+      },
+    } : column),
+  }));
+  const accessibleReportGroups = reportGroups.filter((report) => allowedReportCategoryIds.includes(report.category));
+  const availableReportCategories = departmentReportCategoryTabs.filter((category) => accessibleReportGroups.some((report) => report.category === category.id));
+  const activeReports = accessibleReportGroups.filter((report) => report.category === activeCategory.id);
+  const selectedReport = activeReports.find((report) => report.title === selectedReportByCategory[activeCategory.id]) || activeReports[0] || null;
+  const invalidReportRange = Boolean(reportFrom && reportTo && !validReportDateRange(reportFrom, reportTo));
+  const selectedReportRows = invalidReportRange ? [] : reportRowsForShift(selectedReport,(selectedReport?.rows || []).filter(row => {
+    if (selectedReport.title === "Open Off road Cases" && offRoadAge === "ten" && !olderThanTenDays(row, reportNow)) return false;
+    if (selectedReport.title === "Availability Report" || (!reportFrom && !reportTo)) return true;
+    const timestamp = indiaDateTimeEpoch(selectedReport.dateValue?.(row));
+    return Number.isFinite(timestamp) && (!reportFrom || timestamp >= indiaDateTimeEpoch(reportFrom)) && (!reportTo || timestamp <= indiaDateTimeEpoch(reportTo));
+  }));
+  const selectReportTab = (report) => {
+    setSelectedReportByCategory((current) => ({ ...current, [activeCategory.id]: report.title }));
+  };
+  const applyReportScheduleDetails = (details = {}) => {
+    const settings = details.settings || defaultHierarchyReportScheduleSettings();
+    setReportScheduleSettings(settings);
+    setReportScheduleRecipients(details.recipients || {});
+    const access = {
+      canManageAll: details.canManageAll === true,
+      allowedDesignationKeys: Array.isArray(details.allowedDesignationKeys) ? details.allowedDesignationKeys : [],
+      allowedReports: Array.isArray(details.allowedReports) ? details.allowedReports : [],
+    };
+    setReportAccess(access);
+    setReportScheduleOwner({ name: details.userName || session?.name || "", login: details.userLogin || "" });
+    if (access.allowedDesignationKeys.length === 1) setSelectedScheduleDesignation(access.allowedDesignationKeys[0]);
+    if (!access.canManageAll) {
+      const roleDefault = settings.designations?.[access.allowedDesignationKeys[0]] || { enabled: true, schedules: [] };
+      const personal = details.userSchedule || roleDefault;
+      setUserReportSchedule({
+        enabled: personal.enabled !== false,
+        schedules: (personal.schedules || []).map((schedule) => ({ ...schedule, reports: (schedule.reports || []).filter((title) => access.allowedReports.includes(title)) })),
+      });
+      setUserScheduleCustomised(Boolean(details.userSchedule));
+    }
+  };
+  const loadReportScheduleDetails = async (scope = reportScheduleScope) => {
+    const response = await fetch(`/api/report-schedule-settings${scope === "personal" ? "?scope=personal" : ""}`, { headers: { Authorization: `Bearer ${session?.token || authToken}` } });
+    const details = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(details.error || "Could not load report schedules.");
+    applyReportScheduleDetails(details);
+    return details;
+  };
+  useEffect(() => {
+    if (availableReportCategories.some((category) => category.id === activeReportCategory)) return;
+    if (availableReportCategories[0]) setActiveReportCategory(availableReportCategories[0].id);
+  }, [activeReportCategory, availableReportCategories.map((category) => category.id).join("|")]);
+  const openReportSchedules = async (scope = "personal") => {
+    setReportScheduleScope(scope);
+    setDirectorTimingOpen(true);
+    setReportScheduleLoading(true);
+    setReportScheduleError("");
+    try {
+      await loadReportScheduleDetails(scope);
+    } catch (error) { setReportScheduleError(error.message); }
+    finally { setReportScheduleLoading(false); }
+  };
+  const updateScheduleDesignation = (updater) => {
+    if (!reportAccess.canManageAll) {
+      setUserReportSchedule((current) => updater(current));
+      return;
+    }
+    setReportScheduleSettings((current) => ({
+      ...current,
+      designations: {
+        ...current.designations,
+        [selectedScheduleDesignation]: updater(current.designations[selectedScheduleDesignation]),
+      },
+    }));
+  };
+  const updateReportSchedule = (scheduleKey, changes) => updateScheduleDesignation((designation) => ({
+    ...designation,
+    schedules: designation.schedules.map((schedule) => schedule.key === scheduleKey ? { ...schedule, ...changes } : schedule),
+  }));
+  const addReportSchedule = () => updateScheduleDesignation((designation) => ({
+    ...designation,
+    schedules: [...designation.schedules, { key: `custom-${Date.now()}`, enabled: true, cadence: "daily", weekday: null, intervalDays: null, times: ["19:00"], reports: reportAccess.canManageAll ? [] : [...reportAccess.allowedReports] }],
+  }));
+  const removeReportSchedule = (scheduleKey) => updateScheduleDesignation((designation) => ({
+    ...designation,
+    schedules: designation.schedules.filter((schedule) => schedule.key !== scheduleKey),
+  }));
+  const saveReportSchedules = async () => {
+    if (reportScheduleSaving || reportScheduleLoading || reportScheduleError) return;
+    setReportScheduleSaving(true);
+    try {
+      const response = await fetch(`/api/report-schedule-settings${reportScheduleScope === "personal" ? "?scope=personal" : ""}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
+        body: JSON.stringify(reportAccess.canManageAll ? reportScheduleSettings : { userSchedule: userReportSchedule }),
+      });
+      const details = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(details.error || "Could not save report schedules.");
+      applyReportScheduleDetails(details);
+      setDirectorTimingOpen(false);
+    } catch (error) { alert(error.message); }
+    finally { setReportScheduleSaving(false); }
+  };
+  const resetUserReportSchedule = async () => {
+    if (reportScheduleSaving || !window.confirm("Replace your personal schedule with the role default set by the administrator?")) return;
+    setReportScheduleSaving(true);
+    try {
+      const response = await fetch("/api/report-schedule-settings?scope=personal", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
+        body: JSON.stringify({ resetToDefault: true }),
+      });
+      const details = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(details.error || "Could not reset your report schedule.");
+      applyReportScheduleDetails(details);
+    } catch (error) { alert(error.message); }
+    finally { setReportScheduleSaving(false); }
+  };
+  const openReportZip = () => {
+    setSelectedZipReports(accessibleReportGroups.map((report) => report.title));
+    setReportZipOpen(true);
+  };
+  const toggleZipReport = (title) => {
+    setSelectedZipReports((current) => current.includes(title) ? current.filter((item) => item !== title) : [...current, title]);
+  };
+  const downloadSelectedReportZip = async () => {
+    if (reportZipDownloading || !selectedZipReports.length) return;
+    const downloadNotice=beginDownload('Selected reports ZIP');
+    setReportZipDownloading(true);
+    try {
+      if (!validReportDateRange(reportZipFrom, reportZipTo)) throw new Error("Select a valid From and To date/time range.");
+      const selectedReports = accessibleReportGroups.filter((report) => selectedZipReports.includes(report.title));
+      const generatedFiles = await Promise.all(selectedReports.map(async (report) => {
+        report={...report,columns:requestShiftColumns(report.columns,report.rows,shiftRecords)};
+        const zipRequests = selectedReportShift === ALL_SHIFTS_KEY ? reportRequests : reportRequests.filter((row) => requestMatchesSelectedReportShift(row,selectedReportShift));
+        const filteredRows = reportRowsForShift(report,report.title === "Availability Report"
+          ? buildDepartmentReports({requests:zipRequests,equipmentRecords,transferRecords,shiftRecords,from:reportZipFrom,to:reportZipTo}).find(item => item.title === report.title).rows
+          : reportRowsWithinRange(report.rows, report.dateValue, reportZipFrom, reportZipTo), selectedReportShift);
+        const exportRows = filteredRows.map((row) => report.columns.map((column) => exportCellText(column.value?.(row))));
+        const pdfResponse = await fetchPdfExport("/api/exports/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
+          body: JSON.stringify({ title: reportPdfHeading(report.title, filteredRows), columns: report.columns.map((column) => ({ label: column.label })), rows: exportRows }),
+        });
+        if (!pdfResponse.ok) {
+          const details = await pdfResponse.json().catch(() => ({}));
+          throw new Error(details.error || `Could not create ${report.title}.`);
+        }
+        const folder = reportCategoryTabs.find((category) => category.id === report.category)?.label || "Reports";
+        const baseName = exportFileName(report.title, "").replace(/\.$/, "");
+        const xlsx = buildXlsxWorkbook(report.title, report.columns, exportRows, new Set(), filteredRows);
+        return [
+          { name: `${folder}/${baseName}.pdf`, content: new Uint8Array(await (await pdfResponse.blob()).arrayBuffer()) },
+          { name: `${folder}/${baseName}.xlsx`, content: new Uint8Array(await xlsx.arrayBuffer()) },
+        ];
+      }));
+      downloadExportFile(zipStoredFiles(generatedFiles.flat(), "application/zip"), exportFileName("selected-reports", "zip"));
+      setReportZipOpen(false);
+      downloadNotice.success();
+    } catch (error) { downloadNotice.error(error); alert(error.message); }
+    finally { setReportZipDownloading(false); }
+  };
+  const scheduleDesignationOptions = reportAccess.canManageAll ? reportDesignationOptions : reportDesignationOptions.filter((designation) => reportAccess.allowedDesignationKeys.includes(designation.key));
+  const selectedScheduleConfig = reportAccess.canManageAll
+    ? (reportScheduleSettings.designations[selectedScheduleDesignation] || { enabled: true, allRecipients: true, recipientLogins: [], schedules: [] })
+    : { allRecipients: true, recipientLogins: [], ...userReportSchedule };
+  const selectedScheduleMeta = reportDesignationOptions.find((designation) => designation.key === selectedScheduleDesignation) || scheduleDesignationOptions[0] || reportDesignationOptions[0];
+  const selectedScheduleRecipients = reportScheduleRecipients[selectedScheduleDesignation] || [];
+  return (
+    <section className="reports-page panel pagepanel" data-report-category={activeCategory.id}>
+      <header>
+        <div>
+          <h1>Reports</h1>
+          <p>Workflow events, elapsed time, and live master totals.</p>
+        </div>
+        <div className="reports-header-actions">
+          {canViewBdAgeingReport(session) && <button type="button" className="secondary" onClick={()=>setActiveReportCategory('bd-ageing')}>BD Ageing Report</button>}
+          {reportAdministrator && <WhatsAppReportSettingsButton token={session?.token || authToken} onOpenReportSchedules={(target) => openReportSchedules(target === "personal" ? "personal" : "organisation")} />}
+          <button type="button" className="secondary director-timing-trigger" onClick={() => openReportSchedules("personal")}><Clock /> My report schedule</button>
+          <button type="button" className="primary" onClick={openReportZip} disabled={!accessibleReportGroups.length}><Download /> Download reports ZIP</button>
+        </div>
+      </header>
+      {directorTimingOpen && createPortal(
+        <div className="overlay" onPointerDown={(event) => event.target === event.currentTarget && setDirectorTimingOpen(false)}>
+          <div className="modal director-timing-modal" role="dialog" aria-modal="true" aria-label={reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}>
+            <header>
+              <button type="button" className="modal-back-button" onClick={() => setDirectorTimingOpen(false)} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-schedule-title"><span><CalendarDays /></span><div><h3>{reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}</h3><p>{reportAccess.canManageAll ? "Set shared report defaults for each role; saved personal schedules take priority" : "Choose your report days, times and reports on WhatsApp"}</p></div></div>
+              <button type="button" onClick={() => setDirectorTimingOpen(false)} aria-label="Close report schedules"><X aria-hidden="true" /></button>
+            </header>
+            {reportScheduleLoading ? <div className="report-schedule-loading">Loading saved schedules…</div> : reportScheduleError ? <div className="wrs-feedback wrs-error" role="alert">{reportScheduleError}<button type="button" onClick={() => openReportSchedules(reportScheduleScope)}>Reload schedules</button></div> : <>
+              <details className="wrs-schedule-context"><summary>Timing defaults, report windows and site access</summary>
+                <p>{reportAccess.canManageAll ? "You are editing role defaults. Saving these choices makes this panel the source for the role’s report timing, replacing older hierarchy day and time choices. Hierarchy report assignments and site access still apply." : "You are editing My report schedule. Your saved personal days and times override role defaults and the organisation’s CRM fallback timetable. Without a saved personal schedule, CRM keeps its organisation fallback days and times."}</p>
+                <p>Report windows run from the previous scheduled time to the current time. For example, 7 PM → 7 AM covers the overnight period. Each highlighted site has one PDF and one Excel file for that window, covering all ticket categories you are permitted to view.</p>
+                <p>Managers and Directors receive scheduled reports only, never per-request alerts. Request alerts and delivery defaults are managed in WhatsApp delivery settings.</p>
+              </details>
+              <div className="report-schedule-toolbar">
+                {reportAccess.canManageAll
+                  ? <label><span>User role</span><select value={selectedScheduleDesignation} onChange={(event) => setSelectedScheduleDesignation(event.target.value)}>{scheduleDesignationOptions.map((designation) => <option key={designation.key} value={designation.key}>{designation.label}</option>)}</select></label>
+                  : <div className="report-schedule-owner"><span>My report schedule</span><b>{reportScheduleOwner.name || session?.name || reportScheduleOwner.login}</b><small>{selectedScheduleMeta.label} · <i>{userScheduleCustomised ? "Customised by you" : "Using role default"}</i></small></div>}
+                {!reportAccess.canManageAll && userScheduleCustomised && <button type="button" className="report-schedule-reset" onClick={resetUserReportSchedule} disabled={reportScheduleSaving}><RotateCcw /> Use role default</button>}
+                <label className="report-schedule-switch"><input type="checkbox" aria-label={reportAccess.canManageAll ? "Role default reports active" : "My scheduled reports active"} checked={selectedScheduleConfig.enabled} onChange={(event) => updateScheduleDesignation((designation) => ({ ...designation, enabled: event.target.checked }))} /><span>Active</span></label>
+              </div>
+              <div className="report-week-grid compact" aria-label="Seven day report schedule summary">
+                {reportWeekDays.map((day, index) => {
+                  const weekday = (index + 1) % 7;
+                  const count = selectedScheduleConfig.schedules.filter((schedule) => schedule.enabled && (schedule.cadence === "daily" || (schedule.cadence === "weekly" && schedule.weekday === weekday))).length;
+                  return <article key={day} className={count ? "active" : ""}><b>{day.slice(0, 3)}</b><span>{count ? `${count} slot${count === 1 ? "" : "s"}` : "—"}</span></article>;
+                })}
+              </div>
+              {reportAccess.canManageAll && <details className="report-recipient-picker">
+                <summary><span>Recipients</span><b>{selectedScheduleConfig.allRecipients ? `All ${selectedScheduleMeta.label}` : `${selectedScheduleConfig.recipientLogins.length} selected`}</b></summary>
+                <label className="report-recipient-all"><input type="checkbox" checked={selectedScheduleConfig.allRecipients} onChange={(event) => updateScheduleDesignation((designation) => ({ ...designation, allRecipients: event.target.checked }))} /> Send to every matching user</label>
+                {!selectedScheduleConfig.allRecipients && <div>{selectedScheduleRecipients.length ? selectedScheduleRecipients.map((recipient) => <label key={recipient.login}><input type="checkbox" checked={selectedScheduleConfig.recipientLogins.includes(recipient.login)} onChange={() => updateScheduleDesignation((designation) => ({ ...designation, recipientLogins: designation.recipientLogins.includes(recipient.login) ? designation.recipientLogins.filter((login) => login !== recipient.login) : [...designation.recipientLogins, recipient.login] }))} /><span><b>{recipient.name}</b><small>{recipient.hasPhone ? recipient.login : `${recipient.login} · phone missing`}</small></span></label>) : <p>No matching users are configured.</p>}</div>}
+              </details>}
+              <div className="report-schedule-editor-list">
+                {selectedScheduleConfig.schedules.map((schedule) => <article key={schedule.key}>
+                  <header>
+                    <label><input type="checkbox" checked={schedule.enabled} onChange={(event) => updateReportSchedule(schedule.key, { enabled: event.target.checked })} /><span><b>{reportScheduleKind(schedule)}</b><small>{hierarchyScheduleLabel(schedule)}</small></span></label>
+                    <button type="button" onClick={() => removeReportSchedule(schedule.key)} aria-label="Delete schedule"><Trash2 /></button>
+                  </header>
+                  <div className="report-schedule-fields">
+                    <label><span>Frequency</span><select value={schedule.cadence} onChange={(event) => updateReportSchedule(schedule.key, { cadence: event.target.value, weekday: event.target.value === "weekly" ? (schedule.weekday ?? 1) : null, intervalDays: event.target.value === "interval" ? (schedule.intervalDays || 7) : null })}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Every N days</option></select></label>
+                    {schedule.cadence === "weekly" && <label><span>Day</span><select value={schedule.weekday} onChange={(event) => updateReportSchedule(schedule.key, { weekday: Number(event.target.value) })}>{["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>}
+                    {schedule.cadence === "interval" && <label><span>Repeat every</span><div className="report-interval-input"><input type="number" min="2" max="31" value={schedule.intervalDays} onChange={(event) => updateReportSchedule(schedule.key, { intervalDays: Number(event.target.value) })} /><small>days</small></div></label>}
+                    <label className="report-time-field"><span>IST time slots (12-hour)</span><div>{schedule.times.map((time, index) => <span key={`${schedule.key}-${index}`}><TwelveHourTimeInput aria-label={`Report delivery time ${index+1}`} value={time} required onChange={(nextTime) => updateReportSchedule(schedule.key, { times: schedule.times.map((item, itemIndex) => itemIndex === index ? nextTime : item) })} /><button type="button" onClick={() => updateReportSchedule(schedule.key, { times: schedule.times.filter((_, itemIndex) => itemIndex !== index) })} aria-label="Remove time"><X /></button></span>)}<button type="button" onClick={() => updateReportSchedule(schedule.key, { times: [...schedule.times, "19:00"] })} disabled={schedule.times.length >= 6}>+ Time</button></div></label>
+                  </div>
+                  {reportAccess.canManageAll ? <details className="report-assignment-picker"><summary>Reports <b>{schedule.reports.length}</b></summary><div>{reportGroups.filter((report,index,all) => all.findIndex(item => item.title === report.title) === index).map((report) => <label key={report.title}><input type="checkbox" checked={schedule.reports.includes(report.title)} onChange={() => updateReportSchedule(schedule.key, { reports: schedule.reports.includes(report.title) ? schedule.reports.filter((title) => title !== report.title) : [...schedule.reports, report.title] })} /><span>{report.title}</span></label>)}</div></details> : <details className="report-assignment-picker" open><summary>Reports <b>{schedule.reports.length}</b></summary><div>{reportAccess.allowedReports.length ? reportAccess.allowedReports.map((title) => <label key={title}><input type="checkbox" checked={schedule.reports.includes(title)} onChange={() => updateReportSchedule(schedule.key, { reports: schedule.reports.includes(title) ? schedule.reports.filter((item) => item !== title) : [...schedule.reports, title] })} /><span>{title}</span></label>) : <p className="report-assignment-empty">No reports are assigned to your role yet. Ask an administrator to add them to the role default.</p>}</div></details>}
+                  {schedule.reports.includes(TICKET_ACCEPTANCE_REPORT_TITLE) && <p className="report-acceptance-schedule-note">Ticket Acceptance includes delays over 30 minutes in scheduled WhatsApp reports.</p>}
+                </article>)}
+                <button type="button" className="report-add-schedule" onClick={addReportSchedule}><Plus /> Add schedule</button>
+              </div>
+            </>}
+            <footer>
+              <button type="button" onClick={() => setDirectorTimingOpen(false)} disabled={reportScheduleSaving}>Cancel</button>
+              <button type="button" className="primary" onClick={saveReportSchedules} disabled={reportScheduleLoading || reportScheduleSaving || !!reportScheduleError}><Save /> {reportScheduleSaving ? "Saving…" : reportAccess.canManageAll ? "Save role defaults" : "Save my schedule"}</button>
+            </footer>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {reportZipOpen && createPortal(
+        <div className="overlay report-zip-overlay" onPointerDown={(event) => event.target === event.currentTarget && !reportZipDownloading && setReportZipOpen(false)}>
+          <div className="modal report-zip-modal" role="dialog" aria-modal="true" aria-label="Download reports as ZIP">
+            <header>
+              <button type="button" className="modal-back-button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-zip-title"><span><Download /></span><div><h3>Download reports as ZIP</h3><p>Choose reports and receive organised PDF and Excel files in one archive</p></div></div>
+              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Close ZIP report selection"><X aria-hidden="true" /></button>
+            </header>
+            <div className="report-zip-range">
+              <div><CalendarDays /><span><b>Report period</b><small>Only records within this IST date and time range are included.</small></span></div>
+              <label><span>From (IST, 12-hour)</span><TwelveHourDateTimeInput value={reportZipFrom} max={reportZipTo} onChange={setReportZipFrom} /></label>
+              <label><span>To (IST, 12-hour)</span><TwelveHourDateTimeInput value={reportZipTo} min={reportZipFrom} onChange={setReportZipTo} /></label>
+            </div>
+            <div className="report-zip-toolbar">
+              <div className="report-zip-selection"><span><b>{selectedZipReports.length}</b> of {accessibleReportGroups.length} selected</span><small>PDF + Excel included</small><i aria-hidden="true"><span style={{ width: `${accessibleReportGroups.length ? (selectedZipReports.length / accessibleReportGroups.length) * 100 : 0}%` }} /></i></div>
+              <div>
+                <button type="button" onClick={() => setSelectedZipReports(accessibleReportGroups.map((report) => report.title))}>Select all</button>
+                <button type="button" onClick={() => setSelectedZipReports([])}>Clear</button>
+              </div>
+            </div>
+            <div className="report-zip-groups">
+              {availableReportCategories.map((category) => {
+                const categoryReports = accessibleReportGroups.filter((report) => report.category === category.id);
+                if (!categoryReports.length) return null;
+                return <section key={category.id}>
+                  <h4><FileBarChart />{category.label}<span>{categoryReports.length}</span></h4>
+                  <div>{categoryReports.map((report) => <label key={report.title} className={selectedZipReports.includes(report.title) ? "selected" : ""}>
+                    <input type="checkbox" checked={selectedZipReports.includes(report.title)} onChange={() => toggleZipReport(report.title)} />
+                    <span><b>{report.title}</b><small>{reportRowsWithinRange(report.rows, report.dateValue, reportZipFrom, reportZipTo).length.toLocaleString("en-IN")} records in range · PDF + Excel</small></span>
+                  </label>)}</div>
+                </section>;
+              })}
+            </div>
+            <footer>
+              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading}>Cancel</button>
+              <button type="button" className="primary" onClick={downloadSelectedReportZip} disabled={!selectedZipReports.length || reportZipDownloading || !validReportDateRange(reportZipFrom, reportZipTo)}><Download /> {reportZipDownloading ? "Preparing ZIP..." : `Download ${selectedZipReports.length} selected`}</button>
+            </footer>
+          </div>
+        </div>,
+        document.body,
+      )}
+      <CaliberActivityOverlay message={reportZipDownloading ? "Preparing reports ZIP..." : ""} />
+      <div className="reports-category-tabs" role="tablist" aria-label="Report type tabs">
+        {availableReportCategories.map((category) => {
+          const CategoryIcon = category.icon;
+          const reportCount = accessibleReportGroups.filter((report) => report.category === category.id).length;
+          return <button
+            key={category.id}
+            type="button"
+            role="tab"
+            aria-selected={activeCategory.id === category.id}
+            data-category={category.id}
+            className={activeCategory.id === category.id ? "active" : ""}
+            onClick={() => { setReportVehicleHistoryTarget(null); setBreakdownOccurrencesTarget(null); setActiveReportCategory(category.id); }}
+          >
+            <span className="report-category-icon"><CategoryIcon aria-hidden="true" /></span>
+            <span className="report-category-copy"><b>{category.label}</b><small>{category.description}</small></span>
+            <em>{reportCount}</em>
+          </button>;
+        })}
+      </div>
+      {reportVehicleHistoryTarget ? <VehicleRepairHistoryPage vehicle={reportVehicleHistoryTarget} rows={reportRequests} backLabel="Back to reports" onBack={() => setReportVehicleHistoryTarget(null)} /> : <>
+      {activeReports.length ? <div className="report-name-tabs" role="tablist" aria-label={`${activeCategory.label} reports`}>
+        {activeReports.map((report) => (
+          <button
+            key={report.title}
+            type="button"
+            role="tab"
+            aria-selected={selectedReport?.title === report.title}
+            className={selectedReport?.title === report.title ? "active" : ""}
+            onClick={() => selectReportTab(report)}
+          >
+            <FileBarChart aria-hidden="true" />
+            <span>{report.title}</span>
+          </button>
+        ))}
+      </div> : <div className="reports-section reports-empty-definition">
+        <div className="reports-section-heading"><div><h2>{activeCategory.label}</h2><p>No reports are assigned to this profile in this category.</p></div></div>
+      </div>}
+      {reportMasterData.loading && <p role="status">Loading report master data…</p>}
+      {reportMasterData.error && <p role="alert">{reportMasterData.error}</p>}
+      {reportMasterData.driverLookupWarning && <p role="status">{reportMasterData.driverLookupWarning}</p>}
+      {selectedReport && <ReportPeriodFilter from={reportFrom} to={reportTo} onApply={(from,to)=>{setReportFrom(from);setReportTo(to);}} />}
+      {selectedReport && reportShiftOptions.length > 0 && <div className="mobile-tabs report-shift-tabs" aria-label="Shift Master filter">
+        <button type="button" className={selectedReportShift === ALL_SHIFTS_KEY ? "active" : ""} onClick={() => setSelectedReportShift(ALL_SHIFTS_KEY)}>All shifts</button>
+        {reportShiftOptions.map((option) => <button type="button" key={option.key} className={selectedReportShift === option.key ? "active" : ""} onClick={() => setSelectedReportShift(option.key)}>{option.label}</button>)}
+      </div>}
+      {selectedReport?.title === "Open Off road Cases" && <div className="mobile-tabs" aria-label="Off-road age filter">
+        <button type="button" className={offRoadAge === "all" ? "active" : ""} onClick={() => setOffRoadAge("all")}>All</button>
+        <button type="button" className={offRoadAge === "ten" ? "active" : ""} onClick={() => setOffRoadAge("ten")}>10 days</button>
+      </div>}
+      {selectedReport && (
+        <ReportSection
+          key={`${selectedReport.category}-${selectedReport.title}`}
+          title={selectedReport.title}
+          description={selectedReport.description}
+          category={selectedReport.category}
+          icon={activeCategory.icon}
+          rows={selectedReportRows}
+          columns={withTimelineLinks(withStageGapHighlights(selectedReport.columns), session?.token || authToken)}
+          emptyMessage={selectedReport.emptyMessage}
+          headingControl={selectedReport.title === TICKET_ACCEPTANCE_REPORT_TITLE ? <label className="report-acceptance-toggle">
+            <input type="checkbox" role="switch" checked={showAllAcceptances} onChange={(event) => setShowAllAcceptances(event.target.checked)} />
+            <span className="report-acceptance-track" aria-hidden="true" />
+            <span>Show total</span>
+          </label> : null}
+          controls={selectedReport.breakdownScopeFilter ? <div className="vehicle-breakdown-scope-filter">
+            <label><span><CalendarDays /> Month</span><input type="month" value={breakdownMonth} onChange={(event) => { setBreakdownMonth(event.target.value); setBreakdownOccurrencesTarget(null); }} /></label>
+            <label><span><Network /> Region</span><select value={breakdownRegion} onChange={(event) => { setBreakdownRegion(event.target.value); setBreakdownSite(""); setBreakdownOccurrencesTarget(null); }}><option value="all">All regions</option>{REGION_DATA.map((region) => <option key={region.code} value={region.code}>{region.code} · {region.name}</option>)}</select></label>
+            <label><span><MapPin /> Site</span><select value={breakdownSite} onChange={(event) => { setBreakdownSite(event.target.value); setBreakdownOccurrencesTarget(null); }}><option value="">All sites</option>{breakdownSiteOptions.map((site) => <option key={site} value={site}>{displaySiteName(site)}</option>)}</select></label>
+            <button type="button" onClick={() => { setBreakdownMonth(indiaDateTimeInputValue(new Date()).slice(0, 7)); setBreakdownRegion("all"); setBreakdownSite(""); setBreakdownOccurrencesTarget(null); }}><RotateCcw /> Reset</button>
+            <p><b>{maximumVehicleBreakdownRows.length}</b> vehicle{maximumVehicleBreakdownRows.length === 1 ? "" : "s"} with breakdowns in this selection</p>
+          </div> : null}
+          rowKey={selectedReport.rowKey || ((row, index) => `${selectedReport.title}-${row.ref || row.reportId || row.id || row.chassis || row.chassisNo || row.manufacturerSerialNo || row.door || "row"}-${index}`)}
+          rowClassName={selectedReport.rowClassName}
+        />
+      )}
+      </>}
+      {breakdownOccurrencesTarget && <BreakdownOccurrencesModal summary={breakdownOccurrencesTarget} onClose={() => setBreakdownOccurrencesTarget(null)} />}
+    </section>
+  );
+}
+
+function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, userOptions = [], siteOptions = [], canCreateSuperAdmin = false, deletionApprovalRequired = false }) {
+  const [q, setQ] = useState(""),
+    [editing, setEditing] = useState(null),
+    [changingPassword, setChangingPassword] = useState(null),
+    [pendingPrivilegeRows, setPendingPrivilegeRows] = useState({}),
+    [savingAllPrivileges, setSavingAllPrivileges] = useState(false),
+    [columnFilters, setColumnFilters] = useState({}),
+    [openFilter, setOpenFilter] = useState(null),
+    [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  const fields = masterFields[name],
+    editFields = name === "Users & employees" ? [...fields, ...userPrivilegeFields, ...userSubmenuFields] : fields,
+    displayFields = name === "Privilege" ? fields.slice(0, 2) : fields,
+    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master",
+    masterValue = (record, key) => {
+      if (name === "Users & employees" && key === "site") return userMasterLocation(record);
+      const type = fields.find(([field]) => field === key)?.[2];
+      if (name === "Users & employees" && key === "userType")
+        return userMasterRole(record);
+      if (name === "Users & employees" && ["login", "employee"].includes(key)) return String(record[key] || "").toUpperCase();
+      return type === "checkbox" ? (isCheckedValue(record[key]) ? "Yes" : "No") : String(formatMasterFieldValue(key, record[key]) ?? "").trim();
+    },
+    filterColumns = displayFields.map(([key, label]) => ({ key, label, value: (record) => masterValue(record, key) })),
+    activeFilterColumn = openFilter ? filterColumns.find((column) => column.key === openFilter) : null,
+    columnValues = activeFilterColumn ? {[activeFilterColumn.key]: tableColumnValues(records, activeFilterColumn)} : {},
+    filteredRows = records.filter((record) =>
+      matchesSmartSearch(q, record) &&
+      tableRowMatchesFilters(record, filterColumns, columnFilters),
+    ),
+    [rows, sort, changeSort] = useSortableRows(filteredRows, "", (record, key) => {
+      if (name === "Users & employees" && key === "site") return userMasterLocation(record);
+      if (name === "Users & employees" && key === "userType") return userMasterRole(record);
+      const type = fields.find(([field]) => field === key)?.[2];
+      return type === "checkbox" ? isCheckedValue(record[key]) : record[key];
+    });
+  const updateColumnFilter = (key, value) => {
+    setColumnFilters((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (!openFilter) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".column-filter-header, .column-filter-popover")) setOpenFilter(null);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [openFilter]);
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const updated = Object.fromEntries(editFields.map(([key, , type]) => [
+      key,
+      name === "Privilege" && key === "username"
+        ? String(editing.username || "").trim()
+      : name === "Privilege" && type === "checkbox"
+        ? form.has(key)
+        : name === "Privilege" && type === "role-radio"
+          ? privilegeAccessValue(form.get(key))
+        : name === "Privilege" && type === "mobile-role-select"
+          ? privilegeSelectionValue(form.get(key))
+        : name === "Privilege" && type === "site-select"
+          ? privilegeSelectionValue(form.get(key))
+        : type === "checkbox"
+          ? form.has(key)
+          : type === "multi-checkbox" || type === "multi-text"
+            ? form.getAll(key).map((value) => String(value).trim()).filter(Boolean).join(" | ")
+            : String(form.get(key) || "").trim(),
+    ]));
+    if (name === "Users & employees") {
+      updated.login = updated.login.toUpperCase();
+      updated.employee = updated.employee.toUpperCase();
+    }
+    if (name === "Users & employees") applyUserRoleDefaults(updated);
+    if(name==='Users & employees'&&!updated.userType){alert('Select at least one user role.');return;}
+    if (name === "Users & employees" && updated.userType === "Mobile User" && !updated.site) {
+      alert("Select at least one site for this user.");
+      return;
+    }
+    if (name === "Users & employees" && updated.userType === "Super Admin" && updated.adminLevel === "Manager" && !updated.managerRole) {
+      alert("Select at least one manager role for this Non Admin user.");
+      return;
+    }
+    if (name === "Users & employees" && updated.userType === "Super Admin" && updated.adminLevel === "Manager" && (!updated.managerRegion || !updated.managerSites)) {
+      alert("Select at least one region and keep at least one site included for this Non Admin user.");
+      return;
+    }
+    if (name === "Users & employees" && updated.userType === "Super Admin" && !updated.masterAccess && !updated.tabAccess) {
+      alert("Select at least one visible master or tab for this Super Admin.");
+      return;
+    }
+    if (name === "Users & employees" && updated.userType === "Super Admin") {
+      const missing = missingViewSubmenu(updated);
+      if (missing) { alert(`Select at least one ${missing.tab} submenu for ${missing.view}.`); return; }
+    }
+    try {
+      await onEdit(editing.id, updated);
+      setEditing(null);
+    } catch (error) { alert(error.message); }
+  };
+  const deleteRow = async (record) => {
+    const recordName = record.oem || record.employee || record.login || record.username || (isCdirMaster(name) && (record.name || record.designation || record.department || record.code)) || [record.site,record.shiftName].filter(Boolean).join(" · ") || "this record";
+    if (!confirm(deletionApprovalRequired ? `Request deletion of ${recordName}? The record will remain until the assigned manager approves.` : `Delete ${recordName}? This cannot be undone.`)) return;
+    const reason = window.prompt(`Enter the reason for deleting ${recordName}:`, "");
+    if (reason === null) return;
+    if (!reason.trim()) return alert("A deletion reason is required for the Audit Trail.");
+    try { await onDelete(record.id, reason.trim()); }
+    catch (error) { alert(error.message); }
+  };
+  const changeEmployeePassword = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const response = await fetch(`/api/masters/${encodeURIComponent(name)}/${changingPassword.id}/password`, {
+      method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${authToken}`},
+      body:JSON.stringify({password:form.get("password"),confirmation:form.get("confirmation"),requireChange:form.has("requireChange")}),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return alert(result.error || "Could not change this password.");
+    setChangingPassword(null);
+    alert(result.message || "Password changed successfully.");
+  };
+  const privilegeValue = (record, key) => pendingPrivilegeRows[record.id]?.[key] ?? record[key];
+  const stagePrivilegeField = (record, key, value) => {
+    setPendingPrivilegeRows((pending) => ({
+      ...pending,
+      [record.id]: { ...(pending[record.id] || record), [key]: value },
+    }));
+  };
+  const savePrivilegeRows = async () => {
+    const drafts = Object.values(pendingPrivilegeRows);
+    if (!drafts.length || savingAllPrivileges) return;
+    setSavingAllPrivileges(true);
+    const results = await Promise.allSettled(
+      drafts.map((draft) => onEdit(draft.id, Object.fromEntries(fields.map(([field]) => [field, draft[field]])))),
+    );
+    const savedIds = drafts
+      .filter((_, index) => results[index].status === "fulfilled")
+      .map((draft) => String(draft.id));
+    if (savedIds.length) {
+      setPendingPrivilegeRows((pending) => {
+        const next = { ...pending };
+        savedIds.forEach((id) => delete next[id]);
+        return next;
+      });
+    }
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed) alert(failed.reason?.message || "Could not save all privileges.");
+    setSavingAllPrivileges(false);
+  };
+  return (
+    <>
+    <section className="panel pagepanel generic">
+      <header>
+        <div>
+          <h1>{name==='Users & employees'?'Login Details':name}</h1>
+          <p>{rows.length} records shown · import CSV or add one manually</p>
+        </div>
+        <MasterActions
+          name={name}
+          records={records}
+          onAdd={onAdd}
+          onDeleteAll={onDeleteAll}
+          userOptions={userOptions}
+          siteOptions={siteOptions}
+          canCreateSuperAdmin={canCreateSuperAdmin}
+        />
+      </header>
+      <div className="toolbar">
+        <div>
+          <Search />
+          <input
+            data-smart-search
+            type="search"
+            placeholder={"Search " + name.toLowerCase()}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <div className="toolbar-actions-end">
+          <div className="master-actions-slot" ref={setActionsToolbarTarget} />
+          <TableParameterFilter columns={filterColumns} rows={records} filters={columnFilters} onFilterChange={updateColumnFilter} onClearFilters={() => setColumnFilters({})} />
+        </div>
+      </div>
+      <div className="emptytable master-table-scroll" onClick={() => setOpenFilter(null)}>
+        <ActionsTable toolbarTarget={actionsToolbarTarget} toolbarPortal>
+          <thead>
+            <tr>
+              {displayFields.map(([key, label]) => (
+                <FilterableHeader
+                  key={key}
+                  label={label}
+                  sortKey={key}
+                  sort={sort}
+                  onSort={changeSort}
+                  open={openFilter === key}
+                  onToggle={(column) => setOpenFilter((current) => current === column ? null : column)}
+                  values={columnValues[key] || []}
+                  filterValue={columnFilters[key] || ""}
+                  onFilterChange={(value) => updateColumnFilter(key, value)}
+                />
+              ))}
+              {canManageRows && <th>Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+                rows.map((row, ri) => {
+                  const rowSaving = savingAllPrivileges;
+                  return (
+                <tr key={row.id || ri}>
+                  {displayFields.map(([key, , type], ci) => {
+                    const value = name === "Privilege" ? privilegeValue(row, key) : name === "Users & employees" && key === "site" ? userMasterLocation(row) : name === "Users & employees" && key === "userType" ? userMasterRole(row) : row[key];
+                    const displayValue = name === "Users & employees" && ["login", "employee"].includes(key) ? String(value || "").toUpperCase() : formatMasterFieldValue(key, value);
+                    return (
+                    <td key={key}>
+                      {name === "Privilege" && key === "username" ? (
+                        <button type="button" className="privilege-user-link" onClick={() => setEditing(row)}>{value || "Unnamed user"}</button>
+                      ) : name === "Privilege" && type === "mobile-role-select" ? (
+                        <div className="privilege-group-authority"><b>{privilegeSelectionValue(value) || "Not assigned"}</b>{mobileRoleAuthority[privilegeSelectionValue(value)] && <small>{mobileRoleAuthority[privilegeSelectionValue(value)]}</small>}</div>
+                      ) : name === "Privilege" && type === "role-radio" ? (
+                        <div className="privilege-inline-role" role="radiogroup" aria-label={`Access type for ${row.username}`}>
+                          {privilegeAccessOptions.map((option) => (
+                            <label key={option} title={option}>
+                              <input
+                                type="radio"
+                                name={`access-type-${row.id}`}
+                                checked={privilegeAccessValue(value) === option}
+                                disabled={rowSaving}
+                                onChange={() => stagePrivilegeField(row, key, option)}
+                              />
+                              <span>{option === "Super User" ? "Super" : "Mobile"}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : name === "Privilege" && type === "mobile-role-select" ? (
+                        <select
+                          className="privilege-site-select"
+                          value={privilegeSelectionValue(value)}
+                          disabled={rowSaving}
+                          aria-label={`User Group for ${row.username}`}
+                          onChange={(event) => stagePrivilegeField(row, key, event.target.value)}
+                        >
+                          <option value="">Not assigned</option>
+                          {privilegeSelectionValue(value) && !mobileUserRoleOptions.includes(privilegeSelectionValue(value)) && (
+                            <option value={privilegeSelectionValue(value)}>{privilegeSelectionValue(value)}</option>
+                          )}
+                          {mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      ) : name === "Privilege" && type === "site-select" ? (
+                        <select
+                          className="privilege-site-select"
+                          value={privilegeSelectionValue(value)}
+                          disabled={rowSaving}
+                          aria-label={`Location for ${row.username}`}
+                          onChange={(event) => stagePrivilegeField(row, key, event.target.value)}
+                        >
+                          <option value="">Select site</option>
+                          {privilegeSelectionValue(value) && !siteOptions.includes(privilegeSelectionValue(value)) && (
+                            <option value={privilegeSelectionValue(value)}>{privilegeSelectionValue(value)}</option>
+                          )}
+                          {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                        </select>
+                      ) : name === "Privilege" && type === "checkbox" ? (
+                        <input
+                          className="privilege-inline-checkbox"
+                          type="checkbox"
+                          checked={isCheckedValue(value)}
+                          disabled={rowSaving}
+                          aria-label={`${fields[ci][1]} for ${row.username}`}
+                          onChange={(event) => stagePrivilegeField(row, key, event.target.checked)}
+                        />
+                      ) : type === "checkbox" ? (
+                        <span className={`privilege-value ${isCheckedValue(row[key]) ? "enabled" : "disabled"}`}>
+                          {isCheckedValue(row[key]) ? <CheckCircle2 /> : <X />}
+                          {isCheckedValue(row[key]) ? "Yes" : "No"}
+                        </span>
+                      ) : ci === 0 ? <b>{displayValue}</b> : displayValue}
+                    </td>
+                    );
+                  })}
+                  {canManageRows && (
+                    <td className="row-actions">
+                      {name === "Users & employees" && <button aria-label={`Change password for ${row.employee || row.login || "employee"}`} onClick={() => setChangingPassword(row)}><LockKeyhole /> Change password</button>}
+                      {name !== "Privilege" && (
+                        <button aria-label={`Edit ${row.oem || row.employee || row.login || row.username || (isCdirMaster(name) && (row.name || row.designation || row.department || row.code)) || [row.site,row.shiftName].filter(Boolean).join(" ") || "record"}`} onClick={() => setEditing(row)}><Pencil /> Edit</button>
+                      )}
+                      <button className="delete" aria-label={`${deletionApprovalRequired ? "Request deletion of" : "Delete"} ${row.oem || row.employee || row.login || row.username || (isCdirMaster(name) && (row.name || row.designation || row.department || row.code)) || [row.site,row.shiftName].filter(Boolean).join(" ") || "record"}`} onClick={() => deleteRow(row)}><Trash2 /> {deletionApprovalRequired ? "Request deletion" : "Delete"}</button>
+                    </td>
+                  )}
+                </tr>
+                  );
+                })
+            ) : (
+              <tr>
+                <td colSpan={displayFields.length + (canManageRows ? 1 : 0)} className="empty-state">
+                  No records available
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </ActionsTable>
+      </div>
+    </section>
+    {editing && (
+    <Modal title={`Edit ${name === "Users & employees" ? "user or employee" : name === "Privilege" ? "privilege user" : name} record`} close={() => setEditing(null)}>
+        <form className="form master-form" onSubmit={saveEdit}>
+          <div className="formgrid">
+            {fields.filter(([key]) => name !== "Privilege" || key !== "username").map(([key, label, type]) =>
+              cdirFieldKind(type) ? <CDirFieldInput key={key} name={key} label={label} type={type} defaultValue={editing[key]} required={key === fields[0][0]} /> :
+              name === "Users & employees" && ["site", "userType", "masterAccess", "tabAccess"].includes(key) ? null : type === "multi-text" ? (
+                <MultiTextField key={key} name={key} label={label} value={editing[key]} />
+              ) : type === "multi-checkbox" ? (
+                  <fieldset key={key} className="user-access-field full">
+                    <legend>{label}</legend>
+                    <div>
+                      {userAccessOptions[key].map((option) => (
+                        <label key={option}>
+                          <input type="checkbox" name={key} value={option} defaultChecked={selectedAccessValues(editing, key).includes(option)} />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+              ) : type === "role-radio" ? (
+                <fieldset key={key} className="privilege-role-field">
+                  <legend>{label} *</legend>
+                  <div>{privilegeAccessOptions.map((option) => <label key={option}><input type="radio" name={key} value={option} required defaultChecked={privilegeAccessValue(editing[key]) === option} /><span>{option}</span></label>)}</div>
+                </fieldset>
+              ) : type === "mobile-role-select" ? (
+                <label key={key}>{label} *<select name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Not assigned</option>{mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option} — {mobileRoleAuthority[option]}</option>)}</select></label>
+              ) : type === "site-select" ? (
+                <label key={key}>{label} *<select name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Select site</option>{privilegeSelectionValue(editing[key]) && !siteOptions.includes(privilegeSelectionValue(editing[key])) && <option value={privilegeSelectionValue(editing[key])}>{privilegeSelectionValue(editing[key])}</option>}{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>
+              ) : type === "time" ? (
+                <label key={key}>{label} (12-hour) *<TwelveHourTimeInput includeSeconds name={key} required defaultValue={editing[key] || ""} /></label>
+              ) : type === "date" ? (
+                <label key={key}>{label}<DateInput name={key} defaultValue={editing[key] || ""} /></label>
+              ) : type === "shift-status" ? (
+                <label key={key}>{label} *<select name={key} required defaultValue={editing[key] || "Active"}><option>Active</option><option>Inactive</option></select></label>
+              ) : type === "user-select" ? (
+                <SearchableSelect key={key} label={label} name={key} required defaultValue={editing[key] || ""}
+                  options={[
+                    ...(editing[key] && !userOptions.some((user) => (user.login || user.employee) === editing[key]) ? [{value:editing[key],label:editing[key]}] : []),
+                    ...userOptions.map((user) => ({
+                      value:user.login || user.employee,
+                      label:user.employee || user.login,
+                      description:user.login && user.employee ? user.login : "",
+                      keywords:[user.employee,user.login,user.site,user.mobile].filter(Boolean).join(" "),
+                    })),
+                  ]}
+                  placeholder="Search employee name, login, site, or mobile" emptyText="No matching user found." />
+              ) : (
+              <label key={key}>{label}{type !== "checkbox" && (type === "user-select" || key === "level" || key === fields[0][0] || (name === "Users & employees" && ["site", "userType"].includes(key))) ? " *" : ""}
+                {type === "checkbox" ? (
+                  <span className="privilege-checkbox-field">
+                    <input type="checkbox" name={key} defaultChecked={isCheckedValue(editing[key])} />
+                    <span><b>{label}</b><small>Enable this privilege</small></span>
+                  </span>
+                ) : key === "level" ? (
+                  <select name={key} required defaultValue={editing[key] || ""}>
+                    <option value="" disabled>Select level</option>
+                    {["L1", "L2", "L3", "L4"].map((level) => <option key={level}>{level}</option>)}
+                  </select>
+                ) : name === "Users & employees" && key === "site" ? (
+                  <select name={key} required defaultValue={displaySiteName(editing[key])}>
+                    <option value="" disabled>Select location</option>
+                    {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
+                    {displaySiteName(editing[key]) && !siteOptions.includes(displaySiteName(editing[key])) && <option value={displaySiteName(editing[key])}>{displaySiteName(editing[key])}</option>}
+                  </select>
+                ) : name === "Users & employees" && key === "userType" ? (
+                  <select name={key} required defaultValue={editing[key] || ""}>
+                    <option value="" disabled>Select user type</option>
+                    {persistedUserTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                    {editing[key] && !persistedUserTypeOptions.includes(editing[key]) && <option value={editing[key]}>{editing[key]}</option>}
+                  </select>
+                ) : <input className={name === "Users & employees" && ["login","employee"].includes(key) ? "uppercase-user-field" : ""} name={key} defaultValue={editing[key] || ""} required={key === fields[0][0]} />}
+              </label>)
+            )}
+            {name === "Users & employees" && <UserTypeAccessFields record={editing} siteOptions={siteOptions} canCreateSuperAdmin={canCreateSuperAdmin} />}
+          </div>
+          <footer>
+            <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+            <button className="primary">Save changes</button>
+          </footer>
+        </form>
+      </Modal>
+    )}
+    {changingPassword && <Modal title={`Change password · ${String(changingPassword.employee || changingPassword.login || "Employee").toUpperCase()}`} close={() => setChangingPassword(null)}>
+      <form className="form employee-password-form" onSubmit={changeEmployeePassword}>
+        <p>Set a password for <b>{String(changingPassword.login || "").toUpperCase()}</b>. Any non-empty password is allowed, including the registered phone number. Existing login sessions will be signed out.</p>
+        <div className="formgrid"><label>New password *<input name="password" type="password" autoComplete="new-password" required /></label><label>Confirm password *<input name="confirmation" type="password" autoComplete="new-password" required /></label></div>
+        <label className="employee-password-require-change"><input name="requireChange" type="checkbox" defaultChecked /><span><b>Require password change at next login</b><small>Recommended for administrator-issued passwords.</small></span></label>
+        <footer><button type="button" onClick={() => setChangingPassword(null)}>Cancel</button><button className="primary"><LockKeyhole /> Change password</button></footer>
+      </form>
+    </Modal>}
+    </>
+  );
+}
+
+function MasterLoader({ name }) {
+  return (
+    <section className="panel pagepanel master-loading" aria-live="polite" aria-busy="true">
+      <header>
+        <div>
+          <h1>{name==='Users & employees'?'Login Details':name}</h1>
+          <p>Loading the latest records...</p>
+        </div>
+      </header>
+      <div className="master-loader-content" role="status">
+        <CaliberActivityMark size="large" />
+        <strong>Loading {name.toLowerCase()}</strong>
+        <p>Please wait while the live data is retrieved.</p>
+        <div className="master-loader-lines" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+    </section>
+  );
+}
+function MasterLoadError({ name, error, retry }) {
+  return (
+    <section className="panel pagepanel master-loading master-load-error" role="alert">
+      <header><div><h1>{name==='Users & employees'?'Login Details':name}</h1><p>Live records could not be loaded.</p></div></header>
+      <div className="master-loader-content">
+        <AlertTriangle />
+        <strong>Unable to show reliable data</strong>
+        <p>{error || "Check the connection and try again."}</p>
+        <button type="button" className="primary" onClick={retry}><RotateCcw /> Retry</button>
+      </div>
+    </section>
+  );
+}
+// Read-only, site-wise organisation pages for Admin and Super Admin (Access
+// structure, Hierarchy levels, Reporting structure, People by designation). They read the three masters
+// through useMasterRecords, so they revalidate when the tab regains focus, every
+// minute while visible, and on demand - any change to those masters shows up.
+function OrganisationChartPage({ view = "reporting" }) {
+  const [users, , usersLoaded, , , , usersError, refreshUsers] = useMasterRecords("Users & employees");
+  const [privileges, , privilegesLoaded, , , , privilegesError, refreshPrivileges] = useMasterRecords("Privilege");
+  const [hierarchy, , hierarchyLoaded, , , , hierarchyError, refreshHierarchy] = useMasterRecords("Hierarchy master");
+  const loaded = usersLoaded && privilegesLoaded && hierarchyLoaded;
+  const [updatedAt, setUpdatedAt] = useState(0);
+  useEffect(() => { if (loaded) setUpdatedAt(Date.now()); }, [loaded, users, privileges, hierarchy]);
+  const chart = useMemo(() => buildOrganisationChart({ users, privileges, hierarchy }), [users, privileges, hierarchy]);
+  const refresh = () => { refreshUsers?.(); refreshPrivileges?.(); refreshHierarchy?.(); };
+  return <OrganisationChartView key={view} view={view} chart={chart} loading={!loaded} error={usersError || privilegesError || hierarchyError || ""} updatedAt={updatedAt} onRefresh={refresh} />;
+}
+function useMasterRecords(name, seed = [], {enabled = true} = {}) {
+  const [records, setRecords] = useState(seed),
+    [loaded, setLoaded] = useState(false),
+    [loadError, setLoadError] = useState(""),
+    [loadAttempt, setLoadAttempt] = useState(0);
+  const loadedMasterScope = useRef({name, token: authToken, loaded: false});
+  const masterResponseCache = useRef({name, token: authToken, etag: ""});
+  useEffect(() => enabled
+    ? watchVisibleMasterRefresh(() => setLoadAttempt((attempt) => attempt + 1), {win: window, doc: document})
+    : undefined, [enabled]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let activeRequest = true;
+    const controller = new AbortController();
+    const loadStartedAt = performance.now();
+    const sameScope = loadedMasterScope.current.name === name && loadedMasterScope.current.token === authToken;
+    if (!sameScope) {
+      loadedMasterScope.current = {name, token: authToken, loaded: false};
+      masterResponseCache.current = {name, token: authToken, etag: ""};
+      setRecords(seed);
+    }
+    setLoaded(sameScope && loadedMasterScope.current.loaded);
+    setLoadError("");
+    const responseEtag = sameScope ? masterResponseCache.current.etag : "";
+    fetch(`/api/masters?names=${encodeURIComponent(name)}&t=${Date.now()}`, {cache:"no-store", signal: controller.signal, headers: {Authorization: "Bearer " + authToken, ...(responseEtag ? {"If-None-Match": responseEtag} : {})}})
+      .then(async (response) => {
+        if (response.status === 304) return {notModified: true};
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Could not load " + name + ".");
+        if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Could not load " + name + ".");
+        if (data[name] != null && !Array.isArray(data[name])) throw new Error("Could not load " + name + ".");
+        return {data, etag: response.headers?.get?.("etag") || ""};
+      })
+      .then(({data, etag, notModified}) => {
+        if (!activeRequest) return;
+        if (!notModified) {
+          masterResponseCache.current = {name, token: authToken, etag};
+          setRecords([...seed, ...(data[name] || [])]);
+        }
+        loadedMasterScope.current.loaded = true;
+        setLoaded(true);
+      })
+      .catch((error) => {
+        if (activeRequest && error.name !== "AbortError") setLoadError(error.message || "Could not load " + name + ".");
+      })
+      .finally(() => {
+        if (!activeRequest) return;
+        window.dispatchEvent(new CustomEvent("menu-data-loaded", {
+          detail: {name, seconds: (performance.now() - loadStartedAt) / 1000},
+        }));
+      });
+    return () => {
+      activeRequest = false;
+      controller.abort();
+    };
+  }, [name, loadAttempt, authToken, enabled]);
+  const add = async (incoming, { silent = false } = {}) => {
+    const batches = batchMasterRecords(incoming);
+    const saved = [];
+    for (let index = 0; index < batches.length; index += 1) {
+      let response;
+      try {
+        response = await fetch("/api/masters/" + encodeURIComponent(name), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(batches[index]),
+        });
+      } catch {
+        throw new Error("Could not reach the server. Check your connection and try again.");
+      }
+      const responseText = await response.text();
+      let details = {};
+      try { details = responseText ? JSON.parse(responseText) : {}; } catch {}
+      if (!response.ok) {
+        const oneManualRecord = batches.length === 1 && batches[0].length === 1;
+        const unavailable = [502, 503, 504].includes(response.status);
+        throw new Error(
+          details.error ||
+            (unavailable
+              ? "The server is temporarily unavailable. Nothing was saved; please try again."
+              : oneManualRecord
+                ? `Could not save this ${name === "Users & employees" ? "user" : "record"}. Please try again.`
+                : `Could not save import batch ${index + 1} of ${batches.length}. Please retry.`),
+        );
+      }
+      if (!Array.isArray(details)) throw new Error("The server returned an invalid save response. Please retry.");
+      saved.push(...details);
+    }
+    setRecords((current) => {
+      const next = [...current];
+      saved.forEach((record) => {
+        const existingIndex = next.findIndex((item) => item.id === record.id);
+        if (existingIndex >= 0) next[existingIndex] = record;
+        else next.push(record);
+      });
+      return next;
+    });
+    if (!silent) {
+      alert(
+        saved.length +
+          " record" +
+          (saved.length === 1 ? "" : "s") +
+          (name === "Equipment master"
+            ? " saved successfully. Matching rows were overwritten."
+            : " added successfully."),
+      );
+    }
+  };
+  const edit = async (id, record) => {
+    const update = () => fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
+      method: "PUT", cache:"no-store",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`},
+      body: JSON.stringify(record),
+    });
+    let response;
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        response = await update();
+        if (![408, 429, 502, 503, 504].includes(response.status)) break;
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
+    }
+    if (!response) throw new Error(lastError?.message === "Failed to fetch" ? "The save connection was interrupted. Please try again." : lastError?.message || "Could not update this record.");
+    const details = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(details.error || "Could not update this record.");
+    setRecords((current) => current.map((item) => item.id === id ? details : item));
+    return details;
+  };
+  const remove = async (id, reason = "") => {
+    const response = await fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
+      method: "DELETE",
+      headers: {Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason},
+    });
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({}));
+      throw new Error(details.error || "Could not delete this record.");
+    }
+    if(response.status===202){const details=await response.json();alert(`${details.requestNo} submitted for deletion approval. Record retained until approval.`);return;}
+    setRecords((current) => current.filter((item) => item.id !== id));
+  };
+  const removeAll = async () => {
+    if (!confirm(`Delete all records from ${name}? This cannot be undone.`)) return;
+    const reason = window.prompt(`Enter the reason for deleting all ${name} records:`, "");
+    if (reason === null) return;
+    if (!reason.trim()) return alert("A deletion reason is required for the Audit Trail.");
+    const response = await fetch(`/api/masters/${encodeURIComponent(name)}/all`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason.trim() },
+    });
+    const details = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(details.error || "Could not delete all records.");
+    setRecords([]);
+    alert(`${details.deleted ?? records.length} records deleted successfully.`);
+  };
+  const removeSelected = async (selectedRecords = [], reason = "") => {
+    const ids = [...new Set(selectedRecords.map((record) => Number(record.id)).filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (!ids.length) throw new Error("No saved equipment records match the current filters.");
+    if (!reason.trim()) throw new Error("A deletion reason is required for the Audit Trail.");
+    const response = await fetch(`/api/masters/${encodeURIComponent(name)}/selected`, {
+      method: "DELETE",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason.trim()},
+      body: JSON.stringify({ids}),
+    });
+    const details = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(details.error || "Could not delete the selected equipment records.");
+    const deletedIds = new Set(ids);
+    setRecords((current) => current.filter((record) => !deletedIds.has(Number(record.id))));
+    alert(`${details.deleted ?? ids.length} selected equipment record${(details.deleted ?? ids.length) === 1 ? "" : "s"} deleted successfully.`);
+  };
+  return [records, add, loaded, edit, remove, removeAll, loadError, () => setLoadAttempt((attempt) => attempt + 1), removeSelected];
+}
+function MetaWhatsAppSetup() {
+  const [employees] = useMasterRecords("Users & employees");
+  const [form, setForm] = useState({provider:"meta", phoneNumberId:"", businessAccountId:"", graphVersion:"v25.0", accessToken:"", providerApiKey:""});
+  const [settings, setSettings] = useState(null);
+  const [connection, setConnection] = useState(null);
+  const [working, setWorking] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [telegram, setTelegram] = useState(null);
+  const [telegramWorking, setTelegramWorking] = useState(false);
+  const [telegramNotice, setTelegramNotice] = useState("");
+  const [telegramLinks, setTelegramLinks] = useState([]);
+  const [telegramRule, setTelegramRule] = useState(null);
+  const [telegramExempt, setTelegramExempt] = useState(new Set());
+  const [telegramRuleSaving, setTelegramRuleSaving] = useState(false);
+  const [telegramRuleNotice, setTelegramRuleNotice] = useState(null);
+  const loadTelegramRule = async () => {
+    const response = await fetch("/api/telegram/settings", {headers:{Authorization:`Bearer ${authToken}`}}).catch(() => null);
+    const result = response?.ok ? await response.json().catch(() => null) : null;
+    if (!result) return;
+    setTelegramRule(result);
+    setTelegramExempt(new Set(result.exemptLogins || []));
+  };
+  const saveTelegramRule = async (enabled) => {
+    setTelegramRuleSaving(true);
+    setTelegramRuleNotice(null);
+    try {
+      const response = await fetch("/api/telegram/settings", {method:"PUT",headers:{"Content-Type":"application/json",Authorization:`Bearer ${authToken}`},body:JSON.stringify({enabled,exemptLogins:[...telegramExempt]})});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not save the Telegram requirement.");
+      setTelegramRuleNotice({ok:true,text:enabled ? `Saved. Telegram is now required at login for everyone except ${telegramExempt.size} exempt ${telegramExempt.size === 1 ? "user" : "users"}.` : "Saved. Telegram is optional."});
+      await loadTelegramRule();
+    } catch (saveError) {
+      setTelegramRuleNotice({ok:false,text:saveError.message});
+    } finally {
+      setTelegramRuleSaving(false);
+    }
+  };
+  const toggleTelegramExempt = (login) => setTelegramExempt((current) => {
+    const next = new Set(current);
+    if (next.has(login)) next.delete(login); else next.add(login);
+    return next;
+  });
+  const loadMetaSettings = async () => {
+    const settingsResponse = await fetch("/api/whatsapp/settings", {headers:{Authorization:`Bearer ${authToken}`}});
+    const saved = await settingsResponse.json().catch(() => ({}));
+    if (!settingsResponse.ok) throw new Error(saved.error || "Unable to load Meta WhatsApp settings.");
+    setSettings(saved);
+    setForm((current) => ({...current, provider:saved.provider || "meta", phoneNumberId:saved.phoneNumberId || "", businessAccountId:saved.businessAccountId || "", graphVersion:saved.graphVersion || "v25.0", accessToken:"", providerApiKey:""}));
+    const statusResponse = await fetch("/api/whatsapp/status", {headers:{Authorization:`Bearer ${authToken}`}});
+    const status = await statusResponse.json().catch(() => ({}));
+    setConnection(statusResponse.ok ? status : {connected:false,error:status.error || "Meta connection is not ready."});
+  };
+  const loadTelegramStatus = async () => {
+    const telegramResponse = await fetch("/api/telegram/status", {headers:{Authorization:`Bearer ${authToken}`}}).catch(() => null);
+    const telegramState = await telegramResponse?.json().catch(() => ({}));
+    setTelegram(telegramResponse?.ok ? telegramState : {connected:false,error:telegramState?.error || "Telegram connection is not ready."});
+    const linksResponse = await fetch("/api/telegram/links", {headers:{Authorization:`Bearer ${authToken}`}}).catch(() => null);
+    setTelegramLinks(linksResponse?.ok ? await linksResponse.json().catch(() => []) : []);
+  };
+  const inviteTelegramAdmins = async () => {
+    setTelegramWorking(true);
+    setTelegramNotice("");
+    try {
+      const response = await fetch("/api/telegram/admin-group/invite", {method:"POST",headers:{Authorization:`Bearer ${authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not invite administrators.");
+      setTelegramNotice({ok:true,text:`Invites sent to ${result.invited} admin${result.invited === 1 ? "" : "s"}; ${result.alreadyMember} already in the group${result.failed ? `; ${result.failed} failed` : ""}. Admins who have not connected Telegram get their invite when they connect.`});
+    } catch (inviteError) {
+      setTelegramNotice({ok:false,text:inviteError.message});
+    } finally {
+      setTelegramWorking(false);
+    }
+  };
+  const sendTelegramTest = async () => {
+    setTelegramWorking(true);
+    setTelegramNotice("");
+    try {
+      const response = await fetch("/api/telegram/test", {method:"POST",headers:{Authorization:`Bearer ${authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Telegram test message failed.");
+      setTelegramNotice({ok:true,text:"Test message sent. Check the Telegram group."});
+    } catch (testError) {
+      setTelegramNotice({ok:false,text:testError.message || "Telegram test message failed."});
+    } finally {
+      setTelegramWorking(false);
+    }
+  };
+  useEffect(() => {
+    let active = true;
+    loadMetaSettings().catch((loadError) => active && setError(loadError.message));
+    loadTelegramStatus();
+    loadTelegramRule();
+    return () => { active = false; };
+  }, []);
+  const phoneDigits = (employee) => String(employee.phone || employee.phoneNo || employee.phoneNumber || "").replace(/\D/g, "");
+  const readyRecipients = employees.filter((employee) => {
+    const digits = phoneDigits(employee);
+    return digits.length >= 10 && digits.length <= 15;
+  }).length;
+  const missingRecipients = Math.max(0, employees.length - readyRecipients);
+  const updateField = (field) => (event) => setForm((current) => ({...current,[field]:event.target.value}));
+  const saveSettings = async (event) => {
+    event.preventDefault();
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = {provider:form.provider, phoneNumberId:form.phoneNumberId, businessAccountId:form.businessAccountId, graphVersion:form.graphVersion};
+      if (form.accessToken.trim()) payload.accessToken = form.accessToken.trim();
+      if (form.providerApiKey.trim()) payload.providerApiKey = form.providerApiKey.trim();
+      const response = await fetch("/api/whatsapp/settings", {
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${authToken}`},
+        body:JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Unable to save Meta WhatsApp settings.");
+      const templateMessage = result.templateSync?.ok
+        ? `${result.templateSync.approved} templates approved; ${result.templateSync.pending} pending.`
+        : `Credentials saved. Template sync needs attention${result.templateSync?.error ? `: ${result.templateSync.error}` : "."}`;
+      setNotice(templateMessage);
+      await loadMetaSettings();
+    } catch (saveError) {
+      setError(saveError.message || "Unable to connect Meta WhatsApp.");
+    } finally {
+      setWorking(false);
+    }
+  };
+  return <section className="panel pagepanel generic meta-whatsapp-setup">
+    <header>
+      <div><h1>WhatsApp API setup</h1><p>CMLL WhatsApp Business connection and recipient readiness</p></div>
+      <span className={`meta-connection-state ${connection?.connected ? "connected" : "disconnected"}`}>
+        {connection?.connected ? <CheckCircle2 /> : <AlertTriangle />}
+        {connection?.connected ? "Connected" : "Not connected"}
+      </span>
+    </header>
+    <div className="meta-whatsapp-overview" aria-label="Meta WhatsApp connection overview">
+      <div><span>Business number</span><strong>{connection?.displayPhoneNumber || "Not verified"}</strong><small>{connection?.verifiedName || "Meta verification pending"}</small></div>
+      <div><span>Quality</span><strong>{connection?.qualityRating || "--"}</strong><small>Meta phone quality rating</small></div>
+      <div><span>Recipients ready</span><strong>{readyRecipients}</strong><small>Users with a valid mobile number</small></div>
+      <div><span>Mobile missing</span><strong>{missingRecipients}</strong><small>Complete in Users & employees</small></div>
+      <div><span>OTP template</span><strong>{connection?.otpTemplate?.status || "--"}</strong><small>{connection?.otpTemplate?.detail || (connection?.otpTemplate?.status === "APPROVED" ? "Password reset OTPs deliver by template" : "Password reset OTPs need an APPROVED template")}</small></div>
+    </div>
+    <form className="meta-whatsapp-form" onSubmit={saveSettings}>
+      <div className="meta-whatsapp-form-heading"><div><h2>Provider credentials</h2><p>Credentials are encrypted in transit and secrets are never returned to this page.</p></div><ShieldCheck /></div>
+      <div className="meta-whatsapp-fields">
+        <label><span>Delivery provider</span><select value={form.provider} onChange={updateField("provider")}><option value="fast2sms">Fast2SMS</option><option value="meta">Meta Cloud API</option></select></label>
+        <label><span>Phone Number ID</span><input inputMode="numeric" required value={form.phoneNumberId} onChange={updateField("phoneNumberId")} placeholder="Meta phone number ID" /></label>
+        <label><span>WhatsApp Business Account ID</span><input inputMode="numeric" value={form.businessAccountId} onChange={updateField("businessAccountId")} placeholder="Meta business account ID" /></label>
+        <label><span>Graph API version</span><input required value={form.graphVersion} onChange={updateField("graphVersion")} placeholder="v25.0" /></label>
+        {form.provider === "fast2sms" ? <label className="meta-token-field"><span>Fast2SMS API authorization key</span><input type="password" autoComplete="new-password" value={form.providerApiKey} onChange={updateField("providerApiKey")} placeholder={settings?.providerApiKeyConfigured ? `Configured: ${settings.providerApiKeyPreview}` : "Enter Fast2SMS API key"} /><small>{settings?.providerApiKeyConfigured ? "Leave blank to retain the configured key." : "An API key is required for Fast2SMS delivery."}</small></label>
+          : <label className="meta-token-field"><span>Permanent Meta access token</span><input type="password" autoComplete="new-password" value={form.accessToken} onChange={updateField("accessToken")} placeholder={settings?.accessTokenConfigured ? `Configured: ${settings.accessTokenPreview}` : "Enter permanent system-user token"} /><small>{settings?.accessTokenConfigured ? "Leave blank to retain the configured token." : "A token is required for Meta delivery."}</small></label>}
+      </div>
+      {(notice || error || connection?.error) && <div className={`meta-whatsapp-feedback ${error || connection?.error ? "error" : "success"}`} role={error || connection?.error ? "alert" : "status"}>{error || notice || connection.error}</div>}
+      <footer><button type="submit" className="primary" disabled={working || !form.phoneNumberId.trim() || (form.provider === "fast2sms" ? (!settings?.providerApiKeyConfigured && !form.providerApiKey.trim()) : (!settings?.accessTokenConfigured && !form.accessToken.trim()))}>{working ? <RefreshCw className="spin" /> : <Save />}{working ? "Connecting..." : "Save, verify and sync templates"}</button></footer>
+    </form>
+    <div className="meta-whatsapp-form telegram-setup">
+      <div className="meta-whatsapp-form-heading"><div><h2>Telegram group alerts</h2><p>{telegram?.connected ? `@${telegram.botUsername} posts to ${telegram.chatTitle || "the group"}${telegram.paused ? " (paused)" : ""}` : "Set TELEGRAM_BOT_TOKEN and TELEGRAM_DEFAULT_CHAT_ID in Azure app settings."}</p></div><MessageCircle /></div>
+      <span className={`meta-connection-state ${telegram?.connected ? "connected" : "disconnected"}`}>
+        {telegram?.connected ? <CheckCircle2 /> : <AlertTriangle />}
+        {telegram?.connected ? "Connected" : telegram?.configured === false ? "Not configured" : "Not connected"}
+      </span>
+      {(telegramNotice || telegram?.error) && <div className={`meta-whatsapp-feedback ${telegramNotice?.ok ? "success" : "error"}`} role={telegramNotice?.ok ? "status" : "alert"}>{telegramNotice?.text || telegram.error}</div>}
+      <footer className="telegram-actions"><button type="button" onClick={inviteTelegramAdmins} disabled={telegramWorking || !telegram?.connected}><Users />Invite all admins to the group</button><button type="button" className="primary" onClick={sendTelegramTest} disabled={telegramWorking || !telegram?.connected}>{telegramWorking ? <RefreshCw className="spin" /> : <Send />}{telegramWorking ? "Sending..." : "Send Telegram test"}</button></footer>
+      {telegram?.webhook?.lastError && <div className="meta-whatsapp-feedback error" role="alert">Telegram cannot reach the app: {telegram.webhook.lastError}</div>}
+      <TelegramSiteGroups token={authToken}/>
+      <div className="telegram-links">
+        <h3>Users connected to Telegram <span>{telegramLinks.length}</span></h3>
+        <p>Each user connects once from their profile icon → Connect Telegram. They then get the same alerts as on WhatsApp.</p>
+        {telegramLinks.length ? <ActionsTable printTitle="Users connected to Telegram" exportTitle="Users connected to Telegram"><thead><tr><th>Employee</th><th>Login</th><th>Location</th><th>Telegram</th><th>Connected on</th></tr></thead>
+          <tbody>{telegramLinks.map((link) => <tr key={link.login}><td>{link.name}</td><td>{link.login}</td><td>{link.site || "--"}</td><td>{link.username ? `@${link.username}` : "--"}</td><td data-sort-value={link.linkedAt}>{formatDisplayDateTime(link.linkedAt)}</td></tr>)}</tbody></ActionsTable>
+          : <p className="telegram-links-empty">No users have connected yet.</p>}
+      </div>
+      {telegramRule && <div className="telegram-links telegram-requirement">
+        <h3>Require Telegram at login <span className={telegramRule.enabled ? "on" : ""}>{telegramRule.enabled ? "On" : "Off"}</span></h3>
+        <p>When on, every user who has not connected Telegram sees a "Connect Telegram to continue" screen after signing in and cannot use the app until they connect. Users who block the bot are disconnected and asked again at their next sign-in. Tick users below to exempt them.</p>
+        <p className="telegram-requirement-summary">
+          {telegramRule.users.filter((user) => user.linked).length} connected · {telegramRule.users.filter((user) => !user.linked && !telegramExempt.has(user.login)).length} not connected · {telegramExempt.size} exempt · {telegramRule.users.length} users
+        </p>
+        <ActionsTable printTitle="Telegram status of all users" exportTitle="Telegram status of all users"><thead><tr><th>Exempt</th><th>Employee</th><th>Login</th><th>Role</th><th>Location</th><th>Telegram</th></tr></thead>
+          <tbody>{telegramRule.users.map((user) => <tr key={user.login}>
+            <td><input type="checkbox" aria-label={`Exempt ${user.name} from Telegram`} checked={telegramExempt.has(user.login)} onChange={() => toggleTelegramExempt(user.login)} /></td>
+            <td>{user.name}</td><td>{user.login.toUpperCase()}</td><td>{user.role || "--"}</td><td>{user.site || "--"}</td>
+            <td>{user.linked ? `Connected${user.username ? ` (@${user.username})` : ""}` : telegramExempt.has(user.login) ? "Exempt" : "Not connected"}</td>
+          </tr>)}</tbody></ActionsTable>
+        {telegramRuleNotice && <div className={`meta-whatsapp-feedback ${telegramRuleNotice.ok ? "success" : "error"}`} role={telegramRuleNotice.ok ? "status" : "alert"}>{telegramRuleNotice.text}</div>}
+        <footer>
+          <button type="button" onClick={() => saveTelegramRule(telegramRule.enabled)} disabled={telegramRuleSaving}><Save />Save exemptions</button>
+          <button type="button" className="primary" onClick={() => {
+            if (!telegramRule.enabled && !window.confirm(`Require Telegram at login? ${telegramRule.users.filter((user) => !user.linked && !telegramExempt.has(user.login)).length} users who have not connected yet will be asked to connect before they can continue.`)) return;
+            saveTelegramRule(!telegramRule.enabled);
+          }} disabled={telegramRuleSaving}>{telegramRuleSaving ? <RefreshCw className="spin" /> : <ShieldCheck />}{telegramRule.enabled ? "Turn off requirement" : "Require Telegram at login"}</button>
+        </footer>
+      </div>}
+    </div>
+  </section>;
+}
+
+function WhatsAppReport({type, requests = []}) {
+  const isSite = type === "Daily site-wise report";
+  const [records] = useMasterRecords(isSite ? "Equipment master" : "OEM master", isSite ? vehicles : []);
+  const [employees] = useMasterRecords("Users & employees");
+  const [selectedSiteReports, setSelectedSiteReports] = useState(new Set());
+  const [selectedOemReports, setSelectedOemReports] = useState(new Set());
+  const [lastPrepared, setLastPrepared] = useState("");
+  const [metaConnection, setMetaConnection] = useState(null);
+  const [oemRegion, setOemRegion] = useState("all");
+  const today = formatDisplayDate(new Date());
+  const rows = isSite
+    ? subsidiaryData.flatMap((region) => region.sites).map((site) => {
+        const siteRecords = records.filter((record) => String(record.location || "").trim().toLowerCase() === site.toLowerCase());
+        const metrics=equipmentMetrics(siteRecords);
+        return {
+          name: site,
+          total: siteRecords.length,
+          onRoad: metrics.onRoad,
+          offRoad: metrics.offRoad,
+          idle: metrics.idle,
+          breakdowns: requests.filter((request) => request.site === site && request.status !== "Closed").length,
+        };
+      })
+    : Object.values(records.reduce((grouped, record) => {
+        const oem = record.oem || "Not assigned";
+        const item = grouped[oem] ||= {name:oem,contacts:0,locations:new Set(),levels:new Set()};
+        item.contacts += 1;
+        if (record.location) item.locations.add(record.location);
+        if (record.level) item.levels.add(record.level);
+        return grouped;
+      }, {})).map((item) => ({...item,locations:[...item.locations].join(", "),levels:[...item.levels].join(", ")}));
+  const locationMatchesRegion = (locations, region) => {
+    const value = String(locations || "").toLowerCase();
+    const keywords = region === "NCL"
+      ? ["jayant", "dudhichua", "dch"]
+      : ["sasti", "majri", "dhoptala", "gouri", "gauri", "lalpeth"];
+    return keywords.some((name) => value.includes(name));
+  };
+  const visibleRows = !isSite && oemRegion !== "all"
+    ? rows.filter((row) => locationMatchesRegion(row.locations, oemRegion))
+    : rows;
+  const reportText = isSite
+    ? [`*SITE: ${visibleRows.map(r=>r.name).join(", ") || "No sites selected"}*`, `*Caliber Pulse-II | Daily site report*`, `*Date:* ${today}`, ...visibleRows.map((r) => `\n*${r.name}*\n*Total:* ${r.total} | *On Road:* ${r.onRoad} | *Off Road:* ${r.offRoad}\n*Idle:* ${r.idle} | *Open breakdowns:* ${r.breakdowns}`)].join("\n")
+    : [`*SITE: ${[...new Set(visibleRows.flatMap(r=>String(r.locations||"").split(", ")).filter(Boolean))].join(", ") || "Not assigned"}*`, `*Caliber Pulse-II | Daily OEM report${oemRegion === "all" ? "" : ` - ${oemRegion}`}*`, `*Date:* ${today}`, ...visibleRows.map((r) => `\n*OEM:* ${r.name}\n*Contacts:* ${r.contacts} | *Levels:* ${r.levels || "N/A"}\n*Sites:* ${r.locations || "Not assigned"}`)].join("\n");
+  const share = () => window.open(`https://wa.me/?text=${encodeURIComponent(reportText)}`, "_blank", "noopener,noreferrer");
+  const dummyReportTypes = ["A/B", "B/C", "C/D"];
+  const oemReportLevels = ["Daily", "L1", "L2", "L3", "L4"];
+  const normalizeSite = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/whatsapp/status", {headers:{Authorization:`Bearer ${authToken}`}})
+      .then(async (response) => {
+        const details = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(details.error || "Unable to verify Meta WhatsApp connection.");
+        if (active) setMetaConnection(details);
+      })
+      .catch((error) => active && setMetaConnection({connected:false,error:error.message}));
+    return () => { active = false; };
+  }, []);
+  const sendMetaReport = async (entry) => {
+    const response=await fetch("/api/whatsapp/send", {
+      method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:`Bearer ${authToken}`},
+      body:JSON.stringify(entry),
+    });
+    const details=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(details.error||"WhatsApp delivery failed.");
+    return details;
+  };
+  const sendDummySiteReport = async (site, reportType, checked) => {
+    const key = `${site.name}-${reportType}`;
+    setSelectedSiteReports((current) => {
+      const next = new Set(current);
+      checked ? next.add(key) : next.delete(key);
+      return next;
+    });
+    if (!checked) return;
+    const recipient = employees.find((employee) => normalizeSite(employee.site) === normalizeSite(site.name));
+    let phone = String(recipient?.phone || "").replace(/\D/g, "");
+    if (phone.length === 10) phone = `91${phone}`;
+    const message = [
+      `*SITE: ${site.name}*`,
+      "*Caliber Pulse-II | Daily site report*",
+      `*Date:* ${today}`,
+      `*Report:* ${reportType}`,
+      `*Total equipment:* ${site.total}`,
+      `*On Road:* ${site.onRoad}`,
+      `*Off Road:* ${site.offRoad}`,
+      `*Idle:* ${site.idle}`,
+      `*Open breakdowns:* ${site.breakdowns}`,
+    ].join("\n");
+    try{
+      if(!phone)throw new Error(`No WhatsApp phone number is assigned for ${site.name}.`);
+      await sendMetaReport({reportType:"Daily site-wise report",targetName:site.name,site:site.name,reportLevel:reportType,
+        recipientName:recipient?.employee || recipient?.login || "WhatsApp recipient",recipientPhone:phone,message});
+      setLastPrepared(`${reportType} report sent to ${site.name}${recipient ? ` (${recipient.employee || recipient.login})` : ""}`);
+    }catch(error){
+      setSelectedSiteReports((current)=>{const next=new Set(current);next.delete(key);return next});
+      setLastPrepared(error.message||"WhatsApp delivery failed.");
+      alert(error.message||"WhatsApp delivery failed.");
+    }
+  };
+  const sendOemReport = async (oem, reportLevel, checked) => {
+    const key = `${oem.name}-${reportLevel}`;
+    setSelectedOemReports((current) => {
+      const next = new Set(current);
+      checked ? next.add(key) : next.delete(key);
+      return next;
+    });
+    if (!checked) return;
+    const matchingRecords = records.filter((record) => String(record.oem || "").trim().toLowerCase() === oem.name.toLowerCase());
+    const recipient = reportLevel === "Daily"
+      ? matchingRecords[0]
+      : matchingRecords.find((record) => String(record.level || "").trim().toUpperCase() === reportLevel);
+    let phone = String(recipient?.phone || "").replace(/\D/g, "");
+    if (phone.length === 10) phone = `91${phone}`;
+    const message = [
+      `*SITE: ${oem.locations || "Not assigned"}*`,
+      "*Caliber Pulse-II | Daily OEM report*",
+      `*Date:* ${today}`,
+      `*OEM:* ${oem.name}`,
+      `*Level:* ${reportLevel}`,
+      `*Contacts:* ${oem.contacts}`,
+      "Generated from the current Caliber Pulse-II fleet data.",
+    ].join("\n");
+    try{
+      if(!phone)throw new Error(`No WhatsApp phone number is assigned for ${oem.name} ${reportLevel}.`);
+      await sendMetaReport({reportType:"Daily OEM report",targetName:oem.name,site:oem.locations || "Not assigned",reportLevel,
+        recipientName:recipient?.contact || "WhatsApp recipient",recipientPhone:phone,message});
+      setLastPrepared(`${reportLevel} report sent to ${oem.name}${recipient ? ` (${recipient.contact || "contact"})` : ""}`);
+    }catch(error){
+      setSelectedOemReports((current)=>{const next=new Set(current);next.delete(key);return next});
+      setLastPrepared(error.message||"WhatsApp delivery failed.");
+      alert(error.message||"WhatsApp delivery failed.");
+    }
+  };
+  return (
+    <section className="panel pagepanel generic whatsapp-report">
+      <header>
+        <div><h1>{navigationLabel(type)}</h1><p>{today} · {visibleRows.length} {isSite ? "sites" : "OEMs"} included</p></div>
+        <div className="whatsapp-report-actions">
+          {!isSite && <select aria-label="Filter OEMs by coalfield" value={oemRegion} onChange={(event) => setOemRegion(event.target.value)}>
+            <option value="all">All coalfields</option><option value="WCL">WCL</option><option value="NCL">NCL</option>
+          </select>}
+          <button className="whatsapp-share" onClick={share}><Send /> Share on WhatsApp</button>
+        </div>
+      </header>
+      <div className="report-summary">
+        <MessageCircle /><div>
+          <b>{metaConnection?.connected ? `Meta WhatsApp connected${metaConnection.verifiedName ? ` · ${metaConnection.verifiedName}` : ""}` : "WhatsApp-ready daily report"}</b>
+          <span>{metaConnection?.connected
+            ? `${metaConnection.displayPhoneNumber || "Business number connected"}${metaConnection.qualityRating ? ` · Quality ${metaConnection.qualityRating}` : ""}`
+            : metaConnection?.error || "Review the live data below, then share it using WhatsApp."}</span>
+        </div>
+      </div>
+      {isSite && (
+        <div className="site-report-matrix">
+          <div className="site-report-matrix-heading">
+            <div><h2>Daily site-wise reports dispatch</h2><p>Select a report to send it directly through the connected Meta WhatsApp Business number.</p></div>
+            {lastPrepared && <span>{lastPrepared}</span>}
+          </div>
+          <div className="site-report-matrix-table">
+            <ActionsTable>
+              <thead><tr><th>Sites</th>{dummyReportTypes.map((reportType) => <th key={reportType}>Report {reportType}</th>)}</tr></thead>
+              <tbody>{visibleRows.map((site) => (
+                <tr key={site.name}>
+                  <td><b>{site.name}</b><small>{employees.some((employee) => normalizeSite(employee.site) === normalizeSite(site.name)) ? "Recipient assigned" : "Recipient selected in WhatsApp"}</small></td>
+                  {dummyReportTypes.map((reportType) => {
+                    const key = `${site.name}-${reportType}`;
+                    return <td key={reportType}><input aria-label={`${site.name} report ${reportType}`} type="checkbox" checked={selectedSiteReports.has(key)} onChange={(event) => sendDummySiteReport(site, reportType, event.target.checked)} /></td>;
+                  })}
+                </tr>
+              ))}</tbody>
+            </ActionsTable>
+          </div>
+        </div>
+      )}
+      {!isSite && (
+        <div className="site-report-matrix oem-report-matrix">
+          <div className="site-report-matrix-heading">
+            <div><h2>Daily OEM report dispatch</h2><p>Select Daily or an OEM responsibility level to send the report through Meta WhatsApp Cloud API.</p></div>
+            {lastPrepared && <span>{lastPrepared}</span>}
+          </div>
+          <div className="site-report-matrix-table">
+            <ActionsTable>
+              <thead><tr><th>OEM</th>{oemReportLevels.map((level) => <th key={level}>{level}</th>)}</tr></thead>
+              <tbody>{visibleRows.map((oem) => (
+                <tr key={oem.name}>
+                  <td><b>{oem.name}</b><small>{oem.contacts} contacts · {oem.locations || "No location"}</small></td>
+                  {oemReportLevels.map((level) => {
+                    const key = `${oem.name}-${level}`;
+                    return <td key={level}><input aria-label={`${oem.name} ${level}`} type="checkbox" checked={selectedOemReports.has(key)} onChange={(event) => sendOemReport(oem, level, event.target.checked)} /></td>;
+                  })}
+                </tr>
+              ))}</tbody>
+            </ActionsTable>
+          </div>
+        </div>
+      )}
+      <div className="emptytable"><ActionsTable>
+        <thead><tr>{(isSite ? ["Site","Total equipment","On road","Off road","Idle","Open breakdowns"] : ["OEM","Contacts","Levels","Locations"]).map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
+        <tbody>{visibleRows.length ? visibleRows.map((row) => isSite ? (
+          <tr key={row.name}><td><b>{row.name}</b></td><td>{row.total}</td><td>{row.onRoad}</td><td>{row.offRoad}</td><td>{row.idle}</td><td>{row.breakdowns}</td></tr>
+        ) : (
+          <tr key={row.name}><td><b>{row.name}</b></td><td>{row.contacts}</td><td>{row.levels || "—"}</td><td>{row.locations || "—"}</td></tr>
+        )) : <tr><td colSpan={isSite ? 6 : 4} className="empty-state">No data available for this report</td></tr>}</tbody>
+      </ActionsTable></div>
+    </section>
+  );
+}
+function WhatsAppAlertHistory() {
+  const [history, setHistory] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    fetch("/api/whatsapp-alert-history", {headers:{Authorization:`Bearer ${authToken}`}})
+      .then(async (response) => {
+        const details = await response.json().catch(() => ([]));
+        if (!response.ok) throw new Error(details.error || "Could not load WhatsApp alert history.");
+        setHistory(details);
+      })
+      .catch((error) => console.error(error))
+      .finally(() => {
+        setLoaded(true);
+        window.dispatchEvent(new CustomEvent("menu-data-loaded"));
+      });
+  }, []);
+  const formatDate = (value) => formatDisplayDateTime(value);
+  return <section className="panel table pagepanel generic whatsapp-history">
+    <header><div><h1>WhatsApp alert history</h1><p>{loaded ? `${history.length} prepared alerts recorded` : "Loading alert history..."}</p></div></header>
+    <div className="emptytable"><ActionsTable>
+      <thead><tr>{["Date & time","Report type","Site / OEM","Level","Recipient","Phone","Status"].map((heading) => <th key={heading}>{heading}</th>)}</tr></thead>
+      <tbody>{history.length ? history.map((entry) => <tr key={entry.id}>
+        <td>{formatDate(entry.createdAt)}</td><td>{entry.reportType}</td><td><b>{entry.targetName}</b></td>
+        <td>{entry.reportLevel || "—"}</td><td>{entry.recipientName || "—"}</td><td>{entry.recipientPhone || "—"}</td><td><Status>{entry.status}</Status></td>
+      </tr>) : <tr><td colSpan="7" className="empty-state">{loaded ? "No WhatsApp alerts have been prepared yet" : "Loading..."}</td></tr>}</tbody>
+    </ActionsTable></div>
+  </section>;
+}
+const OriginalBreakdown = Breakdown;
+Breakdown = function BreakdownWithMasterEntry({ requests = [] }) {
+  const [manualRecords, onAdd, loaded, , , onDeleteAll, loadError, retryLoad] = useMasterRecords("Breakdown master");
+  const [equipmentRecords, , equipmentLoaded, , , , equipmentLoadError, retryEquipmentLoad] = useMasterRecords("Equipment master");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const statusTabRefs = useRef([]);
+  if ((loadError && !loaded) || (equipmentLoadError && !equipmentLoaded)) return <MasterLoadError name="Breakdown master" error={loadError || equipmentLoadError} retry={() => { retryLoad(); retryEquipmentLoad(); }} />;
+  if (!loaded || !equipmentLoaded) return <MasterLoader name="Breakdown master" />;
+  const rows = [...requests, ...manualRecords].map((request) => requestWithEquipmentMasterDetails(request, equipmentRecords));
+  const count = (status) => rows.filter((record) => requestStatusLabel(record).toLowerCase() === status.toLowerCase()).length;
+  const statusTabs = [
+    ["all", "All requests", rows.length],
+    ["Open", "Open", count("Open")],
+    ["Accepted", "Accepted", count("Accepted")],
+    ["In progress", "In progress", count("In progress")],
+    ["Awaiting parts", "Awaiting parts", count("Awaiting parts")],
+    ["Closed", "Closed", count("Closed")],
+    ["Verified", "Verified", count("Verified")],
+  ];
+  const filteredRows = statusFilter === "all"
+    ? rows
+    : rows.filter((record) => requestStatusLabel(record).toLowerCase() === statusFilter.toLowerCase());
+  const selectStatusFromKeyboard = (event, currentIndex) => {
+    const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    const nextIndex = event.key === "Home" ? 0
+      : event.key === "End" ? statusTabs.length - 1
+        : direction ? (currentIndex + direction + statusTabs.length) % statusTabs.length
+          : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    setStatusFilter(statusTabs[nextIndex][0]);
+    statusTabRefs.current[nextIndex]?.focus();
+  };
+  return (
+    <section className="panel table pagepanel">
+      <header>
+        <div>
+          <h1>Breakdown master</h1>
+          <p>Mobile User requests and Super Admin-created breakdown records</p>
+        </div>
+        <MasterActions name="Breakdown master" records={rows} onAdd={onAdd} onDeleteAll={onDeleteAll} />
+      </header>
+      <div className="tabs" role="tablist" aria-label="Breakdown request status">
+        {statusTabs.map(([value, label, total], index) => (
+          <button
+            key={value}
+            ref={(element) => { statusTabRefs.current[index] = element; }}
+            id={`breakdown-status-tab-${index}`}
+            type="button"
+            role="tab"
+            aria-selected={statusFilter === value}
+            aria-controls="breakdown-status-panel"
+            tabIndex={statusFilter === value ? 0 : -1}
+            className={statusFilter === value ? "active" : ""}
+            onClick={() => setStatusFilter(value)}
+            onKeyDown={(event) => selectStatusFromKeyboard(event, index)}
+          >
+            {label} {total}
+          </button>
+        ))}
+      </div>
+      <BreakdownTable rows={filteredRows} stickyHeader showAudio showMakeModel actionsBesideSearch statusPanelId="breakdown-status-panel" statusPanelLabelledBy={`breakdown-status-tab-${statusTabs.findIndex(([value]) => value === statusFilter)}`} />
+    </section>
+  );
+};
+const OriginalEquipment = Equipment;
+Equipment = function EquipmentWithData(props) {
+  const [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad, onDeleteSelected] = useMasterRecords("Equipment master", vehicles);
+  if (loadError && !loaded) return <MasterLoadError name="Equipment master" error={loadError} retry={retryLoad} />;
+  if (!loaded) return <MasterLoader name="Equipment master" />;
+  const addEquipment = (incoming) =>
+    onAdd(
+      incoming.map(normalizeEquipmentRecord),
+    );
+  return (
+    <OriginalEquipment
+      {...props}
+      records={records}
+      onAdd={addEquipment}
+      onEdit={(id, record) => onEdit(id, normalizeEquipmentRecord(record))}
+      onDelete={onDelete}
+      onDeleteAll={onDeleteAll}
+      onDeleteSelected={onDeleteSelected}
+    />
+  );
+};
+const OriginalGeneric = Generic;
+function PrivilegeMasterPage(props) {
+  const [users, , usersLoaded, , , , usersLoadError, retryUsersLoad] = useMasterRecords("Users & employees");
+  const syncing = useRef(""),
+    [failedSync, setFailedSync] = useState("");
+  const userOptions = Array.from(
+    new Map(
+      users
+        .filter((user) => String(user.login || "").trim())
+        .map((user) => [String(user.login).trim().toLowerCase(), user]),
+    ).values(),
+  ),
+    existingUsernames = new Set(
+      props.records.map((record) => String(record.username || "").trim().toLowerCase()).filter(Boolean),
+    ),
+    missingUsers = userOptions.filter(
+      (user) => !existingUsernames.has(String(user.login).trim().toLowerCase()),
+    ),
+    syncKey = missingUsers.map((user) => String(user.login).trim().toLowerCase()).sort().join("|");
+  useEffect(() => {
+    if (!usersLoaded || !syncKey || syncing.current === syncKey || failedSync === syncKey) return;
+    syncing.current = syncKey;
+    props.onAdd(
+      missingUsers.map((user) => ({
+        username: String(user.login).trim(),
+        userGroup: "",
+        accessType: "",
+        location: "",
+        read: false,
+        edit: false,
+        delete: false,
+        verify: false,
+        print: false,
+      })),
+      { silent: true },
+    ).catch((error) => {
+      setFailedSync(syncKey);
+      alert(error.message || "Could not load users into Privilege.");
+    });
+  }, [syncKey, failedSync]);
+  if (usersLoadError && !usersLoaded) return <MasterLoadError name="Privilege" error={usersLoadError} retry={retryUsersLoad} />;
+  if (!usersLoaded) return <MasterLoader name="Privilege" />;
+  if (missingUsers.length && failedSync !== syncKey) return <MasterLoader name="Privilege" />;
+  return <MasterPage {...props} userOptions={userOptions} siteOptions={privilegeSiteOptions} />;
+}
+// One tab per site: stored Region master rows that still list a merged legacy
+// name (e.g. "Jayant OB 2nd") collapse onto the single display name.
+const regionSites = (record = {}) => displaySiteSelection(record.sites);
+const splitPipeValues = (value = "") => String(value || "").split(/\s*\|\s*/).map((item) => item.trim()).filter(Boolean);
+
+function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenReportSettings }) {
+  const [savingKey, setSavingKey] = useState("");
+  const [editingRow, setEditingRow] = useState(null);
+  const [editingReports, setEditingReports] = useState([]);
+  const [editingSites, setEditingSites] = useState([]);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [query, setQuery] = useState("");
+  const [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  const [visibleColumnGroups, setVisibleColumnGroups] = useState(() => hierarchyColumnViewOptions.map((option) => option.key));
+  const [visibleRowGroups, setVisibleRowGroups] = useState(() => hierarchyRowViewOptions.map((option) => option.key));
+  const byDesignation = new Map(records.map((record) => [String(record.designation || "").trim().toLowerCase(), record]));
+  const defaultDesignationKeys = new Set(hierarchyDefaults.map((row) => row.designation.toLowerCase()));
+  const defaultRows = hierarchyDefaults.map((row, index) => {
+    const stored = byDesignation.get(row.designation.toLowerCase()) || {};
+    return {
+      ...row,
+      ...stored,
+      rowKey: stored.id || `default-${index}`,
+      reportAccess: normalizeHierarchyReportAccess(Object.prototype.hasOwnProperty.call(stored, "reportAccess") ? stored.reportAccess : row.reportAccess || ""),
+      siteAccess: Object.prototype.hasOwnProperty.call(stored, "siteAccess") ? stored.siteAccess : hierarchySiteTitles.join(" | "),
+    };
+  });
+  const customRows = records.filter((record) => {
+    const designation = String(record.designation || "").trim().toLowerCase();
+    return designation && !defaultDesignationKeys.has(designation);
+  }).map((record, index) => ({
+    section: record.section || "Other",
+    designation: record.designation,
+    level: record.level || "4",
+    schedule: record.schedule || "Scheduled delivery off",
+    ...record,
+    rowKey: record.id || `custom-${index}`,
+    reportAccess: normalizeHierarchyReportAccess(record.reportAccess || ""),
+    siteAccess: Object.prototype.hasOwnProperty.call(record, "siteAccess") ? record.siteAccess : hierarchySiteTitles.join(" | "),
+  }));
+  const allRows = [...defaultRows, ...customRows];
+  const visibleColumnKeys = new Set(visibleColumnGroups);
+  const visibleRowKeys = new Set(visibleRowGroups);
+  const showIdentityColumns = visibleColumnKeys.has("A");
+  const showSiteColumns = visibleColumnKeys.has("W");
+  const visibleReportGroups = hierarchyReportGroups.filter((group) => visibleColumnKeys.has(group.viewKey));
+  const visibleReportTitles = visibleReportGroups.flatMap((group) => group.reports);
+  const visibleSiteTitles = showSiteColumns ? hierarchySiteTitles : [];
+  const matrixColumnCount = (showIdentityColumns ? 4 : 0) + visibleReportTitles.length + visibleSiteTitles.length;
+  const rows = allRows.filter((row) => (
+    visibleRowKeys.has(hierarchyRowViewKey(row))
+    && matchesSmartSearch(query, row.section, row.designation, row.level, row.schedule)
+  ));
+  const toggleViewOption = (setter, key) => setter((selected) => (
+    selected.includes(key) ? selected.filter((item) => item !== key) : [...selected, key]
+  ));
+  const toggleDraftValue = (setter, value, checked) => setter((selected) => (
+    checked ? [...new Set([...selected, value])] : selected.filter((item) => item !== value)
+  ));
+  const openHierarchyEditor = (row) => {
+    setSaveError("");
+    setEditingReports(splitPipeValues(row.reportAccess));
+    setEditingSites(splitPipeValues(row.siteAccess));
+    setEditingRow(row);
+  };
+  const closeHierarchyEditor = () => {
+    setSaveError("");
+    setEditingRow(null);
+    setEditingReports([]);
+    setEditingSites([]);
+  };
+  const saveRow = async (row, updates) => {
+    const payload = {
+      section: row.section,
+      designation: row.designation,
+      level: row.level,
+      schedule: row.schedule,
+      ...(Object.prototype.hasOwnProperty.call(row, "scheduleDays") ? {scheduleDays: row.scheduleDays} : {}),
+      ...(Object.prototype.hasOwnProperty.call(row, "scheduleTimes") ? {scheduleTimes: row.scheduleTimes} : {}),
+      reportAccess: row.reportAccess || "",
+      siteAccess: row.siteAccess || "",
+      ...updates,
+    };
+    setSavingKey(row.rowKey);
+    setSaveError("");
+    try {
+      if (row.id) await onEdit(row.id, payload);
+      else await onAdd([payload], {silent:true});
+      return true;
+    } catch (error) {
+      const message = error.message || "Could not save hierarchy setting.";
+      setSaveError(message);
+      if (!editingRow) alert(message);
+      return false;
+    } finally {
+      setSavingKey("");
+    }
+  };
+  const saveHierarchyDetails = async (event) => {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const saved = await saveRow(editingRow, {
+      section: String(values.get("section") || "").trim(),
+      level: String(values.get("level") || "").trim(),
+      reportAccess: editingReports.join(" | "),
+      siteAccess: editingSites.join(" | "),
+    });
+    if (saved) {
+      setSaveMessage(`${editingRow.designation} settings saved successfully.`);
+      closeHierarchyEditor();
+    }
+  };
+  const toggleReport = (row, report, checked) => {
+    const selected = new Set(splitPipeValues(row.reportAccess));
+    if (checked) selected.add(report);
+    else selected.delete(report);
+    saveRow(row, {reportAccess:[...selected].join(" | ")});
+  };
+  const toggleSite = (row, site, checked) => {
+    const selected = new Set(splitPipeValues(row.siteAccess));
+    if (checked) selected.add(site);
+    else selected.delete(site);
+    saveRow(row, {siteAccess:[...selected].join(" | ")});
+  };
+  return (<>
+    <section className="hierarchy-master-page panel pagepanel">
+      <header>
+        <div>
+          <h1>Hierarchy &amp; report access</h1>
+          <p>Manage designations, levels, report assignments and site access. Set delivery days and times in Reports.</p>
+        </div>
+        <MasterActions name="Hierarchy master" records={allRows} onAdd={onAdd} onDeleteAll={onDeleteAll} />
+      </header>
+      <div className="hierarchy-toolbar">
+        <div className="region-main-tabs hierarchy-region-tabs" aria-label="Hierarchy site regions">
+          {hierarchySiteGroups.map((region) => (
+            <button key={region.code} type="button">
+              <Building2 />
+              <span><b>{region.code}</b><small>{region.sites.length} sites · {region.name}</small></span>
+            </button>
+          ))}
+        </div>
+        <div className="master-search-actions"><label className="region-search"><Search /><input data-smart-search type="search" placeholder="Search hierarchy" value={query} onChange={(event) => setQuery(event.target.value)} /></label><div className="master-actions-slot" ref={setActionsToolbarTarget} /></div>
+      </div>
+      {saveMessage && <div className="hierarchy-save-message" role="status"><CheckCircle2 /><span>{saveMessage}</span><button type="button" aria-label="Dismiss save confirmation" onClick={() => setSaveMessage("")}><X /></button></div>}
+      <div className="hierarchy-site-strip">
+        <MapPin />
+        <div><b>WCL and NCL site wise ticks</b><span>Select sites row-wise for report delivery and data scoping.</span></div>
+      </div>
+      <div className="hierarchy-view-controls" aria-label="Hierarchy matrix view controls">
+        <div className="hierarchy-view-group">
+          <b>Columns</b>
+          <div role="group" aria-label="Visible hierarchy column groups">
+            {hierarchyColumnViewOptions.map((option) => (
+              <label key={option.key} className={`hierarchy-view-tab ${visibleColumnKeys.has(option.key) ? "active" : ""}`} title={option.label}>
+                <input type="checkbox" checked={visibleColumnKeys.has(option.key)} onChange={() => toggleViewOption(setVisibleColumnGroups, option.key)} />
+                <span className="hierarchy-view-code">{option.key}</span>
+                <span>{option.shortLabel}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="hierarchy-view-group">
+          <b>Rows</b>
+          <div role="group" aria-label="Visible hierarchy designation groups">
+            {hierarchyRowViewOptions.map((option) => (
+              <label key={option.key} className={`hierarchy-view-tab ${visibleRowKeys.has(option.key) ? "active" : ""}`} title={option.label}>
+                <input type="checkbox" checked={visibleRowKeys.has(option.key)} onChange={() => toggleViewOption(setVisibleRowGroups, option.key)} />
+                <span className="hierarchy-view-code">{option.key}</span>
+                <span>{option.shortLabel}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="hierarchy-matrix-scroll">
+        {matrixColumnCount ? <ActionsTable className="hierarchy-matrix" toolbarTarget={actionsToolbarTarget} toolbarPortal>
+          <thead>
+            <tr className="hierarchy-group-row">
+              {showIdentityColumns && <th className="hierarchy-admin-group" colSpan="4">Hierarchy Key Whatsapp Flow</th>}
+              {visibleReportGroups.map((group) => <th key={group.group} className={group.className} colSpan={group.reports.length}>{group.group}</th>)}
+              {showSiteColumns && hierarchySiteGroups.map((region) => <th key={region.code} className="site-wise-region" colSpan={region.sites.length}>{region.code} Site Wise</th>)}
+            </tr>
+            <tr>
+              {showIdentityColumns && <>
+                <th className="hierarchy-col-section">Section</th>
+                <th className="hierarchy-col-designation">Designation</th>
+                <th className="hierarchy-col-level">Level</th>
+                <th className="hierarchy-col-schedule">Schedule</th>
+              </>}
+              {visibleReportTitles.map((report) => <th key={report} title={report}>{hierarchyReportCodes.get(report)}<small>{report}</small></th>)}
+              {showSiteColumns && hierarchySiteGroups.flatMap((region) => region.sites.map((site) => <th className="hierarchy-site-column" key={`${region.code}-${site}`} title={`${region.code} · ${site}`}>{region.code}<small>{site}</small></th>))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const reports = new Set(splitPipeValues(row.reportAccess));
+              const sites = new Set(splitPipeValues(row.siteAccess));
+              return (
+                <tr key={row.rowKey} className={row.section === "Management" ? "management" : ""}>
+                  {showIdentityColumns && <>
+                    <td className="hierarchy-col-section"><span className="hierarchy-section-pill">{row.section}</span></td>
+                    <td className="hierarchy-col-designation">
+                      <span><b>{row.designation}</b>{savingKey === row.rowKey && <small>Saving...</small>}</span>
+                      <button type="button" className="hierarchy-row-edit" title={`Edit all settings for ${row.designation}`} aria-label={`Edit all settings for ${row.designation}`} onClick={() => openHierarchyEditor(row)} disabled={savingKey === row.rowKey}><Pencil aria-hidden="true" /><span>Edit</span></button>
+                    </td>
+                    <td className="hierarchy-col-level"><span className="hierarchy-level">L{String(row.level).replace(/^L/i, "")}</span></td>
+                    <td className="hierarchy-col-schedule hierarchy-schedule"><button type="button" className="wrs-outline-button" onClick={onOpenReportSettings}>Manage in Reports</button></td>
+                  </>}
+                  {visibleReportTitles.map((report) => (
+                    <td key={report}>
+                      <input type="checkbox" aria-label={`${row.designation} ${report}`} checked={reports.has(report)} onChange={(event) => toggleReport(row, report, event.target.checked)} disabled={savingKey === row.rowKey} />
+                    </td>
+                  ))}
+                  {showSiteColumns && hierarchySiteGroups.flatMap((region) => region.sites.map((site) => (
+                    <td key={`${region.code}-${site}`}>
+                      <input type="checkbox" aria-label={`${row.designation} ${region.code} ${site}`} checked={sites.has(site)} onChange={(event) => toggleSite(row, site, event.target.checked)} disabled={savingKey === row.rowKey} />
+                    </td>
+                  )))}
+                </tr>
+              );
+            })}
+            {!rows.length && <tr><td colSpan={matrixColumnCount} className="empty-state">No hierarchy rows match this view.</td></tr>}
+          </tbody>
+        </ActionsTable> : <div className="hierarchy-view-empty">Select at least one column group to view the matrix.</div>}
+      </div>
+      {!!visibleReportTitles.length && <div className="hierarchy-report-legend">
+        {visibleReportTitles.map((report) => <span key={report}><b>{hierarchyReportCodes.get(report)}</b>{report}</span>)}
+      </div>}
+    </section>
+    {editingRow && <Modal title={`Edit hierarchy · ${editingRow.designation}`} close={closeHierarchyEditor} className="hierarchy-edit-modal">
+      <form className="form master-form" onSubmit={saveHierarchyDetails}>
+        <p className="hierarchy-edit-help">Update report assignments and site access for this hierarchy row. Delivery timing is managed in Reports → WhatsApp delivery settings.</p>
+        {saveError && <div className="hierarchy-save-error" role="alert"><AlertTriangle /><span>{saveError}</span></div>}
+        <div className="formgrid">
+          <label>Designation<input value={editingRow.designation} readOnly aria-readonly="true" /></label>
+          <label>Section *<input name="section" defaultValue={editingRow.section} required autoFocus /></label>
+          <label>Level *<select name="level" defaultValue={String(editingRow.level).replace(/^L/i, "")} required>{[1, 2, 3, 4].map((level) => <option key={level} value={level}>L{level}</option>)}</select></label>
+          <div className="wrs-note full"><strong>Report days and times</strong><p>Open Reports → WhatsApp delivery settings for role defaults, or My report schedule for your personal timing. Save any report or site access changes here before leaving.</p><button type="button" className="wrs-outline-button" onClick={onOpenReportSettings}>Open Reports</button></div>
+          <fieldset className="hierarchy-access-editor full">
+            <legend>Reporting files</legend>
+            <p>Select every report this designation should receive.</p>
+            {hierarchyReportGroups.map((group) => <section key={group.group}>
+              <h4>{group.group}</h4>
+              <div className="hierarchy-access-grid">{group.reports.map((report) => <label key={report}><input type="checkbox" name="reportAccess" value={report} checked={editingReports.includes(report)} onChange={(event) => toggleDraftValue(setEditingReports, report, event.target.checked)} /><span><b>{hierarchyReportCodes.get(report)}</b>{report}</span></label>)}</div>
+            </section>)}
+          </fieldset>
+          <fieldset className="hierarchy-access-editor full">
+            <legend>Site access</legend>
+            <p>Select every location available to this designation.</p>
+            {hierarchySiteGroups.map((region) => <section key={region.code}>
+              <h4>{region.code} · {region.name}</h4>
+              <div className="hierarchy-access-grid sites">{region.sites.map((site) => <label key={site}><input type="checkbox" name="siteAccess" value={site} checked={editingSites.includes(site)} onChange={(event) => toggleDraftValue(setEditingSites, site, event.target.checked)} /><span>{site}</span></label>)}</div>
+            </section>)}
+          </fieldset>
+        </div>
+        <footer><button type="button" onClick={closeHierarchyEditor}>Cancel</button><button className="primary" disabled={savingKey === editingRow.rowKey}><Pencil aria-hidden="true" /> {savingKey === editingRow.rowKey ? "Saving..." : "Save all changes"}</button></footer>
+      </form>
+    </Modal>}
+  </>);
+}
+
+function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, gotoEquipment }) {
+  const normalizedRegions = records.map((record, index) => ({
+    ...record,
+    code: String(record.code || record.shortName || "").trim() || `REG-${index + 1}`,
+    sitesList: regionSites(record),
+  }));
+  const [activeRegionCode, setActiveRegionCode] = useState(() => normalizedRegions[0]?.code || "WCL");
+  const activeRegion = normalizedRegions.find((region) => region.code === activeRegionCode) || normalizedRegions[0];
+  const [activeSite, setActiveSite] = useState("");
+  const [query, setQuery] = useState("");
+  const [equipmentRecords] = useMasterRecords("Equipment master", vehicles);
+  const visibleSites = (activeRegion?.sitesList || []).filter((site) => matchesSmartSearch(query, activeRegion?.name, activeRegion?.code, site));
+  useEffect(() => {
+    const nextSite = visibleSites.includes(activeSite) ? activeSite : visibleSites[0] || "";
+    if (nextSite !== activeSite) setActiveSite(nextSite);
+  }, [activeRegionCode, activeSite, visibleSites.join("|")]);
+  const siteMetrics = (site) => {
+    const siteRecords = equipmentRecords.filter((record) => recordBelongsToSite(record, site));
+    const siteRequests = requests.filter((record) => recordBelongsToSite(record, site));
+    const metrics = liveEquipmentMetrics(siteRecords, siteRequests);
+    return { total: siteRecords.length, onRoad: metrics.onRoad, offRoad: metrics.offRoad, idle: metrics.idle };
+  };
+  const regionEquipment = equipmentRecords.filter((record) => (activeRegion?.sitesList || []).some((site) => recordBelongsToSite(record, site)));
+  const regionTotals = liveEquipmentMetrics(regionEquipment, requests);
+  const selectedSiteMetrics = activeSite ? siteMetrics(activeSite) : { total: 0, onRoad: 0, offRoad: 0, idle: 0 };
+  const openEquipment = (road = "all", site = activeSite) => {
+    if (site && gotoEquipment) gotoEquipment(road, site);
+  };
+  const openRegionEquipment = (road) => {
+    if (activeRegion?.sitesList.length && gotoEquipment) gotoEquipment(road, "", "all", activeRegion.sitesList);
+  };
+  return (
+    <section className="region-master-page panel pagepanel">
+      <header>
+        <div>
+          <h1>Region master</h1>
+          <p>{normalizedRegions.length} regions configured · WCL and NCL site control center</p>
+        </div>
+        <MasterActions name="Region master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} />
+      </header>
+      <div className="region-master-toolbar">
+        <div className="region-main-tabs" role="tablist" aria-label="Region tabs">
+          {normalizedRegions.map((region) => (
+            <button key={region.code} type="button" role="tab" aria-selected={activeRegion?.code === region.code} className={activeRegion?.code === region.code ? "active" : ""} onClick={() => setActiveRegionCode(region.code)}>
+              <Building2 />
+              <span><b>{region.code}</b><small>{region.name}</small></span>
+            </button>
+          ))}
+        </div>
+        <label className="region-search"><Search /><input data-smart-search type="search" placeholder="Search sites" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      </div>
+      {activeRegion ? (
+        <>
+          <div className="region-hero">
+            <div>
+              <span>{activeRegion.code}</span>
+              <h2>{activeRegion.name}</h2>
+              <p>{activeRegion.state || "State not assigned"} · {activeRegion.sitesList.length} sites</p>
+            </div>
+            <div className="region-summary-strip">
+              <button type="button" onClick={() => openRegionEquipment("all")}><strong>{regionTotals.total}</strong><span>Total</span></button>
+              <button type="button" onClick={() => openRegionEquipment("onroad")}><strong>{regionTotals.onRoad}</strong><span>On Road</span></button>
+              <button type="button" onClick={() => openRegionEquipment("offroad")}><strong>{regionTotals.offRoad}</strong><span>Off Road</span></button>
+              <button type="button" onClick={() => openRegionEquipment("idle")}><strong>{regionTotals.idle}</strong><span>Idle</span></button>
+            </div>
+          </div>
+          <div className="region-site-tabs" role="tablist" aria-label={`${activeRegion.code} site tabs`}>
+            {visibleSites.map((site) => (
+              <button key={site} type="button" role="tab" aria-selected={activeSite === site} className={activeSite === site ? "active" : ""} onClick={() => setActiveSite(site)}>
+                <MapPin />
+                <span>{site}</span>
+              </button>
+            ))}
+          </div>
+          {activeSite ? (
+            <div className="region-site-panel">
+              <header>
+                <div>
+                  <span>Selected site</span>
+                  <h3>{activeSite}</h3>
+                </div>
+                <button className="secondary" type="button" onClick={() => openEquipment("all", activeSite)}>Open equipment <ChevronRight /></button>
+              </header>
+              <div className="region-site-metrics">
+                {[
+                  ["all", "Total equipment / vehicle", selectedSiteMetrics.total, Gauge],
+                  ["onroad", "On Road", selectedSiteMetrics.onRoad, CheckCircle2],
+                  ["offroad", "Off Road", selectedSiteMetrics.offRoad, AlertTriangle],
+                  ["idle", "Idle", selectedSiteMetrics.idle, Clock],
+                ].map(([road, label, value, Icon]) => (
+                  <button key={road} type="button" className={`region-metric ${road}`} onClick={() => openEquipment(road, activeSite)}>
+                    <Icon />
+                    <span>{label}</span>
+                    <strong>{Number(value).toLocaleString("en-IN")}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : <p className="empty-state">No sites match this search.</p>}
+        </>
+      ) : <p className="empty-state">No regions configured.</p>}
+    </section>
+  );
+}
+Generic = function GenericWithMasters(props) {
+  const name = props.name,
+    seed =
+      name === "Region master"
+        ? subsidiaryData.map((s) => ({ ...s, sites: s.sites.join(" | ") }))
+        : [],
+    [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(name, seed);
+  const masterSiteOptions = name === "Users & employees"
+    ? [...new Set([
+        ...privilegeSiteOptions,
+        ...records.flatMap((record) => userSiteSelection(record)),
+      ])]
+    : name === "Shift Master" ? privilegeSiteOptions : [];
+  if (masterFields[name] && loadError && !loaded) return <MasterLoadError name={name} error={loadError} retry={retryLoad} />;
+  if (masterFields[name] && !loaded) return <MasterLoader name={name} />;
+  return masterFields[name] ? (
+    name === "Privilege" ? (
+      <PrivilegeMasterPage name={name} records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onDeleteAll={onDeleteAll} />
+    ) : name === "Hierarchy master" ? (
+      <HierarchyMasterPage records={records} onAdd={onAdd} onEdit={onEdit} onDeleteAll={onDeleteAll} onOpenReportSettings={props.onOpenReportSettings} />
+    ) : (
+      <MasterPage name={name} records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onDeleteAll={onDeleteAll} siteOptions={masterSiteOptions} canCreateSuperAdmin={props.session?.permissions?.adminLevel==="Super Admin"} deletionApprovalRequired={[CDIR_MASTERS.employee,CDIR_MASTERS.contact].includes(name)&&!(props.session?.role==="super"&&["Admin","Super Admin"].includes(props.session?.permissions?.adminLevel))} />
+    )
+  ) : (
+    <OriginalGeneric {...props} />
+  );
+};
+const OriginalSubsidiaries = Subsidiaries;
+Subsidiaries = function SubsidiariesWithImport({ gotoEquipment, requests = [] } = {}) {
+  const [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(
+    "Region master",
+    subsidiaryData.map((s) => ({ ...s, sites: s.sites.join(" | ") })),
+  );
+  if (loadError && !loaded) return <MasterLoadError name="Region master" error={loadError} retry={retryLoad} />;
+  if (!loaded) return <MasterLoader name="Region master" />;
+  return <RegionMasterPage records={records} requests={requests} onAdd={onAdd} onDeleteAll={onDeleteAll} gotoEquipment={gotoEquipment} />;
+};
+function InfoPulseTimelineModal({ overlayClassName = "", ...props }) {
+  // Escape animated pulse rows so the lifecycle is neither clipped nor covered by sibling cards.
+  return createPortal(<Modal {...props} overlayClassName={`${overlayClassName} pulse-timeline-overlay`} />, document.body);
+}
+
+function Modal({ title, close, children, className = "", overlayClassName = "", topBar = null, headerActions = null }) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusableElements = () => Array.from(dialog.querySelectorAll(
+      'button:not(:disabled), summary, [href], input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getAttribute("aria-hidden") !== "true" && element.getClientRects().length > 0);
+    const preferredFocus = dialog.querySelector(
+      '[autofocus], form input:not([type="hidden"]):not(:disabled), form select:not(:disabled), form textarea:not(:disabled)',
+    );
+    if (!dialog.contains(document.activeElement)) (preferredFocus || dialog).focus();
+    const handleKeyDown = (event) => {
+      if (Array.from(document.querySelectorAll('.overlay > .modal[role="dialog"]')).at(-1) !== dialog) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = focusableElements();
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
+  return (
+    <div
+      className={`overlay ${overlayClassName}`.trim()}
+      onPointerDown={(e) => e.target === e.currentTarget && close()}
+    >
+      <div ref={dialogRef} tabIndex={-1} className={`modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : "Dialog"}>
+        {topBar}
+        <header>
+          <button type="button" className="modal-back-button" onClick={close} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h3>{title}</h3>
+          {className.split(" ").includes("request-timeline-modal") && <button type="button" className="request-timeline-print" onClick={() => {
+            const content = dialogRef.current?.querySelector(".request-timeline-content");
+            if (!content) return;
+            printRequestTimeline(content, typeof title === "string" ? title : "Time breakdown", `${requestTimelinePrintCss}\n${dailyUpdatesPrintCss}`);
+          }}><Printer aria-hidden="true" /><span>Smart Print</span></button>}
+          {headerActions}
+          <button type="button" onClick={close} aria-label="Close dialog">
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+function requestStartParts(start) {
+  return indiaWorkflowDateTimeParts(start || new Date());
+}
+
+function MaintenanceRemarks({ remarks = [], category = "" }) {
+  // Long histories scroll inside the cell; newest-first or oldest-first is the reader's saved choice.
+  return <DailyUpdatesList remarks={remarks} category={category} formatDateTime={formatTwelveHourDateTime} />;
+}
+
+function DailyRemarkForm({ request, close, onSave }) {
+  const displayDate = (value) => typeof formatDisplayDate === "function" ? formatDisplayDate(value) : new Date(value).toLocaleDateString("en-GB").replaceAll("/", "-");
+  const previous=[...(request.dailyRemarks||[])].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));
+  const today=displayDate(new Date());
+  const todayKey=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Kolkata",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const todayRemark=previous.filter((item)=>String(item.createdAt||"").slice(0,10)===todayKey).at(-1);
+  const history=todayRemark?previous.filter((item)=>item!==todayRemark):previous;
+  const [delayedReasonRecords]=useMasterRecords("Delayed Reason");
+  const savedDelayedReason=String(todayRemark?.delayedReason||request.delayedReason||"").trim();
+  const typeDelayedReasons=delayedReasonsForRepairType(request.category,delayedReasonRecords||[]);
+  const delayedReasonOptions=typeDelayedReasons;
+  return <Modal title={`Daily updates · ${request.ref}`} close={close}><div className="daily-update-journal">
+    {history.length>0&&<section className="daily-update-history"><header><div><b>Previous daily updates</b><span>{history.length} saved record{history.length===1?"":"s"}</span></div><span className="readonly-badge"><LockKeyhole /> Read only</span></header><DailyUpdatesPanel remarks={history} category={request.category} formatDateTime={formatTwelveHourDateTime} missingLabel="Not recorded" /></section>}
+    <form className="form daily-update-form" onSubmit={(event) => {event.preventDefault();const form=new FormData(event.currentTarget);const delayedReason=String(form.get("delayedReason")||"").trim();onSave({remark:form.get("remark"),delayReason:delayedReason,delayedReason});}}><header><span>{todayRemark?"Update today’s record":"New daily record"}</span><b>{today}</b></header>{todayRemark&&<div className="daily-update-complete"><ShieldCheck /><div><b>Today’s update can be edited</b><span>Maintenance Users can update this record until the end of today.</span></div></div>}<label>Breakdown type<input value={request.category||"Breakdown"} readOnly aria-readonly="true" /></label><label>Today’s maintenance update *<textarea name="remark" required defaultValue={todayRemark?.remark||""} placeholder="What work was completed today?" /></label><label>Delayed reason *<select name="delayedReason" required key={delayedReasonOptions.join("|")} defaultValue={delayedReasonOptions.includes(savedDelayedReason)?savedDelayedReason:""}><option value="">Select delayed reason</option>{delayedReasonOptions.map((reason)=><option key={reason} value={reason}>{reason}</option>)}</select><small>Reasons shown are for breakdown type {request.category||"Breakdown"}.</small></label><footer><button type="button" onClick={close}>Cancel</button><button className="primary">{todayRemark?"Update today’s entry":"Save today’s update"} <ChevronRight /></button></footer></form>
+  </div></Modal>;
+}
+
+function RequestRedFlagForm({ request, close, onSave, flagKind = "mis" }) {
+  const isArrival = flagKind === "arrival";
+  const savedRemark = (isArrival ? request.arrivalFlagRemark : request.misFlagRemark) || "";
+  const flaggedAt = isArrival ? request.arrivalFlaggedAt : request.misFlaggedAt;
+  const flaggedBy = isArrival ? request.arrivalFlaggedBy : request.misFlaggedBy;
+  const reportName = isArrival ? "Vehicle Arrival Red Flag Report" : "MIS Red Flag Report";
+  const [remark, setRemark] = useState(savedRemark);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submitLock = useRef(false);
+  const saved = isArrival ? hasArrivalRedFlagReason(request) : Boolean(flaggedAt);
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  return <Modal title={`${isArrival ? "Vehicle arrival" : "MIS"} red flag · ${request.ref}`} close={closeDialog}>
+    <form className="form mis-red-flag-form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (saved || submitLock.current) return;
+      const value = remark.trim();
+      if (!value || value.length > 2000) { setError("Enter a remark describing the issue (up to 2,000 characters)."); return; }
+      submitLock.current = true;
+      setSaving(true);
+      setError("");
+      try { await onSave({remark: value}); }
+      catch (failure) { setError(failure?.message || "Could not save the red flag. Please try again."); }
+      finally { submitLock.current = false; setSaving(false); }
+    }}>
+      <div className="details request-linked-details">
+        <div><span>Job reference</span><RequestTimelineButton reference={request.ref} token={authToken} Dialog={Modal} /></div>
+        <div><span>Door number</span><b>{request.door || "—"}</b></div>
+        <div><span>Site location</span><b>{request.site || "Not assigned"}</b></div>
+      </div>
+      {flaggedAt && <p>Flagged by <b>{flaggedBy || (isArrival ? "Maintenance User" : "MIS User")}</b> on {formatTwelveHourDateTime(flaggedAt, true)}.</p>}
+      {!saved && <p>{isArrival ? request.acceptedAt ? "This vehicle was accepted late. A red flag with the reason for the arrival delay is required before you can continue." : "This vehicle has been waiting for one hour. Save a red flag with the reason for the arrival delay before accepting it or continuing maintenance updates." : "Describe what is wrong with this entry."} Your remark will be saved in Reports → {reportName}.</p>}
+      <label>{saved ? "Remark" : "Remark *"}<textarea name="remark" required={!saved} maxLength={2000} value={saved ? savedRemark || "No remark recorded" : remark} readOnly={saved} disabled={saving} onChange={(event) => setRemark(event.target.value)} placeholder={isArrival ? "Enter the reason for the vehicle arrival delay" : "Describe the incorrect details or issue found during verification"} rows={5} /></label>
+      {error && <p className="mis-red-flag-error" role="alert">{error}</p>}
+      <footer><button type="button" onClick={closeDialog} disabled={saving}>{saved ? "Close" : "Cancel"}</button>{!saved && <button type="submit" className="primary mis-red-flag-submit" disabled={saving}>{saving ? "Saving…" : "Raise red flag"} <Flag /></button>}</footer>
+    </form>
+  </Modal>;
+}
+
+function TripCardCell({ request }) {
+  const [image, setImage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    if (image) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/requests/${encodeURIComponent(request.ref)}/trip-card`, {headers: {Authorization: `Bearer ${authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Trip-card image could not be loaded.");
+      setImage(result.image || "");
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  if (!request.firstTripCardUploaded) return "—";
+  return image
+    ? <a className="trip-card-history-image" href={image} target="_blank" rel="noreferrer" title="Open full trip-card image"><img src={image} alt={`Trip card for ${request.ref}`} /></a>
+    : <button type="button" className="compact" onClick={load} disabled={loading}>{loading ? "Loading…" : "View trip card"}</button>;
+}
+
+function MeterFileCell({ request, stage = "opening" }) {
+  const uploaded = stage === "closing" ? request.closingMeterFileUploaded : request.openingMeterFileUploaded;
+  const [file, setFile] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  if (!uploaded) return "—";
+  const load = async () => {
+    if (file) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/requests/${encodeURIComponent(request.ref)}/meter-file?stage=${stage}`, {headers: {Authorization: `Bearer ${authToken}`}});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "KMR/HMR file could not be loaded.");
+      setFile(result.file || "");
+      setName(result.name || `${stage}-meter-evidence`);
+    } catch (error) { alert(error.message); } finally { setLoading(false); }
+  };
+  return file
+    ? <a className="compact" href={file} target="_blank" rel="noreferrer" download={name} onClick={()=>beginDownload('Attachment').success()}>Open file</a>
+    : <button type="button" className="compact" onClick={load} disabled={loading}>{loading ? "Loading…" : "View file"}</button>;
+}
+
+function MobileWorkflowTable({ closedTimeAfterStarted = false, rows = [], showActions = false, actionsFirst = true, showStatusFilter = true, showAcceptedTime = false, showAcceptanceStatus = false, showInProgressStatus = false, showArrivalFlagData = false, showMisFlagData = false, showProductionFirstTrip = false, showComplaintAudio = false, showWorkCompletion = false, showTurnaroundTime = false, showEtc = false, showReason = true, showCreatedBy = false, showUserRole = true, showMisPeople = false, showVerifiedBy = false, showVerifiedAt = false, showClosedBy = false, showClosedAt = false, closedAtLabel = "Closing time", showTripCard = false, showMeterData = false, showMakeModel = false, highlightLateAcceptance = false, startedFirst = false, startedLabel = "Started", exportTitle = "Workflow report", onDelayedReason, onDeleteSelected, canDeleteRow, onFlagArrival, onVehicleHistory, onEdit, onDelete, onClose, onVerify, onProductionFirstTrip, onMisFlag, onRemark }) {
+  if (onDelete || onDeleteSelected || onProductionFirstTrip) showActions = true;
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+  const mobileControlsId = React.useId();
+  // Deletion: the caller decides which rows qualify (Admins may remove Idle rows too); Verified rows never qualify.
+  const lockedIdealRow = (row) => isIdleVehicleRequest(row);
+  const rowDeletable = (row) => Boolean(canDeleteRow ? canDeleteRow(row) : !lockedIdealRow(row));
+  const [selectedRefs, setSelectedRefs] = useState(() => new Set());
+  const toggleSelected = (ref, checked) => setSelectedRefs((current) => { const next = new Set(current); if (checked) next.add(ref); else next.delete(ref); return next; });
+  useEffect(() => { setSelectedRefs((current) => { const present = new Set(rows.map((row) => row.ref)); const next = new Set([...current].filter((ref) => present.has(ref))); return next.size === current.size ? current : next; }); }, [rows]);
+  // Compatibility markers for source-level workflow checks: showReason && <th>Reason</th>; showCreatedBy && <th>Created by</th>; showVerifiedBy && <th>Verified by</th>; showClosedBy && <th>Closed by</th>.
+  const [now, setNow] = useState(() => Date.now());
+  const [query, setQuery] = useState(""), [statusFilter, setStatusFilter] = useState(""), [parameterFilters, setParameterFilters] = useState({});
+  const deferredQuery = useDeferredValue(query);
+  const [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  const [openFilter, setOpenFilter] = useState(null);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const statusLabel = (row) => (showAcceptanceStatus || showInProgressStatus)
+    && String(row.acceptedAt || "").trim()
+    && ["accepted", "in progress"].includes(requestStatusLabel(row).toLowerCase())
+      ? (showAcceptanceStatus ? "Accepted" : "In progress") : requestStatusLabel(row);
+  const verifiedColumns = [
+    ...(showVerifiedBy ? [{key: "verifiedBy", label: "Verified by", value: (row) => row.verifiedBy}] : []),
+    ...(showVerifiedAt ? [
+      {key: "verifiedAt", label: "Verified date & time", value: (row) => formatTwelveHourDateTime(row.verifiedAt, true)},
+      {key: "firstTripAt", label: "First trip time", value: (row) => formatTwelveHourDateTime(firstTripTimestamp(row), true)},
+    ] : []),
+  ];
+  const closedByColumns = showClosedBy ? [{key: "closedBy", label: "Closed by", value: (row) => row.closedBy}] : [];
+  const idleDateFilter = /idle vehicles/i.test(exportTitle);
+  const [idleDateRange, setIdleDateRange] = useState("");
+  const showIdleDate = rows.some(row => isIdleVehicleRequest(row)) || idleDateFilter;
+  const idleDateColumn = {key: "idleDate", label: "Idle Vehicle Date", value: row => (row.idealRequestedAt || row.idleRequestedAt) ? formatTwelveHourDateTime(row.idealRequestedAt || row.idleRequestedAt, true) : "Not recorded"};
+  const startedColumn = {key: "start", label: startedLabel, value: (row) => formatTwelveHourDateTime(row.start)};
+  const etcColumn = {key: "etc", label: "ETC", value: (row) => row.expectedCompletionAt ? formatTwelveHourDateTime(etcDisplayValue(row)) : "—"};
+  const filterColumns = [
+    ...(showAcceptedTime ? [{key: "acceptedTime", label: "Arrival wait", value: (row) => elapsedLabel(row.start, row.acceptedAt)}] : []),
+    {key: "ref", label: "Job reference", value: (row) => row.ref},
+    {key: "equipmentGroup", label: "Equipment group", value: (row) => normalizeEquipmentGroup(row.equipmentGroup) || row.equipment},
+    {key: "door", label: "Door no.", value: (row) => row.door},
+    ...(showMisPeople ? [
+      {key: "productionPerson", label: "Production person (created)", value: (row) => row.owner || row.requesterLogin || "—"},
+      {key: "maintenanceAcceptedBy", label: "Maintenance person (accepted)", value: (row) => row.acceptedBy || "—"},
+      {key: "maintenanceClosedBy", label: "Maintenance person (closed)", value: (row) => row.closedBy || "—"},
+    ] : []),
+    ...(showMakeModel ? [{key: "make", label: "Make", value: (row) => row.make}, {key: "model", label: "Model", value: (row) => row.model}] : []),
+    {key: "site", label: "Site location", value: (row) => row.site},
+    {key: "category", label: "BD type", value: (row) => row.category},
+    ...(showMisFlagData ? [
+      {key: "misFlaggedAt", label: "MIS red flag raised", value: (row) => formatTwelveHourDateTime(row.misFlaggedAt, true)},
+      {key: "misFlaggedBy", label: "Flagged by", value: (row) => row.misFlaggedBy},
+      {key: "misFlagRemark", label: "MIS remark", value: (row) => row.misFlagRemark},
+      {key: "misVerificationStatus", label: "Verification status", value: (row) => row.verifiedAt ? "Verified" : "Awaiting verification"},
+    ] : []),
+    {key: "status", label: "Status", value: (row) => statusLabel(row)},
+    {key: "idleReason", label: "Idle reason", value: (row) => row.idleReason},
+    {key: "delayedReason", label: "Delayed reason", value: (row) => row.delayedReason},
+    ...(showReason ? [{key: "complaint", label: "BD reason", value: (row) => row.complaint}] : []),
+    ...(showCreatedBy ? [{key: "owner", label: "Created by", value: (row) => row.owner || row.requesterLogin}] : []),
+    ...(showUserRole ? [{key: "requesterRole", label: "User role", value: (row) => row.requesterRole || "—"}] : []),
+    ...(startedFirst ? [startedColumn, etcColumn, ...(showIdleDate ? [idleDateColumn] : []), ...closedByColumns, ...verifiedColumns] : [...verifiedColumns, ...closedByColumns, startedColumn, etcColumn, ...(showIdleDate ? [idleDateColumn] : [])]),
+    ...(showClosedAt ? [{key: "closedAt", label: closedAtLabel, value: (row) => formatTwelveHourDateTime(row.closedAt)}] : []),
+    ...(showArrivalFlagData ? [
+      {key: "arrivalFlaggedAt", label: "Red flag raised", value: (row) => formatTwelveHourDateTime(row.arrivalFlaggedAt)},
+      {key: "arrivalFlaggedBy", label: "Flagged by", value: (row) => row.arrivalFlaggedBy},
+      {key: "flagWaitingTime", label: "Waiting when flagged", value: (row) => elapsedLabel(row.start, row.arrivalFlaggedAt)},
+      {key: "acceptedAt", label: "Vehicle received", value: (row) => row.acceptedAt ? formatTwelveHourDateTime(row.acceptedAt) : "Not reached"},
+      {key: "arrivalDelay", label: "Arrival delay", value: (row) => elapsedLabel(row.start, row.acceptedAt || new Date(now))},
+      {key: "acceptedBy", label: "Received by", value: (row) => row.acceptedBy || "Pending"},
+    ] : []),
+    ...(showTurnaroundTime ? [{key: "hours", label: "Turn around time (TAT)", value: (row) => row.hours}] : []),
+    {key: "breakdownDays", label: "Days of BD", value: (row) => calculateBreakdownDaysUntilClose(row.start, row.closedAt, now)},
+    ...(showEtc ? [{key: "etcRemaining", label: "Time left for ETC", value: (row) => etcCountdown(row, now).summary}] : []),
+    {key: "dailyRemarks", label: "Daily remarks", value: (row) => dailyUpdatesExportText(row.dailyRemarks, { category: row.category })},
+    {key: "oemResponsibilityHistory", label: "Breakdown responsibility history", value: (row) => responsibilityHistoryText(row, formatTwelveHourDateTime)},
+    ...(showWorkCompletion ? [{key: "maintenanceWork", label: "Work completion action taken", value: (row) => row.maintenanceWork}] : []),
+    ...(showMeterData ? [
+      {key: "openingKmr", label: "Opening KMR", value: (row) => requestMeterReadings(row, "opening").KMR || "—"},
+      {key: "openingHmr", label: "Opening HMR", value: (row) => requestMeterReadings(row, "opening").HMR || "—"},
+      {key: "closingHmr", label: "Closing HMR", value: (row) => requestMeterReadings(row, "closing").HMR || "—"},
+      {key: "closingKmr", label: "Closing KMR", value: (row) => requestMeterReadings(row, "closing").KMR || "—"},
+    ] : []),
+    ...(showTripCard ? [{key: "tripCard", label: "Trip card image", value: (row) => row.firstTripCardUploaded ? "Uploaded" : "Not uploaded"}] : []),
+    ...(showProductionFirstTrip ? [
+      {key: "productionFirstTripAt", label: "Production first-trip time", value: (row) => formatTwelveHourDateTime(productionFirstTripTimestamp(row), true)},
+      {key: "productionFirstTripBy", label: "Production accepted by", value: (row) => row.productionFirstTripBy || "Pending"},
+      {key: "misFirstTripAt", label: "MIS first-trip time", value: (row) => formatTwelveHourDateTime(firstTripTimestamp(row), true)},
+      {key: "productionFirstTripRemark", label: "Production first-trip note", value: (row) => row.productionFirstTripRemark || "—"},
+    ] : []),
+    ...(showComplaintAudio ? [{key: "complaintAudio", label: "Complaint audio", value: (row) => row.complaintAudioAvailable ? "Available" : "Not available"}] : []),
+  ];
+  // Exports and prints follow the on-screen layout: the closing time sits beside Started when the table asks for it.
+  if (closedTimeAfterStarted) closedTimeAfterStartedColumns(filterColumns);
+  const filteredRows = (idleDateFilter ? filterRecordsByDate(rows, idleDateRange, row => row.idealRequestedAt || row.idleRequestedAt) : rows).filter((row) => {
+    const matchesText = matchesSmartSearch(deferredQuery, row.ref, row.equipmentGroup, row.equipment, row.door, row.make, row.model, row.site, statusLabel(row), row.idleReason, row.complaint, row.owner, row.requesterLogin, row.expectedCompletionAt, showUserRole ? row.requesterRole : "", row.acceptedBy, row.closedBy, ...(showWorkCompletion ? [row.maintenanceWork] : []), ...(showMisFlagData ? [row.misFlaggedBy, row.misFlagRemark] : []));
+    return matchesText && (!statusFilter || String(statusLabel(row) || "") === statusFilter) && tableRowMatchesFilters(row, filterColumns, parameterFilters);
+  });
+  const [sortedRows, sort, changeSort] = useSortableRows(filteredRows, defaultDurationSort(filterColumns), (row, key) => key === "status" ? requestStatusSortRank(statusLabel(row)) : key === "misVerificationStatus" ? (row.verifiedAt ? "Verified" : "Awaiting verification") : key === "productionPerson" ? row.owner || row.requesterLogin : key === "maintenanceAcceptedBy" ? row.acceptedBy : key === "maintenanceClosedBy" ? row.closedBy : key === "etc" ? etcSortValue(row) : key === "etcRemaining" ? etcRemainingSortValue(row, now) : key === "breakdownDays" ? calculateBreakdownMinutes(row.start, row.closedAt, now) : key === "hours" ? durationLabelMinutes(row.hours) : key === "acceptedTime" ? (elapsedMilliseconds(row.start, row.acceptedAt) ?? -1) : key === "flagWaitingTime" ? (elapsedMilliseconds(row.start, row.arrivalFlaggedAt) ?? -1) : key === "arrivalDelay" ? (elapsedMilliseconds(row.start, row.acceptedAt || new Date(now)) ?? -1) : key === "dailyRemarks" ? latestDailyUpdateStamp(row.dailyRemarks) : row[key]);
+  const [visibleRowLimit, setVisibleRowLimit] = useState(WORKFLOW_INITIAL_RENDER_ROWS);
+  useEffect(() => {
+    setVisibleRowLimit(WORKFLOW_INITIAL_RENDER_ROWS);
+  }, [deferredQuery, statusFilter, idleDateRange, parameterFilters, rows, sort.key, sort.direction]);
+  const visibleWorkflowRows = onDeleteSelected ? sortedRows : sortedRows.slice(0, visibleRowLimit);
+  const remainingWorkflowRows = Math.max(0, sortedRows.length - visibleWorkflowRows.length);
+  const [tableFilteredRefs, setTableFilteredRefs] = useState(null);
+  const trackFilteredRows = tableRows => {
+    const refs = tableRows.map(row => row.props["data-request-reference"]).filter(Boolean);
+    setTableFilteredRefs(current => current?.join("\n") === refs.join("\n") ? current : refs);
+  };
+  const deletionRows = sortedRows.filter(row => rowDeletable(row) && (!tableFilteredRefs || tableFilteredRefs.includes(row.ref)));
+  const selectedRows = deletionRows.filter(row => selectedRefs.has(row.ref));
+  const updateColumnFilter = (key, value) => setParameterFilters((current) => {
+    const next = { ...current };
+    if (value) next[key] = value;
+    else delete next[key];
+    return next;
+  });
+  const activeFilterColumn = openFilter ? filterColumns.find((column) => column.key === openFilter) : null;
+  const columnValues = activeFilterColumn ? {[activeFilterColumn.key]: tableColumnValues(rows, activeFilterColumn)} : {};
+  const workflowHeader = (key, label) => <FilterableHeader key={key} label={label} sortKey={key} sort={sort} onSort={changeSort} open={openFilter === key} onToggle={(filterKey) => setOpenFilter((current) => current === filterKey ? null : filterKey)} values={columnValues[key] || []} filterValue={parameterFilters[key] || ""} onFilterChange={(value) => updateColumnFilter(key, value)} />;
+  const lateAcceptanceHighlight = highlightLateAcceptance ? requestAcceptedLate : undefined;
+  const startedHeader = () => <>{workflowHeader("start", startedLabel)}{workflowHeader("etc", "ETC")}{showIdleDate && workflowHeader("idleDate", "Idle Vehicle Date")}</>;
+  const closedByHeader = () => showClosedBy && workflowHeader("closedBy", "Closed by");
+  const verifiedHeaders = () => <>{showVerifiedBy && workflowHeader("verifiedBy", "Verified by")} {showVerifiedAt && <>{workflowHeader("verifiedAt", "Verified date & time")}{workflowHeader("firstTripAt", "First trip time")}</>}</>;
+  const startedCell = (row) => <><td>{formatTwelveHourDateTime(row.start)}</td><td className="etc-cell">{etcColumn.value(row)}</td>{showIdleDate && <td>{idleDateColumn.value(row)}</td>}</>;
+  const closedByCell = (row) => showClosedBy && <td>{row.closedBy || "—"}</td>;
+  const verifiedCells = (row) => <>{showVerifiedBy && <td>{row.verifiedBy || "—"}</td>}{showVerifiedAt && <><td>{formatTwelveHourDateTime(row.verifiedAt, true)}</td><td>{formatTwelveHourDateTime(firstTripTimestamp(row), true)}</td></>}</>;
+  const workflowActions = (row, lockedIdeal) => showActions && <td className="row-actions">
+    {onFlagArrival && arrivalRedFlagRequired(row, now) && <button type="button" className="arrival-red-flag" onClick={() => onFlagArrival(row)} title="Required: record the reason for the vehicle arrival delay before proceeding"><Flag /> Red flag</button>}
+    {onFlagArrival && row.arrivalFlaggedAt && !arrivalRedFlagRequired(row, now) && <button type="button" className="arrival-flagged" onClick={() => onFlagArrival(row)} title={`Flagged ${formatTwelveHourDateTime(row.arrivalFlaggedAt)} by ${row.arrivalFlaggedBy || "Maintenance User"}`}><Flag /> View red flag</button>}
+    {onEdit && !lockedIdeal && <button type="button" onClick={() => onEdit(row)}><Pencil /> Edit</button>}
+    {onDeleteSelected && <label className="request-select" title={rowDeletable(row) ? `Select ${row.ref} for deletion` : "This request cannot be deleted"}><input type="checkbox" aria-label={`Select ${row.ref} for deletion`} checked={selectedRefs.has(row.ref)} disabled={!rowDeletable(row)} onChange={(event) => toggleSelected(row.ref, event.target.checked)} /></label>}
+    {onDelete && rowDeletable(row) && <button type="button" className="danger" onClick={() => onDelete(row)}><Trash2 /> Delete</button>}
+    {onClose && !lockedIdeal && <button type="button" className="primary" onClick={() => onClose(row)}><CheckCircle2 /> Click for onroad</button>}
+    {onRemark && String(row.status).toLowerCase() !== "closed" && !lockedIdeal && <button type="button" onClick={() => onRemark(row)}><MessageCircle /> Daily update</button>}
+    {onProductionFirstTrip && !row.productionFirstTripAt && <button type="button" className="primary" onClick={() => onProductionFirstTrip(row)}><CheckCircle2 /> First trip</button>}
+    {onVerify && <button type="button" className="primary" onClick={() => onVerify(row)}><ShieldCheck /> Verify</button>}
+    {onMisFlag && (row.misFlaggedAt || (String(row.status).toLowerCase() === "closed" && !row.verifiedAt)) && <button type="button" className="mis-red-flag" onClick={() => onMisFlag(row)} title={row.misFlaggedAt ? "View the saved MIS red flag and remark" : "Report an issue found during MIS verification"}><Flag /> {row.misFlaggedAt ? "View red flag" : "Red flag"}</button>}
+  </td>;
+  useEffect(() => {
+    if (!openFilter) return undefined;
+    const closeFilter = (event) => {
+      if (!event.target.closest?.(".column-filter-header, .column-filter-popover")) setOpenFilter(null);
+    };
+    document.addEventListener("pointerdown", closeFilter);
+    return () => document.removeEventListener("pointerdown", closeFilter);
+  }, [openFilter]);
+  return (
+    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className="table-search-toolbar"><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(statusLabel).filter(Boolean))].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}<div className="toolbar-actions-end"><div className="workflow-actions-slot" ref={setActionsToolbarTarget} />{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}<ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} highlightRow={lateAcceptanceHighlight} /></div></div><div className="scroll mobile-workflow-table">
+      <ActionsTable className="workflow-table" closedTimeAfterStarted={closedTimeAfterStarted} recordDateFilter={idleDateFilter ? { label: "Idle Vehicle Date", value: idleDateRange, onChange: setIdleDateRange } : null} toolbarTarget={actionsToolbarTarget} toolbarPortal onClearToolbarFilters={() => setStatusFilter("")} onFilteredRows={onDeleteSelected ? trackFilteredRows : null}>
+        <thead><tr>
+          {showActions && actionsFirst && <th>Actions</th>}
+          {showAcceptedTime && workflowHeader("acceptedTime", "Arrival wait")}
+          {workflowHeader("ref", "Job reference")}{workflowHeader("equipmentGroup", "Equipment group")}{workflowHeader("door", "Door no.")}{showMisPeople && <>{workflowHeader("productionPerson", "Production person (created)")}{workflowHeader("maintenanceAcceptedBy", "Maintenance person (accepted)")}{workflowHeader("maintenanceClosedBy", "Maintenance person (closed)")}</>}{showMakeModel && <>{workflowHeader("make", "Make")}{workflowHeader("model", "Model")}</>}{workflowHeader("site", "Site location")}{workflowHeader("category", "BD type")}
+          {workflowHeader("delayedReason", "Delayed reason")}
+          {workflowHeader("oemResponsibilityHistory", "Breakdown responsibility history")}
+          {showMisFlagData && <>{workflowHeader("misFlaggedAt", "MIS red flag raised")}{workflowHeader("misFlaggedBy", "Flagged by")}{workflowHeader("misFlagRemark", "MIS remark")}{workflowHeader("misVerificationStatus", "Verification status")}</>}
+          {workflowHeader("status", "Status")}{workflowHeader("idleReason", "Idle reason")}{showReason && workflowHeader("complaint", "BD reason")} {showCreatedBy && workflowHeader("owner", "Created by")}{showUserRole && workflowHeader("requesterRole", "User role")} {startedFirst ? <>{startedHeader()}{closedByHeader()}{verifiedHeaders()}</> : <>{verifiedHeaders()} {closedByHeader()}{startedHeader()}</>}{showClosedAt && workflowHeader("closedAt", closedAtLabel)}{showArrivalFlagData && <>{workflowHeader("arrivalFlaggedAt", "Red flag raised")}{workflowHeader("arrivalFlaggedBy", "Flagged by")}{workflowHeader("flagWaitingTime", "Waiting when flagged")}{workflowHeader("acceptedAt", "Vehicle received")}{workflowHeader("arrivalDelay", "Arrival delay")}{workflowHeader("acceptedBy", "Received by")}</>}{showTurnaroundTime && workflowHeader("hours", "Turn around time (TAT)")}{workflowHeader("breakdownDays", "Days of BD")}{showEtc && workflowHeader("etcRemaining", "Time left for ETC")}{workflowHeader("dailyRemarks", "Daily remarks")}{showWorkCompletion && workflowHeader("maintenanceWork", "Work completion action taken")}{showMeterData && <>{workflowHeader("openingKmr", "Opening KMR")}{workflowHeader("openingHmr", "Opening HMR")}{workflowHeader("closingHmr", "Closing HMR")}{workflowHeader("closingKmr", "Closing KMR")}</>}{showTripCard && workflowHeader("tripCard", "Trip card image")}{showProductionFirstTrip && <>{workflowHeader("productionFirstTripAt", "Production first-trip time")}{workflowHeader("productionFirstTripBy", "Production accepted by")}{workflowHeader("misFirstTripAt", "MIS first-trip time")}{workflowHeader("productionFirstTripRemark", "Production first-trip note")}</>}{showComplaintAudio && workflowHeader("complaintAudio", "Complaint audio")}{showActions && !actionsFirst && <th>Actions</th>}
+        </tr></thead>
+        <tbody>
+          {sortedRows.length ? visibleWorkflowRows.map((row) => {
+            const days = calculateBreakdownDaysUntilClose(row.start, row.closedAt, now);
+            const etcLabel = row.expectedCompletionAt ? formatTwelveHourDateTime(etcDisplayValue(row)) : "";
+            const lockedIdeal = isIdleVehicleRequest(row);
+            return <tr data-oem-responsibility={row.oemResponsibility} data-request-reference={row.ref} key={row.ref} className={requestAwaitingAcceptance(row, now) ? "request-awaiting-acceptance" : highlightLateAcceptance && requestAcceptedLate(row) ? "request-accepted-late" : ""}>
+              {actionsFirst && workflowActions(row, lockedIdeal)}
+              {showAcceptedTime && <td><b>{elapsedLabel(row.start, row.acceptedAt)}</b></td>}
+              <td><RequestTimelineButton reference={row.ref} token={authToken} Dialog={Modal} /></td>
+              <td>{normalizeEquipmentGroup(row.equipmentGroup) || row.equipment || "—"}</td>
+              <td>{row.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (onVehicleHistory) onVehicleHistory(row); else openVehicleRepairHistory(row); }} aria-label={`View repair history for door number ${row.door}`} title="View breakdown and repair history">{row.door}</a> : "—"}</td>
+              {showMisPeople && <><td>{row.owner || row.requesterLogin || "—"}</td><td>{row.acceptedBy || "—"}</td><td>{row.closedBy || "—"}</td></>}
+              {showMakeModel && <><td>{row.make || "—"}</td><td>{row.model || "—"}</td></>}
+              <td><MapPin /> {row.site || "Not assigned"}</td>
+              <td>{row.category || "—"}</td>
+              <td>{row.delayedReason || "—"}</td>
+              <td><ResponsibilityHistoryCell request={row} /></td>
+              {showMisFlagData && <><td>{formatTwelveHourDateTime(row.misFlaggedAt, true)}</td><td>{row.misFlaggedBy || "—"}</td><td className="request-reason-cell"><div className="request-reason-text">{row.misFlagRemark || "—"}</div></td><td>{row.verifiedAt ? "Verified" : "Awaiting verification"}</td></>}
+              <td><Status>{statusLabel(row) || "Open"}</Status></td>
+              <td>{row.idleReason || "—"}</td>
+              {showReason && <td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text={row.complaint} language={row.complaintLanguage} /></div>{row.complaintMediaAvailable && <ComplaintMediaView request={row} token={authToken} Dialog={Modal} />}</td>}
+              {showCreatedBy && <td>{row.owner || row.requesterLogin || "—"}</td>}{showUserRole && <td>{row.requesterRole || "—"}</td>}
+              {startedFirst ? <>{startedCell(row)}{closedByCell(row)}{verifiedCells(row)}</> : <>{verifiedCells(row)}{closedByCell(row)}{startedCell(row)}</>}
+              {showClosedAt && <td>{formatTwelveHourDateTime(row.closedAt)}</td>}
+              {showArrivalFlagData && <><td>{formatTwelveHourDateTime(row.arrivalFlaggedAt)}</td><td>{row.arrivalFlaggedBy || "—"}</td><td><b>{elapsedLabel(row.start, row.arrivalFlaggedAt)}</b></td><td>{row.acceptedAt ? formatTwelveHourDateTime(row.acceptedAt) : <span className="arrival-not-reached">Not reached</span>}</td><td><b>{elapsedLabel(row.start, row.acceptedAt || new Date(now))}</b></td><td>{row.acceptedBy || "Pending"}</td></>}
+              {showTurnaroundTime && <td><b>{row.hours || "—"}</b></td>}
+              <td><RequestTimelineButton reference={row.ref} token={authToken} Dialog={Modal} label={`${days} ${days === 1 ? "day" : "days"}`} /></td>
+              {showEtc && <td className="etc-cell"><EtcCountdown request={row} etcLabel={etcLabel} /></td>}
+              <td><MaintenanceRemarks remarks={row.dailyRemarks} category={row.category} /></td>
+              {showWorkCompletion && <td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text={row.maintenanceWork} language={row.maintenanceWorkLanguage} /></div></td>}
+              {showMeterData && <><td><b>{requestMeterReadings(row, "opening").KMR || "—"}</b><small><MeterFileCell request={row} stage="opening" /></small></td><td><b>{requestMeterReadings(row, "opening").HMR || "—"}</b></td><td><b>{requestMeterReadings(row, "closing").HMR || "—"}</b></td><td><b>{requestMeterReadings(row, "closing").KMR || "—"}</b><small><MeterFileCell request={row} stage="closing" /></small></td></>}
+              {showTripCard && <td><TripCardCell request={row} /></td>}
+              {showProductionFirstTrip && <><td>{formatTwelveHourDateTime(productionFirstTripTimestamp(row), true)}</td><td>{row.productionFirstTripBy || "Pending"}</td><td>{formatTwelveHourDateTime(firstTripTimestamp(row), true)}</td><td className="request-reason-cell"><div className="request-reason-text">{row.productionFirstTripRemark || "—"}</div></td></>}
+              {showComplaintAudio && <td className="maintenance-complaint-audio">
+                {row.complaintAudioAvailable ? <ProtectedAudio url={`/api/requests/${encodeURIComponent(row.ref)}/audio/complaint`} token={authToken} label="Complaint audio" /> : "—"}
+              </td>}
+              {!actionsFirst && workflowActions(row, lockedIdeal)}
+            </tr>;
+          }) : <tr><td colSpan={12 + (showAcceptedTime ? 1 : 0) + (showArrivalFlagData ? 6 : 0) + (showMisFlagData ? 4 : 0) + (showMakeModel ? 2 : 0) + (showReason ? 1 : 0) + (showCreatedBy ? 1 : 0) + (showUserRole ? 1 : 0) + (showMisPeople ? 3 : 0) + (showVerifiedBy ? 1 : 0) + (showVerifiedAt ? 2 : 0) + (showClosedBy ? 1 : 0) + (showClosedAt ? 1 : 0) + (showTurnaroundTime ? 1 : 0) + (showEtc ? 1 : 0) + (showMeterData ? 4 : 0) + (showTripCard ? 1 : 0) + (showProductionFirstTrip ? 4 : 0) + (showComplaintAudio ? 1 : 0) + (showWorkCompletion ? 1 : 0) + (showActions ? 1 : 0)} className="empty-state">No records available</td></tr>}
+        </tbody>
+      </ActionsTable>
+    </div>{remainingWorkflowRows > 0 && <div className="workflow-table-load-more" role="status"><span>Showing {visibleWorkflowRows.length} of {sortedRows.length} records</span><button type="button" onClick={() => setVisibleRowLimit((limit) => Math.min(limit + WORKFLOW_RENDER_BATCH, sortedRows.length))}>Show next {Math.min(WORKFLOW_RENDER_BATCH, remainingWorkflowRows)}</button></div>}</>
+  );
+}
+function MeterReadingFields({ request, stage, equipmentRecords = [], required = false, missingOnly = false }) {
+  const readings = requestMeterReadings(request, stage, equipmentRecords);
+  const title = stage === "opening" ? "Opening" : "Closing";
+  return Object.entries(readings).filter(([, reading]) => !missingOnly || !reading).map(([type, reading]) =>
+    <label key={type}>{title} {type} reading {required ? "*" : <small>Optional</small>}<input name={`${stage}${type}Reading`} type="number" min="0" step="0.01" inputMode="decimal" required={required} defaultValue={reading} placeholder={`Enter ${stage} ${type}`} /></label>,
+  );
+}
+
+function meterReadingsFromForm(form, request, stage, equipmentRecords = []) {
+  const readings = requestMeterReadings(request, stage, equipmentRecords);
+  for (const type of ["HMR","KMR"]) if (form.get(`${stage}${type}Reading`) != null) readings[type] = form.get(`${stage}${type}Reading`);
+  return Object.fromEntries(Object.entries(readings)
+    .map(([type, reading]) => [type, String(form.get(`${stage}${type}Reading`) ?? reading).trim()]));
+}
+
+function RequestEditForm({ request, equipmentRecords = [], close, onSave, onRequireArrivalFlag, onAddDailyRemark, canEditResponsibility = false, requireMeters = false, repairTypeRecords = [], repairTypesLoaded = false }) {
+  const displayTime = (value) => typeof formatDisplayTime === "function" ? formatDisplayTime(value) : String(value || "");
+  const displayDateTime = (value) => {
+    if (typeof formatDisplayDateTime === "function") return formatDisplayDateTime(value);
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T·]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return value || "—";
+    const hour = Number(match[4]);
+    return `${match[3]}-${match[2]}-${match[1].slice(-2)} ${hour % 12 || 12}:${match[5]}:${match[6] || "00"} ${hour >= 12 ? "PM" : "AM"}`;
+  };
+  const parts = requestStartParts(request.start);
+  const [time, setTime] = useState(parts.time);
+  const acceptanceTime = request.acceptedAt;
+  const initialEtc = String(request.expectedCompletionAt || "").replace(" ", "T").slice(0,16);
+  const effectiveEtcTimestamp = effectiveInfoPulseEtcTimestamp(request);
+  const displayedInitialEtc = Number.isFinite(effectiveEtcTimestamp) ? indiaDateTimeInputValue(effectiveEtcTimestamp) : initialEtc;
+  const displayedInitialEtcLabel = Number.isFinite(effectiveEtcTimestamp) ? new Date(effectiveEtcTimestamp).toISOString() : request.expectedCompletionAt;
+  const [expectedCompletionAt,setExpectedCompletionAt] = useState(initialEtc);
+  const [previousResponsibility] = useState(request.oemResponsibility || "");
+  const [formError,setFormError] = useState("");
+  const etcChanged = Boolean(initialEtc && expectedCompletionAt.slice(0,16) !== initialEtc);
+  const etcDelayed = etcChanged && expectedCompletionAt.slice(0,16) > initialEtc;
+  const [editCategory, setEditCategory] = useState(() => String(request.category || "").trim());
+  // Retain the saved/user-selected value while the master list loads or refreshes.
+  const editCategoryOptions = [...new Set([
+    ...repairTypeRecords.filter(record => record.id != null).map(record => String(record.repairType || "").trim()).filter(Boolean),
+    ...(editCategory ? [editCategory] : []),
+  ])];
+  const [delayedReasonRecords] = useMasterRecords("Delayed Reason");
+  const etcDelayedReasonOptions = etcDelayed ? delayedReasonsForRepairType(editCategory, delayedReasonRecords || []) : [];
+  const [openingMeterFile, setOpeningMeterFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  const meterType = requestMeterTypeForRequest(request, equipmentRecords);
+  const acceptingRequest = !request.acceptedAt;
+  return <Modal title={`Edit request ${request.ref}`} close={closeDialog}>
+    <form className="form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (submitLock.current) return;
+      if (arrivalRedFlagRequired(request)) { onRequireArrivalFlag?.(request); return; }
+      const form = new FormData(event.currentTarget);
+      const correctionReason = String(form.get("correctionReason") || "").trim();
+      if (acceptingRequest && !["OEM", "NON OEM"].includes(form.get("oemResponsibility"))) return setFormError("Select OEM or NON OEM before accepting the vehicle.");
+      if (!editCategory) return setFormError("Choose a breakdown type before accepting or saving this request.");
+      if (etcChanged && !correctionReason) return setFormError("Explain why the expected completion time is being changed.");
+      setFormError("");
+      submitLock.current = true;
+      setSubmitting(true);
+      try {
+        const openingMeterEvidence = openingMeterFile ? await readMeterEvidence(openingMeterFile) : "";
+        const openingMeterReadings = meterReadingsFromForm(form, request, "opening", equipmentRecords);
+        await onSave({ref: request.ref, category: editCategory, ...(form.get("oemResponsibility") ? {oemResponsibility: form.get("oemResponsibility"), ...(canEditResponsibility ? {previousResponsibility, responsibilityChangeReason: String(form.get("responsibilityChangeReason") || "").trim()} : {})} : {}), complaint: form.get("complaint"), expectedCompletionAt: form.get("expectedCompletionAt"), correctionReason, delayedReason: etcDelayed ? String(form.get("delayedReason") || "").trim() : "", meterType, openingMeterReadings, openingMeterReading: openingMeterReadings[meterType] || "", openingMeterFile: openingMeterEvidence, openingMeterFileName: openingMeterFile?.name || "", acceptRequest: acceptingRequest});
+      } catch (error) { setFormError(error?.message || "Could not save this request. Please try again."); }
+      finally { submitLock.current = false; setSubmitting(false); }
+    }}>
+      <div className="formgrid">
+        <label>Equipment group<input value={normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || ""} readOnly aria-readonly="true" /></label>
+        <label>
+          Type of breakdown *
+          <select name="category" required value={editCategory} onChange={(event) => setEditCategory(event.target.value)} disabled={!repairTypesLoaded || !repairTypeRecords.length} aria-busy={!repairTypesLoaded}>
+            <option value="" disabled>
+              {!repairTypesLoaded ? "Loading repair types..." : repairTypeRecords.length ? "Select repair type" : "No repair types available"}
+            </option>
+            {editCategoryOptions.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>Door number<input value={request.door || ""} readOnly aria-readonly="true" /></label>
+        <label>Chassis number<input value={request.chassis || ""} readOnly aria-readonly="true" /></label>
+        <label>Site location<input value={request.site || "Not assigned"} readOnly aria-readonly="true" /></label>
+        <label>Date *<DateInput name="date" required defaultValue={parts.date} readOnly aria-readonly="true" /></label>
+        <label>{request.acceptanceRequired ? "Production timing" : "Timing"} (12-hour with seconds)<input name="time" type="hidden" value={time} /><input value={displayTime(time)} readOnly aria-readonly="true" /></label>
+        {acceptingRequest && <label>Breakdown responsibility *<select name="oemResponsibility" required defaultValue={request.oemResponsibility || ""}><option value="">Select OEM or NON OEM</option><option value="OEM">OEM</option><option value="NON OEM">NON OEM</option></select></label>}
+        {request.acceptedAt && onAddDailyRemark && <MaintenanceOemChoice key={request.ref} request={request} canEdit={canEditResponsibility} />}
+        {request.acceptanceRequired && <label>Acceptance timing<input value={acceptanceTime ? formatTwelveHourDateTime(acceptanceTime, true) : "Not accepted yet"} readOnly aria-readonly="true" /><small>{request.acceptedAt ? "Vehicle accepted by Maintenance." : "The server records the actual time when you accept the vehicle."}</small></label>}
+        <MaintenanceEtcInput value={expectedCompletionAt} displayValue={displayedInitialEtc} onChange={setExpectedCompletionAt} changeUsed={request.expectedCompletionChangeUsed === true} />
+        {etcDelayed && <label className="full">Delayed reason *<select name="delayedReason" required defaultValue={etcDelayedReasonOptions.includes(request.delayedReason) ? request.delayedReason : ""} key={editCategory}><option value="">Select delayed reason</option>{etcDelayedReasonOptions.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select><small>The ETC is being pushed later. Reasons shown are for breakdown type {editCategory || "Breakdown"}.</small></label>}
+        {etcChanged && <label className="full">Reason for changing ETC *<textarea name="correctionReason" required maxLength={500} placeholder="Explain why the previous expected completion time needs to change." /><small>Previous ETC: {displayDateTime(displayedInitialEtcLabel)}. Both values, your name and this reason will be retained.</small></label>}
+        <MeterReadingFields request={request} stage="opening" equipmentRecords={equipmentRecords} required={requireMeters} />
+        <label className="full">Trip card upload (optional)<input name="openingMeterFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setOpeningMeterFile(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{openingMeterFile ? `${openingMeterFile.name} · ${(openingMeterFile.size / 1024 / 1024).toFixed(1)} MB` : request.openingMeterFileUploaded ? "Existing trip card saved · choose a file only to replace it." : "JPEG, PNG, WebP, or PDF · maximum 5 MB"}</small>{request.openingMeterFileUploaded && <MeterFileCell request={request} stage="opening" />}</label>
+        <label className="full">Reason / complaint *<textarea name="complaint" required defaultValue={request.complaint || ""} /><TranslatedText text={request.complaint} language={request.complaintLanguage} helper /></label>
+      </div>
+      {formError && <p role="alert" className="hierarchy-save-error">{formError}</p>}
+      <footer><button type="button" onClick={closeDialog} disabled={submitting}>Cancel</button><button className="primary" disabled={submitting}>{submitting ? acceptingRequest ? "Accepting…" : "Saving…" : acceptingRequest ? "Accept vehicle" : "Save changes"} <ChevronRight /></button></footer>
+    </form>
+  </Modal>;
+}
+
+function CloseRequestForm({ request, linkedRequests = [], equipmentRecords = [], close, onSave, requireMeters = false }) {
+  const displayTime = (value) => typeof formatDisplayTime === "function" ? formatDisplayTime(value) : String(value || "");
+  const displayDateTime = (value) => {
+    if (typeof formatDisplayDateTime === "function") return formatDisplayDateTime(value);
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T·]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return value || "—";
+    const hour = Number(match[4]);
+    return `${match[3]}-${match[2]}-${match[1].slice(-2)} ${hour % 12 || 12}:${match[5]}:${match[6] || "00"} ${hour >= 12 ? "PM" : "AM"}`;
+  };
+  const [formError,setFormError] = useState("");
+  const opened = requestStartParts(request.start);
+  const now = requestStartParts("");
+  const [time, setTime] = useState(now.time), [closingDate,setClosingDate]=useState(now.date),
+    [ideal,setIdeal]=useState(() => isIdleVehicleRequest(request)),
+    [idleReason,setIdleReason]=useState(() => String(request.idleReason || "").trim());
+  const [status,setStatus]=useState("Closed");
+  const [tripCardFile, setTripCardFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  const meterType = requestMeterTypeForRequest(request, equipmentRecords);
+  const openedAt=new Date(`${opened.date}T${opened.time}+05:30`),closingAt=new Date(`${closingDate}T${time}+05:30`),tatMilliseconds=Math.max(0,closingAt-openedAt);
+  const tatDays=Math.floor(tatMilliseconds/86400000),tatHours=Math.floor((tatMilliseconds%86400000)/3600000),tatMinutes=Math.floor((tatMilliseconds%3600000)/60000);
+  const turnaroundTime=`${tatDays}d ${tatHours}h ${tatMinutes}m`;
+  const storedDelayedReason=String(request.delayedReason||"").trim();
+  const linkedTickets=[request,...linkedRequests.filter(row=>row.ref!==request.ref && (request.linkedRequestReferences||[]).includes(row.ref) && !['Closed','Idle','Ideal'].includes(row.status))];
+  const [ticketPrompt,setTicketPrompt]=useState(false);
+  const [targetReferences,setTargetReferences]=useState([request.ref]);
+  const ticketDecision=useRef(false);
+  const [idlePrompt,setIdlePrompt] = useState(false);
+  const idleDecision = useRef(false);
+  const closeForm = useRef(null);
+  return <Modal title={<span className="close-request-title">Close request {request.ref}</span>} close={closeDialog}>
+    <form ref={closeForm} className="form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (submitLock.current) return;
+      if(linkedTickets.length>1 && !ticketDecision.current){setTicketPrompt(true);return;}
+      if (!idleDecision.current && status === "Closed") {
+        const onRoadTime = requestStartParts("");
+        setClosingDate(onRoadTime.date);
+        setTime(onRoadTime.time);
+        setIdlePrompt(true);
+        return;
+      }
+      if (ideal && !["No driver", "No work"].includes(idleReason)) {
+        setFormError("Choose an Idle reason: No driver or No work.");
+        return;
+      }
+      const form = new FormData(event.currentTarget);
+      setFormError("");
+      submitLock.current = true;
+      setSubmitting(true);
+      try {
+        const closingMeterFile = tripCardFile ? await readMeterEvidence(tripCardFile) : "";
+        const openingMeterReadings = meterReadingsFromForm(form, request, "opening", equipmentRecords);
+        const closingMeterReadings = meterReadingsFromForm(form, request, "closing", equipmentRecords);
+        await onSave({closingDate: form.get("closingDate"), closingTime: form.get("closingTime"), correctionReason: String(form.get("correctionReason") || "").trim(), turnaroundTime, maintenanceWork: form.get("maintenanceWork"), maintenanceAudio: form.get("maintenanceAudio"), maintenanceWorkLanguage: form.get("maintenanceWorkLanguage"), resolvedIssues:(form.getAll?.("resolvedIssues") || []).map(Number), ...(linkedTickets.length>1 ? {targetReferences,resolvedIssuesByReference:Object.fromEntries(linkedTickets.filter(row=>targetReferences.includes(row.ref)).map(row=>[row.ref,status==="Closed" ? (row.issues||[]).map((_,index)=>index) : row.ref===request.ref ? (form.getAll?.("resolvedIssues")||[]).map(Number) : (row.issues||[]).flatMap((issue,index)=>issue.resolved?[index]:[])]))} : {}), status, ideal, idleReason: ideal ? idleReason : "", delayedReason: storedDelayedReason, meterType, openingMeterReadings, openingMeterReading: openingMeterReadings[meterType] || "", closingMeterReadings, closingMeterReading: closingMeterReadings[meterType] || "", closingMeterFile, closingMeterFileName: tripCardFile?.name || ""});
+      } catch (error) { setFormError(error?.message || "Could not save the maintenance update. Please try again."); }
+      finally { submitLock.current = false; setSubmitting(false); }
+    }}>
+      <div className="details request-linked-details">
+        <div><span>Equipment group</span><b>{normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || "—"}</b></div>
+        <div><span>Door number</span><b>{request.door || "—"}</b></div>
+        <div><span>Chassis number</span><b>{request.chassis || "—"}</b></div>
+        {request.linkedRequestReferences?.length>0 && <div><span>Linked requests</span><b>{request.linkedRequestReferences.join(", ")}</b></div>}
+        <div><span>Site location</span><b>{request.site || "Not assigned"}</b></div>
+        <div><span>Category</span><b>{request.category || "Maintenance request"}</b></div>
+        <div><span>Started</span><b>{displayDateTime(request.start)}</b></div>
+        <div><span>ETC</span><b>{request.expectedCompletionAt ? displayDateTime(request.expectedCompletionAt) : "Not set"}</b></div>
+        <div><span>Opening readings</span><b>{requestMeterReadingLabel(request, "opening")}</b><MeterFileCell request={request} stage="opening" /></div>
+        <div><span>Closing readings</span><b>{requestMeterReadingLabel(request, "closing")}</b><MeterFileCell request={request} stage="closing" /></div>
+        <div><span>Reason / complaint</span><b><TranslatedText text={request.complaint} language={request.complaintLanguage} /></b>{request.complaintMediaAvailable && <ComplaintMediaView request={request} token={authToken} Dialog={Modal} />}</div>
+        <div className="request-complaint-audio"><span>Production complaint audio</span>{request.complaintAudioAvailable ? <ProtectedAudio url={`/api/requests/${encodeURIComponent(request.ref)}/audio/complaint`} token={authToken} label="Complaint audio" /> : <b>—</b>}</div>
+      </div>
+      <div className="formgrid">
+        <MeterReadingFields request={request} stage="opening" equipmentRecords={equipmentRecords} missingOnly required={requireMeters} />
+        <MeterReadingFields request={request} stage="closing" equipmentRecords={equipmentRecords} required={requireMeters} />
+        <label className="full">Trip card upload <small>Optional</small><input name="closingMeterFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setTripCardFile(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{tripCardFile ? `${tripCardFile.name} · ${(tripCardFile.size / 1024 / 1024).toFixed(1)} MB` : request.closingMeterFileUploaded ? "Existing trip card saved · choose a file only to replace it." : "JPEG, PNG, WebP, or PDF · maximum 5 MB"}</small></label>
+        <label>Closing date *<DateInput name="closingDate" required value={closingDate} readOnly aria-readonly="true" /></label>
+        <label>Closing time (12-hour with seconds) *<input name="closingTime" type="hidden" value={time} /><input value={displayTime(time)} readOnly aria-readonly="true" /></label>
+        {request.closedAt && <label className="full">Reason for correcting the recorded closing time *<textarea name="correctionReason" required maxLength={500} /><small>This active entry already has a closing time: {displayDateTime(request.closedAt)}. The original and replacement will be retained.</small></label>}
+        <label>Turn around time (TAT)<input value={turnaroundTime} readOnly /></label>
+      {request.issues?.length>0 && <fieldset className="full"><legend>Outstanding issues — mark fixed issues</legend>{request.issues.map((issue,index)=><label key={index}><input type="checkbox" name="resolvedIssues" value={index} defaultChecked={issue.resolved} disabled={issue.resolved} />{issue.reason}{issue.resolved?" (fixed)":""}</label>)}</fieldset>}
+        {status==="Running BD" && <p className="full">The vehicle will go to MIS for verification; the ticket remains open until all issues are fixed.</p>}
+        <label>Status *<select name="status" disabled={submitting} value={status} onChange={event=>{setStatus(event.target.value);if(event.target.value==="Running BD")setIdeal(false)}}><option value="Closed">On road — maintenance completed</option><option value="Running BD">On road with breakdown — Running BD</option></select></label>
+        <EnhancedSpeechComplaint
+          label="Things done in maintenance *"
+          name="maintenanceWork"
+          audioName="maintenanceAudio"
+          buttonLabel="Speak maintenance update"
+          placeholder="Describe the work completed, or select Hindi / English and speak in that language."
+        />
+      </div>
+      {formError && <p role="alert" className="hierarchy-save-error">{formError}</p>}
+      <footer><button type="button" onClick={closeDialog} disabled={submitting}>Cancel</button><button className="primary" disabled={submitting}>{submitting ? "Saving…" : "On road"} <ChevronRight /></button></footer>
+  {ticketPrompt && <Modal className="linked-request-picker" title="Choose requests to update" close={()=>setTicketPrompt(false)}>
+    <div className="linked-picker-body">
+      <div className="linked-picker-intro"><span className="linked-picker-icon"><Wrench size={22}/></span><div><strong>{status==="Closed" ? "Which repairs are complete?" : "Which requests are returning on road?"}</strong><p>{status==="Closed" ? "Select one or both requests. Selected tickets will close and go to MIS for verification." : "Selected tickets will move to Running BD. Outstanding issues remain open."}</p></div></div>
+      <div className="linked-picker-toolbar"><span role="status" aria-live="polite"><strong>{targetReferences.length}</strong> of {linkedTickets.length} selected</span><button type="button" className="linked-picker-select-all" onClick={()=>setTargetReferences(linkedTickets.map(row=>row.ref))}>Select all requests</button></div>
+      <fieldset className="linked-picker-list"><legend className="sr-only">Linked requests</legend>{linkedTickets.map(row=><label className={`linked-picker-card${targetReferences.includes(row.ref)?" is-selected":""}`} key={row.ref}>
+        <input type="checkbox" checked={targetReferences.includes(row.ref)} onChange={event=>setTargetReferences(current=>event.target.checked?[...current,row.ref]:current.filter(ref=>ref!==row.ref))}/>
+        <span className="linked-picker-ticket"><span className="linked-picker-ticket-header"><strong>{row.ref}</strong><span className={`linked-picker-status${row.status==="Running BD"?" is-running-bd":""}`}>{row.status}</span></span><span className="linked-picker-reason">{row.complaint}</span><span className="linked-picker-visit">{row.ref===request.ref?"Current request":"Linked request"}{row.door?` · ${row.door}`:""}</span></span>
+      </label>)}</fieldset>
+      <p className="linked-picker-note"><ShieldCheck size={16}/><span>Unselected requests keep their current status.</span></p>
+    </div>
+    <footer className="linked-picker-footer"><button type="button" onClick={()=>setTicketPrompt(false)}>Back</button><button type="button" className="primary" disabled={!targetReferences.length} onClick={()=>{ticketDecision.current=true;setTicketPrompt(false);closeForm.current?.requestSubmit();}}>Continue with {targetReferences.length || "selected"} {targetReferences.length===1?"request":"requests"}<ChevronRight size={18}/></button></footer>
+  </Modal>}
+  {idlePrompt && <Modal title="On road — move vehicle to Idle?" close={() => { if (!submitting) { setIdlePrompt(false); idleDecision.current=false; } }}>
+      {status==="Running BD" ? <p>The vehicle will go to MIS for verification. This ticket remains open until every issue is fixed.</p> : <p>The maintenance request will be Closed. Choose whether the vehicle should now be Idle.</p>}
+
+      <fieldset className="ideal-choice full" disabled={submitting}>
+          <legend>Idle? <small>Optional</small></legend>
+          <div className="idle-options">
+            <label className={`idle-option${ideal ? " selected" : ""}`}>
+              <input type="radio" name="idealChoice" value="yes" checked={ideal} onChange={()=>setIdeal(true)} />
+              <span>Yes</span>
+            </label>
+            <label className={`idle-option${!ideal ? " selected" : ""}`}>
+              <input type="radio" name="idealChoice" value="no" checked={!ideal} onChange={()=>setIdeal(false)} />
+              <span>No</span>
+            </label>
+          </div>
+          {ideal && <>
+            <label className="idle-reason-field">Idle reason *
+              <select name="idleReason" required value={idleReason} aria-describedby="maintenance-idle-summary" onChange={(event)=>setIdleReason(event.target.value)}>
+                <option value="">Select idle reason</option><option>No driver</option><option>No work</option>
+              </select>
+            </label>
+            <div id="maintenance-idle-summary" className="idle-summary" role="status">
+              {idleReason && <strong>Selected idle reason: {idleReason}</strong>}
+              <span>Maintenance is complete. The vehicle will remain Idle until an assigned manager approves Make on road. Idle waiting will not extend maintenance TAT.</span>
+            </div>
+          </>}
+        </fieldset>
+      {formError && <p role="alert" className="hierarchy-save-error">{formError}</p>}
+      <footer><button type="button" disabled={submitting} onClick={() => { setIdlePrompt(false); idleDecision.current=false; }}>Back</button><button type="button" className="primary" disabled={submitting} onClick={() => { idleDecision.current=true; closeForm.current?.requestSubmit(); }}>{submitting ? "Saving…" : ideal ? "Close request and mark vehicle Idle" : "Close request — On road"}</button></footer>
+  </Modal>}
+    </form>
+  </Modal>;
+}
+
+function VerifyRequestForm({ request, equipmentRecords = [], close, onSave }) {
+  const displayDateTime = (value) => {
+    if (typeof formatDisplayDateTime === "function") return formatDisplayDateTime(value);
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T·]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return value || "—";
+    const hour = Number(match[4]);
+    return `${match[3]}-${match[2]}-${match[1].slice(-2)} ${hour % 12 || 12}:${match[5]}:${match[6] || "00"} ${hour >= 12 ? "PM" : "AM"}`;
+  };
+  const [formError,setFormError] = useState("");
+  const today = requestStartParts("");
+  const [firstTripDone] = useState(true);
+  const [tripCardFile, setTripCardFile] = useState(null);
+  const [tripCardPreview, setTripCardPreview] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  useEffect(() => () => { if (tripCardPreview) URL.revokeObjectURL(tripCardPreview); }, [tripCardPreview]);
+  const fileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read the trip-card image."));
+    reader.readAsDataURL(file);
+  });
+  return <Modal title={`Verify closed request ${request.ref}`} close={closeDialog}>
+    <form className="form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (submitLock.current) return;
+      const form = new FormData(event.currentTarget);
+      if (!tripCardFile) return setFormError("Upload the first-trip card image.");
+      if (tripCardFile && (!['image/jpeg', 'image/png', 'image/webp'].includes(tripCardFile.type) || tripCardFile.size > 5 * 1024 * 1024)) {
+        return setFormError("Upload a JPEG, PNG, or WebP trip-card image up to 5 MB.");
+      }
+      setFormError("");
+      submitLock.current = true;
+      setSubmitting(true);
+      try {
+        const firstTripCardImage = await fileAsDataUrl(tripCardFile);
+        const closingMeterReadings = meterReadingsFromForm(form, request, "closing", equipmentRecords);
+        // Verification does not change the request's saved primary meter type.
+        // The master can classify a tipper as Equipment (HMR), while the saved
+        // request uses KMR. Keep the legacy scalar tied to the server's type.
+        const meterType = ["HMR", "KMR"].includes(request.meterType) ? request.meterType : "HMR";
+        await onSave({firstTripDone, firstTripDate: form.get("firstTripDate"), firstTripTime: form.get("firstTripTime"), correctionReason: String(form.get("correctionReason") || "").trim(), firstTripRemark: String(form.get("firstTripRemark") || "").trim(), firstTripCardImage, closingMeterReadings, closingMeterReading: closingMeterReadings[meterType] || ""});
+      } catch (error) {
+        setFormError(error?.message || "Could not verify this request. Please try again.");
+      } finally {
+        submitLock.current = false;
+        setSubmitting(false);
+      }
+    }}>
+      <div className="details request-linked-details">
+        <div><span>Equipment group</span><b>{normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || "—"}</b></div>
+        <div><span>Door number</span><b>{request.door || "—"}</b></div>
+        <div><span>Chassis number</span><b>{request.chassis || "—"}</b></div>
+        <div><span>Site location</span><b>{request.site || "Not assigned"}</b></div>
+        <div><span>Closed at</span><b>{displayDateTime(request.closedAt)}</b></div>
+        <div><span>Maintenance work</span><b><TranslatedText text={request.maintenanceWork} language={request.maintenanceWorkLanguage} /></b></div>
+        <div><span>Opening readings</span><b>{requestMeterReadingLabel(request, "opening")}</b><MeterFileCell request={request} stage="opening" /></div>
+      </div>
+      <div className="formgrid"><VerificationTimeField /></div>
+      <label className="first-trip-check"><input type="checkbox" checked={firstTripDone} readOnly disabled /> First trip done by MIS</label>
+      <div className="formgrid">
+        {firstTripDone && <>
+          <label>First trip date *<DateInput name="firstTripDate" required defaultValue={today.date} /><small>Enter the actual trip date. It must not be earlier than closure or in the future.</small></label>
+          <label>First trip time (12-hour with seconds) *<TwelveHourTimeInput name="firstTripTime" includeSeconds required defaultValue={today.time} /></label>
+        </>}
+        <MeterReadingFields request={request} stage="closing" equipmentRecords={equipmentRecords} required />
+        {request.firstTripAt && <label className="full">Reason for correcting the recorded first-trip time *<textarea name="correctionReason" required maxLength={500} /><small>This unverified entry already has a first-trip time: {request.firstTripAt}. Any replacement or removal will retain the original value.</small></label>}
+        <label className="full">First trip card image *
+          <input name="firstTripCardImage" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => {
+            const file = event.target.files?.[0] || null;
+            if (tripCardPreview) URL.revokeObjectURL(tripCardPreview);
+            setTripCardFile(file);
+            setTripCardPreview(file ? URL.createObjectURL(file) : "");
+          }} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button>
+          <small>JPEG, PNG or WebP · maximum 5 MB</small>
+          {tripCardPreview && <img className="trip-card-preview" src={tripCardPreview} alt="First trip card preview" />}
+        </label>
+        <label className="full">Trip-card update remark (optional)
+          <textarea name="firstTripRemark" rows={3} maxLength={2000} defaultValue={request.firstTripRemark || ""} placeholder="Add a remark about any delay in updating the trip card." />
+        </label>
+      </div>
+      {formError && <p role="alert" className="hierarchy-save-error">{formError}</p>}
+      <footer><button type="button" onClick={closeDialog} disabled={submitting}>Cancel</button><button className="primary" disabled={submitting}>{submitting ? "Verifying…" : "Verify request"} <ChevronRight /></button></footer>
+    </form>
+  </Modal>;
+}
+
+function ProductionFirstTripForm({ request, close, onSave }) {
+  const displayDateTime = (value) => typeof formatDisplayDateTime === "function" ? formatDisplayDateTime(value) : String(value || "—");
+  const today = requestStartParts("");
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const closeDialog = () => { if (!submitLock.current) close(); };
+  return <Modal title={`Production first trip · ${request.ref}`} close={closeDialog}>
+    <form className="form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (submitLock.current) return;
+      const form = new FormData(event.currentTarget);
+      const remark = String(form.get("productionFirstTripRemark") || "").trim();
+      if (!remark) return setFormError("Enter the work-start note before saving.");
+      setFormError("");
+      submitLock.current = true;
+      setSubmitting(true);
+      try {
+        await onSave({
+          firstTripDate: form.get("firstTripDate"),
+          firstTripTime: form.get("firstTripTime"),
+          productionFirstTripRemark: remark,
+        });
+      } catch (error) {
+        setFormError(error?.message || "Could not save the production first trip. Please refresh and try again.");
+      } finally {
+        submitLock.current = false;
+        setSubmitting(false);
+      }
+    }}>
+      <div className="details request-linked-details">
+        <div><span>Equipment group</span><b>{normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || "—"}</b></div>
+        <div><span>Door number</span><b>{request.door || "—"}</b></div>
+        <div><span>Chassis number</span><b>{request.chassis || "—"}</b></div>
+        <div><span>Site location</span><b>{request.site || "Not assigned"}</b></div>
+        <div><span>Made on road by Maintenance</span><b>{displayDateTime(request.closedAt)}</b></div>
+        <div><span>Maintenance closed by</span><b>{request.closedBy || "—"}</b></div>
+      </div>
+      <div className="formgrid">
+        <label>Production first-trip date *<DateInput name="firstTripDate" required defaultValue={today.date} /><small>Enter when the vehicle/equipment actually started work after Maintenance made it on road.</small></label>
+        <label>Production first-trip time (12-hour with seconds) *<TwelveHourTimeInput name="firstTripTime" includeSeconds required defaultValue={today.time} /></label>
+        <label className="full">Production first-trip note *<textarea name="productionFirstTripRemark" required maxLength={1000} placeholder="Example: Vehicle started loading work / first dispatch started / no driver assigned but unit received." /></label>
+      </div>
+      {formError && <p role="alert" className="hierarchy-save-error">{formError}</p>}
+      <footer><button type="button" onClick={closeDialog} disabled={submitting}>Cancel</button><button className="primary" disabled={submitting}>{submitting ? "Saving…" : "Save first trip"} <ChevronRight /></button></footer>
+    </form>
+  </Modal>;
+}
+
+const ticketCategories = ["General", "Production", "Maintenance", "MIS", "Equipment", "System access"];
+function readTicketAttachment(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve("");
+    const supported = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/quicktime"];
+    if (!supported.includes(file.type) || file.size > 10 * 1024 * 1024) return reject(new Error("Upload a JPEG, PNG, WebP, MP4, WebM, or MOV file up to 10 MB."));
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read the selected attachment."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function TicketCreateForm({ session, close, onCreated }) {
+  const [attachment, setAttachment] = useState(null), [saving, setSaving] = useState(false), [error, setError] = useState("");
+  const [ticketSites, setTicketSites] = useState([]), [sitesLoaded, setSitesLoaded] = useState(session?.role === "super");
+  useEffect(() => {
+    if (session?.role === "super") return;
+    let active = true;
+    fetch("/api/me/profile", {headers: {Authorization: `Bearer ${session.token}`}})
+      .then(async (response) => {if (!response.ok) throw new Error("Could not load your assigned sites."); return response.json();})
+      .then((profile) => {if (active) {setTicketSites(userSiteSelection(profile)); setSitesLoaded(true);}})
+      .catch((error) => {if (active) setError(error.message);});
+    return () => {active = false;};
+  }, [session?.token, session?.role]);
+  const submitLock = useRef(false), formScope = useRef(0);
+  useEffect(() => {
+    formScope.current += 1;
+    submitLock.current = false;
+    setSaving(false);
+    setError("");
+    return () => { formScope.current += 1; };
+  }, [session.token]);
+  const dismiss = () => { if (!submitLock.current) close(); };
+  const submit = async (event) => {
+    event.preventDefault();
+    if (submitLock.current) return;
+    const form = new FormData(event.currentTarget);
+    const message = String(form.get("message") || "").trim();
+    const messageAudio = String(form.get("messageAudio") || "");
+    if (!message && !messageAudio) return setError("Write a message or record an audio message.");
+    const scope = formScope.current;
+    submitLock.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const attachmentData = await readTicketAttachment(attachment);
+      if (scope !== formScope.current) return;
+      const response = await fetch("/api/tickets", {
+        method: "POST",
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${session.token}`},
+        body: JSON.stringify({site: form.get("site"), priority: form.get("priority"), message, messageAudio, attachmentData, attachmentName: attachment?.name || "", attachmentType: attachment?.type || ""}),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not create the ticket.");
+      if (scope !== formScope.current) return;
+      onCreated(result);
+      close();
+    } catch (error) { if (scope === formScope.current) setError(error.message || "Could not create the ticket."); }
+    finally { if (scope === formScope.current) { submitLock.current = false; setSaving(false); } }
+  };
+  return <Modal title="Create support ticket" close={dismiss}>
+    <form className="form ticket-form" onSubmit={submit}>
+      <div className="formgrid">
+        {session?.role !== "super" && <label className="full">Site *<select key={ticketSites.join("|")} name="site" required defaultValue={ticketSites.length === 1 ? ticketSites[0] : ""} disabled={!sitesLoaded}>
+          <option value="" disabled>{sitesLoaded ? "Select a site" : "Loading assigned sites…"}</option>
+          {ticketSites.map((site) => <option key={site} value={site}>{site}</option>)}
+        </select></label>}
+
+        <label className="full">Priority *<select name="priority" required defaultValue="Medium"><option>Low</option><option>Medium</option><option>High</option></select></label>
+        <EnhancedSpeechComplaint label="Description" name="message" audioName="messageAudio" buttonLabel="Record ticket audio" placeholder="Describe the issue, or select Hindi / English and speak in that language." required={false} />
+        <label className="full ticket-attachment-field"><span>Image or video attachment</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{attachment ? `${attachment.name} · ${(attachment.size / 1024 / 1024).toFixed(1)} MB` : "Optional · JPEG, PNG, WebP, MP4, WebM, or MOV · maximum 10 MB"}</small></label>
+      </div>
+      {error && <p className="hierarchy-save-error" role="alert">{error}</p>}
+      <footer><button type="button" disabled={saving} onClick={dismiss}>Cancel</button><button className="primary" disabled={saving || !sitesLoaded || (session?.role !== "super" && !ticketSites.length)}>{saving ? "Creating…" : "Create ticket"} <Send /></button></footer>
+    </form>
+  </Modal>;
+}
+
+function TicketMedia({ url, token, name, type, label }) {
+  return <ProtectedAttachment url={url} token={token} fileName={name} contentType={type} label={`${label} attachment`} />;
+}
+
+function TicketAttachment({ ticket, token }) {
+  if (!ticket.attachmentAvailable) return "—";
+  return <TicketMedia url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/attachment`} token={token} name={ticket.attachmentName} type={ticket.attachmentType} label="Ticket" />;
+}
+
+function TicketResolutionForm({ ticket, session, close, onResolved }) {
+  const [attachment, setAttachment] = useState(null), [saving, setSaving] = useState(false), [error, setError] = useState("");
+  const submitLock = useRef(false), formScope = useRef(0);
+  useEffect(() => {
+    formScope.current += 1;
+    submitLock.current = false;
+    setSaving(false);
+    setError("");
+    return () => { formScope.current += 1; };
+  }, [session.token, ticket.reference]);
+  const dismiss = () => { if (!submitLock.current) close(); };
+  const submit = async (event) => {
+    event.preventDefault();
+    if (submitLock.current) return;
+    const form = new FormData(event.currentTarget);
+    const resolutionMessage = String(form.get("resolutionMessage") || "").trim();
+    const resolutionAudio = String(form.get("resolutionAudio") || "");
+    if (!resolutionMessage && !resolutionAudio) return setError("Write a resolution message or record resolution audio.");
+    const scope = formScope.current;
+    submitLock.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const resolutionAttachmentData = await readTicketAttachment(attachment);
+      if (scope !== formScope.current) return;
+      const response = await fetch("/api/tickets/resolve", {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${session.token}`},
+        body: JSON.stringify({reference: ticket.reference, resolutionMessage, resolutionAudio, resolutionAttachmentData, resolutionAttachmentName: attachment?.name || "", resolutionAttachmentType: attachment?.type || ""}),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not resolve the ticket.");
+      if (scope !== formScope.current) return;
+      onResolved(result);
+      close();
+    } catch (error) { if (scope === formScope.current) setError(error.message || "Could not resolve the ticket."); }
+    finally { if (scope === formScope.current) { submitLock.current = false; setSaving(false); } }
+  };
+  return <Modal title={`Resolve ${ticket.reference}`} close={dismiss}>
+    <form className="form ticket-resolution-form" onSubmit={submit}>
+      <EnhancedSpeechComplaint label="Resolution message" name="resolutionMessage" audioName="resolutionAudio" buttonLabel="Record resolution audio" placeholder="Explain the resolution, or select Hindi / English and speak in that language." required={false} />
+      <label className="ticket-attachment-field"><span>Resolution image or video</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{attachment ? `${attachment.name} · ${(attachment.size / 1024 / 1024).toFixed(1)} MB` : "Optional · JPEG, PNG, WebP, MP4, WebM, or MOV · maximum 10 MB"}</small></label>
+      {error && <p className="hierarchy-save-error" role="alert">{error}</p>}
+      <footer><button type="button" disabled={saving} onClick={dismiss}>Cancel</button><button className="primary" disabled={saving}>{saving ? "Resolving…" : "Resolve ticket"} <CheckCircle2 /></button></footer>
+    </form>
+  </Modal>;
+}
+
+function AdminLockManagement({session}){
+  const [data,setData]=useState({locked:false,incidents:[],accounts:[]});
+  const [loading,setLoading]=useState(true);
+  const load=async()=>{setLoading(true);try{const response=await fetch('/api/admin-locks',{headers:{Authorization:`Bearer ${session.token}`}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Could not load admin locks');setData(body)}catch(error){alert(error.message)}finally{setLoading(false)}};
+  useEffect(()=>{load()},[session.token]);
+  const unlock=async()=>{if(!window.confirm('Unlock all Admin and Non Admin Manager accounts for the current CRM lock incidents?'))return;const response=await fetch('/api/admin-locks/unlock',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});const body=await response.json();if(!response.ok)return alert(body.error||'Could not unlock accounts');await load()};
+  return <section className="admin-lock-page"><header><div><small>SUPER ADMIN CONTROL</small><h1>Admin account locks</h1><p>{data.paused?'The 72-hour overdue-ticket account-locking rule is temporarily paused. Admin and Manager logins will not be blocked by overdue CRM tickets.':'CRM tickets created from 28 August 2026 that remain open for 72 hours lock every Admin and Non Admin Manager login.'}</p></div><ShieldCheck /></header>
+    {loading?<p>Loading lock status…</p>:<><div className={`admin-lock-status ${data.locked?'locked':'clear'}`}><div><b>{data.paused?'Automatic ticket locking is paused':data.locked?'Admin logins are locked':'Admin logins are available'}</b><span>{data.paused?'Existing lock incidents are preserved but do not block login while paused. Tickets and other account security rules are unchanged.':data.locked?`${data.incidents.length} overdue CRM ticket incident${data.incidents.length===1?'':'s'} active`:'No active 72-hour CRM lock incident'}</span></div>{data.locked&&!data.paused&&<button className="primary" onClick={unlock}>Unlock all accounts</button>}</div>
+    {data.locked&&<><h2>Triggering CRM tickets</h2><div className="emptytable"><ActionsTable><thead><tr><th>Ticket reference</th><th>Ticket created</th><th>Locked at</th></tr></thead><tbody>{data.incidents.map(row=><tr key={row.ticketReference}><td><b>{row.ticketReference}</b></td><td>{formatTwelveHourDateTime(row.ticketCreatedAt)}</td><td>{formatTwelveHourDateTime(row.lockedAt)}</td></tr>)}</tbody></ActionsTable></div><h2>Locked accounts</h2><div className="emptytable"><ActionsTable><thead><tr><th>Login</th><th>Employee</th><th>Authority</th></tr></thead><tbody>{data.accounts.map(row=><tr key={row.id}><td><b>{row.login}</b></td><td>{row.employee||'—'}</td><td>{row.adminLevel==='Manager'?'Non Admin Manager':row.adminLevel}</td></tr>)}</tbody></ActionsTable></div></>}</>}
+  </section>;
+}
+
+function TicketPage({ session }) {
+  const displayDateTime = (value) => {
+    if (typeof formatDisplayDateTime === "function") return formatDisplayDateTime(value);
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T·]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return value || "—";
+    const hour = Number(match[4]);
+    return `${match[3]}-${match[2]}-${match[1].slice(-2)} ${hour % 12 || 12}:${match[5]}:${match[6] || "00"} ${hour >= 12 ? "PM" : "AM"}`;
+  };
+  const [ticketState, setTicketState] = useState(null), [refreshing, setRefreshing] = useState(true), [creating, setCreating] = useState(false), [category, setCategory] = useState(""), [resolving, setResolving] = useState(null), [actionsToolbarTarget, setActionsToolbarTarget] = useState(null), [refreshCount, setRefreshCount] = useState(0);
+  const requestSequence = useRef(0), activeLoad = useRef(null), currentScope = useRef(null), responseEtags = useRef(new Map());
+  currentScope.current = {token: session?.token, category};
+  const sameAccount = ticketState?.token === session?.token;
+  const sameScope = sameAccount && ticketState?.category === category;
+  const [ticketDateRange, setTicketDateRange] = useState("");
+  const [ticketStatus, setTicketStatus] = useState("all");
+  const scopedTickets = filterRecordsByDate(sameScope ? ticketState.records : [], ticketDateRange, (ticket) => ticket.createdAt);
+  const isClosedTicket = ticket => ["resolved", "closed"].includes(String(ticket.status || "").trim().toLowerCase());
+  const closedCount = scopedTickets.filter(isClosedTicket).length;
+  const ticketCounts = {all: scopedTickets.length, open: scopedTickets.length - closedCount, closed: closedCount};
+  const tickets = scopedTickets.filter(ticket => ticketStatus === "all" || (ticketStatus === "closed" ? isClosedTicket(ticket) : !isClosedTicket(ticket)));
+  const error = sameScope ? ticketState.error : "";
+  const loading = refreshing || !sameScope;
+  const refresh = () => setRefreshCount((current) => current + 1);
+  const isAdmin = session?.role === "super" && session?.permissions?.adminLevel !== "Manager";
+  const canCreate = Boolean(session?.token);
+  const ticketExportColumns = [
+    { label: "Ticket ID", value: (ticket) => ticket.reference }, { label: "Created at", value: (ticket) => displayDateTime(ticket.createdAt) }, { label: "User", value: (ticket) => ticket.creatorName }, { label: "Site", value: (ticket) => ticket.site }, { label: "Category", value: (ticket) => ticket.category }, { label: "Priority", value: (ticket) => ticket.priority || "Medium" }, { label: "Description", value: (ticket) => ticket.message || "Audio description" }, { label: "Status", value: (ticket) => ticket.status }, { label: "Resolved at", value: (ticket) => displayDateTime(ticket.resolvedAt) }, { label: "Resolution", value: (ticket) => ticket.resolutionMessage || "—" },
+  ];
+  useEffect(() => watchVisibleMasterRefresh(() => setRefreshCount((current) => current + 1), {win: window, doc: document}), []);
+  useEffect(() => { setCreating(false); setResolving(null); setTicketStatus("all"); }, [session?.token]);
+  useEffect(() => {
+    let activeRequest = true;
+    const controller = new AbortController();
+    const sequence = ++requestSequence.current;
+    const etagKey = `${session?.token || ""}:${category}`;
+    const responseEtag = responseEtags.current.get(etagKey) || "";
+    activeLoad.current = controller;
+    setRefreshing(true);
+    setTicketState((current) => current?.token === session?.token && current?.category === category
+      ? {...current, error: ""}
+      : {token: session?.token, category, records: [], error: ""});
+    fetch(`/api/tickets${category ? `?category=${encodeURIComponent(category)}` : ""}`, {
+      signal: controller.signal,
+      cache: "no-store",
+      headers: {Authorization: `Bearer ${session.token}`, ...(responseEtag ? {"If-None-Match": responseEtag} : {})},
+    })
+      .then(async (response) => {
+        if (response.status === 304) return null;
+        const result = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(result?.error || "Could not load tickets.");
+        if (!Array.isArray(result)) throw new Error("Could not load tickets. Please retry.");
+        const nextEtag = response.headers?.get?.("etag") || "";
+        if (nextEtag) responseEtags.current.set(etagKey, nextEtag);
+        return result;
+      })
+      .then((result) => { if (activeRequest && sequence === requestSequence.current && result) setTicketState({token: session?.token, category, records: result, error: ""}); })
+      .catch((error) => {
+        if (activeRequest && error.name !== "AbortError" && sequence === requestSequence.current) {
+          setTicketState((current) => ({...current, error: error.message || "Could not load tickets."}));
+        }
+      })
+      .finally(() => { if (activeRequest && sequence === requestSequence.current) setRefreshing(false); });
+    return () => {
+      activeRequest = false;
+      controller.abort();
+    };
+  }, [category, session?.token, refreshCount]);
+  const applySavedTicket = (ticket) => {
+    if (currentScope.current.token !== session?.token || currentScope.current.category !== category) return;
+    // A GET begun before this save must not undo its newer result.
+    requestSequence.current += 1;
+    activeLoad.current?.abort();
+    setTicketState((current) => {
+      const records = current?.token === session?.token && current?.category === category ? current.records : [];
+      const next = category && ticket.category !== category
+        ? records.filter((row) => row.reference !== ticket.reference)
+        : records.some((row) => row.reference === ticket.reference)
+          ? records.map((row) => row.reference === ticket.reference ? ticket : row)
+          : [ticket, ...records];
+      return {token: session?.token, category, records: next, error: ""};
+    });
+    setRefreshing(false);
+    refresh();
+  };
+  return <section className="ticket-page">
+    <header className="ticket-page-head"><div><span>CRM support</span><h1>Tickets</h1><p>{session?.permissions?.adminLevel === "Manager" ? "Tickets created by users in your assigned team and location." : isAdmin ? "All support tickets across every user and site." : "Create and track your support requests."}</p></div><div className="ticket-page-actions"><div className="ticket-status-tabs" role="group" aria-label="Ticket status"><button type="button" aria-pressed={ticketStatus === "all"} onClick={() => setTicketStatus("all")}>All <b>{sameScope ? ticketCounts.all : "…"}</b></button><button type="button" className="ticket-status-open" aria-pressed={ticketStatus === "open"} onClick={() => setTicketStatus("open")}>Open tickets <b>{sameScope ? ticketCounts.open : "…"}</b></button><button type="button" className="ticket-status-closed" aria-pressed={ticketStatus === "closed"} onClick={() => setTicketStatus("closed")}>Closed tickets <b>{sameScope ? ticketCounts.closed : "…"}</b></button></div><ExportMenu title="CRM tickets report" columns={ticketExportColumns} rows={tickets} smartPrintItem />{canCreate && <button className="primary" onClick={() => setCreating(true)}><Plus /> Create ticket</button>}</div></header>
+    <div className="ticket-toolbar"><div className="ticket-toolbar-controls"><label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{ticketCategories.map((item) => <option key={item}>{item}</option>)}</select></label><div className="master-actions-slot" ref={setActionsToolbarTarget} /></div><span>{loading ? "Loading tickets…" : `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`}</span></div>
+    {error && <div className="hierarchy-save-error" role="alert"><span>{error}{tickets.length > 0 ? " Showing previously loaded tickets." : ""}</span><button type="button" onClick={refresh} disabled={loading}>Retry</button></div>}
+    <div className="ticket-table-wrap"><ActionsTable printTitle="CRM tickets" recordDateFilter={{ label: "Created", value: ticketDateRange, onChange: setTicketDateRange }} toolbarTarget={actionsToolbarTarget} toolbarPortal><thead><tr><th>Ticket ID</th><th>User</th><th>Site</th><th>Category</th><th>Priority</th><th>Description</th><th>Audio</th><th>Attachment</th><th>Status</th><th>Resolution</th>{isAdmin && <th>Action</th>}</tr></thead><tbody>{tickets.length ? tickets.map((ticket) => <tr key={ticket.reference}><td><b>{ticket.reference}</b><small>{displayDateTime(ticket.createdAt)}</small></td><td>{ticket.creatorName}<small>@{ticket.creatorLogin} · {ticket.creatorRole}</small></td><td>{ticket.site}</td><td>{ticket.category}</td><td><Status>{ticket.priority || "Medium"}</Status></td><td className="ticket-message">{ticket.message || "Audio description"}</td><td>{ticket.messageAudioAvailable ? <ProtectedAudio url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/message-audio`} token={session.token} label="Ticket audio" /> : "—"}</td><td><TicketAttachment ticket={ticket} token={session.token} /></td><td><Status>{ticket.status}</Status></td><td>{ticket.resolutionMessage || ticket.resolutionAudioAvailable || ticket.resolutionAttachmentAvailable ? <span>{ticket.resolutionMessage || "Audio resolution"}{ticket.resolutionAudioAvailable && <ProtectedAudio url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/resolution-audio`} token={session.token} label="Resolution audio" />}{ticket.resolutionAttachmentAvailable && <TicketMedia url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/resolution-attachment`} token={session.token} name={ticket.resolutionAttachmentName} type={ticket.resolutionAttachmentType} label="Resolution" />}<small>{ticket.resolvedBy} · {displayDateTime(ticket.resolvedAt)}</small></span> : "—"}</td>{isAdmin && <td>{!isClosedTicket(ticket) ? <button className="primary compact" onClick={() => setResolving(ticket)}>Resolve</button> : "Resolved"}</td>}</tr>) : <tr><td colSpan={isAdmin ? 11 : 10} className="empty-state">{loading ? "Loading tickets…" : "No tickets found."}</td></tr>}</tbody></ActionsTable></div>
+    {sameAccount && canCreate && creating && <TicketCreateForm key={session.token} session={session} close={() => setCreating(false)} onCreated={applySavedTicket} />}
+    {sameAccount && resolving && <TicketResolutionForm key={`${session.token}:${resolving.reference}`} ticket={resolving} session={session} close={() => setResolving(null)} onResolved={applySavedTicket} />}
+  </section>;
+}
+
+function AiFeederPanel({ breakdowns = [], firstTripPending = [], session = null, scope, now, updatedAt, ready, error, refreshing, onRefresh, onClose, closeAvailableAt = 0 }) {
+  const panelRef = useRef(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(() => Math.max(0, Math.ceil((closeAvailableAt - Date.now()) / 1000)));
+  const closeRef = useRef(onClose);
+  closeRef.current = () => { if (Date.now() >= closeAvailableAt) onClose(); };
+  useEffect(() => {
+    const updateCountdown = () => setRemainingSeconds(Math.max(0, Math.ceil((closeAvailableAt - Date.now()) / 1000)));
+    updateCountdown();
+    if (Date.now() >= closeAvailableAt) return undefined;
+    const timer = window.setInterval(() => {
+      updateCountdown();
+      if (Date.now() >= closeAvailableAt) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [closeAvailableAt]);
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus();
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") closeRef.current();
+      if (event.key === "Tab") {
+        const buttons = panelRef.current?.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex='0']");
+        if (!buttons?.length) return;
+        const first = buttons[0], last = buttons[buttons.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.current)) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("keydown", closeOnEscape); document.body.style.overflow = previousOverflow; previousFocus?.focus(); };
+  }, []);
+  return createPortal(<div className="ai-feeder-overlay pulse-overlay">
+    <div className="ai-feeder-panel pulse-panel" role="dialog" aria-modal="true" aria-labelledby="ai-feeder-title" tabIndex={-1} ref={panelRef}>
+      <header>
+        <div className="pulse-title"><div className="ai-feeder-heading-line"><span className="ai-feeder-kicker"><PulseIcon /> INFO PULSE</span><span className="pulse-scope"><MapPin aria-hidden="true" /> Scope: {scope?.label || "Assigned location"}</span></div><div className="pulse-birthday-heading"><h2 id="ai-feeder-title">Open breakdowns</h2><InfoPulseBirthday token={session?.token} now={now} /></div></div>
+        <div className="ai-feeder-actions">
+          {closeAvailableAt > 0 && <span className="ai-feeder-countdown" role="timer" aria-live="off" aria-label={remainingSeconds > 0 ? "Time until Info Pulse can be closed" : "Info Pulse can now be closed"}><small>{remainingSeconds > 0 ? "Close available in" : "You can close"}</small><b>{String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:{String(remainingSeconds % 60).padStart(2, "0")}</b></span>}
+          {remainingSeconds === 0 && <button type="button" onClick={() => closeRef.current()} aria-label="Close Info Pulse"><X /></button>}
+        </div>
+      </header>
+      <InfoPulseContent breakdowns={breakdowns} firstTripPending={firstTripPending} session={session} scope={scope} now={now} updatedAt={updatedAt} ready={ready} error={error} refreshing={refreshing} onRefresh={onRefresh} ExportMenu={ExportMenu} renderRequestReference={(reference) => <RequestTimelineButton reference={reference} token={session?.token} Dialog={InfoPulseTimelineModal} />} />
+    </div>
+  </div>, document.body);
+}
+
+function AiFeeder({ role = "", session }) {
+  const [openMode, setOpenMode] = useState("");
+  const [loginCloseAvailableAt, setLoginCloseAvailableAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [requests, setRequests] = useState([]);
+  const [scope, setScope] = useState({kind: "location", label: "Assigned location", sites: []});
+  const [loadState, setLoadState] = useState({token: "", ready: false, updatedAt: 0, error: "", refreshing: true});
+  const refreshRef = useRef(() => {});
+  useEffect(() => {
+    setRequests([]);
+    setScope({kind: "location", label: "Assigned location", sites: []});
+    setLoadState({token: session?.token || "", ready: false, updatedAt: 0, error: "", refreshing: true});
+    if (!session?.token) return undefined;
+    let active = true;
+    let pending = null;
+    let responseEtag = "";
+    const load = () => {
+      if (pending) return pending;
+      setLoadState(current => ({...current, refreshing: true}));
+      pending = fetch(`/api/info-pulse?t=${Date.now()}`, {
+        cache: "no-store", headers: {Authorization: `Bearer ${session.token}`, ...(responseEtag ? {"If-None-Match": responseEtag} : {})},
+      })
+        .then(async response => {
+          if (response.status === 304) return null;
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            if (active && [401, 403].includes(response.status)) {
+              setRequests([]);
+              setScope({kind: "location", label: "Assigned location", sites: []});
+              setLoadState(current => ({...current, ready: false, updatedAt: 0}));
+            }
+            throw new Error(body.error || "Could not load Info Pulse");
+          }
+          if (!Array.isArray(body.requests) || !body.scope?.label) throw new Error("Incomplete Info Pulse response");
+          responseEtag = response.headers?.get?.("etag") || "";
+          return body;
+        })
+        .then(body => {
+          if (!active) return;
+          if (body) {
+            setRequests(requestsVisibleToMisWorkspace(Array.isArray(body.requests) ? body.requests : [], role === "MIS User"));
+            setScope(body.scope);
+          }
+          const refreshedAt = Date.now();
+          setNow(refreshedAt);
+          setLoadState({token: session.token, ready: true, updatedAt: refreshedAt, error: "", refreshing: false});
+        })
+        .catch(error => {if (active) setLoadState(current => ({...current, error: error.message, refreshing: false}));})
+        .finally(() => {pending = null;});
+      return pending;
+    };
+    refreshRef.current = load;
+    load();
+    const stop = watchRequestRefresh(load, {intervalMs: 30000});
+    return () => {active = false; stop(); refreshRef.current = () => {};};
+  }, [session?.token, role]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    setOpenMode("");
+    if (!session?.token) return undefined;
+    let active = true;
+    // This mandatory login prompt is an intentional product requirement. The
+    // server remembers when each user last saw it, so it opens once per four
+    // hours however many times they sign in.
+    fetch(`/api/info-pulse/prompt?t=${Date.now()}`, {method: "POST", cache: "no-store", headers: {Authorization: `Bearer ${session.token}`}})
+      .then(response => response.ok ? response.json() : null)
+      .then(body => {
+        if (!active || body?.show !== true) return;
+        setLoginCloseAvailableAt(Date.now() + Math.max(0, Number(body.closeAfterMs) || 0));
+        setOpenMode("login");
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [session?.token]);
+  const closePanel = () => {
+    if (openMode === "login" && Date.now() < loginCloseAvailableAt) return;
+    setOpenMode("");
+  };
+  const ready = loadState.token === session?.token && loadState.ready;
+  // BD balance: every open request that is not idle, closed or verified, longest standing first.
+  const breakdowns = useMemo(() => ready ? buildInfoPulseBreakdowns(requests) : [], [requests, ready]);
+  const firstTripPending = useMemo(() => ready ? buildInfoPulseFirstTripPending(requests, {now}) : [], [requests, ready, now]);
+  return <>
+    <button type="button" className="ai-feeder-trigger" onClick={() => setOpenMode(current => current || "manual")} title="Info Pulse" aria-label={`Info Pulse, ${ready ? "BD balance " + breakdowns.length : "BD balance unavailable"}`}>
+      <PulseIcon /><span>INFO PULSE</span>{ready && breakdowns.length > 0 && <><b className="ai-feeder-trigger-count">{breakdowns.length}</b><i className="ai-feeder-dot" aria-hidden="true" /></>}
+    </button>
+    {openMode && <AiFeederPanel key={`${session?.token}:${openMode}`} closeAvailableAt={openMode === "login" ? loginCloseAvailableAt : 0} breakdowns={breakdowns} firstTripPending={firstTripPending} session={session} scope={scope} now={now} updatedAt={loadState.updatedAt} ready={ready} error={loadState.error} refreshing={loadState.refreshing} onRefresh={() => refreshRef.current()} onClose={closePanel} />}
+  </>;
+}
+
+function NotificationEntryField({ label, value, wide = false, language }) {
+  const displayed = value === true ? "Yes" : value === false ? "No" : String(value ?? "").trim() || "—";
+  return <div className={wide ? "wide" : ""}><dt>{label}</dt><dd>{language === undefined ? displayed : <TranslatedText text={value} language={language} />}</dd></div>;
+}
+
+function NotificationRequestEntry({ reference, request = {}, token }) {
+  const meterType = request.meterType || "KMR/HMR";
+  return <div className="notification-entry-record">
+    <div className="notification-entry-hero">
+      <div><span>Maintenance request</span><h2><RequestTimelineButton reference={reference} token={token} Dialog={Modal} /></h2><p>{normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || "Equipment not recorded"}{request.door ? ` · ${request.door}` : ""}</p></div>
+      <Status>{requestStatusLabel(request)}</Status>
+    </div>
+    <RequestTimelineButton reference={reference} token={token} Dialog={Modal} label="View complete lifecycle, remarks and correction history" />
+    <dl className="notification-entry-fields">
+      <NotificationEntryField label="Equipment group" value={normalizeEquipmentGroup(request.equipmentGroup) || request.equipment} />
+      <NotificationEntryField label="Door number" value={request.door} />
+      <NotificationEntryField label="Chassis number" value={request.chassis} />
+      <NotificationEntryField label="Site location" value={request.site} />
+      <NotificationEntryField label="Breakdown type" value={request.category} />
+      <NotificationEntryField label="Current responsibility" value={request.owner || request.requesterLogin} />
+      <NotificationEntryField label="Started" value={formatTwelveHourDateTime(request.start)} />
+      <NotificationEntryField label="Accepted" value={request.acceptedAt ? `${formatTwelveHourDateTime(request.acceptedAt)}${request.acceptedBy ? ` · ${request.acceptedBy}` : ""}` : "—"} />
+      <NotificationEntryField label="Expected completion" value={formatTwelveHourDateTime(request.expectedCompletionAt)} />
+      <NotificationEntryField label="Closed" value={request.closedAt ? `${formatTwelveHourDateTime(request.closedAt)}${request.closedBy ? ` · ${request.closedBy}` : ""}` : "—"} />
+      <NotificationEntryField label="First trip time" value={formatTwelveHourDateTime(firstTripTimestamp(request), true)} />
+      <NotificationEntryField label="MIS verification" value={request.verifiedAt ? `${formatTwelveHourDateTime(request.verifiedAt, true)}${request.verifiedBy ? ` · ${request.verifiedBy}` : ""}` : request.verificationStatus} />
+      <NotificationEntryField label="Downtime" value={request.hours} />
+      <NotificationEntryField label="Reason / complaint" value={request.complaint} language={request.complaintLanguage || ""} wide />
+      <NotificationEntryField label="Idle reason" value={request.idleReason} wide />
+      <NotificationEntryField label="Maintenance work" value={request.maintenanceWork} language={request.maintenanceWorkLanguage || ""} wide />
+      <NotificationEntryField label="Delay reason" value={request.delayedReason} wide />
+    </dl>
+    <section className="notification-entry-section" aria-label="Meter evidence">
+      <h3>Meter readings and evidence</h3>
+      <div className="notification-entry-evidence">
+        <article><span>Opening readings</span><b>{requestMeterReadingLabel(request, "opening")}</b><small>{request.openingMeterFileUploaded ? "Evidence uploaded" : "No evidence file uploaded"}</small></article>
+        <article><span>Closing readings</span><b>{requestMeterReadingLabel(request, "closing")}</b><small>{request.closingMeterFileUploaded ? "Evidence uploaded" : "No evidence file uploaded"}</small></article>
+      </div>
+    </section>
+    {(request.complaintAudioAvailable || request.maintenanceAudioAvailable) && <section className="notification-entry-section" aria-label="Request audio">
+      <h3>Audio</h3>
+      <div className="notification-entry-audio">
+        {request.complaintAudioAvailable && <label><span>Complaint</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(reference)}/audio/complaint`} token={token} label="Complaint audio" /></label>}
+        {request.maintenanceAudioAvailable && <label><span>Maintenance update</span><ProtectedAudio url={`/api/requests/${encodeURIComponent(reference)}/audio/maintenance`} token={token} label="Maintenance audio" /></label>}
+      </div>
+    </section>}
+    <section className="notification-entry-section" aria-label="Daily maintenance updates">
+      <h3>Daily maintenance updates</h3>
+      <div className="notification-entry-remarks"><MaintenanceRemarks remarks={request.dailyRemarks} category={request.category} /></div>
+    </section>
+  </div>;
+}
+
+function NotificationTicketEntry({ reference, ticket = {}, token }) {
+  const hasResolution = ticket.resolutionMessage || ticket.resolutionAudioAvailable || ticket.resolutionAttachmentAvailable;
+  return <div className="notification-entry-record">
+    <div className="notification-entry-hero">
+      <div><span>CRM ticket</span><h2>{reference}</h2><p>{ticket.category || "General"} · {ticket.site || "Site not recorded"}</p></div>
+      <Status>{ticket.status || "Open"}</Status>
+    </div>
+    <dl className="notification-entry-fields">
+      <NotificationEntryField label="Created by" value={ticket.creatorName || ticket.creatorLogin} />
+      <NotificationEntryField label="User role" value={ticket.creatorRole} />
+      <NotificationEntryField label="Site location" value={ticket.site} />
+      <NotificationEntryField label="Category" value={ticket.category} />
+      <NotificationEntryField label="Priority" value={ticket.priority || "Medium"} />
+      <NotificationEntryField label="Created" value={formatTwelveHourDateTime(ticket.createdAt)} />
+      <NotificationEntryField label="Description" value={ticket.message || "Audio description"} wide />
+      <NotificationEntryField label="Resolution" value={ticket.resolutionMessage} wide />
+      <NotificationEntryField label="Resolved by" value={ticket.resolvedBy} />
+      <NotificationEntryField label="Resolved" value={formatTwelveHourDateTime(ticket.resolvedAt)} />
+    </dl>
+    {(ticket.messageAudioAvailable || ticket.attachmentAvailable) && <section className="notification-entry-section" aria-label="Ticket evidence">
+      <h3>Ticket evidence</h3>
+      <div className="notification-entry-evidence">
+        {ticket.messageAudioAvailable && <article><span>Recorded description</span><ProtectedAudio url={`/api/tickets/${encodeURIComponent(reference)}/media/message-audio`} token={token} label="Ticket audio" /></article>}
+        {ticket.attachmentAvailable && <article><span>Attachment</span><TicketAttachment ticket={ticket} token={token} /></article>}
+      </div>
+    </section>}
+    {hasResolution && <section className="notification-entry-section" aria-label="Resolution evidence">
+      <h3>Resolution evidence</h3>
+      <div className="notification-entry-evidence">
+        {ticket.resolutionAudioAvailable && <article><span>Recorded resolution</span><ProtectedAudio url={`/api/tickets/${encodeURIComponent(reference)}/media/resolution-audio`} token={token} label="Resolution audio" /></article>}
+        {ticket.resolutionAttachmentAvailable && <article><span>Resolution attachment</span><TicketMedia url={`/api/tickets/${encodeURIComponent(reference)}/media/resolution-attachment`} token={token} name={ticket.resolutionAttachmentName} type={ticket.resolutionAttachmentType} label="Resolution" /></article>}
+      </div>
+    </section>}
+  </div>;
+}
+
+function NotificationVehicleTransferEntry({reference, transfer = {}}) {
+  return <div className="notification-entry-record">
+    <div className="notification-entry-hero">
+      <div><span>Vehicle transfer</span><h2>{reference}</h2><p>{transfer.equipment || transfer.door || "Vehicle not recorded"}</p></div>
+      <Status>{transfer.status || "Awaiting source approval"}</Status>
+    </div>
+    <dl className="notification-entry-fields">
+      <NotificationEntryField label="From site" value={transfer.source} />
+      <NotificationEntryField label="To site" value={transfer.destination} />
+      <NotificationEntryField label="Transfer date" value={formatDisplayDate(transfer.transferDate)} />
+      <NotificationEntryField label="Vehicle / equipment" value={transfer.equipment || transfer.door} />
+      <NotificationEntryField label="Model" value={transfer.modelNo} />
+      <NotificationEntryField label="Chassis number" value={transfer.chassisNo} />
+      <NotificationEntryField label="Submitted by MIS" value={transfer.submittedBy} />
+      <NotificationEntryField label="Submitted" value={formatDisplayDateTime(transfer.submittedAt)} />
+      <NotificationEntryField label="Source PM approval" value={transfer.sourceApprovedBy ? transfer.sourceApprovedBy + " · " + formatDisplayDateTime(transfer.sourceApprovedAt) : "Pending"} />
+      <NotificationEntryField label="Destination MIS verification" value={transfer.destinationMisVerifiedBy ? transfer.destinationMisVerifiedBy + " · " + formatDisplayDateTime(transfer.destinationMisVerifiedAt) : "Pending"} />
+      <NotificationEntryField label="Destination PM acceptance" value={transfer.destinationAcceptedBy ? transfer.destinationAcceptedBy + " · " + formatDisplayDateTime(transfer.destinationAcceptedAt) : "Pending"} />
+      <NotificationEntryField label="Vehicle Master" value={transfer.vehicleMasterUpdatedAt ? "Updated · " + formatDisplayDateTime(transfer.vehicleMasterUpdatedAt) : "Updates after destination acceptance"} wide />
+      <NotificationEntryField label="Remarks" value={transfer.remarks} wide />
+    </dl>
+  </div>;
+}
+
+function NotificationEmployeeTransferEntry({reference,transfer={}}){
+  return <div className="notification-entry-record"><div className="notification-entry-hero"><div><span>Employee transfer</span><h2>{reference}</h2><p>{transfer.empId} · {transfer.name}</p></div><Status>{transfer.status}</Status></div><dl className="notification-entry-fields"><NotificationEntryField label="From location" value={transfer.source}/><NotificationEntryField label="To location" value={transfer.destination}/><NotificationEntryField label="Transfer date" value={formatDisplayDate(transfer.effectiveDate)}/><NotificationEntryField label="Requested by" value={transfer.submittedBy}/><NotificationEntryField label="Source approval" value={transfer.approvedBy?transfer.approvedBy+' · '+formatDisplayDateTime(transfer.approvedAt):'Pending'}/><NotificationEntryField label="Destination acceptance" value={transfer.acceptedBy?transfer.acceptedBy+' · '+formatDisplayDateTime(transfer.acceptedAt):'Pending'}/><NotificationEntryField label="Remarks" value={transfer.remarks} wide/><NotificationEntryField label="Rejection reason" value={transfer.rejectionReason} wide/></dl></div>;
+}
+
+function NotificationEntryDialog({ state, onClose, token }) {
+  if (!state) return null;
+  const target = state.target;
+  const title = state.phase === "loading"
+    ? "Opening notification entry"
+    : state.phase === "error"
+      ? "Notification entry unavailable"
+      : `${target.kind === "cdir-deletion" ? "Deletion request" : target.kind === "employee-transfer" ? "Employee transfer" : target.kind === "ticket" ? "Ticket" : target.kind === "transfer" ? "Vehicle transfer" : "Request"} · ${target.reference}`;
+  return createPortal(<Modal title={title} close={onClose} className="notification-entry-modal" overlayClassName="notification-entry-overlay">
+    {state.phase === "loading" && <div className="notification-entry-state loading" role="status" aria-live="polite" aria-busy="true"><Clock /><div><b>Loading the exact entry…</b><p>Checking your current access and retrieving the latest record.</p></div></div>}
+    {state.phase === "error" && <div className="notification-entry-state error" role="alert"><AlertTriangle /><div><b>Entry unavailable</b><p>This entry is no longer available or is outside your assigned access.</p><button type="button" onClick={onClose}>Close</button></div></div>}
+    {state.phase === "ready" && target?.kind === "request" && <NotificationRequestEntry reference={target.reference} request={target.record} token={token} />}
+    {state.phase === "ready" && target?.kind === "ticket" && <NotificationTicketEntry reference={target.reference} ticket={target.record} token={token} />}
+    {state.phase === "ready" && target?.kind === "cdir-deletion" && <div className="notification-entry-record"><h2>{target.record.name}</h2><p>{target.record.site} · {target.record.status}</p><p>Reason: {target.record.reason}</p><p>Approver: {target.record.approverRole}</p></div>}
+    {state.phase === "ready" && target?.kind === "employee-transfer" && <NotificationEmployeeTransferEntry reference={target.reference} transfer={target.record} />}
+    {state.phase === "ready" && target?.kind === "transfer" && <NotificationVehicleTransferEntry reference={target.reference} transfer={target.record} />}
+  </Modal>, document.body);
+}
+
+function NotificationMessage({ item, compact = false }) {
+  const {site, door, details} = notificationParts(item);
+  const category = notificationCategory(item);
+  return <span className={`notification-message${compact ? " compact" : ""}`}><span className="notification-meta"><strong className="notification-site">Site: {site}</strong><span className={`notification-category ${category.key}`}><i className="notification-category-dot" aria-hidden="true" />{category.label}</span></span><span className="notification-details">{[door ? `Door No. ${door}` : "", details].filter(Boolean).join(" — ")}</span></span>;
+}
+
+function isResolvedTicketNotification(item) {
+  const message = String(item?.message || "").trim().toLowerCase();
+  return Boolean(item?.ticketReference && /^ticket\b[\s\S]*\bwas resolved\b/.test(message));
+}
+
+function resolvedTicketDismissKey(session) {
+  return `bdms:resolved-ticket-popups:${String(session?.login || session?.token || "user").trim().toLowerCase()}`;
+}
+
+function readDismissedResolvedTickets(session) {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(resolvedTicketDismissKey(session)) || "[]");
+    return new Set(Array.isArray(stored) ? stored.map(String) : []);
+  } catch { return new Set(); }
+}
+
+function saveDismissedResolvedTickets(session, ids) {
+  try { window.localStorage.setItem(resolvedTicketDismissKey(session), JSON.stringify([...ids].slice(-200))); } catch {}
+}
+
+function IncomingNotification({ item, onOpen, onDismiss, soundRef, playedRef, persistent = false }) {
+  useEffect(() => {
+    const id = String(item.id);
+    if (!playedRef.current.has(id)) {
+      playedRef.current.add(id);
+      soundRef.current?.play();
+    }
+    if (persistent) return undefined;
+    const timer = window.setTimeout(() => onDismiss(id), 15000);
+    return () => window.clearTimeout(timer);
+  }, [item.id, persistent]);
+  return <div className={`incoming-notification${persistent ? " persistent-ticket-resolution" : ""}`} role={persistent ? "alertdialog" : "status"} aria-live="polite" aria-modal={persistent ? "false" : undefined}><button className="incoming-notification-link" type="button" onClick={() => { onDismiss(String(item.id)); void onOpen(item); }}><Bell /><span><b>{persistent ? "Ticket resolved" : "New notification"}</b><NotificationMessage item={item} compact />{persistent && <small>This will stay here until you close it.</small>}</span></button><button type="button" className="incoming-notification-close" aria-label="Dismiss notification" onClick={() => onDismiss(String(item.id))}><X /></button></div>;
+}
+
+function NotificationBell({ session, onOpenEntry }) {
+  const [siteFilter, setSiteFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [items, setItems] = useState([]), [open, setOpen] = useState(false), [entryState, setEntryState] = useState(null);
+  const [notificationOverlayMode, setNotificationOverlayMode] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1250px), (hover: none) and (pointer: coarse)").matches);
+  const [alerts, setAlerts] = useState([]), [resolvedTicketAlerts, setResolvedTicketAlerts] = useState([]);
+  const soundRef = useRef(null), playedRef = useRef(new Set()), itemsRevisionRef = useRef("");
+  const dismissedResolvedRef = useRef(new Set());
+  // Bell sound chosen on this device; the incoming-toast effect plays it once per new notification.
+  const [bellSound, setBellSound] = useState(() => loadNotificationSound());
+  const bellSoundRef = useRef(bellSound);
+  bellSoundRef.current = bellSound;
+  const centerRef = useRef(null), panelRef = useRef(null), triggerRef = useRef(null), entryControllerRef = useRef(null), entrySequenceRef = useRef(0), onOpenEntryRef = useRef(onOpenEntry);
+  onOpenEntryRef.current = onOpenEntry;
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const query = window.matchMedia("(max-width: 1250px), (hover: none) and (pointer: coarse)");
+    const update = () => setNotificationOverlayMode(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  // A silent initial snapshot followed by authenticated long polling. PostgreSQL
+  // wakes the pending request immediately after any notification type is saved.
+  useEffect(() => {
+    const controller = new AbortController();
+    const track = createNotificationTracker();
+    soundRef.current = { play: () => playNotificationSound(bellSoundRef.current) };
+    playedRef.current = new Set();
+    itemsRevisionRef.current = "";
+    dismissedResolvedRef.current = readDismissedResolvedTickets(session);
+    setItems([]); setAlerts([]); setResolvedTicketAlerts([]); setOpen(false); setSiteFilter(""); setCategoryFilter("");
+    let known = null, timer;
+    const showResolvedTicketAlerts = (candidates) => {
+      const eligible = candidates.filter((item) => isResolvedTicketNotification(item) && !item.isRead && !dismissedResolvedRef.current.has(String(item.id)));
+      if (!eligible.length) return;
+      setResolvedTicketAlerts((current) => {
+        const seen = new Set(current.map((item) => String(item.id)));
+        return [...current, ...eligible.filter((item) => !seen.has(String(item.id)))];
+      });
+    };
+    const load = async () => {
+      // Bound requests during rolling upgrades when an older backend may not
+      // understand long polling yet. Received events still alert immediately.
+      let delay = 1000;
+      try {
+        const query = known === null ? "" : `?wait=1&known=${encodeURIComponent(known)}`;
+        const response = await fetch(`/api/notifications${query}`, {
+          cache: "no-store", signal: controller.signal,
+          headers: {Authorization: `Bearer ${session.token}`},
+        });
+        if (!response.ok) throw new Error(`Could not load notifications (HTTP ${response.status}).`);
+        const next = await response.json();
+        if (!Array.isArray(next)) throw new Error("Invalid notification list");
+        if (controller.signal.aborted) return;
+        const fresh = track(next);
+        known = next.map((item) => String(item.id)).join(",");
+        const revision = JSON.stringify(next);
+        if (revision !== itemsRevisionRef.current) {
+          itemsRevisionRef.current = revision;
+          setItems(next);
+        }
+        showResolvedTicketAlerts(next);
+        // The bell retains every notification; keep only the two newest toast
+        // cards so bursts cannot cover the phone screen.
+        if (fresh.length) {
+          const transient = fresh.filter((item) => !isResolvedTicketNotification(item));
+          if (transient.length) setAlerts((current) => [...current, ...transient].slice(-2));
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("Notification refresh failed; retaining the last successful list.", error);
+        delay = 5000;
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(load, delay);
+    };
+    void load();
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [session?.token]);
+  const dismissAlert = (id) => {
+    setAlerts((current) => current.filter((item) => String(item.id) !== id));
+    setResolvedTicketAlerts((current) => {
+      const target = current.find((item) => String(item.id) === id);
+      if (target) {
+        dismissedResolvedRef.current.add(id);
+        saveDismissedResolvedTickets(session, dismissedResolvedRef.current);
+      }
+      return current.filter((item) => String(item.id) !== id);
+    });
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (!centerRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeWithEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeWithEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeWithEscape);
+    };
+  }, [open]);
+  const unread = items.filter((item) => !item.isRead).length;
+  const siteOptions = notificationSiteOptions(items, siteFilter);
+  const siteItems = filterNotificationsBySite(items, siteFilter);
+  const categoryOptions = notificationCategoryOptions(siteItems, categoryFilter);
+  const visibleItems = filterNotificationsByCategory(siteItems, categoryFilter);
+  const toggle = async () => {
+    const next = !open; setOpen(next);
+    if (next && unread) {
+      try {
+        const response = await fetch("/api/notifications/read", {method: "PATCH", headers: {Authorization: `Bearer ${session.token}`}});
+        if (!response.ok) throw new Error(`Could not mark notifications as read (HTTP ${response.status}).`);
+        setItems((current) => current.map((item) => ({...item, isRead: true})));
+      } catch (error) {
+        console.warn("Notifications remain unread because the update failed.", error);
+      }
+    }
+  };
+  const closeEntry = () => {
+    entrySequenceRef.current += 1;
+    entryControllerRef.current?.abort();
+    entryControllerRef.current = null;
+    setEntryState(null);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+  const openEntry = async (item) => {
+    setOpen(false);
+    entryControllerRef.current?.abort();
+    const sequence = ++entrySequenceRef.current;
+    const controller = new AbortController();
+    entryControllerRef.current = controller;
+    const notificationId = String(item?.id ?? "").trim();
+    setEntryState({phase: "loading"});
+    if (!notificationId) {
+      if (sequence === entrySequenceRef.current) setEntryState({phase: "error"});
+      return;
+    }
+    try {
+      const response = await fetch(`/api/notifications/${encodeURIComponent(notificationId)}/target`, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: {Authorization: `Bearer ${session.token}`},
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error("Notification entry unavailable");
+      const kind = body?.kind;
+      const reference = String(body?.reference ?? "").trim();
+      const record = body?.record;
+      if (!(["request", "ticket", "transfer", "employee-transfer", "cdir-deletion"].includes(kind) && reference && record && typeof record === "object" && !Array.isArray(record))) throw new Error("Invalid notification entry");
+      if (sequence !== entrySequenceRef.current) return;
+      const target = {kind, reference, record};
+      entryControllerRef.current = null;
+      setEntryState({phase: "ready", target});
+      try { onOpenEntryRef.current?.(target); } catch (error) { console.warn("The entry opened, but its broad navigation callback failed.", error); }
+    } catch (error) {
+      if (error.name === "AbortError" || sequence !== entrySequenceRef.current) return;
+      entryControllerRef.current = null;
+      setEntryState({phase: "error"});
+    }
+  };
+  useEffect(() => () => {
+    entrySequenceRef.current += 1;
+    entryControllerRef.current?.abort();
+  }, []);
+  const notificationPanel = <div ref={panelRef} className={`notification-popover${notificationOverlayMode ? " notification-popover-mobile" : ""}`} role="dialog" aria-modal={notificationOverlayMode ? "true" : undefined} aria-label="Notifications">
+    <header><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications"><X /></button></div></header>
+    <div className="notification-filters">
+      <label className="notification-site-filter">Filter by site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">All sites</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>
+      <label className="notification-site-filter notification-category-filter">Filter by category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories ({siteItems.length})</option>{categoryOptions.map(category => <option key={category.key} value={category.key}>{category.label} ({category.count})</option>)}</select></label>
+      <label className="notification-site-filter notification-sound-filter">Bell sound<span className="notification-sound-controls"><select value={bellSound} onChange={(event) => { const next = saveNotificationSound(event.target.value); setBellSound(next); playNotificationSound(next); }}>{NOTIFICATION_SOUNDS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><button type="button" className="notification-sound-play" onClick={() => playNotificationSound(bellSound)} aria-label="Play the selected bell sound" title="Play the selected bell sound"><Volume2 /></button></span><small>{NOTIFICATION_SOUNDS.find((option) => option.id === bellSound)?.hint}</small></label>
+    </div>
+    <div className="notification-list">{visibleItems.length ? visibleItems.map((item) => <button type="button" key={item.id} onClick={() => openEntry(item)}><NotificationMessage item={item} /><small>{formatDisplayDateTime(item.createdAt)}</small></button>) : <p>{categoryFilter ? "No notifications for these filters." : siteFilter ? "No notifications for this site." : "No notifications yet."}</p>}</div>
+  </div>;
+  return <>
+    <div className="notification-center" ref={centerRef}>
+      <button ref={triggerRef} type="button" className={unread > 0 ? "ringing" : ""} onClick={toggle} aria-label={`${unread} unread notifications`} aria-expanded={open} aria-haspopup="dialog"><BellRingIcon ringing={unread > 0} />{unread > 0 && <i>{unread > 9 ? "9+" : unread}</i>}</button>
+      {open && !notificationOverlayMode && notificationPanel}
+    </div>
+    {open && notificationOverlayMode && createPortal(<div className="notification-overlay"><button type="button" className="notification-scrim" onClick={() => setOpen(false)} aria-label="Close notifications" />{notificationPanel}</div>, document.body)}
+    {(alerts.length > 0 || resolvedTicketAlerts.length > 0) && createPortal(<div className="incoming-notification-stack" aria-label="New notifications">{resolvedTicketAlerts.map((item) => <IncomingNotification key={item.id} item={item} onOpen={openEntry} onDismiss={dismissAlert} soundRef={soundRef} playedRef={playedRef} persistent />)}{alerts.map((item) => <IncomingNotification key={item.id} item={item} onOpen={openEntry} onDismiss={dismissAlert} soundRef={soundRef} playedRef={playedRef} />)}</div>, document.body)}
+    <NotificationEntryDialog state={entryState} onClose={closeEntry} token={session.token} />
+  </>;
+}
+
+function Normal({ logout, requests, requestsLoaded = true, requestsError = "", requestsUpdatedAt = 0, session, onCreate, onUpdateRequest, onDeleteRequest, onDeleteRequests, onAddDailyRemark, onRefreshRequests, theme, toggleTheme, embedded = false }) {
+  const displayDate = (value) => typeof formatDisplayDate === "function" ? formatDisplayDate(value) : new Date(value).toLocaleDateString("en-GB").replaceAll("/", "-");
+  const mobileRole = session?.assignedRole || "Mobile User";
+  const isGeneral = mobileRole === "General User";
+  // Production's ordinary feed intentionally contains only that requester's
+  // rows, so its dashboard still needs the broader site feed. Maintenance,
+  // MIS and General users already receive the correct site-wide feed and must
+  // not start a second identical poller.
+  const needsDedicatedDashboardFeed = !embedded && mobileRole === "Production User";
+  const [show, setShow] = useState(false), [tab, setTab] = useState("requests"), [editing, setEditing] = useState(null), [closing, setClosing] = useState(null), [verifying, setVerifying] = useState(null), [productionFirstTrip, setProductionFirstTrip] = useState(null), [remarking, setRemarking] = useState(null), [vehicleHistoryTarget, setVehicleHistoryTarget] = useState(null);
+  const [section,setSection]=useState(embedded?"profile":"dashboard");
+  const [directoryView, setDirectoryView] = useState("directory");
+  const [misFlagging, setMisFlagging] = useState(null);
+  const [arrivalFlagging, setArrivalFlagging] = useState(null);
+  const [arrivalFlagNextAction, setArrivalFlagNextAction] = useState(null);
+  const [userReportCategory, setUserReportCategory] = useState("general");
+  const [dashboardState,setDashboardState]=useState({token:"",records:[],loaded:false,error:"",updatedAt:0});
+  const dashboardLoader=useRef(null);
+  const dashboardRequests=needsDedicatedDashboardFeed ? dashboardState.records : requests;
+  const dashboardRequestsReady=needsDedicatedDashboardFeed
+    ? dashboardState.token === session?.token && dashboardState.loaded
+    : requestsLoaded;
+  const dashboardRequestsError=needsDedicatedDashboardFeed
+    ? (dashboardState.token===session?.token?dashboardState.error:"")
+    : requestsError;
+  const dashboardRequestsUpdatedAt=needsDedicatedDashboardFeed?dashboardState.updatedAt:requestsUpdatedAt;
+  const refreshDashboardRequests=()=>needsDedicatedDashboardFeed
+    ? dashboardLoader.current?.load(session?.token||authToken)
+    : onRefreshRequests?.();
+  const [createdRequestRef, setCreatedRequestRef] = useState("");
+  const [firstTripReminderDismissed,setFirstTripReminderDismissed]=useState(false);
+  const [workspaceRefreshing, setWorkspaceRefreshing] = useState(false);
+  const refreshWorkspace = async () => {
+    if (workspaceRefreshing || !onRefreshRequests) return;
+    setWorkspaceRefreshing(true);
+    try { await Promise.all([onRefreshRequests(), ...(needsDedicatedDashboardFeed ? [refreshDashboardRequests()] : [])]); }
+    catch {}
+    finally { setWorkspaceRefreshing(false); }
+  };
+  useEffect(() => {
+    if (!createdRequestRef) return undefined;
+    const timer = window.setTimeout(() => setCreatedRequestRef(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [createdRequestRef]);
+  const permissions = session?.permissions || {};
+  const [responsiveMobile,setResponsiveMobile]=useState(()=>window.matchMedia("(max-width: 900px)").matches);
+  useEffect(()=>{const query=window.matchMedia("(max-width: 900px)");const update=()=>setResponsiveMobile(query.matches);query.addEventListener("change",update);return()=>query.removeEventListener("change",update)},[]);
+  const visibleUserMenus=isGeneral?generalUserMenuSelection(permissions,responsiveMobile?"mobile":"desktop"):responsiveMobile?permissions.mobileUserMenuAccess:permissions.desktopUserMenuAccess;
+  const visibleRequestMenus=responsiveMobile?permissions.mobileUserRequestAccess:permissions.desktopUserRequestAccess;
+  const canSeeUserMenu=(name)=>!Array.isArray(visibleUserMenus)||visibleUserMenus.includes(name);
+  const canSeeRequestMenu=(name)=>!Array.isArray(visibleRequestMenus)||visibleRequestMenus.includes(name);
+  const managerRolesForSession=managerRoleSelection(permissions.managerRoles?.length?permissions.managerRoles:permissions.managerRole);
+  const isProduction = mobileRole === "Production User";
+  const isProductionManager = session?.role === "super" && permissions.adminLevel === "Manager" && managerRolesForSession.includes("Production Manager");
+  const isProductionWorker = isProduction || isProductionManager;
+  const isMaintenance = mobileRole === "Maintenance User";
+  const isMis = mobileRole === "MIS User";
+  // Admin / Super Admin (never a Manager-level admin) may delete requests at every stage before MIS
+  // verification - open, awaiting acceptance, in progress, Idle and closed-awaiting-MIS - from any
+  // workspace, singly or several at once. Maintenance users keep their own delete right as before.
+  const administratorSession = session?.role === "super" && ["admin", "super admin"].includes(String(permissions.adminLevel || "").trim().toLowerCase());
+  const canDeleteRow = (row) => requestDeletable(row, { administrator: administratorSession });
+  const closedHistoryClosingLabel = isMis ? "Maintenance Closing Time" : "Closing time";
+  const workspaceReportTitles = {
+    requests: isProduction ? "Active Production Requests" : isMaintenance ? "Active Maintenance Requests" : "MIS Requests Awaiting Verification",
+    verify: "MIS Verification Requests",
+    productionFirstTrip: "Production First Trip Entry",
+    history: isGeneral ? "Closed Request History" : isProduction ? "Closed Production Requests" : isMaintenance ? "Closed Maintenance Requests" : "Closed MIS Requests",
+    idle: "Idle Vehicles",
+    close: "Maintenance Close Request Form",
+    transfers: "Vehicle Transfer Control",
+  };
+  const canCreate = isProduction || isMaintenance;
+  const showRequestsMenu=canSeeUserMenu("Requests"),showTicketsMenu=canSeeUserMenu("Tickets"),showDirectoryMenu=true;
+  const showDashboardMenu=!isGeneral||canSeeUserMenu("Dashboard"),showReportsMenu=!isGeneral||canSeeUserMenu("Reports");
+  useEffect(()=>{
+    if(!isGeneral||embedded)return;
+    const allowed={dashboard:showDashboardMenu,directory:showDirectoryMenu,profile:showRequestsMenu,reports:showReportsMenu,tickets:showTicketsMenu};
+    if(!allowed[section])setSection(Object.keys(allowed).find((key)=>allowed[key])||"");
+  },[isGeneral,embedded,section,showDashboardMenu,showDirectoryMenu,showRequestsMenu,showReportsMenu,showTicketsMenu]);
+  useEffect(()=>{
+    const allowed=tab==="tickets"?showTicketsMenu:tab==="transfers"?isMis:tab==="productionFirstTrip"?isProductionWorker:showRequestsMenu&&(tab==="requests"?canSeeRequestMenu("View requests"):tab==="close"?canSeeRequestMenu("Close request form"):tab==="verify"?canSeeRequestMenu(MIS_VERIFICATION_MENU):tab==="history"||tab==="idle"?canSeeRequestMenu("Closed history"):true);
+    if(allowed)return;
+    if(showRequestsMenu&&canSeeRequestMenu("View requests"))setTab("requests");
+    else if(showRequestsMenu&&isMis&&canSeeRequestMenu(MIS_VERIFICATION_MENU))setTab("verify");
+    else if(showRequestsMenu&&isMaintenance&&canSeeRequestMenu("Close request form"))setTab("close");
+    else if(showRequestsMenu&&canSeeRequestMenu("Closed history"))setTab("history");
+    else if(showTicketsMenu)setTab("tickets");
+  },[responsiveMobile,showRequestsMenu,showTicketsMenu,visibleRequestMenus?.join("|"),mobileRole]);
+  const [equipmentRecords, , equipmentLoaded, , , , , refreshEquipmentRecords] = useMasterRecords("Equipment master", canCreate ? vehicles : []);
+  const needsRequestFormMasters=show||Boolean(editing)||Boolean(closing)||Boolean(remarking);
+  const [repairTypeRecords, , repairTypesLoaded, , , , , refreshRepairTypes] = useMasterRecords("Repair type master",[],{enabled:needsRequestFormMasters});
+  const [assignedLocation, setAssignedLocation] = useState(String(session?.location || "").trim());
+  useEffect(()=>{
+    if (!needsDedicatedDashboardFeed) return undefined;
+    if (!['dashboard','reports','profile'].includes(section)) return undefined;
+    const loader=createDashboardRequestLoader({onState:setDashboardState});
+    dashboardLoader.current=loader;
+    const stop=watchRequestRefresh(()=>loader.load(session?.token||authToken),{win:window,doc:document,initial:true});
+    return()=>{stop();loader.cancel();dashboardLoader.current=null;};
+  },[session?.token,needsDedicatedDashboardFeed,section]);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/me/profile", {headers: {Authorization: `Bearer ${session?.token || authToken}`}})
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((profile) => {
+        if (active) setAssignedLocation(String(profile.location || "").trim());
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [session?.token, session?.login, session?.name, show]);
+  const dateLabel = displayDate(new Date());
+  const openArrivalFlag = (row, nextAction = null) => { setArrivalFlagNextAction(nextAction); setArrivalFlagging(row); };
+  const openMaintenanceAction = (row, action) => {
+    const current = requests.find((item) => item.ref === row.ref) || row;
+    if (arrivalRedFlagRequired(current)) { openArrivalFlag(current, action); return; }
+    if (action === "edit") setEditing(current);
+    else if (action === "close") setClosing(current);
+    else if (action === "remark") setRemarking(current);
+  };
+  const requireArrivalReason = (row, error) => {
+    const current = requests.find((item) => item.ref === row.ref) || row;
+    if (error?.code !== "ARRIVAL_RED_FLAG_REQUIRED" && !arrivalRedFlagRequired(current)) return false;
+    openArrivalFlag(current);
+    return true;
+  };
+  const saveEdit = async (payload) => {
+    if (requireArrivalReason(editing)) return;
+    const acceptingVehicle = Boolean(payload.acceptRequest && !editing?.acceptedAt);
+    try { await onUpdateRequest(payload.ref, payload); setEditing(null); if (acceptingVehicle) setCreatedRequestRef("Vehicle Accepted"); }
+    catch (error) { if (!requireArrivalReason(editing, error)) throw error; }
+  };
+  const closeRequest = async (payload) => {
+    const selected=payload.targetReferences ? requestRows.filter(row=>payload.targetReferences.includes(row.ref)) : [closing];
+    if(selected.some(row=>requireArrivalReason(row)))return;
+    try { await onUpdateRequest(closing.ref, payload, "close"); setClosing(null); setCreatedRequestRef("Vehicle Has Been On road"); }
+    catch (error) { if (!requireArrivalReason(closing, error)) throw error; }
+  };
+  const saveDailyRemark = async (payload) => {
+    if (requireArrivalReason(remarking)) return;
+    try { await onAddDailyRemark(remarking.ref, payload); setRemarking(null); }
+    catch (error) { if (!requireArrivalReason(remarking, error)) alert(error.message); }
+  };
+  const verifyRequest = async (payload) => { await onUpdateRequest(verifying.ref, payload, "verify"); setVerifying(null); setCreatedRequestRef("Vehicle Verified"); };
+  const saveProductionFirstTrip = async (payload) => {
+    const saved = await onUpdateRequest(productionFirstTrip.ref, payload, "production-first-trip");
+    if (needsDedicatedDashboardFeed && saved) setDashboardState((current) => current.token === session?.token
+      ? {...current, records: current.records.map((row) => row.ref === saved.ref ? saved : row)} : current);
+    setProductionFirstTrip(null);
+    setCreatedRequestRef("Production first trip recorded");
+    setTab("productionFirstTrip");
+  };
+  const saveMisFlag = async (payload) => { await onUpdateRequest(misFlagging.ref, payload, "mis-flag"); setMisFlagging(null); };
+  const saveArrivalFlag = async (payload) => {
+    const saved = await onUpdateRequest(arrivalFlagging.ref, payload, "arrival-flag");
+    setArrivalFlagging(null);
+    setArrivalFlagNextAction(null);
+    if (arrivalFlagNextAction === "edit") setEditing(saved);
+    else if (arrivalFlagNextAction === "close") setClosing(saved);
+    else if (arrivalFlagNextAction === "remark") setRemarking(saved);
+  };
+  const deleteRequest = async (row) => { if (!window.confirm(`Delete request ${row.ref}?`)) return; try { await onDeleteRequest(row.ref); } catch (error) { alert(error.message); } };
+  const [deletionReview, setDeletionReview] = useState(null);
+  const deleteSelectedRequests = administratorSession && onDeleteRequests ? (rows) => {
+    if (rows.length) setDeletionReview(rows.map(row => ({ ...row })));
+  } : null;
+  const adminDeleteProps = administratorSession ? { onDelete: deleteRequest, onDeleteSelected: deleteSelectedRequests, canDeleteRow } : {};
+  const createRequest = async (request) => {
+    const saved = await onCreate(request);
+    setCreatedRequestRef("Request Submitted");
+    setTab("requests");
+    setSection("profile");
+    return saved;
+  };
+  const operationalWorkspaceRef = useRef(null);
+  useEffect(() => {
+    const workspace = operationalWorkspaceRef.current;
+    if (!workspace || !(isProduction || isMaintenance || isMis)) return;
+    const header = embedded ? document.querySelector(".content > .top") : workspace.closest(".normal")?.querySelector(":scope > header");
+    const updateToolbarOffset = () => {
+      const top = header ? parseFloat(getComputedStyle(header).top) || 0 : 0;
+      workspace.style.setProperty("--workspace-toolbar-top", `${top + (header?.getBoundingClientRect().height || 0)}px`);
+    };
+    updateToolbarOffset();
+    const observer = new ResizeObserver(updateToolbarOffset);
+    if (header) observer.observe(header);
+    window.addEventListener("resize", updateToolbarOffset);
+    return () => { observer.disconnect(); window.removeEventListener("resize", updateToolbarOffset); };
+  }, [embedded, section, showRequestsMenu, isProduction, isMaintenance, isMis]);
+  const misWorkspaceRequests=useMemo(()=>requestsVisibleToMisWorkspace(requests,isMis),[requests,isMis]);
+  const misDashboardRequests=useMemo(()=>requestsVisibleToMisWorkspace(dashboardRequests,isMis),[dashboardRequests,isMis]);
+  const siteRequests=useMemo(()=>!embedded&&isMaintenance?recordsForSite(requests,assignedLocation):misWorkspaceRequests,[embedded,isMaintenance,requests,assignedLocation,misWorkspaceRequests]);
+  const requestRows=useMemo(()=>siteRequests.map((request)=>requestWithEquipmentMasterDetails(request,equipmentRecords)),[siteRequests,equipmentRecords]);
+  const activeRequests=useMemo(()=>requestRows.filter((row)=>String(row.status||"").trim().toLowerCase()!=="closed"),[requestRows]);
+  const closedRequests=useMemo(()=>requestRows.filter((row)=>String(row.status||"").trim().toLowerCase()==="closed"),[requestRows]);
+  const visibleRows=useMemo(()=>isMis ? requestRows.filter(visibleInMisRequests) : activeRequests,[isMis,requestRows,activeRequests]);
+  const historyRows=useMemo(()=>isMis?requestRows.filter(visibleInMisHistory):isProduction?closedRequests.filter(visibleInProductionHistory):isMaintenance?closedRequests.filter(visibleInMaintenanceHistory):closedRequests,[isMis,isProduction,isMaintenance,closedRequests,requestRows]);
+  const idleRows=useMemo(()=>requestRows.filter((row)=>isIdleVehicleRequest(row)),[requestRows]);
+  // First-trip work belongs to the site team, not only the request creator.
+  // The dedicated feed is authorized by the API for the user's assigned sites.
+  const productionFirstTripSourceRows=useMemo(()=>needsDedicatedDashboardFeed
+    ? (dashboardRequestsReady ? recordsForSite(dashboardRequests,assignedLocation).map((row)=>requestWithEquipmentMasterDetails(row,equipmentRecords)) : [])
+    : requestRows,[needsDedicatedDashboardFeed,dashboardRequestsReady,dashboardRequests,assignedLocation,equipmentRecords,requestRows]);
+  const productionFirstTripRows=useMemo(()=>productionFirstTripSourceRows.filter(isProductionFirstTripPending),[productionFirstTripSourceRows]);
+  const productionFirstTripReportRows=useMemo(()=>productionFirstTripSourceRows.filter((row)=>String(row.status||"").trim().toLowerCase()==="closed"&&String(row.productionFirstTripAt||row.firstTripAt||"").trim()),[productionFirstTripSourceRows]);
+  const createLockedByFirstTrip=isProductionManager&&productionFirstTripRows.length>0;
+  return <div className={`normal${embedded ? " embedded-workspace" : ""}`} onPointerDown={isMaintenance ? preventTableAutoScroll : undefined}>
+    {!embedded && <header><CaliberBrand className="logo" subtitle="Mobile user portal" /><nav className="normal-header-nav">{showDashboardMenu&&<button data-nav="dashboard" className={section === "dashboard" ? "active" : ""} onClick={() => setSection("dashboard")}><LayoutDashboard /> Dashboard</button>}{showDirectoryMenu&&<button data-nav="directory" className={section === "directory" ? "active" : ""} onClick={() => setSection("directory")}><BookOpen /> Directory (CD)</button>}{showRequestsMenu&&<button data-nav="requests" className={section === "profile" ? "active" : ""} onClick={() => setSection("profile")}><Wrench /> {isGeneral ? "Requests" : mobileRole}</button>}{showReportsMenu&&<button data-nav="reports" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}><FileBarChart /> Reports</button>}{showTicketsMenu&&<button data-nav="tickets" className={section === "tickets" ? "active" : ""} onClick={() => setSection("tickets")}><Ticket /> Tickets</button>}{isMis&&<button data-nav="transfers" className={section === "transfers" ? "active" : ""} onClick={() => setSection("transfers")}><ArrowRightLeft /> Vehicle Transfer</button>}<BdmsAssistant session={session} token={authToken} /><AnnouncementHistoryButton token={authToken} /></nav><HeaderClock className="normal-header-clock" /><div className="normal-header-actions">{!isGeneral&&<HelpTraining role={mobileRole} location={assignedLocation} />}<NotificationBell session={session} onOpenEntry={(target) => {if(target?.kind==="cdir-deletion"){setDirectoryView("deletions");setSection("directory");return;}if(target?.kind==="employee-transfer"){setDirectoryView("transfer");setSection("directory");return;}const ticket=target?.kind==="ticket"&&showTicketsMenu;const transfer=target?.kind==="transfer"&&isMis;if(ticket)setSection("tickets");else if(transfer)setSection("transfers");else if(showRequestsMenu&&canSeeRequestMenu("View requests")){setSection("profile");setTab("requests")}}} /><span className="normal-header-user"><b>{mobileRole}</b><small>{session?.name || "Mobile User"}</small></span><UserProfile session={session} role={mobileRole} location={assignedLocation} apiToken={authToken} /><ThemeToggle theme={theme} onToggle={toggleTheme} /><button onClick={logout} aria-label="Sign out" className="sign-out-button"><DoorExitIcon /><span className="sign-out-label">Sign out</span></button></div></header>}
+    <main>
+      {!embedded&&section==="dashboard"&&showDashboardMenu&&(dashboardRequestsReady ? <MisDashboard requests={misDashboardRequests} requestsError={dashboardRequestsError} requestsUpdatedAt={dashboardRequestsUpdatedAt} onRefreshRequests={refreshDashboardRequests} theme={theme} /> : <RequestDataState error={dashboardRequestsError} retry={refreshDashboardRequests} />)}
+      {!embedded&&section==="directory"&&showDirectoryMenu&&<CdirModule token={session?.token || authToken} ReportSection={ReportSection} initialView={directoryView} onViewChange={setDirectoryView}/>}
+      {!embedded&&section==="reports"&&showReportsMenu&&<ReportsPage requests={isMaintenance ? requests : isMis ? misWorkspaceRequests : dashboardRequests} activeReportCategory={userReportCategory} setActiveReportCategory={setUserReportCategory} permissions={{...permissions, department: mobileRole}} session={session} />}
+      {!embedded&&section==="tickets"&&showTicketsMenu&&<TicketPage session={session} />}
+      {!embedded&&section==="transfers"&&isMis&&<VehicleTransferWorkflow session={session} Dialog={Modal} />}
+      {!embedded&&!showDashboardMenu&&!showDirectoryMenu&&!showRequestsMenu&&!showReportsMenu&&!showTicketsMenu&&<section className="panel"><h2>No menus assigned</h2><p>Contact your administrator to enable access.</p></section>}
+      {(embedded||section==="profile")&&showRequestsMenu&&<div ref={operationalWorkspaceRef} data-operational={isProductionWorker || isMaintenance || isMis ? "true" : undefined} data-active-tab={tab} className={`mobile-workspace${isMaintenance ? " maintenance-workspace" : ""}`}>
+      {vehicleHistoryTarget && isMaintenance ? <VehicleRepairHistoryPage vehicle={vehicleHistoryTarget} rows={requestRows} onBack={() => setVehicleHistoryTarget(null)} /> : <>
+      <div className="welcome workspace-hero"><div className="workspace-hero-intro"><div><small>{dateLabel}</small><h1>{isGeneral ? "Requests" : isProduction ? "Production Maintenance Request" : isMaintenance ? "Maintenance workspace" : "MIS Verification"}</h1><p>{isGeneral ? "View requests for your assigned location." : isProduction ? "Create and view your requests." : isMaintenance ? "Edit, close and manage maintenance requests." : "Verify closed requests and record first-trip completion."}</p></div><Wrench /></div>
+      <div className="mobile-tabs" role="tablist">
+        {showRequestsMenu&&canSeeRequestMenu("View requests")&&<button data-nav="requests" className={tab === "requests" ? "active" : ""} onClick={() => setTab("requests")}>Requests</button>}
+        {showRequestsMenu&&canCreate&&canSeeRequestMenu("Create request")&&<button data-nav="create" className={`primary${createLockedByFirstTrip?" create-locked-by-first-trip":""}`} aria-disabled={createLockedByFirstTrip} title={createLockedByFirstTrip?"First complete pending First Trip Entry before creating a new request.":""} onClick={() => {if(createLockedByFirstTrip){setTab("productionFirstTrip");return;}refreshEquipmentRecords();refreshRepairTypes();setShow(true);}}><Plus /> Create request</button>}
+        {isProductionWorker&&<button data-nav="productionFirstTrip" className={`${tab === "productionFirstTrip" ? "active" : ""}${productionFirstTripRows.length ? " first-trip-pending-tab first-trip-pending-alert" : ""}`} onClick={() => setTab("productionFirstTrip")}>First trip entry{productionFirstTripRows.length ? ` (${productionFirstTripRows.length})` : ""}</button>}
+        {showRequestsMenu&&isMis&&canSeeRequestMenu(MIS_VERIFICATION_MENU)&&<button data-nav="verify" className={tab === "verify" ? "active" : ""} onClick={() => setTab("verify")}>MIS verification</button>}
+        {showRequestsMenu&&canSeeRequestMenu("Closed history")&&<button data-nav="history" className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>Closed history</button>}
+        {showRequestsMenu&&canSeeRequestMenu("Closed history")&&<button data-nav="idle" className={tab === "idle" ? "active" : ""} onClick={() => setTab("idle")}>Idle Vehicles</button>}
+        {showRequestsMenu&&isMaintenance&&canSeeRequestMenu("Close request form")&&<button data-nav="close" className={tab === "close" ? "active" : ""} onClick={() => setTab("close")}>Close request form</button>}
+        {onRefreshRequests&&<button type="button" className="mobile-workspace-refresh" onClick={refreshWorkspace} disabled={workspaceRefreshing}><RefreshCw className={workspaceRefreshing ? "spin" : ""} /> {workspaceRefreshing ? "Refreshing…" : "Refresh now"}</button>}
+      </div>
+      </div>
+      {createdRequestRef && <div className="workflow-success-popup"><div className="hierarchy-save-message" role="status" aria-live="polite"><CheckCircle2 /><span>{createdRequestRef}</span><button type="button" aria-label="Dismiss request confirmation" onClick={() => setCreatedRequestRef("")}><X /></button></div></div>}
+      {isProductionWorker && productionFirstTripRows.length > 0 && !firstTripReminderDismissed && tab !== "productionFirstTrip" && <div className="workflow-success-popup production-first-trip-popup first-trip-pending-alert"><div className="hierarchy-save-message" role="alert"><CheckCircle2 /><span>{productionFirstTripRows.length} vehicle/equipment first-trip entry pending after Maintenance made on road.{isProductionManager ? " Create request is locked until this is completed." : ""}</span><button type="button" className="primary" onClick={() => setTab("productionFirstTrip")}>Open</button><button type="button" className="first-trip-reminder-close" aria-label="Dismiss first-trip reminder" title="Close reminder" onClick={()=>setFirstTripReminderDismissed(true)}><X aria-hidden="true" /></button></div></div>}
+      {isProduction && tab === "requests" && <><h3 className="sectiontitle">{workspaceReportTitles.requests}</h3><section className="panel table"><BreakdownTable rows={activeRequests} exportTitle={workspaceReportTitles.requests} showReadOnlyAction showMakeModel showReason showCreatedBy showBreakdownDays columnOrder={PRODUCTION_REQUEST_COLUMNS} showUserRole {...adminDeleteProps} /></section></>}
+      {isProductionWorker && tab === "productionFirstTrip" && <><h3 className="sectiontitle">{workspaceReportTitles.productionFirstTrip}</h3><section className="panel"><MobileWorkflowTable rows={productionFirstTripRows} exportTitle={workspaceReportTitles.productionFirstTrip} showMakeModel showReason showClosedBy showClosedAt closedAtLabel="Closed date & time" closedTimeAfterStarted {...adminDeleteProps} showMeterData showProductionFirstTrip showActions actionsFirst onProductionFirstTrip={setProductionFirstTrip} /></section><h3 className="sectiontitle">Production and MIS First Trip Timing Report</h3><section className="panel"><MobileWorkflowTable rows={productionFirstTripReportRows} {...adminDeleteProps} exportTitle="Production and MIS First Trip Timing Report" showStatusFilter={false} showMakeModel showClosedBy showClosedAt closedAtLabel="Maintenance on-road time" showVerifiedBy showVerifiedAt showProductionFirstTrip showMeterData startedFirst /></section></>}
+      {isGeneral && tab === "requests" && canSeeRequestMenu("View requests") && <><h3 className="sectiontitle">Active requests · Read only</h3><section className="panel table"><BreakdownTable rows={activeRequests} showMakeModel showReason showCreatedBy showBreakdownDays /></section></>}
+      {isMaintenance && tab === "requests" && <><h3 className="sectiontitle">{workspaceReportTitles.requests}</h3><section className="panel"><MobileWorkflowTable rows={activeRequests} exportTitle={workspaceReportTitles.requests} highlightLateAcceptance showMakeModel showReason showCreatedBy showComplaintAudio showMeterData showActions actionsFirst showAcceptanceStatus showEtc onFlagArrival={permissions.editRequests || permissions.closeRequests ? openArrivalFlag : null} onRemark={(row) => openMaintenanceAction(row, "remark")} onEdit={permissions.editRequests ? (row) => openMaintenanceAction(row, "edit") : null} onDelete={permissions.deleteRequests ? deleteRequest : null} canDeleteRow={canDeleteRow} onDeleteSelected={deleteSelectedRequests} showUserRole onVehicleHistory={setVehicleHistoryTarget} /></section></>}
+      {isMaintenance && tab === "close" && <><h3 className="sectiontitle">{workspaceReportTitles.close}</h3><section className="panel"><MobileWorkflowTable rows={activeRequests.filter((row) => (!row.verifiedAt || row.status==="Running BD") && (!row.acceptanceRequired || row.acceptedAt) && !isIdleVehicleRequest(row))} exportTitle={workspaceReportTitles.close} showAcceptedTime highlightLateAcceptance showMakeModel showCreatedBy showComplaintAudio showMeterData showActions actionsFirst showInProgressStatus showEtc onFlagArrival={permissions.editRequests || permissions.closeRequests ? openArrivalFlag : null} onRemark={(row) => openMaintenanceAction(row, "remark")} onClose={(row) => openMaintenanceAction(row, "close")} {...adminDeleteProps} onVehicleHistory={setVehicleHistoryTarget} /></section></>}
+      {isMis && tab === "requests" && <><h3 className="sectiontitle">{workspaceReportTitles.requests}</h3><section className="panel"><MobileWorkflowTable rows={visibleRows} exportTitle={workspaceReportTitles.requests} showMisPeople showMakeModel showReason showClosedAt closedAtLabel="Closed time" closedTimeAfterStarted showTurnaroundTime showMeterData startedFirst showActions onVerify={setVerifying} onMisFlag={permissions.verifyRequests ? setMisFlagging : null} showUserRole {...adminDeleteProps} /></section></>}
+      {isMis && tab === "verify" && <><h3 className="sectiontitle">{workspaceReportTitles.verify}</h3><section className="panel"><MobileWorkflowTable rows={visibleRows} exportTitle={workspaceReportTitles.verify} showMisPeople showMakeModel showTurnaroundTime showMeterData showActions onVerify={setVerifying} onMisFlag={permissions.verifyRequests ? setMisFlagging : null} {...adminDeleteProps} /></section></>}
+      {tab === "history" && (!isGeneral || canSeeRequestMenu("Closed history")) && <><h3 className="sectiontitle">{workspaceReportTitles.history}</h3><section className="panel">{isProduction?<BreakdownTable {...adminDeleteProps} rows={historyRows} exportTitle={workspaceReportTitles.history} showReadOnlyAction showMakeModel showReason showCreatedBy showClosedBy showBreakdownDays showClosedAt />:<MobileWorkflowTable rows={historyRows} exportTitle={workspaceReportTitles.history} showStatusFilter={false} highlightLateAcceptance showMakeModel showReason showClosedBy showClosedAt={isMaintenance || isMis} closedAtLabel={closedHistoryClosingLabel} showVerifiedBy={isMis} showVerifiedAt={isMis} showTripCard={isMis} showMeterData showComplaintAudio={isMaintenance} showWorkCompletion={isMaintenance} showTurnaroundTime={isMis} startedFirst={isMis} startedLabel={isMis ? "Production date and time" : "Started"} onVehicleHistory={isMaintenance ? setVehicleHistoryTarget : null} closedTimeAfterStarted {...adminDeleteProps} />}</section></>}
+      {tab === "idle" && (!isGeneral || canSeeRequestMenu("Closed history")) && <><h3 className="sectiontitle">{workspaceReportTitles.idle}</h3><section className="panel"><MobileWorkflowTable rows={idleRows} exportTitle={workspaceReportTitles.idle} showMakeModel showReason showCreatedBy showTurnaroundTime showMeterData onVehicleHistory={isMaintenance ? setVehicleHistoryTarget : null} {...adminDeleteProps} /></section></>}
+      </>}
+      </div>}
+    </main>
+    {deletionReview && <RequestDeleteReview records={deletionReview} onDelete={onDeleteRequests} onClose={() => setDeletionReview(null)} Modal={Modal} formatDateTime={formatTwelveHourDateTime} />}
+    {canCreate && show && <MaintenanceForm normal onSubmit={createRequest} equipmentRecords={equipmentRecords} equipmentLoaded={equipmentLoaded} repairTypeRecords={repairTypeRecords} repairTypesLoaded={repairTypesLoaded} assignedLocation={assignedLocation} activeRequestRecords={dashboardRequests} close={() => setShow(false)} />}
+    {remarking && <DailyRemarkForm request={remarking} close={() => setRemarking(null)} onSave={saveDailyRemark} />}
+    {editing && <RequestEditForm requireMeters={maintenanceMetersRequired(session)} onAddDailyRemark={onAddDailyRemark} request={requests.find((row) => row.ref === editing.ref) || editing} equipmentRecords={equipmentRecords} repairTypeRecords={repairTypeRecords} repairTypesLoaded={repairTypesLoaded} close={() => setEditing(null)} onSave={saveEdit} onRequireArrivalFlag={openArrivalFlag} />}
+    {closing && <CloseRequestForm requireMeters={maintenanceMetersRequired(session)} request={closing} linkedRequests={requestRows} equipmentRecords={equipmentRecords} close={() => setClosing(null)} onSave={closeRequest} />}
+    {verifying && <VerifyRequestForm request={verifying} equipmentRecords={equipmentRecords} close={() => setVerifying(null)} onSave={verifyRequest} />}
+    {productionFirstTrip && <ProductionFirstTripForm request={productionFirstTripSourceRows.find((row) => row.ref === productionFirstTrip.ref) || productionFirstTrip} close={() => setProductionFirstTrip(null)} onSave={saveProductionFirstTrip} />}
+    {misFlagging && <RequestRedFlagForm request={requests.find((row) => row.ref === misFlagging.ref) || misFlagging} close={() => setMisFlagging(null)} onSave={saveMisFlag} />}
+    {arrivalFlagging && <RequestRedFlagForm flagKind="arrival" request={requests.find((row) => row.ref === arrivalFlagging.ref) || arrivalFlagging} close={() => {setArrivalFlagging(null);setArrivalFlagNextAction(null);}} onSave={saveArrivalFlag} />}
+  </div>;
+}
+
+function NavigationLoadTimeToast({ active, startedAt }) {
+  const [loadTime, setLoadTime] = useState(null);
+  useEffect(() => {
+    const handleLoaded = (event) => {
+      if (event.detail?.name === active) setLoadTime(Math.max(0.1, event.detail.seconds));
+    };
+    window.addEventListener("menu-data-loaded", handleLoaded);
+    const timer = window.setTimeout(() => {
+      setLoadTime((current) => current ?? Math.max(0.1, (performance.now() - startedAt.current) / 1000));
+    }, 120);
+    return () => {
+      window.removeEventListener("menu-data-loaded", handleLoaded);
+      window.clearTimeout(timer);
+    };
+  }, [active, startedAt]);
+  useEffect(() => {
+    if (loadTime === null) return undefined;
+    const timer = window.setTimeout(() => setLoadTime(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [loadTime]);
+  if (loadTime === null) return null;
+  return <div className="load-time-toast" role="status">
+    <b>Data loaded. Time taken: {loadTime.toFixed(1)} sec.</b>
+  </div>;
+}
+
+const AppBackgroundServices = React.memo(function AppBackgroundServices({ session, logout }) {
+  const token = session?.token || authToken;
+  return <>
+    <SessionMessageInbox session={session} />
+    <TelegramGate token={token} logout={logout} />
+    <ReturnedCorrectionGate key={token} token={token} />
+    <TicketResolutionNotices key={token} token={token} />
+    <RemoteAssistanceAgent session={session} />
+  </>;
+}, (previous, next) => previous.session === next.session);
+
+function App() {
+  const [session, setSession] = useState(storedSession?.token ? storedSession : null),
+    [active, setActive] = useState(requestedScanPage),
+    [equipmentFilter, setEquipmentFilter] = useState("all"),
+    [equipmentLocation, setEquipmentLocation] = useState(""),
+    [equipmentLocations, setEquipmentLocations] = useState([]),
+    [equipmentCategory, setEquipmentCategory] = useState("all"),
+    [breakdownFleetFilter, setBreakdownFleetFilter] = useState(""),
+    [breakdownFleetSites, setBreakdownFleetSites] = useState([]),
+    [activeReportCategory, setActiveReportCategory] = useState("general"),
+    [requests, setRequests] = useState([]),
+    [requestState, setRequestState] = useState({ token: "", loaded: false, error: "", updatedAt: 0 }),
+    [menu, setMenu] = useState(false),
+    [canGoBack, setCanGoBack] = useState(false),
+    [theme, setTheme] = useState(() => {
+      const saved = localStorage.getItem("nerveCenterTheme");
+      if (saved === "light" || saved === "dark") return saved;
+      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }),
+    [globalVehicleHistoryTarget, setGlobalVehicleHistoryTarget] = useState(null),
+    [accountWorkspace,setAccountWorkspace]=useState("accounts"),
+    [accountDirectoryView,setAccountDirectoryView]=useState("directory");
+  const menuLoadStartedAt = useRef(performance.now());
+  const pageHistory = useRef([LOGIN_LANDING_PAGE]);
+  const requestLoadSequence = useRef(0);
+  const requestResponseCache = useRef({token: "", etag: ""});
+  // Commit the selected navigation item immediately. Only the expensive page
+  // body follows at deferred priority, so a click always paints before a large
+  // dashboard or table starts rendering.
+  const renderedActive = useDeferredValue(active);
+  const renderedReportCategory = useDeferredValue(activeReportCategory);
+  const renderedEquipmentFilter = useDeferredValue(equipmentFilter);
+  const renderedEquipmentLocation = useDeferredValue(equipmentLocation);
+  const renderedEquipmentLocations = useDeferredValue(equipmentLocations);
+  const renderedEquipmentCategory = useDeferredValue(equipmentCategory);
+  const renderedBreakdownFleetFilter = useDeferredValue(breakdownFleetFilter);
+  const renderedBreakdownFleetSites = useDeferredValue(breakdownFleetSites);
+  const [responsiveMobile,setResponsiveMobile]=useState(()=>window.matchMedia("(max-width: 900px)").matches);
+  useEffect(()=>{const query=window.matchMedia("(max-width: 900px)");const update=()=>setResponsiveMobile(query.matches);query.addEventListener("change",update);return()=>query.removeEventListener("change",update)},[]);
+  useEffect(() => {
+    const openHistory = (event) => setGlobalVehicleHistoryTarget(event.detail || null);
+    window.addEventListener(VEHICLE_HISTORY_OPEN_EVENT, openHistory);
+    return () => window.removeEventListener(VEHICLE_HISTORY_OPEN_EVENT, openHistory);
+  }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem("nerveCenterTheme", theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((current) => current === "dark" ? "light" : "dark");
+  const adminPermissions = session?.permissions || {};
+  const activeNavigationPermissions=navigationPermissionsForView(adminPermissions,responsiveMobile);
+  const [profileLocation, setProfileLocation] = useState("");
+  const [profileDesignationKey, setProfileDesignationKey] = useState("");
+  useEffect(() => {
+    if (!session?.token) return undefined;
+    let activeRequest = true;
+    fetch("/api/me/profile", {headers: {Authorization: `Bearer ${session.token}`}})
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((profile) => { if (activeRequest) { setProfileLocation(String(profile.location || "").trim()); setProfileDesignationKey(String(profile.designationKey || "").trim()); setSession(current => current?.token === session.token ? {...current,permissions:{...current.permissions,ibossAccounts:profile.ibossAccounts === true,accountAccess:profile.accountAccess}} : current); } })
+      .catch(() => {});
+    return () => { activeRequest = false; };
+  }, [session?.token]);
+  useEffect(()=>{
+    if(!session?.token)return undefined;
+    let lastHeartbeatAt=0,closed=false;
+    const closeInvalidSession=()=>{
+      if(closed)return;
+      closed=true;
+      clearStoredSession();
+      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+    };
+    const heartbeat=async(force=false)=>{
+      if(closed)return;
+      if(!force&&Date.now()-lastHeartbeatAt<30000)return;
+      lastHeartbeatAt=Date.now();
+      try{
+        const response=await fetch('/api/session-heartbeat',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});
+        if(response.status===401)closeInvalidSession();
+      }catch{}
+    };
+    let activityHeartbeatHandle=null,activityHeartbeatUsesIdle=false;
+    const markActivity=()=>{
+      if(closed||activityHeartbeatHandle!==null||Date.now()-lastHeartbeatAt<30000)return;
+      const run=()=>{activityHeartbeatHandle=null;activityHeartbeatUsesIdle=false;void heartbeat();};
+      if(typeof window.requestIdleCallback==="function"){
+        activityHeartbeatUsesIdle=true;
+        activityHeartbeatHandle=window.requestIdleCallback(run,{timeout:1000});
+      }else activityHeartbeatHandle=window.setTimeout(run,0);
+    };
+    const activityEvents=['pointerdown','keydown','touchstart','wheel'];
+    activityEvents.forEach((name)=>window.addEventListener(name,markActivity,{passive:true,capture:true}));
+    void heartbeat(true);
+    return()=>{
+      closed=true;
+      activityEvents.forEach((name)=>window.removeEventListener(name,markActivity,{capture:true}));
+      if(activityHeartbeatHandle!==null){
+        if(activityHeartbeatUsesIdle)window.cancelIdleCallback(activityHeartbeatHandle);
+        else window.clearTimeout(activityHeartbeatHandle);
+      }
+    };
+  },[session?.token]);
+  const isAdministrator=session?.role==='super'&&['admin','super admin'].includes(String(adminPermissions.adminLevel||'').trim().toLowerCase());
+  const vehicleTransferRoleAccess=adminPermissions.adminLevel==='Manager'&&managerRoleSelection(adminPermissions.managerRoles?.length?adminPermissions.managerRoles:adminPermissions.managerRole)
+    .some((role)=>['MIS Manager','Project Manager'].includes(role));
+  const correctionApprovalAccess=adminPermissions.adminLevel==='Manager'&&managerRoleSelection(adminPermissions.managerRoles?.length?adminPermissions.managerRoles:adminPermissions.managerRole)
+    .includes('Project Manager');
+  const correctionRequestAccess=adminPermissions.adminLevel==='Manager'&&managerRoleSelection(adminPermissions.managerRoles?.length?adminPermissions.managerRoles:adminPermissions.managerRole)
+    .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
+  const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks']);
+  const canOpenAdminPage = (name) => {
+    if(['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(name))return isAdministrator;
+    if(name==='Employee master')return isAdministrator;
+    if(name==='Pulse Master Sync'||['Work Order master','Financial Year master','Company master'].includes(name))return isAdministrator;
+    if(['Vehicle Log Book','Equipment Log Book'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
+    if(session?.assignedRole==='HR User')return ['Dashboard','Reports','Tickets','CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
+    if(session?.assignedRole==='HR Manager')return ['CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
+    if(name==="User Sessions")return canViewUserSessions(session);
+    if(name==="OEM Email Delivery Status")return isAdministrator;
+    if(backupAdminPages.has(name)||databaseToolPages.has(name))return isAdministrator;
+    if(name==="Audit Trail")return isAdministrator;
+    if(name==="Recovery guide")return isAdministrator;
+    if(name==="Print helper")return isAdministrator;
+    if(name==="Admin locks")return isAdministrator&&adminPermissions.adminLevel==="Super Admin";
+    if(name==="Manager Profile")return adminPermissions.adminLevel==="Manager";
+    if(name==="Correction approvals")return correctionApprovalAccess;
+    if(name==="Request correction")return correctionRequestAccess;
+    if(name==="Request corrections")return isAdministrator;
+    if(ORGANISATION_PAGE_NAMES.includes(name))return isAdministrator;
+    if(name==="Dashboard"&&adminPermissions.adminLevel==="Manager")return true;
+    if (operationalWorkspaceNav.some(([workspace]) => workspace === name)) return adminPermissions.adminLevel !== "Manager";
+    if ([...masterNav, ...cdirMasterNavItems].some(([master]) => master === name)) return (name==='Vehicle transfers'&&vehicleTransferRoleAccess)
+      || (accessAllows(activeNavigationPermissions.tabAccess, "Masters") && masterAccessAllows(activeNavigationPermissions, name));
+    if (whatsappNav.some(([page]) => page === name)) return (name !== "Meta API setup" || adminPermissions.adminLevel !== "Manager") && accessAllows(activeNavigationPermissions.tabAccess, "WhatsApp Integration") && accessAllows(activeNavigationPermissions.whatsappAccess, name);
+    if (["Employee Transfer","Record Deletion Approvals"].includes(name)) return true;
+    if (name === "Employee Tenure Report") return accessAllows(activeNavigationPermissions.tabAccess, "CD");
+    if (["Stock Statement","Purchase Order","GRN Register","PO-GRN Reconciliation"].includes(name)) return accessAllows(activeNavigationPermissions.tabAccess,"Reports") && reportAccessAllows(activeNavigationPermissions.reportAccess,name);
+    if (["Accounts","Accounts Masters","Accounts Transactions"].includes(name)) return ibossAccountsAllowed(session,activeNavigationPermissions);
+    if (name === "Reports") return reportCategoryIdsForUser(activeNavigationPermissions, session).length > 0;
+    const directMenuAccess = {Dashboard: "dashboardAccess", Tickets: "ticketAccess", Reports: "reportAccess"};
+    return accessAllows(activeNavigationPermissions.tabAccess, name) && accessAllows(activeNavigationPermissions[directMenuAccess[name]], name);
+  };
+  const firstAccessibleAdminPage = () => {
+    if(session?.assignedRole==='HR User')return "Dashboard";
+    if(session?.assignedRole==='HR Manager')return "CD";
+    if (canOpenAdminPage("Dashboard")) return "Dashboard";
+    const firstMaster = [...masterNav, ...cdirMasterNavItems].find(([name]) => canOpenAdminPage(name))?.[0];
+    if (firstMaster) return firstMaster;
+    if (accessAllows(activeNavigationPermissions.tabAccess, "WhatsApp Integration")) return whatsappNav.find(([name]) => (name !== "Meta API setup" || adminPermissions.adminLevel !== "Manager") && accessAllows(activeNavigationPermissions.whatsappAccess, name))?.[0];
+    return nav.find(([name]) => canOpenAdminPage(name))?.[0] || "Dashboard";
+  };
+  const selectedOperationalRole = operationalWorkspaceNav.find(([name]) => name === renderedActive)?.[2];
+  const operationalSession = selectedOperationalRole ? {
+    ...session,
+    assignedRole: selectedOperationalRole,
+    permissions: {
+      ...session?.permissions,
+      readRequests: true,
+      viewAllRequests: true,
+      createRequests: true,
+      editRequests: true,
+      deleteRequests: true,
+      closeRequests: true,
+      verifyRequests: true,
+      viewEquipment: true,
+      viewRepairTypes: true,
+    },
+  } : null;
+  const selectMenu = (name) => {
+    if (name === "Report Setting") name = "Reports";
+    if (adminOnlyPages.has(name) && !isAdministrator && !(name==='User Sessions'&&canViewUserSessions(session))) return;
+    if ((session?.role === "super"||["HR User","HR Manager"].includes(session?.assignedRole)) && !canOpenAdminPage(name)) return;
+    window.history.replaceState(null,"",misPageUrl(window.location.href,name));
+    if (name === "Dashboard") window.dispatchEvent(new CustomEvent("nerve-center:dashboard-home"));
+    if (name === active) return;
+    preloadNavigationFeature(name);
+    pageHistory.current.push(name);
+    setCanGoBack(pageHistory.current.length > 1);
+    menuLoadStartedAt.current = performance.now();
+    setActive(name);
+  };
+  useEffect(() => {
+    if ((session?.role !== "super"&&!["HR User","HR Manager"].includes(session?.assignedRole)) || canOpenAdminPage(active)) return;
+    const landingPage = firstAccessibleAdminPage();
+    pageHistory.current = [landingPage];
+    setCanGoBack(false);
+    setActive(landingPage);
+  }, [session?.token,responsiveMobile]);
+  useEffect(()=>{const openLocation=()=>selectMenu(requestedScanPage());window.addEventListener('popstate',openLocation);openLocation();return ()=>window.removeEventListener('popstate',openLocation);},[session?.token]);
+  const lastAuditedPage = useRef("");
+  useEffect(() => {
+    if (!session?.token || !active || active === lastAuditedPage.current) return;
+    lastAuditedPage.current = active;
+    recordUserActivity({module:"Navigation",action:"Open page",targetReference:active});
+  }, [active,session?.token]);
+  const goBack = () => {
+    if (pageHistory.current.length <= 1) return;
+    pageHistory.current.pop();
+    const previousPage = pageHistory.current.at(-1) || "Dashboard";
+    preloadNavigationFeature(previousPage);
+    setCanGoBack(pageHistory.current.length > 1);
+    menuLoadStartedAt.current = performance.now();
+    setMenu(false);
+    window.history.replaceState(null,"",misPageUrl(window.location.href,previousPage));
+    setActive(previousPage);
+  };
+  const loadRequests = async () => {
+    const responseCache = typeof requestResponseCache === "undefined"
+      ? (loadRequests.responseCache ||= {token: "", etag: ""})
+      : requestResponseCache.current;
+    const loadSequence = ++requestLoadSequence.current;
+    if (!session?.token) {
+      if (loadSequence === requestLoadSequence.current) setRequests([]);
+      return [];
+    }
+    const generalScope=session.assignedRole==="General User"?["Dashboard","Requests","Reports"].find((menu)=>generalUserCanAccessMenu(session,menu)):null;
+    if(session.assignedRole==="General User"&&!generalScope){
+      if(loadSequence===requestLoadSequence.current){setRequests([]);setRequestState({token:session.token,loaded:true,error:"",updatedAt:Date.now()});}
+      return [];
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    try {
+      if (responseCache.token !== session.token) { responseCache.token = session.token; responseCache.etag = ""; }
+      const response = await fetch(`/api/requests?t=${Date.now()}${generalScope?`&scope=${generalScope.toLowerCase()}`:""}`, {
+        cache: "no-store",
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${session.token}`, ...(responseCache.etag ? {"If-None-Match": responseCache.etag} : {}) },
+      });
+      if (response.status === 304) {
+        if (loadSequence === requestLoadSequence.current) setRequestState((current) => {
+          // Preserve the same state object when nothing changed. Replacing it
+          // used to rebuild the complete desktop dashboard every 30 seconds.
+          if (current.token === session.token && current.loaded && !current.error) return current;
+          return {...current, token: session.token, loaded: true, error: "", updatedAt: Date.now()};
+        });
+        return requests;
+      }
+      if (!response.ok) throw Object.assign(new Error([401, 403].includes(response.status) ? "Sign in again or check your dashboard access." : "Could not load requests"), {status: response.status});
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("Invalid request data received");
+      if (loadSequence === requestLoadSequence.current) {
+        setRequests(data);
+        responseCache.token = session.token;
+        responseCache.etag = response.headers?.get?.("etag") || "";
+        setRequestState({ token: session.token, loaded: true, error: "", updatedAt: Date.now() });
+      }
+      return data;
+    } catch (error) {
+      if (loadSequence === requestLoadSequence.current) {
+        if ([401, 403].includes(error.status)) {
+          responseCache.etag = "";
+          setRequests([]);
+          setRequestState({token: session.token, loaded: false, updatedAt: 0, error: error.message});
+        } else {
+          setRequestState((current) => ({ ...current, token: session.token, error: error.message || "Could not load requests" }));
+        }
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  };
+  const requestsLoaded = requestState.token === session?.token && requestState.loaded;
+  const requestsError = requestState.token === session?.token ? requestState.error : "";
+  useEffect(() => {
+    requestResponseCache.current = {token: session?.token || "", etag: ""};
+    setRequestState({ token: session?.token || "", loaded: false, error: "", updatedAt: 0 });
+    setRequests([]);
+    if (!session?.token || session.userType === "Account User") {
+      requestLoadSequence.current += 1;
+      setRequests([]);
+      return undefined;
+    }
+    const stopRefresh = watchRequestRefresh(loadRequests, { win: window, doc: document, initial: true });
+    return () => {
+      requestLoadSequence.current += 1;
+      stopRefresh();
+    };
+  }, [session?.token]);
+  const gotoEquipment = (filter = "all", location = "", category = "all", locations = []) => {
+      setEquipmentFilter(filter);
+      setEquipmentLocation(location);
+      setEquipmentCategory(category);
+      setEquipmentLocations(locations);
+      selectMenu("Equipment master");
+    },
+    gotoBreakdownFleet = (filter, sites = []) => {
+      setBreakdownFleetFilter(filter);
+      setBreakdownFleetSites(sites);
+      selectMenu("Breakdown master");
+    },
+    logout = () => {
+      const token=session?.token||authToken;
+      if(token)void fetch('/api/logout',{method:'POST',headers:{Authorization:`Bearer ${token}`},keepalive:true}).catch(()=>{});
+      clearStoredSession();
+      setSession(null);
+    },
+    addRequest = async (request) => {
+      requestLoadSequence.current += 1;
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
+        body: JSON.stringify(request),
+      });
+      const saved = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        requestLoadSequence.current += 1;
+        const error = new Error(saved.error || "Could not save request");
+        error.duplicate = saved.duplicate === true;
+        error.idleApprovalPending = saved.idleApprovalPending === true;
+        error.existingReference = saved.existingReference || "";
+        throw error;
+      }
+      requestLoadSequence.current += 1;
+      setRequests((current) => [saved, ...current.filter((row) => row.ref !== saved.ref)]);
+      notifyRequestChange(window);
+      return saved;
+    },
+    updateRequest = async (reference, payload, action = "edit") => {
+      const endpoint = action === "breakdown-responsibility" ? `/api/requests/${encodeURIComponent(reference)}/breakdown-responsibility` : action === "delayed-reason" ? `/api/requests/${encodeURIComponent(reference)}/delayed-reason` : action === "close" ? `/api/requests/${encodeURIComponent(reference)}/close` : action === "verify" ? `/api/requests/${encodeURIComponent(reference)}/verify` : action === "production-first-trip" ? `/api/requests/${encodeURIComponent(reference)}/production-first-trip` : action === "ideal-onroad" ? `/api/requests/${encodeURIComponent(reference)}/ideal-onroad` : action === "idle-cancel" ? `/api/requests/${encodeURIComponent(reference)}/idle-cancel` : action === "arrival-flag" ? `/api/requests/${encodeURIComponent(reference)}/arrival-flag` : action === "mis-flag" ? `/api/requests/${encodeURIComponent(reference)}/mis-flag` : `/api/requests/${encodeURIComponent(reference)}`;
+      const before = requests.find((row) => row.ref === reference) || {ref: reference};
+      const confirmUncertainWrite = async () => {
+        try {
+          const refreshed = await loadRequests();
+          if(Array.isArray(payload.targetReferences)){
+            const updated=payload.targetReferences.map(ref=>refreshed.find(row=>row.ref===ref));
+            return updated.every((row,index)=>requestWriteOutcomeConfirmed(requests.find(before=>before.ref===payload.targetReferences[index])||{ref:payload.targetReferences[index]},row,action,payload)) ? {updatedRequests:updated} : null;
+          }
+          const saved = refreshed.find((row) => row.ref === reference);
+          return requestWriteOutcomeConfirmed(before, saved, action, payload) ? saved : null;
+        } catch { return null; }
+      };
+      const acceptConfirmedWrite = (saved) => {
+        notifyRequestChange(window);
+        return saved;
+      };
+      let response;
+      try {
+        response = await fetch(action === "reopen-breakdown" ? `/api/requests/${encodeURIComponent(reference)}/reopen-breakdown` : endpoint, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        if (!isNetworkFailure(error)) throw error;
+        const confirmed = await confirmUncertainWrite();
+        if (confirmed) return acceptConfirmedWrite(confirmed);
+        throw new Error(requestWriteConnectionMessage(before, action));
+      }
+      const responseText = await response.text();
+      let saved = {};
+      try { saved = responseText ? JSON.parse(responseText) : {}; } catch {}
+      if (!response.ok) {
+        if (isTransientStatus(response.status)) {
+          const confirmed = await confirmUncertainWrite();
+          if (confirmed) return acceptConfirmedWrite(confirmed);
+          throw new Error(requestWriteConnectionMessage(before, action));
+        }
+        const fallback = response.status === 413
+          ? "The uploaded file is too large. Choose a smaller file and try again."
+          : response.status === 403 && !saved.error
+            ? "The update was blocked before reaching the application. Refresh, choose a smaller image, and try again."
+            : "Could not update request";
+        const error = new Error(saved.error || fallback);
+        error.code = saved.code;
+        throw error;
+      }
+      requestLoadSequence.current += 1;
+      setRequests((current) => current.map((row) => Array.isArray(saved.updatedRequests) ? saved.updatedRequests.find(updated=>updated.ref===row.ref)||row : row.ref === reference ? saved : row));
+      notifyRequestChange(window);
+      return saved;
+    },
+    addDailyRemark = async (reference, payload) => {
+      const response = await fetch(`/api/requests/${encodeURIComponent(reference)}/daily-remarks`, {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${authToken}`},body:JSON.stringify(payload)});
+      const saved=await response.json().catch(()=>({}));
+      if(!response.ok){const error=new Error(saved.error||"Could not save the daily update");error.code=saved.code;throw error;}
+      requestLoadSequence.current += 1;
+      setRequests((current)=>current.map((row)=>row.ref===reference?saved:row));
+      notifyRequestChange(window);
+      return saved;
+    },
+    deleteRequest = async (reference) => {
+      const reason = window.prompt(`Enter the reason for deleting ${reference}:`, "");
+      if (reason === null) return;
+      if (!reason.trim()) throw new Error("A deletion reason is required for the Audit Trail.");
+      const response = await fetch(`/api/requests/${encodeURIComponent(reference)}`, {method: "DELETE", headers: {Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason.trim()}});
+      const details = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(details.error || "Could not delete request");
+      requestLoadSequence.current += 1;
+      setRequests((current) => current.filter((row) => row.ref !== reference));
+      notifyRequestChange(window);
+    },
+    deleteRequestsBulk = async (references, reason) => {
+      const response = await fetch("/api/requests/bulk-delete", {method: "POST", headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason}, body: JSON.stringify({references, reason})});
+      const details = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(details.error || "Could not delete the selected requests");
+      const removed = new Set(details.deleted || []);
+      requestLoadSequence.current += 1;
+      setRequests((current) => current.filter((row) => !removed.has(row.ref)));
+      notifyRequestChange(window);
+      return details;
+    };
+  const completeLogin = (nextSession) => {
+    setActive(requestedScanPage());
+    pageHistory.current = [requestedScanPage()];
+    if(nextSession.accountsPortal&&ibossAccountsAllowed(nextSession)){
+      setActive("Accounts");pageHistory.current=["Accounts"];
+    }
+    setCanGoBack(false);
+    setMenu(false);
+    setEquipmentFilter("all");
+    setEquipmentLocation("");
+    setEquipmentCategory("all");
+    setEquipmentLocations([]);
+    setBreakdownFleetFilter("");
+    setBreakdownFleetSites([]);
+    setActiveReportCategory("general");
+    setProfileLocation("");
+    const loginUrl=new URL(window.location.href);loginUrl.searchParams.delete("login");window.history.replaceState(null,"",loginUrl.pathname+loginUrl.search+loginUrl.hash);
+    setSession(nextSession);
+  };
+  const globalVehicleHistoryDialog = globalVehicleHistoryTarget ? <Modal
+    title={`Vehicle repair history · ${globalVehicleHistoryTarget.reportDoor || globalVehicleHistoryTarget.door || "Vehicle"}`}
+    close={() => setGlobalVehicleHistoryTarget(null)}
+    className="vehicle-history-modal"
+    overlayClassName="vehicle-history-overlay"
+  ><VehicleRepairHistoryPage vehicle={globalVehicleHistoryTarget} rows={requests} backLabel="Close history" onBack={() => setGlobalVehicleHistoryTarget(null)} /></Modal> : null;
+  // Menu visibility, the back-button flag, and background service updates do
+  // not change the current page. Preserve the page element across those root
+  // renders so opening navigation cannot rebuild a large dashboard or table.
+  const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
+    requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} /> : <RequestDataState error={requestsError} retry={loadRequests} />
+  ) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+    <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
+  ) : renderedActive==='Pulse Master Sync' ? (
+    <PulseMasterSync session={session}/>
+  ) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+    <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
+  ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (
+    <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu('Dashboard')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>
+  ) : renderedActive === "Stock Statement" ? (
+    <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "Purchase Order" ? (
+    <PurchaseOrderReport token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "Accounts Transactions" ? (
+    <IbossAccounts token={session?.token || authToken} permissions={session?.permissions} ReportSection={ReportSection} initialSection="transactions" />
+  ) : renderedActive === "Accounts Masters" ? (
+    <IbossAccounts token={session?.token || authToken} permissions={session?.permissions} ReportSection={ReportSection} initialSection="masters" />
+  ) : renderedActive === "Accounts" ? (
+    <IbossAccounts token={session?.token || authToken} permissions={session?.permissions} ReportSection={ReportSection} />
+  ) : renderedActive === "PO-GRN Reconciliation" ? (
+    <PoGrnReconciliation token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "GRN Register" ? (
+    <GrnRegister token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "Record Deletion Approvals" ? (
+    <CdirDeletion token={session?.token || authToken} ReportSection={ReportSection}/>
+  ) : renderedActive === "Employee Transfer" ? (
+    <EmployeeTransfer token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "Employee Tenure Report" ? (
+    <EmployeeTenureReport token={session?.token || authToken} ReportSection={ReportSection} />
+  ) : renderedActive === "CD" ? (
+    <CaliberDirectoryPage token={session?.token || authToken} />
+  ) : renderedActive === "Manager Profile" ? (
+    <MisDashboard canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
+  ) : renderedActive === "Tickets" ? (
+    <TicketPage session={session} />
+  ) : renderedActive === "Admin locks" ? (
+    <AdminLockManagement session={session} />
+  ) : renderedActive === "Request corrections" || renderedActive === "Correction approvals" || renderedActive === "Request correction" ? (
+    <RequestCorrections session={session} requests={requests} Dialog={Modal} />
+  ) : renderedActive === "User Sessions" ? (
+    <UserSessionsPage session={session} />
+  ) : renderedActive === "OEM Email Delivery Status" ? (
+    <OemEmailDeliveryStatus session={session} />
+  ) : renderedActive === "Recovery guide" ? (
+    <RecoveryGuide onNavigate={selectMenu} />
+  ) : renderedActive === "Diagnostics" ? (
+    <DiagnosticsPage token={authToken} />
+  ) : renderedActive === "Storage management" ? (
+    <StorageManagementPage token={authToken} onNavigate={selectMenu} />
+  ) : renderedActive === "Retention rules" ? (
+    <RetentionRulesPage token={authToken} />
+  ) : renderedActive === "Purge data" ? (
+    <PurgeDataPage token={authToken} />
+  ) : backupAdminPages.has(renderedActive) ? (
+    <BackupAdministration section={renderedActive} session={session} onNavigate={selectMenu} />
+  ) : renderedActive === "Vehicle transfers" ? (
+    <VehicleTransferWorkflow session={session} Dialog={Modal} />
+  ) : renderedActive === "Equipment master" ? (
+    <Equipment initialFilter={renderedEquipmentFilter} initialLocation={renderedEquipmentLocation} initialCategory={renderedEquipmentCategory} allowedLocations={renderedEquipmentLocations} statusRequests={requests} />
+  ) : renderedActive === "Breakdown master" ? (
+    renderedBreakdownFleetFilter ? <Equipment initialFilter={renderedBreakdownFleetFilter} pageTitle="Breakdown master" statusRequests={requests} allowedLocations={renderedBreakdownFleetSites} /> : <Breakdown requests={requests} />
+  ) : renderedActive === "Region master" ? (
+    <Subsidiaries gotoEquipment={gotoEquipment} requests={requests} />
+  ) : ORGANISATION_PAGE_NAMES.includes(renderedActive) ? (
+    <OrganisationChartPage view={Object.keys(ORGANISATION_PAGES).find((key) => ORGANISATION_PAGES[key] === renderedActive)} />
+  ) : renderedActive === "Meta API setup" ? (
+    <MetaWhatsAppSetup />
+  ) : renderedActive === "WhatsApp alert history" ? (
+    <WhatsAppAlertHistory />
+  ) : renderedActive === "Reports" ? (
+    <ReportsPage requests={requests} activeReportCategory={renderedReportCategory} setActiveReportCategory={setActiveReportCategory} permissions={activeNavigationPermissions} session={session} />
+  ) : renderedActive === "Print helper" ? (
+    <PrintHelperSetupPage session={session} />
+  ) : renderedActive === "Audit Trail" ? (
+    <AuditTrailPage session={session} />
+  ) : operationalSession ? (
+    <Normal embedded requests={requests} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onCreate={addRequest} onUpdateRequest={updateRequest} onDeleteRequest={deleteRequest} onDeleteRequests={deleteRequestsBulk} onAddDailyRemark={addDailyRemark} onRefreshRequests={loadRequests} session={operationalSession} logout={logout} theme={theme} toggleTheme={toggleTheme} />
+  ) : whatsappNav.some(([name]) => name === renderedActive) ? (
+    <WhatsAppReport type={renderedActive} requests={requests} />
+  ) : (
+    <Generic name={renderedActive} requests={requests} session={session} onOpenReportSettings={() => selectMenu("Reports")} />
+  ), [
+    renderedActive, renderedReportCategory, adminPermissions, renderedBreakdownFleetFilter, renderedBreakdownFleetSites,
+    renderedEquipmentCategory, renderedEquipmentFilter, renderedEquipmentLocation, renderedEquipmentLocations, profileDesignationKey,
+    profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
+    session, theme,
+  ]);
+  if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
+  if (session.userType === "Account User") return <div className="accounts-user-workspace">
+    <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
+    <main>{accountWorkspace==="directory"?<CdirModule token={session.token} ReportSection={ReportSection}/> :ibossAccountsAllowed(session)?<IbossAccounts token={session.token} permissions={session.permissions} ReportSection={ReportSection} />:<p>Accounts access is not available. Contact your administrator.</p>}</main>
+    <AppBackgroundServices session={session} logout={logout} />
+  </div>;
+  if (session.role === "normal" && !["HR User","HR Manager"].includes(session.assignedRole))
+    return (
+      <RequestShiftProvider token={session.token} requests={requests}>
+        {isSessionViewOnlyUser(session)&&<div className="panel"><button type="button" onClick={()=>selectMenu('User Sessions')}>Admin · User Sessions</button></div>}
+        {isSessionViewOnlyUser(session)&&active==='User Sessions'&&<Modal title="User Sessions" close={()=>selectMenu('Dashboard')}><UserSessionsPage session={session}/></Modal>}
+        <Normal
+          requests={requests}
+          requestsLoaded={requestsLoaded}
+          requestsError={requestsError}
+          requestsUpdatedAt={requestState.updatedAt}
+          onCreate={addRequest}
+          onUpdateRequest={updateRequest}
+          onDeleteRequest={deleteRequest} onDeleteRequests={deleteRequestsBulk}
+          onAddDailyRemark={addDailyRemark}
+          onRefreshRequests={loadRequests}
+          session={session}
+          logout={logout}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+        <AppBackgroundServices session={session} logout={logout} />
+        {globalVehicleHistoryDialog}
+      </RequestShiftProvider>
+    );
+  return (
+    <RequestShiftProvider token={session.token} requests={requests}><div className="app erp-shell">
+      <ErpSidebar
+        announcements={<AnnouncementHistoryButton token={authToken}/>}
+        groups={[
+          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
+          {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
+          {name:'MIS',pages:['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].filter(canOpenAdminPage)},
+          {name:'Reports',pages:[],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Tickets',direct:true,pages:['Tickets'].filter(canOpenAdminPage)},
+          {name:'Admin',pages:[
+            ...adminNav.map(([name])=>name).filter(name=>!backupAdminPages.has(name)&&name!=='Pulse Master Sync').filter(canOpenAdminPage),
+            ...['Admin locks'].filter(canOpenAdminPage),
+            ...(isAdministrator?[{label:'Database',children:adminDatabaseNav.map(([name])=>name).filter(canOpenAdminPage)}]:[]),
+          ]},
+        ].filter(group=>group.pages.length||group.keepEmpty)}
+        active={active}
+        setActive={(x) => {
+          const page = typeof x === "string" ? x : x?.page;
+          if (x?.reportCategory) setActiveReportCategory(x.reportCategory);
+          selectMenu(page);
+          if (page === "Equipment master") {
+            setEquipmentFilter("all");
+            setEquipmentLocation("");
+            setEquipmentCategory("all");
+            setEquipmentLocations([]);
+          }
+          setMenu(false);
+        }}
+        logout={logout}
+        open={menu}
+        permissions={adminPermissions}
+        session={session}
+        profileLocation={profileLocation}
+        activeReportCategory={activeReportCategory}
+      />
+      <main className="content">
+        <div className="top">
+          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => setMenu(!menu)}>
+            <Menu />
+          </button>
+          <div className="crumb">
+            <button
+              type="button"
+              className="page-back"
+              onClick={goBack}
+              disabled={!canGoBack}
+              aria-label="Go back to previous page"
+              title={canGoBack ? "Back to previous page" : "No previous page"}
+            >
+              <ArrowLeft />
+            </button>
+            Operations <ChevronRight /> <b>{navigationLabel(active)}</b>
+          </div>
+          <HeaderClock />
+          <div>
+            <LiveTemperatureChip location={profileLocation} />
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {adminPermissions.adminLevel === "Manager" && <HelpTraining roles={adminPermissions.managerRoles} location={profileLocation} />}
+            <AiFeeder role={adminPermissions.adminLevel === "Manager" ? "Manager" : "Admin"} session={session} />
+            <button type="button" aria-label="Focus page smart search" title="Smart search" className="smart-search-button" onClick={() => active === "Dashboard" ? window.dispatchEvent(new Event("dashboard-smart-search")) : document.querySelector('.body input[data-smart-search]:not([disabled])')?.focus()}>
+              <SearchScanIcon />
+            </button>
+            <NotificationBell session={session} onOpenEntry={(target) => selectMenu(target?.kind === "cdir-deletion" ? "Record Deletion Approvals" : target?.kind === "employee-transfer" ? "Employee Transfer" : target?.kind === "ticket" ? "Tickets" : target?.kind === "transfer" ? "Vehicle transfers" : adminPermissions.adminLevel === "Manager" ? "Dashboard" : "Breakdown master")} />
+          </div>
+        </div>
+        <div className="body">
+          {adminPageContent}
+        </div>
+      </main>
+      <NavigationLoadTimeToast key={active} active={active} startedAt={menuLoadStartedAt} />
+      <AppBackgroundServices session={session} logout={logout} />
+      {globalVehicleHistoryDialog}
+    </div></RequestShiftProvider>
+  );
+}
+function SiteUpdateCountdown() {
+  const [update, setUpdate] = useState(null);
+  const [seconds, setSeconds] = useState(60);
+  useEffect(() => {
+    let stopped = false;
+    let checking = false;
+    let scheduled = false;
+    const checkVersion = async () => {
+      if (stopped || checking || scheduled) return;
+      checking = true;
+      try {
+        const response = await fetch(`/api/app-version?t=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!stopped && data.version && data.version !== APP_VERSION) {
+          scheduled = true;
+          setUpdate({ version: data.version, deadline: Date.now() + 60_000 });
+        }
+      } catch (error) {
+        console.warn("Could not check for a UI update.", error);
+      } finally {
+        checking = false;
+      }
+    };
+    checkVersion();
+    const timer = window.setInterval(checkVersion, adaptiveRefreshInterval(window, 60_000));
+    window.addEventListener("focus", checkVersion);
+    window.addEventListener("pageshow", checkVersion);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkVersion);
+      window.removeEventListener("pageshow", checkVersion);
+    };
+  }, []);
+  useEffect(() => {
+    if (!update) return;
+    let reloaded = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((update.deadline - Date.now()) / 1000));
+      setSeconds(remaining);
+      if (remaining === 0 && !reloaded) {
+        reloaded = true;
+        // Keep the valid stored session when loading the newly deployed assets.
+        window.location.replace(`/?updated=${encodeURIComponent(update.version)}`);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    window.addEventListener("focus", tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", tick);
+    };
+  }, [update]);
+  if (!update) return null;
+  return <div role="status" aria-live="polite" style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",zIndex:2147483647,width:"min(640px, calc(100% - 32px))",display:"flex",alignItems:"center",gap:20,padding:"16px 20px",background:"#10213f",color:"#fff",border:"1px solid #49617f",borderRadius:12,boxShadow:"0 8px 30px #0003"}}>
+    <div style={{flex:1}}><strong style={{display:"block",fontSize:14,marginBottom:5}}>New update — refreshing in one minute</strong><span style={{fontSize:12,lineHeight:1.5,color:"#c4d2e9"}}>This page will refresh automatically after the countdown. Please finish and save your current work.</span></div>
+    <b role="timer" aria-live="off" aria-label={`${seconds} seconds until refresh`} style={{fontSize:26,fontVariantNumeric:"tabular-nums"}}>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</b>
+  </div>;
+}
+
+createRoot(document.getElementById("root")).render(
+  <ApplicationErrorBoundary>
+    <SiteUpdateCountdown />
+    <App />
+  </ApplicationErrorBoundary>,
+);

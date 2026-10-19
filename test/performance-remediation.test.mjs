@@ -1,0 +1,91 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import test from 'node:test';
+
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+const client=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+const lazyFeature=readFileSync(new URL('../src/lazy-feature.jsx',import.meta.url),'utf8');
+const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const workflow=readFileSync(new URL('../.github/workflows/azure-hosting_coalmine-fleet-azure-783.yml',import.meta.url),'utf8');
+const azure=readFileSync(new URL('../scripts/configure-azure-performance.sh',import.meta.url),'utf8');
+
+test('database revisions let unchanged private feeds finish before their large table reads',()=>{
+  assert.match(server,/CREATE TABLE IF NOT EXISTS data_revisions/);
+  assert.match(server,/CREATE TRIGGER maintenance_requests_revision_trigger/);
+  assert.match(server,/CREATE TRIGGER maintenance_daily_remarks_revision_trigger/);
+  assert.match(server,/CREATE TRIGGER master_records_revision_trigger/);
+  for(const [start,query] of [
+    ["app.get('/api/info-pulse'",'FROM maintenance_requests WHERE archived_at IS NULL ORDER BY created_at DESC'],
+    ["app.get('/api/requests'",'const readFeed=async'],
+    ["app.get('/api/dashboard/equipment'","WHERE master_name='Equipment master'"],
+    ["app.get('/api/masters'",'const {rows}=requestedMasters.length'],
+  ]){
+    const route=server.slice(server.indexOf(start),server.indexOf('\napp.',server.indexOf(start)+1));
+    assert.ok(route.indexOf('sendPrivateNotModified(req,res,etag)')<route.indexOf(query),start);
+  }
+  assert.match(server,/maintenance_requests_site_created_at_idx/);
+  assert.match(server,/maintenance_requests_active_site_idx/);
+  assert.match(server,/master_records_user_login_idx/);
+});
+
+test('slow API requests expose timing and pool pressure without logging secrets',()=>{
+  assert.match(server,/Server-Timing/);
+  assert.match(server,/event:'slow_http_request'/);
+  assert.match(server,/databasePool:\{total:pool\?\.totalCount/);
+  assert.match(server,/slowRequestThresholdMs/);
+});
+
+test('specialist browser features are emitted as lazy chunks',()=>{
+  for(const module of [
+    'remote-assistance.jsx','backup-administration.jsx','vehicle-transfer-workflow.jsx',
+    'request-corrections.jsx','organisation-chart.jsx','whatsapp-report-settings.jsx',
+    'info-pulse-content.jsx','saved-reports.jsx','recovery-guide.jsx',
+  ])assert.match(client,new RegExp(`createLazyFeature\\(\\(\\)=>import\\("\\./${module.replaceAll('.','\\.')}"\\)`));
+  assert.match(lazyFeature,/const load = \(\) => modulePromise \|\|= importer\(\)/);
+  assert.match(lazyFeature,/const LazyComponent = lazy\(load\)/);
+  assert.match(lazyFeature,/LazyFeature\.preload = load/);
+  assert.match(lazyFeature,/<Suspense fallback=/);
+  assert.match(client,/enabled:needsRequestFormMasters/);
+});
+
+test('navigation yields expensive page mounts and isolates unrelated root updates',()=>{
+  const app=client.slice(client.indexOf('function App()'),client.indexOf('createRoot('));
+  assert.match(client,/const renderedActive = useDeferredValue\(active\)/);
+  assert.match(client,/setActive\(name\)/);
+  assert.doesNotMatch(app,/startNavigationTransition|useTransition/);
+  assert.match(client,/function NavigationLoadTimeToast/);
+  assert.match(client,/const AppBackgroundServices = React\.memo/);
+  assert.match(client,/const adminPageContent = useMemo/);
+  assert.match(client,/<div className="body">\s*\{adminPageContent\}/);
+  assert.match(client,/preloadNavigationFeature\(name\)/);
+  assert.match(client,/<nav onPointerOver=\{warmNavigationFeature\} onPointerDownCapture=\{warmNavigationFeature\} onFocusCapture=\{warmNavigationFeature\}>/);
+  assert.match(client,/window\.requestIdleCallback\(run,\{timeout:1000\}\)/);
+  assert.doesNotMatch(app,/\[loadTime, setLoadTime\] = useState/);
+});
+
+test('lazy screens cannot replace the entire workspace with a blank page',()=>{
+  assert.match(client,/<ApplicationErrorBoundary>/);
+  assert.doesNotMatch(client,/<Suspense fallback=.*<App \/>/s);
+  assert.match(lazyFeature,/failed to fetch dynamically imported module/);
+  assert.match(lazyFeature,/window\.location\.replace\(nextUrl\.toString\(\)\)/);
+  assert.match(lazyFeature,/Refresh application/);
+  assert.match(indexHtml,/id="boot-status"/);
+  assert.match(indexHtml,/Caliber Pulse-II could not finish loading/);
+  assert.match(indexHtml,/unhandledrejection/);
+});
+
+test('deployment keeps App Service warm and disables the unsafe static route',()=>{
+  assert.match(workflow,/Enforce Azure performance configuration/);
+  assert.match(workflow,/bash scripts\/configure-azure-performance\.sh/);
+  assert.match(azure,/--always-on true/);
+  assert.match(azure,/--http20-enabled true/);
+  assert.match(azure,/LIVE_URL:\?LIVE_URL is required/);
+  assert.match(azure,/\.properties\.hostName/);
+  assert.match(azure,/live_domain_id/);
+  assert.match(azure,/patternsToMatch: \["\/assets\/\*"\]/);
+  assert.match(azure,/enabledState: "Disabled"/);
+  assert.match(azure,/\.properties\.enabledState == "Disabled"/);
+  assert.match(workflow,/curl --compressed[^\n]+\$\{LIVE_URL\}\$\{asset\}/);
+  assert.doesNotMatch(azure,/Continuing the application deployment/);
+  assert.doesNotMatch(azure,/patternsToMatch: \["\/api\/\*"\]/);
+});

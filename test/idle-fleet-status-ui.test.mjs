@@ -1,0 +1,20 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const source=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
+
+test("Idle is available throughout fleet KPIs, filters, status editing and site reports",()=>{
+  assert.match(source,/mine-site-road-view[\s\S]*<small>On road<\/small>/);
+  assert.match(source,/mine-site-road-view[\s\S]*<small>Off road<\/small>/);
+  assert.match(source,/mine-site-road-view[\s\S]*<small>Idle<\/small>/);
+  assert.match(source,/mine-road-site-bar/);
+  assert.match(source,/roadStatusShare\(availabilityKpis\.onRoad \+ availabilityKpis\.idle\)/);
+  assert.match(source,/gotoEquipment\("idle"/);
+  assert.match(source,/<option value="idle">Idle<\/option>/);
+  assert.match(source,/<option value="Idle">Idle<\/option>/);
+  assert.match(source,/\*Idle:\* \$\{r\.idle\}/);
+  assert.match(source,/\["Site","Total equipment","On road","Off road","Idle","Open breakdowns"\]/);
+  assert.match(source,/<Equipment[\s\S]*initialFilter=\{renderedEquipmentFilter\}[\s\S]*initialLocation=\{renderedEquipmentLocation\}/);
+  assert.doesNotMatch(source,/function Equipment\([\s\S]{0,120}requests = \[\]/);
+});

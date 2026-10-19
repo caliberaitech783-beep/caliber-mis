@@ -1,0 +1,394 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {defaultWhatsAppReportSettings,normalizeWhatsAppReportSettings,EVENT_OPTIONS,PURPOSE_OPTIONS,WORKFLOW_ROLE_OPTIONS,whatsappSettingsValidationError,whatsappPurposeEnabled} from '../whatsapp-report-settings.mjs';
+import {META_WORKFLOW_TEMPLATES,reportTemplateChoices,validateCustomTemplate,previewReportTemplate,isSingleReportPurpose,SINGLE_REPORT_TEMPLATE_PURPOSES,hierarchyReportMessagePurpose} from '../whatsapp-template-catalog.mjs';
+import {candidateReportTemplate,effectiveReportTemplate,reportTemplateFallback,requestedReportTemplate} from '../whatsapp-template-runtime.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
+import {WHATSAPP_WORKFLOW_POLICY,isWhatsAppReportsOnlyRecipient,workflowWhatsAppRecipientLogins,workflowReminderSlot} from '../whatsapp-workflow-policy.mjs';
+import {applyHierarchyDeliveryRule,applyUserReportScheduleOverride,defaultHierarchyReportScheduleSettings,reportsDueForDesignation} from '../hierarchy-report-flow.mjs';
+import {ticketReportWindow,ticketReportDue} from '../ticket-consolidated-report.mjs';
+import {sendMetaWhatsAppTemplate,sendMetaWhatsAppText,sendMetaWhatsAppDocument,setWhatsAppDeliveryPolicyReader,metaWhatsAppTemplateStatuses,submitMetaWhatsAppTemplates} from '../meta-whatsapp.mjs';
+
+const defaultAlertRoles=['productionSupervisor','maintenanceSupervisor','misSupervisor'];
+
+test('an absent settings record enables all four alerts for operational users only',()=>{
+  const settings=normalizeWhatsAppReportSettings();
+  assert.equal(whatsappSettingsValidationError(settings),'');
+  assert.equal(settings.enabled,true);
+  assert.equal(settings.deliveryPolicyVersion,3);
+  for(const {key} of EVENT_OPTIONS){
+    assert.deepEqual(settings.events[key].recipientRoles,defaultAlertRoles);
+    assert.deepEqual(WHATSAPP_WORKFLOW_POLICY[key].recipientRoles,defaultAlertRoles);
+    assert.equal(settings.events[key].enabled,true);
+  }
+  assert.deepEqual(settings.reminders,{offRoad:{enabled:true,hours:4},idle:{enabled:true,hours:1}});
+  assert.deepEqual(settings.crm,{enabled:true,days:[0,1,2,3,4,5,6],times:['08:00','15:00','20:00'],recipientRoles:['Admin','Manager','Super Admin'],sendEmpty:true,format:'links'});
+  assert.deepEqual(settings.channels,{hierarchyReports:true,ticketCreated:true,ticketResolved:true,dailyUpdate:true,passwordResetOtp:true,manualReports:true});
+  assert.equal(settings.quietHours.enabled,false);
+  for(const [key,value] of Object.entries(settings.templates))assert.equal(value.variant,isSingleReportPurpose(key)?'inherit':'standard');
+});
+
+test('pre-v2 saved routing migrates once while retaining pauses, reminders, schedules, quiet hours and templates',()=>{
+  const morning=new Date('2026-09-14T09:15:00+05:30');
+  for(const version of [undefined,0,1]){
+    const input=defaultWhatsAppReportSettings();
+    if(version===undefined)delete input.deliveryPolicyVersion;else input.deliveryPolicyVersion=version;
+    input.enabled=false;
+    for(const {key} of EVENT_OPTIONS)input.events[key]={enabled:key==='closed',recipientRoles:key==='idle'?[]:['maintenanceManager','director']};
+    input.reminders={offRoad:{enabled:false,hours:13},idle:{enabled:false,hours:5}};
+    input.crm={enabled:false,days:[1,3,5],times:['06:25','09:15','12:40','15:05','18:35','22:50'],recipientRoles:[],sendEmpty:false,format:'links'};
+    input.channels={hierarchyReports:false,ticketCreated:false,ticketResolved:false,dailyUpdate:false,passwordResetOtp:false,manualReports:false};
+    input.quietHours={enabled:true,start:'23:40',end:'04:25',allowedPurposes:['requestOpened']};
+    input.templates.requestOpened={variant:'brief',body:''};
+    input.templates.dailyUpdate={variant:'custom',body:'Saved wording {{1}} {{2}} {{3}} {{4}}'};
+    input.templates.consolidatedRequestReport={variant:'detailed',body:''};
+    input.templates[SINGLE_REPORT_TEMPLATE_PURPOSES[0].key]={variant:'executive',body:''};
+    const before=structuredClone(input),result=normalizeWhatsAppReportSettings(input);
+    assert.equal(result.deliveryPolicyVersion,3);
+    assert.equal(result.enabled,false);
+    for(const {key} of EVENT_OPTIONS){
+      assert.equal(result.events[key].enabled,input.events[key].enabled);
+      assert.deepEqual(result.events[key].recipientRoles,defaultAlertRoles);
+    }
+    assert.deepEqual(result.reminders,input.reminders);
+    assert.deepEqual(result.crm,{...input.crm,recipientRoles:['Admin','Manager','Super Admin']});
+    assert.deepEqual(result.channels,{...input.channels,ticketCreated:true,ticketResolved:true,dailyUpdate:true});
+    assert.deepEqual(result.quietHours,input.quietHours);
+    assert.deepEqual(result.templates,input.templates);
+    assert.deepEqual(ticketReportWindow(morning,result.crm),ticketReportWindow(morning,input.crm));
+    for(const {key} of PURPOSE_OPTIONS)assert.equal(whatsappPurposeEnabled(result,key,morning),false);
+    assert.equal(whatsappPurposeEnabled(result,'passwordResetOtp',morning),false);
+    assert.deepEqual(normalizeWhatsAppReportSettings(result),result);
+    assert.deepEqual(input,before);
+  }
+});
+
+test('v2 selections migrate by removing leadership while preserving operational choices and disabled channels',()=>{
+  const input=defaultWhatsAppReportSettings();
+  input.deliveryPolicyVersion=2;
+  input.events.opened.recipientRoles=['misSupervisor','misSupervisor','productionManager','director','unknown'];
+  input.events.closed.recipientRoles=[];
+  input.events.verified.recipientRoles=['admin'];
+  input.events.idle.recipientRoles=['oemServiceEngineer','superAdmin'];
+  input.crm.recipientRoles=['Super Admin'];
+  input.channels.ticketCreated=false;input.channels.ticketResolved=false;input.channels.dailyUpdate=false;
+  const result=normalizeWhatsAppReportSettings(input);
+  assert.deepEqual(result.events.opened.recipientRoles,['misSupervisor']);
+  assert.deepEqual(result.events.closed.recipientRoles,[]);
+  assert.deepEqual(result.events.verified.recipientRoles,[]);
+  assert.deepEqual(result.events.idle.recipientRoles,['oemServiceEngineer']);
+  assert.deepEqual(result.crm.recipientRoles,['Super Admin']);
+  assert.deepEqual(result.channels,input.channels);
+  assert.equal(whatsappSettingsValidationError(result),'');
+  assert.deepEqual(normalizeWhatsAppReportSettings(result),result);
+});
+
+test('leadership checkboxes are unavailable and rejected for every immediate alert',()=>{
+  for(const role of ['productionManager','maintenanceManager','misManager','projectManager','director','admin','superAdmin']){
+    assert.equal(WORKFLOW_ROLE_OPTIONS.some(option=>option.key===role),false,role);
+    for(const {key} of EVENT_OPTIONS){
+      const input=defaultWhatsAppReportSettings();input.events[key].recipientRoles=[role];
+      assert.match(whatsappSettingsValidationError(input),/valid recipient roles/);
+      assert.deepEqual(normalizeWhatsAppReportSettings(input).events[key].recipientRoles,[]);
+    }
+  }
+});
+
+test('defaults are independent so editing one event or CRM selection cannot affect other settings',()=>{
+  const first=defaultWhatsAppReportSettings(),second=defaultWhatsAppReportSettings();
+  first.events.opened.recipientRoles.length=0;first.crm.recipientRoles.pop();
+  assert.deepEqual(first.events.closed.recipientRoles,defaultAlertRoles);
+  assert.deepEqual(second.events.opened.recipientRoles,defaultAlertRoles);
+  assert.deepEqual(WHATSAPP_WORKFLOW_POLICY.opened.recipientRoles,defaultAlertRoles);
+  assert.deepEqual(second.crm.recipientRoles,['Admin','Manager','Super Admin']);
+});
+
+test('routing migration preserves related role and per-user delivery days and exact minute slots',()=>{
+  const manager={login:'manager',userType:'Super User',adminLevel:'Manager',managerRole:'Production Manager',site:'Sasti OB'};
+  const reportTitle=DIRECTOR_REPORT_TITLES[0];
+  const hierarchy=applyHierarchyDeliveryRule(defaultHierarchyReportScheduleSettings(),'productionManager',{
+    scheduleDays:'Monday | Friday',scheduleTimes:'08:25 | 17:45',reportAccess:reportTitle,
+  });
+  const personal={designationKey:'productionManager',enabled:true,updatedAt:'2026-09-10T10:21:00Z',schedules:[
+    {key:'personal-weekly',enabled:true,cadence:'weekly',weekday:2,times:['06:35','21:10'],reports:[reportTitle]},
+  ]};
+  const before=structuredClone({hierarchy,personal,manager});
+  const settings=normalizeWhatsAppReportSettings({crm:{days:[1,5],times:['09:15','17:45']}});
+  const effective=applyUserReportScheduleOverride(hierarchy,'productionManager',personal);
+  assert.equal(isWhatsAppReportsOnlyRecipient(manager),true);
+  for(const time of ['06:35','21:10']){
+    const now=new Date(`2026-09-15T${time}:00+05:30`);
+    assert.equal(whatsappPurposeEnabled(settings,'consolidatedRequestReport',now),true);
+    assert.deepEqual(reportsDueForDesignation('productionManager',now,20,effective).map(group=>group.reports),[[reportTitle]]);
+  }
+  assert.deepEqual(reportsDueForDesignation('productionManager',new Date('2026-09-16T06:35:00+05:30'),20,effective),[]);
+  assert.deepEqual(reportsDueForDesignation('productionManager',new Date('2026-09-14T08:25:00+05:30'),20,hierarchy).map(group=>group.reports),[[reportTitle]]);
+  assert.deepEqual(effective.designations.productionManager.schedules[0].times,['06:35','21:10']);
+  assert.deepEqual({hierarchy,personal,manager},before);
+});
+
+test('invalid role, interval, schedule, switch and template inputs are rejected before saving',()=>{
+  for(const mutate of [
+    s=>s.enabled='false',s=>s.events.opened.recipientRoles=['everyone'],s=>s.reminders.offRoad.hours=0,
+    s=>s.reminders.idle.hours=25,s=>s.crm.times=['25:00'],s=>s.crm.times=[],s=>s.crm.days=[],
+    s=>s.crm.recipientRoles=[],s=>s.crm.sendEmpty='false',s=>s.channels.manualReports=null,
+    s=>s.quietHours={enabled:true,start:'22:00',end:'22:00'},s=>s.templates.requestOpened.variant='unknown',
+  ]){const settings=defaultWhatsAppReportSettings();mutate(settings);assert.ok(whatsappSettingsValidationError(settings));}
+  const disabled=defaultWhatsAppReportSettings();disabled.crm={...disabled.crm,enabled:false,times:[],days:[],recipientRoles:[]};
+  assert.equal(whatsappSettingsValidationError(disabled),'');
+  assert.equal(normalizeWhatsAppReportSettings({enabled:'false',accessToken:'secret'}).accessToken,undefined);
+});
+
+test('master, purpose and quiet-hour switches compose without an OTP bypass of the master',()=>{
+  const settings=defaultWhatsAppReportSettings(),night=new Date('2026-09-08T18:30:00Z'),morning=new Date('2026-09-09T01:30:00Z');
+  settings.quietHours.enabled=true;
+  for(const {key} of PURPOSE_OPTIONS)assert.equal(whatsappPurposeEnabled(settings,key,night),false);
+  assert.equal(whatsappPurposeEnabled(settings,'passwordResetOtp',night),true);
+  assert.equal(whatsappPurposeEnabled(settings,'requestOpened',morning),true);
+  settings.channels.passwordResetOtp=false;
+  assert.equal(whatsappPurposeEnabled(settings,'passwordResetOtp',night),false);
+  settings.channels.passwordResetOtp=true;settings.enabled=false;
+  assert.equal(whatsappPurposeEnabled(settings,'passwordResetOtp',night),false);
+  assert.equal(whatsappPurposeEnabled(settings,'unknown',morning),false);
+  settings.enabled=true;settings.events.opened.enabled=false;
+  assert.equal(whatsappPurposeEnabled(settings,'offRoadEscalation',morning),false);
+  settings.events.opened.enabled=true;settings.reminders.offRoad.enabled=false;
+  assert.equal(whatsappPurposeEnabled(settings,'offRoadEscalation',morning),false);
+  assert.equal(whatsappPurposeEnabled(settings,'requestOpened',morning),true);
+  settings.channels.hierarchyReports=false;
+  assert.equal(whatsappPurposeEnabled(settings,'consolidatedRequestReport',morning),false);
+  assert.equal(whatsappPurposeEnabled(settings,'manualReports',morning),true);
+});
+
+test('changing selected roles changes direct recipients while retaining site and duplicate-login checks',()=>{
+  const users=[
+    {login:'maintenance',userType:'Mobile User',assignedRole:'Maintenance User',site:'Sasti OB'},
+    {login:'production',userType:'Mobile User',assignedRole:'Production User',site:'Sasti OB'},
+    {login:'other-site',userType:'Mobile User',assignedRole:'Production User',site:'Majri OB'},
+    {login:'admin',userType:'Super User',adminLevel:'Admin'},
+    {login:'super',userType:'Super User',adminLevel:'Super Admin'},
+    {login:'manager',userType:'Super User',adminLevel:'Manager',managerRole:'Production Manager',site:'Sasti OB'},
+  ];
+  const settings=defaultWhatsAppReportSettings();
+  const recipients=()=>workflowWhatsAppRecipientLogins(users,{eventType:'opened',site:'Sasti OB',settings});
+  assert.deepEqual(recipients(),['maintenance','production']);
+  settings.events.opened.recipientRoles=['productionSupervisor','admin','superAdmin'];
+  assert.deepEqual(recipients(),['production']);
+  settings.events.opened.recipientRoles=['productionSupervisor'];
+  users.push({login:'production',userType:'Super User',adminLevel:'Super Admin',site:'Sasti OB'});
+  assert.deepEqual(recipients(),[]);
+  settings.events.opened.enabled=false;assert.deepEqual(recipients(),[]);
+});
+
+test('configured reminder intervals produce stable deduplication slots and can be paused separately',()=>{
+  const settings=defaultWhatsAppReportSettings(),start=new Date('2026-09-08T00:00:00Z');
+  const at=hours=>new Date(start.getTime()+hours*3600000);
+  settings.reminders.offRoad.hours=6;settings.reminders.idle.hours=3;
+  assert.equal(workflowReminderSlot('opened',start,at(5.99),settings),'');
+  assert.equal(workflowReminderSlot('opened',start,at(6),settings),'offroad-hour-6');
+  assert.equal(workflowReminderSlot('opened',start,at(20),settings),'offroad-hour-6');
+  assert.equal(workflowReminderSlot('idle',start,at(2.99),settings),'');
+  assert.equal(workflowReminderSlot('idle',start,at(3),settings),'idle-hour-3');
+  assert.equal(workflowReminderSlot('idle',start,at(5),settings),'idle-hour-3');
+  assert.equal(workflowReminderSlot('idle',start,at(6),settings),'idle-hour-6');
+  settings.reminders.idle.enabled=false;
+  assert.equal(workflowReminderSlot('idle',start,at(20),settings),'');
+});
+
+test('CRM schedule respects custom minutes, weekdays and the previous actual delivery slot',()=>{
+  const settings={days:[1,5],times:['09:15','17:45']};
+  const monday=new Date('2026-09-07T09:15:00+05:30');
+  const window=ticketReportWindow(monday,settings);
+  assert.equal(window.slotKey,'CRM-2026-09-07-0915');
+  assert.equal(window.start.toISOString(),new Date('2026-09-04T17:45:00+05:30').toISOString());
+  assert.equal(ticketReportDue(monday,20,settings),true);
+  assert.equal(ticketReportDue(new Date('2026-09-07T09:36:00+05:30'),20,settings),false);
+  assert.equal(ticketReportDue(new Date('2026-09-08T09:15:00+05:30'),20,settings),false);
+  assert.equal(ticketReportWindow(new Date('2026-09-08T08:00:00+05:30')).slotKey,'CRM-2026-09-08-08');
+  assert.equal(ticketReportWindow(monday,{days:[],times:[]}),null);
+  const weekly=ticketReportWindow(monday,{days:[1],times:['09:15']});
+  assert.equal(weekly.start.toISOString(),new Date('2026-08-31T09:15:00+05:30').toISOString());
+});
+
+test('every prepared template retains all required fields and has a readable populated preview',()=>{
+  for(const {key} of PURPOSE_OPTIONS){
+    const choices=reportTemplateChoices(key);assert.equal(choices.length,10);
+    assert.equal(new Set(choices.map(choice=>choice.body)).size,10,`${key} must contain ten distinct samples`);
+    for(const choice of choices){
+      if(choice.variant!=='standard')assert.equal(validateCustomTemplate(key,choice.body),'',`${key}: ${choice.variant}`);
+      assert.ok(choice.body.length<=1024);
+      assert.doesNotMatch(previewReportTemplate(key,choice.body),/\{\{|\}\}/);
+    }
+  }
+  const body=reportTemplateChoices('ticketResolved')[2].body;
+  assert.match(validateCustomTemplate('ticketResolved',body.replace('{{2}}','')),/every required/);
+  assert.match(validateCustomTemplate('ticketResolved',body+' {{99}}'),/numbered placeholders/);
+  assert.match(validateCustomTemplate('ticketResolved',body+' again {{1}}.'),/once/);
+});
+
+test('all ten samples for every purpose survive settings validation and become real provider candidates',()=>{
+  for(const {key} of PURPOSE_OPTIONS)for(const choice of reportTemplateChoices(key)){
+    const settings=defaultWhatsAppReportSettings();settings.templates[key]={variant:choice.variant,body:''};
+    assert.equal(whatsappSettingsValidationError(settings),'',`${key}/${choice.variant}`);
+    const normalized=normalizeWhatsAppReportSettings(settings);
+    assert.equal(normalized.templates[key].variant,choice.variant);
+    assert.equal(requestedReportTemplate(key,normalized).body,choice.body);
+    if(choice.variant!=='standard')assert.notEqual(requestedReportTemplate(key,normalized).name,META_WORKFLOW_TEMPLATES[isSingleReportPurpose(key)?'consolidatedRequestReport':key]?.name);
+  }
+});
+
+test('every named report has ten samples, and single-report routing does not split consolidated bundles',()=>{
+  assert.deepEqual(SINGLE_REPORT_TEMPLATE_PURPOSES.map(report=>report.reportTitle),[...new Set(DIRECTOR_REPORT_TITLES)]);
+  assert.equal(new Set(SINGLE_REPORT_TEMPLATE_PURPOSES.map(report=>report.key)).size,SINGLE_REPORT_TEMPLATE_PURPOSES.length);
+  for(const report of SINGLE_REPORT_TEMPLATE_PURPOSES){
+    assert.equal(hierarchyReportMessagePurpose([report.reportTitle]),report.key);
+    assert.equal(reportTemplateChoices(report.key).length,10);
+    assert.match(previewReportTemplate(report.key,'Report: {{2}}.'),new RegExp(report.reportTitle.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  }
+  assert.equal(hierarchyReportMessagePurpose(DIRECTOR_REPORT_TITLES),'consolidatedRequestReport');
+  assert.equal(hierarchyReportMessagePurpose(['Unknown report']),'consolidatedRequestReport');
+  assert.equal(hierarchyReportMessagePurpose([]),'consolidatedRequestReport');
+});
+
+test('single reports inherit saved bundle wording and approval until an individual override is chosen',()=>{
+  const settings=defaultWhatsAppReportSettings(),key=SINGLE_REPORT_TEMPLATE_PURPOSES[0].key;
+  settings.templates.consolidatedRequestReport={variant:'brief',body:''};
+  const bundle=requestedReportTemplate('consolidatedRequestReport',settings),approvals={[bundle.name]:{status:'APPROVED'}};
+  assert.equal(requestedReportTemplate(key,settings).name,bundle.name);
+  assert.equal(effectiveReportTemplate(key,settings,approvals).name,bundle.name);
+  settings.templates[key]={variant:'executive',body:''};
+  const override=requestedReportTemplate(key,settings);
+  assert.notEqual(override.name,bundle.name);
+  assert.equal(effectiveReportTemplate(key,settings,approvals).name,META_WORKFLOW_TEMPLATES.consolidatedRequestReport.name);
+  approvals[override.name]={status:'APPROVED'};
+  assert.equal(effectiveReportTemplate(key,settings,approvals).name,override.name);
+  assert.equal(requestedReportTemplate('consolidatedRequestReport',settings).name,bundle.name);
+  settings.channels.hierarchyReports=false;
+  assert.equal(whatsappPurposeEnabled(settings,key),false);
+  assert.equal(whatsappPurposeEnabled(settings,'manualReports'),true);
+});
+
+test('site-first templates use new immutable names and preserve saved style selections',()=>{
+  const settings=defaultWhatsAppReportSettings();
+  for(const key of ['requestOpened','requestClosed','requestVerified','requestIdle','consolidatedRequestReport','consolidatedTicketReport','ticketCreated','ticketResolved','dailyUpdate']){
+    assert.equal(requestedReportTemplate(key,settings).name,META_WORKFLOW_TEMPLATES[key].name);
+  }
+  const existingNames={
+    'requestOpened/brief':'bdms_requestopened_42f567e9cbf0881b',
+    'requestOpened/detailed':'bdms_requestopened_d0767942fddd0caf',
+    'consolidatedRequestReport/brief':'bdms_consolidatedrequestreport_d636075b8700c887',
+    'consolidatedRequestReport/detailed':'bdms_consolidatedrequestreport_e79a43a5eb31aa20',
+    'manualReports/brief':'bdms_manualreports_1706bce8511bd63d',
+    'manualReports/detailed':'bdms_manualreports_ab8c5bd16537a660',
+  };
+  for(const [sample,name] of Object.entries(existingNames)){
+    const [purpose,variant]=sample.split('/');assert.notEqual(candidateReportTemplate(purpose,{variant}).name,name);
+  }
+  const legacy={...settings,templates:{consolidatedRequestReport:{variant:'detailed',body:''}}};
+  const normalized=normalizeWhatsAppReportSettings(legacy);
+  assert.equal(requestedReportTemplate(SINGLE_REPORT_TEMPLATE_PURPOSES[0].key,normalized).name,requestedReportTemplate('consolidatedRequestReport',legacy).name);
+});
+
+test('template choice activates only after server-held approval and uses a content-derived name',()=>{
+  const settings=defaultWhatsAppReportSettings(),purpose='requestOpened';
+  settings.templates[purpose]={variant:'detailed',body:''};
+  const candidate=candidateReportTemplate(purpose,settings.templates[purpose]);
+  assert.match(candidate.name,/^bdms_requestopened_[0-9a-f]{16}$/);
+  for(const status of ['PENDING','REJECTED','PAUSED']){
+    assert.equal(effectiveReportTemplate(purpose,settings,{[candidate.name]:{status}}).name,META_WORKFLOW_TEMPLATES.requestOpened.name);
+  }
+  const approvals={[candidate.name]:{status:'APPROVED'}};
+  assert.equal(effectiveReportTemplate(purpose,settings,approvals).name,candidate.name);
+  assert.equal(candidateReportTemplate(purpose,settings.templates[purpose]).name,candidate.name);
+  settings.templates[purpose]={variant:'custom',body:candidate.body+' Please review.'};
+  assert.notEqual(candidateReportTemplate(purpose,settings.templates[purpose]).name,candidate.name);
+  assert.equal(effectiveReportTemplate(purpose,settings,approvals).name,META_WORKFLOW_TEMPLATES.requestOpened.name);
+  assert.match(reportTemplateFallback(purpose,META_WORKFLOW_TEMPLATES.requestOpened.example,settings,approvals,'old fallback',{parameterLayout:'current'}),/^\*SITE: Majri OB\*/);
+});
+
+const deliveryEnv={META_WHATSAPP_ACCESS_TOKEN:'test-token',META_WHATSAPP_PHONE_NUMBER_ID:'123',META_WHATSAPP_BUSINESS_ACCOUNT_ID:'456'};
+const response=details=>({ok:true,json:async()=>details});
+
+test('all delivery transports consult the persisted master before making requests, including OTPs',async()=>{
+  const settings=defaultWhatsAppReportSettings();settings.enabled=false;
+  let requests=0;const options={env:deliveryEnv,fetchImpl:async()=>{requests++;return response({});}};
+  setWhatsAppDeliveryPolicyReader(async()=>settings);
+  try{
+    for(const action of [
+      ()=>sendMetaWhatsAppText({to:'9000000000',message:'Test'},options),
+      ()=>sendMetaWhatsAppTemplate({to:'9000000000',templateKey:'passwordResetOtp',parameters:['123456']},options),
+      ()=>sendMetaWhatsAppDocument({to:'9000000000',buffer:Buffer.from('test')},options),
+    ])await assert.rejects(action,{code:'WHATSAPP_POLICY_PAUSED'});
+    assert.equal(requests,0);
+  }finally{setWhatsAppDeliveryPolicyReader(null);}
+});
+
+test('saving a pause during PDF upload prevents the subsequent message send',async()=>{
+  const settings=defaultWhatsAppReportSettings(),requests=[];
+  setWhatsAppDeliveryPolicyReader(async()=>settings);
+  try{
+    await assert.rejects(()=>sendMetaWhatsAppDocument({to:'9000000000',purpose:'consolidatedTicketReport',buffer:Buffer.from('%PDF')},{env:deliveryEnv,fetchImpl:async url=>{
+      requests.push(url);settings.enabled=false;return response({id:'media'});
+    }}),{code:'WHATSAPP_POLICY_PAUSED'});
+    assert.equal(requests.length,1);assert.match(requests[0],/\/media$/);
+  }finally{setWhatsAppDeliveryPolicyReader(null);}
+});
+
+test('template transport uses an approved selected purpose, and text fallback respects channel pauses',async()=>{
+  const settings=defaultWhatsAppReportSettings();settings.channels.ticketResolved=true;settings.templates.ticketResolved.variant='brief';
+  const selected=candidateReportTemplate('ticketResolved',settings.templates.ticketResolved),requests=[];
+  const env={...deliveryEnv,WHATSAPP_REPORT_SETTINGS:settings,WHATSAPP_TEMPLATE_APPROVALS:{[selected.name]:{status:'APPROVED'}}};
+  await sendMetaWhatsAppTemplate({to:'9000000000',templateKey:'ticketResolved',parameters:['TIC/1','Admin']},{env,fetchImpl:async(_url,options)=>{requests.push(JSON.parse(options.body));return response({messages:[{id:'test'}]});}});
+  assert.equal(requests[0].template.name,selected.name);
+  settings.channels.ticketResolved=false;
+  await assert.rejects(()=>sendMetaWhatsAppText({to:'9000000000',purpose:'ticketResolved',message:'fallback'},{env}),{code:'WHATSAPP_POLICY_PAUSED'});
+});
+
+test('provider template status follows pagination and submissions contain only selected candidates',async()=>{
+  const candidate=candidateReportTemplate('requestOpened',{variant:'brief'}),templates={selected:candidate},requests=[];
+  const statuses=await metaWhatsAppTemplateStatuses({env:deliveryEnv,templates,fetchImpl:async(url)=>{
+    requests.push(url);return response(url.includes('&after=')?{data:[{name:candidate.name,status:'APPROVED',language:'en_US'}]}:{data:[{name:'unrelated',status:'APPROVED'}],paging:{next:'next-page',cursors:{after:'cursor'}}});
+  }});
+  assert.equal(requests.length,2);assert.equal(statuses.length,1);assert.equal(statuses[0].name,candidate.name);
+  const submitted=[];
+  await submitMetaWhatsAppTemplates({env:deliveryEnv,templates,fetchImpl:async(_url,options)=>{
+    if(options.method==='GET')return response({data:[]});
+    submitted.push(JSON.parse(options.body));return response({id:'test',status:'PENDING'});
+  }});
+  assert.equal(submitted.length,1);assert.equal(submitted[0].name,candidate.name);
+  assert.equal(submitted[0].components[0].text,candidate.body);
+});
+
+test('legacy CRM formats migrate to file links without changing the schedule',()=>{
+  for(const format of ['summary','pdf','both','links']) {
+    const input=defaultWhatsAppReportSettings();input.crm.format=format;
+    const result=normalizeWhatsAppReportSettings(input);
+    assert.equal(result.crm.format,'links');assert.deepEqual(result.crm.times,input.crm.times);
+  }
+});
+
+test('all consolidated previews include file links and individual alerts remain individual',()=>{
+  for(const purpose of ['consolidatedTicketReport','consolidatedRequestReport','manualReports'])
+    for(const sample of reportTemplateChoices(purpose)){
+      const text=previewReportTemplate(purpose,sample.body);
+      assert.match(text,/https:\/\/example.com\/reports\//);
+      assert.match(text,/PDF/);assert.match(text,/Excel/);
+    }
+  const alert=previewReportTemplate('requestOpened',reportTemplateChoices('requestOpened')[0].body);
+  assert.match(alert,/REQ-/);assert.doesNotMatch(alert,/reports\/crm/);
+});
+
+test('quiet hours let only the ticked important messages through at night',()=>{
+  const settings=defaultWhatsAppReportSettings(),night=new Date('2026-09-08T18:30:00Z'),morning=new Date('2026-09-09T01:30:00Z');
+  assert.deepEqual(settings.quietHours.allowedPurposes,[]);
+  settings.quietHours={enabled:true,start:'22:00',end:'07:00',allowedPurposes:['requestOpened']};
+  assert.equal(whatsappSettingsValidationError(settings),'');
+  assert.equal(whatsappPurposeEnabled(settings,'requestOpened',night),true);
+  for(const purpose of ['requestClosed','requestIdle','idleReminder','offRoadEscalation','dailyUpdate','consolidatedRequestReport'])
+    assert.equal(whatsappPurposeEnabled(settings,purpose,night),false,purpose);
+  assert.equal(whatsappPurposeEnabled(settings,'requestClosed',morning),true);
+  settings.events.opened.enabled=false;
+  assert.equal(whatsappPurposeEnabled(settings,'requestOpened',night),false,'an allowed message still obeys its own switch');
+  assert.deepEqual(normalizeWhatsAppReportSettings({...settings,quietHours:{...settings.quietHours,allowedPurposes:['requestOpened','bogus','requestOpened']}}).quietHours.allowedPurposes,['requestOpened']);
+  assert.match(whatsappSettingsValidationError({...settings,quietHours:{...settings.quietHours,allowedPurposes:['bogus']}}),/quiet hours/);
+});

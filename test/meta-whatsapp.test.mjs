@@ -1,0 +1,134 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {META_WORKFLOW_TEMPLATES,metaWhatsAppConfiguration,normalizeWhatsAppRecipient,registerMetaWhatsAppPhone,sendMetaWhatsAppDocument,sendMetaWhatsAppTemplate,sendMetaWhatsAppText,submitMetaWhatsAppTemplates} from '../meta-whatsapp.mjs';
+
+test('Meta WhatsApp configuration remains disabled until token and phone id are present',()=>{
+  assert.equal(metaWhatsAppConfiguration({}).configured,false);
+  assert.equal(metaWhatsAppConfiguration({META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'123'}).configured,true);
+  assert.equal(metaWhatsAppConfiguration({WHATSAPP_PROVIDER:'fast2sms',FAST2SMS_WHATSAPP_API_KEY:'provider-key',META_WHATSAPP_PHONE_NUMBER_ID:'123'}).configured,true);
+});
+
+test('every workflow event has a Meta template definition',()=>{
+  assert.deepEqual(Object.keys(META_WORKFLOW_TEMPLATES),['passwordResetOtp','consolidatedRequestReport','consolidatedTicketReport','ticketCreated','ticketResolved','maintenanceReminder','dailyUpdate','requestOpened','requestClosed','requestVerified','requestIdle','offRoadEscalation','idleReminder']);
+  assert.ok(Object.values(META_WORKFLOW_TEMPLATES).every(({name,body,components,example})=>/^(nerve|bdms)_/.test(name)&&(body||components?.length)&&example.length));
+  assert.equal(META_WORKFLOW_TEMPLATES.passwordResetOtp.category,'AUTHENTICATION');
+  assert.equal(META_WORKFLOW_TEMPLATES.passwordResetOtp.components.at(-1).buttons[0].otp_type,'COPY_CODE');
+});
+
+test('request lifecycle templates retain a highlighted site and event-specific fields',()=>{
+  for(const key of ['requestOpened','requestClosed','requestVerified','requestIdle','offRoadEscalation','idleReminder']){
+    assert.match(META_WORKFLOW_TEMPLATES[key].name,/_site_v3$/);
+    assert.match(META_WORKFLOW_TEMPLATES[key].body,/^\*SITE: \{\{1\}\}\*\n/);
+    assert.match(META_WORKFLOW_TEMPLATES[key].body,/\*Breakdown type:\*/);
+    assert.match(META_WORKFLOW_TEMPLATES[key].body,/\*Complaint \/ reason:\*/);
+  }
+  assert.match(META_WORKFLOW_TEMPLATES.requestClosed.body,/Work completed:[\s\S]*Delay reason:/);
+  assert.match(META_WORKFLOW_TEMPLATES.requestVerified.body,/Closing meter:[\s\S]*First trip:/);
+  assert.match(META_WORKFLOW_TEMPLATES.requestIdle.body,/Idle reason:/);
+});
+
+test('Cloud API template delivery uses approved template parameters',async()=>{
+  let request;
+  const result=await sendMetaWhatsAppTemplate({to:'9420476281',templateKey:'ticketResolved',parameters:['TIC/1','Admin']},{
+    env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'123'},
+    fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({messages:[{id:'wamid.template'}]})}},
+  });
+  assert.equal(result.template,'nerve_ticketresolved_site_v3');
+  assert.equal(JSON.parse(request.options.body).type,'template');
+  const values=JSON.parse(request.options.body).template.components[0].parameters;
+  assert.equal(values.length,9);assert.equal(values[1].text,'TIC/1');assert.equal(values[6].text,'Admin');
+});
+
+test('password reset delivery supplies the OTP to the authentication body and copy-code button',async()=>{
+  let request;
+  await sendMetaWhatsAppTemplate({to:'9420476281',templateKey:'passwordResetOtp',parameters:['123456']},{
+    env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'123'},
+    fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({messages:[{id:'wamid.otp'}]})}},
+  });
+  assert.deepEqual(JSON.parse(request.options.body).template.components,[
+    {type:'body',parameters:[{type:'text',text:'123456'}]},
+    {type:'button',sub_type:'url',index:'0',parameters:[{type:'text',text:'123456'}]},
+  ]);
+});
+
+test('template submission creates missing utility templates and preserves existing ones',async()=>{
+  const requests=[];
+  const results=await submitMetaWhatsAppTemplates({
+    env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'123',META_WHATSAPP_BUSINESS_ACCOUNT_ID:'456'},
+    fetchImpl:async(url,options={})=>{requests.push({url,options});if(options.method==='GET')return {ok:true,json:async()=>({data:[{id:'old',name:'nerve_ticketcreated_site_v3',status:'APPROVED',category:'UTILITY',language:'en_US'}]})};return {ok:true,json:async()=>({id:`new-${requests.length}`,status:'PENDING'})}},
+  });
+  assert.equal(results.length,13);
+  assert.equal(results.find((result)=>result.name==='nerve_ticketcreated_site_v3').existing,true);
+  assert.equal(requests.filter((request)=>request.options.method==='POST').length,12);
+  const submissions=requests.filter((request)=>request.options.method==='POST').map((request)=>JSON.parse(request.options.body));
+  assert.equal(submissions.filter((submission)=>submission.category==='UTILITY').length,11);
+  assert.equal(submissions.filter((submission)=>submission.category==='AUTHENTICATION').length,1);
+});
+
+test('Indian WhatsApp recipients are normalized for Cloud API delivery',()=>{
+  assert.equal(normalizeWhatsAppRecipient('94204 76281'),'919420476281');
+  assert.equal(normalizeWhatsAppRecipient('+91 94204 76281'),'919420476281');
+});
+
+test('Fast2SMS delivery uses the provider endpoint and removes forbidden whitespace from template parameters',async()=>{
+  let request;
+  const result=await sendMetaWhatsAppTemplate({to:'9420476281',templateKey:'consolidatedRequestReport',parameters:['Line one\nLine two\tready']},{
+    env:{WHATSAPP_PROVIDER:'fast2sms',FAST2SMS_WHATSAPP_API_KEY:'provider-key',META_WHATSAPP_PHONE_NUMBER_ID:'123',META_GRAPH_VERSION:'v26.0'},
+    fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({messages:[{id:'wamid.fast2sms'}]})}},
+  });
+  assert.equal(result.messageId,'wamid.fast2sms');
+  assert.equal(request.url,'https://www.fast2sms.com/dev/whatsapp/v26.0/123/messages');
+  assert.equal(request.options.headers.Authorization,'provider-key');
+  assert.equal(JSON.parse(request.options.body).template.components[0].parameters[3].text,'Line one Line two ready');
+});
+
+test('Meta phone registration uses the configured number and a six-digit PIN',async()=>{
+  let request;
+  const result=await registerMetaWhatsAppPhone({pin:'123456'},{
+    env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'1183',META_GRAPH_VERSION:'v26.0'},
+    fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({success:true})}},
+  });
+  assert.equal(result.registered,true);
+  assert.equal(request.url,'https://graph.facebook.com/v26.0/1183/register');
+  assert.deepEqual(JSON.parse(request.options.body),{messaging_product:'whatsapp',pin:'123456'});
+  await assert.rejects(()=>registerMetaWhatsAppPhone({pin:'12345'},{env:{}}),/six-digit/);
+});
+
+test('the delivery hold blocks text, template, and document delivery before any Meta request',async()=>{
+  let requests=0;
+  const options={
+    env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'123',META_WHATSAPP_DELIVERY_PAUSED:'true'},
+    fetchImpl:async()=>{requests+=1;throw new Error('Meta must not be called while delivery is paused')},
+  };
+  await assert.rejects(()=>sendMetaWhatsAppText({to:'9420476281',message:'Paused'},options),/paused by Report settings/);
+  await assert.rejects(()=>sendMetaWhatsAppTemplate({to:'9420476281',templateKey:'ticketResolved',parameters:['TIC\/1','Admin']},options),/paused by Report settings/);
+  await assert.rejects(()=>sendMetaWhatsAppDocument({to:'9420476281',buffer:Buffer.from('%PDF-1.7'),filename:'Paused.pdf'},options),/paused by Report settings/);
+  assert.equal(requests,0);
+});
+
+test('Cloud API text delivery uses the configured phone number without exposing the token',async()=>{
+  let request;
+  const result=await sendMetaWhatsAppText({to:'9420476281',message:'Daily report'},
+    {env:{META_WHATSAPP_ACCESS_TOKEN:'top-secret',META_WHATSAPP_PHONE_NUMBER_ID:'1183',META_GRAPH_VERSION:'v25.0'},
+      fetchImpl:async(url,options)=>{request={url,options};return {ok:true,json:async()=>({messages:[{id:'wamid.1'}]})}}});
+  assert.equal(result.messageId,'wamid.1');
+  assert.equal(request.url,'https://graph.facebook.com/v25.0/1183/messages');
+  assert.equal(request.options.headers.Authorization,'Bearer top-secret');
+  assert.deepEqual(JSON.parse(request.options.body),{messaging_product:'whatsapp',recipient_type:'individual',to:'919420476281',type:'text',text:{preview_url:false,body:'Daily report'}});
+});
+
+test('Cloud API document delivery uploads a PDF and sends it by media id',async()=>{
+  const requests=[];
+  const result=await sendMetaWhatsAppDocument({to:'9420476281',buffer:Buffer.from('%PDF-1.7 demo'),filename:'Fleet Report.pdf',caption:'Open the PDF'},
+    {env:{META_WHATSAPP_ACCESS_TOKEN:'secret',META_WHATSAPP_PHONE_NUMBER_ID:'1183',META_GRAPH_VERSION:'v25.0'},fetchImpl:async(url,options)=>{
+      requests.push({url,options});
+      return url.endsWith('/media')
+        ? {ok:true,json:async()=>({id:'media-1'})}
+        : {ok:true,json:async()=>({messages:[{id:'wamid.document'}]})};
+    }});
+  assert.equal(result.mediaId,'media-1');
+  assert.equal(requests[0].url,'https://graph.facebook.com/v25.0/1183/media');
+  assert.ok(requests[0].options.body instanceof FormData);
+  assert.equal(requests[0].options.headers['Content-Type'],undefined);
+  assert.deepEqual(JSON.parse(requests[1].options.body),{messaging_product:'whatsapp',recipient_type:'individual',to:'919420476281',type:'document',document:{id:'media-1',filename:'Fleet Report.pdf',caption:'Open the PDF'}});
+});

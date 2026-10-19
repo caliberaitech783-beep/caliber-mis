@@ -1,0 +1,103 @@
+import {canonicalSiteName} from './site-location.mjs';
+
+export const REGION_DATA=[
+  {name:'Western Coalfields Limited',code:'WCL',state:'MH / MP',sites:['Sasti OC','Majri OC','Dhoptala OC (2nd)','Gauri Pauni OC (2nd)','Lalpeth OC']},
+  {name:'Northern Coalfields Limited',code:'NCL',state:'MP / UP',sites:['Jayant OC','Dudhichua OC','Dudhichua East OC']},
+];
+
+export const MANAGER_REGION_OPTIONS=['All',...REGION_DATA.map(({code})=>code)];
+
+export function managerRegionSelection(value){
+  const raw=Array.isArray(value)?value:String(value||'').split(/\s*[|,]\s*/);
+  return [...new Set(raw.map((item)=>String(item).trim()).filter((item)=>MANAGER_REGION_OPTIONS.includes(item)))];
+}
+
+export function managerSiteSelection(value){
+  const raw=Array.isArray(value)?value:String(value||'').split(/\s*\|\s*/);
+  return [...new Set(raw.map(canonicalSiteName).filter(Boolean))];
+}
+
+// One display name per site, keyed by its canonical form, so "sasti ob",
+// "Sasti OB", "Sasti OC" and "SASTI II" all render and save as "Sasti OC".
+const SITE_DISPLAY_NAMES=new Map(REGION_DATA.flatMap(({sites})=>sites).map((site)=>[canonicalSiteName(site),site]));
+
+export function displaySiteName(value){
+  const raw=String(value||'').trim();
+  if(!raw)return '';
+  return SITE_DISPLAY_NAMES.get(canonicalSiteName(raw))||raw.replace(/\bOB\b/gi,'OC');
+}
+
+export function displaySiteSelection(value){
+  const raw=Array.isArray(value)?value:String(value||'').split(/\s*\|\s*/);
+  const seen=new Set();
+  const sites=[];
+  for(const item of raw){
+    const key=canonicalSiteName(item);
+    if(!key||seen.has(key))continue;
+    seen.add(key);
+    sites.push(displaySiteName(item));
+  }
+  return sites;
+}
+
+export function normalizeUserSiteFields(record={}){
+  const next=normalizeOperationalSiteFields(record);
+  for(const key of ['site','location']){
+    if(next[key]!=null)next[key]=displaySiteSelection(next[key]).join(' | ');
+  }
+  if(next.managerSites!=null&&String(next.managerSites).trim())next.managerSites=displaySiteSelection(next.managerSites).join(' | ');
+  return next;
+}
+
+export function normalizeOperationalSiteFields(record={}){
+  const next={...record};
+  for(const key of ['site','location','currentLocation','source','destination']){
+    if(typeof next[key]==='string'&&next[key].trim())next[key]=displaySiteName(next[key]);
+  }
+  for(const key of ['sites','siteAccess','managerSites']){
+    if(Array.isArray(next[key]))next[key]=displaySiteSelection(next[key]);
+    else if(typeof next[key]==='string'&&next[key].trim())next[key]=displaySiteSelection(next[key]).join(' | ');
+  }
+  for(const key of ['region','managerRegion']){
+    if(typeof next[key]==='string')next[key]=next[key].replace(/\bOB\b/gi,'OC');
+  }
+  return next;
+}
+
+// Team accounts use only their explicit site assignment. Report-region settings
+// from a previous manager role must never broaden operational access.
+export function userSiteSelection(user={}){
+  for(const value of [user.site,user.location,user.currentLocation]){
+    const sites=displaySiteSelection(value);
+    if(sites.length)return sites;
+  }
+  return [];
+}
+
+export function userSiteScope(user={}){
+  const selection=userSiteSelection(user),sites=selection.map(canonicalSiteName);
+  return {key:sites.length===1?sites[0]:sites.length?`SITES-${sites.join('+')}`:'UNASSIGNED',label:selection.length?selection.join(' + '):'Unassigned site',sites};
+}
+
+export function sitesForManagerRegions(value){
+  const regions=managerRegionSelection(value);
+  const selected=regions.includes('All')?REGION_DATA:REGION_DATA.filter(({code})=>regions.includes(code));
+  return [...new Set(selected.flatMap(({sites})=>sites).map(canonicalSiteName).filter(Boolean))];
+}
+
+export function managerReportScope(user={}){
+  const regions=managerRegionSelection(user.managerRegion||user.region);
+  const selectedSites=managerSiteSelection(user.managerSites);
+  if(selectedSites.length)return {key:`SITES-${selectedSites.join('+')}`,label:selectedSites.map(displaySiteName).join(' + '),sites:selectedSites};
+  if(regions.includes('All'))return {key:'ALL',label:'All regions',sites:null};
+  if(regions.length){
+    const sites=[...new Set(REGION_DATA.filter(({code})=>regions.includes(code)).flatMap(({sites})=>sites).map(canonicalSiteName).filter(Boolean))];
+    return {key:regions.join('+'),label:regions.join(' + '),sites};
+  }
+  return userSiteScope(user);
+}
+
+export function reportScopeIncludesSite(scope,site){
+  const canonical=canonicalSiteName(site);
+  return scope?.sites===null||Boolean(canonical&&scope?.sites?.includes(canonical));
+}

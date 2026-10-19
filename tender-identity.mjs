@@ -1,0 +1,66 @@
+import {createTenderSession,currentTenderSession,touchTenderSession,endTenderSession} from './tender-sessions.mjs';
+import {TENDER_ALL_PERMISSIONS,normalizedTenderSelection} from './tender-permissions.mjs';
+import {assignedUserRoles} from './account-role-access.mjs';
+import {normalizeAdminLevel} from './admin-access.mjs';
+import {createHmac,timingSafeEqual} from 'node:crypto';
+import {verifyPassword} from './password-auth.mjs';
+import {loginRecordCandidates,userLoginCandidates} from './mobile-access.mjs';
+
+export const TENDER_ROLES=['BD Executive','Bid Manager','Document Controller','Estimation','Technical','Legal','Finance / Treasury','BU Head','Bid Committee / Director','System Administrator'];
+const enabled=v=>v===true||['true','yes','1'].includes(String(v).toLowerCase());
+export function tenderProfile(row,key){
+ const u=row?.record_data||{};
+ const tenderUser=assignedUserRoles(u).includes('Tender User');
+ const centralAdmin=String(u.userType||'').toLowerCase().includes('super')&&normalizeAdminLevel(u.adminLevel)!=='Manager';
+ const regularPermissions=TENDER_ALL_PERMISSIONS.filter(key=>!key.startsWith('admin.'));
+ const permissions=centralAdmin?null:tenderUser?{desktop:Object.hasOwn(u,'tenderDesktopAccess')?normalizedTenderSelection(u.tenderDesktopAccess):[...regularPermissions],mobile:Object.hasOwn(u,'tenderMobileAccess')?normalizedTenderSelection(u.tenderMobileAccess):[...regularPermissions]}:null;
+ const roles=centralAdmin?['System Administrator']:tenderUser?['Bid Manager']:[...new Set((Array.isArray(u.tenderRoles)?u.tenderRoles:String(u.tenderRoles||'').split(/\s*[|,]\s*/)).filter(r=>TENDER_ROLES.includes(r)&&r!=='System Administrator'))];
+ if(!row||!(centralAdmin||tenderUser||enabled(u.tenderAccess))||!roles.length||u.active===false||String(u.active).toLowerCase()==='false'||['inactive','disabled','terminated'].includes(String(u.status||'').toLowerCase())||u.mustChangePassword===true||!u.passwordHash)return null;
+ return {tenderPermissions:permissions,id:String(row.id),login:String(u.login||userLoginCandidates(u)[0]||''),name:u.employee||u.name||u.login,email:u.mail||u.email||'',phone:u.phone||'',roles,businessUnit:String(u.tenderBusinessUnit||''),credentialVersion:createHmac('sha256',key).update(`${row.id}:${u.passwordHash}`).digest('hex')};
+}
+export function installTenderIdentity(app,pool,env=process.env){
+ const key=String(env.TENDER_IDENTITY_KEY||'');
+ app.post('/api/integrations/tender/:action',async(req,res,next)=>{
+  res.set('Cache-Control','no-store');
+  const supplied=Buffer.from(String(req.headers.authorization||'')),expected=Buffer.from(`Bearer ${key}`);
+  if(key.length<32||supplied.length!==expected.length||!timingSafeEqual(supplied,expected))return res.status(401).json({error:'Integration authentication required.'});
+  // Validation and directory requests run frequently; they are not user edits.
+  if(req.params.action!=='authenticate')req.audit=false;
+  try{
+   if(!['authenticate','validate','directory','logout','messages','dismiss'].includes(req.params.action))return res.sendStatus(404);
+   if(req.params.action==='directory'){
+    const {rows}=await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Users & employees'");
+    return res.json(rows.map(row=>tenderProfile(row,key)).filter(Boolean).map(({credentialVersion,...profile})=>profile));
+   }
+   let row;
+   if(req.params.action==='authenticate'){
+    const username=String(req.body?.username||'').trim().toLowerCase(),password=String(req.body?.password||'');
+    if(!username||!password||username.length>200||password.length>1024)return res.status(401).json({error:'BDMS user name or password is incorrect.'});
+    const {rows}=await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Users & employees'");
+    let matches=loginRecordCandidates(rows,username);
+    const exact=matches.filter(r=>String(r.record_data.login||'').trim().toLowerCase()===username);
+    if(exact.length)matches=exact;
+    if(matches.length!==1||!verifyPassword(password,matches[0].record_data.passwordHash))return res.status(401).json({error:'BDMS user name or password is incorrect.'});
+    row=matches[0];
+   }else{
+    if(!/^\d+$/.test(String(req.body?.id||'')))return res.sendStatus(401);
+    row=(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Users & employees' AND id=$1",[req.body.id])).rows[0];
+   }
+   if(req.params.action==='logout'){await endTenderSession(pool,{id:String(row?.id||req.body?.id||'')},req.body.sessionId);req.auditSessionId=req.body.sessionId;req.audit={eventType:'Security',module:'Authentication',action:'Tender logout',actorLogin:row?.record_data?.login||'',actorName:row?.record_data?.employee||'',actorRole:'Tender User',targetType:'User account',targetReference:String(row?.id||''),changedFields:[]};return res.json({ok:true});}
+   const profile=tenderProfile(row,key);
+   if(!profile)return res.status(403).json({error:'Tender access is not enabled for this BDMS account, or its password must be changed. Contact your BDMS administrator.'});
+   if(req.params.action!=='authenticate'&&profile.credentialVersion!==req.body.credentialVersion)return res.status(401).json({error:'Your BDMS credentials changed. Please sign in again.'});
+   // Existing deployed Tender clients can validate during the coordinated rollout.
+   // Session-aware Tender clients always supply a central ID; messages require it.
+   if(req.params.action==='validate'&&!req.body.sessionId)return res.json(profile);
+   if(req.params.action==='authenticate')profile.sessionId=await createTenderSession(pool,profile,req.body.details);
+   else {if(!await currentTenderSession(pool,profile,req.body.sessionId))return res.status(401).json({error:'Your Tender session was closed or expired in BDMS. Please sign in again.'});profile.sessionId=req.body.sessionId;}
+   req.auditSessionId=profile.sessionId;
+   await touchTenderSession(pool,profile,profile.sessionId,req.body.details);
+   if(req.params.action==='messages'){profile.messages=(await pool.query(`SELECT id,message,audio_data AS "audioData",sender_name AS "senderName",sender_login AS "senderLogin",created_at AS "createdAt" FROM session_messages WHERE target_session_public_id=$1 AND dismissed_at IS NULL ORDER BY created_at,id`,[profile.sessionId])).rows;}
+   if(req.params.action==='dismiss'){const messageId=Number(req.body.messageId);if(!Number.isSafeInteger(messageId)||messageId<1)return res.status(400).json({error:'Invalid session message.'});await pool.query('UPDATE session_messages SET dismissed_at=NOW() WHERE id=$1 AND target_session_public_id=$2',[messageId,profile.sessionId]);}
+   if(req.params.action==='authenticate')req.audit={eventType:'Security',module:'Authentication',action:'Tender login',actorRole:'Tender User',actorLogin:profile.login,actorName:profile.name,targetType:'User account',targetReference:profile.id,changedFields:[]};
+   res.json(profile);
+  }catch(error){next(error)}
+ });
+}

@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const jsx=readFileSync(new URL('../src/dashboard-record-browser.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const css=readFileSync(new URL('../src/dashboard-record-browser.css',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const oemJsx=readFileSync(new URL('../src/oem-breakdown-details.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const oemCss=readFileSync(new URL('../src/oem-breakdown-details.css',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+
+test('Search fleet sits beside date filters and Site chips sit beside the Region chips',()=>{
+  assert.match(jsx,/style=\{\{ gridTemplateRows: hideHierarchyFilters \? "minmax\(0, 1fr\)" : "auto minmax\(0, 1fr\)" \}\}>\s*\{!hideHierarchyFilters && <details/,'no separate search row above the filters');
+  assert.ok(jsx.includes('toolbarAfterDate={searchBesideDates ? fleetSearch : null}'));
+  assert.ok(jsx.includes('const searchBesideDates = showDateFilter && !hostToolbarTarget'));
+  assert.ok(jsx.includes('{!searchBesideDates && fleetSearch}'));
+  assert.match(jsx, /const fleetSearch = !hideFleetSearch && <label className="dashboard-fleet-search">/);
+  assert.equal((jsx.match(/className="dashboard-fleet-search"/g)||[]).length,1);
+  assert.match(jsx,/<\/div>\s*\{visibleLevel >= 1 && Array\.isArray\(view\.options\.site\) && <FilterTabRow key=\{`site-\$\{view\.selection\.region\}`\} name="site" label="Site" allLabel="All sites" options=\{view\.options\.site\} value=\{view\.selection\.site\} choose=\{choose\} resultsId=\{`\$\{id\}-records`\} \/>\}\s*<button type="button" className="dashboard-record-reset"/,'site row on the top line before Reset');
+  assert.match(jsx,/fields\.slice\(0, visibleLevel\)\.map\(\(\[name, label, allLabel\], index\) => index >= 1 && view\.options\[fields\[index - 1\]\[0\]\]\.length > 0 && <FilterTabRow/,'deeper levels keep their own rows');
+  assert.match(css,/\.dashboard-record-topline::before \{ content: "Region";/);
+  assert.match(css,/\.dashboard-record-topline > \.dashboard-record-level \{ display: inline-grid;[^}]*border-top: 0;/);
+  assert.match(css,/:is\(\.dashboard-record-toolbar-row, \.shared-table-actions-toolbar\) > \.dashboard-fleet-search \{[^}]*margin-left: auto;/);
+  assert.match(css,/:is\(\.dashboard-record-toolbar-row, \.shared-table-actions-toolbar\) > \.dashboard-fleet-search input \{[^}]*border-radius: 999px;/);
+  assert.match(css,/\.dashboard-fleet-search-label \{[^}]*position: absolute;[^}]*clip: rect\(0, 0, 0, 0\);/,'search label is hidden even when dashboard font sizes override it');
+});
+
+test('OEM breakdown drilldown moves the door and chassis search into the top filter row',()=>{
+  assert.match(oemJsx,/<label className="mine-oem-local-filter"><select aria-label="OEM equipment type"[\s\S]*?<\/label>\s*<label className="mine-oem-inline-search"><Search \/><input type="search" aria-label="Search OEM breakdown records" placeholder="Search door number, chassis, site, model or status"/,'search sits after the equipment type filter');
+  assert.match(oemJsx,/<DashboardRecordBrowser [^>]*hideHierarchyFilters hideFleetSearch showDateFilter=\{false\}/,'duplicate table search is hidden for OEM details');
+  assert.match(oemCss,/\.mine-oem-modal \.mine-oem-detail-search \.mine-oem-inline-search \{[^}]*flex: 1 1 360px;/,'search has room beside the filters');
+});
+
+test('the chip rows are graphical: gradient selection with underline, count badges, sheen and lift',()=>{
+  assert.match(css,/\.dashboard-record-tabs button\[aria-selected="true"\], \.dashboard-record-level-tabs > button\[aria-pressed="true"\][^{]*\{ color: #fff; background: linear-gradient\(135deg, #7c3aed, #4c1d95\);/);
+  assert.match(css,/button\[aria-pressed="true"\]::after \{[^}]*background: #ffd166;[^}]*animation: record-underline \.5s ease-out both; \}/);
+  assert.match(css,/\.dashboard-record-tabs button:hover, \.dashboard-record-level-tabs > button:hover \{ transform: translateY\(-1px\);/);
+  assert.match(css,/\.dashboard-record-level\[data-level="site"\] \{ --level-mark: #0ea5e9; \}/);
+  assert.match(css,/\.dashboard-record-reset:hover:not\(:disabled\) svg \{ animation: record-reset-spin \.8s linear; \}/);
+  for(const name of ['record-chip-in','record-underline','record-reset-spin','record-search-scan'])assert.match(css,new RegExp(`@keyframes ${name} \\{`),name);
+  assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css,/:root\[data-theme="dark"\] \.dashboard-record-tabs, :root\[data-theme="dark"\] \.dashboard-record-level-tabs \{/,'night mode variant');
+});
+
+test('phone record browsers scroll the controls away with the table',()=>{
+  assert.match(css,/@media \(max-width: 700px\), \(hover: none\) and \(pointer: coarse\) \{/,'phone portrait and landscape layouts use the mobile scroller');
+  assert.match(css,/\.dashboard-asset-modal \.dashboard-record-browser \{\s*display: block;\s*overflow-x: hidden;\s*overflow-y: auto;/,'the whole browser owns vertical scrolling');
+  assert.match(css,/\.dashboard-record-controls \{\s*max-height: none;\s*overflow: visible;/,'filter controls leave the viewport instead of becoming a fixed pane');
+  assert.match(css,/\.dashboard-record-results \{\s*display: block;\s*min-height: auto;\s*overflow: visible;/,'results grow naturally inside the shared scroller');
+  assert.match(css,/\.dashboard-record-browser \.dashboard-asset-list \{\s*flex: none;\s*min-height: auto;\s*overflow-x: auto;\s*overflow-y: visible;/,'the table keeps horizontal scrolling without trapping vertical scrolling');
+});

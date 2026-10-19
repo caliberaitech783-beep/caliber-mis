@@ -1,0 +1,3 @@
+const pages={'employee-master':'Employee master','login-details':'Users & employees','trip-scan':'Trip Card Bulk Scan','job-scan':'Job Card Bulk Scan','vehicle-log-book':'Vehicle Log Book','equipment-log-book':'Equipment Log Book'};
+export function requestedMisPage(search){return pages[new URLSearchParams(search).get('page')]||'Dashboard';}
+export function misPageUrl(href,name){const url=new URL(href),slug=Object.keys(pages).find(key=>pages[key]===name);if(url.searchParams.get('page')!==slug)for(const key of ['batch','card','filter'])url.searchParams.delete(key);if(slug)url.searchParams.set('page',slug);else url.searchParams.delete('page');return url.pathname+url.search+url.hash;}

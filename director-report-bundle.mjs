@@ -1,0 +1,391 @@
+import {requestStatusLabel} from './src/request-status.mjs';
+import {transferReportTimingColumns} from './transfer-report-timing.mjs';
+import {requestShiftColumns,requestShiftLabel} from './request-shift.mjs';
+import {REPORT_XLSX_STYLES, styleReportSheets} from './report-xlsx-style.mjs';
+import {requestsWithDoorNumbers,equipmentDoorNumber} from './equipment-door.mjs';
+import {liveEquipmentRoadStatus} from './dashboard-equipment-metrics.mjs';
+import {equipmentGroupValue,normalizeEquipmentGroup} from './equipment-group.mjs';
+import {elapsedLabel,elapsedMilliseconds} from './report-metrics.mjs';
+import {IN_OUT_REPORT_COLUMNS,IN_OUT_REPORT_DESCRIPTION,IN_OUT_REPORT_TITLE,buildInOutReportRows,isIdleRequest} from './in-out-report.mjs';
+import {buildDepartmentReports,DEPARTMENT_REPORT_TITLES} from './department-reports.mjs';
+import {reportTime12} from './report-time-format.mjs';
+import {formatShiftDateTime} from './shift-report-time.mjs';
+import {recentBreakdownStatus,reportPdfHeading} from './report-refinements.mjs';
+import {indiaDateTimeInputValue} from './report-date-range.mjs';
+import {formatDisplayDateTime} from './date-time-format.mjs';
+import {recordCountLine,withSerialColumn} from './serial-column.mjs';
+import {displaySiteName,normalizeOperationalSiteFields} from './region-scope.mjs';
+import {breakdownMeterColumns,withBreakdownMeterColumns} from './breakdown-meter-columns.mjs';
+
+export const DIRECTOR_REPORT_HOUR=19;
+export const DIRECTOR_REPORT_TITLES=[
+  'Location wise opened BD',
+  'Location wise closing BD',
+  'MIS Verification Report',
+  'Report for On Road / Off Road & Idle',
+  'Vehicle Transfer Report',
+  'Total Equipment / Vehicle Location Wise',
+  'Idle Vehicle Report',
+  'Recent Breakdown Cases',
+  'Off Road to MIS Veri.',
+  'Off Road to Maint. Close',
+  'Event close Report - Maint. Closing to MIS Verif.',
+  'Idle with PM verif.',
+  'On Road with first trip veri.',
+  IN_OUT_REPORT_TITLE,
+  ...DEPARTMENT_REPORT_TITLES.filter(title=>title!=='Vehicle Transfer Report'),
+];
+
+export const LEGACY_REPORT_TITLE_ALIASES=new Map([
+  ['Time Taken for MIS Verification','MIS Turn Around Time'],
+  ['Location wise Open BD report with Category (Prod)',DIRECTOR_REPORT_TITLES[0]],
+  ['Location wise Closing BD report with Category (Maint.)',DIRECTOR_REPORT_TITLES[1]],
+  ['MIS Verification Report (MIS)',DIRECTOR_REPORT_TITLES[2]],
+  ['Off Road to MIS Verift Report - Time taken from Prod to MIS Veri.',DIRECTOR_REPORT_TITLES[8]],
+  ['Event Open Report - Prod. Open with Maint. Close Time -- TAT',DIRECTOR_REPORT_TITLES[9]],
+  ['Idle Time with PM Verification Time',DIRECTOR_REPORT_TITLES[11]],
+  ['Idle Verification v/s MIS First Trip verification',DIRECTOR_REPORT_TITLES[12]],
+]);
+
+export function canonicalReportTitle(title){
+  const normalized=String(title??'').trim();
+  return LEGACY_REPORT_TITLE_ALIASES.get(normalized)||normalized;
+}
+
+const INDIA_OFFSET_MS=330*60*1000;
+const clean=(value)=>String(value??'').trim();
+const cell=(value)=>clean(value)||'-';
+const safeFilePart=(value)=>clean(value).toLowerCase().replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').slice(0,80)||'report';
+const escapeXml=(value)=>String(value??'').replace(/[&<>"']/g,(character)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[character]));
+const WHATSAPP_REPORT_LABELS=new Map([
+  ['Location wise opened BD','Location wise opened BD'],
+  ['Location wise closing BD','Location wise closing BD'],
+  ['MIS Verification Report','MIS Verification'],
+  ['Report for On Road / Off Road & Idle','Road Status: On / Off / Idle'],
+  ['Vehicle Transfer Report','Vehicle Transfer'],
+  ['Total Equipment / Vehicle Location Wise','Equipment / Vehicle Location'],
+  ['Idle Vehicle Report','Idle Vehicle'],
+  ['Recent Breakdown Cases','Recent Breakdown'],
+  ['Off Road to MIS Veri.','Off Road to MIS Veri.'],
+  ['Off Road to Maint. Close','Off Road to Maint. Close'],
+  ['Event close Report - Maint. Closing to MIS Verif.','Event Close to MIS'],
+  ['Idle with PM verif.','Idle with PM verif.'],
+  ['On Road with first trip veri.','On Road with first trip veri.'],
+  [IN_OUT_REPORT_TITLE,'In and Out'],
+]);
+
+function indiaParts(date){
+  const shifted=new Date(date.getTime()+INDIA_OFFSET_MS);
+  return {year:shifted.getUTCFullYear(),month:shifted.getUTCMonth(),day:shifted.getUTCDate(),hour:shifted.getUTCHours()};
+}
+
+function indiaDate({year,month,day},hour){return new Date(Date.UTC(year,month,day,hour)-INDIA_OFFSET_MS)}
+
+export function directorReportWindow(now=new Date()){
+  const local=indiaParts(now);
+  let day={year:local.year,month:local.month,day:local.day};
+  if(local.hour<DIRECTOR_REPORT_HOUR){
+    const previous=new Date(Date.UTC(local.year,local.month,local.day)-86400000);
+    day={year:previous.getUTCFullYear(),month:previous.getUTCMonth(),day:previous.getUTCDate()};
+  }
+  const start=indiaDate(day,0);
+  const end=indiaDate(day,DIRECTOR_REPORT_HOUR);
+  const slotKey=`${day.year}-${String(day.month+1).padStart(2,'0')}-${String(day.day).padStart(2,'0')}-director-19`;
+  return {start,end,endHour:DIRECTOR_REPORT_HOUR,slotKey};
+}
+
+export function directorReportDue(now=new Date(),graceMinutes=20){
+  const window=directorReportWindow(now);
+  const delay=now.getTime()-window.end.getTime();
+  return delay>=0&&delay<=graceMinutes*60*1000;
+}
+
+function roadStatusLabel(record,requests=[]){
+  const status=liveEquipmentRoadStatus(record,requests);
+  return status==='onroad'?'On road':status==='offroad'?'Off road':status==='idle'?'Idle':'Status not set';
+}
+
+function locationCountRows(records=[]){
+  const groups=new Map();
+  for(const record of records){
+    const location=displaySiteName(record.currentLocation||record.location)||'Not assigned';
+    const type=['vehicle','vehicles'].includes(clean(record.category).toLowerCase())?'vehicles':'equipment';
+    const current=groups.get(location)||{location,equipment:0,vehicles:0,total:0};
+    current[type]+=1;
+    current.total+=1;
+    groups.set(location,current);
+  }
+  return [...groups.values()].sort((a,b)=>a.location.localeCompare(b.location));
+}
+
+function firstTripTimestamp(request){
+  return clean(request.firstTripAt)||[request.firstTripDate,request.firstTripTime].map(clean).filter(Boolean).join(' ');
+}
+
+function latestTime(request){
+  return Date.parse(String(request.start||request.closedAt||request.verifiedAt||0).replace(' ','T'))||0;
+}
+
+function enrichRequests(requests=[],equipmentRecords=[]){
+  const byReference=new Map();
+  const add=(value,record)=>{
+    const key=clean(value).toLowerCase();
+    if(!key)return;
+    if(!byReference.has(key))byReference.set(key,record);
+    else if(byReference.get(key)!==record)byReference.set(key,null);
+  };
+  for(const record of equipmentRecords)[record.manufacturerSerialNo,record.chassisNo,record.door,record.reg,record.equipmentName].forEach((value)=>add(value,record));
+  return requests.map((request)=>{
+    const equipment=[request.chassis,request.door,request.reg,request.equipment].map((value)=>byReference.get(clean(value).toLowerCase())).find(Boolean)||{};
+    return {
+      ...request,
+      reportEquipment:request.equipment||request.door||equipment.equipmentName||'',
+      reportDoor:request.door||equipment.door||'',
+      reportMake:request.make||equipment.make||'',
+      reportModel:request.model||equipment.model||'',
+      chassis:request.chassis||equipment.chassisNo||equipment.manufacturerSerialNo||'',
+      equipmentGroup:normalizeEquipmentGroup(request.equipmentGroup)||equipmentGroupValue(equipment),
+      reportSite:displaySiteName(request.site||equipment.currentLocation||equipment.location),
+    };
+  });
+}
+
+function table(title,department,description,columns,rows,shifts=[]){
+  columns=requestShiftColumns(columns,rows,shifts);
+  return {title,pdfTitle:reportPdfHeading(title,rows),department,description,columns,rows:rows.map((row)=>columns.map((column)=>cell(typeof column.value==='function'?column.value(row):row[column.key])))};
+}
+
+export function buildDirectorReportTables({requests=[],equipmentRecords=[],transferRecords=[],shiftRecords=[],now=new Date()}={}){
+  requests=requests.map(row=>({...row,requestShift:requestShiftLabel(row,shiftRecords)}));
+  requests=requestsWithDoorNumbers(requests,equipmentRecords).map(normalizeOperationalSiteFields);
+  equipmentRecords=equipmentRecords.map(record=>normalizeOperationalSiteFields({...record,door:equipmentDoorNumber(record)}));
+  transferRecords=transferRecords.map(normalizeOperationalSiteFields);
+  const reportRequests=enrichRequests(requests,equipmentRecords);
+  const inOutRows=buildInOutReportRows(reportRequests,{today:now});
+  const openBreakdownRows=reportRequests.filter((request)=>['open','in progress','awaiting parts'].includes(clean(request.status).toLowerCase())&&!request.closedAt);
+  const closedBreakdownRows=reportRequests.filter((request)=>!isIdleRequest(request)&&(clean(request.closedAt)||clean(request.status).toLowerCase()==='closed'));
+  const misVerificationRows=reportRequests.filter((request)=>clean(request.verifiedAt)||clean(request.verifiedBy));
+  const idleRequestRows=reportRequests.filter((request)=>clean(request.status).toLowerCase()==='idle'||clean(request.idleReason));
+  const elapsedRows=reportRequests.filter((request)=>request.start||request.closedAt||request.verifiedAt);
+  const fleetStatusRows=equipmentRecords.map((record,index)=>({
+    ...record,reportId:record.id||`${record.equipmentName||record.door||'equipment'}-${index}`,
+    reportEquipment:record.equipmentName||record.equipment||record.door||'',reportDoor:record.door||'',
+    reportMake:record.make||'',reportModel:record.model||record.modelNo||'',reportSite:displaySiteName(record.currentLocation||record.location),reportRoadStatus:roadStatusLabel(record,reportRequests),
+  }));
+  const transferRows=enrichRequests(transferRecords.map((record)=>({...record,chassis:record.chassisNo||record.manufacturerSerialNo||''})),equipmentRecords).map((record,index)=>({...record,reportId:record.id||`${record.transferNo||'transfer'}-${index}`,reportEquipment:record.equipment||record.equipmentName||record.door||'',reportSite:displaySiteName(record.destination||record.currentLocation||record.location)}));
+  const locationWiseRows=locationCountRows(equipmentRecords);
+  const recentBreakdownRows=[...reportRequests].sort((a,b)=>latestTime(b)-latestTime(a)).slice(0,250);
+  const shiftTime=(request,value,emptyValue='-')=>shiftRecords.length
+    ? formatShiftDateTime(value,{site:request.reportSite||request.site||request.currentLocation||request.location,shifts:shiftRecords,emptyValue})
+    : cell(value);
+  const requestColumns=withBreakdownMeterColumns([
+    {key:'reference',label:'Job reference',value:(request)=>request.ref||request.reference},
+    {key:'equipment',label:'Equipment / vehicle',value:(request)=>request.reportEquipment},
+    {key:'door',label:'Door no.',value:(request)=>request.reportDoor},
+    {key:'make',label:'Make',value:(request)=>request.reportMake},
+    {key:'model',label:'Model',value:(request)=>request.reportModel},
+    {key:'site',label:'Location',value:(request)=>request.reportSite},
+    {key:'category',label:'Category',value:(request)=>request.equipmentGroup||request.category||request.type},
+    {key:'status',label:'Status',value:requestStatusLabel},
+    {key:'createdBy',label:'Production user',value:(request)=>request.owner||request.requesterLogin},
+    {key:'started',label:'Opened at',value:(request)=>shiftTime(request,request.start)},
+    {key:'expectedCompletionAt',label:'ETC',value:(request)=>shiftTime(request,request.expectedCompletionAt)},
+  ]);
+  const closureColumns=[...requestColumns,{key:'closedBy',label:'Maintenance user',value:(request)=>request.closedBy},{key:'closedAt',label:'Closed at',value:(request)=>shiftTime(request,request.closedAt)},...breakdownMeterColumns({stage:'closing'})];
+  const misColumns=[...closureColumns,{key:'verifiedBy',label:'MIS user',value:(request)=>request.verifiedBy},{key:'verifiedAt',label:'MIS verified at',value:(request)=>shiftTime(request,request.verifiedAt)},{key:'firstTripAt',label:'First trip time',value:(request)=>shiftTime(request,firstTripTimestamp(request))}];
+  const idleVehicleColumns=[requestColumns.find((column)=>column.key==='site'),...requestColumns.filter((column)=>!['site','equipment'].includes(column.key))];
+  const fleetColumns=[
+    {key:'location',label:'Location',value:(record)=>record.reportSite},
+    {key:'door',label:'Door no.',value:(record)=>record.reportDoor},
+    {key:'category',label:'Category',value:(record)=>record.category||record.group||record.itemName},
+    {key:'make',label:'Make',value:(record)=>record.reportMake},
+    {key:'model',label:'Model',value:(record)=>record.reportModel},
+    {key:'roadStatus',label:'Road status',value:(record)=>record.reportRoadStatus},
+  ];
+  const transferColumns=[
+    ...transferReportTimingColumns,
+    {key:'door',label:'Door no.',value:(record)=>record.reportDoor},
+    {key:'transferNo',label:'Transfer no.',value:(record)=>record.transferNo},
+    {key:'transferDate',label:'Transfer date',value:(record)=>record.transferDate},
+    {key:'from',label:'From location',value:(record)=>record.source},
+    {key:'to',label:'To location',value:(record)=>record.destination},
+    {key:'model',label:'Model',value:(record)=>record.modelNo||record.model},
+    {key:'driver',label:'Driver',value:(record)=>record.driver},
+  ];
+  const recentBreakdownColumns=withBreakdownMeterColumns([
+    {key:'status',label:'Status',value:(request)=>recentBreakdownStatus(request,now)},
+    {key:'site',label:'Location',value:(request)=>request.reportSite},
+    {key:'door',label:'Door no.',value:(request)=>request.reportDoor},
+    {key:'model',label:'Model',value:(request)=>request.reportModel},
+    {key:'complaint',label:'Reason / Complaint',value:(request)=>request.complaint||'—'},
+    {key:'started',label:'Opened at',value:(request)=>shiftTime(request,request.start)},
+    {key:'expectedCompletionAt',label:'ETC',value:(request)=>shiftTime(request,request.expectedCompletionAt)},
+    {key:'closedAt',label:'Closed at',value:(request)=>shiftTime(request,request.closedAt)},
+    {key:'tat',label:'TAT',value:(request)=>elapsedLabel(request.start,request.closedAt)},
+    {key:'reference',label:'Job reference',value:(request)=>request.ref||request.reference},
+    {key:'createdBy',label:'Production user',value:(request)=>request.owner||request.requesterLogin},
+    {key:'closedBy',label:'Maintenance user',value:(request)=>request.closedBy},
+  ],{closing:true});
+  return [
+    table(DIRECTOR_REPORT_TITLES[0],'Production','Open production breakdown cases grouped with location and category details.',requestColumns,openBreakdownRows),
+    table(DIRECTOR_REPORT_TITLES[1],'Maintenance','Closed maintenance breakdown cases with location, category, closure user, and closure time.',closureColumns,closedBreakdownRows),
+    table(DIRECTOR_REPORT_TITLES[2],'MIS','Requests verified by MIS, including maintenance close and MIS verification timestamps.',misColumns,misVerificationRows),
+    table(DIRECTOR_REPORT_TITLES[3],'General','Current road status of equipment and vehicles from the Equipment Master.',fleetColumns,fleetStatusRows),
+    table(DIRECTOR_REPORT_TITLES[4],'General','Vehicle transfer history with source, destination, equipment, model, driver, and chassis details.',transferColumns,transferRows),
+    table(DIRECTOR_REPORT_TITLES[5],'General','Location-wise count of equipment, vehicles, and total fleet records.',[
+      {key:'location',label:'Location',value:(row)=>row.location},{key:'equipment',label:'Equipment',value:(row)=>row.equipment},{key:'vehicles',label:'Vehicles',value:(row)=>row.vehicles},{key:'total',label:'Total equipment / vehicle',value:(row)=>row.total},
+    ],locationWiseRows),
+    table(DIRECTOR_REPORT_TITLES[6],'Maintenance','Idle breakdown requests and idle fleet records that need follow-up.',[...idleVehicleColumns,{key:'idleReason',label:'Idle reason',value:(request)=>request.idleReason},{key:'closedAt',label:'Maintenance close / idle at',value:(request)=>shiftTime(request,request.closedAt)}],idleRequestRows),
+    table(DIRECTOR_REPORT_TITLES[7],'General','Latest breakdown cases by recorded workflow timestamp. Status shows Pending when maintenance has not accepted an open request within 24 hours; TAT is closed at minus opened at.',recentBreakdownColumns,recentBreakdownRows),
+    table(DIRECTOR_REPORT_TITLES[8],'Production','Elapsed time from Production off-road marking to MIS verification.',[...misColumns,{key:'prodToMis',label:'Prod to MIS verification',value:(request)=>elapsedLabel(request.start,request.verifiedAt)}],elapsedRows.filter((row)=>row.start&&row.verifiedAt)),
+    table(DIRECTOR_REPORT_TITLES[9],'Maintenance','Turnaround time from Production opening to Maintenance close.',[...closureColumns,{key:'tat',label:'TAT',value:(request)=>elapsedLabel(request.start,request.closedAt)}],elapsedRows.filter((row)=>row.start&&row.closedAt)),
+    table(DIRECTOR_REPORT_TITLES[10],'Maintenance','Elapsed time from Maintenance close to MIS verification.',[...misColumns,{key:'maintToMis',label:'Maintenance close to MIS verification',value:(request)=>elapsedLabel(request.closedAt,request.verifiedAt)}],elapsedRows.filter((row)=>row.closedAt&&row.verifiedAt)),
+    table(DIRECTOR_REPORT_TITLES[11],'Maintenance','Idle request to manager on-road approval, separate from later MIS verification.',[...closureColumns,
+      {key:'idealRequestedAt',label:'Idle requested at',value:(request)=>shiftTime(request,request.idealRequestedAt)},
+      {key:'idealRequestedBy',label:'Idle requested by',value:(request)=>request.idealRequestedBy},
+      {key:'idealApprovedAt',label:'Manager on-road approval at',value:(request)=>shiftTime(request,request.idealApprovedAt)},
+      {key:'idealApprovedBy',label:'Approved by manager',value:(request)=>request.idealApprovedBy},
+      {key:'idleReason',label:'Idle reason',value:(request)=>request.idleReason},
+      {key:'idleTime',label:'Idle to PM verification time',value:(request)=>elapsedLabel(request.idealRequestedAt,request.idealApprovedAt)}],idleRequestRows),
+    table(DIRECTOR_REPORT_TITLES[12],'MIS','Comparison of MIS verification against first-trip confirmation for idle cases.',[...misColumns,{key:'firstTripDone',label:'First trip done',value:(request)=>request.firstTripDone?'Yes':'No'},{key:'misToFirstTrip',label:'MIS to first trip',value:(request)=>elapsedLabel(request.verifiedAt,firstTripTimestamp(request))}],idleRequestRows.filter((row)=>row.verifiedAt||firstTripTimestamp(row))),
+    table(DIRECTOR_REPORT_TITLES[13],'General',IN_OUT_REPORT_DESCRIPTION,IN_OUT_REPORT_COLUMNS,inOutRows),
+    ...buildDepartmentReports({requests:reportRequests,equipmentRecords,transferRecords,shiftRecords,now,from:`${indiaDateTimeInputValue(now).slice(0,7)}-01`,to:indiaDateTimeInputValue(now).slice(0,10)})
+      .filter(report=>report.title!=='Vehicle Transfer Report')
+      .map(report=>table(report.title,report.category==='general'?'General':report.category==='mis'?'MIS':report.category==='maintenance'?'Maintenance':'Production',report.description,report.columns,report.rows)),
+  ];
+}
+
+function crc32(bytes){
+  let crc=-1;
+  for(const byte of bytes)crc=(crc>>>8)^crc32.table[(crc^byte)&0xff];
+  return (crc^-1)>>>0;
+}
+crc32.table=Array.from({length:256},(_,index)=>{
+  let value=index;
+  for(let bit=0;bit<8;bit+=1)value=value&1?0xedb88320^(value>>>1):value>>>1;
+  return value>>>0;
+});
+const uint16=(value)=>Buffer.from([value&0xff,(value>>>8)&0xff]);
+const uint32=(value)=>Buffer.from([value&0xff,(value>>>8)&0xff,(value>>>16)&0xff,(value>>>24)&0xff]);
+
+function zipStoredFiles(files){
+  const chunks=[],centralDirectory=[];
+  let offset=0;
+  for(const {name,content} of files){
+    const filename=Buffer.from(name);
+    const data=Buffer.from(content);
+    const checksum=crc32(data);
+    const localHeader=Buffer.concat([Buffer.from([0x50,0x4b,0x03,0x04]),uint16(20),uint16(0),uint16(0),uint16(0),uint16(0),uint32(checksum),uint32(data.length),uint32(data.length),uint16(filename.length),uint16(0)]);
+    chunks.push(localHeader,filename,data);
+    centralDirectory.push({filename,checksum,size:data.length,offset});
+    offset+=localHeader.length+filename.length+data.length;
+  }
+  const centralStart=offset;
+  for(const entry of centralDirectory){
+    const header=Buffer.concat([Buffer.from([0x50,0x4b,0x01,0x02]),uint16(20),uint16(20),uint16(0),uint16(0),uint16(0),uint16(0),uint32(entry.checksum),uint32(entry.size),uint32(entry.size),uint16(entry.filename.length),uint16(0),uint16(0),uint16(0),uint16(0),uint32(0),uint32(entry.offset)]);
+    chunks.push(header,entry.filename);
+    offset+=header.length+entry.filename.length;
+  }
+  chunks.push(Buffer.concat([Buffer.from([0x50,0x4b,0x05,0x06]),uint16(0),uint16(0),uint16(files.length),uint16(files.length),uint32(offset-centralStart),uint32(centralStart),uint16(0)]));
+  return Buffer.concat(chunks);
+}
+
+export function buildDirectorReportArchiveBuffer(files=[]){
+  return zipStoredFiles(files.map((file)=>({name:file.filename||file.name,content:file.content||file.buffer||Buffer.alloc(0)})));
+}
+
+function excelCellReference(columnIndex,rowIndex){
+  let column='',value=columnIndex+1;
+  while(value){value-=1;column=String.fromCharCode(65+(value%26))+column;value=Math.floor(value/26)}
+  return `${column}${rowIndex+1}`;
+}
+
+// SpreadsheetML escapes keep XML control characters and literal escape sequences intact.
+function escapeXlsxText(value){
+  return escapeXml(String(value??'').replace(/_x[0-9a-f]{4}_/gi,(match)=>`_x005F_${match.slice(1)}`)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff\r]/g,(character)=>`_x${character.charCodeAt(0).toString(16).padStart(4,'0').toUpperCase()}_`));
+}
+
+function xlsxWorksheetXml(columns=[],rows=[],preserveWhitespace=false,title='Caliber Pulse report'){
+  const serial=withSerialColumn(columns,rows.map(row=>row.map(reportTime12)));
+  rows=serial.rows;
+  const headings=serial.columns.map((column)=>column.label||column.key||'Column');
+  // Title and record count first, matching the PDF heading and the print subtitle.
+  const worksheetRows=[[title||'Caliber Pulse report'],[recordCountLine(rows.length,formatDisplayDateTime(new Date()))],headings,...rows];
+  const escapeText=preserveWhitespace?escapeXlsxText:escapeXml;
+  const sheetData=worksheetRows.map((row,rowIndex)=>`<row r="${rowIndex+1}">${row.map((value,columnIndex)=>`<c r="${excelCellReference(columnIndex,rowIndex)}" t="inlineStr"><is><t${preserveWhitespace?' xml:space="preserve"':''}>${escapeText(value)}</t></is></c>`).join('')}</row>`).join('');
+  const widths=headings.map((label,index)=>{
+    const maxLength=rows.reduce((maximum,row)=>Math.max(maximum,String(row[index]||'').length),String(label||'').length);
+    return `<col min="${index+1}" max="${index+1}" width="${Math.min(48,Math.max(12,maxLength+2))}" customWidth="1"/>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${widths}</cols><sheetData>${sheetData}</sheetData></worksheet>`;
+}
+
+function xlsxSheetsWorkbookBuffer(title,sheets,escapeText=escapeXml){
+  sheets=styleReportSheets(sheets);
+  const workbookTitle=escapeText(title||'Caliber Pulse report');
+  return zipStoredFiles([
+    {name:'[Content_Types].xml',content:`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_,index)=>`<Override PartName="/xl/worksheets/sheet${index+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,index)=>`<Override PartName="/xl/tables/table${index+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>`).join('')}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
+    {name:'_rels/.rels',content:'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'},
+    {name:'docProps/core.xml',content:`<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${workbookTitle}</dc:title><dc:creator>Caliber Pulse</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`},
+    {name:'docProps/app.xml',content:'<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse</Application></Properties>'},
+    {name:'xl/_rels/workbook.xml.rels',content:`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,index)=>`<Relationship Id="rId${index+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index+1}.xml"/>`).join('')}<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:'xl/workbook.xml',content:`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sheet,index)=>`<sheet name="${escapeText(sheet.name)}" sheetId="${index+1}" r:id="rId${index+1}"/>`).join('')}</sheets></workbook>`},
+    {name:'xl/styles.xml',content:REPORT_XLSX_STYLES.replaceAll('wrapText="1"','wrapText="0"')},
+    ...sheets.flatMap((sheet,index)=>[
+      {name:`xl/tables/table${index+1}.xml`,content:sheet.table},
+      {name:`xl/worksheets/_rels/sheet${index+1}.xml.rels`,content:`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index+1}.xml"/></Relationships>`},
+    ]),
+    ...sheets.map((sheet,index)=>({name:`xl/worksheets/sheet${index+1}.xml`,content:sheet.content})),
+  ]);
+}
+
+export function buildXlsxWorkbookBuffer(title,columns=[],rows=[]){
+  return xlsxSheetsWorkbookBuffer(title,[{name:'Report',content:xlsxWorksheetXml(columns,rows,false,title)}]);
+}
+
+function uniqueXlsxSheetName(title,usedNames){
+  let base=clean(title).replace(/[\u0000-\u001f\u007f-\u009f\ufffe\uffff\\/?*:[\]]/g,' ').replace(/^[\s']+|[\s']+$/g,'')||'Report';
+  if(base.toLowerCase()==='history')base='History report';
+  // Avoid splitting a surrogate pair or leaving an apostrophe at either edge.
+  const shorten=(value,length)=>value.slice(0,length).replace(/[\ud800-\udbff]$/,'').replace(/[\s']+$/g,'');
+  let name=shorten(base,31),suffix=1;
+  while(usedNames.has(name.toLowerCase())){
+    const ending=` (${++suffix})`;
+    name=shorten(base,31-ending.length)+ending;
+  }
+  usedNames.add(name.toLowerCase());
+  return name;
+}
+
+/** One worksheet per supplied table, including empty selected reports. */
+export function buildXlsxReportBundleBuffer({title='Caliber Pulse report',tables=[]}={}){
+  const selected=tables.length?tables:[{title:'Report',columns:[],rows:[]}],usedNames=new Set();
+  return xlsxSheetsWorkbookBuffer(title,selected.map((table)=>({
+    name:uniqueXlsxSheetName(table.title,usedNames),
+    content:xlsxWorksheetXml(table.columns,table.rows,true,table.title),
+  })),escapeXlsxText);
+}
+
+export function directorReportFilename(title,extension,slotKey){
+  return `director-${safeFilePart(title)}-${slotKey}.${extension}`;
+}
+
+export function buildDirectorWhatsAppMessage({generatedAt=new Date(),links=[],heading="Director's Daily Report",scheduleLabel='Daily 07:00:00 PM IST',siteScope='All permitted sites'}={}){
+  const byDepartment=links.reduce((groups,link)=>{
+    const department=link.department||'General';
+    if(!groups.has(department))groups.set(department,[]);
+    groups.get(department).push(link);
+    return groups;
+  },new Map());
+  const generated=formatDisplayDateTime(generatedAt);
+  const lines=[`*SITE: ${siteScope}*`,'*Caliber Pulse*',`*${heading}*`,`*Schedule:* ${scheduleLabel}`,`*Generated:* ${generated} IST`,'','*Department Wise Report Links:*'];
+  for(const [department,items] of byDepartment){
+    lines.push('',`${department} --`);
+    items.forEach((item,index)=>{
+      const title=WHATSAPP_REPORT_LABELS.get(item.title)||item.title;
+      lines.push('',`${index+1}. ${title}`,'PDF 📄',item.pdfUrl,'Excel 📊',item.xlsxUrl);
+    });
+  }
+  return lines.join('\n').slice(0,4096);
+}

@@ -1,0 +1,159 @@
+.mine-oem-view-tabs { display: flex; flex-wrap: wrap; align-items: center; flex-shrink: 0; gap: 8px; padding: 0; }
+.mine-oem-view-tabs > span { font-size: 13px; color: var(--muted); }
+/* Keep the shared fleet drilldown site strip compact and horizontally scrollable. */
+.fleet-site-tabs-modal .site-report-summary > b,
+.fleet-site-tabs-modal .site-summary-region > b { display: none; }
+.fleet-site-tabs-modal .site-report-summary .site-summary-options { flex-wrap: nowrap; max-height: none; overflow-x: auto; }
+.fleet-site-tabs-modal .site-summary-region { flex: 0 0 auto; }
+.fleet-site-tabs-modal .site-summary-region > div { flex-wrap: nowrap; }
+.fleet-site-tabs-modal .site-summary-button { flex: 0 0 auto; white-space: nowrap; }
+.mine-oem-view-toolbar { flex: 1 1 0; min-width: 0; }
+.mine-oem-view-toolbar .shared-table-actions-toolbar { position: static; padding: 0; border: 0; justify-content: flex-start; background: transparent; }
+.mine-oem-view-toolbar .shared-table-record-count { display: none; }
+.mine-oem-view-toolbar .mine-oem-summary { margin: 0; padding: 0; gap: 8px; }
+.mine-oem-view-toolbar .mine-oem-summary h3 { font-size: 14px; margin: 0; }
+@media (max-width: 900px) { .mine-oem-view-toolbar { flex-basis: 100%; } }
+.mine-oem-top-toolbar { flex: 0 0 auto; }
+.mine-oem-top-toolbar .shared-table-actions-toolbar { position: static; justify-content: flex-start; padding: 4px 8px; }
+.mine-oem-top-toolbar .shared-table-record-count { display: none; }
+/* Keep report switching central and table actions at the right edge. */
+:is(.mine-oem-view-toolbar, .mine-oem-top-toolbar) .shared-table-actions-toolbar { justify-content: flex-end; }
+:is(.mine-oem-view-toolbar, .mine-oem-top-toolbar) .shared-table-actions-toolbar > .mine-oem-view-tabs { margin-inline: auto; }
+@media (min-width: 1400px) {
+  :is(.mine-oem-view-toolbar, .mine-oem-top-toolbar) .shared-table-actions-toolbar { position: relative; min-height: 52px; padding-left: calc(50% + 180px); flex-wrap: nowrap; }
+  :is(.mine-oem-view-toolbar, .mine-oem-top-toolbar) .shared-table-actions-toolbar > .mine-oem-view-tabs { position: absolute; left: 50%; transform: translateX(-50%); flex-wrap: nowrap; white-space: nowrap; }
+}
+.mine-oem-details .mine-oem-grouping-description { display: none; }
+.mine-oem-details .mine-oem-report-navigation > .mine-oem-summary-slot { padding: 4px 8px; border: 0; }
+.mine-oem-details .mine-oem-report-navigation .site-report-summary .site-summary-options { flex-wrap: nowrap; max-height: none; overflow-x: auto; }
+.mine-oem-details .mine-oem-report-navigation .site-summary-region { flex: 0 0 auto; flex-wrap: nowrap; }
+.mine-oem-details .mine-oem-report-navigation .site-summary-region > div { flex-wrap: nowrap; }
+.mine-oem-details .dashboard-record-toolbar:empty { display: none; }
+.mine-oem-details .dashboard-asset-list table { width: max-content; min-width: 100%; table-layout: auto; }
+.mine-oem-details .dashboard-asset-list :is(th, td) { padding: 6px 8px !important; }
+.mine-oem-details .site-report-columns th { background: var(--panel, #fff); white-space: nowrap; }
+/* OEM report only: remove the redundant toolbar asset badge. */
+.mine-oem-modal > header .shared-table-record-count,
+.mine-oem-inline-details .shared-table-record-count { display: none; }
+@media screen and (min-width: 1181px) {
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); align-items: center; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog > div:first-child { min-width: 0; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-head-actions { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)) auto auto auto; min-width: 0; margin-top: 0; gap: 8px; align-items: center; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-head-actions > label { min-width: 0; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-head-actions :is(input, select) { min-width: 0; width: 100%; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-head-actions :is(input, select) { padding-inline: 6px; font-size: 12px; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-head-actions > label > span { font-size: 11px; white-space: nowrap; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .mine-updated { padding-inline: 8px; font-size: 11px; }
+  .mine-oem-modal > .dashboard-filter-bar.in-dialog .dashboard-export-trigger { padding-inline: 8px; font-size: 11px; }
+}
+.mine-oem-view-tabs button { padding: 10px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font-weight: 700; }
+.mine-oem-view-tabs button[aria-pressed="true"] { background: var(--brand-purple, #522e90); color: #fff; }
+.mine-oem-inline-details { height: min(760px, 75vh); min-height: 420px; display: flex; flex-direction: column; overflow: hidden; }
+.mine-oem-inline-details > .mine-oem-details { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mine-oem-inline-details .mine-oem-detail-search { flex-wrap: wrap; }
+.mine-oem-inline-details .mine-oem-inline-search { flex: 1 1 260px; min-width: 0; }
+.mine-oem-site-tables { flex: 1; min-height: 0; overflow: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; padding: 12px; background: var(--bg, #f7f8fc); }
+.mine-oem-site-section { margin-bottom: 18px; border: 1px solid var(--line, #dde6f2); border-radius: 10px; background: var(--panel, #fff); overflow: hidden; }
+.mine-oem-site-section:last-child { margin-bottom: 0; }
+.mine-oem-modal .mine-oem-site-section .dashboard-record-browser { display: block; overflow: visible; }
+.mine-oem-modal .mine-oem-site-section .dashboard-record-results { display: block; overflow: visible; }
+/* Horizontal table scrollers must pass wheel/touch movement up to the site list. */
+.mine-oem-modal .mine-oem-site-section .dashboard-asset-list { overflow-x: auto; overflow-y: visible; max-height: none; overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
+.mine-oem-site-section .dashboard-record-summary { padding: 14px 16px; border-left: 4px solid var(--brand-purple, #522e90); background: color-mix(in srgb, var(--brand-purple, #522e90) 8%, var(--panel, #fff)); }
+.mine-oem-site-section .dashboard-record-summary h4 { color: var(--brand-purple, #522e90); font-size: 17px; }
+.mine-oem-site-section .dashboard-record-summary > span { font-weight: 700; }
+.mine-oem-modal .mine-oem-detail-search { flex-wrap: wrap; }
+.mine-oem-modal .mine-oem-detail-search .mine-oem-inline-search { flex: 1 1 360px; min-width: 280px; }
+@media (max-width: 700px) {
+  .mine-oem-site-tables { padding: 8px; }
+  .mine-oem-modal .mine-oem-detail-context { padding: 6px 10px; font-size: 12px; gap: 4px; }
+  .mine-oem-modal .mine-oem-detail-search { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px 10px; }
+  .mine-oem-modal .mine-oem-detail-search label { min-width: 0; width: 100%; }
+  .mine-oem-modal .mine-oem-detail-search .mine-oem-inline-search { grid-column: 1 / -1; min-width: 0; }
+  .mine-oem-modal .mine-oem-detail-search :is(input,select) { min-width: 0; width: 100%; font-size: 12px; }
+  .mine-oem-site-section .dashboard-record-summary { padding: 10px; }
+  .mine-oem-site-section .dashboard-record-summary h4 { font-size: 15px; }
+}
+
+/* One fixed report toolbar and summary, with the grouped records scrolling below. */
+.mine-oem-site-tables { display: flex; overflow: hidden; padding: 0; }
+.mine-oem-site-tables > .dashboard-record-browser { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.mine-oem-site-tables .dashboard-record-results { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.mine-oem-site-tables .dashboard-record-toolbar { flex: 0 0 auto; }
+.mine-oem-site-tables .dashboard-asset-list { flex: 1; min-height: 0; overflow: auto; }
+.site-report-summary { padding: 10px 16px 12px; border-bottom: 1px solid var(--line, #dde6f2); background: var(--panel, #fff); }
+.site-report-summary > b { display: block; font-size: 12px; margin-bottom: 8px; color: var(--muted, #65758b); }
+.site-report-summary > div { display: flex; flex-wrap: wrap; gap: 8px; max-height: 112px; overflow: auto; }
+.site-report-summary > div > span { display: flex; align-items: center; gap: 12px; padding: 7px 10px; border: 1px solid var(--line, #dde6f2); border-radius: 7px; font-size: 12px; }
+.site-report-summary strong { color: var(--brand-purple, #522e90); }
+.site-report-heading th { padding: 12px 16px !important; background: var(--panel, #f4eff9) !important; color: var(--brand-purple, #522e90) !important; border-left: 4px solid var(--brand-purple, #522e90); text-transform: none !important; }
+.site-report-heading span { margin-left: 20px; font-size: 12px; font-weight: 500; }
+@media (max-width: 700px) {
+  .site-report-summary { padding: 8px 10px; }
+  .site-report-summary > div { flex-wrap: nowrap; max-height: none; }
+  .site-report-summary > div > span { flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 3px; }
+}
+
+.site-report-summary .site-summary-options { align-items: flex-end; max-height: 150px; }
+.site-summary-region { display: flex; flex-direction: column; gap: 6px; }
+.site-summary-region > b { font-size: 12px; color: var(--muted, #65758b); }
+.site-summary-region > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.site-report-summary .site-summary-button { display: inline-flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--line, #dde6f2); border-radius: 7px; background: var(--panel, #fff); color: var(--text, #17233c); font-size: 12px; cursor: pointer; }
+.site-report-summary .site-summary-button:hover { border-color: var(--brand-purple, #522e90); }
+.site-report-summary .site-summary-button[aria-pressed="true"] { background: var(--brand-purple, #522e90); color: #fff; border-color: var(--brand-purple, #522e90); }
+.site-report-summary .site-summary-button[aria-pressed="true"] strong { color: inherit; }
+.site-report-summary .site-summary-button:focus-visible { outline: 2px solid var(--brand-purple, #522e90); outline-offset: 2px; }
+@media (max-width: 700px) {
+  .site-report-summary .site-summary-options { flex-wrap: nowrap; align-items: flex-end; }
+  .site-summary-region { flex: 0 0 auto; }
+  .site-summary-region > div { flex-wrap: nowrap; }
+  .site-summary-button { flex-shrink: 0; white-space: nowrap; }
+}
+
+/* Eye toggle: hide every search/filter strip so the records table takes the full height. */
+.mine-oem-context-end { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.mine-oem-filter-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line, #dde6f2); border-radius: 7px; background: var(--panel, #fff); color: var(--brand-purple, #522e90); font-size: 13px; font-weight: 700; cursor: pointer; }
+.mine-oem-filter-toggle:hover, .mine-oem-filter-toggle[aria-pressed="true"] { border-color: var(--brand-purple, #522e90); }
+.mine-oem-filter-toggle:focus-visible { outline: 2px solid var(--brand-purple, #522e90); outline-offset: 2px; }
+.mine-oem-details.filters-hidden :is(.mine-oem-detail-search, .dashboard-fleet-search, .site-report-summary) { display: none; }
+.mine-oem-details.filters-hidden .dashboard-record-browser { grid-template-rows: minmax(0, 1fr) !important; }
+
+/* Table actions sit in the modal title row and the site-wise summary in the selection row, so the records start higher. */
+.mine-oem-modal > header h3 { flex: 1 1 auto; }
+.mine-oem-modal > header .modal-header-actions { flex: 0 1 auto; min-width: 0; margin-left: auto; }
+.mine-oem-modal > header .shared-table-actions-toolbar { position: static; width: auto; padding: 0; border: 0; background: transparent; flex-wrap: nowrap; }
+.mine-oem-modal > header .shared-table-actions-toolbar svg { width: 16px; }
+.mine-oem-modal .mine-oem-detail-context { flex-wrap: nowrap; padding-top: 6px; padding-bottom: 6px; }
+.mine-oem-modal .mine-oem-detail-context > :is(.mine-oem-selection, .mine-oem-context-end) { flex: 0 0 auto; }
+.mine-oem-summary-slot { flex: 1 1 0; min-width: 0; }
+.mine-oem-summary-slot .site-report-summary { display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; }
+.mine-oem-summary-slot .site-report-summary > b { flex: 0 0 auto; margin: 0; }
+.mine-oem-summary-slot .site-report-summary .site-summary-options { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; align-items: center; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 2px; scrollbar-width: thin; }
+.mine-oem-summary-slot .site-summary-region { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 8px; }
+.mine-oem-summary-slot .site-summary-region > div { flex-wrap: nowrap; }
+.mine-oem-summary-slot .site-summary-button { flex: 0 0 auto; padding: 6px 10px; white-space: nowrap; }
+.mine-oem-details .mine-oem-detail-context > :is(.mine-oem-selection, .mine-oem-context-end),
+.mine-oem-details .site-report-summary > b,
+.mine-oem-details .site-summary-region > b { display: none; }
+.mine-oem-report-navigation { gap: 12px; align-items: center; }
+.mine-oem-report-navigation + .mine-oem-detail-context { display: none; }
+.mine-oem-report-navigation > button { flex: 0 0 auto; }
+.mine-oem-report-navigation .mine-oem-grouping-description { max-width: 230px; line-height: 1.5; color: var(--text); }
+.mine-oem-report-navigation > .mine-oem-summary-slot { flex: 1 1 480px; padding-left: 16px; border-left: 1px solid var(--line); }
+.mine-oem-report-navigation .site-report-summary { align-items: flex-start; flex-direction: column; gap: 6px; }
+.mine-oem-report-navigation .site-report-summary > b { font-size: 12px; color: var(--muted); }
+.mine-oem-report-navigation .site-report-summary .site-summary-options { width: 100%; flex: 0 1 auto; flex-wrap: wrap; gap: 8px; max-height: 144px; overflow: auto; }
+.mine-oem-report-navigation .site-summary-region { flex: 0 1 auto; flex-wrap: wrap; }
+.mine-oem-report-navigation .site-summary-region > div { flex-wrap: wrap; }
+.mine-oem-report-navigation .site-summary-button { min-height: 40px; gap: 10px; font-size: 13px; }
+.mine-oem-details.filters-hidden .mine-oem-report-navigation > .mine-oem-summary-slot { display: none; }
+@media (max-width: 1100px) {
+  .mine-oem-modal > header { flex-wrap: wrap; }
+  .mine-oem-modal > header .modal-header-actions { order: 5; flex: 1 0 100%; }
+  .mine-oem-modal > header .shared-table-actions-toolbar { flex-wrap: wrap; }
+  .mine-oem-modal .mine-oem-detail-context { flex-wrap: wrap; }
+  .mine-oem-summary-slot { order: 5; flex: 1 0 100%; }
+  .mine-oem-summary-slot .site-report-summary > b { display: none; }
+  .mine-oem-report-navigation > .mine-oem-summary-slot { padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .mine-oem-report-navigation .site-report-summary > b { display: block; }
+}

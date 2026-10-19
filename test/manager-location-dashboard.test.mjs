@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+test("manager requests, equipment, and dashboard metrics are scoped to selected sites", () => {
+  const server=fs.readFileSync(new URL("../server.mjs",import.meta.url),"utf8");
+  const source=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
+  const styles=fs.readFileSync(new URL("../src/style.css",import.meta.url),"utf8");
+  assert.match(server,/adminLevel==='Manager'[\s\S]*scopedManagerSites=managerReportScope\(\{\.\.\.manager,site:assignedUserSiteName\(manager\)\}\)\.sites/);
+  assert.match(server,/rows\.filter\(\(row\)=>reportScopeIncludesSite\(\{sites:scopedManagerSites\},row\.site\)\)/);
+  assert.match(server,/managerRecord&&row\.master_name==='Equipment master'/);
+  assert.match(server,/managerScope=managerRecord\?\(req\.session\.role==='normal'\?userSiteScope\(managerRecord\):managerReportScope\(managerRecord\)\):null/);
+  assert.match(server,/equipmentSite=canonicalSiteName\(record\.currentLocation\|\|record\.site\|\|record\.location\|\|''\)/);
+  assert.match(source,/function ManagerDashboard\(\{ managerRole, managerRoles = \[\], managerLocation/);
+  assert.match(source,/const siteEquipment = equipmentRecords;/);
+  assert.match(server,/scopeDashboardEquipmentRecords\(fleetSnapshot,authorization\.session,authorization\.user,scope\)/);
+  assert.match(source,/const roadStatuses = liveEquipmentRoadStatuses\(siteEquipment, requestRows\)/);
+  assert.match(source,/const fleet = liveEquipmentMetrics\(siteEquipment, requestRows, roadStatuses\)/);
+  assert.match(source,/const idleTypes=typeSummary\(equipmentWithStatus\("idle"\),equipmentGroupLabel\)/);
+  assert.doesNotMatch(source,/offRoadKeys = new Set\(openRequests/);
+  assert.match(source,/\["Idle", fleet\.idle/);
+  assert.doesNotMatch(source.slice(source.indexOf("function ManagerDashboard"),source.indexOf("function Dashboard")),/Active breakdowns/);
+  assert.match(source,/<BreakdownTable rows=\{visibleDetailRows\}[\s\S]*stableToolbar/);
+  assert.match(source,/requestWithEquipmentMasterDetails\(request, equipmentRecords\)/);
+  assert.match(source,/<BreakdownTable rows=\{visibleDetailRows\} showMakeModel/);
+  assert.match(styles,/\.manager-table-search-toolbar\{min-height:66px;flex-wrap:nowrap\}/);
+  assert.match(styles,/\.manager-table-search-toolbar \.table-parameter-filter-trigger\{min-width:108px;justify-content:center\}/);
+  assert.match(source,/formatTwelveHourDateTime\(r\.start\)/);
+});

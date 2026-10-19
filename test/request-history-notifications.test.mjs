@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const source=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
+
+test("request lifecycle has reason/status columns, closed history, and stakeholder notifications",()=>{
+  const mobileStyles=fs.readFileSync(new URL("../src/mobile-workflow.css",import.meta.url),"utf8");
+  const server=fs.readFileSync(new URL("../server.mjs",import.meta.url),"utf8");
+  const access=fs.readFileSync(new URL("../mobile-access.mjs",import.meta.url),"utf8");
+  assert.match(source,/showReason \? \[\["complaint", "BD reason"\]\]/);
+  assert.match(source,/\["status", "Status"\]/);
+  assert.match(source,/Closed history/);
+  assert.match(source,/activeRequests=useMemo\(\(\)=>requestRows\.filter[\s\S]*!=="closed"/);
+  assert.match(source,/historyRows=useMemo\(\(\)=>isMis\?requestRows/);
+  assert.match(source,/showReason && <th>Reason<\/th>/);
+  assert.match(source,/showReason && <td className="request-reason-cell"><div className="request-reason-text"><TranslatedText text=\{row\.complaint\} language=\{row\.complaintLanguage\} \/><\/div>\{row\.complaintMediaAvailable && <ComplaintMediaView[^>]+\/>\}<\/td>/);
+  assert.match(source,/showCreatedBy && <th>Created by<\/th>/);
+  assert.match(source,/showCreatedBy && <td>\{row\.owner \|\| row\.requesterLogin \|\| "—"\}<\/td>/);
+  assert.match(source,/showClosedBy \? \[\["closedBy", "Closed by"\]\]/);
+  assert.match(source,/showClosedBy && <td>\{row\.closedBy \|\| "—"\}<\/td>/);
+  assert.match(source,/showVerifiedBy && <th>Verified by<\/th>/);
+  assert.match(source,/showVerifiedBy && <td>\{row\.verifiedBy \|\| "—"\}<\/td>/);
+  assert.match(source,/rows=\{activeRequests\} exportTitle=\{workspaceReportTitles.\w+\} showReadOnlyAction showMakeModel showReason showCreatedBy showBreakdownDays/);
+  assert.match(source,/rows=\{historyRows\} exportTitle=\{workspaceReportTitles.\w+\} showReadOnlyAction showMakeModel showReason showCreatedBy showClosedBy showBreakdownDays/);
+  assert.match(mobileStyles,/\.normal \.table \.mobile-breakdown-table th,[\s\S]*display: table-cell/);
+  assert.match(source,/rows=\{activeRequests\} exportTitle=\{workspaceReportTitles.\w+\} highlightLateAcceptance showMakeModel showReason showCreatedBy showComplaintAudio/);
+  assert.match(source,/rows=\{activeRequests\.filter\(\(row\) => \(!row\.verifiedAt \|\| row\.status==="Running BD"\)[\s\S]*showCreatedBy showComplaintAudio showMeterData showActions/);
+  assert.match(source,/rows=\{visibleRows\} exportTitle=\{workspaceReportTitles.\w+\} showMisPeople showMakeModel showReason showClosedAt closedAtLabel="Closed time" closedTimeAfterStarted showTurnaroundTime/);
+  assert.match(source,/showClosedBy showClosedAt=\{isMaintenance \|\| isMis\} closedAtLabel=\{closedHistoryClosingLabel\} showVerifiedBy=\{isMis\} showVerifiedAt=\{isMis\} showTripCard=\{isMis\}/);
+  assert.match(source,/showReason showClosedBy showClosedAt=\{isMaintenance \|\| isMis\} closedAtLabel=\{closedHistoryClosingLabel\} showVerifiedBy=\{isMis\} showVerifiedAt=\{isMis\}/);
+  assert.match(source,/showReason showClosedBy=\{queueTab==="history"\}/);
+  assert.match(access,/"Closed history"/);
+  assert.match(server,/async function requestStakeholderLogins/);
+  assert.match(server,/profile\.permissions\.adminLevel==='Manager'&&userManagesSite\(user,site\)/);
+  assert.match(server,/\['Production User','Maintenance User','MIS User'\]/);
+  assert.match(server,/const openedAt=requestNotificationTime\(startedAt\)/);
+  assert.match(server,/Date & time: \$\{openedAt\}/);
+  assert.match(server,/const closedAtLabel=requestNotificationTime\(closedAt\)/);
+  assert.match(server,/Closing date & time: \$\{closedAtLabel\}/);
+});
+
+test("maintenance closed history shows closing time beside started time",()=>{
+  assert.match(source,/const closedHistoryClosingLabel = isMis \? "Maintenance Closing Time" : "Closing time"/);
+  assert.match(source,/showClosedBy showClosedAt=\{isMaintenance \|\| isMis\} closedAtLabel=\{closedHistoryClosingLabel\} showVerifiedBy=\{isMis\}/);
+  assert.match(source,/\{startedHeader\(\)\}<\/>\}\{showClosedAt && workflowHeader\("closedAt", closedAtLabel\)\}/);
+  assert.match(source,/\{startedCell\(row\)\}<\/>\}\s*\{showClosedAt && <td>\{formatTwelveHourDateTime\(row\.closedAt\)\}<\/td>\}/);
+});
+
+test("MIS closed history labels production and maintenance timestamps", () => {
+  assert.match(source,/startedLabel=\{isMis \? "Production date and time" : "Started"\}/);
+  assert.match(source,/showClosedAt=\{isMaintenance \|\| isMis\}/);
+  assert.match(source,/const startedHeader = \(\) => <>\{workflowHeader\("start", startedLabel\)\}\{workflowHeader\("etc", "ETC"\)\}\{showIdleDate && workflowHeader\("idleDate", "Idle Vehicle Date"\)\}<\/>/);
+  assert.match(source,/closedAtLabel=\{closedHistoryClosingLabel\}/);
+});

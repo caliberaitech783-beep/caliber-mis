@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readScannerResponse} from '../src/local-scanner-response.mjs';
+test('an empty proxy error becomes a reconnect message rather than a JSON parsing failure',async()=>{await assert.rejects(readScannerResponse(new Response('',{status:502})),/retry automatically/);await assert.rejects(readScannerResponse(new Response('<html>Starting</html>',{status:503})),/reconnecting/)});
+test('a recovered scanner response exposes the connected devices and files',async()=>{const data={devices:[{id:'brother',name:'Brother ADS-3100'}],files:[{name:'scan.pdf'}]};assert.deepEqual(await readScannerResponse(Response.json(data)),data)});
+test('API errors retain the useful server explanation',async()=>{await assert.rejects(readScannerResponse(Response.json({error:'Scanner feeder empty'},{status:400})),/Scanner feeder empty/)});

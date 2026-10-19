@@ -1,0 +1,16 @@
+{
+  "name": "Caliber Pulse-II",
+  "short_name": "Caliber Pulse-II",
+  "description": "All Departments Linked In One Place",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf5f8",
+  "theme_color": "#522e90",
+  "icons": [
+    {
+      "src": "/caliber-erp-logo.jpg",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

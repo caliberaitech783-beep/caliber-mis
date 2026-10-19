@@ -1,0 +1,183 @@
+import EmployeeIdLookup from './employee-id-lookup.jsx';
+import React,{useEffect,useMemo,useState} from 'react';
+
+import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
+
+import {canonicalSiteName} from '../site-location.mjs';
+
+import './log-book-form.css';
+
+
+
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+
+const fresh=()=>({bookDate:today(),location:'',assetId:'',workOrderId:'',employeeId:'',shiftId:'',shiftHours:8,openingKmr:'',closingKmr:'',openingHmr:'',closingHmr:'',aFormNo:'',remark:'',timeMode:'with',trips:[],requestKey:crypto.randomUUID()});
+
+const delta=(opening,closing)=>opening!==''&&closing!==''&&Number(closing)>=Number(opening)?Math.round((Number(closing)-Number(opening))*1000)/1000:null;
+
+const fixed=value=>value==null?'—':Number(value).toFixed(2);
+const display=value=>value===null||value===undefined?'—':Number(value).toLocaleString('en-IN',{maximumFractionDigits:3});
+
+const gap=(start,end)=>{if(!/^\d{2}:\d{2}(?::\d{2})?$/.test(start)||!/^\d{2}:\d{2}(?::\d{2})?$/.test(end))return null;const seconds=t=>t.split(':').reduce((sum,v,i)=>sum+Number(v)*[3600,60,1][i],0);return Math.round(((seconds(end)-seconds(start)+86400)%86400)/60*1000)/1000;};
+
+function Field({label,children,hint,wide=false}){return <label className={`logbook-field${wide?' wide':''}`}><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>}
+
+
+
+export default function LogBookForm({kind,session,onExit,onBulkScan}){
+
+ const vehicle=kind==='vehicle',title=vehicle?'Vehicle Log Book':'Equipment Log Book';
+
+ const [form,setForm]=useState(fresh),[saved,setSaved]=useState(null),[options,setOptions]=useState(null),[records,setRecords]=useState([]),[nextCursor,setNextCursor]=useState(null),[query,setQuery]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[working,setWorking]=useState(false),[loading,setLoading]=useState(true);
+
+ const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
+ const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
+
+ const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Could not reach the log book service.');return body;};
+
+ const loadRegister=async(before)=>{const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
+
+ const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
+
+ useEffect(()=>{void load()},[kind,session.token]);
+
+ const update=(key,value)=>{setForm(current=>({...current,[key]:value}));setSuccess('');};
+
+ const assets=useMemo(()=>(options?.assets||[]).filter(asset=>asset.kind===kind&&(!form.location||canonicalSiteName(asset.site)===canonicalSiteName(form.location))),[options,kind,form.location]);
+
+ const shifts=(options?.shifts||[]).filter(shift=>!form.location||!shift.site||canonicalSiteName(shift.site)===canonicalSiteName(form.location));
+
+ const eligibleWorkOrders=(options?.workOrders||[]).filter(row=>form.location&&(!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location))&&(!row.begin||row.begin<=form.bookDate)&&(!row.end||row.end>=form.bookDate));
+ useEffect(()=>{if(!editing||!vehicle)return;setForm(current=>{const id=eligibleWorkOrders.length===1?eligibleWorkOrders[0].id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle]);
+ const employee=options?.employees.find(row=>row.id===String(form.employeeId));
+
+ const asset=options?.assets.find(row=>row.id===String(form.assetId));
+
+ const kmr=delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
+
+ useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!vehicle||!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,hmr,session.token]);
+
+ const setLocation=location=>{setForm(current=>({...current,location,assetId:'',shiftId:'',workOrderId:''}));setSuccess('');};
+
+ const selectAsset=id=>{const row=options?.assets.find(asset=>asset.id===id);setForm(current=>({...current,assetId:id,...(!current.location&&row?.site?{location:row.site,shiftId:''}:{})}));setSuccess('');};
+
+ const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
+
+ const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
+ const newEntry=()=>{setForm(fresh());setSaved(null);setEditing(true);setSuccess('');setError('');};
+
+ const openEntry=row=>{setEditing(false);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:row.data.trips||[]});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
+
+ const save=async event=>{event.preventDefault();setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...form,revision:saved?.revision})});setSaved(result);setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+
+ const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
+
+ const findRecords=()=>{document.querySelector('.logbook-register')?.scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('[aria-label="Search saved log books"]')?.focus();};
+
+ const firstRecord=async()=>{try{const result=await api(`/api/log-books/${kind}?first=1`);if(result.records[0])openEntry(result.records[0]);else setSuccess('No saved records yet.');}catch(e){setError(e.message)}};
+
+ const lastRecord=async()=>{try{const result=await api(`/api/log-books/${kind}?last=1`);if(result.records[0])openEntry(result.records[0]);else setSuccess('No saved records yet.');}catch(e){setError(e.message)}};
+ const deleteRecord=async()=>{setWorking(true);try{await api(`/api/log-books/${kind}/${saved.id}`,{method:'DELETE',body:JSON.stringify({revision:saved.revision})});setShowDelete(false);newEntry();setSuccess('Record deleted from the active register.');await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+
+ const printRecord=()=>{document.body.classList.add('printing-logbook');window.addEventListener('afterprint',()=>document.body.classList.remove('printing-logbook'),{once:true});window.print();};
+
+ return <section className={`logbook-page${vehicle?' logbook-compact':''}`}>
+
+
+
+   <header className="logbook-page-header"><div><span className="logbook-eyebrow">MIS / DAILY OPERATIONS</span><h1><BookOpen size={26}/>{title}</h1><p>{vehicle?'Vehicle readings, driver assignment and trip details.':'Equipment readings, shift and operator assignment.'}</p></div><div className="logbook-header-actions" role="toolbar" aria-label="Log book actions"><button type="button" onClick={()=>void load()} disabled={working||loading} title="Refresh masters"><RotateCcw size={15}/><span>Refresh</span></button><button type="button" onClick={newEntry} disabled={working}><Plus size={16}/>New entry</button>{onBulkScan&&<button type="button" onClick={onBulkScan}>Bulk scan cards</button>}{saved?.data.scanCardId&&<button type="button" onClick={viewSource}>View source scan</button>}{vehicle&&<><button type="button" onClick={findRecords}><ListFilter size={16}/>Query</button><button type="button" onClick={firstRecord} disabled={working}><ChevronsLeft size={16}/>First record</button><button type="button" onClick={lastRecord} disabled={working}><ChevronsRight size={16}/>Last record</button><button type="button" onClick={()=>setEditing(true)} disabled={!saved||editing||working}><Pencil size={16}/>Edit</button><button type="submit" form="logbook-entry-form" disabled={!editing||working||loading}><Save size={16}/>Save</button><button type="button" onClick={()=>setShowDelete(true)} disabled={!saved||working}><Trash2 size={16}/>Delete</button><button type="button" onClick={findRecords}><Search size={16}/>Search</button><button type="button" onClick={printRecord}><Printer size={16}/>Print</button><button type="button" onClick={()=>saved?openEntry(saved):newEntry()} disabled={working}><X size={16}/>Cancel</button><button type="button" onClick={onExit} disabled={working}><LogOut size={16}/>Exit</button><button type="button" onClick={()=>setShowStatus(!showStatus)} aria-expanded={showStatus}><Info size={16}/>Status</button></>}</div></header>
+
+   {loading&&<p role="status">Loading log books and synced masters…</p>}
+
+   {error&&<div className="logbook-message error" role="alert">{error}</div>}
+
+   {success&&<div className="logbook-message success" role="status">{success}</div>}
+
+   {showStatus&&<div className="logbook-message" role="status">{saved?`${saved.book_no} · Saved · Revision ${saved.revision} · ${editing?'Editing':'View only'}`:'New entry · Not saved'} · {working?'Saving…':loading?'Loading masters…':'Ready'}</div>}
+
+   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
+
+   <form id="logbook-entry-form" className="logbook-form" onSubmit={save}>
+
+    <fieldset className="logbook-edit-fields" disabled={!editing||working}>
+
+     <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
+
+{vehicle?<><Field label="Location"><select required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</select></Field>
+<Field label="Doc type"><input readOnly value={vehicle?'Vehicle Log Book':'QLB'}/></Field>
+<Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
+<Field label="Book no." hint={`CAL/${vehicle?'VLB':'ELB'}/DD-MM-YY/001 · Assigned on save`}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
+<div className="logbook-sheet-spacer"/>
+<Field label={vehicle?'Door no.':'Equipment / Door no.'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+<Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Auto-selected from Work Order Master':eligibleWorkOrders.length>1?'Multiple contracts match — select the correct one':'No matching Work Order available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
+<Field label="Caliber ID" hint="Employee ID from Employee Master"><EmployeeIdLookup token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess('ERP driver found: '+row.name+' · '+row.caliberId);}}/></Field>
+<Field label="Shift hour"><select required value={form.shiftHours} onChange={e=>update('shiftHours',Number(e.target.value))}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></select></Field>
+<Field label={vehicle?'Driver name':'Operator name'}><select required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</select></Field>
+<Field label="Shift" hint="Location-specific Shift Master"><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
+<Field label="A Form no. (Trip Card)"><input maxLength={200} value={form.aFormNo} onChange={e=>update('aFormNo',e.target.value)} placeholder="Enter A Form number"/></Field>
+<Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
+<Field label="Closing reading (KMR)"><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
+<Field label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
+<Field label="Closing reading (HMR)"><input type="number" min="0" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
+<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/><Field label="Total working HMR"><output>{fixed(hmr)}</output></Field></>:<>       <Field label="Location"><select required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</select></Field>
+
+       <Field label="Doc type"><input readOnly value={vehicle?'VLB':'QLB'}/></Field>
+
+       <Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
+
+       <Field label="Book no." hint={`CAL/${vehicle?'VLB':'ELB'}/DD-MM-YY/001 · Assigned on save`}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
+
+       <Field label={vehicle?'Door no.':'Equipment / Door no.'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+
+       <Field label="Wo.Cont." hint={options?.workOrderConnected?'From Work Order Master':'No Work Order master records available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{options?.workOrders?.filter(row=>!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location)).map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
+
+       <Field label="Shift hour"><select required value={form.shiftHours} onChange={e=>update('shiftHours',Number(e.target.value))}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></select></Field>
+
+       <Field label="Shift" hint="Location-specific Shift Master"><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
+
+       <Field label={vehicle?'Driver name':'Operator name'}><select required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</select></Field>
+
+       <Field label="Caliber ID" hint="Employee ID from Employee Master"><EmployeeIdLookup token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess('ERP driver found: '+row.name+' · '+row.caliberId);}}/></Field>
+
+       {!vehicle&&<Field label="Job Card no."><input value={form.jobCardNo||''} onChange={e=>update('jobCardNo',e.target.value)}/></Field>}{vehicle&&<Field label="A Form no. (Trip Card)"><input maxLength={200} value={form.aFormNo} onChange={e=>update('aFormNo',e.target.value)} placeholder="Enter A Form number"/></Field>}
+
+</>}
+     </div></section>
+
+     {!vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Meter readings</h2><span>Closing − opening</span></div><div className="logbook-fields meter-fields">
+
+       {vehicle&&<><Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field><Field label="Closing reading (KMR)"><input type="number" min={form.openingKmr||0} step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field><Field label="Total running KMR"><output>{display(kmr)}</output></Field></>}
+
+       <Field label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field><Field label="Closing reading (HMR)"><input type="number" min={form.openingHmr||0} step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field><Field label={vehicle?'Total working HMR':'Total work HMR'}><output>{display(hmr)}</output></Field>
+
+       <Field label="Remark" wide><textarea rows={3} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)} placeholder="Enter remarks"/></Field>
+
+     </div></section>}
+
+     {vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Detail</h2><div className="logbook-trip-actions"><label>With time / Without time<select aria-label="Trip time entry" value={form.timeMode} onChange={e=>update('timeMode',e.target.value)}><option value="with">With time</option><option value="without">Without time</option></select></label><button type="button" onClick={()=>update('trips',[...form.trips,{equipmentName:'',loadingTime:'',unloadingTime:'',tripCount:1}])} disabled={form.trips.length>=300}><Plus size={15}/>Add trip</button></div></div>
+
+       <datalist id={`loading-equipment-${kind}`}>{options?.assets.filter(row=>row.kind==='equipment').map(row=><option key={row.id} value={row.door||row.name}>{row.name}</option>)}</datalist>
+
+       <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Equipment name</th>{form.timeMode==='with'&&<><th>Loading time</th><th>Unloading time</th></>}<th>No. of trips</th>{form.timeMode==='with'&&<th>GAP (minutes)</th>}<th/></tr></thead><tbody>
+
+         {form.trips.map((row,index)=><tr key={index}><td><input aria-label={`Equipment name row ${index+1}`} required list={`loading-equipment-${kind}`} value={row.equipmentName} onChange={e=>setTrip(index,'equipmentName',e.target.value)} placeholder="e.g. VPC-60" maxLength={200}/></td>{form.timeMode==='with'&&<><td><input type="time" step="1" aria-label={`Loading time row ${index+1}`} required value={row.loadingTime} onInput={e=>setTrip(index,'loadingTime',e.currentTarget.value)}/></td><td><input type="time" step="1" aria-label={`Unloading time row ${index+1}`} required value={row.unloadingTime} onInput={e=>setTrip(index,'unloadingTime',e.currentTarget.value)}/></td></>}<td><input type="number" min="1" step="1" aria-label={`No. of trips row ${index+1}`} required value={row.tripCount} onChange={e=>setTrip(index,'tripCount',e.target.value)}/></td>{form.timeMode==='with'&&<td>{display(gap(row.loadingTime,row.unloadingTime))}</td>}<td><button type="button" className="logbook-remove" aria-label={`Remove trip row ${index+1}`} onClick={()=>update('trips',form.trips.filter((_,i)=>i!==index))}><Trash2 size={16}/></button></td></tr>)}
+
+         {!form.trips.length&&<tr><td colSpan={form.timeMode==='with'?6:3} className="logbook-empty">No trip rows added. Use Add trip to enter loading and unloading details.</td></tr>}
+
+       </tbody></table></div><div className="logbook-trip-totals"><span>Total records / trips · Records: <strong>{form.trips.length}</strong></span><span>Total trips: <strong>{form.trips.reduce((sum,row)=>sum+(Number(row.tripCount)||0),0)}</strong></span>{form.timeMode==='with'&&<small>When unloading is earlier than loading, the gap continues into the next day.</small>}</div>
+
+     </section>}
+
+     {vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Hours summary</h2><span>{hoursLoading?'Fetching Pulse BD hours…':hours?'Source: Pulse · selected vehicle / date / shift':'Select vehicle, date and shift'}</span></div><div className="logbook-fields"><Field label="Availability HRS" hint="Shift hours − BD hours"><output>{fixed(hours?.availabilityHours)}</output></Field><Field label="Running HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="BD HRS" hint="From Pulse breakdown records"><output>{fixed(hours?.breakdownHours)}</output></Field><Field label="Idle HRS" hint="Shift hours − running hours − BD hours"><output>{fixed(hours?.idleHours)}</output></Field></div>{hoursError&&<p className="logbook-message error">{hoursError} BD and idle hours remain unavailable.</p>}{hours?.warnings?.map(w=><p key={w} className="logbook-message error">{w}</p>)}<p className="logbook-note">Breakdown intervals are restricted to the selected shift and overlapping requests are counted once. Missing Pulse data is not treated as zero.</p></section>}
+
+
+     </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:'Book number will be generated on save.'}</span><button className="primary" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?'Saving…':saved?'Save changes':'Save log book'}</button></footer>
+
+   </form>
+
+   <section className="logbook-section logbook-register"><div className="logbook-section-title"><h2>Saved log books</h2><input aria-label="Search saved log books" placeholder="Search book, door, employee or site…" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book no.</th><th>Date</th><th>Location</th><th>Door no.</th><th>Shift</th><th>{vehicle?'Driver':'Operator'}</th><th>Work HMR</th><th/></tr></thead><tbody>{filtered.map(row=><tr key={row.id}><td>{row.book_no}</td><td>{row.data.bookDate}</td><td>{row.data.location}</td><td>{row.data.door}</td><td>{row.data.shiftName}</td><td>{row.data.employeeName}</td><td>{display(row.data.totalWorkingHmr)}</td><td><button type="button" onClick={()=>openEntry(row)}>Open</button></td></tr>)}{!filtered.length&&<tr><td colSpan={8} className="logbook-empty">No saved entries found.</td></tr>}</tbody></table></div>{nextCursor&&<button type="button" onClick={()=>void loadRegister(nextCursor).catch(e=>setError(e.message))}>Load older entries</button>}</section>
+
+ </section>;
+
+}
+

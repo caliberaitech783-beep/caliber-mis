@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { recordCountLine, withSerialColumn } from "../serial-column.mjs";
+
+function storedFiles(buffer) {
+  const files = new Map();
+  let offset = 0;
+  while (buffer.readUInt32LE(offset) === 0x04034b50) {
+    assert.equal(buffer.readUInt16LE(offset + 8), 0);
+    const size = buffer.readUInt32LE(offset + 18);
+    const nameLength = buffer.readUInt16LE(offset + 26);
+    const extraLength = buffer.readUInt16LE(offset + 28);
+    const name = buffer.subarray(offset + 30, offset + 30 + nameLength).toString("utf8");
+    const start = offset + 30 + nameLength + extraLength;
+    files.set(name, buffer.subarray(start, start + size).toString("utf8"));
+    offset = start + size;
+  }
+  assert.equal(buffer.readUInt32LE(offset), 0x02014b50);
+  return files;
+}
+
+function browserXlsxBuilder() {
+  const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+  const start = source.indexOf("function escapeExportHtml");
+  const end = source.indexOf("// Smart Print goes straight to the printer", start);
+  assert.ok(start >= 0 && end > start, "browser XLSX builder source is present");
+  return new Function(
+    "withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText",
+    `${source.slice(start, end)}; return { buildXlsxSheetsWorkbook, escapeXlsxText };`,
+  )(withSerialColumn, recordCountLine, () => "12:00 PM 22-09-26", () => [], String);
+}
+
+test("browser XLSX worksheets use Excel's required element order and safe SpreadsheetML text", async () => {
+  const { buildXlsxSheetsWorkbook, escapeXlsxText } = browserXlsxBuilder();
+  assert.equal(escapeXlsxText("Control\u0001text\r\nnext"), "Control_x0001_text_x000D_\nnext");
+  assert.equal(escapeXlsxText("literal _x0001_"), "literal _x005F_x0001_");
+
+  const blob = buildXlsxSheetsWorkbook("BD & Balance", [
+    { name: "Report", title: "BD Balance", columns: [{ label: "Daily updates" }], rows: [["2 updates"]] },
+    { name: "Daily Updates", title: "Daily Updates", columns: [{ label: "Daily update" }], rows: [["Line one\nLine two"], ["Control\u0001text"], ["literal _x0001_"]] },
+  ]);
+  const files = storedFiles(Buffer.from(await blob.arrayBuffer()));
+  assert.deepEqual([...files.keys()].filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)), [
+    "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml",
+  ]);
+  for (const name of ["xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"]) {
+    const xml = files.get(name);
+    assert.ok(xml.indexOf("<autoFilter") < xml.indexOf("<mergeCells"), `${name} must put autoFilter before mergeCells`);
+    assert.doesNotMatch(xml, /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/);
+    assert.match(xml, /pageSetUpPr fitToPage="1"/);
+    assert.match(xml, /orientation="landscape" fitToWidth="1" fitToHeight="0"/);
+  }
+  assert.match(files.get('xl/workbook.xml'), /name="_xlnm.Print_Area" localSheetId="0">&#39;Report&#39;!\$A\$1:\$B\$4/);
+  assert.match(files.get('xl/workbook.xml'), /name="_xlnm.Print_Titles" localSheetId="1">&#39;Daily Updates&#39;!\$1:\$3/);
+  assert.match(files.get("xl/worksheets/sheet2.xml"), /Control_x0001_text/);
+  assert.match(files.get("xl/worksheets/sheet2.xml"), /literal _x005F_x0001_/);
+  assert.match(files.get("docProps/core.xml"), /BD &amp; Balance/);
+  assert.match(files.get("xl/tables/table1.xml"), /tableStyleInfo name="TableStyleLight15"/);
+  assert.match(files.get("xl/styles.xml"), /left style="thin"><color rgb="FF000000"/);
+  assert.match(files.get("xl/styles.xml"), /wrapText="1"/);
+  assert.match(files.get("xl/styles.xml"), /fgColor rgb="FFF2F2F2"/);
+  assert.match(files.get("xl/styles.xml"), /borderId="1" applyBorder="1"/);
+  assert.match(files.get("xl/worksheets/sheet1.xml"), /r="A4" s="6"/);
+  assert.match(files.get("xl/worksheets/sheet1.xml"), /tableParts count="1"/);
+});

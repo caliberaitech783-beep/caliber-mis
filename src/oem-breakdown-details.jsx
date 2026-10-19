@@ -1,0 +1,61 @@
+import React, { useState } from "react";
+import { Search, ListFilter, Eye, EyeOff } from "lucide-react";
+import { matchesSmartSearch } from "../smart-search.mjs";
+import DashboardRecordBrowser from "./dashboard-record-browser.jsx";
+import { equipmentCategoryLabel } from "./dashboard-drilldown-model.mjs";
+import { groupOemRecordsBySite, oemDetailReportRows, oemEquipmentLabel } from "./oem-dashboard-filters.mjs";
+import {ProtectedAudio} from "./protected-media.jsx";
+import { dailyUpdatesExportText } from "./daily-updates-order.mjs";
+import { breakdownMeterColumns } from "../breakdown-meter-columns.mjs";
+import "./oem-breakdown-details.css";
+import { orderOemDetailColumns } from "./oem-detail-columns.mjs";
+import { pulseDelayReason } from "./info-pulse-reasons.mjs";
+
+// Sorting the Daily remarks column orders rows by their most recent update (server stamps are "YYYY-MM-DD HH:MM").
+const latestUpdateStamp = remarks => (Array.isArray(remarks) ? remarks : []).reduce((latest, item) => { const stamp = String(item?.createdAt || ""); return stamp > latest ? stamp : latest; }, "");
+
+const extraColumns = [
+  { key: "oem", label: "OEM", render: record => record.make || "—" },
+  { key: "createdBy", label: "Created by", render: record => record.requestDetails.owner || record.requestDetails.requesterLogin || "—" },
+  { key: "closedBy", label: "Closed by", render: record => record.requestDetails.closedBy || "—" },
+  ...breakdownMeterColumns({ stage: "closing", source: record => record.requestDetails }).map(column => ({ ...column, render: column.value })),
+  { key: "tat", label: "Turn around time (TAT)", render: record => record.requestDetails.hours || "—" },
+  { key: "idleReason", label: "Idle reason", render: record => record.requestDetails.idleReason || "—" },
+];
+
+export default function OemBreakdownDetails({ selection, title, MaintenanceRemarks, viewToolbarTarget = null, ...tableProps }) {
+  const [query, setQuery] = useState("");
+  const [oemWise, setOemWise] = useState(false);
+  const [status, setStatus] = useState("");
+  const [category, setCategory] = useState("");
+  const [group, setGroup] = useState("");
+  const [filtersHidden, setFiltersHidden] = useState(false);
+  // The site-wise summary shares the selection row, so the table starts higher.
+  const [summaryTarget, setSummaryTarget] = useState(null);
+  const [reportToolbarTarget, setReportToolbarTarget] = useState(null);
+  const categoryRows = selection.records.filter(record => !category || equipmentCategoryLabel(record) === category);
+  const rows = categoryRows.filter(record => (!status || record.requestStatus === status) && (!group || oemEquipmentLabel(record) === group) && matchesSmartSearch(query,
+    record.requestReference, record.door, record.requestSite, record.make, record.model, record.group, record.requestStatus,
+    record.requestDetails?.complaint, record.requestDetails?.owner, record.manufacturerSerialNo));
+  const siteGroups = groupOemRecordsBySite(rows, selection.regions);
+  const groupedRows = oemDetailReportRows(siteGroups, oemWise).map(record => ({ ...record, delayedReason: pulseDelayReason(record.requestDetails)?.value || record.delayedReason }));
+  const columns = [...extraColumns,
+    { key: "remarks", label: "Daily remarks", sortValue: record => latestUpdateStamp(record.requestDetails.dailyRemarks), exportValue: record => dailyUpdatesExportText(record.requestDetails.dailyRemarks, { category: record.requestDetails.category }), render: record => <MaintenanceRemarks remarks={record.requestDetails.dailyRemarks} category={record.requestDetails.category} /> },
+    { key: "audio", label: "Audio clips", render: record => <div className="request-audio-list">{record.requestDetails.complaintAudioAvailable && <ProtectedAudio url={`/api/requests/${encodeURIComponent(record.requestReference)}/audio/complaint`} token={tableProps.timelineToken} label="Complaint audio" />}{record.requestDetails.maintenanceAudioAvailable && <ProtectedAudio url={`/api/requests/${encodeURIComponent(record.requestReference)}/audio/maintenance`} token={tableProps.timelineToken} label="Maintenance audio" />}{!record.requestDetails.complaintAudioAvailable && !record.requestDetails.maintenanceAudioAvailable && "—"}</div> },
+  ];
+  const reportTabs = !selection.fleetOnly && <div className="mine-oem-view-tabs" role="group" aria-label="Detail report grouping"><button type="button" aria-pressed={!oemWise} onClick={() => setOemWise(false)}>Site-wise report</button><button type="button" aria-pressed={oemWise} onClick={() => setOemWise(true)}>OEM-wise report</button></div>;
+  return <div className={`mine-oem-details${filtersHidden ? " filters-hidden" : ""}`}>
+    {!viewToolbarTarget && <div className="mine-oem-top-toolbar" ref={setReportToolbarTarget} />}
+    {!selection.fleetOnly && <div className="mine-oem-view-tabs mine-oem-report-navigation" role="group" aria-label="Site report filters"><div className="mine-oem-summary-slot" ref={setSummaryTarget} /></div>}
+    <div className="mine-oem-detail-context"><span className="mine-oem-selection"><i style={{ background: selection.color || "var(--brand-purple)" }} />{selection.label}{selection.site && ` · ${selection.site}`}</span>{selection.fleetOnly && <div className="mine-oem-summary-slot" ref={setSummaryTarget} />}<span className="mine-oem-context-end"><span role="status" aria-live="polite">{selection.periodLabel}</span><button type="button" className="mine-oem-filter-toggle" aria-pressed={filtersHidden} title={filtersHidden ? "Show search, filters and site summary" : "Hide search, filters and site summary for a taller table"} onClick={() => setFiltersHidden(hidden => !hidden)}>{filtersHidden ? <Eye size={16} /> : <EyeOff size={16} />}{filtersHidden ? "Show filters" : "Hide filters"}</button></span></div>
+    <div className="table-search-toolbar mine-oem-detail-search">
+      <label><ListFilter /><select aria-label="OEM breakdown status" value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option>{[...new Set(selection.records.map(record => record.requestStatus))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="mine-oem-local-filter"><select aria-label="Equipment category" value={category} onChange={event => { setCategory(event.target.value); setGroup(""); }}><option value="">All equipment &amp; vehicles</option>{[...new Set(selection.records.map(equipmentCategoryLabel))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="mine-oem-local-filter"><select aria-label="OEM equipment type" value={group} onChange={event => setGroup(event.target.value)}><option value="">All OEM equipment types</option>{[...new Set(categoryRows.map(oemEquipmentLabel))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="mine-oem-inline-search"><Search /><input type="search" aria-label="Search OEM breakdown records" placeholder="Search door number, chassis, site, model or status" value={query} onChange={event => setQuery(event.target.value)} /></label>
+    </div>
+    <div className="mine-oem-site-tables" role="region" tabIndex={0} aria-label="Site-wise fleet records">
+      <DashboardRecordBrowser toolbarAfterCount={reportTabs} columnTransform={selection.fleetOnly ? null : orderOemDetailColumns} key={oemWise ? "site-oem" : "site"} {...tableProps} toolbarTarget={viewToolbarTarget || reportToolbarTarget} summaryTarget={summaryTarget} rows={groupedRows} regions={selection.regions} rowsAreScoped title={`${title}${oemWise ? " · OEM-wise report" : ""}`} groupBySite hideHierarchyFilters hideFleetSearch showDateFilter={false} showRowNumbers requestRecords={!selection.fleetOnly} extraColumns={selection.fleetOnly ? [extraColumns[0]] : columns} />
+    </div>
+  </div>;
+}

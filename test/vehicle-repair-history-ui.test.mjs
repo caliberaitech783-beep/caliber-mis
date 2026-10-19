@@ -1,0 +1,61 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const dashboardSource = fs.readFileSync(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8");
+const hourlySource = fs.readFileSync(new URL("../src/hourly-breakdown-view.jsx", import.meta.url), "utf8");
+
+test("vehicle and equipment history headers prefer the newest request over fleet status", async () => {
+  const {requestStatusLabel} = await import('../src/request-status.mjs');
+  const expression = source.match(/const latestStatus = (requestStatusLabel\(historyRows\.at\(-1\) \|\| vehicleDetails\));/);
+  assert.ok(expression);
+  const status = new Function('historyRows', 'vehicleDetails', 'requestStatusLabel', `return ${expression[1]}`);
+  for (const equipmentGroup of ['TIPPERS', 'DRILL MACHINE']) {
+    const vehicle = {status: 'Operational', equipmentGroup};
+    for (const request of [{status: 'Open', acceptedAt: '2026-09-29 10:00:00'}, {status: 'In progress'}, {status: 'Closed'}, {status: 'Verified'}]) {
+      assert.equal(status([{status: 'Verified'}, request], vehicle, requestStatusLabel), requestStatusLabel(request));
+    }
+    assert.equal(status([], vehicle, requestStatusLabel), 'Operational');
+  }
+  assert.ok(source.includes('["Latest status", latestStatus]'));
+});
+
+test("door numbers open a vehicle-specific repair history page", () => {
+  assert.match(source, /className="vehicle-history-link"/);
+  assert.match(source, /onVehicleHistory=\{setVehicleHistoryTarget\}/);
+  assert.match(source, /VEHICLE_HISTORY_OPEN_EVENT/);
+  assert.match(source, /globalVehicleHistoryDialog/);
+  assert.match(source, /What was done last time/);
+  assert.match(source, /<VehicleRepairHistoryPage vehicle=\{vehicleHistoryTarget\} rows=\{requestRows\}/);
+});
+
+test("shared workflow, master, dashboard, and hourly tables use the vehicle history door action", () => {
+  assert.match(source, /case "door": return <td>\{r\.door \? <a[^>]+className="vehicle-history-link"/);
+  assert.match(source, /if \(onVehicleHistory\) onVehicleHistory\(row\); else openVehicleRepairHistory\(row\)/);
+  assert.match(source, /aria-label=\{`View repair history for door number \$\{v\.door\}`\}/);
+  assert.match(source, /aria-label=\{`View repair history for door number \$\{request\.door\}`\}/);
+  assert.match(dashboardSource, /window\.dispatchEvent\(new CustomEvent\("nerve-center:open-vehicle-history"/);
+  assert.match(hourlySource, /window\.dispatchEvent\(new CustomEvent\("nerve-center:open-vehicle-history"/);
+});
+
+test("reports include a dedicated vehicle history category with three downloadable sub-reports", () => {
+  assert.match(source, /id: "vehicle-history", label: "Vehicle History Report"/);
+  assert.match(source, /title: VEHICLE_HISTORY_REPORT/);
+  assert.match(source, /title: MAXIMUM_VEHICLE_BREAKDOWN_REPORT/);
+  assert.match(source, /title: VEHICLE_COMMON_REMARK_REPORT/);
+  assert.match(source, /vehicleHistoryReportRows/);
+  assert.match(source, /setBreakdownMonth/);
+  assert.match(source, /setBreakdownRegion/);
+  assert.match(source, /setBreakdownSite/);
+  assert.match(source, /column\.key === "door"/);
+  assert.match(source, /setReportVehicleHistoryTarget\(record\)/);
+  assert.match(source, /backLabel="Back to reports"/);
+  assert.match(source, /label=\{exportLabel\}/);
+  assert.match(source, /label="Download history"/);
+  assert.match(source, /label: "Work completed"/);
+  assert.match(source, /label: "Time since previous BD"/);
+  assert.match(source, /function vehicleRepairHistoryColumns\(token\)/);
+  assert.match(source, /label: "Request ID"[^\n]+<RequestTimelineButton reference=\{request\.ref\} token=\{token\} Dialog=\{Modal\} \/>/);
+  assert.doesNotMatch(source, /RequestProcessModal/);
+});

@@ -1,0 +1,128 @@
+/**
+ * Preferred-language support for spoken/typed complaints.
+ *
+ * A user picks two languages at login. Language 1 seeds the speech-input
+ * language and is the language complaints are read in; Language 2 is also
+ * understood, so text in either language is shown as written. Text in any other
+ * language is translated into Language 1. Audio is never altered: it always
+ * plays in the language the author spoke.
+ */
+import { createHash } from "node:crypto";
+
+// [code, English name, native name, speech locale, script pattern or null]
+const LANGUAGE_TABLE = [
+  ["en", "English", "English", "en-IN", /[A-Za-z]/],
+  ["hi", "Hindi", "\u0939\u093f\u0902\u0926\u0940", "hi-IN", /[\u0900-\u097F]/],
+  ["mr", "Marathi", "\u092e\u0930\u093e\u0920\u0940", "mr-IN", null], // Devanagari, shared with Hindi
+  ["bn", "Bengali", "\u09ac\u09be\u0982\u09b2\u09be", "bn-IN", /[\u0980-\u09FF]/],
+  ["or", "Odia", "\u0b13\u0b21\u0b3c\u0b3f\u0b06", "or-IN", /[\u0B00-\u0B7F]/],
+  ["te", "Telugu", "\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41", "te-IN", /[\u0C00-\u0C7F]/],
+  ["gu", "Gujarati", "\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0", "gu-IN", /[\u0A80-\u0AFF]/],
+  ["pa", "Punjabi", "\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40", "pa-IN", /[\u0A00-\u0A7F]/],
+  ["ta", "Tamil", "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", "ta-IN", /[\u0B80-\u0BFF]/],
+  ["kn", "Kannada", "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1", "kn-IN", /[\u0C80-\u0CFF]/],
+];
+export const SUPPORTED_LANGUAGES = Object.freeze(Object.fromEntries(LANGUAGE_TABLE.map(([code, name, nativeName, speechLocale, script]) =>
+  [code, Object.freeze({ code, name, nativeName, speechLocale, script })])));
+export const LANGUAGE_CODES = Object.freeze(LANGUAGE_TABLE.map(([code]) => code));
+export const DEFAULT_LANGUAGE = "en";
+export const MAX_TRANSLATION_CHARS = 2000;
+export const DEFAULT_TRANSLATION_MODEL = "claude-opus-5";
+
+/** Normalise any language spelling ("hi-IN", "Hindi", native name) to a supported code or "". */
+export function normalizeLanguage(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return "";
+  if (text === "\u0939\u093f\u0928\u094d\u0926\u0940") return "hi"; // alternate Hindi spelling
+  const match = LANGUAGE_TABLE.find(([code, name, nativeName]) => text === code || text.startsWith(`${code}-`) || text === name.toLowerCase() || text === nativeName.toLowerCase());
+  return match ? match[0] : "";
+}
+
+/** Speech-recognition locale for a preferred language. */
+export function speechLocaleFor(language) {
+  return (SUPPORTED_LANGUAGES[normalizeLanguage(language)] || SUPPORTED_LANGUAGES[DEFAULT_LANGUAGE]).speechLocale;
+}
+
+/** Guess the language of stored text from its script (Devanagari => Hindi). */
+export function detectLanguage(text) {
+  const value = String(text ?? "");
+  const hit = LANGUAGE_TABLE.find(([, , , , script]) => script && script.test(value));
+  return hit ? hit[0] : "";
+}
+
+/** The language a stored text should be treated as: the recorded one, else the script. */
+export function resolveSourceLanguage(text, recordedLanguage) {
+  return normalizeLanguage(recordedLanguage) || detectLanguage(text);
+}
+
+/** True when text in `from` must be translated for a reader who prefers `to`. */
+export function needsTranslation(text, from, to) {
+  const source = resolveSourceLanguage(text, from);
+  const target = normalizeLanguage(to);
+  if (!String(text ?? "").trim() || !source || !target) return false;
+  return source !== target;
+}
+
+export function translationCacheKey(text, from, to) {
+  return createHash("sha256").update(`${from}|${to}|${String(text ?? "").trim()}`).digest("hex");
+}
+
+export function translationInstructions(from, to) {
+  const fromName = SUPPORTED_LANGUAGES[from]?.name || from;
+  const toName = SUPPORTED_LANGUAGES[to]?.name || to;
+  return [
+    `Translate the maintenance complaint or work note below from ${fromName} to ${toName} for a mining fleet operations team in India.`,
+    "Keep every detail, negation, number, vehicle or door number, part name and unit exactly; do not add, remove or summarise anything.",
+    "Keep equipment and part names that are commonly said in English (engine, brake, tyre, hydraulic, radiator, HMR, KMR) recognisable.",
+    to === "en" ? "Write in simple plain English." : `Write in simple everyday ${toName} in its own script.`,
+    "Reply with the translated text only, without quotes, labels or explanation.",
+  ].join(" ");
+}
+
+/** Extract the plain text of a Messages API response. */
+export function translatedTextFromResponse(response) {
+  if (!response || response.stop_reason === "refusal") return "";
+  return (Array.isArray(response.content) ? response.content : [])
+    .filter((block) => block?.type === "text")
+    .map((block) => String(block.text || ""))
+    .join("")
+    .trim();
+}
+
+/**
+ * Build a translator. `client` must expose `messages.create(params)` (the
+ * official Anthropic SDK client). Without a client the translator reports
+ * `configured: false` and never throws, so the UI can fall back to the original.
+ */
+export function createTranslator({ client = null, model = DEFAULT_TRANSLATION_MODEL } = {}) {
+  return {
+    configured: Boolean(client),
+    model,
+    async translate({ text, from, to }) {
+      const source = normalizeLanguage(from), target = normalizeLanguage(to);
+      const value = String(text ?? "").trim();
+      if (!client) return { configured: false, text: value, translated: false };
+      if (!needsTranslation(value, source, target)) return { configured: true, text: value, translated: false };
+      if (value.length > MAX_TRANSLATION_CHARS) throw Object.assign(new Error(`Text longer than ${MAX_TRANSLATION_CHARS} characters cannot be translated.`), { status: 400 });
+      const response = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        output_config: { effort: "low" },
+        system: translationInstructions(source, target),
+        messages: [{ role: "user", content: value }],
+      });
+      const translated = translatedTextFromResponse(response);
+      if (!translated) throw Object.assign(new Error("The translation service returned no text."), { status: 502 });
+      return { configured: true, text: translated, translated: true };
+    },
+  };
+}
+
+/** Lazily create the Anthropic client only when a key is configured. */
+export async function translatorFromEnvironment(env = process.env) {
+  const apiKey = String(env.ANTHROPIC_API_KEY || "").trim();
+  const model = String(env.TRANSLATION_MODEL || "").trim() || DEFAULT_TRANSLATION_MODEL;
+  if (!apiKey) return createTranslator({ client: null, model });
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  return createTranslator({ client: new Anthropic({ apiKey, maxRetries: 2, timeout: 60_000 }), model });
+}

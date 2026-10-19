@@ -1,0 +1,136 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import { REGION_DATA } from "../region-scope.mjs";
+import { changeDrilldownFilter, drilldownView } from "../src/dashboard-drilldown-model.mjs";
+
+const rows = [
+  { id: 1, currentLocation: "SASTI II", category: "Vehicle", group: "SCANIA TIPPERS", door: "T01" },
+  { id: 2, currentLocation: "Sasti OC", category: "Equipment", group: "EXCAVATOR", door: "E01" },
+  { id: 3, currentLocation: "Majri OC", category: "Vehicle", group: "VOLVO TIPPERS", door: "T02" },
+  { id: 4, currentLocation: "Jayant OC", category: "Equipment", group: "DOZER", door: "D01" },
+];
+const ids = (view) => view.rows.map(({ id }) => id);
+const values = (options) => options.map(({ value }) => value);
+
+test("opening a chart lists the complete count across regions until a region is chosen", () => {
+  const view = drilldownView(rows, REGION_DATA);
+  assert.deepEqual(view.regions.map(({ code, rows }) => [code, rows.length]), [["all", 4], ["WCL", 3], ["NCL", 1]]);
+  assert.deepEqual(ids(view), [1, 2, 3, 4]);
+  assert.deepEqual(values(view.options.site), ["Jayant OC", "Majri OC", "Sasti OC"]);
+  assert.equal(view.regionTotal, 4);
+  assert.deepEqual(ids(drilldownView(rows, REGION_DATA, { region: "NCL" })), [4]);
+});
+
+test("site, category, type and machine options cascade from the preceding selection", () => {
+  let filters = { region: "WCL", site: "Sasti OC" };
+  let view = drilldownView(rows, REGION_DATA, filters);
+  assert.deepEqual(ids(view), [1, 2]);
+  assert.deepEqual(values(view.options.group), ["EXCAVATOR", "SCANIA TIPPERS"]);
+  filters = changeDrilldownFilter(view.selection, "category", "Total vehicles");
+  view = drilldownView(rows, REGION_DATA, filters);
+  assert.deepEqual(ids(view), [1]);
+  assert.deepEqual(values(view.options.group), ["SCANIA TIPPERS"]);
+  assert.deepEqual(values(view.options.machine), ["T01"]);
+  filters = changeDrilldownFilter(view.selection, "group", "SCANIA TIPPERS");
+  filters = changeDrilldownFilter(filters, "machine", "T01");
+  assert.deepEqual(ids(drilldownView(rows, REGION_DATA, filters)), [1]);
+  assert.deepEqual(ids(drilldownView(rows, REGION_DATA, changeDrilldownFilter(filters, "site", "Majri OC"))), [3]);
+});
+
+test("changing a parent resets all descendants without clearing its parents", () => {
+  const selected = { region: "WCL", site: "Sasti OC", category: "Total vehicles", group: "SCANIA TIPPERS", machine: "T01" };
+  assert.deepEqual(changeDrilldownFilter(selected, "category", "Total equipment"), { ...selected, category: "Total equipment", group: "", machine: "" });
+  const changedRegion = changeDrilldownFilter(selected, "region", "NCL");
+  assert.deepEqual(changedRegion, { region: "NCL", site: "", category: "", group: "", machine: "" });
+  const view = drilldownView(rows, REGION_DATA, changedRegion);
+  assert.deepEqual(ids(view), [4]);
+  assert.deepEqual(values(view.options.site), ["Jayant OC"]);
+});
+
+test("empty regions stay selectable without hiding records on default opening", () => {
+  const nclOnly = rows.slice(3);
+  assert.equal(drilldownView(nclOnly, REGION_DATA).selection.region, "all");
+  const empty = drilldownView(nclOnly, REGION_DATA, { region: "WCL" });
+  assert.equal(empty.selection.region, "WCL");
+  assert.deepEqual(ids(empty), []);
+  assert.deepEqual(empty.options, { site: [], category: [], group: [], machine: [] });
+});
+
+test("a changed data set clears invalid filters and keeps every remaining regional row", () => {
+  const view = drilldownView(rows.slice(2), REGION_DATA, { region: "WCL", site: "Sasti OC", category: "Total equipment", group: "EXCAVATOR" });
+  assert.deepEqual(ids(view), [3]);
+  assert.deepEqual(view.selection, { region: "WCL", site: "", category: "", group: "", machine: "" });
+});
+
+test("region and site access scope cannot be broadened by filter selection", () => {
+  const scope = [{ code: "WCL", sites: ["Sasti OC"] }];
+  const view = drilldownView(rows, scope, { region: "NCL", site: "Jayant OC" });
+  assert.deepEqual(view.regions.map(({ code }) => code), ["all", "WCL"]);
+  assert.deepEqual(ids(view), [1, 2]);
+  assert.deepEqual(values(view.options.site), ["Sasti OC"]);
+  assert.deepEqual(ids(drilldownView(rows, [])), []);
+});
+
+test("475 already-authorized requests remain 475 including six outside the current site catalogue", () => {
+  const requests = Array.from({ length: 475 }, (_, id) => ({ id,
+    requestSite: id < 469 ? "Sasti OC" : id < 472 ? "Former workshop" : "",
+    currentLocation: "Jayant OC", requestReference: `JOB-${id}`,
+  }));
+  const scoped = { rowsAreScoped: true };
+  const view = drilldownView(requests, REGION_DATA, {}, scoped);
+  assert.equal(view.rows.length, 475);
+  assert.equal(view.regionTotal, 475);
+  assert.equal(view.regions.find(({ code }) => code === "WCL").rows.length, 469);
+  assert.equal(view.regions.find(({ code }) => code === "unmapped").rows.length, 6);
+  assert.equal(view.options.site.reduce((sum, site) => sum + site.count, 0), 475);
+  assert.equal(drilldownView(requests, REGION_DATA, { region: "unmapped", site: "Site not recorded" }, scoped).rows.length, 3);
+  assert.equal(drilldownView(requests, REGION_DATA, { region: "unmapped", site: "Former workshop" }, scoped).rows.length, 3);
+  assert.deepEqual(drilldownView(requests, [], {}, scoped).rows, requests);
+  // Raw, unscoped callers still fail closed outside their permitted sites.
+  assert.equal(drilldownView(requests, REGION_DATA).rows.length, 469);
+});
+
+test("region and site buckets partition rows once even with duplicate site aliases", () => {
+  const regions = [{code: "WCL", sites: ["Sasti OC", "SASTI II"]}, {code: "NCL", sites: ["Sasti OC", "Jayant OC"]}];
+  const view = drilldownView(rows, regions, {}, {rowsAreScoped: true});
+  assert.equal(view.rows.length, rows.length);
+  assert.equal(view.regions.filter(({code}) => code !== "all").reduce((sum, region) => sum + region.rows.length, 0), rows.length);
+  assert.equal(view.options.site.reduce((sum, site) => sum + site.count, 0), rows.length);
+  for (const region of view.regions) {
+    const detail = drilldownView(rows, regions, {region: region.code}, {rowsAreScoped: true});
+    assert.equal(detail.rows.length, region.rows.length);
+    for (const site of detail.options.site) assert.equal(drilldownView(rows, regions, {region: region.code, site: site.value}, {rowsAreScoped: true}).rows.length, site.count);
+  }
+});
+
+test("request rows stay under their request site even if the equipment has moved", () => {
+  const requestRows = [
+    { ...rows[0], requestSite: "SASTI II", currentLocation: "Jayant OC", requestReference: "JOB-1" },
+    { ...rows[0], id: 5, requestSite: "Sasti OC", currentLocation: "Jayant OC", requestReference: "JOB-2" },
+    { id: 6, requestSite: "Majri OC", category: "Unclassified", requestReference: "JOB-3" },
+  ];
+  const view = drilldownView(requestRows, REGION_DATA);
+  assert.deepEqual(ids(view), [1, 5, 6]);
+  assert.equal(view.regions.find(({ code }) => code === "NCL").rows.length, 0);
+  assert.ok(values(view.options.category).includes("Unclassified"));
+});
+
+test("the list is unconditional and tabs support keyboard navigation", () => {
+  const component = readFileSync(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8");
+  assert.match(component, /role="tablist" aria-label="Chart records by region"/);
+  assert.match(component, /role="tabpanel"/);
+  assert.match(component, /event\.key === "ArrowRight"/);
+  assert.match(component, /<ActionsTable key=\{tableKey\} toolbarTarget=\{toolbarTarget\} toolbarPortal exportTitle=/);
+  assert.match(component, /view\.rows\.length \? view\.rows\.map/);
+  assert.match(component, /\["site", "Site", "All sites"\]/);
+  assert.doesNotMatch(component, /Step [1-5]/);
+});
+
+test("each fleet list opens from the top with its column header pinned while scrolling", () => {
+  const browser = readFileSync(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/dashboard-record-browser.css", import.meta.url), "utf8");
+  assert.ok(browser.includes(`<div className="dashboard-asset-list" ref={listRef}>`));
+  assert.ok(browser.includes("useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, [tableKey]);"));
+  assert.ok(css.includes(".dashboard-record-browser .dashboard-asset-list thead th { position: sticky; top: 0; z-index: 2;"));
+});

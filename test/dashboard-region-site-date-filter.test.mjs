@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const styles = fs.readFileSync(new URL("../src/dashboard-concept-a.css", import.meta.url), "utf8");
+const brandStyles = fs.readFileSync(new URL("../src/brand-theme.css", import.meta.url), "utf8");
+
+test("dashboard region selection exposes its sites and filters every scoped data source", () => {
+  assert.match(source, /const \[dashboardSite, setDashboardSite\] = useState\("all"\)/);
+  assert.match(source, /const selectedSites = \(selectedRegion\?\.sites \|\|/);
+  assert.match(source, /const activeSites = dashboardSite !== "all" \? \[dashboardSite\] : selectedSites/);
+  assert.match(source, /visibleEquipment = selectedRegion \|\| dashboardSite !== "all" \? scopedEquipment\.filter\(\(record\) => activeSites\.some/);
+  assert.doesNotMatch(source, /visibleUsers = selectedRegion/);
+  assert.match(source, /locationBreakdowns = selectedRegion \|\| dashboardSite !== "all" \? scopedBreakdowns\.filter\(\(record\) => activeSites\.some/);
+  assert.doesNotMatch(source, /selectedRegion && <label className="mine-site-filter">/);
+  assert.match(source, /<select aria-label="Site" value=\{dashboardSite\}/);
+  assert.match(source, /selectedSites\.map\(\(site\) => <option key=\{site\} value=\{site\}>\{site\}<\/option>\)/);
+});
+
+test("dashboard date filters opening-date analysis without filtering live fleet status and remains responsive", () => {
+  assert.match(source, /function dashboardRecordDate\(record = \{\}\)/);
+  // Dashboard header dates default to today; other pages remain unfiltered.
+  assert.match(source, /const \[dashboardFrom, setDashboardFrom\] = useState\(\(\) => localDateKey\(new Date\(\)\)\)/);
+  assert.match(source, /const \[dashboardTo, setDashboardTo\] = useState\(\(\) => localDateKey\(new Date\(\)\)\)/);
+  assert.match(source, /const \[breakdownSummaryFrom, setBreakdownSummaryFrom\] = useState\(\(\) => localDateKey\(new Date\(\)\)\)/);
+  assert.match(source, /const \[breakdownSummaryTo, setBreakdownSummaryTo\] = useState\(\(\) => localDateKey\(new Date\(\)\)\)/);
+  assert.match(source, /const dashboardIsLive = !dashboardTo \|\| dashboardTo === todayKey/);
+  assert.match(source, /const \{liveRequests: liveBreakdowns, historicalRequests\} = splitDashboardRequests\(locationBreakdowns, dashboardFrom, dashboardTo\)/);
+  assert.match(source, /const visibleBreakdowns = historicalRequests\s*\.map/);
+  assert.match(source, /liveEquipmentMetrics\(visibleEquipment, liveBreakdowns\)/);
+  assert.match(source, /fleetChartCounts\(visibleEquipment, liveBreakdowns\)/);
+  assert.doesNotMatch(source, /dashboardDate \? locationBreakdowns\.filter/);
+  assert.match(source, /<DateInput aria-label="Dashboard from date" value=\{dashboardFrom\} max=\{dashboardTo \|\| todayKey\}/);
+  assert.match(source, /<DateInput aria-label="Dashboard to date" value=\{dashboardTo\} min=\{dashboardFrom \|\| undefined\} max=\{todayKey\}/);
+  assert.match(source, /dashboardReconnecting \? "Reconnecting" : dashboardIsLive \? "Live" : "Filtered"\} · \{filteredDateLabel\}/);
+  // Dedicated trend charts retain their existing initial period.
+  for (const name of ["breakdownTrendAnchor", "breakdownTrendFrom", "requestTrendFrom", "requestTrendTo"]) {
+    assert.match(source, new RegExp(`const \\[${name}, set\\w+\\] = useState\\(\\(\\) => localDateKey\\(new Date\\(\\)\\)\\)`), name);
+  }
+  assert.match(styles, /\.mine-head-actions\{[^}]*flex-wrap:wrap/);
+  assert.match(styles, /\.mine-site-filter select\{min-width:165px\}/);
+  assert.match(styles, /@media\(max-width:700px\)[\s\S]*\.mine-head-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+});
+
+test("dashboard region and date controls keep white labels and native icons", () => {
+  assert.match(brandStyles, /:root \.mine-dashboard-head \.mine-head-actions label \{\s*color: #fff;/);
+  assert.match(brandStyles, /:root \.mine-dashboard-head \.mine-head-actions select,[\s\S]*color: #fff;[\s\S]*color-scheme: dark;/);
+  assert.match(brandStyles, /\.mine-date-filter input::\-webkit-calendar-picker-indicator \{[\s\S]*filter: brightness\(0\) invert\(1\);/);
+});
+
+test("the WCL / NCL divider on the fleet chart is clearly visible in both themes", () => {
+  const readability = fs.readFileSync(new URL("../src/dashboard-readability.css", import.meta.url), "utf8");
+  assert.match(readability, /\.mine-fleet-chart-regions > section \+ section \{ border-left: 3px solid rgba\(124, 58, 190, 0\.28\); \}/, "a translucent violet band");
+  assert.match(readability, /:root\[data-theme="dark"\] \.mine-fleet-chart-regions > section \+ section \{ border-left-color: rgba\(196, 160, 255, 0\.38\); \}/);
+});

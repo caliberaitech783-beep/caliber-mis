@@ -1,0 +1,248 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {availabilityRows,buildDepartmentReports,DEPARTMENT_REPORT_TITLES,TICKET_ACCEPTANCE_REPORT_TITLE} from '../department-reports.mjs';
+const now = new Date('2026-09-07T12:00:00+05:30');
+const build = requests => buildDepartmentReports({requests,now,from:'2026-09-01',to:'2026-09-07'});
+const cell = (report,key,row=report.rows[0]) => report.columns.find(c=>c.key===key).value(row);
+
+test('open off-road BD duration includes days and hours from production submission',()=>{
+  const report=build([{status:'Open',start:'2026-09-05 06:00'}]).find(r=>r.title==='Open Off road Cases');
+  assert.equal(report.columns.find(c=>c.key==='days').label,'BD Days / Hrs');
+  assert.equal(cell(report,'days'),'2d 6h');
+  for(const [start,expected] of [['2026-09-06 13:00','0d 23h'],['2026-09-06 12:00','1d 0h'],['2026-09-07 11:30','0d 0h'],['2026-09-08 12:00','0d 0h'],['invalid','Not recorded'],['','Not recorded']]) {
+    assert.equal(cell(report,'days',{start}),expected);
+  }
+});
+
+test('MIS verification durations distinguish closure, actual first trip, and verification',()=>{
+  const row={closedAt:'2026-09-08 10:00',firstTripAt:'2026-09-08 11:30',verifiedAt:'2026-09-08 12:00'};
+  const report=build([row,{...row,verifiedAt:''}]).find(r=>r.title==='MIS Turn Around Time');
+  assert.equal(report.rows.length,1);
+  assert.equal(cell(report,'closeToMis'),'2h 0m');
+  assert.equal(cell(report,'closeToFirstTrip'),'1h 30m');
+  assert.equal(cell(report,'firstTripToMis'),'30m');
+  assert.equal(cell(report,'firstTripToMis',{...row,firstTripAt:row.verifiedAt}),'0m');
+  assert.equal(cell(report,'firstTripToMis',{...row,firstTripAt:'2026-09-08 13:00'}),'Not recorded');
+  assert.equal(cell(report,'closeToFirstTrip',{...row,firstTripAt:''}),'Not recorded');
+  assert.equal(cell(report,'closeToFirstTrip',{...row,firstTripAt:'',firstTripDate:'2026-09-08',firstTripTime:'11:30:00'}),'1h 30m');
+});
+
+test('repair TAT uses maintenance acceptance, not production submission',()=>{
+  const row={start:'2026-09-08 08:00',acceptedAt:'2026-09-08 16:01:02',closedAt:'2026-09-08 16:46:00'};
+  const report=build([row]).find(r=>r.title==='Turn Around Time for Repair');
+  assert.equal(cell(report,'tat'),'44m');
+  assert.equal(cell(report,'tat',{...row,acceptedAt:'2026-09-08 15:46:00'}),'1h 0m');
+  assert.equal(cell(report,'tat',{...row,acceptedAt:row.closedAt}),'0m');
+  for(const acceptedAt of ['', 'invalid', '2026-09-08 17:00']) {
+    assert.equal(cell(report,'tat',{...row,acceptedAt}),'Not recorded');
+  }
+});
+
+test('general summary uses only verified requests with non-overlapping stages and separate elapsed measures',()=>{
+  const row={ref:'verified',start:'2026-09-01 08:00',acceptedAt:'2026-09-01 09:00',closedAt:'2026-09-01 12:00',firstTripAt:'2026-09-01 12:30',verifiedAt:'2026-09-01 17:00'};
+  const report=build([row,{...row,ref:'unverified',verifiedAt:''}]).find(r=>r.title==='Summary Report');
+  assert.equal(report.category,'general');
+  assert.equal(report.description,'MIS-verified requests with stage-wise TAT from submission to first trip; filters use the production submission date.');
+  assert.deepEqual(report.rows.map(r=>r.ref),['verified']);
+  assert.deepEqual(report.columns.map(c=>c.key),['requestShift','site','door','equipmentGroup','model','submittedAt','acceptedAt','closedAt','closingHmr','closingKmr','firstTripAt','verifiedAt','complaint','openingHmr','openingKmr','category','waitingTat','maintenanceTat','returnToWorkTat','overallTat','repairElapsed','verificationLag','ref','closureEvent']);
+  for(const key of ['acceptedAt','closedAt','firstTripAt','verifiedAt']) assert.equal(cell(report,key),row[key]);
+  assert.equal(cell(report,'acceptedAt',{...row,acceptedAt:''}),'Not recorded');
+  assert.equal(cell(report,'firstTripAt',{...row,firstTripAt:'',firstTripDate:'2026-09-01',firstTripTime:'12:30:00'}),'2026-09-01 12:30:00');
+  assert.equal(cell(report,'submittedAt'),row.start);
+  assert.equal(report.dateValue(row),row.start);
+  assert.equal(cell(report,'waitingTat'),'1h 0s');
+  assert.equal(cell(report,'maintenanceTat'),'3h 0s');
+  assert.equal(cell(report,'returnToWorkTat'),'30m 0s');
+  assert.equal(cell(report,'overallTat'),'4h 30m 0s');
+  assert.equal(cell(report,'repairElapsed'),'4h 0s');
+  assert.equal(cell(report,'verificationLag'),'4h 30m 0s');
+  assert.equal(cell(report,'returnToWorkTat',{...row,firstTripAt:'',firstTripDate:'2026-09-01',firstTripTime:'12:30:00'}),'30m 0s');
+  const missingStart={...row,start:'',createdAt:row.start};
+  assert.equal(cell(report,'submittedAt',missingStart),'Not recorded');
+  assert.equal(cell(report,'waitingTat',missingStart),'Not recorded');
+  assert.equal(cell(report,'overallTat',missingStart),'Not recorded');
+  assert.equal(report.dateValue(missingStart),row.start,'existing creation-date filter fallback is unchanged');
+  assert.equal(cell(report,'overallTat',{...row,acceptedAt:''}),'4h 30m 0s','known endpoint elapsed is not fabricated from a missing stage');
+  assert.equal(cell(report,'returnToWorkTat',{...row,firstTripAt:'',firstTripDate:'2026-09-01'}),'Not recorded');
+  assert.doesNotMatch(report.description,/sum of these three intervals, including their overlap/);
+});
+test('shift master timings are shown beside report event timestamps when shift records are supplied',()=>{
+  const row={ref:'shifted',site:'Sasti OB',status:'Closed',start:'2026-09-23 08:00:00',acceptedAt:'2026-09-23 09:00:00',closedAt:'2026-09-23 17:00:00',firstTripAt:'2026-09-23 22:30:00',verifiedAt:'2026-09-23 22:45:00'};
+  const shifts=[
+    {site:'Sasti OB',shiftName:'Shift A',startTime:'05:00:00',endTime:'13:00:00'},
+    {site:'Sasti OB',shiftName:'Shift B',startTime:'13:00:00',endTime:'21:00:00'},
+    {site:'Sasti OB',shiftName:'Shift C',startTime:'21:00:00',endTime:'05:00:00'},
+  ];
+  const report=buildDepartmentReports({requests:[row],shiftRecords:shifts}).find(r=>r.title==='Summary Report');
+  assert.equal(cell(report,'submittedAt',row),'A Shift · 8:00:00 AM 23-09-26');
+  assert.equal(cell(report,'acceptedAt',row),'A Shift · 9:00:00 AM 23-09-26');
+  assert.equal(cell(report,'closedAt',row),'B Shift · 5:00:00 PM 23-09-26');
+  assert.equal(cell(report,'firstTripAt',row),'C Shift · 10:30:00 PM 23-09-26');
+});
+test('department reports include the two red flag reports alongside existing reports',()=>{
+  const reports=build([]);
+  assert.deepEqual(reports.map(r=>r.title),DEPARTMENT_REPORT_TITLES);
+  assert.equal(reports.filter(r=>r.category==='maintenance').length,4);
+  assert.equal(reports.filter(r=>r.category==='mis').length,6);
+  assert.equal(reports.filter(r=>r.category==='production').length,4);
+  assert.ok(!reports.some(r=>r.title==='Vehicle Transfer Report'));
+});
+test('production first-trip report compares production and MIS timings',()=>{
+  const [report]=build([{
+    ref:'REQ-PROD-TRIP',status:'Closed',site:'Sasti OB',door:'D1',closedAt:'2026-09-17 10:00:00',
+    productionFirstTripAt:'2026-09-17 10:20:00',productionFirstTripBy:'Production User',productionFirstTripRemark:'First loading trip started',
+    firstTripAt:'2026-09-17 10:35:00',verifiedAt:'2026-09-17 10:40:00',
+  }]).filter(r=>r.title==='Production vs MIS First Trip Report');
+  assert.equal(report.rows.length,1);
+  assert.equal(cell(report,'productionFirstTripAt',report.rows[0]),'2026-09-17 10:20:00');
+  assert.equal(cell(report,'misFirstTripAt',report.rows[0]),'2026-09-17 10:35:00');
+  assert.equal(cell(report,'productionDelay',report.rows[0]),'20m');
+  assert.equal(cell(report,'misDelay',report.rows[0]),'35m');
+});
+test('pending includes all open and in-progress requests regardless of remarks',()=>{
+  const report=build([
+    {ref:'yes',status:'Open',dailyRemarks:[]},
+    {ref:'old',status:'Open',dailyRemarks:[{remark:'Old remark',createdAt:'2025-01-01'}]},
+    {ref:'closed',status:'Closed',dailyRemarks:[]},
+    {ref:'progress',status:'In progress',dailyRemarks:[]},
+    {ref:'parts',status:'Awaiting parts',dailyRemarks:[]},
+    {ref:'unknown',status:'Open'},
+  ]).find(r=>r.title==='Maintenance Status Pending');
+  assert.deepEqual(report.rows.map(r=>r.ref),['yes','old','progress','parts','unknown']);
+  assert.equal(cell(report,'remark'),'No Remark');
+  assert.ok(!report.columns.some(c=>/difference|elapsed/i.test(c.label)));
+});
+test('mismatch uses firstTripAt and strictly more than 30 minutes across all closed requests',()=>{
+  const reports=build([30,31].map(minutes=>({ref:String(minutes),closedAt:'2026-09-01 12:00:00',firstTripAt:`2026-09-01 12:${minutes}:00`,status:'Closed'})));
+  assert.deepEqual(reports.find(r=>r.title==='30 Min. Mismatch').rows.map(r=>r.ref),['31']);
+  assert.equal(reports.find(r=>r.title==='Unverified Cases').rows.length,2);
+});
+test('mismatch flag uses verification minus trip without changing Difference or report membership',()=>{
+  const requests=[
+    {ref:'delay',closedAt:'2026-09-01 10:00',firstTripAt:'2026-09-01 11:00',verifiedAt:'2026-09-01 11:31'},
+    {ref:'exact',closedAt:'2026-09-01 10:00',firstTripAt:'2026-09-01 11:00',verifiedAt:'2026-09-01 11:30'},
+    {ref:'missing',closedAt:'2026-09-01 10:00',firstTripAt:'2026-09-01 11:00'},
+    {ref:'reverse',closedAt:'2026-09-01 10:00',firstTripAt:'2026-09-01 11:00',verifiedAt:'2026-09-01 10:30'},
+    {ref:'excluded',closedAt:'2026-09-01 10:00',firstTripAt:'2026-09-01 10:20',verifiedAt:'2026-09-01 12:00'},
+  ];
+  const report=build(requests).find(r=>r.title==='30 Min. Mismatch');
+  assert.deepEqual(report.rows.map(r=>r.ref),['delay','exact','missing','reverse']);
+  assert.equal(cell(report,'difference'),'1h 0m');
+  assert.equal(report.columns.find(column=>column.key==='closedAt').label,'Request Closed');
+  assert.deepEqual(report.rows.map(r=>cell(report,'mismatch',r)),['Delay','','','']);
+});
+
+test('acceptance is not inferred from status or closure',()=>{
+  const report=buildDepartmentReports({requests:[{status:'Closed',start:'2026-09-01 09:00',closedAt:'2026-09-01 10:00'}],showAllAcceptances:true}).find(r=>r.title===TICKET_ACCEPTANCE_REPORT_TITLE);
+  assert.equal(cell(report,'acceptedAt'),'Not accepted');
+  assert.equal(cell(report,'difference'),'Not recorded');
+});
+
+test('acceptance report defaults to recorded delays over 30 minutes, without rounding up',()=>{
+  const requests=[
+    {ref:'below',start:'2026-09-01 09:00:00',acceptedAt:'2026-09-01 09:29:59'},
+    {ref:'exact',start:'2026-09-01 09:00:00',acceptedAt:'2026-09-01 09:30:00'},
+    {ref:'above',start:'2026-09-01 09:00:00',acceptedAt:'2026-09-01 09:30:01',status:'Closed',verifiedAt:'2026-09-02 10:00'},
+    {ref:'overnight',start:'2026-09-01 23:45:00',acceptedAt:'2026-09-02 00:15:00'},
+    {ref:'utc',start:'2026-09-01T03:30:00Z',acceptedAt:'2026-09-01 09:30:00'},
+    {ref:'fallback',createdAt:'2026-09-01 09:00:00',acceptedAt:'2026-09-01 10:00:00'},
+    {ref:'pending',start:'2026-08-01 09:00:00'},
+    {ref:'closed-only',start:'2026-08-01 09:00:00',status:'Closed',closedAt:'2026-09-01 11:00:00'},
+    {ref:'missing-start',acceptedAt:'2026-09-01 10:00:00'},
+    {ref:'invalid',start:'invalid',acceptedAt:'2026-09-01 10:00:00'},
+    {ref:'invalid-acceptance',start:'2026-09-01 09:00:00',acceptedAt:'invalid'},
+    {ref:'reversed',start:'2026-09-01 10:00:00',acceptedAt:'2026-09-01 09:00:00'},
+    {ref:'zero',start:'2026-09-01 09:00:00',acceptedAt:'2026-09-01 09:00:00'},
+  ];
+  const report=build(requests).find(r=>r.title===TICKET_ACCEPTANCE_REPORT_TITLE);
+  assert.deepEqual(report.rows.map(r=>r.ref),['above','fallback']);
+  assert.equal(cell(report,'difference'),'30m');
+  const fallback=report.rows.find(r=>r.ref==='fallback');
+  assert.equal(report.dateValue(fallback),fallback.createdAt);
+  assert.equal(cell(report,'difference',fallback),'1h 0m');
+  const allReports=buildDepartmentReports({requests,showAllAcceptances:true});
+  const total=allReports.find(r=>r.title===TICKET_ACCEPTANCE_REPORT_TITLE);
+  assert.deepEqual(total.rows,requests);
+  assert.deepEqual(total.columns.map(c=>c.key),report.columns.map(c=>c.key));
+  assert.equal(allReports.find(r=>r.title==='Total Request Submitted Report').rows.length,requests.length);
+  assert.deepEqual(build(requests).find(r=>r.title===TICKET_ACCEPTANCE_REPORT_TITLE).rows,report.rows,'the total option does not change subsequent defaults');
+  assert.deepEqual(build(requests.filter(r=>['below','pending','invalid'].includes(r.ref))).find(r=>r.title===TICKET_ACCEPTANCE_REPORT_TITLE).rows,[]);
+});
+test('availability clips intervals to selected inclusive days and merges overlaps',()=>{
+  const equipment=[{door:'A',equipmentName:'Asset A'},{door:'B'}];
+  const requests=[
+    {door:'A',start:'2026-08-31 23:00',closedAt:'2026-09-01 02:00'},
+    {door:'A',start:'2026-09-01 01:00',closedAt:'2026-09-01 03:00'},
+    {door:'B',start:'2026-09-03 00:00',closedAt:'2026-09-03 01:00'},
+  ];
+  const rows=availabilityRows(equipment,requests,'2026-09-01','2026-09-02',now);
+  assert.equal(rows[0].productive,48);
+  assert.equal(rows[0].breakdown,3);
+  assert.equal(rows[0].available,45);
+  assert.equal(rows[0].percentage,45/48*100);
+  assert.equal(rows[1].breakdown,0);
+  assert.deepEqual(availabilityRows(equipment,requests,'bad','bad',now),[]);
+});
+test('availability uses 24 hours per full day and actual hours for partial days',()=>{
+  const equipment=[{door:'A'}];
+  const day=availabilityRows(equipment,[],'2026-09-01','2026-09-01',now)[0];
+  assert.equal(day.productive,24);
+  assert.equal(day.available,24);
+  assert.equal(day.percentage,100);
+  const partial=availabilityRows(equipment,[{door:'A',start:'2026-09-01 08:00',closedAt:'2026-09-01 10:00'}],'2026-09-01T08:00','2026-09-01T20:00',now)[0];
+  assert.equal(partial.productive,12);
+  assert.equal(partial.available,10);
+  assert.equal(partial.percentage,10/12*100);
+});
+test('acceptance capture is additive, atomic and preserves first transition; report source includes remarks',()=>{
+  const source=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+  assert.match(source,/ADD COLUMN IF NOT EXISTS in_progress_at TIMESTAMPTZ/);
+  assert.match(source,/status<>'In progress' AND \$3='In progress' THEN COALESCE\(in_progress_at,NOW\(\)\)/);
+  assert.match(source,/requests:await attachDailyRemarks\(requestsVisibleGlobally\(requestRows\)\)/);
+});
+test('report master reads use current authorization and site scope without granting master writes',()=>{
+  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+  const route=server.slice(server.indexOf("app.get('/api/reports/master-data'"),server.indexOf("app.get('/api/masters'"));
+  assert.match(route,/requireSession/);
+  assert.match(route,/currentDashboardAuthorization\(req.session\)/);
+  assert.match(route,/dashboardEquipmentScopeIsUsable\(scope\)/);
+  assert.match(route,/scopeDashboardEquipmentRecords\(equipment,session,user,scope\)/);
+  assert.match(route,/\[row.source,row.destination\]/);
+  assert.doesNotMatch(route,/UPDATE |INSERT INTO |DELETE FROM /);
+});
+
+test('arrival reports retain waiting-at-flag time, remarks and flag date without removed receipt columns',()=>{
+  const pending=Object.freeze({ref:'pending',start:'2026-09-07 08:00',arrivalFlaggedAt:'2026-09-07 10:00',arrivalFlaggedBy:'Maintenance inspector',arrivalFlagRemark:'Waiting for recovery'});
+  const received=Object.freeze({...pending,ref:'received',acceptedAt:'2026-09-07 11:00',acceptedBy:'Receiver'});
+  const report=build([pending,received,{ref:'not-flagged'}]).find(r=>r.title==='Vehicle Arrival Red Flag Report');
+  assert.equal(report.category,'maintenance');
+  assert.deepEqual(report.rows,[pending,received]);
+  assert.ok(!report.columns.some(column=>['arrivalDelay','acceptedAt','acceptedBy','complaint'].includes(column.key)));
+  assert.equal(cell(report,'flagWaitingTime',pending),'2h 0m');
+  assert.equal(cell(report,'flagWaitingTime',received),'2h 0m');
+  const retrospective={...received,arrivalFlaggedAt:'2026-09-08 15:00'};
+  assert.equal(cell(report,'flagWaitingTime',retrospective),'3h 0m');
+  assert.equal(cell(report,'arrivalFlagRemark',pending),'Waiting for recovery');
+  assert.equal(report.dateValue(pending),pending.arrivalFlaggedAt);
+});
+
+test('MIS report retains saved concerns after verification with the same reason and flag date',()=>{
+  const flagged=Object.freeze({ref:'mis-flag',misFlaggedAt:'2026-09-07 10:00',misFlaggedBy:'MIS inspector',misFlagRemark:'Incorrect reading',verifiedAt:'2026-09-07 11:00'});
+  const report=build([flagged,{ref:'not-flagged'}]).find(r=>r.title==='MIS Red Flag Report');
+  assert.equal(report.category,'mis');
+  assert.deepEqual(report.rows,[flagged]);
+  assert.equal(cell(report,'misFlagRemark'),'Incorrect reading');
+  assert.ok(!report.columns.some(c=>c.key==='verificationStatus'));
+  assert.equal(report.dateValue(flagged),flagged.misFlaggedAt);
+});
+test('unverified cases delay counts hours and minutes since closure, then days once past 24 hours',()=>{
+  const report=build([{status:'Closed',closedAt:'2026-09-07 09:15'}]).find(r=>r.title==='Unverified Cases');
+  // Closing meter readings sit directly after the closing time; the delay since closure follows them.
+  assert.deepEqual(report.columns.slice(report.columns.findIndex(c=>c.key==='closedAt'),report.columns.findIndex(c=>c.key==='closedAt')+4).map(c=>c.key),['closedAt','delay','closingHmr','closingKmr']);
+  assert.equal(report.columns.find(c=>c.key==='delay').label,'Delay');
+  assert.equal(cell(report,'delay'),'2h 45m');
+  for(const [closedAt,expected] of [['2026-09-07 11:59','0h 1m'],['2026-09-06 12:00:01','23h 59m'],['2026-09-06 12:00','1d 0h'],['2026-09-04 09:30','3d 2h'],['2026-09-07 12:30','0h 0m'],['invalid','Not recorded'],['','Not recorded']]) {
+    assert.equal(cell(report,'delay',{closedAt}),expected,closedAt);
+  }
+});

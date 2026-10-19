@@ -1,0 +1,32 @@
+.user-profile { position: relative; flex: 0 0 auto; }
+.user-profile > button.header-login-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 7px; border: 1px solid #ffffff55; border-radius: 50%; color: white; background: #ffffff18; cursor: pointer; }
+.user-profile > button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.user-profile-panel { position: absolute; right: 0; top: 100%; z-index: 1000; width: min(300px, calc(100vw - 32px)); padding: 20px; border: 1px solid #dbe3ef; border-radius: 12px; background: #fff; color: #172b49; box-shadow: 0 12px 35px #14274533; text-align: left; white-space: normal; }
+.user-profile-panel dl { margin: 14px 0; }
+.user-profile-panel dl > div { margin: 10px 0; }
+.user-profile-panel dt { font-size: 12px; color: #52647b; }
+.user-profile-panel dd { margin: 3px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.user-profile-panel > button { color: #3158bc; background: #edf2ff; border: 1px solid #cad7ee; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+@media (max-width: 600px) { .user-profile-panel { position: fixed; top: 90px; right: 16px; max-height: calc(100dvh - 110px); overflow: auto; } }
+
+/* Avatar: breathing glow, rotating colour ring and an online dot. */
+.header-login-icon { position: relative; overflow: visible; background: #ffffff22; transition: transform 0.2s ease; animation: avatar-breathe 3s ease-in-out infinite; }
+.header-login-icon:hover, .header-login-icon:focus-visible { transform: scale(1.08); }
+.header-login-icon::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; padding: 3px; background: conic-gradient(from 0deg, #ffd166, #ff6b6b, #c084fc, #7dd3fc, #ffd166); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: avatar-ring 3.5s linear infinite; pointer-events: none; }
+.header-login-icon::after { content: ""; position: absolute; right: 1px; bottom: 1px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 #22c55eb3; animation: avatar-online 1.8s ease-out infinite; pointer-events: none; }
+@keyframes avatar-breathe { 0%, 100% { box-shadow: 0 0 0 0 #ffffff40; } 50% { box-shadow: 0 0 0 7px #ffffff00; } }
+@keyframes avatar-ring { to { transform: rotate(360deg); } }
+@keyframes avatar-online { 0% { box-shadow: 0 0 0 0 #22c55eb3; } 100% { box-shadow: 0 0 0 8px #22c55e00; } }
+@media (prefers-reduced-motion: reduce) {
+  .header-login-icon, .header-login-icon::before, .header-login-icon::after { animation: none !important; transition: none !important; }
+}
+
+/* Telegram connection inside the profile panel. */
+.user-profile-telegram { margin: 0 0 14px; padding-top: 12px; border-top: 1px solid #e3e9f2; }
+.user-profile-telegram .telegram-label { display: block; font-size: 12px; color: #52647b; }
+.user-profile-telegram .telegram-state { display: block; margin: 3px 0 8px; font-size: 14px; font-weight: 400; }
+.user-profile-telegram button { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 700; }
+.user-profile-telegram button svg { width: 14px; height: 14px; }
+.user-profile-telegram .telegram-connect { color: #fff; background: #229ed9; border: 1px solid #1b8cc2; }
+.user-profile-telegram .telegram-disconnect { color: #9d3932; background: #fff4f3; border: 1px solid #f0c9c5; }
+.user-profile-telegram small { display: block; margin-top: 8px; color: #52647b; font-size: 12px; }

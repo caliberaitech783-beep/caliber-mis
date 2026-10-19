@@ -1,0 +1,162 @@
+import {maintenanceMetersRequired,requireMaintenanceMeters} from '../maintenance-meter-required.mjs';
+import * as siteAccess from '../region-scope.mjs';
+import {isIdleVehicleRequest} from '../request-idle.mjs';
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import test from "node:test";
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {transformWithOxc} from "vite";
+import * as equipment from "../request-equipment.mjs";
+import * as workflow from "../request-workflow.mjs";
+import {approvedDelayedReason} from '../delayed-reason.mjs';
+import DateInput from '../src/date-input.mjs';
+import {isProductionFirstTripRequired,PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL} from '../info-pulse-data.mjs';
+
+const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
+const evaluate = (code, dependencies) => new Function("DateInput", "isIdleVehicleRequest", ...Object.keys(dependencies), code)(DateInput, isIdleVehicleRequest, ...Object.values(dependencies));
+const tipper = {oemResponsibility: "OEM", ref: "REQ-T1", equipmentGroup: "TIPPERS", meterType: "KMR", door: "T1", chassis: "CH1", site: "Sasti OB", status: "In progress", openingMeterReading: "1000", openingMeterFileUploaded: true, category: "Breakdown"};
+const snippet = source.slice(source.indexOf("function MeterReadingFields"), source.indexOf("function VerifyRequestForm"));
+// Meter payload tests begin after the separately tested On road/Idle decision.
+const transformed = await transformWithOxc(snippet.replace('const idleDecision = useRef(false);','const idleDecision = useRef(true);'), "request-forms.jsx", {jsx: {runtime: "classic"}});
+const forms = evaluate(transformed.code + "\nreturn {RequestEditForm, CloseRequestForm};", {
+  React, ...equipment,
+  useState: value => [typeof value === "function" ? value() : value, () => {}],
+  useRef: value => ({current: value}),
+  useMemo: fn => fn(), useMasterRecords: () => [[]],
+  normalizeEquipmentGroup: value => value, arrivalRedFlagRequired: () => false, delayedReasonRequired: () => false, MaintenanceEtcInput: () => null,
+  Modal: ({children}) => React.createElement("section", null, children),
+  MeterFileCell: () => React.createElement("span", null, "Saved trip card"),
+  ChevronRight: () => null,
+  EnhancedSpeechComplaint: () => null,
+  TranslatedText: ({ text, as: Tag = 'span', fallback = '—', helper = false }) => helper ? null : React.createElement(Tag, null, String(text ?? '').trim() || fallback),
+  requestStartParts: () => ({date: "2026-09-09", time: "12:00:00"}),
+  effectiveInfoPulseEtcTimestamp: () => Number.NaN, indiaDateTimeInputValue: () => "",
+  TIME_24H_PATTERN: ".*",
+  FormData: class { constructor(values) { this.values = values; } get(key) { return this.values[key] ?? null; } },
+  alert: message => { throw new Error(message); },
+});
+
+test("Maintenance User forms require HMR only for equipment; other roles retain defaults", () => {
+  const excavator={...tipper,equipmentGroup:"EXCAVATORS",meterType:"HMR",openingMeterReading:"",openingMeterReadings:{HMR:"",KMR:""},closingMeterReadings:{HMR:"",KMR:""}};
+  for(const name of ["RequestEditForm","CloseRequestForm"]){
+    const html=renderToStaticMarkup(React.createElement(forms[name],{request:excavator,requireMeters:true}));
+    assert.doesNotMatch(html,/name="(?:opening|closing)KMRReading"/,"mandatory maintenance readings must not add an equipment KMR field");
+    for(const type of ["HMR"])assert.match(html,new RegExp('<input(?=[^>]*name="opening'+type+'Reading")(?=[^>]*required)[^>]*>'));
+    if(name==="CloseRequestForm")for(const type of ["HMR"])assert.match(html,new RegExp('<input(?=[^>]*name="closing'+type+'Reading")(?=[^>]*required)[^>]*>'));
+    const optional=renderToStaticMarkup(React.createElement(forms[name],{request:excavator}));
+    assert.doesNotMatch(optional,/name="(?:opening|closing)KMRReading"/);
+    assert.doesNotMatch(optional,/<input(?=[^>]*name="(?:opening|closing)HMRReading")(?=[^>]*required)[^>]*>/);
+  }
+});
+
+test("tipper edit and close forms render both readings and exactly one trip-card file chooser", () => {
+  for (const [name, stage] of [["RequestEditForm", "opening"], ["CloseRequestForm", "closing"]]) {
+    const html = renderToStaticMarkup(React.createElement(forms[name], {request: tipper}));
+    assert.match(html, new RegExp(`name="${stage}HMRReading"`));
+    assert.match(html, new RegExp(`name="${stage}KMRReading"`));
+    assert.equal((html.match(/type="file"/g) || []).length, 1);
+    assert.match(html, /Trip card upload/);
+    assert.match(html, /accept="image\/jpeg,image\/png,image\/webp,application\/pdf"/);
+  }
+});
+
+test("Maintenance User vehicle forms require both HMR and KMR", () => {
+  const vehicle={...tipper,equipmentGroup:"WATER TANKER",openingMeterReading:"",openingMeterReadings:{HMR:"",KMR:""}};
+  for(const name of ["RequestEditForm","CloseRequestForm"]){
+    const html=renderToStaticMarkup(React.createElement(forms[name],{request:vehicle,requireMeters:true}));
+    for(const stage of name==="CloseRequestForm"?["opening","closing"]:["opening"]){
+      for(const type of ["HMR","KMR"])assert.match(html,new RegExp('<input(?=[^>]*name="'+stage+type+'Reading")(?=[^>]*required)[^>]*>'));
+    }
+  }
+});
+
+test("equipment without wheels asks for HMR only while other vehicles ask for HMR and KMR", () => {
+  const equipmentHtml = renderToStaticMarkup(React.createElement(forms.RequestEditForm, {request: {...tipper, equipmentGroup: "OTHER", meterType: "HMR"}}));
+  assert.match(equipmentHtml, /name="openingHMRReading"/);
+  assert.doesNotMatch(equipmentHtml, /name="openingKMRReading"/);
+  const vehicleHtml = renderToStaticMarkup(React.createElement(forms.RequestEditForm, {request: {...tipper, equipmentGroup: "OTHER", meterType: "KMR"}}));
+  assert.match(vehicleHtml, /name="openingHMRReading"/);
+  assert.match(vehicleHtml, /name="openingKMRReading"/);
+});
+
+test("edit and close submissions send both readings and keep the legacy primary value", async () => {
+  for (const [name, stage] of [["RequestEditForm", "opening"], ["CloseRequestForm", "closing"]]) {
+    let saved;
+    const element = forms[name]({request: tipper, onSave: value => { saved = value; }});
+    await element.props.children.props.onSubmit({preventDefault() {}, currentTarget: {oemResponsibility: "OEM", [`${stage}HMRReading`]: "12.25", [`${stage}KMRReading`]: "1001"}});
+    assert.deepEqual(saved[`${stage}MeterReadings`], {HMR: "12.25", KMR: "1001"});
+    assert.equal(saved[`${stage}MeterReading`], "1001");
+    assert.equal(saved[`${stage}MeterFile`], "", "an existing file does not require another upload");
+    assert.deepEqual(equipment.requestMeterReadings({...tipper, ...saved}, stage), {HMR: "12.25", KMR: "1001"});
+  }
+});
+
+async function runRoute(action, body) {
+  let handler, status = 200, result;
+  const writes = [];
+  const start = `app.patch('/api/requests/:reference${action}'`;
+  const route = server.slice(server.indexOf(start), server.indexOf("\napp.", server.indexOf(start) + start.length));
+  const linkedSelection=server.slice(server.indexOf('async function withLinkedMaintenanceSelection('),server.indexOf("app.post('/api/requests/:reference/daily-remarks'"));
+  evaluate(linkedSelection+route, {
+    ...workflow,maintenanceMetersRequired,requireMaintenanceMeters,
+    app: {patch: (_path, ...handlers) => { handler = handlers.at(-1); }},
+    requireSession: () => {}, requirePermission: () => () => {}, requireMaintenanceUpdatePermission: () => () => {},
+    withMaintenanceArrivalGuard: async (_req, _ref, callback) => callback({query: async (sql, values) => {
+      if (/^UPDATE/.test(sql)) { writes.push({sql, values}); return {rows: [tipper]}; }
+      return {rows: [{...tipper, meter_type: "KMR", opening_meter_file: "saved-opening", closing_meter_file: "saved-closing"}]};
+    }}, tipper),
+    withRequestTimelineTransaction: async (_req, _ref, callback) => callback({query: async (sql, values) => {
+      writes.push({sql, values}); return {rows: [{...tipper, status: "Closed", verifiedAt: "2026-09-09 12:00:00"}]};
+    }}, {...tipper, status: "Closed", productionFirstTripAt: "2026-09-09 11:30:00"}),
+    requestExpectedCompletionValue: (_before, next) => next, validateRequestTimelineChange: () => {}, buildRequestTimelineChanges: () => {},
+    arrivalFlagReadySql: "true", delayedReasonRequired: () => false, approvedDelayedReason, parseRequestTimelineTimestamp: value => new Date(value),
+    maintenanceWriteFailure: (error, res, next) => error.status ? res.status(error.status).json({error: error.message}) : next(error),
+    requestWorkflowWhatsAppLogins: async () => [], requestEquipmentNotificationDetails: () => "", requestNotificationTime: () => "",
+    addTicketNotificationsBestEffort: async () => {}, workflowRequestLink: () => "", publicBaseUrl: () => "",
+    requireAllowedRequestSite: async () => true, assignedRequestScope: async () => ({}), requestSiteIsAllowed: () => true,
+    parseIndiaRequestDateTime: () => new Date(), requestProjection: "reference AS ref", isProductionFirstTripRequired, PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL,
+    ...siteAccess,currentUserRecord: async () => ({site: tipper.site}), canonicalSiteName: value => value,
+    pool: {query: async (sql, values) => {
+      if (/^UPDATE/.test(sql)) { writes.push({sql, values}); return {rows: [tipper]}; }
+      return {rows: [{...tipper, status: action === "/verify" ? "Closed" : tipper.status, productionFirstTripAt: action === "/verify" ? "2026-09-09 11:30:00" : "", meter_type: "KMR", opening_meter_file: "saved-opening", closing_meter_file: "saved-closing"}]};
+    }},
+    sendRequestEventReports: async () => {}, requestStakeholderLogins: async () => [], addTicketNotifications: async () => {},
+  });
+  await handler({params: {reference: tipper.ref}, body, session: {name: "Maintenance"}}, {
+    status(value) { status = value; return this; }, json(value) { result = value; return this; },
+  }, error => { throw error; });
+  return {status, result, writes};
+}
+
+test("edit API persists both opening readings with one shared attachment", async () => {
+  const result = await runRoute("", {...tipper, oemResponsibility: undefined, complaint: "Noise", expectedCompletionAt: "2026-09-09T18:00", openingMeterReading: "1000", openingMeterReadings: {HMR: "12", KMR: "1000"}});
+  assert.equal(result.status, 200);
+  assert.deepEqual(JSON.parse(result.writes[0].values[9]), {HMR: "12", KMR: "1000"});
+  assert.match(result.writes[0].sql, /ELSE opening_meter_file END/);
+});
+
+test("close API saves both closing readings and a shared trip card", async () => {
+  const card = "data:application/pdf;base64,JVBERg==";
+  const result = await runRoute("/close", {closingDate: "2026-09-09", closingTime: "12:00:00", maintenanceWork: "Repaired", status: "In progress", meterType: "KMR", closingMeterReading: "1001", closingMeterReadings: {HMR: "13", KMR: "1001"}, closingMeterFile: card, closingMeterFileName: "trip.pdf"});
+  assert.equal(result.status, 200);
+  assert.deepEqual(JSON.parse(result.writes[0].values[6]), {HMR: "13", KMR: "1001"});
+  assert.equal(result.writes[0].values[8], card);
+  assert.equal(result.writes[0].values[9], "trip.pdf");
+});
+
+test("invalid secondary readings are rejected before any edit or close writes", async () => {
+  for (const action of ["", "/close"]) {
+    const result = await runRoute(action, {...tipper, complaint: "Noise", expectedCompletionAt: "2026-09-09T18:00", openingMeterReading: "1000", openingMeterReadings: {HMR: "-1", KMR: "1000"}, closingDate: "2026-09-09", closingTime: "12:00:00", maintenanceWork: "Repaired", status: "In progress"});
+    assert.equal(result.status, 400);
+    assert.equal(result.writes.length, 0);
+  }
+});
+
+test("verification preserves a trip card already uploaded at closure", async () => {
+  const result = await runRoute("/verify", {firstTripDone: true, firstTripDate: "2026-09-09", firstTripTime: "12:00:00", firstTripCardImage: "data:image/jpeg;base64,/9j/2Q==", closingMeterReading: "1001", closingMeterReadings: {HMR: "13", KMR: "1001"}});
+  assert.equal(result.status, 200);
+  assert.doesNotMatch(result.writes[0].sql, /closing_meter_file=/);
+  assert.deepEqual(JSON.parse(result.writes[0].values[8]), {HMR: "13", KMR: "1001"});
+});

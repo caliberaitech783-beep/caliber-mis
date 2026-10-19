@@ -1,0 +1,89 @@
+import { parseIndiaRequestDateTime } from "./request-time.mjs";
+
+export const REQUEST_CLOSE_STATUSES = ["In progress", "Awaiting parts", "Running BD", "Closed"];
+export const MAX_TRIP_CARD_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_METER_EVIDENCE_BYTES = 5 * 1024 * 1024;
+export const MAX_REQUEST_AUDIO_BYTES = 3 * 1024 * 1024;
+
+export function validTripCardImageDataUrl(value = "") {
+  const match = String(value).match(/^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return false;
+  const padding = match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0;
+  return Math.floor((match[1].length * 3) / 4) - padding <= MAX_TRIP_CARD_IMAGE_BYTES;
+}
+
+export function validMeterEvidenceDataUrl(value = "") {
+  const match = String(value).match(/^data:(?:image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return false;
+  const padding = match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0;
+  return Math.floor((match[1].length * 3) / 4) - padding <= MAX_METER_EVIDENCE_BYTES;
+}
+
+export function validMeterReading(value = "") {
+  return /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(value).trim());
+}
+
+export function validMeterReadings(value = {}) {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.entries(value).every(([type, reading]) => ["HMR", "KMR"].includes(type)
+      && typeof reading === "string" && (reading === "" || validMeterReading(reading)));
+}
+
+// Compare like-for-like counters. Never guess a swap or rewrite historical data.
+export function validateClosingMeterReadings(before = {}, update = {}) {
+  const primary = String(before.meterType || update.meterType || '').trim().toUpperCase();
+  const readings = (stage) => {
+    const result = {...before[`${stage}MeterReadings`]};
+    const legacy = before[`${stage}MeterReading`];
+    if (['HMR', 'KMR'].includes(primary) && result[primary] == null && String(legacy ?? '').trim()) result[primary] = String(legacy);
+    for (const [type, value] of Object.entries(update[`${stage}MeterReadings`] || {})) {
+      if (String(value ?? '').trim()) result[type] = value;
+    }
+    const scalar = String(update[`${stage}MeterReading`] ?? '').trim();
+    if (scalar && ['HMR', 'KMR'].includes(primary)) {
+      const explicit = update[`${stage}MeterReadings`]?.[primary];
+      if (String(explicit ?? '').trim() && Number(explicit) !== Number(scalar)) {
+        throw Object.assign(new Error(`Conflicting ${stage} ${primary} readings. Check the HMR and KMR fields.`), {status: 400});
+      }
+      result[primary] = scalar;
+    }
+    return result;
+  };
+  const opening = readings('opening'), closing = readings('closing');
+  for (const type of ['HMR', 'KMR']) {
+    if (validMeterReading(opening[type]) && validMeterReading(closing[type]) && Number(closing[type]) < Number(opening[type])) {
+      throw Object.assign(new Error(`Closing ${type} cannot be lower than opening ${type} (${opening[type]}). Check the readings; for a replaced or reset meter, contact your administrator.`), {status: 400});
+    }
+  }
+}
+
+export function validRequestAudioDataUrl(value = "") {
+  if (!value) return true;
+  const match = String(value).match(/^data:audio\/(?:webm|ogg|mp4|mpeg|wav);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return false;
+  const padding = match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0;
+  return Math.floor((match[1].length * 3) / 4) - padding <= MAX_REQUEST_AUDIO_BYTES;
+}
+
+export function requestDateTimeValue(date, time) {
+  const day = String(date || "").trim();
+  const clock = String(time || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(clock)) return null;
+  const parsed = parseIndiaRequestDateTime(`${day} · ${clock}`, null);
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+}
+
+export function requestMayBeChanged(request = {}) {
+  const status = String(request.status || "").toLowerCase();
+  return !request.closedAt && (!request.verifiedAt || status === "running bd") && status !== "closed" && status !== "idle" && status !== "ideal";
+}
+
+export function requestMayBeVerified(request = {}) {
+  return ["closed", "running bd"].includes(String(request.status || "").toLowerCase()) && !request.verifiedAt;
+}
+
+export function resolveRequestIssues(request = {}, resolvedIndexes = []) {
+ const indexes=Array.isArray(resolvedIndexes)?resolvedIndexes:[];
+ return (request.issues?.length?request.issues:[{reason:request.complaint,resolved:false}]).map((issue,index)=>({...issue,resolved:issue.resolved===true||indexes.includes(index)}));
+}
+export function hasOutstandingRequestIssues(issues=[]) {return issues.some(issue=>issue.resolved!==true);}
