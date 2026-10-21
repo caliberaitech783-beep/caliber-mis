@@ -601,8 +601,9 @@ input[type="radio"] {
 .login-mobile-brand .caliber-logo-frame { min-width: 0; padding: 5px; background: #fff; }
 .login-mobile-brand .caliber-logo-frame img { width: 40px; height: 40px; }
 .mine-brandmark { background: #fff; border-radius: 12px; padding: 7px; object-fit: contain; }
-.login-brand .caliber-logo-frame img, .login-mobile-brand .caliber-logo-frame img { width: 190px; height: auto; }
+.login-brand .caliber-logo-frame img { width: 64px; height: 64px; }
+.login-mobile-brand .caliber-logo-frame img { width: 40px; height: 40px; }
 .login-brand .caliber-logo-frame, .login-mobile-brand .caliber-logo-frame { padding: 8px 12px; }
 .login-brand, .login-mobile-brand { flex-wrap: wrap; }
-.login-brand .caliber-app-name strong, .login-mobile-brand .caliber-app-name strong { display: none; }
+.login-brand .caliber-app-name strong, .login-mobile-brand .caliber-app-name strong { display: inline-flex; }
 .login-brand .caliber-app-name, .login-mobile-brand .caliber-app-name { padding-left: 0; border-left: 0; }

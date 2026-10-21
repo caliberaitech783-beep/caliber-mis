@@ -568,7 +568,7 @@ function CaliberBrand({ subtitle = "All Departments Linked In One Place", classN
   return (
     <div className={`caliber-app-brand ${className}`.trim()}>
       <span className="caliber-logo-frame">
-        <img src="/caliber-erp-logo.jpg" alt="Caliber Pulse-II" />
+        <img src="/pulse-ii-icon.png" alt="Caliber Pulse-II" />
       </span>
       <span className="caliber-app-name">
         <strong>Caliber Pulse-II</strong>

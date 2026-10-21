@@ -25,7 +25,7 @@ export default function DashboardFilterBar({ children, inDialog = false, bannerR
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
   }, [inDialog]);
   return <header ref={ref} data-collapsed={!inDialog && collapsed ? "true" : undefined} className={`mine-dashboard-head dashboard-filter-bar${inDialog ? " in-dialog" : ""}`}>
-    <div><img className="mine-brandmark" src="/caliber-erp-logo.jpg" alt="CALIBER ERP" /><div><span className="mine-eyebrow">Enterprise Resource Planning</span><h1>MIS dashboard</h1></div></div>
+    <div><img className="mine-brandmark" src="/pulse-ii-icon.png" alt="Caliber Pulse-II" /><div><span className="mine-eyebrow">Enterprise Resource Planning</span><h1>MIS dashboard</h1></div></div>
     <div className="mine-head-actions">{children}</div>
     {!inDialog && collapsed && collapsedAction && <span className="dashboard-banner-action">{collapsedAction}</span>}
     {!inDialog && <button type="button" className="dashboard-banner-toggle" aria-expanded={!collapsed} aria-label={collapsed ? "Show dashboard banner" : "Hide dashboard banner"} title={collapsed ? "Show dashboard banner" : "Hide dashboard banner"} onClick={() => setCollapsed(value => !value)}>{collapsed ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>}
