@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 let configuration;
 const config=()=>configuration||=(fetch('/api/mis-sso/config',{cache:'no-store'}).then(r=>r.ok?r.json():{mode:'off'}).catch(()=>{configuration=null;return {mode:'off'};}));
 
-export function useMisSharedSignIn(session,{paused=false}={}){
+export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
   const [status,setStatus]=useState({mode:'off',error:''});
   useEffect(()=>{
     if(paused)return;
@@ -27,15 +27,15 @@ export function useMisSharedSignIn(session,{paused=false}={}){
           window.history.replaceState(null,'','/');
           if(!response.ok||!result.token)throw Error('Pulse sign-in could not be completed. Please retry.');
           window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
-        }else window.location.replace('/api/mis-sso/start');
+        }else if(autoStart)window.location.replace('/api/mis-sso/start');
       }
     };
     void start().catch(()=>{if(!stopped)setStatus(current=>({...current,error:'Shared sign-in is temporarily unavailable. Please retry.'}));});
     return()=>{stopped=true;};
-  },[session?.token,paused]);
+  },[session?.token,paused,autoStart]);
   return status;
 }
 
-export function MisSharedLogin({error}){
-  return <main className="boot-status"><section className="boot-card"><h1>Caliber MIS</h1><p>{error||'Opening your Pulse sign-in…'}</p><a href="/api/mis-sso/start">Sign in with Pulse</a></section></main>;
+export function MisSharedLogin({error,message='Opening your Pulse sign-in…'}){
+  return <main className="boot-status"><section className="boot-card"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-sso/start">Sign in with Pulse</a></section></main>;
 }

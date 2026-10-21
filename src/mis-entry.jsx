@@ -5,21 +5,16 @@ import MisWorkspace from './mis-workspace.jsx';
 import './mis-workspace.css';
 
 const sessionKey='nerveCenterSession';
-function storedSession(){
-  try{return JSON.parse(sessionStorage.getItem(sessionKey)||localStorage.getItem(sessionKey)||'null');}
-  catch{return null;}
-}
 function clearSession(){sessionStorage.removeItem(sessionKey);localStorage.removeItem(sessionKey);}
 
 function MisApp(){
-  const [session,setSession]=useState(storedSession);
+  const [session,setSession]=useState(null);
   const [signedOut,setSignedOut]=useState(false);
-  const signIn=useMisSharedSignIn(session,{paused:signedOut});
+  const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:false});
   useEffect(()=>{
+    clearSession();
     const receive=event=>{
       if(!event.detail?.token)return;
-      sessionStorage.setItem(sessionKey,JSON.stringify(event.detail));
-      localStorage.removeItem(sessionKey);
       setSignedOut(false);setSession(event.detail);
     };
     window.addEventListener('mis-shared-signin',receive);
@@ -41,7 +36,7 @@ function MisApp(){
     if(session?.token)void fetch('/api/logout',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}}).catch(()=>{});
     clearSession();setSignedOut(true);setSession(null);
   };
-  if(!session?.token)return <MisSharedLogin error={signedOut?'You have signed out of MIS.':signIn.error}/>;
+  if(!session?.token)return <MisSharedLogin error={signIn.error} message={signedOut?'You have signed out of MIS.':'Sign in to open your MIS workspace.'}/>;
   return <MisWorkspace onSignOut={signOut}/>;
 }
 

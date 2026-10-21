@@ -1,6 +1,6 @@
 # Caliber MIS
 
-The home page is intentionally empty for future features: a Caliber MIS heading, sign-out control and blank workspace. `index.html` loads `src/mis-entry.jsx`; the inherited Pulse dashboard, menus and background services are not mounted. Shared Pulse sign-in and the separate MIS database remain in place.
+MIS opens at an explicit sign-in page on every new page load. The user chooses Sign in with Pulse; only a successful shared sign-in opens the empty workspace. MIS does not restore saved browser sessions or automatically start sign-in. The authenticated home contains only a Caliber MIS heading, sign-out control and blank workspace for future features. `index.html` loads `src/mis-entry.jsx`; the inherited Pulse dashboard, menus and background services are not mounted. The separate MIS database remains in place.
 
 Independent MIS application based on the existing local Pulse-II MIS workspace: React, Vite, Node.js, Express and PostgreSQL. The entry flow is Pulse → MIS in a new tab at https://pulseii.cmll.in → MIS dashboard using shared sign-in. `mis-shared-signin.mjs` implements the authorization-code handoff with S256 PKCE, browser-bound state, short-lived single-use codes and separate MIS sessions. End-to-end production sign-in still requires deployment and private user verification.
 
