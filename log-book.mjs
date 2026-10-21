@@ -92,7 +92,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const protect=[requireSession,requireAdministrator];
  
  app.get('/api/log-books/options',...protect,async(req,res,next)=>{
-   try{
+   try{await ensure();
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set();const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
@@ -103,7 +103,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
        if(row.master_name==='Region master')for(const site of Array.isArray(r.sites)?r.sites:String(r.sites||'').split('|'))if(text(site))sites.add(text(site));
      }
-     res.set('Cache-Control','no-store');res.json({assets,employees,shifts,sites:[...sites].sort(),workOrders,workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
+     const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment'")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
+     res.set('Cache-Control','no-store');res.json({bookNumberCounters,assets,employees,shifts,sites:[...sites].sort(),workOrders,workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
  const readHours=async(input)=>{if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;if(!asset||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests(),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
