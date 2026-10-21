@@ -71,7 +71,7 @@ test('lazy screens cannot replace the entire workspace with a blank page',()=>{
   assert.match(lazyFeature,/window\.location\.replace\(nextUrl\.toString\(\)\)/);
   assert.match(lazyFeature,/Refresh application/);
   assert.match(indexHtml,/id="boot-status"/);
-  assert.match(indexHtml,/Caliber Pulse-II could not finish loading/);
+  assert.match(indexHtml,/Caliber MIS could not finish loading/);
   assert.match(indexHtml,/unhandledrejection/);
 });
 
