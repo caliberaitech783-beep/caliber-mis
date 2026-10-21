@@ -190,7 +190,7 @@ test("Info Pulse fails closed when an operational user has no assigned location"
   assert.deepEqual(scopeInfoPulseRequests([{ref:"REQ-1",site:"Sasti OC"}],scope),[]);
 });
 
-test("Info Pulse auto-opens after login and unlocks manual dismissal after its countdown", () => {
+test("Info Pulse retains its scoped countdown behavior while staying absent from MIS chrome", () => {
   const mainSource = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const styles = fs.readFileSync(new URL("../src/ai-feeder.css", import.meta.url), "utf8");
   const serverSource = fs.readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
@@ -222,8 +222,10 @@ test("Info Pulse auto-opens after login and unlocks manual dismissal after its c
   assert.match(styles, /\.ai-feeder-trigger\s*\{[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;/s);
   assert.match(styles, /\.ai-feeder-kicker\s*\{[^}]*font-size:\s*11px;[^}]*font-weight:\s*800;/s);
   assert.match(mainSource, /className="ai-feeder-dot"/);
-  // Pulse-II does not mount the trigger or its automatic login popup.
-  assert.doesNotMatch(mainSource, /<AiFeeder\b/);
+  // MIS no longer mounts Info Pulse in any application shell.
+  assert.equal((mainSource.match(/<AiFeeder\b/g) || []).length, 0);
+  // \b keeps <AiFeederPanel out of this count; the panel takes a session of its own.
+  assert.equal((mainSource.match(/<AiFeeder\b[^>]*session=\{session\}/g) || []).length, 0);
   assert.doesNotMatch(mainSource, /<AiFeeder[^>]*role=\{mobileRole\}/);
   assert.doesNotMatch(mainSource.match(/<div className="normal-header-actions">.*/)[0], /<AiFeeder\b/);
   assert.match(styles, /@keyframes ai-feeder-blink/);
