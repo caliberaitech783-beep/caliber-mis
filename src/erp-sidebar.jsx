@@ -18,7 +18,7 @@ export default function ErpSidebar({active,setActive,logout,open,session,groups=
     return <button key={name} className={`erp-page${selected?' selected':''}`} aria-current={selected?'page':undefined} onClick={()=>select(typeof item==='string'?item:{page,reportCategory:item.reportCategory})}><FileText size={14}/><span>{name}</span></button>;
   };
   return <aside id="admin-primary-navigation" className={`erp-sidebar${open?' open':''}${pinned?' pinned':''}`} aria-label="Primary navigation">
-    <a className="erp-sidebar-brand" href="#" onClick={e=>{e.preventDefault();select('Dashboard')}}><span className="erp-brand-icon"><img src="/caliber-erp-logo.jpg" alt="Caliber Pulse-II"/></span><span className="erp-brand-copy"><strong>Caliber Pulse-II</strong><small>All Departments Linked In One Place</small></span></a>
+    <a className="erp-sidebar-brand" href="#" onClick={e=>{e.preventDefault();select('Dashboard')}}><span className="erp-brand-icon"><img src="/pulse-ii-icon.png" alt="Caliber Pulse-II"/></span><span className="erp-brand-copy"><strong>Caliber Pulse-II</strong><small>All Departments Linked In One Place</small></span></a>
     <button className="erp-pin" aria-pressed={pinned} onClick={()=>setPinned(v=>!v)}><Pin size={13}/>{pinned?'Pinned open':'Pin open'}</button>
     <label className="erp-menu-search"><Search size={14}/><input aria-label="Search menu" placeholder="Search pages…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
     <nav aria-label="ERP modules">
