@@ -7,6 +7,6 @@ test('ERP login has one MIS entry and the supplied ERP identity',async()=>{
  assert.equal((links.match(/<button\b/g)||[]).length,1);
  assert.match(links,/<strong>MIS<\/strong>/);
  assert.doesNotMatch(links,/href=|Fleet Operation|Accident|Accounts|Tender/);
- assert.match(source,/src="\/caliber-erp-logo.jpg" alt="Caliber Pulse-II"/);
+ assert.match(source,/src="\/pulse-ii-icon.png" alt="Caliber Pulse-II"/);
  assert.doesNotMatch(source,/Fleet operations platform|Sign in to access your fleet operations workspace/);
 });

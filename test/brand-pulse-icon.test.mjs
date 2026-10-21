@@ -8,7 +8,7 @@ const mail=readFileSync(new URL('../audit-log-export.mjs',import.meta.url),'utf8
 
 test('the brand uses Caliber Pulse-II and the supplied logo everywhere the brand component is used',()=>{
   assert.match(source,/<span className="caliber-app-name">\s*<strong>Caliber Pulse-II<\/strong>/);
-  assert.match(source,/src="\/caliber-erp-logo.jpg" alt="Caliber Pulse-II"/);
+  assert.match(source,/src="\/pulse-ii-icon.png" alt="Caliber Pulse-II"/);
   assert.ok((source.match(/<CaliberBrand/g)||[]).length>=6,'headers and the login page all render the brand component');
   assert.match(css,/\.caliber-app-name strong \{ display: inline-flex; align-items: center; gap: 6px; \}/);
   assert.match(css,/\.caliber-pulse-icon \{ flex: 0 0 auto; width: 1\.15em; height: 1\.15em; color: #ffd6e6; \}/);
