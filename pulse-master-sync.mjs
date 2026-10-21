@@ -27,12 +27,13 @@ function recordKey(master,row){
  const value=master==='Equipment master'?(row.chassis||row.door||row.registration):master==='Region master'?(row.code||row.name):(row.name||row.shiftName||row.shift);
  return String(value||'').trim().toLowerCase();
 }
-export async function applyPulseSnapshot(pool,input){
+export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_NAMES){
+ if(selectedNames.some(n=>!PULSE_MASTER_NAMES.includes(n)))throw new Error('Invalid Pulse master.');
  const snapshot=validatePulseSnapshot(input),client=await pool.connect(),counts={};
  try{
    await client.query('BEGIN');
    await client.query('SELECT pg_advisory_xact_lock(783,42)');
-   for(const name of PULSE_MASTER_NAMES){
+   for(const name of selectedNames){
      const {rows:links}=await client.query('SELECT source_id,local_id FROM pulse_master_links WHERE master_name=$1',[name]);
      const mapped=new Map(links.map(r=>[String(r.source_id),r.local_id]));
      const {rows:locals}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=$1',[name]);
@@ -89,11 +90,12 @@ export function createPulseMasterSync({pool,stateFile,fetchImpl=fetch}){
    await writeFile(stateFile+'.tmp',JSON.stringify({token:sourceToken,username:sourceUsername}),{mode:0o600});
    await rename(stateFile+'.tmp',stateFile);
  };
- const sync=async()=>{
+ const sync=async(master)=>{
+   if(master&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
    if(!token)throw new Error('Connect Pulse before syncing.');
    busy=true;lastAttempt=new Date().toISOString();
-   try{counts=await applyPulseSnapshot(pool,await fetchMasters(token));lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
+   try{counts={...counts,...await applyPulseSnapshot(pool,await fetchMasters(token),master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
  };
  return {

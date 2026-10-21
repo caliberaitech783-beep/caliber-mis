@@ -1,7 +1,4 @@
-import {misDatabaseConfig} from './mis-database-config.mjs';
-import {registerMisDomainRedirect} from './mis-domain.mjs';
-import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
-import {sharedMisDashboardIdentity} from './mis-dashboard-identity.mjs';
+import {registerMasterSync} from './master-sync.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
 import {registerErpEmployees} from './erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
@@ -154,7 +151,6 @@ const app=express();
 // every visitor shares the proxy's address, so per-IP limits (password reset
 // OTP requests) fired for the whole site instead of one user.
 app.set('trust proxy',true);
-registerMisDomainRedirect(app);
 app.use(compression({
   threshold:1024,
   filter(req,res){
@@ -248,9 +244,9 @@ function sendDataUrlMedia(res,data,{name='attachment',fallbackType='application/
   res.vary('Authorization');
   return res.type(type).send(body);
 }
-const connectionString=misDatabaseConfig().connectionString;
-const databaseSsl=misDatabaseConfig().ssl;
-const scheduledJobsEnabled=String(process.env.DISABLE_SCHEDULED_JOBS||'true').trim().toLowerCase()!=='true';
+const connectionString=process.env.DATABASE_URL;
+const databaseSsl=String(process.env.DATABASE_SSL||'').trim().toLowerCase()==='false'?false:{rejectUnauthorized:false};
+const scheduledJobsEnabled=String(process.env.DISABLE_SCHEDULED_JOBS||'').trim().toLowerCase()!=='true';
 const driverSyncIntervalMs=2*60*1000;
 const reportDateTime=(value)=>formatDisplayDateTime(value);
 const reportFilename=(kind,scope,slot)=>`Caliber-Pulse-${kind}-${scope}-${slot}.pdf`.replace(/[^a-z0-9._-]+/gi,'-').replace(/-+/g,'-');
@@ -1444,7 +1440,6 @@ app.use((req,res,next)=>{
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
-const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
 
 app.get('/api/app-version',(_req,res)=>{
   res.set('Cache-Control','no-store, no-cache, must-revalidate');
@@ -2453,8 +2448,7 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  const session=await misSharedSignIn.validateSession(token,await sessionStore.get(token));
-  return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
+  return sessionStore.get(token);
 }
 
 function sessionActivityDetails(req){
@@ -4530,8 +4524,6 @@ async function currentDashboardAuthorization(session,client=pool){
     client.query(`SELECT record_data FROM master_records WHERE master_name='Privilege'`),
   ]);
   const user=currentDashboardUserCandidate(userRows,session);
-  const sharedIdentity=sharedMisDashboardIdentity(session,user);
-  if(sharedIdentity)return sharedIdentity;
   if(!user)return null;
   const identifiers=new Set([
     ...userLoginCandidates(user),
@@ -7758,9 +7750,10 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 registerErpEmployees(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync});
-const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator});
+const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,readHours:logBooks.readHours});
 const localScanner=registerLocalDocumentScanning(app,{pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 const erpMasters=registerErpMasters(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
+registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];
@@ -8511,7 +8504,6 @@ function setStaggeredInterval(task,intervalMs,offsetMs=0){
 async function initializeDatabase(){
   try{
     await migrate();
-    await misSharedSignIn.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();

@@ -13,6 +13,6 @@ export function summarizePulseHours({rows,date,site,asset,shift,shiftHours,runni
  if(r.closedAt&&!Number.isFinite(rawEnd)&&r.closedAt!=='—')throw new Error('A matching Pulse request has an invalid close time.');
  const b=Number.isFinite(rawEnd)?rawEnd:now;if(b<a)throw new Error('Pulse request closes before it starts.');const lo=Math.max(a,start),hi=Math.min(b,end,now);if(hi>lo){ranges.push([lo,hi]);references.push(r.ref)}}
  ranges.sort((a,b)=>a[0]-b[0]);const merged=[];for(const r of ranges){const prev=merged.at(-1);if(prev&&r[0]<=prev[1])prev[1]=Math.max(prev[1],r[1]);else merged.push([...r])}
- const breakdownHours=round(merged.reduce((s,[a,b])=>s+b-a,0)/3600000),availabilityHours=round(Number(shiftHours)-breakdownHours),idleHours=runningHours==null?null:round(availabilityHours-Number(runningHours));
- return {breakdownHours,availabilityHours,runningHours,idleHours,source:'https://pulse.cmll.in',fetchedAt:new Date(now).toISOString(),references,warnings:idleHours<0?['Running hours plus BD hours exceed the selected shift; check meter readings and shift.']:[]};
+ const breakdownHours=round(merged.reduce((s,[a,b])=>s+b-a,0)/3600000),availabilityHours=runningHours==null?null:round(Number(runningHours)),idleHours=runningHours==null?null:round(Number(shiftHours)-Number(runningHours));
+ return {breakdownHours,availabilityHours,runningHours,idleHours,source:'https://pulse.cmll.in',fetchedAt:new Date(now).toISOString(),references,warnings:idleHours<0?['Working hours exceed the selected shift; check meter readings and shift.']:[]};
 }

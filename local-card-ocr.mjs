@@ -1,3 +1,5 @@
+import {recognizeReadingCells} from './trip-meter-ocr.mjs';
+import {detectTripShiftMark} from './trip-card-image.mjs';
 import {createWorker} from 'tesseract.js';
 import {createRequire} from 'node:module';
 import path from 'node:path';
@@ -5,5 +7,5 @@ import {createCanvas,loadImage} from '@napi-rs/canvas';
 export async function normalizeScanImage(bytes){const image=await loadImage(bytes);if(!image.width||!image.height||image.width*image.height>20000000)throw new Error('Scan dimensions exceed the 20 megapixel limit.');const canvas=createCanvas(image.width,image.height),ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,image.width,image.height);ctx.drawImage(image,0,0);return canvas.toBuffer('image/png');}
 const require=createRequire(import.meta.url);
 export function localCardOcr(){let worker;
- return {async recognize(image){worker??=createWorker('eng',1,{langPath:path.join(path.dirname(require.resolve('@tesseract.js-data/eng/package.json')),'4.0.0'),gzip:true,cacheMethod:'none',errorHandler:()=>{}});try{const w=await worker;const {data}=await w.recognize(await normalizeScanImage(image));return {text:data.text,confidence:data.confidence};}catch(e){const old=worker;worker=null;try{await(await old)?.terminate()}catch{}throw e}},async close(){if(worker)await(await worker).terminate();worker=null}};
+ return {async recognize(image){worker??=createWorker('eng',1,{langPath:path.join(path.dirname(require.resolve('@tesseract.js-data/eng/package.json')),'4.0.0'),gzip:true,cacheMethod:'none',errorHandler:()=>{}});try{const w=await worker;const {data}=await w.recognize(await normalizeScanImage(image));const cells=await recognizeReadingCells(w,image,data.text);const {employeeCode,...meterReadings}=cells;return {text:data.text,confidence:data.confidence,meterReadings,employeeCode:employeeCode?.confidence>=80?employeeCode.value:'',employeeCodeCandidate:employeeCode,...await detectTripShiftMark(image,data.text)};}catch(e){const old=worker;worker=null;try{await(await old)?.terminate()}catch{}throw e}},async close(){if(worker)await(await worker).terminate();worker=null}};
 }

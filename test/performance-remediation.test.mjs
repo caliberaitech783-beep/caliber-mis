@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
-import {readFileSync,existsSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const lazyFeature=readFileSync(new URL('../src/lazy-feature.jsx',import.meta.url),'utf8');
 const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-const readOptional=(relative)=>{const file=new URL(relative,import.meta.url);return existsSync(file)?readFileSync(file,'utf8'):'';};
-const workflow=readOptional('../.github/workflows/azure-hosting_coalmine-fleet-azure-783.yml');
-const azure=readOptional('../scripts/configure-azure-performance.sh');
+const workflow=readFileSync(new URL('../.github/workflows/azure-hosting_coalmine-fleet-azure-783.yml',import.meta.url),'utf8');
+const azure=readFileSync(new URL('../scripts/configure-azure-performance.sh',import.meta.url),'utf8');
 
 test('database revisions let unchanged private feeds finish before their large table reads',()=>{
   assert.match(server,/CREATE TABLE IF NOT EXISTS data_revisions/);
@@ -71,11 +70,11 @@ test('lazy screens cannot replace the entire workspace with a blank page',()=>{
   assert.match(lazyFeature,/window\.location\.replace\(nextUrl\.toString\(\)\)/);
   assert.match(lazyFeature,/Refresh application/);
   assert.match(indexHtml,/id="boot-status"/);
-  assert.match(indexHtml,/Caliber MIS could not finish loading/);
+  assert.match(indexHtml,/Caliber Pulse-II could not finish loading/);
   assert.match(indexHtml,/unhandledrejection/);
 });
 
-test('deployment keeps App Service warm and disables the unsafe static route',{skip:!workflow||!azure?'Pulse Front Door deployment does not apply to MIS':false},()=>{
+test('deployment keeps App Service warm and disables the unsafe static route',()=>{
   assert.match(workflow,/Enforce Azure performance configuration/);
   assert.match(workflow,/bash scripts\/configure-azure-performance\.sh/);
   assert.match(azure,/--always-on true/);

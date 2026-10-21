@@ -14,7 +14,7 @@ export default function ErpSidebar({active,setActive,logout,open,session,groups=
     const name=label(item);
     if(item.children)return <details className="erp-nested-menu" key={name} open={query?true:undefined}><summary>{name}<ChevronDown size={13}/></summary><div className="erp-submenus">{(matches(name)?item.children:item.children.filter(includesQuery)).map(renderPage)}</div></details>;
     const page=typeof item==='string'?item:item.page;
-    const selected=active===page&&(!item.reportCategory||activeReportCategory===item.reportCategory);
+    const selected=(active===page||item.activePages?.includes(active))&&(!item.reportCategory||activeReportCategory===item.reportCategory);
     return <button key={name} className={`erp-page${selected?' selected':''}`} aria-current={selected?'page':undefined} onClick={()=>select(typeof item==='string'?item:{page,reportCategory:item.reportCategory})}><FileText size={14}/><span>{name}</span></button>;
   };
   return <aside id="admin-primary-navigation" className={`erp-sidebar${open?' open':''}${pinned?' pinned':''}`} aria-label="Primary navigation">

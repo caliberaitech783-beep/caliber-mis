@@ -25,6 +25,13 @@ export function normalizeMobileNavigationVisibility(value = {}) {
 
 // Menu names double as stored access keys, so display-only renames live here.
 export const NAVIGATION_LABELS = {
+  "Vehicle Log Book Options":"Vehicle Log Book (VLB)",
+  "Equipment Log Book Options":"Equipment Log Book (ELB)",
+  "Vehicle Log Book":"VLB Manual",
+  "Equipment Log Book":"ELB Manual",
+  "Trip Card Bulk Scan":"VLB Scan",
+  "Job Card Bulk Scan":"ELB Scan",
+  "Pulse Master Sync":"Sync all masters",
   "Users & employees":"Login Details",
   "Employee master":"Employee Master",
   "Daily site-wise report": "Daily site-wise reports",

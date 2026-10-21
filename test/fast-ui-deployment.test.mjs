@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
-import baseTest from "node:test";
+import { readFileSync } from "node:fs";
+import test from "node:test";
 
-const readOptional=(relative)=>{const file=new URL(relative,import.meta.url);return existsSync(file)?readFileSync(file,'utf8'):'';};
-const fast = readOptional("../.github/workflows/fast-ui-deploy.yml");
-const full = readOptional("../.github/workflows/azure-hosting_coalmine-fleet-azure-783.yml");
-const test=(name,run)=>baseTest(name,{skip:!fast||!full?'Pulse fast deployment is not included in the independent MIS repository':false},run);
+const fast = readFileSync(new URL("../.github/workflows/fast-ui-deploy.yml", import.meta.url), "utf8");
+const full = readFileSync(new URL("../.github/workflows/azure-hosting_coalmine-fleet-azure-783.yml", import.meta.url), "utf8");
 
 test("UI-only commits use the fast lane while protected changes retain staging", () => {
   assert.match(full, /paths-ignore:[\s\S]*"src\/\*\*"[\s\S]*"public\/\*\*"[\s\S]*"index\.html"[\s\S]*"test\/\*\*"/);

@@ -1,3 +1,4 @@
+import {matchingWorkOrders,machineSummary,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 
@@ -11,7 +12,7 @@ import './log-book-form.css';
 
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
-const fresh=()=>({bookDate:today(),location:'',assetId:'',workOrderId:'',employeeId:'',shiftId:'',shiftHours:8,openingKmr:'',closingKmr:'',openingHmr:'',closingHmr:'',aFormNo:'',remark:'',timeMode:'with',trips:[],requestKey:crypto.randomUUID()});
+const fresh=()=>({bookDate:today(),bookDateSource:'system',location:'',assetId:'',workOrderId:'',employeeId:'',shiftId:'',shiftHours:8,openingKmr:'',closingKmr:'',openingHmr:'',closingHmr:'',aFormNo:'',remark:'',timeMode:'with',trips:[],requestKey:crypto.randomUUID()});
 
 const delta=(opening,closing)=>opening!==''&&closing!==''&&Number(closing)>=Number(opening)?Math.round((Number(closing)-Number(opening))*1000)/1000:null;
 
@@ -41,14 +42,14 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  useEffect(()=>{void load()},[kind,session.token]);
 
- const update=(key,value)=>{setForm(current=>({...current,[key]:value}));setSuccess('');};
+ const update=(key,value)=>{setForm(current=>({...current,[key]:value,...(key==='bookDate'?{bookDateSource:'manual'}:{})}));setSuccess('');};
 
  const assets=useMemo(()=>(options?.assets||[]).filter(asset=>asset.kind===kind&&(!form.location||canonicalSiteName(asset.site)===canonicalSiteName(form.location))),[options,kind,form.location]);
 
  const shifts=(options?.shifts||[]).filter(shift=>!form.location||!shift.site||canonicalSiteName(shift.site)===canonicalSiteName(form.location));
 
- const eligibleWorkOrders=(options?.workOrders||[]).filter(row=>form.location&&(!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location))&&(!row.begin||row.begin<=form.bookDate)&&(!row.end||row.end>=form.bookDate));
- useEffect(()=>{if(!editing||!vehicle)return;setForm(current=>{const id=eligibleWorkOrders.length===1?eligibleWorkOrders[0].id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle]);
+ const eligibleWorkOrders=matchingWorkOrders(options?.workOrders||[],form.location,form.bookDate);
+ useEffect(()=>{if(!editing)return;setForm(current=>{const latest=latestWorkOrder(options?.workOrders||[],current.location,current.bookDate);const id=latest?latest.id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle]);
  const employee=options?.employees.find(row=>row.id===String(form.employeeId));
 
  const asset=options?.assets.find(row=>row.id===String(form.assetId));
@@ -104,16 +105,16 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
      <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
 
 {vehicle?<><Field label="Location"><select required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</select></Field>
-<Field label="Doc type"><input readOnly value={vehicle?'Vehicle Log Book':'QLB'}/></Field>
+<Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
 <Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
-<Field label="Book no." hint={`CAL/${vehicle?'VLB':'ELB'}/DD-MM-YY/001 · Assigned on save`}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
+<Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 <div className="logbook-sheet-spacer"/>
-<Field label={vehicle?'Door no.':'Equipment / Door no.'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
-<Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Auto-selected from Work Order Master':eligibleWorkOrders.length>1?'Multiple contracts match — select the correct one':'No matching Work Order available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
+<Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+<Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Latest work order for this location/date':eligibleWorkOrders.length>1?'Latest eligible work order selected; equal-date ties require selection':'No matching Work Order available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
 <Field label="Caliber ID" hint="Employee ID from Employee Master"><EmployeeIdLookup token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess('ERP driver found: '+row.name+' · '+row.caliberId);}}/></Field>
 <Field label="Shift hour"><select required value={form.shiftHours} onChange={e=>update('shiftHours',Number(e.target.value))}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></select></Field>
 <Field label={vehicle?'Driver name':'Operator name'}><select required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</select></Field>
-<Field label="Shift" hint="Location-specific Shift Master"><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
+<Field label="Shift" hint={form.cardShift?'Marked on Trip Card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
 <Field label="A Form no. (Trip Card)"><input maxLength={200} value={form.aFormNo} onChange={e=>update('aFormNo',e.target.value)} placeholder="Enter A Form number"/></Field>
 <Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
 <Field label="Closing reading (KMR)"><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
@@ -121,19 +122,19 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 <Field label="Closing reading (HMR)"><input type="number" min="0" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
 <Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/><Field label="Total working HMR"><output>{fixed(hmr)}</output></Field></>:<>       <Field label="Location"><select required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</select></Field>
 
-       <Field label="Doc type"><input readOnly value={vehicle?'VLB':'QLB'}/></Field>
+       <Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
 
        <Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
 
-       <Field label="Book no." hint={`CAL/${vehicle?'VLB':'ELB'}/DD-MM-YY/001 · Assigned on save`}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
+       <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 
-       <Field label={vehicle?'Door no.':'Equipment / Door no.'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+       <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
 
        <Field label="Wo.Cont." hint={options?.workOrderConnected?'From Work Order Master':'No Work Order master records available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{options?.workOrders?.filter(row=>!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location)).map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
 
        <Field label="Shift hour"><select required value={form.shiftHours} onChange={e=>update('shiftHours',Number(e.target.value))}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></select></Field>
 
-       <Field label="Shift" hint="Location-specific Shift Master"><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
+       <Field label="Shift" hint={form.cardShift?'Marked on Trip Card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><select required value={form.shiftId} onChange={e=>update('shiftId',e.target.value)}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</select></Field>
 
        <Field label={vehicle?'Driver name':'Operator name'}><select required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</select></Field>
 
@@ -158,17 +159,18 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
        <datalist id={`loading-equipment-${kind}`}>{options?.assets.filter(row=>row.kind==='equipment').map(row=><option key={row.id} value={row.door||row.name}>{row.name}</option>)}</datalist>
 
-       <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Equipment name</th>{form.timeMode==='with'&&<><th>Loading time</th><th>Unloading time</th></>}<th>No. of trips</th>{form.timeMode==='with'&&<th>GAP (minutes)</th>}<th/></tr></thead><tbody>
+       <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Equipment name</th>{form.timeMode==='with'&&<><th>Loading time</th><th>Unloading time</th></>}<th>No. of trips</th>{form.timeMode==='with'&&<th>GAP to previous trip (minutes)</th>}<th/></tr></thead><tbody>
 
-         {form.trips.map((row,index)=><tr key={index}><td><input aria-label={`Equipment name row ${index+1}`} required list={`loading-equipment-${kind}`} value={row.equipmentName} onChange={e=>setTrip(index,'equipmentName',e.target.value)} placeholder="e.g. VPC-60" maxLength={200}/></td>{form.timeMode==='with'&&<><td><input type="time" step="1" aria-label={`Loading time row ${index+1}`} required value={row.loadingTime} onInput={e=>setTrip(index,'loadingTime',e.currentTarget.value)}/></td><td><input type="time" step="1" aria-label={`Unloading time row ${index+1}`} required value={row.unloadingTime} onInput={e=>setTrip(index,'unloadingTime',e.currentTarget.value)}/></td></>}<td><input type="number" min="1" step="1" aria-label={`No. of trips row ${index+1}`} required value={row.tripCount} onChange={e=>setTrip(index,'tripCount',e.target.value)}/></td>{form.timeMode==='with'&&<td>{display(gap(row.loadingTime,row.unloadingTime))}</td>}<td><button type="button" className="logbook-remove" aria-label={`Remove trip row ${index+1}`} onClick={()=>update('trips',form.trips.filter((_,i)=>i!==index))}><Trash2 size={16}/></button></td></tr>)}
+         {form.trips.map((row,index)=><tr key={index}><td><input aria-label={`Equipment name row ${index+1}`} required list={`loading-equipment-${kind}`} value={row.equipmentName} onChange={e=>setTrip(index,'equipmentName',e.target.value)} onBlur={e=>setTrip(index,'equipmentName',machineLabel(e.currentTarget.value))} placeholder="e.g. VPC-60" maxLength={200}/></td>{form.timeMode==='with'&&<><td><input type="time" step="1" aria-label={`Loading time row ${index+1}`} required value={row.loadingTime} onInput={e=>setTrip(index,'loadingTime',e.currentTarget.value)}/></td><td><input type="time" step="1" aria-label={`Unloading time row ${index+1}`} required value={row.unloadingTime} onInput={e=>setTrip(index,'unloadingTime',e.currentTarget.value)}/></td></>}<td><input type="number" min="1" step="1" aria-label={`No. of trips row ${index+1}`} required value={row.tripCount} onChange={e=>setTrip(index,'tripCount',e.target.value)}/></td>{form.timeMode==='with'&&<td>{display(interTripGap(form.trips,index))}</td>}<td><button type="button" className="logbook-remove" aria-label={`Remove trip row ${index+1}`} onClick={()=>update('trips',form.trips.filter((_,i)=>i!==index))}><Trash2 size={16}/></button></td></tr>)}
 
          {!form.trips.length&&<tr><td colSpan={form.timeMode==='with'?6:3} className="logbook-empty">No trip rows added. Use Add trip to enter loading and unloading details.</td></tr>}
 
-       </tbody></table></div><div className="logbook-trip-totals"><span>Total records / trips · Records: <strong>{form.trips.length}</strong></span><span>Total trips: <strong>{form.trips.reduce((sum,row)=>sum+(Number(row.tripCount)||0),0)}</strong></span>{form.timeMode==='with'&&<small>When unloading is earlier than loading, the gap continues into the next day.</small>}</div>
+       </tbody></table></div><div className="logbook-trip-totals"><span>Total records / trips · Records: <strong>{form.trips.length}</strong></span><span>Total trips: <strong>{form.trips.reduce((sum,row)=>sum+(Number(row.tripCount)||0),0)}</strong></span>{form.timeMode==='with'&&<small>GAP = this loading time − previous unloading time. First row has no previous trip; overnight gaps continue into the next day.</small>}</div>
 
      </section>}
 
-     {vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Hours summary</h2><span>{hoursLoading?'Fetching Pulse BD hours…':hours?'Source: Pulse · selected vehicle / date / shift':'Select vehicle, date and shift'}</span></div><div className="logbook-fields"><Field label="Availability HRS" hint="Shift hours − BD hours"><output>{fixed(hours?.availabilityHours)}</output></Field><Field label="Running HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="BD HRS" hint="From Pulse breakdown records"><output>{fixed(hours?.breakdownHours)}</output></Field><Field label="Idle HRS" hint="Shift hours − running hours − BD hours"><output>{fixed(hours?.idleHours)}</output></Field></div>{hoursError&&<p className="logbook-message error">{hoursError} BD and idle hours remain unavailable.</p>}{hours?.warnings?.map(w=><p key={w} className="logbook-message error">{w}</p>)}<p className="logbook-note">Breakdown intervals are restricted to the selected shift and overlapping requests are counted once. Missing Pulse data is not treated as zero.</p></section>}
+     {vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Machine-wise summary</h2><span>Calculated from trip details</span></div><table className="logbook-table"><thead><tr><th>Equipment name</th><th>Total trips</th></tr></thead><tbody>{machineSummary(form.trips).map(row=><tr key={row.equipmentName}><td>{row.equipmentName}</td><td>{row.tripCount}</td></tr>)}</tbody></table></section>}
+     {vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Hours summary</h2><span>{hoursLoading?'Fetching Pulse BD hours…':hours?'Source: Pulse · selected vehicle / date / shift':'Select vehicle, date and shift'}</span></div><div className="logbook-fields"><Field label="Availability HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="Running HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="BD HRS" hint="From Pulse breakdown records"><output>{fixed(hours?.breakdownHours)}</output></Field><Field label="Idle HRS" hint="Shift hours − working HMR"><output>{fixed(hmr==null?null:Number(form.shiftHours)-hmr)}</output></Field></div>{hoursError&&<p className="logbook-message error">{hoursError} BD hours remain unavailable; meter-based availability and idle calculations still apply.</p>}{hours?.warnings?.map(w=><p key={w} className="logbook-message error">{w}</p>)}<p className="logbook-note">Breakdown intervals are restricted to the selected shift and overlapping requests are counted once. Missing Pulse data is not treated as zero.</p></section>}
 
 
      </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:'Book number will be generated on save.'}</span><button className="primary" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?'Saving…':saved?'Save changes':'Save log book'}</button></footer>

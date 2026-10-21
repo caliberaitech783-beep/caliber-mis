@@ -9,3 +9,7 @@
 .scan-page .scan-field-invalid input:focus,.scan-page .scan-field-invalid select:focus{outline:2px solid #cc2445;outline-offset:2px}
 .scan-page .scan-field-message{display:block;color:#a41935;font-size:11px;line-height:1.4}
 .scan-page .scan-trips-recheck{border:2px solid #c58916;background:#fff7e5;border-radius:6px;padding:10px}
+
+.scan-fields output{padding:9px;border:1px solid #dacee8;border-radius:5px;background:#f5f2fa;color:#000}.scan-machine-summary{margin:14px 0;padding:12px;border:1px solid #dacee8;border-radius:6px}.scan-machine-summary table{width:100%;border-collapse:collapse}.scan-machine-summary th,.scan-machine-summary td{text-align:left;padding:7px;border-bottom:1px solid #ddd}
+
+.scan-trip-row{grid-template-columns:1.3fr 1fr 1fr .7fr .8fr auto}.scan-trip-row output{display:block;padding:8px;background:#f4eff9;border:1px solid #dacee8;border-radius:5px;color:#111}@media(max-width:650px){.scan-trip-row{grid-template-columns:1fr 1fr}}

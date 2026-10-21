@@ -13,7 +13,7 @@ test("Oracle integration is read-only, lazy, protected, and environment configur
   assert.match(oracle, /SELECT SYS_CONTEXT/);
   assert.doesNotMatch(oracle, /\b(?:INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP)\b/i);
   assert.match(server, /app\.get\('\/api\/oracle\/health',requireSuper/);
-  assert.doesNotMatch(example, /CMPLAI@123|13\.206\.103\.124/);
+  assert.doesNotMatch(example, /test-password-not-a-secret|13\.206\.103\.124/);
 });
 
 test("Equipment Master Oracle synchronization is manual only", () => {
