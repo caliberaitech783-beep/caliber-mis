@@ -37,8 +37,8 @@ test('separate databases share sign-in through state-bound single-use PKCE codes
     assert.match(start.headers.get('set-cookie'),/HttpOnly/);assert.match(start.headers.get('set-cookie'),/Secure/);
     const stateCookie=start.headers.get('set-cookie').split(';')[0];
     const auth=new URL(start.headers.get('location'));
-    assert.equal(auth.origin,'https://pulse.cmll.in');assert.equal(auth.pathname,'/');
-    assert.equal(auth.searchParams.get('login'),'1');assert.equal(auth.searchParams.get('misSignIn'),'1');
+    assert.equal(auth.origin,'https://pulse.cmll.in');assert.equal(auth.pathname,'/api/mis-sso/authorize');
+    assert.equal(auth.searchParams.has('login'),false);assert.equal(auth.searchParams.has('misSignIn'),false);
     // The real Pulse form verifies the password, then resumes this authorize
     // endpoint. The test continues after that existing authentication step.
     auth.pathname='/api/mis-sso/authorize';auth.host=new URL(issuer.base).host;auth.protocol='http:';

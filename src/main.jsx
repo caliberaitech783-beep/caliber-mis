@@ -11505,12 +11505,13 @@ function App() {
     [globalVehicleHistoryTarget, setGlobalVehicleHistoryTarget] = useState(null),
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
-  const sharedSignIn=useMisSharedSignIn(session,{autoStart:false});
+  const [sharedSignedOut,setSharedSignedOut]=useState(false);
+  const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
       sessionStorage.setItem('nerveCenterSession',JSON.stringify(value));localStorage.removeItem('nerveCenterSession');
-      setActive(LOGIN_LANDING_PAGE);setSession(value);
+      setSharedSignedOut(false);setActive(LOGIN_LANDING_PAGE);setSession(value);
     };
     window.addEventListener('mis-shared-signin',receive);return()=>window.removeEventListener('mis-shared-signin',receive);
   },[]);
@@ -11785,6 +11786,7 @@ function App() {
       selectMenu("Breakdown master");
     },
     logout = () => {
+      setSharedSignedOut(true);
       const token=session?.token||authToken;
       if(token)void fetch('/api/logout',{method:'POST',headers:{Authorization:`Bearer ${token}`},keepalive:true}).catch(()=>{});
       clearStoredSession();

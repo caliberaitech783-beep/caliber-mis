@@ -10,7 +10,7 @@ function clearSession(){sessionStorage.removeItem(sessionKey);localStorage.remov
 function MisApp(){
   const [session,setSession]=useState(null);
   const [signedOut,setSignedOut]=useState(false);
-  const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:false});
+  const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:true});
   useEffect(()=>{
     clearSession();
     const receive=event=>{

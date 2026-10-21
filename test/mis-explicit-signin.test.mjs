@@ -13,14 +13,14 @@ async function runHook(search){
     window:{location:{search,replace:url=>redirects.push(url)},history:{replaceState:()=>{}},dispatchEvent:event=>events.push(event)},
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}}};
   const hook=new Function(...Object.keys(scope),`${hookCode};return useMisSharedSignIn;`)(...Object.values(scope));
-  hook(null,{autoStart:false});effects[0]();await new Promise(resolve=>setImmediate(resolve));
+  hook(null,{autoStart:true});effects[0]();await new Promise(resolve=>setImmediate(resolve));
   return {requests,redirects,events};
 }
 
-test('opening MIS with an existing Pulse session does not automatically sign in or redirect',async()=>{
+test('opening MIS with an existing Pulse session automatically starts the shared Pulse session handoff',async()=>{
   const result=await runHook('');
   assert.deepEqual(result.requests,['/api/mis-sso/config']);
-  assert.deepEqual(result.redirects,[]);assert.deepEqual(result.events,[]);
+  assert.deepEqual(result.redirects,['/api/mis-sso/start']);assert.deepEqual(result.events,[]);
 });
 
 test('only a completed shared-sign-in callback exchanges the server-held handoff',async()=>{
@@ -39,5 +39,5 @@ test('a fresh MIS page shows sign-in even when browser storage contains a previo
     useMisSharedSignIn:(_session,settings)=>{options=settings;return {error:''};},MisSharedLogin:Login,MisWorkspace:Workspace,
     sessionStorage:{getItem:()=>JSON.stringify({token:'old-synthetic-session'})},localStorage:{getItem:()=>JSON.stringify({token:'old-synthetic-session'})}};
   const App=new Function(...Object.keys(scope),`${code};return MisApp;`)(...Object.values(scope));
-  assert.equal(App().type,Login);assert.equal(options.autoStart,false);
+  assert.equal(App().type,Login);assert.equal(options.autoStart,true);
 });

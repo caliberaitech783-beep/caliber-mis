@@ -86,10 +86,8 @@ export function registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mo
       await pool.query('DELETE FROM mis_sso_pending WHERE expires_at<NOW()');
       await pool.query("INSERT INTO mis_sso_pending(state_hash,verifier,expires_at) VALUES($1,$2,NOW()+INTERVAL '5 minutes')",[digest(state),verifier]);
       res.cookie(stateCookie,state,{...cookieOptions,maxAge:300000});
-      // Pulse already supports login=1 to show its password form even when
-      // this browser has an active Pulse session. Do not reuse its SSO cookie
-      // directly: complete that form before continuing the MIS handoff.
-      const target=new URL('/',issuer);target.searchParams.set('login','1');target.searchParams.set('misSignIn','1');target.searchParams.set('state',state);target.searchParams.set('code_challenge',digest(verifier));
+      // Reuse the existing Pulse session; its issuer prompts only when expired.
+      const target=new URL('/api/mis-sso/authorize',issuer);target.searchParams.set('state',state);target.searchParams.set('code_challenge',digest(verifier));
       res.redirect(303,target.toString());
     }));
     app.get('/api/mis-sso/callback',safe(async(req,res)=>{
