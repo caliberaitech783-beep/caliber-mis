@@ -2,9 +2,10 @@ import {useEffect,useState} from 'react';
 let configuration;
 const config=()=>configuration||=(fetch('/api/mis-sso/config',{cache:'no-store'}).then(r=>r.ok?r.json():{mode:'off'}).catch(()=>{configuration=null;return {mode:'off'};}));
 
-export function useMisSharedSignIn(session){
+export function useMisSharedSignIn(session,{paused=false}={}){
   const [status,setStatus]=useState({mode:'off',error:''});
   useEffect(()=>{
+    if(paused)return;
     let stopped=false;
     const start=async()=>{
       const {mode}=await config();if(stopped)return;
@@ -31,7 +32,7 @@ export function useMisSharedSignIn(session){
     };
     void start().catch(()=>{if(!stopped)setStatus(current=>({...current,error:'Shared sign-in is temporarily unavailable. Please retry.'}));});
     return()=>{stopped=true;};
-  },[session?.token]);
+  },[session?.token,paused]);
   return status;
 }
 
