@@ -6,7 +6,7 @@
   "database": "caliber_mis",
   "dnsProvider": "Hostinger",
   "customDomain": "pulseii.cmll.in",
-  "dnsStatus": "pending",
+  "dnsStatus": "configured",
   "dnsRecords": [
     {
       "type": "CNAME",

@@ -16,3 +16,10 @@ test('local development still uses the dedicated database', () => {
   assert.equal(misDatabaseConfig({DATABASE_URL:'postgresql://u:p@127.0.0.1/caliber_mis'}).ssl, false);
   assert.throws(() => misDatabaseConfig({DATABASE_URL:'postgresql://u:p@other.example/caliber_mis'}));
 });
+test('owner-approved shared administrator connection always targets only caliber_mis', () => {
+  const env={MIS_DATABASE_CONNECTION_MODE:'shared-admin',DATABASE_URL:'postgresql://synthetic:synthetic@coalmine-fleet-pg-783.postgres.database.azure.com/postgres?database=postgres&sslmode=no-verify'};
+  const config=misDatabaseConfig(env),url=new URL(config.connectionString);
+  assert.equal(url.pathname,'/caliber_mis');assert.equal(url.search,'');assert.deepEqual(config.ssl,{rejectUnauthorized:true});
+  assert.throws(()=>misDatabaseConfig({...env,DATABASE_URL:'postgresql://synthetic:synthetic@other.postgres.database.azure.com/postgres'}));
+  assert.throws(()=>misDatabaseConfig({...env,MIS_DATABASE_CONNECTION_MODE:''}));
+});

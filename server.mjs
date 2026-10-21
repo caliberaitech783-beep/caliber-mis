@@ -1,4 +1,5 @@
 import {misDatabaseConfig} from './mis-database-config.mjs';
+import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
 import {registerErpEmployees} from './erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
@@ -1440,6 +1441,7 @@ app.use((req,res,next)=>{
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
+const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
 
 app.get('/api/app-version',(_req,res)=>{
   res.set('Cache-Control','no-store, no-cache, must-revalidate');
@@ -2448,7 +2450,7 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  return sessionStore.get(token);
+  return misSharedSignIn.validateSession(token,await sessionStore.get(token));
 }
 
 function sessionActivityDetails(req){
@@ -8503,6 +8505,7 @@ function setStaggeredInterval(task,intervalMs,offsetMs=0){
 async function initializeDatabase(){
   try{
     await migrate();
+    await misSharedSignIn.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
