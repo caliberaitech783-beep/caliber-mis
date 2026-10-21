@@ -5,17 +5,17 @@
   "databaseServer": "coalmine-fleet-pg-783.postgres.database.azure.com",
   "database": "caliber_mis",
   "dnsProvider": "Hostinger",
-  "customDomain": "pulseii.cmll.in",
+  "customDomain": "pulse-ll.cmll.in",
   "dnsStatus": "configured",
   "dnsRecords": [
     {
       "type": "CNAME",
-      "name": "pulseii",
+      "name": "pulse-ll",
       "value": "caliber-mis-783-gebxgedygkaba9db.centralindia-01.azurewebsites.net"
     },
     {
       "type": "TXT",
-      "name": "asuid.pulseii",
+      "name": "asuid.pulse-ll",
       "value": "A67E44683AB2657DF6192DFCDB480864D2EEE4A2E4317846393AAD55A266C60E"
     }
   ]

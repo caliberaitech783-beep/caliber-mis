@@ -15,7 +15,7 @@ const publicProfile=profile=>({role:profile.role,name:profile.name,login:profile
 
 // Fixed endpoints, single-use authorization codes, S256 PKCE, server-held state,
 // and a separate MIS session. Pulse passwords/tokens never reach the MIS client.
-export function registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode=process.env.MIS_SSO_MODE||'off',issuer='https://pulse.cmll.in',client='https://pulseii.cmll.in',fetcher=fetch}){
+export function registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode=process.env.MIS_SSO_MODE||'off',issuer='https://pulse.cmll.in',client='https://pulse-ll.cmll.in',fetcher=fetch}){
   if(!['off','issuer','client'].includes(mode))throw Error('Invalid MIS sign-in mode.');
   const callback=client+'/api/mis-sso/callback';
   const safe=fn=>async(req,res)=>{

@@ -45,7 +45,7 @@ test('separate databases share sign-in through state-bound single-use PKCE codes
     assert.equal((await fetch(callback,{headers:{Cookie:'__Host-mis_signin_state='+random()},redirect:'manual'})).status,400);
     const wrongProof=await fetch(issuer.base+'/api/mis-sso/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:callback.searchParams.get('code'),verifier:random()})});assert.equal(wrongProof.status,401);
     const completed=await fetch(callback,{headers:{Cookie:stateCookie},redirect:'manual'});assert.equal(completed.status,303);
-    assert.equal(completed.headers.get('location'),'https://pulseii.cmll.in/?misSsoReady=1');
+    assert.equal(completed.headers.get('location'),'https://pulse-ll.cmll.in/?misSsoReady=1');
     assert.equal((await fetch(callback,{headers:{Cookie:stateCookie},redirect:'manual'})).status,400);
     const handoff=completed.headers.getSetCookie().find(value=>value.startsWith('__Host-mis_signin_ready=')).split(';')[0];
     const ready=await fetch(client.base+'/api/mis-sso/session',{headers:{Cookie:handoff}});assert.equal(ready.status,200);

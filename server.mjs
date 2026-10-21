@@ -1,4 +1,5 @@
 import {misDatabaseConfig} from './mis-database-config.mjs';
+import {registerMisDomainRedirect} from './mis-domain.mjs';
 import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './mis-dashboard-identity.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
@@ -153,6 +154,7 @@ const app=express();
 // every visitor shares the proxy's address, so per-IP limits (password reset
 // OTP requests) fired for the whole site instead of one user.
 app.set('trust proxy',true);
+registerMisDomainRedirect(app);
 app.use(compression({
   threshold:1024,
   filter(req,res){
