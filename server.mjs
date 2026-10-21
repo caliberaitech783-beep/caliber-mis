@@ -1,5 +1,6 @@
 import {misDatabaseConfig} from './mis-database-config.mjs';
 import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
+import {sharedMisDashboardIdentity} from './mis-dashboard-identity.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
 import {registerErpEmployees} from './erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
@@ -2450,7 +2451,8 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  return misSharedSignIn.validateSession(token,await sessionStore.get(token));
+  const session=await misSharedSignIn.validateSession(token,await sessionStore.get(token));
+  return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
 }
 
 function sessionActivityDetails(req){
@@ -4526,6 +4528,8 @@ async function currentDashboardAuthorization(session,client=pool){
     client.query(`SELECT record_data FROM master_records WHERE master_name='Privilege'`),
   ]);
   const user=currentDashboardUserCandidate(userRows,session);
+  const sharedIdentity=sharedMisDashboardIdentity(session,user);
+  if(sharedIdentity)return sharedIdentity;
   if(!user)return null;
   const identifiers=new Set([
     ...userLoginCandidates(user),
