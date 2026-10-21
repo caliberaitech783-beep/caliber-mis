@@ -12047,18 +12047,11 @@ function App() {
   return (
     <RequestShiftProvider token={session.token} requests={requests}><div className="app erp-shell">
       <ErpSidebar
-        announcements={<AnnouncementHistoryButton token={authToken}/>}
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[],keepEmpty:canOpenAdminPage('Reports')},
-          {name:'Tickets',direct:true,pages:['Tickets'].filter(canOpenAdminPage)},
-          {name:'Admin',pages:[
-            ...adminNav.map(([name])=>name).filter(name=>!backupAdminPages.has(name)&&name!=='Pulse Master Sync').filter(canOpenAdminPage),
-            ...['Admin locks'].filter(canOpenAdminPage),
-            ...(isAdministrator?[{label:'Database',children:adminDatabaseNav.map(([name])=>name).filter(canOpenAdminPage)}]:[]),
-          ]},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}
         setActive={(x) => {
@@ -12103,7 +12096,6 @@ function App() {
             <LiveTemperatureChip location={profileLocation} />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
             {adminPermissions.adminLevel === "Manager" && <HelpTraining roles={adminPermissions.managerRoles} location={profileLocation} />}
-            <AiFeeder role={adminPermissions.adminLevel === "Manager" ? "Manager" : "Admin"} session={session} />
             <button type="button" aria-label="Focus page smart search" title="Smart search" className="smart-search-button" onClick={() => active === "Dashboard" ? window.dispatchEvent(new Event("dashboard-smart-search")) : document.querySelector('.body input[data-smart-search]:not([disabled])')?.focus()}>
               <SearchScanIcon />
             </button>
