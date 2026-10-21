@@ -1,3 +1,4 @@
+import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
 import EmployeeMaster from './employee-master.jsx';
 import {requestedMisPage,misPageUrl} from './mis-navigation.mjs';
@@ -11504,6 +11505,15 @@ function App() {
     [globalVehicleHistoryTarget, setGlobalVehicleHistoryTarget] = useState(null),
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
+  const sharedSignIn=useMisSharedSignIn(session,{autoStart:false});
+  useEffect(()=>{
+    const receive=event=>{const value=event.detail;if(!value?.token)return;
+      authToken=value.token;currentEmployeeName=value.name;
+      sessionStorage.setItem('nerveCenterSession',JSON.stringify(value));localStorage.removeItem('nerveCenterSession');
+      setActive(LOGIN_LANDING_PAGE);setSession(value);
+    };
+    window.addEventListener('mis-shared-signin',receive);return()=>window.removeEventListener('mis-shared-signin',receive);
+  },[]);
   const menuLoadStartedAt = useRef(performance.now());
   const pageHistory = useRef([LOGIN_LANDING_PAGE]);
   const requestLoadSequence = useRef(0);
@@ -12001,6 +12011,7 @@ function App() {
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
     session, theme,
   ]);
+  if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">
     <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
