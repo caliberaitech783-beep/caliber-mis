@@ -1,3 +1,5 @@
+import {installMisCredentialClient} from './mis-credential-client.mjs';
+import {authorizeMisRequest} from './mis-application-access.mjs';
 import {misDatabaseConfig} from './mis-database-config.mjs';
 import {registerMisDomainRedirect} from './mis-domain.mjs';
 import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
@@ -1445,6 +1447,7 @@ app.use((req,res,next)=>{
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
+const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
 const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
 
 app.get('/api/app-version',(_req,res)=>{
@@ -2454,7 +2457,8 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  const session=await misSharedSignIn.validateSession(token,await sessionStore.get(token));
+  const local=await sessionStore.get(token);
+  const session=local?.permissions?.separateMisCredentials?await misCredentialClient.validateSession(token,local):(process.env.MIS_SSO_MODE==='off')?local:process.env.MIS_LEGACY_SSO_ENABLED==='true'?await misSharedSignIn.validateSession(token,local):null;
   return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
 }
 
@@ -2487,6 +2491,7 @@ async function requireSession(req,res,next){
   try{
     const session=await readSession(req);
     if(!session)return res.status(401).json({error:'Your sign-in has expired. Please sign in again.'});
+    if(session.permissions?.separateMisCredentials&&!await authorizeMisRequest(session,req,pool))return res.status(403).json({error:'This MIS menu is not assigned to your login.'});
     req.session=session;
     req.auditSessionId=session.sessionId;
     if(typeof touchUserSessionActivity==='function')void touchUserSessionActivity(req,session).catch(error=>console.error('User session activity could not be recorded:',error.message));
@@ -2531,6 +2536,7 @@ async function requireSuper(req,res,next){
   try{
     const session=await readSession(req);
     if(!session)return res.status(401).json({error:'Your sign-in has expired. Please sign in again.'});
+    if(session.permissions?.separateMisCredentials&&!await authorizeMisRequest(session,req,pool))return res.status(403).json({error:'This MIS menu is not assigned to your login.'});
     if(['HR User','HR Manager'].includes(session.assignedRole)&&isCdirMaster(req.params?.master?decodeURIComponent(req.params.master):'')){
       req.session=session;return next();
     }
@@ -7772,7 +7778,7 @@ app.get('/api/masters',requireSession,async(req,res,next)=>{
     const maintenanceManager=maintenanceManagerSession(req.session);
     const canViewRepairTypes=maintenanceManager||superCanView('Repair type master')||req.session.permissions?.viewRepairTypes===true;
     const canViewDelayedReasons=maintenanceManager||superCanView('Delayed Reason')||req.session.permissions?.closeRequests===true||req.session.permissions?.editRequests===true;
-    if(!['HR User','HR Manager'].includes(req.session.assignedRole)&&!canViewEquipment&&!canViewRepairTypes&&!canViewDelayedReasons)
+    if(!req.session.permissions?.separateMisCredentials&&!['HR User','HR Manager'].includes(req.session.assignedRole)&&!canViewEquipment&&!canViewRepairTypes&&!canViewDelayedReasons)
       return res.status(403).json({error:'Your assigned role is not authorized to view master records.'});
     const managerRecord=(req.session.role==='super'&&req.session.permissions?.adminLevel==='Manager')||req.session.role==='normal'?await currentUserRecord(req.session):null;
     const managerScope=managerRecord?(req.session.role==='normal'?userSiteScope(managerRecord):managerReportScope(managerRecord)):null;
@@ -8514,6 +8520,7 @@ async function initializeDatabase(){
   try{
     await migrate();
     await misSharedSignIn.initialize();
+    await misCredentialClient.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();

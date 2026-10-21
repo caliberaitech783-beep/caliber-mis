@@ -21,11 +21,11 @@ test('MIS home is an empty workspace with branding and a working sign-out contro
   button.props.onClick();assert.equal(signedOut,true);
 });
 
-test('the live entry opens the full MIS app while retaining automatic shared Pulse login',()=>{
+test('the live entry opens the full MIS app with a separate MIS credential login',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const app=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
  assert.match(html,/src="\/src\/main.jsx"/);
- assert.match(app,/useMisSharedSignIn\(session,\{autoStart:true,paused:sharedSignedOut\}\)/);
+ assert.match(app,/useMisSharedSignIn\(session,\{autoStart:false,paused:sharedSignedOut\}\)/);
  assert.match(app,/<MisSharedLogin error=\{sharedSignIn.error\}/);
  assert.match(app,/<LogBookModeChoice/);
  assert.match(app,/<BulkCardScanning/);
