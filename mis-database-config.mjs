@@ -10,6 +10,8 @@ export function misDatabaseConfig(env = process.env) {
     url.pathname = '/caliber_mis';
     url.search = '';
   }
+  const localScanner=env.MIS_LOCAL_SCANNER_DATABASE==='true'&&['localhost','127.0.0.1'].includes(url.hostname)&&decodeURIComponent(url.pathname.slice(1))==='caliber_erp';
+  if(localScanner)return {connectionString:url.toString(),ssl:false};
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || decodeURIComponent(url.pathname.slice(1)) !== 'caliber_mis') {
     throw new Error('MIS must connect only to the caliber_mis database.');
   }

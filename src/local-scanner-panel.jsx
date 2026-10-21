@@ -1,7 +1,9 @@
+import CloudScannerPanel from './cloud-scanner-panel.jsx';
 import React,{useState,useEffect} from 'react';
 import {ScanLine,FolderOpen,RefreshCw,Download} from 'lucide-react';
 import {readScannerResponse} from './local-scanner-response.mjs';
-export default function LocalScannerPanel({kind,token,onBatch,onComplete}){
+export default function LocalScannerPanel(props){return ['localhost','127.0.0.1'].includes(window.location.hostname)?<WindowsScannerPanel {...props}/>:<CloudScannerPanel {...props}/>;}
+function WindowsScannerPanel({kind,token,onBatch,onComplete}){
  const [status,setStatus]=useState(null),[device,setDevice]=useState(''),[job,setJob]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[connectionError,setConnectionError]=useState(''),[loading,setLoading]=useState(true);
  const call=async(path,body)=>{let r;try{r=await fetch('/api/local-scanner/'+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})}catch{throw new Error('The local scanner service is reconnecting. This page will retry automatically.');}return readScannerResponse(r)};
  const refresh=async()=>{try{const d=await call('status');setStatus(d);setConnectionError('');setDevice(current=>d.devices.some(v=>v.id===current)?current:d.devices.find(v=>/ADS-3100/i.test(v.name))?.id||d.devices[0]?.id||'')}catch(e){setConnectionError(e.message)}finally{setLoading(false)}};

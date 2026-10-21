@@ -28,7 +28,7 @@ await admin.end();
 const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>/^(path|systemroot|windir|comspec|pathext|temp|tmp|userprofile|appdata|localappdata|programdata|systemdrive|homedrive|homepath|username)$/i.test(key)));
 Object.assign(env,{DATABASE_URL:`postgresql://${config.user}:${config.password}@127.0.0.1:${config.port}/${config.database}`,DATABASE_SSL:'false',DISABLE_SCHEDULED_JOBS:'true',META_WHATSAPP_DELIVERY_PAUSED:'true',PORT:'4175',LISTEN_HOST:'127.0.0.1',PUBLIC_APP_URL:'http://127.0.0.1:4174',BACKUP_STORAGE_ROOT:path.join(state,'backups')});
 const erpOracleConfig=loadErpOracleConfig();if(erpOracleConfig)env.NEXUS_ERP_ORACLE_CONFIG=JSON.stringify(erpOracleConfig);
-env.LOCAL_SCAN_ENABLED='true';env.LOCAL_SCAN_INBOX=path.join(os.homedir(),'OneDrive','Desktop','scan folder');env.LOCAL_SCAN_OUTPUT_ROOT=path.join(state,'scanner');
+env.MIS_SSO_MODE='off';env.MIS_LOCAL_SCANNER_DATABASE='true';env.LOCAL_SCAN_ENABLED='true';env.LOCAL_SCAN_INBOX=path.join(os.homedir(),'OneDrive','Desktop','scan folder');env.LOCAL_SCAN_OUTPUT_ROOT=path.join(state,'scanner');
 env.PULSE_SYNC_STATE_FILE=path.join(state,'pulse-master-session.json');
 const backend=spawn(process.execPath,['server.mjs'],{cwd:root,env,stdio:'inherit',windowsHide:true});
 let closing=false;
