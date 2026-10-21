@@ -222,10 +222,8 @@ test("Info Pulse auto-opens after login and unlocks manual dismissal after its c
   assert.match(styles, /\.ai-feeder-trigger\s*\{[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;/s);
   assert.match(styles, /\.ai-feeder-kicker\s*\{[^}]*font-size:\s*11px;[^}]*font-weight:\s*800;/s);
   assert.match(mainSource, /className="ai-feeder-dot"/);
-  // Only the super-user shell carries the header entry; Production, Maintenance and MIS users never see Info Pulse.
-  assert.equal(mainSource.match(/<AiFeeder\b/g)?.length, 1);
-  // \b keeps <AiFeederPanel out of this count; the panel takes a session of its own.
-  assert.equal(mainSource.match(/<AiFeeder\b[^>]*session=\{session\}/g)?.length, 1);
+  // Pulse-II does not mount the trigger or its automatic login popup.
+  assert.doesNotMatch(mainSource, /<AiFeeder\b/);
   assert.doesNotMatch(mainSource, /<AiFeeder[^>]*role=\{mobileRole\}/);
   assert.doesNotMatch(mainSource.match(/<div className="normal-header-actions">.*/)[0], /<AiFeeder\b/);
   assert.match(styles, /@keyframes ai-feeder-blink/);
