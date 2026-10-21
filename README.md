@@ -4,6 +4,8 @@ MIS opens at an explicit sign-in page on every new page load. Sign in with Pulse
 
 The canonical MIS address is `https://pulse-ll.cmll.in`. The previous `pulseii.cmll.in` DNS/certificate binding remains available and forwards browser pages and sign-in callbacks to the canonical address. Existing health/version endpoints remain directly readable on the old hostname.
 
+Pulse's existing authentication service retains its registered `pulseii.cmll.in` callback. MIS forwards that callback to `pulse-ll.cmll.in` with its single-use code/state intact; the host-only sign-in cookie is checked on the new domain. This avoids changing Pulse's authentication backend when renaming MIS.
+
 Independent MIS application based on the existing local Pulse-II MIS workspace: React, Vite, Node.js, Express and PostgreSQL. The entry flow is Pulse → MIS in a new tab at https://pulse-ll.cmll.in → MIS dashboard using shared sign-in. `mis-shared-signin.mjs` implements the authorization-code handoff with S256 PKCE, browser-bound state, short-lived single-use codes and separate MIS sessions. End-to-end production sign-in still requires deployment and private user verification.
 
 ## Database isolation

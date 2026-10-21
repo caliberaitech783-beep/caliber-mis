@@ -4,6 +4,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {registerMisSharedSignIn,misSignInAllowed} from '../mis-shared-signin.mjs';
+import {registerMisDomainRedirect} from '../mis-domain.mjs';
 const cookieName='__Host-pulse_mis_signin';
 const random=()=>randomBytes(32).toString('base64url');
 const profile={login:'synthetic-mis-user',name:'Synthetic MIS User',role:'normal',userType:'Mobile User',assignedRole:'MIS User',permissions:{verifyRequests:true}};
@@ -20,9 +21,10 @@ test('separate databases share sign-in through state-bound single-use PKCE codes
     const pool=new PGlite();databases.push(pool);await pool.query('CREATE TABLE auth_sessions(token UUID PRIMARY KEY)');
     const records=new Map();
     const sessionStore={get:async token=>records.get(token)||null,create:async record=>{await pool.query('INSERT INTO auth_sessions(token) VALUES($1)',[record.token]);records.set(record.token,record);}};
-    const app=express();app.use(express.json());
+    const app=express();app.set('trust proxy',true);app.use(express.json());
+    if(mode==='client')registerMisDomainRedirect(app);
     const requireSession=async(req,res,next)=>{req.session=await sessionStore.get(String(req.headers.authorization||'').replace(/^Bearer /,''));if(!req.session)return res.status(401).json({error:'Expired'});next();};
-    const sso=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode,fetcher:(url,options)=>fetch(url.replace('https://pulse.cmll.in',issuer.base),options)});
+    const sso=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode,...(mode==='issuer'?{client:'https://pulseii.cmll.in'}:{}),fetcher:(url,options)=>fetch(url.replace('https://pulse.cmll.in',issuer.base),options)});
     await sso.initialize();
     const server=await new Promise(resolve=>{const current=app.listen(0,'127.0.0.1',()=>resolve(current));});servers.push(server);
     return {pool,records,sessionStore,sso,base:`http://127.0.0.1:${server.address().port}`};
@@ -41,7 +43,15 @@ test('separate databases share sign-in through state-bound single-use PKCE codes
     // endpoint. The test continues after that existing authentication step.
     auth.pathname='/api/mis-sso/authorize';auth.host=new URL(issuer.base).host;auth.protocol='http:';
     const authorize=await fetch(auth,{headers:{Cookie:`${cookieName}=${pulseToken}`},redirect:'manual'});
-    assert.equal(authorize.status,303);const callback=new URL(authorize.headers.get('location'));callback.host=new URL(client.base).host;callback.protocol='http:';
+    assert.equal(authorize.status,303);
+    const oldCallback=new URL(authorize.headers.get('location'));
+    assert.equal(oldCallback.origin,'https://pulseii.cmll.in');
+    oldCallback.host=new URL(client.base).host;oldCallback.protocol='http:';
+    const forwarded=await fetch(oldCallback,{headers:{Cookie:stateCookie,'X-Forwarded-Host':'pulseii.cmll.in'},redirect:'manual'});
+    assert.equal(forwarded.status,307);
+    const callback=new URL(forwarded.headers.get('location'));
+    assert.equal(callback.origin,'https://pulse-ll.cmll.in');
+    callback.host=new URL(client.base).host;callback.protocol='http:';
     assert.equal((await fetch(callback,{headers:{Cookie:'__Host-mis_signin_state='+random()},redirect:'manual'})).status,400);
     const wrongProof=await fetch(issuer.base+'/api/mis-sso/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:callback.searchParams.get('code'),verifier:random()})});assert.equal(wrongProof.status,401);
     const completed=await fetch(callback,{headers:{Cookie:stateCookie},redirect:'manual'});assert.equal(completed.status,303);
