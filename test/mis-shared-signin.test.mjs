@@ -34,7 +34,12 @@ test('separate databases share sign-in through state-bound single-use PKCE codes
     const start=await fetch(client.base+'/api/mis-sso/start',{redirect:'manual'});
     assert.match(start.headers.get('set-cookie'),/HttpOnly/);assert.match(start.headers.get('set-cookie'),/Secure/);
     const stateCookie=start.headers.get('set-cookie').split(';')[0];
-    const auth=new URL(start.headers.get('location'));auth.host=new URL(issuer.base).host;auth.protocol='http:';
+    const auth=new URL(start.headers.get('location'));
+    assert.equal(auth.origin,'https://pulse.cmll.in');assert.equal(auth.pathname,'/');
+    assert.equal(auth.searchParams.get('login'),'1');assert.equal(auth.searchParams.get('misSignIn'),'1');
+    // The real Pulse form verifies the password, then resumes this authorize
+    // endpoint. The test continues after that existing authentication step.
+    auth.pathname='/api/mis-sso/authorize';auth.host=new URL(issuer.base).host;auth.protocol='http:';
     const authorize=await fetch(auth,{headers:{Cookie:`${cookieName}=${pulseToken}`},redirect:'manual'});
     assert.equal(authorize.status,303);const callback=new URL(authorize.headers.get('location'));callback.host=new URL(client.base).host;callback.protocol='http:';
     assert.equal((await fetch(callback,{headers:{Cookie:'__Host-mis_signin_state='+random()},redirect:'manual'})).status,400);

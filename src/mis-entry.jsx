@@ -36,7 +36,7 @@ function MisApp(){
     if(session?.token)void fetch('/api/logout',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}}).catch(()=>{});
     clearSession();setSignedOut(true);setSession(null);
   };
-  if(!session?.token)return <MisSharedLogin error={signIn.error} message={signedOut?'You have signed out of MIS.':'Sign in to open your MIS workspace.'}/>;
+  if(!session?.token)return <MisSharedLogin error={signIn.error} message={signedOut?'You have signed out of MIS.':'Sign in with your Pulse username and password.'}/>;
   return <MisWorkspace onSignOut={signOut}/>;
 }
 
