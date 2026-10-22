@@ -38,3 +38,10 @@ No second password is collected. Users & employees > MIS controls access and
 per-device menu permissions. The backend retains the central grant and validates
 current permissions, password version, central session revocation and seven-day
 expiry on requests. Deploy the matching Pulse identity endpoints first.
+
+
+## Local PaddleOCR scan drafts
+
+Start the Windows local MIS backend and UI with `PADDLEOCR_PYTHON` pointing to the installed PaddleOCR Python environment. In online MIS, open VLB scanning and choose **Connect PC scanner**. The connector can capture paper, read the Desktop scan folder, or read selected PDFs and photos. It waits for local extraction, then transfers each original image and its bounded OCR evidence to the online review queue. No cloud AI API key is required for this path.
+
+The server validates the image hash, dimensions and OCR geometry, then maps fields against online masters. It accepts OCR evidence, never a pre-approved client draft. Unknown dates, readings and trip cells remain blank or flagged. Correct and save the draft, compare the entire original scan, approve the card, then explicitly save the approved batch to the log book. The scanner token cannot approve or post records. Direct browser uploads retain the existing server OCR path; use the PC connector to use local PaddleOCR.

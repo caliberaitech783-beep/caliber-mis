@@ -25,7 +25,7 @@ export function registerScannerConnectorAuth(app,{pool,requireSession,requireAdm
   const token=String(req.headers.authorization||'').replace(/^Bearer /,'');if(!token.startsWith('scanner_'))return null;
   prune();const record=connections.get(token);if(!localEnabled||!loopback(req)||!record)throw Object.assign(new Error('Reconnect the PC scanner from online MIS.'),{status:401});
   const path=req.path,read=req.method==='GET';let allowed=read&&path==='/api/local-scanner/status';
-  if(req.method==='POST'&&/^\/api\/local-scanner\/(capture|folder)$/.test(path))allowed=req.body.kind===record.kind;
+  if(req.method==='POST'&&/^\/api\/local-scanner\/(capture|folder|files)$/.test(path))allowed=req.body.kind===record.kind;
   let match;if(read&&(match=path.match(/^\/api\/local-scanner\/jobs\/([a-f0-9-]{36})(?:\/pdf)?$/i)))allowed=Boolean((await pool.query('SELECT id FROM local_scan_jobs WHERE id=$1 AND created_by=$2',[match[1],record.actor])).rows[0]);
   if(read&&(match=path.match(/^\/api\/scan-batches\/([a-f0-9-]{36})$/i)))allowed=Boolean((await pool.query('SELECT b.id FROM mis_scan_batches b WHERE b.id=$1 AND (b.created_by=$2 OR EXISTS(SELECT 1 FROM local_scan_jobs j WHERE j.batch_id=b.id AND j.created_by=$2))',[match[1],record.actor])).rows[0]);
   if(read&&(match=path.match(/^\/api\/scan-cards\/([a-f0-9-]{36})\/image$/i)))allowed=Boolean((await pool.query('SELECT c.id FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1 AND (b.created_by=$2 OR EXISTS(SELECT 1 FROM local_scan_jobs j WHERE j.batch_id=b.id AND j.created_by=$2))',[match[1],record.actor])).rows[0]);
