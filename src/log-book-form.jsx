@@ -1,6 +1,8 @@
+import DoorCombobox from './door-combobox.jsx';
+import {missingAssetMessage} from './log-book-asset-options.mjs';
 import {matchingWorkOrders,machineSummary,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useEffect,useState} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
 
@@ -44,7 +46,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const update=(key,value)=>{setForm(current=>({...current,[key]:value,...(key==='bookDate'?{bookDateSource:'manual'}:{})}));setSuccess('');};
 
- const assets=useMemo(()=>(options?.assets||[]).filter(asset=>asset.kind===kind&&(!form.location||canonicalSiteName(asset.site)===canonicalSiteName(form.location))),[options,kind,form.location]);
+ const assetMessage=missingAssetMessage(options,kind,form.location);
+ const reloadDoors=async()=>{setWorking(true);setError('');try{setOptions(await api('/api/log-books/options'));setSuccess('Equipment Master reloaded. Your entry has been kept.')}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const shifts=(options?.shifts||[]).filter(shift=>!form.location||!shift.site||canonicalSiteName(shift.site)===canonicalSiteName(form.location));
 
@@ -109,7 +112,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 <Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
 <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 <div className="logbook-sheet-spacer"/>
-<Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+<Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
 <Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Latest work order for this location/date':eligibleWorkOrders.length>1?'Latest eligible work order selected; equal-date ties require selection':'No matching Work Order available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
 <Field label="Caliber ID" hint="Employee ID from Employee Master"><EmployeeIdLookup token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess('ERP driver found: '+row.name+' · '+row.caliberId);}}/></Field>
 <Field label="Shift hour"><select required value={form.shiftHours} onChange={e=>update('shiftHours',Number(e.target.value))}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></select></Field>
@@ -128,7 +131,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
        <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 
-       <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:'Select from Equipment Master'}><select required value={form.assetId} onChange={e=>selectAsset(e.target.value)}><option value="">Select {vehicle?'vehicle':'equipment'}</option>{assets.map(row=><option key={row.id} value={row.id}>{row.door||row.registration||row.name} · {row.name}</option>)}</select></Field>
+       <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
 
        <Field label="Wo.Cont." hint={options?.workOrderConnected?'From Work Order Master':'No Work Order master records available'}><select value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{options?.workOrders?.filter(row=>!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location)).map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</select></Field>
 
@@ -145,6 +148,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 </>}
      </div></section>
 
+     <div className="logbook-message" role="status">{assetMessage&&<p>{assetMessage}</p>}<button type="button" disabled={loading||working} onClick={()=>void reloadDoors()}>Reload doors</button>{assetMessage&&<> <a href="?page=master-sync" target="_blank" rel="noopener noreferrer">Open master sync</a></>}</div>
      {!vehicle&&<section className="logbook-section"><div className="logbook-section-title"><h2>Meter readings</h2><span>Closing − opening</span></div><div className="logbook-fields meter-fields">
 
        {vehicle&&<><Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field><Field label="Closing reading (KMR)"><input type="number" min={form.openingKmr||0} step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field><Field label="Total running KMR"><output>{display(kmr)}</output></Field></>}
