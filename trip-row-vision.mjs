@@ -32,12 +32,12 @@ export function resolveTripGrid(grid,shift){
   let type=row.equipmentType.value,no=row.equipmentNo.value;
   if(!row.equipmentType.present&&!row.equipmentNo.present&&last){type=last.type;no=last.no;}
   else if(!row.equipmentType.present&&row.equipmentNo.value===last?.no)type=last.type;
-  const equipmentName=type&&no?type+no:'';last={type,no};
+  const equipmentName=row.equipmentName||(type&&no?type+no:!row.equipmentType.present&&!row.equipmentNo.present?last?.equipmentName||'':'');last={type,no,equipmentName};
   if(!equipmentName)issues.push('Trip '+row.rowNumber+': equipment type/number needs checking.');
   if(hasTime&&(!row.loading.value||!row.unloading.value))issues.push('Trip '+row.rowNumber+': loading/unloading time needs checking.');
   trips.push({rowNumber:row.rowNumber,equipmentName,loadingTime:tripClockForShift(row.loading.value,shift),unloadingTime:tripClockForShift(row.unloading.value,shift),tripCount:1});
  }
- for(const row of grid.summary){const type=row.equipmentType.value,no=row.equipmentNo.value;let name=type&&no?type+no:'';
+ for(const row of grid.summary){const type=row.equipmentType.value,no=row.equipmentNo.value;let name=row.equipmentName||(type&&no?type+no:'');
   if(!type&&no){const names=[...new Set(trips.filter(t=>t.equipmentName.match(/\d+$/)?.[0]===no).map(t=>t.equipmentName))];if(names.length===1)name=names[0];}
   if(!name||!row.count.value)issues.push('Machine summary '+row.rowNumber+': equipment/count needs checking.');
   scanMachineSummary.push({equipmentName:name,tripCount:row.count.value?Number(row.count.value):0});

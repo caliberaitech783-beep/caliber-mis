@@ -8,9 +8,9 @@ test('scanner bridge rejects untrusted origin/window/nonce and uploads trusted p
  const C=new Function(...Object.keys(scope),code+';return CloudScannerPanel;')(...Object.values(scope));const tree=C({kind:'vehicle',token:'synthetic-online-token',onBatch:id=>review=id});effects[0]();
  function find(node){if(!React.isValidElement(node))return;if(node.type==='button')return node;for(const n of React.Children.toArray(node.props.children)){const found=find(n);if(found)return found;}}
  await find(tree).props.onClick();assert.equal(opened,'about:blank');assert.match(popup.location.href,/^http:\/\/127.0.0.1:4174\/scanner-connector.html#/);nonce=new URLSearchParams(new URL(popup.location.href).hash.slice(1)).get('nonce');assert.equal(requests[0].url,'/api/scanner-connector/ticket');requests.length=0;
- const d={type:'scanner-page',nonce,cardId:'11111111-1111-4111-a111-111111111111',base64:'AAAA',filename:'page.png'};
+ const d={type:'scanner-page',nonce,cardId:'11111111-1111-4111-a111-111111111111',base64:'AAAA',filename:'page.png',paddleEvidence:{version:1,provider:'paddleocr',imageHash:'synthetic'}};
  for(const e of [{origin:'https://evil.example',source:popup,data:d},{origin:'http://127.0.0.1:4174',source:{},data:d},{origin:'http://127.0.0.1:4174',source:popup,data:{...d,nonce:'wrong'}}])await listener(e);
- assert.equal(requests.length,0);await listener({origin:'http://127.0.0.1:4174',source:popup,data:d});assert.equal(requests.length,2);assert.equal(requests[1].url,'/api/scan-batches/test-batch/cards');assert.equal(messages[0].v.type,'scanner-ack');assert.doesNotMatch(JSON.stringify(messages),/synthetic-online-token/);
+ assert.equal(requests.length,0);await listener({origin:'http://127.0.0.1:4174',source:popup,data:d});assert.equal(requests.length,2);assert.equal(requests[1].url,'/api/scan-batches/test-batch/cards');assert.deepEqual(requests[1].body.paddleEvidence,d.paddleEvidence);assert.equal(messages[0].v.type,'scanner-ack');assert.doesNotMatch(JSON.stringify(messages),/synthetic-online-token/);
  await listener({origin:'http://127.0.0.1:4174',source:popup,data:{type:'scanner-complete',nonce}});assert.equal(review,'test-batch');assert.ok(requests.every(r=>!r.url.endsWith('/post')));
 });
 test('local scanner database opt-in cannot select a remote or Pulse database',()=>{
