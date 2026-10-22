@@ -11507,7 +11507,7 @@ function App() {
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
-  const sharedSignIn=useMisSharedSignIn(session,{autoStart:false,paused:sharedSignedOut});
+  const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;

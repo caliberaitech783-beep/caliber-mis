@@ -30,22 +30,11 @@ The Pulse login MIS button is reported to target https://pulse-ll.cmll.in in a n
 
 Pulse must deploy the matching shared-sign-in module and set `MIS_SSO_MODE=issuer`. MIS defaults to client mode. For isolated local development only, `MIS_SSO_MODE=off` retains local user authentication. The alternative restricted-role provisioning script remains available if the owner later chooses separate database credentials.
 
-## Separate MIS credentials
+## Shared Pulse credentials
 
-The normal production MIS login uses a separate username/password assigned in
-Pulse > Users & employees > MIS. The form permits independent desktop/mobile
-master and working-menu selections, with Select all. Passwords are hashed only
-in Pulse. The MIS backend forwards sign-in to the fixed HTTPS Pulse issuer,
-retains an opaque grant server-side, and validates it on authenticated requests.
-Seven-day central expiry, disabled accounts, password/username changes and central
-session revocation invalidate the grant. No database connection is shared by this
-login integration.
-
-`mis-application-access.mjs` filters navigation and enforces the same allowlisted
-menus on APIs, including database-resolved card types. Unassigned API routes fail
-closed. Existing Pulse SSO is disabled for production sessions by default;
-`MIS_LEGACY_SSO_ENABLED=true` is an explicit legacy compatibility option. Local
-`MIS_SSO_MODE=off` authentication remains available for isolated development.
-Deploy the matching Pulse identity endpoints before enabling this client release.
-No accounts or credentials are pre-created by deployment; administrators must
-configure each user in Pulse.
+MIS uses the employee's existing Pulse username and password. The MIS tile opens
+Pulse's MIS sign-in form, then completes a state/PKCE-bound one-time-code handoff.
+No second password is collected. Users & employees > MIS controls access and
+per-device menu permissions. The backend retains the central grant and validates
+current permissions, password version, central session revocation and seven-day
+expiry on requests. Deploy the matching Pulse identity endpoints first.
