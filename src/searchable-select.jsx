@@ -9,6 +9,8 @@ const normalizedOption=(option)=>typeof option==='string'
 
 export default function SearchableSelect({
   label,
+  ariaLabel,
+  ariaInvalid,
   name,
   options=[],
   value,
@@ -72,7 +74,7 @@ export default function SearchableSelect({
     {label&&<label htmlFor={id}>{label}{required?' *':''}</label>}
     <div className="searchable-select-control">
       <Search aria-hidden="true" />
-      <input id={id} ref={input} role="combobox" type="search" required={required} autoComplete="off" data-smart-search
+      <input id={id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
         aria-describedby={hint?`${id}-hint`:undefined} aria-busy={loading} disabled={disabled}
@@ -81,7 +83,7 @@ export default function SearchableSelect({
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
       <ChevronDown aria-hidden="true" />
     </div>
-    {name&&<input type="hidden" name={name} value={selectedValue} />}
+    {name&&<input type="hidden" name={name} value={selectedValue} disabled={disabled} />}
     {hint&&<small id={`${id}-hint`} className="searchable-select-hint">{hint}</small>}
     {expanded&&<div className="searchable-select-menu">
       <div className="searchable-select-count" role="status">{matching.length} {matching.length===1?'match':'matches'}{matching.length>visibleOptions.length?` · showing first ${visibleOptions.length}`:''}</div>
