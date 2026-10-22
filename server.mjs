@@ -1,3 +1,4 @@
+import {createIntegrationSecretStore} from './integration-secret-store.mjs';
 import {registerScannerConnectorAuth} from './scanner-connector-auth.mjs';
 import {installMisCredentialClient} from './mis-credential-client.mjs';
 import {installMisLoginHandoff} from './mis-login-handoff.mjs';
@@ -7765,15 +7766,22 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
   }catch(error){next(error)}
 });
 
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,requireSession,requireAdministrator});
-registerErpEmployees(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
+const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
+const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,requireSession,requireAdministrator});
+registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,readHours:logBooks.readHours});
 const localScanner=registerLocalDocumentScanning(app,{pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
-const erpMasters=registerErpMasters(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
-registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
+app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
+ if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
+ if(req.body.pulse)await pulseMasterSync.connect(req.body.pulse);
+ res.set('Cache-Control','no-store').json({saved:true,pulseConnected:pulseMasterSync.status().connected,oracleConfigured:Boolean(await savedOracleConfig())});
+}catch(e){res.status(400).json({error:e.code?'Connection failed ('+e.code+'). Saved working credentials were retained.':'Connection could not be verified. Check the source account and connectivity.'})}});
+const erpMasters=registerErpMasters(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator});
+registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,config:savedOracleConfig,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];

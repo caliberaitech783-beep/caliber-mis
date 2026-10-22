@@ -59,6 +59,18 @@ test('source authentication cannot use a manager or partial master permission',a
  await assert.rejects(service.connect({username:'someone',password:'hidden'}));assert.equal(service.status().connected,false);
  }
 });
+
+test('encrypted saved credentials reconnect once after Pulse session expiry without prompting',async t=>{
+ const {pool}=await fixture(t),saved=new Map();let current='',expired=false,logins=0;
+ const credentialStore={read:async k=>saved.get(k),write:async(k,v)=>saved.set(k,v),remove:async k=>saved.delete(k)};
+ const service=createPulseMasterSync({pool,credentialStore,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/api/login')){current='session-'+(++logins);expired=false;return Response.json({token:current,role:'super',permissions:{adminLevel:'Admin'}})}
+  return expired?Response.json({error:'expired'},{status:401}):Response.json(snapshot());
+ }});await service.start();t.after(()=>service.stop());
+ await service.connect({username:'test-admin',password:'synthetic-secret'});expired=true;await service.sync();
+ assert.equal(logins,2);assert.equal(service.status().connected,true);assert.ok(!JSON.stringify(service.status()).includes('synthetic-secret'));
+ await service.disconnect();assert.equal(saved.has('pulse'),false);
+});
 test('same shift at different sites adopts the correct local default without duplicates',async t=>{
  const {db,pool}=await fixture(t);
  const shifts=[{site:'Site One',shiftName:'Shift A',startTime:'05:00:00'},{site:'Site Two',shiftName:'Shift A',startTime:'06:00:00'}];

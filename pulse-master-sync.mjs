@@ -72,30 +72,31 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
 }
 
-export function createPulseMasterSync({pool,stateFile,fetchImpl=fetch}){
+export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=fetch}){
  let breakdownCache=null;
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  const request=async(route,options={})=>{
    let response;
    try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. Existing local masters are unchanged.');}
    const body=await response.json().catch(()=>null);
-   if(!response.ok){if([401,403].includes(response.status))throw new Error('Pulse access expired or was denied. Reconnect an authorized Pulse administrator.');throw new Error(`Pulse request failed (${response.status}). Existing local masters are unchanged.`);}
+   if(!response.ok){if([401,403].includes(response.status))throw Object.assign(new Error('Pulse access expired or was denied. Reconnect an authorized Pulse administrator.'),{code:'PULSE_AUTH_EXPIRED'});throw new Error(`Pulse request failed (${response.status}). Existing local masters are unchanged.`);}
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
  const status=()=>({source:SOURCE,connected:Boolean(token),username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES});
  const save=async(sourceToken,sourceUsername)=>{
-   if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
+   if(credentialStore){await credentialStore.write('pulse-session',{token:sourceToken,username:sourceUsername});return;}if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
    await mkdir(path.dirname(stateFile),{recursive:true});
    await writeFile(stateFile+'.tmp',JSON.stringify({token:sourceToken,username:sourceUsername}),{mode:0o600});
    await rename(stateFile+'.tmp',stateFile);
  };
+ const reconnect=async()=>{const credentials=await credentialStore?.read('pulse');if(!credentials)throw new Error('Connect Pulse before syncing.');const login=await request('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,portal:'operations'})});if(!login?.token||login.role!=='super'||!['admin','super admin'].includes(String(login.permissions?.adminLevel||'').toLowerCase())||PULSE_MASTER_NAMES.some(name=>!masterAccessAllows(login.permissions,name)&&!masterAccessAllows(login.permissions,name,'mobileMasterAccess')))throw new Error('Saved Pulse account is no longer authorized to sync masters.');await save(login.token,credentials.username);token=login.token;username=credentials.username;};
  const sync=async(master)=>{
    if(master&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
    if(!token)throw new Error('Connect Pulse before syncing.');
    busy=true;lastAttempt=new Date().toISOString();
-   try{counts={...counts,...await applyPulseSnapshot(pool,await fetchMasters(token),master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
+   try{if(!token)await reconnect();let snapshot;try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
  };
  return {
@@ -111,27 +112,27 @@ export function createPulseMasterSync({pool,stateFile,fetchImpl=fetch}){
        if(!login?.token||login.role!=='super'||!['admin','super admin'].includes(String(login.permissions?.adminLevel||'').toLowerCase()))throw new Error('Use a Pulse Admin or Super Admin with access to all four masters. Complete any required password change in Pulse first.');
        if(PULSE_MASTER_NAMES.some(name=>!masterAccessAllows(login.permissions,name)&&!masterAccessAllows(login.permissions,name,'mobileMasterAccess')))throw new Error('This Pulse account cannot read all four requested masters.');
        const snapshot=await fetchMasters(login.token);
-       // Save only the authenticated session; passwords are never persisted.
-       await save(login.token,String(credentials.username));token=login.token;username=String(credentials.username);
+       // Credentials are persisted only through the encrypted integration store.
+       await save(login.token,String(credentials.username));if(credentialStore)await credentialStore.write('pulse',{username:String(credentials.username),password:String(credentials.password)});token=login.token;username=String(credentials.username);
        lastAttempt=new Date().toISOString();counts=await applyPulseSnapshot(pool,snapshot);lastSuccess=new Date().toISOString();error='';
        return {...status(),busy:false};
      }catch(cause){error=cause.message;throw cause;}finally{busy=false;}
    },
-   async disconnect(){if(busy)throw new Error('Wait for the current sync to finish.');if(stateFile)await unlink(stateFile).catch(e=>{if(e.code!=='ENOENT')throw e});token='';username='';error='';return status();},
+   async disconnect(){if(busy)throw new Error('Wait for the current sync to finish.');if(credentialStore){await credentialStore.remove('pulse');await credentialStore.remove('pulse-session');}if(stateFile)await unlink(stateFile).catch(e=>{if(e.code!=='ENOENT')throw e});token='';username='';error='';return status();},
    async start(){
-     if(started||!stateFile)return;started=true;
+     if(started||(!stateFile&&!credentialStore))return;started=true;
      await pool.query('CREATE TABLE IF NOT EXISTS pulse_master_links(master_name TEXT NOT NULL,source_id TEXT NOT NULL,local_id BIGINT NOT NULL REFERENCES master_records(id) ON DELETE CASCADE,PRIMARY KEY(master_name,source_id),UNIQUE(local_id))');
      await pool.query('ALTER TABLE pulse_master_links ALTER COLUMN local_id TYPE BIGINT');
-     try{const saved=JSON.parse(await readFile(stateFile,'utf8'));token=String(saved.token||'');username=String(saved.username||'');}catch(e){if(e.code!=='ENOENT')error='Saved Pulse connection could not be read. Reconnect Pulse.';}
-     if(token)void sync().catch(()=>{});
-     timer=setInterval(()=>{if(token&&!busy)void sync().catch(()=>{});},60000);timer.unref?.();
+     try{const saved=await credentialStore?.read('pulse-session')||(stateFile?JSON.parse(await readFile(stateFile,'utf8')):{});token=String(saved.token||'');username=String(saved.username||'');}catch(e){if(e.code!=='ENOENT')error='Saved Pulse connection could not be read. Reconnect Pulse.';}
+     if(token||await credentialStore?.read('pulse'))void sync().catch(()=>{});
+     timer=setInterval(()=>{if((token||credentialStore)&&!busy)void sync().catch(()=>{});},60000);timer.unref?.();
    },
    stop(){clearInterval(timer);},
  };
 }
 
-export function registerPulseMasterSync(app,{pool,stateFile,requireSession,requireAdministrator}){
- const service=createPulseMasterSync({pool,stateFile});
+export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,requireSession,requireAdministrator}){
+ const service=createPulseMasterSync({pool,stateFile,credentialStore});
  app.get('/api/pulse-master-sync',requireSession,requireAdministrator,(_req,res)=>res.json(service.status()));
  for(const action of ['connect','sync','disconnect'])app.post(`/api/pulse-master-sync/${action}`,requireSession,requireAdministrator,async(req,res)=>{
    try{res.json(await service[action](action==='connect'?req.body:undefined));}catch(e){res.status(400).json({error:e.message});}
