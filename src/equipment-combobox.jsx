@@ -82,7 +82,7 @@ export default function EquipmentCombobox({ records = [], value = "", onSelect, 
           return <li id={`${id}-option-${index}`} key={String(record.id)} role="option" tabIndex={-1}
             aria-selected={String(record.id) === String(value)} data-active={index === active}
             onPointerDown={(event) => { if (event.pointerType === "mouse") event.preventDefault(); }}
-            onClick={() => choose(record)}>
+            onClick={(event) => { event.preventDefault(); event.stopPropagation(); choose(record); }}>
             <strong>{label}</strong>
             <small>{[details.make, details.model, details.chassis && `Chassis ${details.chassis}`].filter(Boolean).join(" · ")}</small>
           </li>;

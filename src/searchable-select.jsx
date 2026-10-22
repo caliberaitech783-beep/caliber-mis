@@ -53,8 +53,9 @@ export default function SearchableSelect({
   const choose=(option)=>{
     if(!option||option.disabled)return;
     commit(option.value,option);
+    // Restore keyboard focus before closing: focus can open the menu again.
+    input.current?.focus();
     setQuery(null);setActive(-1);setOpen(false);
-    requestAnimationFrame(()=>input.current?.focus());
   };
   const keyDown=(event)=>{
     if(event.key==='ArrowDown'||event.key==='ArrowUp'){
@@ -90,7 +91,7 @@ export default function SearchableSelect({
       <ul id={`${id}-list`} ref={list} role="listbox" aria-label={label?`Matching ${label}`:'Matching choices'}>
         {visibleOptions.map((option,index)=><li id={`${id}-option-${index}`} key={`${option.value}:${index}`} role="option" tabIndex={-1}
           aria-selected={option.value===selectedValue} aria-disabled={option.disabled} data-active={index===active}
-          onPointerDown={(event)=>{if(event.pointerType==='mouse')event.preventDefault()}} onClick={()=>choose(option)}>
+          onPointerDown={(event)=>{if(event.pointerType==='mouse')event.preventDefault()}} onClick={(event)=>{event.preventDefault();event.stopPropagation();choose(option)}}>
           <strong>{option.label}</strong>{option.description&&<small>{option.description}</small>}
         </li>)}
       </ul>
