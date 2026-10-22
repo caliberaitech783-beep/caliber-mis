@@ -1,3 +1,4 @@
+import './mis-workspace.css';
 import {useEffect,useState} from 'react';
 let configuration;
 const config=()=>configuration||=(fetch('/api/mis-sso/config',{cache:'no-store'}).then(r=>r.ok?r.json():{mode:'off'}).catch(()=>{configuration=null;return {mode:'off'};}));
@@ -36,6 +37,12 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
   return status;
 }
 
-export function MisSharedLogin({error,message='Opening your Pulse sign-in…'}){
-  return <main className="boot-status"><section className="boot-card"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-sso/start">Sign in with Pulse</a></section></main>;
+export function MisSharedLogin({error,message='Sign in with the separate MIS credentials assigned in Pulse.'}){
+ const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[working,setWorking]=useState(false),[failure,setFailure]=useState('');
+ const submit=async event=>{event.preventDefault();setWorking(true);setFailure('');try{
+  const response=await fetch('/api/mis-credentials/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+  const result=await response.json();if(!response.ok||!result.token)throw Error(result.error||'Could not sign in to MIS.');
+  setPassword('');window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
+ }catch(e){setFailure(e.message);}finally{setWorking(false);}};
+ return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{message}</p><form onSubmit={submit}><label>MIS username<input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} maxLength={120} required/></label><label>MIS password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} maxLength={256} required/></label>{(failure||error)&&<p role="alert">{failure||error}</p>}<button type="submit" disabled={working||!username.trim()||!password}>{working?'Signing in…':'Sign in to MIS'}</button></form><p>Ask your Pulse administrator to enable MIS access or reset your MIS password.</p><a href="https://pulse.cmll.in">Back to Pulse</a></section></main>;
 }

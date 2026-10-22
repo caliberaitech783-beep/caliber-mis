@@ -7,3 +7,5 @@ body{margin:0;background:#fff;color:#19293d;font-family:Inter,system-ui,-apple-s
 .mis-workspace-header button:hover{background:#f5f7f9}
 .mis-workspace-header button:focus-visible{outline:2px solid #315a8f;outline-offset:3px}
 .mis-workspace main{min-height:calc(100dvh - 80px)}
+
+.mis-credential-login{width:min(100%,440px);box-sizing:border-box}.mis-credential-login form{display:grid;gap:16px;text-align:left}.mis-credential-login label{display:grid;gap:6px}.mis-credential-login input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b8a5d2;border-radius:8px;font:inherit}.mis-credential-login [role="alert"]{color:#b42318}.mis-credential-login button{width:100%;padding:12px;background:#522e90;color:white;border:0;border-radius:8px;font:inherit}.mis-credential-login p{font-weight:400}

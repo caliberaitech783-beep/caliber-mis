@@ -1,3 +1,4 @@
+import {misPageAllowed} from '../mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
 import EmployeeMaster from './employee-master.jsx';
@@ -11506,7 +11507,7 @@ function App() {
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
-  const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
+  const sharedSignIn=useMisSharedSignIn(session,{autoStart:false,paused:sharedSignedOut});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
@@ -11604,6 +11605,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks']);
   const canOpenAdminPage = (name) => {
+    if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
     if(['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
     if(name==='Pulse Master Sync'||['Work Order master','Financial Year master','Company master'].includes(name))return isAdministrator;
@@ -11788,7 +11790,7 @@ function App() {
     logout = () => {
       setSharedSignedOut(true);
       const token=session?.token||authToken;
-      if(token)void fetch('/api/logout',{method:'POST',headers:{Authorization:`Bearer ${token}`},keepalive:true}).catch(()=>{});
+      if(token)void fetch('/api/mis-credentials/logout',{method:'POST',headers:{Authorization:`Bearer ${token}`},keepalive:true}).catch(()=>{});
       clearStoredSession();
       setSession(null);
     },
