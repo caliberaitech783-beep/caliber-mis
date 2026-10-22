@@ -2,12 +2,12 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 test('scanner bridge rejects untrusted origin/window/nonce and uploads trusted pages to review only',async()=>{
  const src=readFileSync(new URL('../src/cloud-scanner-panel.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');const {code}=await transformWithOxc(src,'cloud-scanner.jsx',{jsx:{runtime:'classic'}});
  const effects=[],requests=[],messages=[];let listener,nonce,opened,review;
- const popup={closed:false,postMessage:(v,origin)=>messages.push({v,origin})};
- const window={location:{origin:'https://pulse-ll.cmll.in'},addEventListener:(_,f)=>listener=f,removeEventListener:()=>{},open:url=>{opened=url;nonce=new URL(url).hash.slice(1);nonce=new URLSearchParams(nonce).get('nonce');return popup}};
- const scope={React,useState:v=>[v,()=>{}],useEffect:f=>effects.push(f),useRef:v=>({current:v}),window,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>({id:'test-batch'})}}};
+ const popup={closed:false,location:{href:""},close:()=>{},postMessage:(v,origin)=>messages.push({v,origin})};
+ const window={location:{origin:'https://pulse-ll.cmll.in'},addEventListener:(_,f)=>listener=f,removeEventListener:()=>{},open:url=>{opened=url;return popup}};
+ const scope={React,useState:v=>[v,()=>{}],useEffect:f=>effects.push(f),useRef:v=>({current:v}),window,fetch:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>(url==='/api/scanner-connector/ticket'?{ticket:'a'.repeat(64)}:{id:'test-batch'})}}};
  const C=new Function(...Object.keys(scope),code+';return CloudScannerPanel;')(...Object.values(scope));const tree=C({kind:'vehicle',token:'synthetic-online-token',onBatch:id=>review=id});effects[0]();
  function find(node){if(!React.isValidElement(node))return;if(node.type==='button')return node;for(const n of React.Children.toArray(node.props.children)){const found=find(n);if(found)return found;}}
- find(tree).props.onClick();assert.match(opened,/^http:\/\/127.0.0.1:4174\/scanner-connector.html#/);
+ await find(tree).props.onClick();assert.equal(opened,'about:blank');assert.match(popup.location.href,/^http:\/\/127.0.0.1:4174\/scanner-connector.html#/);nonce=new URLSearchParams(new URL(popup.location.href).hash.slice(1)).get('nonce');assert.equal(requests[0].url,'/api/scanner-connector/ticket');requests.length=0;
  const d={type:'scanner-page',nonce,cardId:'11111111-1111-4111-a111-111111111111',base64:'AAAA',filename:'page.png'};
  for(const e of [{origin:'https://evil.example',source:popup,data:d},{origin:'http://127.0.0.1:4174',source:{},data:d},{origin:'http://127.0.0.1:4174',source:popup,data:{...d,nonce:'wrong'}}])await listener(e);
  assert.equal(requests.length,0);await listener({origin:'http://127.0.0.1:4174',source:popup,data:d});assert.equal(requests.length,2);assert.equal(requests[1].url,'/api/scan-batches/test-batch/cards');assert.equal(messages[0].v.type,'scanner-ack');assert.doesNotMatch(JSON.stringify(messages),/synthetic-online-token/);

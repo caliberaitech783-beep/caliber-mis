@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';
+import {randomUUID} from 'node:crypto';import http from 'node:http';import {registerScannerConnectorAuth} from '../scanner-connector-auth.mjs';
+test('online scanner authorization is single use; local token cannot approve, post or access other scans',async t=>{
+ const app=express();app.use(express.json());let base;
+ const session=(req,res,next)=>req.headers.authorization==='Bearer online-session'?(req.session={login:'test'},next()):res.sendStatus(401);
+ const auth=registerScannerConnectorAuth(app,{pool:{query:async()=>({rows:[]})},requireSession:session,requireAdministrator:(req,res,next)=>next(),localEnabled:true,fetchOnline:(url,options)=>{assert.equal(url,'https://pulse-ll.cmll.in/api/scanner-connector/redeem');return fetch(base+'/api/scanner-connector/redeem',options)}});
+ app.use(async(req,res)=>{try{res.json({session:await auth.authenticate(req)})}catch(e){res.status(e.status||500).json({error:e.message})}});
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());base='http://127.0.0.1:'+server.address().port;
+ const call=(path,body,headers={})=>new Promise((resolve,reject)=>{const req=http.request(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...headers}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>resolve({status:res.statusCode,json:async()=>JSON.parse(data)}))});req.on('error',reject);req.end(body?JSON.stringify(body):undefined)});
+ const nonce=randomUUID(),kind='vehicle';assert.equal((await call('/api/scanner-connector/ticket',{nonce,kind})).status,401);
+ const {ticket}=await(await call('/api/scanner-connector/ticket',{nonce,kind},{Authorization:'Bearer online-session'})).json();assert.match(ticket,/^[a-f0-9]{64}$/);
+ const local={Host:'127.0.0.1:4174',Origin:'http://127.0.0.1:4174','X-Caliber-Scanner':'1'};
+ assert.equal((await call('/api/scanner-connector/connect',{ticket,nonce,kind},{...local,Origin:'https://evil.example'})).status,403);
+ const connected=await call('/api/scanner-connector/connect',{ticket,nonce,kind},local);assert.equal(connected.status,200);const {token}=await connected.json();
+ assert.equal((await call('/api/scanner-connector/connect',{ticket,nonce,kind},local)).status,401);
+ const headers={...local,Authorization:'Bearer '+token};assert.equal((await call('/api/local-scanner/status',null,headers)).status,200);
+ for(const path of ['/api/masters','/api/scan-batches/'+randomUUID(),'/api/scan-cards/'+randomUUID()+'/image'])assert.equal((await call(path,null,headers)).status,403);
+ assert.equal((await call('/api/scan-batches/'+randomUUID()+'/post',{},headers)).status,403);
+ assert.equal((await call('/api/local-scanner/capture',{kind:'equipment'},headers)).status,403);
+ assert.equal((await call('/api/local-scanner/status',null,{...headers,Origin:'https://evil.example'})).status,401);
+});

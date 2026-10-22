@@ -1,3 +1,4 @@
+import {registerScannerConnectorAuth} from './scanner-connector-auth.mjs';
 import {installMisCredentialClient} from './mis-credential-client.mjs';
 import {authorizeMisRequest} from './mis-application-access.mjs';
 import {misDatabaseConfig} from './mis-database-config.mjs';
@@ -2489,7 +2490,8 @@ async function touchUserSessionActivity(req,session={}){
 
 async function requireSession(req,res,next){
   try{
-    const session=await readSession(req);
+    const scannerSession=typeof scannerConnectorAuth==='undefined'?null:await scannerConnectorAuth.authenticate(req);
+    const session=scannerSession||await readSession(req);
     if(!session)return res.status(401).json({error:'Your sign-in has expired. Please sign in again.'});
     if(session.permissions?.separateMisCredentials&&!await authorizeMisRequest(session,req,pool))return res.status(403).json({error:'This MIS menu is not assigned to your login.'});
     req.session=session;
@@ -7765,6 +7767,7 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 registerErpEmployees(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync});
+const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,readHours:logBooks.readHours});
 const localScanner=registerLocalDocumentScanning(app,{pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 const erpMasters=registerErpMasters(app,{pool,config:process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null,requireSession,requireAdministrator});
