@@ -20,7 +20,7 @@ async function runHook(search){
 test('opening MIS with an existing Pulse session automatically starts the shared Pulse session handoff',async()=>{
   const result=await runHook('');
   assert.deepEqual(result.requests,['/api/mis-sso/config']);
-  assert.deepEqual(result.redirects,['/api/mis-sso/start']);assert.deepEqual(result.events,[]);
+  assert.deepEqual(result.redirects,['/api/mis-credentials/start']);assert.deepEqual(result.events,[]);
 });
 
 test('only a completed shared-sign-in callback exchanges the server-held handoff',async()=>{

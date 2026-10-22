@@ -22,13 +22,19 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
         }
       }
       if(mode==='client'&&!session?.token){
-        if(query.get('misSsoReady')==='1'){
+        if(query.get('misCredentialReady')==='1'){
+          const response=await fetch('/api/mis-credentials/session',{cache:'no-store'});
+          const result=await response.json();if(stopped)return;
+          window.history.replaceState(null,'','/');
+          if(!response.ok||!result.token)throw Error('Pulse could not complete MIS sign-in. Please start again.');
+          window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
+        }else if(query.get('misSsoReady')==='1'){
           const response=await fetch('/api/mis-sso/session',{cache:'no-store'});
           const result=await response.json();if(stopped)return;
           window.history.replaceState(null,'','/');
           if(!response.ok||!result.token)throw Error('Pulse sign-in could not be completed. Please retry.');
           window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
-        }else if(autoStart)window.location.replace('/api/mis-sso/start');
+        }else if(autoStart)window.location.replace('/api/mis-credentials/start');
       }
     };
     void start().catch(()=>{if(!stopped)setStatus(current=>({...current,error:'Shared sign-in is temporarily unavailable. Please retry.'}));});
@@ -37,12 +43,6 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
   return status;
 }
 
-export function MisSharedLogin({error,message='Sign in with the separate MIS credentials assigned in Pulse.'}){
- const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[working,setWorking]=useState(false),[failure,setFailure]=useState('');
- const submit=async event=>{event.preventDefault();setWorking(true);setFailure('');try{
-  const response=await fetch('/api/mis-credentials/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-  const result=await response.json();if(!response.ok||!result.token)throw Error(result.error||'Could not sign in to MIS.');
-  setPassword('');window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
- }catch(e){setFailure(e.message);}finally{setWorking(false);}};
- return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{message}</p><form onSubmit={submit}><label>MIS username<input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} maxLength={120} required/></label><label>MIS password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} maxLength={256} required/></label>{(failure||error)&&<p role="alert">{failure||error}</p>}<button type="submit" disabled={working||!username.trim()||!password}>{working?'Signing in…':'Sign in to MIS'}</button></form><p>Ask your Pulse administrator to enable MIS access or reset your MIS password.</p><a href="https://pulse.cmll.in">Back to Pulse</a></section></main>;
+export function MisSharedLogin({error,message='Continue to Pulse, select MIS, and enter your existing Pulse username and password there.'}){
+ return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-credentials/start">Sign in through Pulse</a><p>Your session will open automatically in MIS after sign-in.</p></section></main>;
 }

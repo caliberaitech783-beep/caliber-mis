@@ -1,4 +1,5 @@
 import {installMisCredentialClient} from './mis-credential-client.mjs';
+import {installMisLoginHandoff} from './mis-login-handoff.mjs';
 import {authorizeMisRequest} from './mis-application-access.mjs';
 import {misDatabaseConfig} from './mis-database-config.mjs';
 import {registerMisDomainRedirect} from './mis-domain.mjs';
@@ -1448,6 +1449,7 @@ app.use((req,res,next)=>{
 // bodies are also logged.
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
+const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
 const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
 
 app.get('/api/app-version',(_req,res)=>{
@@ -8521,6 +8523,7 @@ async function initializeDatabase(){
     await migrate();
     await misSharedSignIn.initialize();
     await misCredentialClient.initialize();
+    await misLoginHandoff.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
