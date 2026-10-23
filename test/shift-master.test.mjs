@@ -4,12 +4,14 @@ import test from 'node:test';
 import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftDurationMinutes,shiftIdentity} from '../shift-master.mjs';
 import {displaySiteName,normalizeOperationalSiteFields} from '../region-scope.mjs';
 
-test('supplied Shift Master workbook rows are represented once with valid eight-hour shifts',()=>{
-  assert.equal(SHIFT_MASTER_DEFAULTS.length,18);
+test('supplied Shift Master workbook rows are represented once with the supplied shift times',()=>{
+  assert.equal(SHIFT_MASTER_DEFAULTS.length,23);
   const normalized=SHIFT_MASTER_DEFAULTS.map(normalizeShiftRecord);
-  assert.equal(new Set(normalized.map(shiftIdentity)).size,18);
+  assert.equal(new Set(normalized.map(shiftIdentity)).size,23);
   assert.ok(normalized.every((record)=>record.status==='Active'));
-  assert.ok(normalized.every((record)=>shiftDurationMinutes(record)===480));
+  assert.ok(normalized.filter(record=>record.shiftCode!=='DAY').every((record)=>shiftDurationMinutes(record)===480));
+  const east=normalized.filter(record=>record.site==='Dudhichua East OC');
+  assert.deepEqual(east.map(record=>[record.shiftCode,record.startTime,record.endTime]),[['A','05:00:00','13:00:00'],['B','13:00:00','21:00:00'],['C','21:00:00','05:00:00'],['DAY','08:00:00','20:00:00'],['NIGHT','21:00:00','05:00:00']]);
   assert.equal(normalized.find((record)=>record.site==='Jayant OC'&&record.shiftCode==='A').startTime,'04:00:00');
   assert.equal(normalized.find((record)=>record.site==='Sasti OC'&&record.shiftCode==='C').endTime,'05:00:00');
 });

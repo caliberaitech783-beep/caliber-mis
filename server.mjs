@@ -148,7 +148,7 @@ import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArc
 import {serverErrorHandler} from './server-error-response.mjs';
 import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './vehicle-transfer-workflow.mjs';
 import {legacyEtcRepairPlan,legacyEtcRepairReason} from './legacy-etc-repair.mjs';
-import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shift-master.mjs';
+import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shift-master.mjs';
 import {requestShiftLabel} from './request-shift.mjs';
 import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorrection,canDeletePendingCorrection,normalizeRequestCorrectionChanges,requestCorrectionChangedFields,requestCorrectionFields,requestCorrectionReviewRemarkError,requestCorrectionSnapshot,requestCorrectionTimelineFields,requestCorrectionType,requestCorrectionTypesForManagerRoles,requestCorrectionValidationError} from './request-correction-policy.mjs';
 import {jsonEntityTag,requestEtagMatches} from './response-etag.mjs';
@@ -1207,6 +1207,16 @@ async function migrate(){
       await client.query(`INSERT INTO app_metadata (key,value,updated_at)
         VALUES ('shift_master_defaults_seeded_v1','true',NOW())
         ON CONFLICT (key) DO NOTHING`);
+    }
+    const {rows:eastShiftSeed}=await client.query("SELECT value FROM app_metadata WHERE key='dudhichua_east_shifts_seeded_v1' FOR UPDATE");
+    if(!eastShiftSeed.length){
+      const {rows:existingShifts}=await client.query("SELECT record_data FROM master_records WHERE master_name='Shift Master'");
+      const identities=new Set(existingShifts.map(row=>shiftIdentity(normalizeOperationalSiteFields(row.record_data))));
+      for(const defaults of DUDHICHUA_EAST_SHIFTS){
+        const record=normalizeShiftRecord(defaults);
+        if(!identities.has(shiftIdentity(record)))await client.query("INSERT INTO master_records (master_name,record_data) VALUES ('Shift Master',$1::jsonb)",[JSON.stringify(record)]);
+      }
+      await client.query("INSERT INTO app_metadata (key,value,updated_at) VALUES ('dudhichua_east_shifts_seeded_v1','true',NOW()) ON CONFLICT (key) DO NOTHING");
     }
     // Privileged accounts must be provisioned explicitly by an authorized
     // administrator, never recreated with a known password during startup.

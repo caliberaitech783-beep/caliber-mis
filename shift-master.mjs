@@ -3,6 +3,14 @@ const TWELVE_HOUR_TIME_PATTERN=/^(0?[1-9]|1[0-2]):(\d{2})(?::(\d{2}))?\s*([AP]M)
 const ISO_DATE_PATTERN=/^(\d{4})-(\d{2})-(\d{2})$/;
 const DISPLAY_DATE_PATTERN=/^(\d{2})-(\d{2})-(\d{4})$/;
 
+export const DUDHICHUA_EAST_SHIFTS=[
+  ['Shift A','05:00:00','13:00:00'],
+  ['Shift B','13:00:00','21:00:00'],
+  ['Shift C','21:00:00','05:00:00'],
+  ['Shift Day','08:00:00','20:00:00'],
+  ['Shift Night','21:00:00','05:00:00'],
+].map(([shiftName,startTime,endTime])=>({site:'Dudhichua East OC',shiftName,startTime,endTime}));
+
 export const SHIFT_MASTER_DEFAULTS=[
   ['Dhoptala OC (2nd)','Shift A','05:00:00','13:00:00'],
   ['Dhoptala OC (2nd)','Shift B','13:00:00','21:00:00'],
@@ -22,7 +30,7 @@ export const SHIFT_MASTER_DEFAULTS=[
   ['Sasti OC','Shift A','05:00:00','13:00:00'],
   ['Sasti OC','Shift B','13:00:00','21:00:00'],
   ['Sasti OC','Shift C','21:00:00','05:00:00'],
-].map(([site,shiftName,startTime,endTime])=>({site,shiftName,startTime,endTime}));
+].map(([site,shiftName,startTime,endTime])=>({site,shiftName,startTime,endTime})).concat(DUDHICHUA_EAST_SHIFTS);
 
 function normalizeTime(value,label){
   const text=String(value||'').trim();
