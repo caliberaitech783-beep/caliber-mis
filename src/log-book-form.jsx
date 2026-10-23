@@ -39,6 +39,17 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
  const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
 
+ useEffect(()=>{
+   const saveShortcut=event=>{
+     if(!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=='s'||event.altKey)return;
+     event.preventDefault();
+     if(event.repeat||event.isComposing||!editing||working||loading||showDelete)return;
+     document.getElementById('logbook-entry-form')?.requestSubmit();
+   };
+   window.addEventListener('keydown',saveShortcut);
+   return()=>window.removeEventListener('keydown',saveShortcut);
+ },[editing,working,loading,showDelete]);
+
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Could not reach the log book service.');return body;};
 
  const loadRegister=async(before)=>{const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
