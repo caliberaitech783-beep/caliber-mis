@@ -7,7 +7,7 @@ import {normalizeOperationalSiteFields,normalizeUserSiteFields} from '../region-
 import {normalizeUserAccessLabels} from '../mobile-access.mjs';
 import {repairLegacySessionDefaults} from '../auth-session-schema.mjs';
 import {initializeLoginHistory} from '../user-login-history.mjs';
-import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord} from '../shift-master.mjs';
+import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from '../shift-master.mjs';
 import {archiveSchemaSql} from '../request-archive.mjs';
 import {applySchemaMigration} from '../schema-migration.mjs';
 import {EMPLOYEE_TRANSFER_SCHEMA} from '../employee-transfer.mjs';
@@ -44,7 +44,7 @@ async function runStartup({users=[],initialized=true}={}){
   const context={
     pool:{query:client.query,connect:async()=>client},currentAppVersion:'current-version',repairTypeDefaults:['Breakdown'],BREAKDOWN_SUB_CATEGORY_DEFAULTS:['Tyre puncture'],DELAYED_REASON_DEFAULTS:['Awaiting parts'],DELAYED_REASON_DEFAULT_REPAIR_TYPES:{'Awaiting parts':'All'},
     normalizeOperationalSiteFields,normalizeUserSiteFields,normalizeUserAccessLabels,repairLegacySessionDefaults,initializeLoginHistory,
-    SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,archiveSchemaSql,applySchemaMigration,EMPLOYEE_TRANSFER_SCHEMA,CDIR_DELETION_SCHEMA,
+    DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity,archiveSchemaSql,applySchemaMigration,EMPLOYEE_TRANSFER_SCHEMA,CDIR_DELETION_SCHEMA,
     hashPassword:()=>assert.fail('startup must not construct default account credentials'),
   };
   await runInNewContext(`${migration}\nmigrate();`,context);
