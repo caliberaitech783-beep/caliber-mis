@@ -1,3 +1,11 @@
+export function focusNextLogBookField(input, form) {
+  const fields = [...form.querySelectorAll('input, select, textarea')].filter(field =>
+    !field.matches(':disabled') && !field.readOnly && field.type !== 'hidden' && field.tabIndex >= 0 && field.getClientRects().length
+  );
+  const index = fields.indexOf(input);
+  if (index >= 0) fields.slice(index + 1).find(field => !field.closest('[data-enter-skip="true"]'))?.focus();
+}
+
 export function advanceLogBookField(event) {
   if (event.key !== 'Enter' || event.isComposing || event.nativeEvent?.isComposing || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
   const input = event.target;
@@ -18,10 +26,6 @@ export function advanceLogBookField(event) {
   const form = event.currentTarget;
   requestAnimationFrame(() => {
     // Let dropdowns commit an active selection, then advance even if left empty.
-    const fields = [...form.querySelectorAll('input, select, textarea')].filter(field =>
-      !field.matches(':disabled') && !field.readOnly && field.type !== 'hidden' && field.tabIndex >= 0 && field.getClientRects().length
-    );
-    const index = fields.indexOf(input);
-    if (index >= 0) fields.slice(index + 1).find(field => !field.closest('[data-enter-skip="true"]'))?.focus();
+    focusNextLogBookField(input, form);
   });
 }
