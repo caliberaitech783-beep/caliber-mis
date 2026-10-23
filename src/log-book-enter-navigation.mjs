@@ -5,6 +5,14 @@ export function advanceLogBookField(event) {
   const combobox = input.getAttribute('role') === 'combobox';
   // Employee lookup and the final trip cell have their own Enter actions.
   if (event.defaultPrevented && !combobox) return;
+  if (input.tagName === 'SELECT' && input.name === 'shiftHours') {
+    if (typeof input.showPicker === 'function') {
+      event.preventDefault();
+      if (!event.repeat) input.showPicker();
+    }
+    // Keep native keyboard selection when showPicker is unavailable.
+    return;
+  }
   event.preventDefault();
   if (event.repeat) return;
   const form = event.currentTarget;
