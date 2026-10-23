@@ -15,6 +15,6 @@ export function advanceLogBookField(event) {
       !field.matches(':disabled') && !field.readOnly && field.type !== 'hidden' && field.tabIndex >= 0 && field.getClientRects().length
     );
     const index = fields.indexOf(input);
-    if (index >= 0) fields[index + 1]?.focus();
+    if (index >= 0) fields.slice(index + 1).find(field => !field.closest('[data-enter-skip="true"]'))?.focus();
   });
 }
