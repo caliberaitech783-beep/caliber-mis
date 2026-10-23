@@ -79,7 +79,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const selectAsset=id=>{const row=options?.assets.find(asset=>asset.id===id);setForm(current=>({...current,assetId:id,...(!current.location&&row?.site?{location:row.site,shiftId:''}:{})}));setSuccess('');};
 
- const addTrip=()=>{const index=form.trips.length;update('trips',[...form.trips,blankTrip()]);requestAnimationFrame(()=>document.getElementById('logbook-entry-form')?.querySelector('[data-trip-equipment="'+index+'"]')?.focus());};
+ const addTrip=()=>{const index=form.trips.length;update('trips',[...form.trips,...Array.from({length:Math.min(5,300-index)},()=>blankTrip())]);requestAnimationFrame(()=>document.getElementById('logbook-entry-form')?.querySelector('[data-trip-equipment="'+index+'"]')?.focus());};
  const continueTrip=(event,index)=>{if(event.key!=='Enter')return;event.preventDefault();if(event.repeat)return;const next=nextTripEntry(form.trips,index,form.timeMode);if(next.error){setError(next.error);const inputs=[...event.currentTarget.closest('tr').querySelectorAll('input')];inputs.find(input=>!input.checkValidity())?.reportValidity();return;}const root=event.currentTarget.closest('.logbook-table-wrap');update('trips',next.trips);requestAnimationFrame(()=>root.querySelector('[data-trip-equipment="'+next.nextIndex+'"]')?.focus());};
  const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
 
