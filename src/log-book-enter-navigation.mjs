@@ -9,8 +9,7 @@ export function advanceLogBookField(event) {
   if (event.repeat) return;
   const form = event.currentTarget;
   requestAnimationFrame(() => {
-    // Let a searchable dropdown commit its selection before moving on.
-    if (combobox && input.getAttribute('aria-expanded') === 'true') return;
+    // Let dropdowns commit an active selection, then advance even if left empty.
     const fields = [...form.querySelectorAll('input, select, textarea')].filter(field =>
       !field.matches(':disabled') && !field.readOnly && field.type !== 'hidden' && field.tabIndex >= 0 && field.getClientRects().length
     );
