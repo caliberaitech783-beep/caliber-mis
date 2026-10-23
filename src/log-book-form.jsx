@@ -4,6 +4,7 @@ import DoorCombobox from './door-combobox.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
 import {matchingWorkOrders,machineSummary,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
+import ManualBookDate from './manual-book-date.jsx';
 import {advanceLogBookField,focusNextLogBookField} from './log-book-enter-navigation.mjs';
 import React,{useEffect,useState} from 'react';
 
@@ -125,7 +126,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
 {vehicle?<><Field label="Location"><SmartSelect disabled={!editing||working} required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect></Field>
 <Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
-<Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
+<Field label="Book date"><ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/></Field>
 <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 <div className="logbook-sheet-spacer"/>
 <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
@@ -143,7 +144,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
        <Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
 
-       <Field label="Book date"><input type="date" required value={form.bookDate} onChange={e=>update('bookDate',e.target.value)}/></Field>
+       <Field label="Book date"><ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/></Field>
 
        <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 
