@@ -4,6 +4,7 @@ import DoorCombobox from './door-combobox.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
 import {matchingWorkOrders,machineSummary,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
+import {advanceLogBookField} from './log-book-enter-navigation.mjs';
 import React,{useEffect,useState} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
@@ -105,7 +106,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
    {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
 
-   <form id="logbook-entry-form" className="logbook-form" onSubmit={save}>
+   <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
 
     <fieldset className="logbook-edit-fields" disabled={!editing||working}>
 
