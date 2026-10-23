@@ -21,6 +21,8 @@ const SITE_ALIASES = new Map([
   ["jayant ob ii", "jayant ob"],
   ["dudhichua west", "dudhichua ob"],
   ["dudhichua east", "dudhichua east ob"],
+  ["dudhicua east", "dudhichua east ob"],
+  ["dudhicua east ob", "dudhichua east ob"],
 ]);
 
 export function canonicalSiteName(value = "") {
