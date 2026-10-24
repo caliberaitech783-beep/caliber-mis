@@ -23,10 +23,35 @@ test('ELB excludes vehicle fields and rejects vehicle trips; malformed output ne
  const bad=response('equipment');bad.trips={p:true,r:[[1,'V19','','']]};assert.throws(()=>parseCardResponse(JSON.stringify(bad),'equipment'));
  assert.throws(()=>parseCardResponse('{','vehicle'),/invalid JSON/);
 });
-test('rate-limited requests retry at most four times; bounded queue rejects excess scans and never falls back',async t=>{
+test('rate-limited requests retry at most twice; bounded queue rejects excess scans and never falls back',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-single-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
  const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',maxPending:1,minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return {ok:false,status:429,headers:{get:()=> '1'}}}});
- const first=reader.recognize(Buffer.from('one'));await assert.rejects(reader.recognize(Buffer.from('two')),/queue full/);await assert.rejects(first,/HTTP 429/);assert.equal(calls,4);
+ const first=reader.recognize(Buffer.from('one'));await assert.rejects(reader.recognize(Buffer.from('two')),/queue full/);await assert.rejects(first,/HTTP 429/);assert.equal(calls,2);
 });
 
 test('VLB scanned through ELB cannot silently discard its KMR and trips',()=>{assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'VLB',fields:null,trips:{p:false,r:[]}}),'equipment'),/VLB card scanned on the ELB page/);assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'unknown'}),'vehicle'),/type could not be confirmed/);});
+
+test('two distinct cards progress independently; duplicate captures share one request and queued work remains bounded',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-parallel-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const releases=[];let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,maxPending:3,sleep:async()=>{},fetchImpl:async()=>{calls++;return new Promise(resolve=>releases.push(()=>resolve(ok(JSON.stringify(response())))));}});
+ const one=reader.recognize(Buffer.from('slow')),same=reader.recognize(Buffer.from('slow')),two=reader.recognize(Buffer.from('fast')),three=reader.recognize(Buffer.from('next'));
+ await assert.rejects(reader.recognize(Buffer.from('overflow')),/queue full/);
+ while(releases.length<2)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
+ releases[1]();await two;
+ while(releases.length<3)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,3);releases[2]();await three;
+ releases[0]();const [a,b]=await Promise.all([one,same]);assert.deepEqual(a,b);assert.notEqual(a,b);
+});
+
+test('retry progress records timeout or HTTP reason without leaking the server key',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-progress-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const progress=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'never-display-secret',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{if(++calls===1)return {ok:false,status:503,headers:{get:()=>null}};return ok(JSON.stringify(response()));}});
+ const result=await reader.recognize(Buffer.from('retry'),{onProgress:(stage,details)=>progress.push({stage,...details})});
+ assert.equal(result.extraction.attempts,2);assert.ok(result.extraction.totalElapsedMs>=result.extraction.elapsedMs);assert.ok(progress.some(p=>p.stage==='retrying'&&p.reason==='HTTP 503'));assert.equal(JSON.stringify(progress).includes('never-display-secret'),false);
+});
+
+test('concurrent workers still share the request-start rate gate',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-rate-gate-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const starts=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:50,fetchImpl:async()=>{starts.push(Date.now());return ok(JSON.stringify(response()));}});
+ await Promise.all(['one','two','three'].map(value=>reader.recognize(Buffer.from(value))));
+ assert.equal(starts.length,3);for(let i=1;i<starts.length;i++)assert.ok(starts[i]-starts[i-1]>=45,'parallel request bypassed shared rate gate');
+});
