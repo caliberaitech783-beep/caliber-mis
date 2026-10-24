@@ -1,5 +1,16 @@
 import {randomBytes} from 'node:crypto';
 const ONLINE='https://pulse-ll.cmll.in',LOCAL='http://127.0.0.1:4174';
+export async function redeemScannerTicket(fetchOnline,payload,{sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+ for(let attempt=0;attempt<2;attempt++){
+  try{return await fetchOnline(ONLINE+'/api/scanner-connector/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});}
+  catch(error){
+   // A connect timeout occurs before the one-use ticket reaches the server.
+   // Never replay a request whose authorization may already have been consumed.
+   if(attempt===0&&error?.cause?.code==='UND_ERR_CONNECT_TIMEOUT'){await sleep(1000);continue;}
+   throw error;
+  }
+ }
+}
 export function registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled=false,fetchOnline=fetch}){
  const tickets=new Map(),connections=new Map();
  const prune=()=>{for(const map of [tickets,connections])for(const [key,value]of map)if(value.expires<Date.now())map.delete(key)};
@@ -17,7 +28,7 @@ export function registerScannerConnectorAuth(app,{pool,requireSession,requireAdm
  app.post('/api/scanner-connector/connect',async(req,res,next)=>{try{
   if(!localEnabled||!loopback(req))return res.status(403).json({error:'Scanner connection is available only on this PC.'});
   const {ticket,nonce,kind}=req.body;if(!/^[a-f0-9]{64}$/.test(ticket||'')||!/^[a-f0-9-]{36}$/i.test(nonce||'')||!['vehicle','equipment'].includes(kind))return res.status(400).json({error:'Reconnect using Connect PC scanner in online MIS.'});
-  const response=await fetchOnline(ONLINE+'/api/scanner-connector/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket,nonce,kind}),signal:AbortSignal.timeout(15000)}),proof=await response.json();
+  let response,proof;try{response=await redeemScannerTicket(fetchOnline,{ticket,nonce,kind});if(response.status>=500){await response.body?.cancel?.();return res.status(503).json({error:'Pulse-II is temporarily unavailable. Close this window and reconnect from online MIS.'});}proof=await response.json();}catch{return res.status(503).json({error:'This PC could not reach Pulse-II. Check the internet connection, then close this window and click Connect PC scanner again. Your saved scans remain on this PC.'});}
   if(!response.ok||!proof.authorized||proof.nonce!==nonce||proof.kind!==kind)return res.status(401).json({error:'Online scanner authorization expired. Reconnect from MIS.'});
   prune();const token='scanner_'+randomBytes(32).toString('hex');connections.set(token,{kind,actor:'pc-scanner:'+randomBytes(16).toString('hex'),expires:Date.now()+2*60*60*1000});res.set('Cache-Control','no-store').json({token});
  }catch(e){next(e)}});

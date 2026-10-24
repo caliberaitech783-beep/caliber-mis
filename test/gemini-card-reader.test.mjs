@@ -55,3 +55,5 @@ test('concurrent workers still share the request-start rate gate',async t=>{
  await Promise.all(['one','two','three'].map(value=>reader.recognize(Buffer.from(value))));
  assert.equal(starts.length,3);for(let i=1;i<starts.length;i++)assert.ok(starts[i]-starts[i-1]>=45,'parallel request bypassed shared rate gate');
 });
+
+test('one-request prompt reads inverted headers while keeping literal digits and times',()=>{assert.ok(cardPrompt('vehicle').includes('upside down'));assert.ok(cardPrompt('equipment').includes('header at the bottom'));});
