@@ -33,8 +33,11 @@ export function parseCardResponse(raw,kind){
  validateA(fields,kind);const trips=normalizeTripNumbers(parsed.trips);validateB(trips,kind);
  return {fields,trips};
 }
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareViews=cardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=4000,maxPending=8}={}){
- let chain=Promise.resolve(),pending=0,last=0;
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareViews=cardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=4000,maxPending=8,concurrency=2,requestTimeoutMs=90000}={}){
+ let pending=0,active=0,last=0,gate=Promise.resolve();const queue=[],inFlight=new Map();
+ if(!Number.isInteger(concurrency)||concurrency<1||concurrency>2)throw Error('Gemini concurrency must be 1 or 2.');
+ // Share a start gate across both workers, including retries: at most 15 starts/minute.
+ async function startRequest(){const turn=gate.then(async()=>{await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();});gate=turn.catch(()=>{});await turn;}
  async function run(image,kind,onProgress){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v4.json`);
@@ -42,13 +45,15 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(!record){
    const key=await getKey();await onProgress?.('extracting');
    const views=await prepareViews(image),parts=[{text:cardPrompt(kind)},{inlineData:{mimeType:'image/png',data:image.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:'image/png',data:v.image.toString('base64')}}])];
-   for(let attempt=0;attempt<4;attempt++){
-    await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();const started=Date.now();let res;
-    try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(90000),body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}})});}
-    catch{if(attempt<3){await sleep(2000*2**attempt);continue;}throw Error('Gemini connection timed out or failed. The scan is retained; retry extraction.');}
-    if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<3){const seconds=Number(res.headers?.get('retry-after'));await sleep(Math.min(60000,Math.max(2000*2**attempt,Number.isFinite(seconds)?seconds*1000:0)));continue;}throw Error(`Gemini extraction failed (HTTP ${res.status}). Check API quota/billing for 429, or key/access for 401/403. No alternate provider was used.`);}
+   const totalStarted=Date.now();
+   for(let attempt=0;attempt<2;attempt++){
+    await startRequest();const started=Date.now();let res;
+    await onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date(started).toISOString()});
+    try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}})});}
+    catch{if(attempt<1){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:2000});await sleep(2000);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
+    if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<1){const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});await res.body?.cancel?.();await sleep(delayMs);continue;}await res.body?.cancel?.();throw Error(`Gemini extraction failed (HTTP ${res.status}). Check API quota/billing for 429, or key/access for 401/403. No alternate provider was used.`);}
     let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}
-    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
+    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:attempt+1,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     await fs.mkdir(cacheDir,{recursive:true});await fs.writeFile(file+'.tmp',JSON.stringify(record),{mode:0o600});await fs.rename(file+'.tmp',file);
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     break;
@@ -62,7 +67,8 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
   const shift=String(rest.cardShift||'').trim().match(/^(III|II|I|Day|Night)(?:\s*\([ABC]\))?$/i);
   if(shift)rest.cardShift=/^(day|night)$/i.test(shift[1])?shift[1][0].toUpperCase()+shift[1].slice(1).toLowerCase():shift[1].toUpperCase();
-  return {...rest,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:'User-confirmed S/NN separator'},usage:record.usage,elapsedMs:record.elapsedMs,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
+  return {...rest,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:'User-confirmed S/NN separator'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
- return {recognize(image,{kind='vehicle',onProgress}={}){if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=chain.then(()=>run(image,kind,onProgress));chain=task.catch(()=>{});return task.finally(()=>pending--);}};
+ function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
+ return {recognize(image,{kind='vehicle',onProgress}={}){const key=kind+':'+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
 }
