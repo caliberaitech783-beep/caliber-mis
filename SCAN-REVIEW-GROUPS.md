@@ -1,0 +1,13 @@
+# Batch card review
+
+The left status buttons show counts per card against the entire batch. Orange means data complete, brown means specific validation issues, human confirmation, or manual entries remain, and red means failed/rejected/blank cards. Queued and reading cards are pending, not blank. The middle list is filtered by the chosen category; the right panel contains that selected card's values and original scan.
+
+Orange is readiness, not verified transcription accuracy. Every card must still be explicitly approved. Save all appears only when all cards are complete and approved, with no unsaved corrections. The server locks the batch and validates exact membership, approval revisions, master data, duplicate checks and each card before committing the entire save. Partial saves are rejected. Draft autosave and browser recovery are retained. Online drafts use the existing MIS server storage; these are not exclusively local drafts.
+
+After Save all, Pulse-II archives original PNGs and saved-values.json (full saved values, original extraction, human reviewer and log book references) in its persistent App Service /home volume:
+
+/home/data/caliber-mis/scanned-cards/Trip Card/YYYY-MM-DD/location/batch-id
+
+ELB uses Job Card instead. Date is each card's book date; a batch spanning locations/dates is split into folders. Site folder names are sanitized and suffixed with a stable short hash to avoid collisions. No Gemini key is included. This is an Azure App Service file archive, not a separate Blob Storage account.
+
+An archive failure does not undo already committed log books or report them as unsaved. The UI provides Retry folder archive, and retries reuse the same saved records without duplicating log books. Local test mode cannot enable Azure archiving. Human checks are not automatically marked complete.

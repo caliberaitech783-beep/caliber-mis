@@ -12,6 +12,7 @@ import {registerMasterSync} from './master-sync.mjs';
 import {registerEmployeeMaster} from './employee-master.mjs';
 import {registerErpEmployees} from './erp-employee-source.mjs';
 import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
+import {createLocalCardArchive,scanArchiveConfig} from './scan-card-archive.mjs';
 import {registerBulkCardScanning} from './bulk-card-scanning.mjs';
 import {registerErpMasters} from './erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './telegram-bdms-period.mjs';
@@ -7785,7 +7786,8 @@ registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAd
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
-const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours});
+const scanArchiveSettings=scanArchiveConfig();
+const bulkScanning=registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
