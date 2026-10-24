@@ -3,12 +3,12 @@
 @media(max-width:650px){.scan-workspace{grid-template-columns:1fr}.scan-card-list{grid-row:auto;position:static;max-height:220px;display:flex;gap:8px;overflow:auto}.scan-card-list button{min-width:140px;margin:0}.scan-draft,.scan-source{grid-column:1}.scan-trip-row{grid-template-columns:1fr 1fr}.scan-fields{grid-template-columns:1fr}.scan-hero h1{font-size:20px}}
 .scan-workflow-tabs{display:flex;gap:6px;margin:15px 0}.scan-workflow-tabs button{padding:11px 22px}.scan-workflow-tabs button.selected{background:var(--scan-primary);color:#fff;border-color:var(--scan-primary)}.scanner-options{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scanner-options>section,.scanner-job,.scan-upload-panel{background:var(--panel,#fff);border:1px solid #d9cfe5;border-radius:10px;padding:18px;margin-bottom:12px}.scanner-options h2{display:flex;align-items:center;gap:8px;font-size:16px;color:var(--scan-primary)}.scanner-options p,.scanner-options li,.scanner-job p,.scan-upload-panel p{font-size:12px;line-height:1.7}.scanner-options label{font-size:12px}.scanner-options select{margin:8px 0}.scanner-options button,.scanner-job button{margin:5px 8px 5px 0}.scanner-options li small{opacity:.7}.scan-source>a,.scan-source>button{margin-right:8px}@media(max-width:850px){.scanner-options{grid-template-columns:1fr}}
 
-/* Labels remain black; only invalid controls draw attention. */
+/* Labels remain black; brown marks incorrect values and red marks missing values. */
 .scan-page label,.scan-page .scan-fields label:nth-child(even),.scan-page label>span,.scan-page .scan-trip-row label{color:#000}
-.scan-page .scan-field-invalid input,.scan-page .scan-field-invalid select{border:2px solid #cc2445;background:#fff0f3;color:#111;box-shadow:0 0 0 2px #cc244514}
-.scan-page .scan-field-invalid input:focus,.scan-page .scan-field-invalid select:focus{outline:2px solid #cc2445;outline-offset:2px}
-.scan-page .scan-field-message{display:block;color:#a41935;font-size:11px;line-height:1.4}
-.scan-page .scan-trips-recheck{border:2px solid #c58916;background:#fff7e5;border-radius:6px;padding:10px}
+.scan-page .scan-field-invalid input,.scan-page .scan-field-invalid select{border:2px solid #8b4513;background:#fff4e9;color:#111;box-shadow:0 0 0 2px #8b451314}
+.scan-page .scan-field-invalid input:focus,.scan-page .scan-field-invalid select:focus{outline:2px solid #8b4513;outline-offset:2px}
+.scan-page .scan-field-message{display:block;color:#783b10;font-size:11px;line-height:1.4}
+.scan-page .scan-trips-recheck{border:2px solid #8b4513;background:#fff7e5;border-radius:6px;padding:10px}
 
 .scan-fields output{padding:9px;border:1px solid #dacee8;border-radius:5px;background:#f5f2fa;color:#000}.scan-machine-summary{margin:14px 0;padding:12px;border:1px solid #dacee8;border-radius:6px}.scan-machine-summary table{width:100%;border-collapse:collapse}.scan-machine-summary th,.scan-machine-summary td{text-align:left;padding:7px;border-bottom:1px solid #ddd}
 
@@ -22,3 +22,13 @@
 .scan-workspace [hidden]{display:none!important}
 
 @media(min-width:1151px){.scan-workspace-vehicle{grid-template-columns:160px minmax(350px,1.2fr) minmax(250px,.95fr)}}
+
+.scan-page .scan-field-missing input,.scan-page .scan-field-missing select{border-color:#c52232;background:#fff0f2;box-shadow:0 0 0 2px #c5223214}
+.scan-page .scan-field-missing input:focus,.scan-page .scan-field-missing select:focus{outline-color:#c52232}
+.scan-page .scan-field-missing .scan-field-message{color:#b01d2b}
+.scan-field-key{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;font-size:11px;line-height:1.5}
+.scan-field-key span{padding:5px 8px;border:1px solid currentColor;border-radius:5px}
+.scan-key-invalid{color:#783b10;background:#fff4e9}.scan-key-missing{color:#b01d2b;background:#fff0f2}
+
+.scan-page .scan-machine-summary.scan-field-invalid{border:2px solid #8b4513;background:#fff4e9}
+.scan-page .scan-machine-summary.scan-field-missing{border-color:#c52232;background:#fff0f2}
