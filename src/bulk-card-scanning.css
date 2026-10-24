@@ -20,3 +20,5 @@
 .groq-scan-settings input{display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #cdbbdf;border-radius:8px;font:inherit;margin-top:8px;}
 
 .scan-workspace [hidden]{display:none!important}
+
+@media(min-width:1151px){.scan-workspace-vehicle{grid-template-columns:160px minmax(350px,1.2fr) minmax(250px,.95fr)}}
