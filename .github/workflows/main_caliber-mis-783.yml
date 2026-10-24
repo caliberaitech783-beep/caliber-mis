@@ -49,13 +49,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+
+      - name: Configure central Gemini extraction for VLB and ELB
+        env:
+          GEMINI_API_KEY: ${{ secrets.MIS_GEMINI_API_KEY }}
+        run: python3 scripts/configure-gemini-azure.py
 
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
@@ -64,4 +69,17 @@ jobs:
           app-name: 'caliber-mis-783'
           slot-name: 'Production'
           package: .
-          
+
+      - name: Verify Pulse-II release health
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --max-time 20 "https://pulse-ll.cmll.in/api/health?gemini-release=${EXPECTED_COMMIT}" -o health.json && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT)process.exit(1)"; then
+              echo "Pulse-II is serving the Gemini release."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Pulse-II release health could not be verified."
+          exit 1

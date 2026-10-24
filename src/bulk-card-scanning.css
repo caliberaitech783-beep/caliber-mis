@@ -13,3 +13,10 @@
 .scan-fields output{padding:9px;border:1px solid #dacee8;border-radius:5px;background:#f5f2fa;color:#000}.scan-machine-summary{margin:14px 0;padding:12px;border:1px solid #dacee8;border-radius:6px}.scan-machine-summary table{width:100%;border-collapse:collapse}.scan-machine-summary th,.scan-machine-summary td{text-align:left;padding:7px;border-bottom:1px solid #ddd}
 
 .scan-trip-row{grid-template-columns:1.3fr 1fr 1fr .7fr .8fr auto}.scan-trip-row output{display:block;padding:8px;background:#f4eff9;border:1px solid #dacee8;border-radius:5px;color:#111}@media(max-width:650px){.scan-trip-row{grid-template-columns:1fr 1fr}}
+.groq-scan-settings{margin:16px 0;}
+.groq-scan-settings summary{cursor:pointer;}
+.groq-scan-settings form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;}
+.groq-scan-settings label{flex:1;min-width:220px;}
+.groq-scan-settings input{display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #cdbbdf;border-radius:8px;font:inherit;margin-top:8px;}
+
+.scan-workspace [hidden]{display:none!important}
