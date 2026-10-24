@@ -1,0 +1,13 @@
+# Pulse-II Gemini card scanning
+
+VLB Scan and ELB Scan use `gemini-3.1-flash-lite` with one successful extraction request per captured card. The request contains the original image and three detail views from that same capture. Transient transport/quota failures have bounded retries; there is no provider/model substitution when Gemini is enabled.
+
+The Pulse-II deployment workflow configures `GEMINI_API_KEY` and `MIS_GEMINI_API=true` on **caliber-mis-783** only. The existing encrypted GitHub Actions secret is `MIS_GEMINI_API_KEY`. Key material is never included in a response, homepage, browser storage, repository, or deployment log. Users reuse the server configuration. The local Windows setup can continue using its current-user DPAPI key.
+
+PDF/image uploads go directly to the server extraction queue. USB scanning requires the local Windows WIA connector: it captures images and transfers them to the online queue, without a duplicate local Gemini call. The connector enumerates available scanners without a Brother preference. A compatible installed WIA driver is required; other brands still need physical capture testing.
+
+VLB retains header, HMR/KMR, machine summary and individual trip rows. ELB retains equipment/operator/job-card/HMR fields and does not invent vehicle rows or KMR. Submitting a VLB through ELB produces a specific wrong-page error. Original responses and reported token usage remain separate from manual edits. Cache entries are scoped by image, type, model and prompt revision. The user-confirmed S1NN door separator is rendered S/NN; the original response remains available server-side.
+
+The review view initially shows missing, invalid or flagged fields. Show all values reveals the complete editable form. Hidden values remain in the full draft saved by the existing API. Human confirmation, validation, approval and final upload remain required. VLB/ELB records and counts remain separate. Existing manual forms and formulas are unchanged.
+
+Release checks include focused tests, npm test and npm run build. Real VLB scans were visually compared locally, including 68 trip-time cells across two cards. This is not a human-approved accuracy benchmark, and no real ELB job-card sample was available for an accuracy measurement. Detail views increase input-token usage. Physical scanning requires testing on the actual installed scanner/driver.
