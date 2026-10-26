@@ -9,7 +9,11 @@ detail totals. Explicit written counts and unreadable summary fields remain
 for human review. Derived assignments/counts carry provenance in the draft;
 the original image and literal Gemini extraction remain available. Calculated
 summaries follow detail edits, while explicitly edited summaries are retained.
-Existing unapproved review drafts receive the same completion when opened.
+Completion runs on the server's extraction result and on explicit detail-trip
+edits. It never runs in an independent effect against a draft being loaded:
+such an effect could overwrite a newly extracted draft with stale blank state.
+Use Re-read unapproved cards to recover a retained scan whose draft was affected;
+the existing re-extraction merge preserves nonempty manual corrections.
 No card is approved or posted automatically.
 
 The left status buttons show counts per card against the entire batch. Orange means data complete, brown means specific validation issues, human confirmation, or manual entries remain, and red means failed/rejected/blank cards. Queued and reading cards are pending, not blank. The middle list is filtered by the chosen category; the right panel contains that selected card's values and original scan.
