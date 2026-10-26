@@ -1,0 +1,36 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
+import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
+const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
+test('automatic saving requires complete, valid values and no remaining warnings',()=>{
+ const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
+ assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
+ for(const c of [{...card,status:'posted'},{...card,status:'rejected'},{...card,checks:null},{...card,draft:{...valid,employeeId:''}},{...card,checks:{warnings:['Working hours exceed shift.']}},{...card,checks:{errors:['Duplicate scan.']}}])assert.equal(canAutoSaveScanCard(c,'vehicle'),false);
+});
+test('complete cards post independently without approval; retries, validation and concurrent edits are protected',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
+ const masters=[[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E1',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]];
+ for(const [id,name,data]of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
+ let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
+ const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
+ const app=express();app.use(express.json());const session=(q,s,n)=>{if(!q.headers.authorization)return s.sendStatus(401);q.session={login:'test-admin'};n()},admin=(q,s,n)=>q.headers.authorization==='admin'?n():s.sendStatus(403);
+ let archives=0;const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,ocr:{close(){}},archiveSavedBatch:async(b,rows)=>{assert.ok(rows.every(r=>r.status==='posted'));archives++;return {status:'saved'}}});await service.start();t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
+ const call=async(id,revision=1,auth='admin')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+id+'/auto-save',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({revision})});return {status:r.status,data:r.headers.get('content-type')?.includes('json')?await r.json():null}};
+ const batch=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Auto save test','test-admin']);
+ const add=async(ordinal,draft,hash=randomUUID())=>{const id=randomUUID();await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'test.png',$4,$5,$6,'review')",[id,batch,ordinal,Buffer.from('retained image'),hash,JSON.stringify(draft)]);return id};
+ const first=await add(1,valid),second=await add(2,{...valid,aFormNo:'76',employeeId:''});
+ assert.equal((await call(first,1,'')).status,401);assert.equal((await call(first,1,'normal')).status,403);
+ assert.equal((await call(first,99)).status,409);
+ const saved=await call(first);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.status,'posted');assert.equal(saved.data.archive,null);assert.equal(archives,0);
+ const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;assert.equal(stored.scanSaveMode,'automatic-validation');assert.equal(stored.autoSavedBy,'test-admin');assert.equal(stored.reviewedBy,undefined);
+ assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
+ assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
+ await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);
+ const concurrent=await Promise.all([call(second,2),call(second,2)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
+ const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
+ const warning=await add(4,{...valid,aFormNo:'77',closingHmr:9});assert.equal((await call(warning)).status,409);
+ const rejected=await add(5,{...valid,aFormNo:'78'});await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[rejected]);assert.equal((await call(rejected)).status,409);
+ const equipmentBatch=randomUUID(),equipmentId=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[equipmentBatch,'equipment','Equipment','test-admin']);await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'job.png',$3,$4,$5,'review')",[equipmentId,equipmentBatch,Buffer.from('job image'),randomUUID(),JSON.stringify({...valid,doorText:'E1',assetId:'4',trips:[],scanMachineSummary:[]})]);assert.equal((await call(equipmentId)).status,200);
+});

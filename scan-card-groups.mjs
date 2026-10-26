@@ -1,7 +1,7 @@
 import {manualScanIssues} from './src/scan-manual-fields.mjs';
 
 export const CARD_GROUPS=[
- {id:'orange',label:'All okay',description:'Values complete · human approval required'},
+ {id:'orange',label:'All okay',description:'Values complete · saved automatically'},
  {id:'brown',label:'Needs attention',description:'Correct values or fill missing fields'},
  {id:'red',label:'Blank / no data',description:'No usable data, failed or rejected card'}
 ];

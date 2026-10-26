@@ -20,7 +20,7 @@ export function createLocalCardArchive(root,{target:storageTarget='local'}={}){
  if(!['local','azure'].includes(storageTarget))throw Error('Invalid archive target.');
  const base=path.resolve(root);
  return async function archive(batch,cards){
-  if(!cards.length||cards.some(c=>c.status!=='posted'||!c.checked_by))throw Error('Only a fully saved, human-approved batch can be archived.');
+  if(!cards.length||cards.some(c=>c.status!=='posted'||!c.checked_by))throw Error('Only a fully saved batch can be archived.');
   const groups=new Map();
   for(const card of cards){
    if(!/^[a-f0-9-]{36}$/i.test(card.id))throw Error('Invalid archive card.');
@@ -31,7 +31,7 @@ export function createLocalCardArchive(root,{target:storageTarget='local'}={}){
    const target=path.resolve(base,relative);
    if(!target.startsWith(base+path.sep))throw Error('Invalid archive folder.');
    await fs.mkdir(path.dirname(target),{recursive:true});
-   const manifest={version:1,batchId:batch.id,kind:batch.kind,cards:rows.map(c=>({id:c.id,ordinal:c.ordinal,filename:c.filename,bookNumber:c.book_no,logBookId:c.logbook_id,checkedBy:c.checked_by,checkedAt:c.checked_at,draft:c.draft,originalExtraction:c.raw_fields,image:c.id+'.png',imageSha256:createHash('sha256').update(c.image).digest('hex')}))};
+   const manifest={version:1,batchId:batch.id,kind:batch.kind,cards:rows.map(c=>({id:c.id,ordinal:c.ordinal,filename:c.filename,bookNumber:c.book_no,logBookId:c.logbook_id,saveMode:c.draft?.scanSaveMode||'manual-review',checkedBy:c.checked_by,checkedAt:c.checked_at,draft:c.draft,originalExtraction:c.raw_fields,image:c.id+'.png',imageSha256:createHash('sha256').update(c.image).digest('hex')}))};
    const serialized=JSON.stringify(manifest,null,2)+'\n';
    try{const prior=await fs.readFile(path.join(target,'saved-values.json'),'utf8');if(prior!==serialized)throw Error('An archive with different saved values already exists.');folders.push(relative);continue;}catch(e){if(e.code!=='ENOENT')throw e;}
    const staging=target+'.pending-'+randomUUID();await fs.mkdir(staging);
