@@ -11,7 +11,7 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
   for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
  }
  source=source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
- source=source.slice(0,source.indexOf(' const originalScan='))+' return {draft,dirty,update};\n}';
+ source=source.slice(0,source.indexOf(' const originalScan='))+' return {draft,dirty,update,visibleField};\n}';
  const model={card:{id:'one',revision:1,status:'reading',draft:{},raw_fields:{}}};
  source=source.replace('const card=cards.find(c=>c.id===selected);','const card=model.card;');
  const hooks=[],pending=[];let cursor=0,changed=false;
@@ -33,6 +33,9 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
  assert.equal(result.draft.openingKmr,fresh.openingKmr);
  assert.equal(result.draft.trips.length,1);
  assert.equal(result.dirty,false,'loading extracted data must not schedule an empty autosave');
+ assert.equal(result.visibleField('trips.0.loadingTime'),true,'valid loading times stay visible in correction view');
+ assert.equal(result.visibleField('trips.0.unloadingTime'),true,'valid unloading times stay visible in correction view');
+ assert.equal(result.visibleField('trips.0.tripCount'),true,'trip count stays with its time pair');
  result.update('trips',[...result.draft.trips,{rowNumber:2,equipmentName:'',loadingTime:'10:00',unloadingTime:'10:15',tripCount:1}]);
  const edited=settle();assert.equal(edited.draft.trips[1].equipmentName,'B75');assert.equal(edited.draft.scanMachineSummary[0].tripCount,2);
  assert.equal(edited.draft.bookDate,fresh.bookDate);assert.equal(edited.dirty,true);
