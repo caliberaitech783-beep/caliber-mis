@@ -33,4 +33,12 @@ test('scanner upload accepts multi-megabyte scans and rejects malformed base64 w
   const response=await upload(invalid);assert.equal(response.status,400,await response.text());
  }
  assert.equal(stored.length,2);
+ const image=Buffer.concat([png,Buffer.alloc(4_000_000,42)]);
+ const metadata={uploadKey:randomUUID(),filename:'कार्ड.png',captureTiming:{mode:'scanner',pages:19,durationMs:1000}};
+ const binary=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/png','X-Scan-Metadata':encodeURIComponent(JSON.stringify(metadata))},body:image});
+ assert.equal(binary.status,201,await binary.text());assert.deepEqual(stored.at(-1)[4],image);assert.equal(stored.at(-1)[3],metadata.filename);assert.deepEqual(JSON.parse(stored.at(-1)[8]).captureTiming,metadata.captureTiming);
+ for(const header of ['%',encodeURIComponent('null'),encodeURIComponent('[]')]){
+  const invalid=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/png','X-Scan-Metadata':header},body:png});assert.equal(invalid.status,400,await invalid.text());
+ }
+ assert.equal(stored.length,3);
 });

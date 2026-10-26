@@ -1,5 +1,14 @@
 # Scan review improvements
 
+The PC connector sends original PNG bytes as transferable ArrayBuffers and
+uploads them as `image/png`, avoiding base64's approximately one-third size
+overhead. It prepares one following page while awaiting the current upload's
+acknowledgement; uploads remain ordered with at most two page buffers in flight.
+The authenticated endpoint retains its 12 MB / 20 megapixel limits, stable upload
+IDs and duplicate protection, and continues accepting existing JSON/base64 clients.
+Images are not resized or recompressed. Transfer time still depends on internet
+upload speed and server/database response time; extraction is a separate stage.
+
 Capture timing is measured from the local scanner/import job creation to its completion, before upload and Gemini extraction. The UI retains pages, mode and duration with each draft. Old batches have no recorded capture duration.
 
 Detected error percentage counts completed cards with missing/invalid fields, validation conflicts or extraction failures, once per card. Pending and rejected cards are excluded; routine meter handwriting confirmations are excluded. API/extraction failures are also shown separately. This is a validation indicator, not measured transcription accuracy.
