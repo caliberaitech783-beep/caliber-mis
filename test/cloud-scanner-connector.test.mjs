@@ -23,7 +23,8 @@ test('scanner reachability handles missing services and browser permission denia
   await assert.rejects(checkScannerAvailability(async()=>{throw failure}),{message:SCANNER_UNAVAILABLE});
  }
  await assert.rejects(checkScannerAvailability(async()=>({ok:false,type:'basic'})),{message:SCANNER_UNAVAILABLE});
- let checked=false;await checkScannerAvailability(async(url,options)=>{assert.equal(url,'http://127.0.0.1:4174/scanner-connector.html');assert.equal(options.mode,'no-cors');assert.equal(options.credentials,'omit');assert.equal(options.targetAddressSpace,'loopback');assert.ok(options.signal instanceof AbortSignal);checked=true;return {type:'opaque',ok:false}});assert.ok(checked);
+ let checked=false;await checkScannerAvailability(async(url,options)=>{assert.equal(url,'http://127.0.0.1:4174/scanner-ready.txt');assert.equal(options.mode,'no-cors');assert.equal(options.redirect,'follow','Cross-origin no-cors requests fail with redirect:error before reaching the service');assert.equal(options.credentials,'omit');assert.equal(options.targetAddressSpace,'loopback');assert.ok(options.signal instanceof AbortSignal);checked=true;return {type:'opaque',ok:false}});assert.ok(checked);
+ assert.equal(readFileSync(new URL('../public/scanner-ready.txt',import.meta.url),'utf8').trim(),'caliber-pc-scanner-ready');
 });
 test('local scanner database opt-in cannot select a remote or Pulse database',()=>{
  assert.equal(misDatabaseConfig({MIS_LOCAL_SCANNER_DATABASE:'true',DATABASE_URL:'postgresql://synthetic:synthetic@127.0.0.1/caliber_erp'}).ssl,false);

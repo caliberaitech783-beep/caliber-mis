@@ -2,8 +2,10 @@ export const SCANNER_UNAVAILABLE='The PC scanner connector could not be reached 
 
 export async function checkScannerAvailability(fetchImpl=fetch){
  try{
-  // This checks reachability only. The connector still requires its one-time ticket.
-  const response=await fetchImpl('http://127.0.0.1:4174/scanner-connector.html',{mode:'no-cors',credentials:'omit',cache:'no-store',redirect:'error',targetAddressSpace:'loopback',signal:AbortSignal.timeout(8000)});
+  // Cross-origin no-cors requests require redirect mode "follow", even without
+  // a redirect. This plain-text marker checks reachability only; the connector
+  // still requires its one-time ticket before granting any scanner access.
+  const response=await fetchImpl('http://127.0.0.1:4174/scanner-ready.txt',{mode:'no-cors',credentials:'omit',cache:'no-store',redirect:'follow',targetAddressSpace:'loopback',signal:AbortSignal.timeout(8000)});
   await response.body?.cancel?.();
   if(response.type!=='opaque'&&!response.ok)throw Error('Connector unavailable');
  }catch{throw Error(SCANNER_UNAVAILABLE);}
