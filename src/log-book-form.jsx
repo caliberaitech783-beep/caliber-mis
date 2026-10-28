@@ -6,7 +6,7 @@ import {matchingWorkOrders,machineSummary,CARD_SHIFTS,machineLabel,latestWorkOrd
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import ManualBookDate from './manual-book-date.jsx';
 import {advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from './log-book-enter-navigation.mjs';
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useState,useRef} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
 
@@ -39,6 +39,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
+ const initialLocationFocused=useRef(false);
 
  useEffect(()=>{
    const saveShortcut=event=>{
@@ -58,6 +59,18 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
  const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
 
  useEffect(()=>{void load()},[kind,session.token]);
+
+ useEffect(()=>{
+   if(!vehicle||loading||!options||!editing||saved||initialLocationFocused.current)return;
+   const frame=requestAnimationFrame(()=>{
+     const location=document.getElementById('logbook-entry-form')?.querySelector('.logbook-fields .logbook-field input:not([type="hidden"]), .logbook-fields .logbook-field select');
+     if(location&&!location.matches(':disabled')){
+       location.focus();
+       initialLocationFocused.current=true;
+     }
+   });
+   return()=>cancelAnimationFrame(frame);
+ },[vehicle,loading,options,editing,saved]);
 
  const update=(key,value)=>{setForm(current=>({...current,[key]:value,...(key==='bookDate'?{bookDateSource:'manual'}:{})}));setSuccess('');};
 

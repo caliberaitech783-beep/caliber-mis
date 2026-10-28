@@ -74,16 +74,29 @@ const source=readFileSync(new URL('../src/log-book-form.jsx',import.meta.url),'u
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'log-book-form.jsx',{jsx:{runtime:'classic'}});
 const all=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
 function harness(){
-  const slots=[];let cursor=0;
+  const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
-  const scope={React,useEffect:()=>{},useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+  const scope={React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
-  const render=()=>{cursor=0;return Component({kind:'vehicle',session:{token:'test'}})};
+  const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
-  return {render,slots};
+  return {render,slots,focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
+
+test('VLB opening focuses Location once after masters load, without selecting a value or stealing focus on refresh',()=>withFrames(flush=>{
+  const previous=globalThis.document,focused=[];
+  globalThis.document={getElementById:()=>({querySelector:selector=>({matches:()=>false,focus:()=>focused.push(selector)})})};
+  try {
+    const app=harness();app.slots[9]=true;app.render();app.focusLocation();flush();assert.equal(focused.length,0);
+    app.slots[9]=false;app.render();app.focusLocation();flush();assert.equal(focused.length,1);assert.match(focused[0],/input.*select/);
+    assert.equal(app.slots[0].location,'','autofocus never chooses a location for the user');
+    app.slots[2]={...app.slots[2]};app.render();app.focusLocation();flush();assert.equal(focused.length,1);
+    const elb=harness();elb.render('equipment');elb.focusLocation();flush();assert.equal(focused.length,1);
+    const saved=harness();saved.slots[1]={book_no:'SAVED',data:{}};saved.render();saved.focusLocation();flush();assert.equal(focused.length,1);
+  } finally {globalThis.document=previous}
+}));
 
 test('rendered VLB header follows the requested sequence and driver is explicitly skipped',()=>{
   const tree=harness().render();
