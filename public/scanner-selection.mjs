@@ -1,8 +1,6 @@
 export function organizationScanners(devices=[]){
- return devices.filter(device=>{
-  const name=String(device.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  return /brother.*ads3100(?!\d)/.test(name)||/canon.*drc225(?:ii|2)(?!i|[0-9])/.test(name);
- });
+ // Windows WIA has already enumerated scanner devices; do not filter by model.
+ return devices.filter(device=>device&&typeof device.id==='string'&&device.id.trim());
 }
 export function chooseConnectedScanner(devices=[],current='',previousIds){
  const supported=organizationScanners(devices);
@@ -12,6 +10,6 @@ export function chooseConnectedScanner(devices=[],current='',previousIds){
 }
 export function scannerConnectionMessage(devices=[],selected=''){
  const supported=organizationScanners(devices),device=supported.find(device=>device.id===selected);
- if(!supported.length)return 'No Brother ADS-3100 or Canon DR-C225II detected. Check scanner power, USB connection and the Windows WIA driver, then refresh scanners.';
- return `${device?.name||supported[0].name} connected. ${supported.length>1?'Both organization scanners are detected; choose the scanner to use. ':''}Load the feeder, then click Scan.`;
+ if(!supported.length)return 'No Windows scanner detected. Check scanner power, connection and the Windows WIA driver, then refresh scanners.';
+ return `${device?.name||supported[0].name} connected. ${supported.length>1?supported.length+' scanners detected; choose the scanner to use. ':''}Place your document in the scanner, then click Scan.`;
 }
