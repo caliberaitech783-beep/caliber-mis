@@ -18,6 +18,7 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/erp-masters/attachments'))return allowed('Work Order master');
  if(route.startsWith('/api/erp-masters/'))return allowed(decodeURIComponent(route.split('/')[3]||''));
  if(/^\/api\/(?:pulse-master-sync|master-sync)(?:\/|$)/.test(route))return allowed('Pulse Master Sync');
+ if(route==='/api/pulse-trip-verification'&&read||/^\/api\/pulse-trip-verification\/\d+\/retry$/.test(route)&&req.method==='POST')return ['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
  if(route.startsWith('/api/log-books/equipment'))return allowed('Equipment Log Book');

@@ -18,6 +18,19 @@ test('VLB and ELB report pages inherit their corresponding scan access independe
  assert.equal(misPageAllowed(session,'ELB Reports','desktop'),false);
  assert.equal(misPageAllowed({...session,permissions:{...session.permissions,misDesktopAccess:['Job Card Bulk Scan']}},'ELB Reports','desktop'),true);
 });
+
+test('automatic trip verification follows assigned VLB, trip-card and sync menus and rejects unrelated routes',()=>{
+ for(const page of ['Vehicle Log Book','Trip Card Bulk Scan','Pulse Master Sync']){
+  const user={permissions:{separateMisCredentials:true,misDesktopAccess:[page]}};
+  assert.equal(misRequestAllowed(user,{path:'/api/pulse-trip-verification',method:'GET'}),true);
+  assert.equal(misRequestAllowed(user,{path:'/api/pulse-trip-verification/12/retry',method:'POST'}),true);
+  assert.equal(misRequestAllowed(user,{path:'/api/pulse-trip-verification/12/delete',method:'POST'}),false);
+  assert.equal(misRequestAllowed(user,{path:'/api/pulse-trip-verification',method:'POST'}),false);
+ }
+ const unrelated={permissions:{separateMisCredentials:true,misDesktopAccess:['Equipment Log Book']}};
+ assert.equal(misRequestAllowed(unrelated,{path:'/api/pulse-trip-verification',method:'GET'}),false);
+ assert.equal(misRequestAllowed(unrelated,{path:'/api/pulse-trip-verification/12/retry',method:'POST'}),false);
+});
 test('card batch permissions resolve actual database kind instead of trusting the supplied kind',async()=>{
  const pool={query:async()=>({rows:[{kind:'equipment'}]})};
  assert.equal(await authorizeMisRequest(session,{path:'/api/scan-batches/12345678-1234-1234-1234-123456789abc',method:'POST',body:{kind:'vehicle'}},pool),false);
