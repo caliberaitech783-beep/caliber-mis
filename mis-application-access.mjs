@@ -1,7 +1,6 @@
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
- if(page==='Card Report')return misPageAllowed(session,'Trip Card Bulk Scan',view)||misPageAllowed(session,'Job Card Bulk Scan',view);
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
  return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
 }

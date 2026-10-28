@@ -4,17 +4,17 @@ const source=readFileSync(new URL('../src/scan-batch-reports.jsx',import.meta.ur
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),'scan-batch-reports.jsx',{jsx:{runtime:'classic'}});
 const id1='11111111-1111-4111-a111-111111111111',id2='22222222-2222-4222-a222-222222222222',elb='33333333-3333-4333-a333-333333333333';
 const nodes=(tree,type)=>{const rows=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(node.type===type)rows.push(node);visit(node.props.children)};visit(tree);return rows};
-function harness(batches,search=''){
+function harness(batches,search='',older=[]){
  const slots=[],effects=[],calls=[],urls=[];let cursor=0,effectCursor=0,pending=[];
- const SmartSelect=props=>React.createElement('select',props),ScanBatchReport=()=>null;
- const scope={React,SmartSelect,ScanBatchReport,window:{location:{search,href:'https://pulse-ll.cmll.in/'+search},history:{replaceState:(a,b,url)=>urls.push(url)}},
+ const SmartSelect=props=>React.createElement('select',props),ScanBatchReport=()=>null,CardReportGallery=()=>null,filterCardBatches=(rows,kind,search)=>rows.filter(b=>b.kind===kind&&b.name.toLowerCase().includes(search.toLowerCase()));
+ const scope={React,SmartSelect,ScanBatchReport,CardReportGallery,filterCardBatches,window:{location:{search,href:'https://pulse-ll.cmll.in/'+search},history:{replaceState:(a,b,url)=>urls.push(url)}},
   useState:initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},
   useEffect:(fn,deps)=>{const i=effectCursor++,prior=effects[i];if(!prior||deps.some((v,n)=>v!==prior.deps[n]))pending.push(()=>{prior?.cleanup?.();effects[i]={deps,cleanup:fn()}})},setInterval:()=>1,clearInterval:()=>{},
-  fetch:async(url,options)=>{calls.push({url,options});const body=url==='/api/scan-batches'?{batches}:{batch:batches.find(b=>b.id===url.split('/').at(-1)),cards:[{id:'card',batch_id:url.split('/').at(-1)}]};return {ok:true,json:async()=>body}}};
+  fetch:async(url,options)=>{calls.push({url,options});const body=url==='/api/scan-batches'?{batches,nextOffset:older.length?100:null}:url.includes('?offset=')?{batches:older,nextOffset:null}:{batch:[...batches,...older].find(b=>b.id===url.split('/').at(-1)),cards:[{id:'card',batch_id:url.split('/').at(-1)}]};return {ok:true,json:async()=>body}}};
  const components=new Function(...Object.keys(scope),code+';return {ScanBatchReports,initialReportBatch,reportBatchUrl}')(...Object.values(scope));
  const render=(kind='vehicle')=>{cursor=0;effectCursor=0;pending=[];return components.ScanBatchReports({kind,session:{token:'test'}})};
  const flush=async(kind='vehicle')=>{let tree;for(let i=0;i<4;i++){tree=render(kind);for(const effect of pending)effect();await new Promise(r=>setImmediate(r));}return render(kind)};
- return {...components,render,flush,slots,calls,urls,SmartSelect,ScanBatchReport};
+ return {...components,render,flush,slots,calls,urls,SmartSelect,ScanBatchReport,CardReportGallery};
 }
 const batches=[{id:id1,kind:'vehicle',name:'Latest VLB batch',created_at:'2026-10-28',cards:2},{id:id2,kind:'vehicle',name:'Earlier VLB batch',created_at:'2026-10-27',cards:5},{id:elb,kind:'equipment',name:'ELB batch',created_at:'2026-10-28',cards:1}];
 test('permanent report screen loads only matching batches, defaults to latest and switches the exact report',async()=>{
@@ -31,5 +31,9 @@ test('reports page remains available without cards and direct links preserve a b
  const app=harness(batches,'?page=elb-reports&batch='+elb),report=await app.flush('equipment');assert.equal(nodes(report,app.ScanBatchReport)[0].props.batch.id,elb);assert.deepEqual(nodes(report,'option').map(n=>n.props.value),['',elb]);
  assert.equal(app.initialReportBatch('?batch=../../invalid'),'');assert.equal(app.initialReportBatch('?batch='+id1),id1);
  assert.equal(app.reportBatchUrl('https://pulse-ll.cmll.in/?page=vlb-reports&card=old&filter=review',id1),'/?page=vlb-reports&batch='+id1);
- const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{name:'Reports',pages:[...['VLB Reports','ELB Reports','Card Report'].filter(canOpenAdminPage)") && main.includes("reportCategory:'operations-'+r.id"));
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage)") && main.includes("reportCategory:'operations-'+r.id"));
 });
+
+test('Card Report is inside both report pages and follows the selected batch',async()=>{for(const kind of ['vehicle','equipment']){const app=harness(batches),tree=await app.flush(kind);nodes(tree,'button').find(n=>n.props.children==='Card Report').props.onClick();let report=app.render(kind);assert.equal(nodes(report,app.ScanBatchReport).length,0);assert.equal(nodes(report,app.CardReportGallery)[0].props.batch.kind,kind);assert.equal(nodes(report,app.CardReportGallery)[0].props.token,'test');if(kind==='vehicle'){nodes(report,app.SmartSelect)[0].props.onChange({target:{value:id2}});report=await app.flush(kind);assert.equal(nodes(report,app.CardReportGallery)[0].props.batch.id,id2);assert.equal(nodes(report,app.CardReportGallery)[0].props.cards[0].batch_id,id2)}}const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(!main.includes("'VLB Reports','ELB Reports','Card Report'"));});
+
+test('embedded card reports retain searchable older batches filtered by report type',async()=>{const app=harness([batches[0]],'',batches.slice(1));let tree=await app.flush();await nodes(tree,'button').find(n=>n.props.children==='Load older batches').props.onClick();tree=await app.flush();assert.deepEqual(nodes(tree,'option').map(n=>n.props.value),['',id1,id2]);nodes(tree,'button').find(n=>n.props.children==='Card Report').props.onClick();nodes(tree,app.SmartSelect)[0].props.onChange({target:{value:id2}});tree=await app.flush();assert.equal(nodes(tree,app.CardReportGallery)[0].props.batch.id,id2);nodes(tree,'input')[0].props.onChange({target:{value:'Earlier'}});tree=app.render();assert.deepEqual(nodes(tree,'option').map(n=>n.props.value),['',id2]);assert.ok(app.calls.some(c=>c.url==='/api/scan-batches?offset=100'));assert.ok(app.calls.every(c=>!c.options.method));});
