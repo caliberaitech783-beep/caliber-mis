@@ -1,3 +1,4 @@
+import {registerLogBookDeletion} from './log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from './scan-text-storage.mjs';
@@ -99,10 +100,11 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy){
  await enqueueTripVerification(client,result.rows[0]);
  return result.rows[0];
 }
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope=async session=>logBookSiteScope(session)}){
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){next(error)}}];
+ registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
  
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
    try{
@@ -194,6 +196,6 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  }
  app.post('/api/log-books/:kind',...protect,save);
  app.put('/api/log-books/:kind/:id',...protect,save);
- app.delete('/api/log-books/:kind/:id',...protect,async(req,res,next)=>{try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))fail('Invalid log book.');const prior=await pool.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2',[req.params.id,req.params.kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);const revision=number(req.body.revision,'Revision',{integer:true});const result=await pool.query('UPDATE mis_log_books SET deleted_at=NOW(),updated_at=NOW(),revision=revision+1 WHERE id=$1 AND book_type=$2 AND revision=$3 AND deleted_at IS NULL RETURNING id',[req.params.id,req.params.kind,revision]);if(!result.rowCount)return res.status(409).json({error:'Record changed or was already deleted. Refresh before deleting.'});res.json({deleted:true});}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}});
+ app.delete('/api/log-books/:kind/:id',...protect,(_req,res)=>res.status(403).json({error:'Use Deletion to preview and approve exact records, then verify the WhatsApp OTP. Direct deletion is disabled.'}));
  return {initialize:ensure,readHours};
 }

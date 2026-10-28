@@ -1,3 +1,4 @@
+import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
 import {registerScanBackup} from './scan-backup.mjs';
 import {logBookSiteScope} from './log-book-access.mjs';
@@ -7793,7 +7794,7 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
-const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope});
+const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request})});
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
