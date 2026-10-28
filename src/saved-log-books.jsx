@@ -1,6 +1,5 @@
 import PulseTripVerification from './pulse-trip-verification.jsx';
 import React,{useEffect,useRef,useState} from 'react';
-import {LogBookSectionTabs} from './log-book-mode-choice.jsx';
 import './log-book-form.css';
 import './saved-log-books.css';
 
@@ -58,7 +57,6 @@ export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canSc
   useEffect(()=>{if(selected)document.getElementById('saved-logbook-details')?.scrollIntoView({behavior:'smooth',block:'start'})},[selected?.id]);
   const change=(key,value)=>setFilters(current=>({...current,[key]:value}));
   return <section className="logbook-page saved-logbooks"><header className="logbook-page-header"><div><h1>Saved {code}</h1><p>Check saved log books and their original scans.</p></div><button type="button" onClick={onExit}>Back to {code}</button></header>
-    <LogBookSectionTabs kind={kind} active="saved" onManual={onManual} onScan={onScan} canScan={canScan}/>
     <section className="logbook-section"><div className="saved-logbook-filters"><label>Search<input type="search" aria-label={'Search saved '+code} value={filters.search} onChange={e=>change('search',e.target.value)} placeholder="Book, door, employee or card number"/></label><label>Location<select value={filters.location} onChange={e=>change('location',e.target.value)}><option value="">All assigned locations</option>{sites.map(site=><option key={site}>{site}</option>)}</select></label><label>From date<input type="date" value={filters.from} onChange={e=>change('from',e.target.value)}/></label><label>To date<input type="date" value={filters.to} onChange={e=>change('to',e.target.value)}/></label><button type="button" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh</button></div>
       {error&&<p role="alert" className="logbook-message error">{error}</p>}{loading&&<p role="status">Loading saved {code}…</p>}
       <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Date</th><th>Location</th><th>{vehicle?'Door':'Equipment'}</th><th>Employee ID</th><th>{vehicle?'Driver':'Operator'}</th><th/></tr></thead><tbody>{records.map(record=><tr key={record.id} aria-selected={String(selected?.id)===String(record.id)}><td>{record.book_no}</td><td>{bookDate(record.data.bookDate)}</td><td>{display(record.data.location)}</td><td>{display(record.data.door)}</td><td>{display(record.data.caliberId)}</td><td>{display(record.data.employeeName)}</td><td><button type="button" onClick={()=>setSelected(record)}>View {code}</button></td></tr>)}{!records.length&&!loading&&<tr><td colSpan={7}>No saved {code} entries match these filters.</td></tr>}</tbody></table></div>{cursor&&<button type="button" disabled={loading} onClick={()=>void load(cursor)}>Load more saved {code}</button>}
