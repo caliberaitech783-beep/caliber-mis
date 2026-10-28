@@ -1,3 +1,4 @@
+import ScanCardBackup,{ScanBackupReminder} from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import OperationsReports from './operations-reports.jsx';
 import {operationReports} from './operations-report-model.mjs';
@@ -11611,6 +11612,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks']);
   const canOpenAdminPage = (name) => {
+    if(name==='Scan Backup')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
     if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
     if(['Trip Card Bulk Scan','Job Card Bulk Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
@@ -11939,7 +11941,7 @@ function App() {
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <PulseMasterSync session={session}/>
-  ) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+  ) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
   ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
   ) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
@@ -12056,12 +12058,15 @@ function App() {
     );
   return (
     <RequestShiftProvider token={session.token} requests={requests}><div className="app erp-shell">
+      {canOpenAdminPage('Scan Backup')&&<ScanBackupReminder session={session} onOpen={()=>selectMenu('Scan Backup')}/>}
+
       <ErpSidebar
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}
         setActive={(x) => {

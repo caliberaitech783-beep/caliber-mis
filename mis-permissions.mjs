@@ -1,8 +1,8 @@
 export const MIS_APPLICATION_URL='https://pulse-ll.cmll.in';
 export const MIS_PERMISSION_OPTIONS=[
  ['Dashboard','Working menus'],['Users & employees','Masters'],['Employee master','Masters'],['Equipment master','Masters'],['Region master','Masters'],['Shift Master','Masters'],['Work Order master','Masters'],['Financial Year master','Masters'],['Company master','Masters'],['Pulse Master Sync','Masters'],
- ['Vehicle Log Book Options','Working menus'],['Vehicle Log Book','Working menus'],['Trip Card Bulk Scan','Working menus'],['Equipment Log Book Options','Working menus'],['Equipment Log Book','Working menus'],['Job Card Bulk Scan','Working menus'],['Reports','Working menus'],['Tickets','Working menus'],
-].map(([key,group])=>({key,label:key==='Users & employees'?'Login Details':key==='Work Order master'?'Work Contract master':key,group}));
+ ['Vehicle Log Book Options','Working menus'],['Vehicle Log Book','Working menus'],['Trip Card Bulk Scan','Working menus'],['Equipment Log Book Options','Working menus'],['Equipment Log Book','Working menus'],['Job Card Bulk Scan','Working menus'],['Reports','Working menus'],['Tickets','Working menus'],['Scan Backup','Working menus'],
+].map(([key,group])=>({key,label:key==='Scan Backup'?'Backup':key==='Users & employees'?'Login Details':key==='Work Order master'?'Work Contract master':key,group}));
 export const MIS_ALL_PERMISSIONS=MIS_PERMISSION_OPTIONS.map(x=>x.key);
 export function normalizedMisSelection(raw){const values=Array.isArray(raw)?raw:String(raw||'').split(/\s*\|\s*/);return [...new Set(values.filter(x=>MIS_ALL_PERMISSIONS.includes(x)))];}
 export const misAccessEnabled=user=>user?.misAccess===true||['true','yes','1'].includes(String(user?.misAccess||'').toLowerCase());

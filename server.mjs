@@ -1,3 +1,5 @@
+import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
+import {registerScanBackup} from './scan-backup.mjs';
 import {logBookSiteScope} from './log-book-access.mjs';
 import {registerGroqScanSettings} from './groq-scan-settings.mjs';
 import {createIntegrationSecretStore} from './integration-secret-store.mjs';
@@ -297,6 +299,7 @@ pool.on('error',error=>console.error('PostgreSQL pool connection error (will rec
 process.on('unhandledRejection',(reason)=>console.error('Unhandled promise rejection (kept the server running).',reason));
 const sessionStore=createSessionStore(pool);
 let databaseReady=false;
+let scanBlobReady=null;
 let cdirRosterRevision=null;
 let databaseError='Database initialization is pending.';
 
@@ -3493,6 +3496,7 @@ app.get('/api/health',async(_req,res)=>{
     databaseError='';
     res.json({
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,
+      hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
@@ -7792,9 +7796,12 @@ registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope});
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
+const scanImageStorage=createScanBlobStorage(scanBlobConfig());
+if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
 const scanArchiveSettings=scanArchiveConfig();
-const bulkScanning=registerBulkCardScanning(app,{getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
-const localScanner=registerLocalDocumentScanning(app,{pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
+const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
+const bulkScanning=registerBulkCardScanning(app,{imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
+const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
  if(req.body.pulse)await pulseMasterSync.connect(req.body.pulse);
@@ -8560,6 +8567,7 @@ async function initializeDatabase(){
     await pulseMasterSync.start();
     await logBooks.initialize();
     await bulkScanning.start();
+    await scanBackup.start();
     pulseTripVerification.start();
     await localScanner.start();
     await erpMasters.start();
