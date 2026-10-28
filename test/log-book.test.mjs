@@ -51,4 +51,20 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:2})).status,200);
  assert.ok(!(await call('/api/log-books/vehicle')).data.records.some(r=>r.id===first.data.id));
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...body,revision:3})).status,409);
+ // Complementary driver cards link even when they arrive in reverse order.
+ const closingBody={...body,requestKey:randomUUID(),bookDate:'2026-10-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
+ const closing=await call('/api/log-books/vehicle','POST',closingBody);assert.equal(closing.status,201);assert.equal(closing.data.data.totalTrips,0);
+ const openingBody={...body,requestKey:randomUUID(),bookDate:'2026-10-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
+ const opening=await call('/api/log-books/vehicle','POST',openingBody);assert.equal(opening.status,201);assert.equal(opening.data.data.openingTrips,1);
+ const linked=(await call('/api/log-books/vehicle')).data.records;
+ const end=linked.find(r=>r.id===closing.data.id),start=linked.find(r=>r.id===opening.data.id);
+ assert.equal(end.data.totalTrips,1);assert.equal(start.data.totalTrips,0);assert.equal(end.data.endingTrips,1);
+ assert.equal(end.data.trips[0].tripStatus,'closed');assert.equal(start.data.trips[0].tripStatus,'closed');
+ assert.equal(end.data.trips[0].handoverLinks[0].counterpart.logBookId,String(opening.data.id));
+ const olderPage=(await call('/api/log-books/vehicle?before='+opening.data.id)).data.records.find(r=>r.id===closing.data.id);assert.equal(olderPage.data.trips[0].tripStatus,'closed');
+
+ assert.equal((await call('/api/log-books/vehicle/'+opening.data.id,'DELETE',{revision:1})).status,200);
+ const reopened=(await call('/api/log-books/vehicle?last=1')).data.records[0];
+ assert.equal(reopened.id,closing.data.id);assert.equal(reopened.data.trips[0].tripStatus,'awaiting-loading');assert.equal(reopened.data.totalTrips,0);
+
 });

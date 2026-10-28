@@ -19,3 +19,13 @@ test('missing summary and unresolved matches remain manual-entry fields',()=>{
  assert.equal(scanFieldState({},'workOrderId',{workOrderId:'No matching master'}),'missing');
  assert.equal(scanFieldState({openingHmr:0},'openingHmr',{openingHmr:'Compare reading'}),'invalid');
 });
+
+test('handover cards allow one blank time but require the recorded time to be valid',()=>{
+ for(const key of ['loadingTime','unloadingTime']){
+  const trips=[{...valid.trips[0],[key]:''}];
+  const issues=scanFieldIssues({...valid,trips});
+  assert.ok(!issues['trips.0.loadingTime']);assert.ok(!issues['trips.0.unloadingTime']);
+ }
+ const issues=scanFieldIssues({...valid,trips:[{...valid.trips[0],loadingTime:'',unloadingTime:''}]});
+ assert.ok(issues['trips.0.loadingTime']);assert.ok(issues['trips.0.unloadingTime']);
+});

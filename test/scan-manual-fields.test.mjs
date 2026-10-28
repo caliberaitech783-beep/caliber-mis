@@ -5,7 +5,7 @@ test('clear extracted values including zero and literal short-hour times need no
  const before=JSON.stringify(valid);assert.deepEqual(manualScanIssues(valid),{});assert.equal(JSON.stringify(valid),before);
 });
 test('missing, invalid and conflicting values stay visible without exposing healthy fields',()=>{
- const issues=manualScanIssues({...valid,assetId:'',aFormNo:'',closingKmr:-1,trips:[{...valid.trips[0],loadingTime:''}]});
+ const issues=manualScanIssues({...valid,assetId:'',aFormNo:'',closingKmr:-1,trips:[{...valid.trips[0],loadingTime:'25:00'}]});
  for(const key of ['assetId','aFormNo','closingKmr','trips.0.loadingTime'])assert.ok(issues[key]);
  for(const key of ['bookDate','doorText','employeeId','openingKmr','trips.0.unloadingTime'])assert.equal(issues[key],undefined);
  const conflict=manualScanIssues({...valid,scanMachineSummary:[{equipmentName:'V12',tripCount:2}]});assert.ok(conflict.scanMachineSummary);assert.ok(conflict['trips.0.equipmentName']);
@@ -18,4 +18,10 @@ test('visibility survives autosave but resets on another card; complete draft re
  const first=retainManualFields(null,'one:review',{assetId:'missing'}),saved=retainManualFields(first,'one:review',{});
  assert.ok(saved.fields.has('assetId'));assert.equal(retainManualFields(saved,'two:review',{}).fields.size,0);
  assert.equal(valid.trips.length,1);assert.equal(valid.openingKmr,0);
+});
+
+test('clear handover blanks need no invented time, but unreadable OCR time still needs review',()=>{
+ const handover={...valid,trips:[{...valid.trips[0],loadingTime:''}]};
+ assert.deepEqual(manualScanIssues(handover),{});
+ assert.ok(manualScanIssues(handover,'vehicle',{tripGridIssues:['Trip 1: check loading time.']})['trips.0.loadingTime']);
 });
