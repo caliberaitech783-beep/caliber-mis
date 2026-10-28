@@ -27,7 +27,7 @@ const display=value=>value===null||value===undefined?'—':Number(value).toLocal
 
 const gap=(start,end)=>{if(!/^\d{2}:\d{2}(?::\d{2})?$/.test(start)||!/^\d{2}:\d{2}(?::\d{2})?$/.test(end))return null;const seconds=t=>t.split(':').reduce((sum,v,i)=>sum+Number(v)*[3600,60,1][i],0);return Math.round(((seconds(end)-seconds(start)+86400)%86400)/60*1000)/1000;};
 
-function Field({label,children,hint,wide=false,skipEnter=false}){return <label data-enter-skip={skipEnter||undefined} className={`logbook-field${wide?' wide':''}`}><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>}
+function Field({label,children,hint,wide=false,skipEnter=false,enterOrder}){return <label data-enter-order={enterOrder} data-enter-skip={skipEnter||undefined} className={`logbook-field${wide?' wide':''}`}><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>}
 
 
 
@@ -61,7 +61,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
  useEffect(()=>{void load()},[kind,session.token]);
 
  useEffect(()=>{
-   if(!vehicle||loading||!options||!editing||saved||initialLocationFocused.current)return;
+   if(loading||!options||!editing||saved||initialLocationFocused.current)return;
    const frame=requestAnimationFrame(()=>{
      const location=document.getElementById('logbook-entry-form')?.querySelector('.logbook-fields .logbook-field input:not([type="hidden"]), .logbook-fields .logbook-field select');
      if(location&&!location.matches(':disabled')){
@@ -131,7 +131,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
    {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
 
-   <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={vehicle?advanceLogBookField:advanceEquipmentLogBookField}>
+   <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
 
     <fieldset className="logbook-edit-fields" disabled={!editing||working}>
 
@@ -153,27 +153,27 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 <Field label="Closing reading (KMR)"><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
 <Field label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
 <Field label="Closing reading (HMR)"><input type="number" min="0" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
-<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/><Field label="Total working HMR"><output>{fixed(hmr)}</output></Field></>:<>       <Field label="Location"><SmartSelect disabled={!editing||working} required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect></Field>
+<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/><Field label="Total working HMR"><output>{fixed(hmr)}</output></Field></>:<>       <Field enterOrder={1} label="Location"><SmartSelect disabled={!editing||working} required value={form.location} onChange={e=>setLocation(e.target.value)}><option value="">Select location</option>{options?.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect></Field>
 
        <Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
 
-       <Field label="Book date"><ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/></Field>
+       <Field enterOrder={2} label="Book date"><ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/></Field>
 
        <Field label="Book no." hint={vehicle?'CAL/VLB/DDMMYY/{S1|S2|S3|D|N}/0001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 
-       <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
+       <Field enterOrder={3} label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
 
-       <Field label="Wo.Cont." hint={options?.workOrderConnected?'From Work Order Master':'No Work Order master records available'}><SmartSelect disabled={!editing||working} value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{options?.workOrders?.filter(row=>!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location)).map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></Field>
+       <Field enterOrder={4} label="Wo.Cont." hint={options?.workOrderConnected?'From Work Order Master':'No Work Order master records available'}><SmartSelect disabled={!editing||working} value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{options?.workOrders?.filter(row=>!row.site||canonicalSiteName(row.site)===canonicalSiteName(form.location)).map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></Field>
 
-       <Field label="Shift hour"><SmartSelect name="shiftHours" disabled={!editing||working} required value={form.shiftHours} onChange={e=>{const input=e.currentTarget;update('shiftHours',Number(e.target.value));requestAnimationFrame(()=>focusNextLogBookField(input,input.form));}}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></SmartSelect></Field>
+       <Field enterOrder={6} label="Shift hour"><SmartSelect name="shiftHours" disabled={!editing||working} required value={form.shiftHours} onChange={e=>{update('shiftHours',Number(e.target.value));}}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></SmartSelect></Field>
 
-       <Field label="Shift" hint={form.cardShift?'Marked on Trip Card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><SmartSelect name="shiftId" searchable={false} disabled={!editing||working} required value={form.shiftId} onChange={e=>{const input=e.currentTarget;update('shiftId',e.target.value);requestAnimationFrame(()=>focusNextLogBookField(input,input.form));}}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</SmartSelect></Field>
+       <Field enterOrder={7} label="Shift" hint={form.cardShift?'Marked on Trip Card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><SmartSelect name="shiftId" searchable={false} disabled={!editing||working} required value={form.shiftId} onChange={e=>{update('shiftId',e.target.value);}}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</SmartSelect></Field>
 
-       <Field label={vehicle?'Driver name':'Operator name'} skipEnter={vehicle||Boolean(employee)}><SmartSelect disabled={!editing||working} required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</SmartSelect></Field>
+       <Field label={vehicle?'Driver name':'Operator name'} skipEnter><SmartSelect disabled={!editing||working} required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</SmartSelect></Field>
 
-       <Field label="Employee ID / Caliber ID" hint="Enter either ID to fetch the employee name"><EmployeeIdLookup onEnter={()=>document.getElementById('logbook-entry-form')?.querySelector('[name=shiftHours]')?.focus()} role={vehicle?'driver':'operator'} token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess((vehicle?'Driver':'Operator')+' found: '+row.name+' · '+row.caliberId);}}/></Field>
+       <Field enterOrder={5} label="Employee ID / Caliber ID" hint="Enter either ID to fetch the employee name"><EmployeeIdLookup onEnter={()=>document.getElementById('logbook-entry-form')?.querySelector('[name=shiftHours]')?.focus()} role={vehicle?'driver':'operator'} token={session.token} caliberId={employee?.caliberId||''} disabled={!editing||working} onResolved={async row=>{setOptions(await api('/api/log-books/options'));update('employeeId',row.id);setSuccess((vehicle?'Driver':'Operator')+' found: '+row.name+' · '+row.caliberId);}}/></Field>
 
-       {!vehicle&&<Field label="Job Card no."><input value={form.jobCardNo||''} onChange={e=>update('jobCardNo',e.target.value)}/></Field>}{vehicle&&<Field label="A Form no. (Trip Card)"><input maxLength={200} value={form.aFormNo} onChange={e=>update('aFormNo',e.target.value)} placeholder="Enter A Form number"/></Field>}
+       {!vehicle&&<Field enterOrder={8} label="Job Card no."><input value={form.jobCardNo||''} onChange={e=>update('jobCardNo',e.target.value)}/></Field>}{vehicle&&<Field label="A Form no. (Trip Card)"><input maxLength={200} value={form.aFormNo} onChange={e=>update('aFormNo',e.target.value)} placeholder="Enter A Form number"/></Field>}
 
 </>}
      </div></section>
@@ -183,9 +183,9 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
        {vehicle&&<><Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field><Field label="Closing reading (KMR)"><input type="number" min={form.openingKmr||0} step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field><Field label="Total running KMR"><output>{display(kmr)}</output></Field></>}
 
-       <Field label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field><Field label="Closing reading (HMR)"><input type="number" min={form.openingHmr||0} step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field><Field label={vehicle?'Total working HMR':'Total work HMR'}><output>{display(hmr)}</output></Field>
+       <Field enterOrder={9} label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field><Field enterOrder={10} label="Closing reading (HMR)"><input type="number" min={form.openingHmr||0} step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field><Field label={vehicle?'Total working HMR':'Total work HMR'}><output>{display(hmr)}</output></Field>
 
-       <Field label="Remark" wide><textarea rows={3} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)} placeholder="Enter remarks"/></Field>
+       <Field enterOrder={11} label="Remark" wide><textarea rows={3} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)} placeholder="Enter remarks"/></Field>
 
      </div></section>}
 
