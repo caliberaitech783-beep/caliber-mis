@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chooseConnectedScanner,organizationScanners,scannerConnectionMessage} from '../public/scanner-selection.mjs';
-test('connector shows only installed organization models and prevents scanning without a selection',()=>{
+test('connector shows all Windows scanners, selects one automatically and prevents scanning without a device',()=>{
  const source=readFileSync(new URL('../public/scanner-connector.js',import.meta.url),'utf8');
  const elements={device:{value:'',replaceChildren(...options){this.options=options;}},scan:{disabled:true}};
  elements.scanner={querySelectorAll:()=>[elements.device,elements.scan]};
@@ -10,12 +10,13 @@ test('connector shows only installed organization models and prevents scanning w
  const code=source.slice(0,source.indexOf('async function refresh')).replace(/^import .*;\r?\n/gm,'');
  const picker=new Function('document','location','window','chooseConnectedScanner','organizationScanners','scannerConnectionMessage',code+';return {updateDevices,lock};')(document,{hash:'',origin:''},{},chooseConnectedScanner,organizationScanners,scannerConnectionMessage);
  const brother={id:'b',name:'Brother ADS-3100'},canon={id:'c',name:'Canon DR-C225II'};
- assert.match(picker.updateDevices([{id:'other',name:'Canon iR C3326'},brother,canon]),/Both organization scanners/);
- assert.deepEqual(elements.device.options.map(o=>o.textContent),[brother.name,canon.name]);
- assert.equal(elements.device.value,'b');assert.equal(elements.scan.disabled,false);
+ assert.match(picker.updateDevices([{id:'other',name:'Canon iR C3326'},brother,canon]),/3 scanners detected/);
+ assert.deepEqual(elements.device.options.map(o=>o.textContent),['Canon iR C3326',brother.name,canon.name]);
+ assert.equal(elements.device.value,'other');assert.equal(elements.scan.disabled,false);
  elements.device.value='c';picker.updateDevices([brother,canon]);assert.equal(elements.device.value,'c');
  picker.lock(true);assert.equal(elements.scan.disabled,true);picker.lock(false);assert.equal(elements.scan.disabled,false);
- assert.match(picker.updateDevices([]),/No Brother ADS-3100 or Canon DR-C225II detected/);
+ assert.match(picker.updateDevices([]),/No Windows scanner detected/);
  picker.lock(false);assert.equal(elements.scan.disabled,true);
  picker.updateDevices([canon]);assert.equal(elements.device.value,'c');assert.equal(elements.scan.disabled,false);
+ picker.updateDevices([{id:'ir',name:'Canon iR C3326'}]);assert.equal(elements.device.value,'ir');assert.equal(elements.scan.disabled,false);
 });
