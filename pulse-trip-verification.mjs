@@ -100,13 +100,14 @@ export function createTripVerification({pool,pulse,enabled=true}){
       const card=(await client.query("SELECT image,status,logbook_id FROM mis_scan_cards WHERE id=$1",[row.data.scanCardId])).rows[0];
       if(!card||card.status!=='posted'||String(card.logbook_id)!==String(row.id))result=review('The original posted scan is unavailable. MIS must check the saved card.');
       else{
-       const requests=await pulse.readBreakdownRequests({fresh:true});
+       const source=pulse.forActor?.(row.created_by)||pulse;
+       const requests=await source.readBreakdownRequests({fresh:true});
        result=planTripVerification(row,requests);
        if(result.status==='ready'){
         const image=`data:${scanImageMime(card.image)};base64,${Buffer.from(card.image).toString('base64')}`;
         if(!validTripCardImageDataUrl(image))result=review('The source image exceeds the Pulse image limit. MIS must upload a smaller copy.');
         else{
-         const verified=await pulse.verifyTripCard(result.request.ref,{...result.payload,firstTripCardImage:image});
+         const verified=await source.verifyTripCard(result.request.ref,{...result.payload,firstTripCardImage:image});
          if(!verified.verifiedAt||verified.firstTripRemark!==result.payload.firstTripRemark||epoch(verified.firstTripAt)!==epoch(result.firstTripAt))throw Object.assign(new Error('Pulse did not confirm this trip-card verification. Check the request in Pulse.'),{status:409});
          result={...result,status:'verified',reason:'Verified in Pulse',verifiedAt:verified.verifiedAt};
         }

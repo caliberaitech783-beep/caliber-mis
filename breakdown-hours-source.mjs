@@ -8,7 +8,7 @@ export async function applyBreakdownHours(data,{readHours,actor='',now=()=>new D
  const manual=manualBreakdownHours(data.manualBreakdownHours,data.shiftHours);
  try{
   if(!readHours)throw Error('Pulse breakdown connection unavailable.');
-  const hours=await readHours({...data,runningHours:data.totalWorkingHmr});
+  const hours=await readHours({...data,runningHours:data.totalWorkingHmr,actor});
   if(hours?.breakdownHours===null||hours?.breakdownHours===undefined||hours?.breakdownHours===''||!Number.isFinite(Number(hours.breakdownHours))||Number(hours.breakdownHours)<0||Number(hours.breakdownHours)>data.shiftHours)throw Error('Pulse did not return valid BD hours for the selected shift.');
   Object.assign(data,{breakdownHours:Number(hours.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:hours});
   delete data.hoursWarning;

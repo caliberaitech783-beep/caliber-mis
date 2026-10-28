@@ -72,7 +72,7 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
 }
 
-export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=fetch}){
+export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,fetchImpl=fetch}){
  let breakdownCache=null;
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  const request=async(route,options={})=>{
@@ -83,7 +83,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
- const status=()=>({source:SOURCE,connected:Boolean(token),username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES});
+ const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES});
  const save=async(sourceToken,sourceUsername)=>{
    if(credentialStore){await credentialStore.write('pulse-session',{token:sourceToken,username:sourceUsername});return;}if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
    await mkdir(path.dirname(stateFile),{recursive:true});
@@ -96,17 +96,18 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
   const send=()=>request(route,{...options,headers:{...options.headers,Authorization:`Bearer ${token}`,'Cache-Control':'no-cache'}});
   try{return await send();}catch(error){if(error.status!==401||!credentialStore)throw error;await reconnect();return send();}
  };
- const sync=async(master)=>{
+ const sync=async(master,actor)=>{
    if(master&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
-   if(!token)throw new Error('Connect Pulse before syncing.');
+   if(!token&&!sharedSignIn?.status().connected)throw new Error('Sign in to Pulse II to connect Pulse automatically.');
    busy=true;lastAttempt=new Date().toISOString();
-   try{if(!token)await reconnect();let snapshot;try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
+   try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
  };
  return {
    status,
-   async readBreakdownRequests({fresh=false}={}){if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
+   async readBreakdownRequests({fresh=false,actor}={}){if(!token&&sharedSignIn)return sharedSignIn.request('requests',{},actor);if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
+   forActor(actor){return sharedSignIn?{readBreakdownRequests:()=>sharedSignIn.request('requests',{},actor),verifyTripCard:(reference,payload)=>sharedSignIn.request('verify',{reference,payload},actor)}:null;},
    async verifyTripCard(reference,payload){if(!reference)throw new Error('Pulse request reference is required.');const row=await authorizedRequest(`/api/requests/${encodeURIComponent(reference)}/verify`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});breakdownCache=null;return row;},
    sync,
    async connect(credentials){
@@ -127,18 +128,20 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
    async disconnect(){if(busy)throw new Error('Wait for the current sync to finish.');if(credentialStore){await credentialStore.remove('pulse');await credentialStore.remove('pulse-session');}if(stateFile)await unlink(stateFile).catch(e=>{if(e.code!=='ENOENT')throw e});token='';username='';error='';return status();},
    async start(){
      if(started||(!stateFile&&!credentialStore))return;started=true;
+     await sharedSignIn?.start();
      await pool.query('CREATE TABLE IF NOT EXISTS pulse_master_links(master_name TEXT NOT NULL,source_id TEXT NOT NULL,local_id BIGINT NOT NULL REFERENCES master_records(id) ON DELETE CASCADE,PRIMARY KEY(master_name,source_id),UNIQUE(local_id))');
      await pool.query('ALTER TABLE pulse_master_links ALTER COLUMN local_id TYPE BIGINT');
      try{const saved=await credentialStore?.read('pulse-session')||(stateFile?JSON.parse(await readFile(stateFile,'utf8')):{});token=String(saved.token||'');username=String(saved.username||'');}catch(e){if(e.code!=='ENOENT')error='Saved Pulse connection could not be read. Reconnect Pulse.';}
-     if(token||await credentialStore?.read('pulse'))void sync().catch(()=>{});
+     let hasSavedCredentials=false;try{hasSavedCredentials=Boolean(await credentialStore?.read('pulse'))}catch{error='Saved legacy Pulse credentials could not be read. Normal Pulse sign-in can reconnect automatically.';}
+     if(token||hasSavedCredentials||sharedSignIn?.status().connected)void sync().catch(()=>{});
      timer=setInterval(()=>{if((token||credentialStore)&&!busy)void sync().catch(()=>{});},60000);timer.unref?.();
    },
-   stop(){clearInterval(timer);},
+   stop(){clearInterval(timer);sharedSignIn?.stop();},
  };
 }
 
-export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,requireSession,requireAdministrator}){
- const service=createPulseMasterSync({pool,stateFile,credentialStore});
+export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,sharedSignIn,requireSession,requireAdministrator}){
+ const service=createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn});
  app.get('/api/pulse-master-sync',requireSession,requireAdministrator,(_req,res)=>res.json(service.status()));
  for(const action of ['connect','sync','disconnect'])app.post(`/api/pulse-master-sync/${action}`,requireSession,requireAdministrator,async(req,res)=>{
    try{res.json(await service[action](action==='connect'?req.body:undefined));}catch(e){res.status(400).json({error:e.message});}

@@ -18,6 +18,7 @@ import {registerBulkCardScanning} from './bulk-card-scanning.mjs';
 import {registerErpMasters} from './erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './telegram-bdms-period.mjs';
 import {registerPulseMasterSync} from './pulse-master-sync.mjs';
+import {createPulseSignInBridge} from './pulse-signin-bridge.mjs';
 import {registerTripVerification} from './pulse-trip-verification.mjs';
 import {registerLogBooks} from './log-book.mjs';
 import {accountLedgerQueries} from './iboss-account-ledger.mjs';
@@ -7784,7 +7785,7 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
 const groqScanSettings=registerGroqScanSettings(app,{store:integrationSecrets,requireSession,requireAdministrator});
 const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,requireSession,requireAdministrator});
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
