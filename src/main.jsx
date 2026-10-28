@@ -84,6 +84,7 @@ import MisDashboard from "./mis-dashboard.jsx";
 import ErpSidebar from "./erp-sidebar.jsx";
 import PulseMasterSync from "./pulse-master-sync.jsx";
 import LogBookForm from "./log-book-form.jsx";
+import LogBookDeletion from "./log-book-deletion.jsx";
 import { oemFiltersForSelection, oemRowsForLocation, groupOemRecordsBySite, oemDetailReportRows } from "./oem-dashboard-filters.mjs";
 import { buildOemBreakdownRows, buildOemBreakdownChart, createOemBreakdownSelection, oemLabel } from "./oem-breakdown-model.mjs";
 import { filterOemDelayedRows } from "./oem-delay-filter.mjs";
@@ -11601,6 +11602,8 @@ function App() {
       }
     };
   },[session?.token]);
+  const [deletionContext,setDeletionContext]=useState(null);
+  const openDeletion=context=>{setDeletionContext(context);selectMenu('Deletion');};
   const isAdministrator=session?.role==='super'&&['admin','super admin'].includes(String(adminPermissions.adminLevel||'').trim().toLowerCase());
   const vehicleTransferRoleAccess=adminPermissions.adminLevel==='Manager'&&managerRoleSelection(adminPermissions.managerRoles?.length?adminPermissions.managerRoles:adminPermissions.managerRole)
     .some((role)=>['MIS Manager','Project Manager'].includes(role));
@@ -11610,6 +11613,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks']);
   const canOpenAdminPage = (name) => {
+    if(name==='Deletion')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
     if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
     if(['Trip Card Bulk Scan','Job Card Bulk Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
@@ -11938,13 +11942,13 @@ function App() {
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <PulseMasterSync session={session}/>
-  ) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
-    <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
+  ) : renderedActive==='Deletion' ? (<LogBookDeletion key={session.token+':'+(deletionContext?.record?.id||'')+':'+(deletionContext?.kind||'')+':'+(deletionContext?.source||'')} session={session} context={deletionContext}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+    <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} onDeletion={canOpenAdminPage('Deletion')?()=>openDeletion({kind:renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment',source:'Scanned'}):undefined}/>
   ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
   ) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
     <LogBookSectionTabs kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} active="manual" canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive)} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Saved VLB':'Saved ELB')}/>
-    <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
+    <LogBookForm onDeletion={canOpenAdminPage('Deletion')?record=>openDeletion({record,kind:renderedActive==='Vehicle Log Book'?'vehicle':'equipment'}):undefined} key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
   ) : renderedActive === "Stock Statement" ? (
     <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "Purchase Order" ? (
@@ -12018,7 +12022,7 @@ function App() {
   ) : (
     <Generic name={renderedActive} requests={requests} session={session} onOpenReportSettings={() => selectMenu("Reports")} />
   ), [
-    renderedActive, renderedReportCategory, adminPermissions, renderedBreakdownFleetFilter, renderedBreakdownFleetSites,
+    deletionContext, renderedActive, renderedReportCategory, adminPermissions, renderedBreakdownFleetFilter, renderedBreakdownFleetSites,
     renderedEquipmentCategory, renderedEquipmentFilter, renderedEquipmentLocation, renderedEquipmentLocations, profileDesignationKey,
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
     session, theme,
@@ -12062,11 +12066,13 @@ function App() {
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}
         setActive={(x) => {
           const page = typeof x === "string" ? x : x?.page;
           if (x?.reportCategory) setActiveReportCategory(x.reportCategory);
+          if(page==='Deletion')setDeletionContext(null);
           selectMenu(page);
           if (page === "Equipment master") {
             setEquipmentFilter("all");
