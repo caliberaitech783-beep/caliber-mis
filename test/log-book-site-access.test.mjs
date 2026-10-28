@@ -86,4 +86,12 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   assert.equal((await call('/api/scan-cards/'+scans.remote.card+'/image')).status,403);
   assert.equal((await call('/api/scan-cards/'+scans.ownWrongSite.card+'/auto-save','POST',{revision:1})).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.ownWrongSite.batch+'/post','POST',{cards:[{id:scans.ownWrongSite.card,revision:1}]})).status,403);
+  // Old originals remain discoverable beyond the first 100 batches, with the same site protection.
+  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,created_at) SELECT gen_random_uuid(),'vehicle','History '||n,'site','2026-10-01'::timestamptz FROM generate_series(1,105) n");
+  const first=(await call('/api/scan-batches')).data,second=(await call('/api/scan-batches?offset='+first.nextOffset)).data;
+  assert.equal(first.batches.length,100);assert.equal(first.nextOffset,100);assert.equal(second.nextOffset,null);assert.ok(second.batches.length>=5);
+  assert.equal(new Set([...first.batches,...second.batches].map(b=>b.id)).size,first.batches.length+second.batches.length,'history pages do not repeat batches with matching timestamps');
+  assert.ok([...first.batches,...second.batches].every(b=>b.id!==scans.remote.batch));
+  assert.equal((await call('/api/scan-batches?offset=-1')).status,400);
+  assert.equal((await call('/api/scan-batches?offset=invalid')).status,400);
 });
