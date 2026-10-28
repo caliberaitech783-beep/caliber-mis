@@ -5851,7 +5851,7 @@ app.post('/api/tickets',requireSession,async(req,res,next)=>{
     const site=req.session.role==='super'&&!req.session.permissions?.separateMisCredentials
       ? displaySiteName(user.site||user.location||user.currentLocation)||'Not assigned'
       : displaySiteName(req.body?.site||(assignedSites.length===1?assignedSites[0]:''));
-    const ticketScope=req.session.permissions?.separateMisCredentials?await logBookScope(req.session):null;
+    const ticketScope=req.session.permissions?.separateMisCredentials?logBookSiteScope(req.session,user):null;
     if(ticketScope?!site||!(siteAllowed(ticketScope,site)||ticketScope.sites?.length===0&&site==='Not assigned'):req.session.role!=='super'&&!reportScopeIncludesSite(userSiteScope(user),site))
       return res.status(403).json({error:'Select one of your assigned sites for this ticket.'});
 
