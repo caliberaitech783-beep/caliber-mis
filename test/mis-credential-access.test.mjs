@@ -11,6 +11,13 @@ test('MIS API permissions fail closed and follow assigned masters and working me
  assert.equal(misRequestAllowed(session,{path:'/api/unknown-new-feature',method:'GET'}),false);
  assert.equal(misPageAllowed(session,'Employee master','mobile'),false);assert.equal(misPageAllowed(session,'Employee master','desktop'),true);
 });
+
+test('VLB and ELB report pages inherit their corresponding scan access independently',()=>{
+ assert.equal(misPageAllowed(session,'VLB Reports','desktop'),true);
+ assert.equal(misPageAllowed(session,'VLB Reports','mobile'),false);
+ assert.equal(misPageAllowed(session,'ELB Reports','desktop'),false);
+ assert.equal(misPageAllowed({...session,permissions:{...session.permissions,misDesktopAccess:['Job Card Bulk Scan']}},'ELB Reports','desktop'),true);
+});
 test('card batch permissions resolve actual database kind instead of trusting the supplied kind',async()=>{
  const pool={query:async()=>({rows:[{kind:'equipment'}]})};
  assert.equal(await authorizeMisRequest(session,{path:'/api/scan-batches/12345678-1234-1234-1234-123456789abc',method:'POST',body:{kind:'vehicle'}},pool),false);
