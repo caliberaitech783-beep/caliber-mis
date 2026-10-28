@@ -25,3 +25,19 @@ test('clear handover blanks need no invented time, but unreadable OCR time still
  assert.deepEqual(manualScanIssues(handover),{});
  assert.ok(manualScanIssues(handover,'vehicle',{tripGridIssues:['Trip 1: check loading time.']})['trips.0.loadingTime']);
 });
+
+test('literal blank handover times do not become red fields or block automatic saving',async()=>{
+ const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
+ const {cardReviewGroup}=await import('../scan-card-groups.mjs');
+ for(const key of ['loadingTime','unloadingTime']){
+  const draft={...valid,trips:[{...valid.trips[0],[key]:''}]};
+  const reason='Trip 1: check '+(key==='loadingTime'?'loading':'unloading')+' time.';
+  const raw={gemini:{trips:{r:[[1,'V12',draft.trips[0].loadingTime,draft.trips[0].unloadingTime]]}},tripGridIssues:[reason]};
+  assert.deepEqual(manualScanIssues(draft,'vehicle',raw),{});
+  const card={status:'review',draft,raw_fields:raw,checks:{errors:[],warnings:[]}};
+  assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
+  assert.equal(cardReviewGroup(card,'vehicle'),'orange');
+  const source=raw.gemini.trips.r[0];source[key==='loadingTime'?2:3]=null;
+  assert.ok(manualScanIssues(draft,'vehicle',raw)['trips.0.'+key]);
+ }
+});
