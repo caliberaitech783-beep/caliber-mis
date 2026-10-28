@@ -65,6 +65,7 @@ test("phone report and ticket layouts retain every workflow in compact horizonta
 test("phone alerts are bounded and unchanged feeds avoid expensive workflow rerenders", () => {
   assert.match(phoneCss, /\.incoming-notification \.notification-message\.compact \.notification-details\s*\{[^}]*-webkit-line-clamp:\s*2/);
   assert.match(phoneCss, /\.incoming-notification-close\s*\{[^}]*min-width:\s*40px[^}]*min-height:\s*40px/);
-  assert.match(main, /setInterval\(checkVersion, adaptiveRefreshInterval\(window, 60_000\)\)/);
+  const updateNotice=readFileSync(new URL('../src/site-update-notice.jsx',import.meta.url),'utf8');
+  assert.match(updateNotice, /setInterval\(check,adaptiveRefreshInterval\(window,60_000\)\)/);
   assert.match(main, /if \(current\.token === session\.token && current\.loaded && !current\.error\) return current/);
 });

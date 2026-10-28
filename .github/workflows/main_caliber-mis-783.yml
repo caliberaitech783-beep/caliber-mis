@@ -29,6 +29,7 @@ jobs:
           npm run ocr:prepare
           npm run build --if-present
           npm run test --if-present
+          EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
           printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
 
       - name: Upload artifact for deployment job
@@ -75,7 +76,7 @@ jobs:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent --max-time 20 "https://pulse-ll.cmll.in/api/health?gemini-release=${EXPECTED_COMMIT}" -o health.json && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT)process.exit(1)"; then
+            if curl --fail --silent --max-time 20 "https://pulse-ll.cmll.in/api/health?gemini-release=${EXPECTED_COMMIT}" -o health.json && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT)process.exit(1)" && node scripts/verify-ui-release.mjs --live; then
               echo "Pulse-II is serving the Gemini release."
               exit 0
             fi

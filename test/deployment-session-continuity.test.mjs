@@ -36,7 +36,7 @@ test("source fallback is deterministic and ignores the generated version module"
   assert.notEqual(await resolveAppVersion({ env: {}, cwd, gitHead: "" }), first);
 });
 
-test("building embeds the stable version without dirtying the tracked source module", async (t) => {
+test("building injects the stable version directly without rewriting the source module", async (t) => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "bdms-version-build-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await mkdir(path.join(cwd, "src"), { recursive: true });
@@ -56,7 +56,8 @@ test("building embeds the stable version without dirtying the tracked source mod
   });
 
   assert.equal(builtVersion, currentSha);
-  assert.match(embeddedVersion, new RegExp(currentSha));
+  assert.equal(embeddedVersion, original);
+  assert.equal(JSON.parse(buildOptions.define.__CALIBER_APP_VERSION__),currentSha);
   assert.equal(buildOptions.build.assetsDir, "app-assets");
   assert.equal(await readFile(versionModule, "utf8"), original);
   assert.equal(await readFile(path.join(cwd, "dist", "app-version.txt"), "utf8"), currentSha);
