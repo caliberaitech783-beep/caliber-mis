@@ -185,7 +185,7 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  app.render();app.runAccountLocation();assert.equal(app.slots[0].location,'Sasti OC');
  app.slots[0].trips=[blankTrip()];const tree=app.render();
  const location=all(tree,node=>node.props['aria-label']==='Location')[0];assert.equal(location.type,'input');assert.equal(location.props.readOnly,true);
- const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);
+ const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
  const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['V12']);
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
