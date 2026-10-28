@@ -23,3 +23,5 @@ test('capture follows a replacement scanner only when exactly one is connected',
  assert.equal(captureScanner([a,b],'b'),b);
  assert.equal(captureScanner([],''),null);
 });
+
+test('recognizes the Canon USB driver name including numbered Windows instances',()=>{for(const name of ['CANON DR-C225 USB #2','CANON DR-C225 USB'])assert.equal(chooseConnectedScanner([{id:'canon-usb',name}]),'canon-usb');});
