@@ -1,8 +1,10 @@
+import {isMisAdministrator} from './mis-admin-access.mjs';
 // Match the authenticated login only; employee display names never grant access.
 export function isSessionViewOnlyUser(session) {
   return String(session?.login || '').trim().toLowerCase() === 'mahakdudani';
 }
 export function canViewUserSessions(session) {
+  if(session?.permissions?.separateMisCredentials)return isMisAdministrator(session);
   return isSessionViewOnlyUser(session) || (session?.role === 'super'
     && ['admin','super admin'].includes(String(session?.permissions?.adminLevel || '').trim().toLowerCase()));
 }

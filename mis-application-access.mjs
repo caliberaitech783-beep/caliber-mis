@@ -1,6 +1,9 @@
+import {isMisAdministrator,MIS_ADMIN_PAGES} from './mis-admin-access.mjs';
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
+ if(['Tickets','Telegram Integration'].includes(page))return true;
+ if(MIS_ADMIN_PAGES.includes(page))return isMisAdministrator(session);
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
  if(page==='Scan Backup'||page==='Deletion'){const selection=view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)];return selection.includes(page)||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));}
  return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
@@ -9,6 +12,16 @@ export function misRequestAllowed(session,req){
  if(!session?.permissions?.separateMisCredentials)return true;
  const route=req.path||'',read=['GET','HEAD'].includes(req.method);
  const allowed=page=>misPageAllowed(session,page);
+ if(route==='/api/mis-ticket-sites')return read;
+ if(route==='/api/mis-admin/backup')return isMisAdministrator(session)&&req.method==='POST';
+ if(route==='/api/mis-admin/status')return isMisAdministrator(session)&&read;
+ if(route==='/api/mis-telegram/me'||route==='/api/mis-telegram/link')return read&&route.endsWith('/me')||req.method==='POST'&&route.endsWith('/link');
+ if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test'));
+ if(route==='/api/print-helper/certificate')return read;
+ if(route==='/api/print-helper/sign')return req.method==='POST';
+ if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');
+ if(route==='/api/user-sessions'||route==='/api/user-login-history'||route==='/api/audit-events'||route==='/api/log-retention'||route==='/api/storage-overview'||route==='/api/diagnostics')return read&&isMisAdministrator(session);
+ if(route==='/api/backups'||/^\/api\/backups\/[a-f0-9-]{36}\/download$/.test(route))return read&&isMisAdministrator(session);
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
  if(route==='/api/masters')return read;
@@ -26,6 +39,7 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
  if(route.startsWith('/api/log-books/equipment'))return allowed('Equipment Log Book');
  if(route.startsWith('/api/scan')||route.startsWith('/api/bulk-card')){const kind=req.misResourceKind||req.params?.kind||req.query?.kind||req.body?.kind;return kind==='vehicle'?allowed('Trip Card Bulk Scan'):kind==='equipment'?allowed('Job Card Bulk Scan'):allowed('Trip Card Bulk Scan')||allowed('Job Card Bulk Scan');}
+ if(route==='/api/tickets/resolve')return req.method==='PATCH'&&isMisAdministrator(session);
  if(route.startsWith('/api/tickets'))return allowed('Tickets');
  if(route.startsWith('/api/dashboard'))return allowed('Dashboard');
  if(route.startsWith('/api/report'))return allowed('Reports');

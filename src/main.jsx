@@ -1,3 +1,6 @@
+import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
+import MisAdministration from './mis-admin.jsx';
+import MisTelegram from './mis-telegram.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
 import ScanCardBackup,{ScanBackupReminder} from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
@@ -3918,7 +3921,7 @@ function PrintButton({ title, columns = [], rows = [], className = "secondary", 
 // portalClassName reaches the export menu and the "preparing file" overlay, both portaled to the body: a caller inside a higher overlay (Info Pulse) uses it to raise them above itself.
 // printSection: Smart Print captures the dashboard section (.mine-panel) holding the menu, as it is on screen.
 // excelSheets: a function returning [{name, title, columns, rows}]; Excel then has one sheet per table.
-function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Print/Export", printOnly = false, smartPrintItem = true, smartLabels = false, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null }) {
+function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Generate", printOnly = false, smartPrintItem = true, smartLabels = false, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   smartPrintColumns=requestShiftColumns(smartPrintColumns,smartPrintRows,shifts);
@@ -6780,7 +6783,7 @@ function AuditTrailPage({ session }) {
       </ActionsTable>
   ), [tableRows, sort, openFilter, filters, actionsToolbarTarget, loading, headerValueCache]);
   return <section className="panel pagepanel generic audit-page">
-    <header><div><h1>Audit Trail</h1><p>Today’s administration, user changes, account security, backup, and vehicle transfer activity</p></div><div className="audit-header-actions"><button type="button" className="secondary" onClick={() => setRetentionOpen(true)} title="Automatic daily clean-up"><Clock /> Auto clean-up{retention ? ` · ${retentionLabel(retention.auditDays)}` : ""}</button><button type="button" className="secondary danger" onClick={() => setPurgeOpen(true)} disabled={loading || purging}><Trash2 /> Delete old logs</button><button type="button" className="secondary" onClick={() => load()} disabled={loading}><RefreshCw /> {loading ? "Refreshing..." : "Refresh"}</button></div></header>
+    <header><div><h1>Audit Trail</h1><p>Today’s administration, user changes, account security, backup, and vehicle transfer activity</p></div><div className="audit-header-actions">{!session?.permissions?.separateMisCredentials&&<><button type="button" className="secondary" onClick={() => setRetentionOpen(true)} title="Automatic daily clean-up"><Clock /> Auto clean-up{retention ? ` · ${retentionLabel(retention.auditDays)}` : ""}</button><button type="button" className="secondary danger" onClick={() => setPurgeOpen(true)} disabled={loading || purging}><Trash2 /> Delete old logs</button></>}<button type="button" className="secondary" onClick={() => load()} disabled={loading}><RefreshCw /> {loading ? "Refreshing..." : "Refresh"}</button></div></header>
     {retentionOpen && <Modal title="Automatic log clean-up" close={() => !savingRetention && setRetentionOpen(false)} className="audit-purge-modal">
       <form className="form master-form" onSubmit={saveRetention}>
         <p className="audit-purge-help">Once a day the system deletes everything older than the number of days you keep. It also runs within a few minutes of saving and after each deployment. Enter 0 to turn a part off. The run is recorded in the Audit Trail.</p>
@@ -7092,7 +7095,7 @@ function SessionMessageInbox({session}) {
 }
 
 function UserSessionsPage({session}) {
-  const viewOnly=isSessionViewOnlyUser(session);
+  const viewOnly=isSessionViewOnlyUser(session)||Boolean(session?.permissions?.separateMisCredentials);
   const [historyTarget,setHistoryTarget]=useState(null);
   const [announcing,setAnnouncing]=useState(false);
   const [sessions,setSessions]=useState([]);
@@ -10464,14 +10467,15 @@ function readTicketAttachment(file) {
 }
 
 function TicketCreateForm({ session, close, onCreated }) {
+  const chooseSite=session?.permissions?.separateMisCredentials||session?.role!=="super";
   const [attachment, setAttachment] = useState(null), [saving, setSaving] = useState(false), [error, setError] = useState("");
-  const [ticketSites, setTicketSites] = useState([]), [sitesLoaded, setSitesLoaded] = useState(session?.role === "super");
+  const [ticketSites, setTicketSites] = useState([]), [sitesLoaded, setSitesLoaded] = useState(!chooseSite);
   useEffect(() => {
-    if (session?.role === "super") return;
+    if (!chooseSite) return;
     let active = true;
-    fetch("/api/me/profile", {headers: {Authorization: `Bearer ${session.token}`}})
+    fetch(session?.permissions?.separateMisCredentials?"/api/mis-ticket-sites":"/api/me/profile", {headers: {Authorization: `Bearer ${session.token}`}})
       .then(async (response) => {if (!response.ok) throw new Error("Could not load your assigned sites."); return response.json();})
-      .then((profile) => {if (active) {setTicketSites(userSiteSelection(profile)); setSitesLoaded(true);}})
+      .then((profile) => {if (active) {setTicketSites(session?.permissions?.separateMisCredentials?profile.sites||[]:userSiteSelection(profile)); setSitesLoaded(true);}})
       .catch((error) => {if (active) setError(error.message);});
     return () => {active = false;};
   }, [session?.token, session?.role]);
@@ -10514,7 +10518,7 @@ function TicketCreateForm({ session, close, onCreated }) {
   return <Modal title="Create support ticket" close={dismiss}>
     <form className="form ticket-form" onSubmit={submit}>
       <div className="formgrid">
-        {session?.role !== "super" && <label className="full">Site *<select key={ticketSites.join("|")} name="site" required defaultValue={ticketSites.length === 1 ? ticketSites[0] : ""} disabled={!sitesLoaded}>
+        {chooseSite && <label className="full">Site *<select key={ticketSites.join("|")} name="site" required defaultValue={ticketSites.length === 1 ? ticketSites[0] : ""} disabled={!sitesLoaded}>
           <option value="" disabled>{sitesLoaded ? "Select a site" : "Loading assigned sites…"}</option>
           {ticketSites.map((site) => <option key={site} value={site}>{site}</option>)}
         </select></label>}
@@ -10621,7 +10625,7 @@ function TicketPage({ session }) {
   const error = sameScope ? ticketState.error : "";
   const loading = refreshing || !sameScope;
   const refresh = () => setRefreshCount((current) => current + 1);
-  const isAdmin = session?.role === "super" && session?.permissions?.adminLevel !== "Manager";
+  const isAdmin = session?.permissions?.separateMisCredentials?isMisAdministrator(session):session?.role === "super" && session?.permissions?.adminLevel !== "Manager";
   const canCreate = Boolean(session?.token);
   const ticketExportColumns = [
     { label: "Ticket ID", value: (ticket) => ticket.reference }, { label: "Created at", value: (ticket) => displayDateTime(ticket.createdAt) }, { label: "User", value: (ticket) => ticket.creatorName }, { label: "Site", value: (ticket) => ticket.site }, { label: "Category", value: (ticket) => ticket.category }, { label: "Priority", value: (ticket) => ticket.priority || "Medium" }, { label: "Description", value: (ticket) => ticket.message || "Audio description" }, { label: "Status", value: (ticket) => ticket.status }, { label: "Resolved at", value: (ticket) => displayDateTime(ticket.resolvedAt) }, { label: "Resolution", value: (ticket) => ticket.resolutionMessage || "—" },
@@ -11484,7 +11488,7 @@ const AppBackgroundServices = React.memo(function AppBackgroundServices({ sessio
   const token = session?.token || authToken;
   return <>
     <SessionMessageInbox session={session} />
-    <TelegramGate token={token} logout={logout} />
+    {!session?.permissions?.separateMisCredentials&&<TelegramGate token={token} logout={logout} />}
     <ReturnedCorrectionGate key={token} token={token} />
     <TicketResolutionNotices key={token} token={token} />
     <RemoteAssistanceAgent session={session} />
@@ -11610,8 +11614,9 @@ function App() {
     .includes('Project Manager');
   const correctionRequestAccess=adminPermissions.adminLevel==='Manager'&&managerRoleSelection(adminPermissions.managerRoles?.length?adminPermissions.managerRoles:adminPermissions.managerRole)
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
-  const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks']);
+  const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
+    if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
     if(name==='Scan Backup'||name==='Deletion')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
     if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
     if(['Trip Card Bulk Scan','Job Card Bulk Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
@@ -11971,6 +11976,8 @@ function App() {
     <CaliberDirectoryPage token={session?.token || authToken} />
   ) : renderedActive === "Manager Profile" ? (
     <MisDashboard canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
+  ) : renderedActive === 'Telegram Integration' ? (<MisTelegram session={session}/>
+  ) : ['Full Backup','Database'].includes(renderedActive) ? (<MisAdministration canScanBackup={canOpenAdminPage('Scan Backup')} page={renderedActive} session={session} ReportSection={ReportSection} onScanBackup={()=>selectMenu('Scan Backup')}/>
   ) : renderedActive === "Tickets" ? (
     <TicketPage session={session} />
   ) : renderedActive === "Admin locks" ? (
@@ -12066,6 +12073,9 @@ function App() {
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
+          {name:'Telegram Integration',direct:true,pages:canOpenAdminPage('Telegram Integration')?['Telegram Integration']:[]},
+          {name:'Admin',pages:MIS_ADMIN_PAGES.filter(canOpenAdminPage)},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
         ].filter(group=>group.pages.length||group.keepEmpty)}

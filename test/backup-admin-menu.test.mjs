@@ -23,7 +23,7 @@ test('every backup page opens from the Administration menu, for Admin and Super 
     assert.match(topbar,new RegExp(`\\.workspace-menu-item\\[data-workspace="${key}"\\] \\.workspace-icon \\{`));
   }
 
-  assert.match(main,/const adminOnlyPages=new Set\(\[\.\.\.adminNav\.map\(\(\[name\]\)=>name\),'Admin locks'\]\);/,'backup pages stay administrator-only');
+  assert.match(main,/const adminOnlyPages=new Set\(\[\.\.\.adminNav\.map\(\(\[name\]\)=>name\),'Admin locks','Full Backup','Database'\]\);/,'backup pages stay administrator-only');
 });
 
 test('the longer Administration menu still fits on screen',()=>{
