@@ -1,6 +1,13 @@
 import React from 'react';
 import {BookOpen,Keyboard,ScanLine} from 'lucide-react';
 import './log-book-mode-choice.css';
-import './saved-log-books.css';
-export function LogBookSectionTabs({kind,active,onManual,onScan,onSaved,canScan=true,canSaved=true}){const code=kind==='vehicle'?'VLB':'ELB';return <nav className="logbook-section-tabs" aria-label={code+' sections'}><button type="button" aria-current={active==='manual'?'page':undefined} onClick={onManual}>{code} Manual</button><button type="button" aria-current={active==='scan'?'page':undefined} onClick={onScan} disabled={!canScan}>{code} Scan</button><button type="button" aria-current={active==='saved'?'page':undefined} onClick={onSaved} disabled={!canSaved}>Saved {code}</button></nav>}
-export default function LogBookModeChoice({kind,onManual,onScan,onSaved,canScan=true,canSaved=true}){const code=kind==='vehicle'?'VLB':'ELB',title=kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book';return <section className="logbook-mode-choice"><header><BookOpen size={32}/><div><h1>{title} ({code})</h1><p>Choose how you want to enter the log book.</p></div></header><LogBookSectionTabs kind={kind} onManual={onManual} onScan={onScan} onSaved={onSaved} canScan={canScan} canSaved={canSaved}/><div className="logbook-mode-cards"><button onClick={onManual}><Keyboard size={34}/><strong>{code} Manual</strong><span>Enter and save log book data manually.</span></button><button onClick={onScan} disabled={!canScan}><ScanLine size={34}/><strong>{code} Scan</strong><span>Scan {kind==='vehicle'?'Trip Cards':'Job Cards'} from the document scanner, check extracted data and save approved cards.</span>{!canScan&&<small>Scanner access requires an administrator.</small>}</button></div></section>}
+export default function LogBookModeChoice({kind,onManual,onScan,onSaved,canScan=true,canSaved=true}){
+  const code=kind==='vehicle'?'VLB':'ELB',title=kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book';
+  return <section className="logbook-mode-choice"><header><BookOpen size={32}/><div><h1>{title} ({code})</h1><p>Choose how you want to enter or check the log book.</p></div></header>
+    <div className="logbook-mode-cards">
+      <button type="button" onClick={onManual}><Keyboard size={34}/><strong>{code} Manual</strong><span>Enter and save log book data manually.</span></button>
+      <button type="button" onClick={onScan} disabled={!canScan}><ScanLine size={34}/><strong>{code} Scan</strong><span>Scan {kind==='vehicle'?'Trip Cards':'Job Cards'} from the document scanner, check extracted data and save approved cards.</span>{!canScan&&<small>Scanner access requires an administrator.</small>}</button>
+      <button type="button" onClick={onSaved} disabled={!canSaved}><BookOpen size={34}/><strong>Saved {code}</strong><span>View saved log books, check their values and open original scans.</span></button>
+    </div>
+  </section>;
+}

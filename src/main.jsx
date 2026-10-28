@@ -4,7 +4,7 @@ import {operationReports} from './operations-report-model.mjs';
 import ScanBatchReports from './scan-batch-reports.jsx';
 import {misPageAllowed} from '../mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
-import LogBookModeChoice,{LogBookSectionTabs} from './log-book-mode-choice.jsx';
+import LogBookModeChoice from './log-book-mode-choice.jsx';
 import SavedLogBooks from './saved-log-books.jsx';
 import EmployeeMaster from './employee-master.jsx';
 import {requestedMisPage,misPageUrl} from './mis-navigation.mjs';
@@ -11944,7 +11944,6 @@ function App() {
   ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
   ) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
-    <LogBookSectionTabs kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} active="manual" canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive)} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Saved VLB':'Saved ELB')}/>
     <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
   ) : renderedActive === "Stock Statement" ? (
     <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
