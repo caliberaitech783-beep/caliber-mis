@@ -18,6 +18,7 @@ import {registerBulkCardScanning} from './bulk-card-scanning.mjs';
 import {registerErpMasters} from './erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './telegram-bdms-period.mjs';
 import {registerPulseMasterSync} from './pulse-master-sync.mjs';
+import {registerTripVerification} from './pulse-trip-verification.mjs';
 import {registerLogBooks} from './log-book.mjs';
 import {accountLedgerQueries} from './iboss-account-ledger.mjs';
 import {bdmsChatAnswer,bdmsChatCanRead,bdmsChatFlow,bdmsChatQueryAllowed,bdmsChatIntent} from './telegram-bdms-chatbot.mjs';
@@ -3491,6 +3492,7 @@ app.get('/api/health',async(_req,res)=>{
     databaseError='';
     res.json({
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,
+      automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
       cdirRosterRevision,
@@ -7787,6 +7789,7 @@ const logBookScope=async session=>logBookSiteScope(session,await currentUserReco
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope});
+const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 const scanArchiveSettings=scanArchiveConfig();
 const bulkScanning=registerBulkCardScanning(app,{getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
@@ -8556,6 +8559,7 @@ async function initializeDatabase(){
     await pulseMasterSync.start();
     await logBooks.initialize();
     await bulkScanning.start();
+    pulseTripVerification.start();
     await localScanner.start();
     await erpMasters.start();
     await seedCdirMasters()

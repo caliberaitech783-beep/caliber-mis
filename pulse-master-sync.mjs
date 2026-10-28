@@ -77,9 +77,9 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  const request=async(route,options={})=>{
    let response;
-   try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. Existing local masters are unchanged.');}
+   try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. The connection will retry automatically.');}
    const body=await response.json().catch(()=>null);
-   if(!response.ok){if([401,403].includes(response.status))throw Object.assign(new Error('Pulse access expired or was denied. Reconnect an authorized Pulse administrator.'),{code:'PULSE_AUTH_EXPIRED'});throw new Error(`Pulse request failed (${response.status}). Existing local masters are unchanged.`);}
+   if(!response.ok){if([401,403].includes(response.status))throw Object.assign(new Error('Pulse access expired or was denied. Reconnect an authorized Pulse administrator with MIS verification access to the card site.'),{code:'PULSE_AUTH_EXPIRED',status:response.status});throw Object.assign(new Error(body?.error||`Pulse request failed (${response.status}).`),{status:response.status});}
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
@@ -91,6 +91,11 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
    await rename(stateFile+'.tmp',stateFile);
  };
  const reconnect=async()=>{const credentials=await credentialStore?.read('pulse');if(!credentials)throw new Error('Connect Pulse before syncing.');const login=await request('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,portal:'operations'})});if(!login?.token||login.role!=='super'||!['admin','super admin'].includes(String(login.permissions?.adminLevel||'').toLowerCase())||PULSE_MASTER_NAMES.some(name=>!masterAccessAllows(login.permissions,name)&&!masterAccessAllows(login.permissions,name,'mobileMasterAccess')))throw new Error('Saved Pulse account is no longer authorized to sync masters.');await save(login.token,credentials.username);token=login.token;username=credentials.username;};
+ const authorizedRequest=async(route,options={})=>{
+  if(!token)throw new Error('Connect Pulse in Sync all masters to enable automatic MIS verification.');
+  const send=()=>request(route,{...options,headers:{...options.headers,Authorization:`Bearer ${token}`,'Cache-Control':'no-cache'}});
+  try{return await send();}catch(error){if(error.status!==401||!credentialStore)throw error;await reconnect();return send();}
+ };
  const sync=async(master)=>{
    if(master&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
@@ -101,7 +106,8 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,fetchImpl=
  };
  return {
    status,
-   async readBreakdownRequests(){if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await request('/api/requests',{headers:{Authorization:`Bearer ${token}`,'Cache-Control':'no-cache'}});if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
+   async readBreakdownRequests({fresh=false}={}){if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
+   async verifyTripCard(reference,payload){if(!reference)throw new Error('Pulse request reference is required.');const row=await authorizedRequest(`/api/requests/${encodeURIComponent(reference)}/verify`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});breakdownCache=null;return row;},
    sync,
    async connect(credentials){
      if(busy)throw new Error('A master sync is already running.');

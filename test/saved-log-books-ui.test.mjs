@@ -10,7 +10,7 @@ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').repl
 function harness(){
   const slots=[];let cursor=0;
   const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
-  const scope={React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null};
+  const scope={React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null,PulseTripVerification:()=>null};
   const components=new Function(...Object.keys(scope),code+';return {SavedLogBooks,SavedLogBookDetails,savedLogBookQuery}')(...Object.values(scope));
   return {...components,slots,render(kind='vehicle'){cursor=0;return components.SavedLogBooks({kind,session:{token:'test'}})}};
 }

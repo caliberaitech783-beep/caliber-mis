@@ -1,4 +1,5 @@
 import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
+import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from './scan-text-storage.mjs';
 import {validTripTimes,withVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {savedLogBookFilters} from './saved-log-book-filters.mjs';
@@ -17,7 +18,7 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  book_date DATE NOT NULL,site TEXT NOT NULL,asset_id BIGINT NOT NULL,data JSONB NOT NULL,
  request_key UUID UNIQUE NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),revision INTEGER NOT NULL DEFAULT 1);
- ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`;
+ ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA;
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
@@ -86,6 +87,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      if(shiftSite&&canonicalSiteName(shiftSite)!==canonicalSiteName(data.location))fail('The selected shift is assigned to a different location.');
      Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:text(employee.employee||employee.name||employee.login),caliberId:employeeCode(employee),shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
  if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
+ data.chassis=text(asset.chassis||asset.chassisNo);
  return data;
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy){
@@ -94,6 +96,7 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy){
        const [year,month,day]=data.bookDate.split('-');
        const bookNo=formatBookNumber(kind,data.bookDate,counter,data.bookShiftCode||data.cardShift||data.shiftName);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
+ await enqueueTripVerification(client,result.rows[0]);
  return result.rows[0];
 }
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope=async session=>logBookSiteScope(session)}){
@@ -185,6 +188,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});const response=kind==='vehicle'?(await withVlbTripHandovers(client,[previous],await filterLogBookSites(client,req.logBookScope)))[0]:previous;await client.query('COMMIT');return res.json(response);}
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
+     if(updating)await enqueueTripVerification(client,result.rows[0]);
      const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];await client.query('COMMIT');res.status(updating?200:201).json(response);
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
  }
