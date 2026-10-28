@@ -11,3 +11,17 @@ test('Vehicle book numbers include the selected shift code, including Day and Ni
 test('latest workbook rules choose newest location contract, use inter-trip idle gap and combine machine columns',()=>{const orders=[{id:'old',site:'Sasti OC',workOrderDate:'2025-01-01'},{id:'new',site:'Sasti OC',workOrderDate:'2026-01-01'},{id:'other',site:'Jayant OC',workOrderDate:'2026-10-01'}];assert.equal(latestWorkOrder(orders,'Sasti OC','2026-10-21').id,'new');assert.equal(interTripGap([{unloadingTime:'10:10'},{loadingTime:'10:26'}],1),16);assert.equal(interTripGap([{loadingTime:'10:26'}],0),null);assert.equal(interTripGap([{unloadingTime:'23:50'},{loadingTime:'00:10'}],1),20);const d=extractCard('Site: Sasti OC\nShift [x] I (05:00-01:00)\n1 V 65 5\n2 T 88 6','vehicle',[]).draft;assert.equal(d.timeMode,'without');assert.deepEqual(d.trips.map(r=>[r.equipmentName,r.tripCount]),[['V65',5],['T88',6]]);});
 
 test('M and No columns after the time columns combine into the equipment label',()=>{const d=extractCard('Site: Sasti OC\nTRIP DETAILS\n1 08:20 08:40 V 65\n2 10:26 10:40 T 88','vehicle',[]).draft;assert.equal(d.timeMode,'with');assert.deepEqual(d.trips.map(r=>r.equipmentName),['V65','T88']);});
+
+test('scan shift labels and trip clocks follow each location master',async()=>{
+ const {cardShiftLabel,selectedMasterShift,tripClockForShift}=await import('../trip-card-rules.mjs');
+ const rows=[{id:'j',site:'Jayant OC',shiftName:'Shift B',startTime:'12:00:00',endTime:'20:00:00'},{id:'s',site:'Sasti OC',shiftName:'Shift B',startTime:'13:00:00',endTime:'21:00:00'}];
+ assert.equal(cardShiftLabel(rows,'Jayant OC','II'),'II · 12:00–20:00');
+ assert.equal(cardShiftLabel(rows,'Sasti OC','II'),'II · 13:00–21:00');
+ assert.equal(tripClockForShift('12:10','II',selectedMasterShift(rows,'Jayant OC','II')),'12:10');
+ assert.equal(tripClockForShift('08:10','II',selectedMasterShift(rows,'Jayant OC','II')),'08:10');
+ assert.equal(tripClockForShift('08:10','II',selectedMasterShift(rows,'Sasti OC','II')),'20:10');
+ assert.doesNotMatch(cardShiftLabel(rows,'Unknown','I'),/05:00/);
+ const localMasters=masters.map(r=>r.master_name==='Shift Master'?{...r,record_data:{site:'Jayant OC',shiftName:'Shift C',startTime:'20:00:00',endTime:'04:00:00'}}:r);
+ const draft=extractCard('Site: Jayant OC\nSHIFT [x] III\n1 V25 08:20 09:00','vehicle',localMasters).draft;
+ assert.equal(draft.shiftId,'3');assert.equal(draft.trips[0].loadingTime,'20:20');
+});

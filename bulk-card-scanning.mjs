@@ -43,7 +43,6 @@ export async function checkScanCard(client,kind,card,input=card.draft){
  if(input.cardShift&&!input.shiftId)warnings.push('Marked shift '+input.cardShift+' does not match a unique Shift Master time. Check the marked shift and location.');
  if(kind==='vehicle'&&!input.scanMachineSummary?.length)warnings.push('Printed machine-wise summary was not read. Compare the calculated totals with the paper summary.');
  if(kind==='vehicle'&&!(input.trips||[]).length)warnings.push('No trip rows extracted. Add all trip rows, or explicitly confirm the card has no trips.');
- if(data&&input.cardShift&&CARD_SHIFTS[input.cardShift]?.start&&data.masterShiftStart&&data.masterShiftStart.slice(0,5)!==CARD_SHIFTS[input.cardShift].start)warnings.push('Marked card shift '+input.cardShift+' starts at '+CARD_SHIFTS[input.cardShift].start+', but the linked Shift Master starts at '+data.masterShiftStart.slice(0,5)+'. Verify the shift.');
  if(data&&data.totalWorkingHmr>data.shiftHours)warnings.push('Working HMR exceeds the selected shift hours. Confirm these readings.');
  if(!input.workOrderId)warnings.push('No Work Order selected. Confirm whether this card requires a contract.');
  return {errors,warnings,data,number};
