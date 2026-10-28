@@ -31,3 +31,9 @@ export async function allowedScanBatches(client,scope,login){
   const {rows}=await client.query("SELECT b.id FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING (b.created_by=$1 AND bool_and(COALESCE(c.status,'queued')<>'posted')) OR (count(c.id)>0 AND bool_and(COALESCE(c.draft->>'location','')=ANY($2::text[])))",[login,locations]);
   return rows.map(row=>row.id);
 }
+
+export function manualLogBookLocation(session={},scope=logBookSiteScope(session)){
+ const assigned=userSiteSelection({...session.permissions,...session});
+ const sites=assigned.length?assigned:scope.sites||[];
+ return sites.length===1&&siteAllowed(scope,sites[0])?displaySiteSelection(sites[0])[0]||'':'';
+}

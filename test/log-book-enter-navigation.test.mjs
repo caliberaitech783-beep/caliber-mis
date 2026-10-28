@@ -83,7 +83,7 @@ function harness(){
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
-  return {render,slots,focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
+  return {render,slots,runAccountLocation:()=>effects.find(effect=>effect.deps?.length===3&&effect.deps[2]===slots[2].accountLocation).run(),focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
 
 test('VLB and ELB opening focus Location once after masters load without selecting a value or stealing focus',()=>withFrames(flush=>{
@@ -127,7 +127,7 @@ test('rendered VLB header follows the requested sequence and driver is explicitl
   const tree=harness().render();
   const fields=all(tree,node=>node.props.label&&node.props.children);
   assert.deepEqual(fields.slice(0,16).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
-    'Location','Book date','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift hour','Shift','A Form no. (Trip Card)',
+    'Location','Book date','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
     'Opening reading (KMR)','Closing reading (KMR)','Opening reading (HMR)','Closing reading (HMR)','Remark',
   ]);
   assert.equal(fields.find(node=>node.props.label==='Driver name').props.skipEnter,true);
@@ -146,7 +146,7 @@ test('VLB and ELB employee ID dropdowns contain only employees at the selected s
     assert.equal(picker.props.searchable,true);
     assert.deepEqual(all(picker,node=>node.type==='option').map(node=>node.props.value),['','1']);
     picker.props.onChange({target:{value:'1'}});assert.equal(app.slots[0].employeeId,'1');assert.match(app.slots[7],/Local operator/);
-    fields.find(node=>node.props.label==='Location').props.children.props.onChange({target:{value:'Jayant OC'}});
+    if(kind==='vehicle'){app.slots[2].accountLocation='Jayant OC';app.render(kind);app.runAccountLocation();}else fields.find(node=>node.props.label==='Location').props.children.props.onChange({target:{value:'Jayant OC'}});
     assert.equal(app.slots[0].employeeId,'');
     const changed=all(app.render(kind),node=>node.props.label==='Employee ID / Caliber ID')[0].props.children;
     assert.deepEqual(all(changed,node=>node.type==='option').map(node=>node.props.value),['','2']);
@@ -178,4 +178,15 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
     assert.equal(payload.trips.length,1);assert.deepEqual(payload.trips[0],app.slots[0].trips[0]);
     assert.equal(app.slots[0].trips.length,2,'draft is not erased');
   } finally {globalThis.requestAnimationFrame=priorFrame;globalThis.document=priorDocument;globalThis.fetch=priorFetch}
+});
+
+test('VLB location comes from account, Shift precedes Shift Hours, and trip search lists only local vehicles',()=>{
+ const app=harness();app.slots[2]={...app.slots[2],accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],assets:[{id:'v1',kind:'vehicle',site:'Sasti OC',door:'V12',name:'Volvo 12'},{id:'v2',kind:'vehicle',site:'Jayant OC',door:'V99',name:'Volvo 99'},{id:'e1',kind:'equipment',site:'Sasti OC',door:'EX1',name:'Excavator'}]};
+ app.render();app.runAccountLocation();assert.equal(app.slots[0].location,'Sasti OC');
+ app.slots[0].trips=[blankTrip()];const tree=app.render();
+ const location=all(tree,node=>node.props['aria-label']==='Location')[0];assert.equal(location.type,'input');assert.equal(location.props.readOnly,true);
+ const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);
+ const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['V12']);
+ all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
 });

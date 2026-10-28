@@ -27,3 +27,11 @@ test('Excel has summary, card details, individual trips and machine totals scope
  const bytes=Buffer.from(await buildXlsxSheetsWorkbook(r.title,tables).arrayBuffer());assert.equal(bytes.subarray(0,2).toString(),'PK');const xml=bytes.toString('utf8');assert.match(xml,/Driver One/);assert.doesNotMatch(xml,/BOOK-foreign/);
  const pdf=scanBatchExportTables(r,{pdf:true});assert.ok(pdf[1].columns.length<tables[1].columns.length);assert.equal(pdf[1].rows.length,1);assert.equal(pdf[2].rows.length,1);
 });
+
+test('linked handover legs retain driver credits and count one completed trip in reports',()=>{
+ const loading=card('loading',1,{saved_data:{...data,scanCardId:'loading',scanBatchId:batch.id,openingTrips:1,endingTrips:0,totalTrips:0,trips:[{equipmentName:'D19',loadingTime:'12:30',unloadingTime:'',tripCount:1,completedTrips:0}]}});
+ const unloading=card('unloading',2,{saved_data:{...data,scanCardId:'unloading',scanBatchId:batch.id,openingTrips:0,endingTrips:1,totalTrips:1,trips:[{equipmentName:'D19',loadingTime:'',unloadingTime:'13:30',tripCount:1,completedTrips:1}]}});
+ const report=scanBatchReport(batch,[loading,unloading]);assert.equal(report.totals.trips,1);assert.equal(report.machineRows[0].trips,1);
+ assert.equal(report.rows[0].openingTrips,1);assert.equal(report.rows[1].endingTrips,1);
+ assert.equal(scanBatchReport(batch,[loading]).totals.trips,0);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,1);
+});

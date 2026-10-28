@@ -1,5 +1,6 @@
+import {withVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {scanImageDimensions,scanImageMime} from './scan-image-format.mjs';
-import {allowedScanBatches,requireLogBookSite} from './log-book-access.mjs';
+import {allowedScanBatches,requireLogBookSite,filterLogBookSites} from './log-book-access.mjs';
 import {completeScanTripDetails} from './scan-trip-completion.mjs';
 import {canAutoSaveScanCard} from './scan-auto-save.mjs';
 import {scanBatchReport,scanBatchExportTables} from './scan-batch-report.mjs';
@@ -68,8 +69,9 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  const getCard=async(client,id,lock=false)=>{if(!uuid(id))fail('Invalid scan card.');const row=(await client.query('SELECT * FROM mis_scan_cards WHERE id=$1'+(lock?' FOR UPDATE':''),[id])).rows[0];if(!row)fail('Card not found.',404);return decodeScanRow(row)};
  const readBatchReport=async req=>{
   const batch=await getBatch(pool,req.params.id);
-  const rows=(await pool.query('SELECT c.id,c.batch_id,c.ordinal,c.filename,c.raw_fields,c.draft,c.status,c.page_count,l.book_no,l.data AS saved_data,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id WHERE c.batch_id=$1 ORDER BY c.ordinal',[batch.id])).rows;
+  const rows=(await pool.query('SELECT c.id,c.batch_id,c.ordinal,c.filename,c.raw_fields,c.draft,c.status,c.page_count,l.id AS saved_logbook_id,l.book_no,l.data AS saved_data,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id WHERE c.batch_id=$1 ORDER BY c.ordinal',[batch.id])).rows;
   for(const row of rows){decodeScanRow(row);if(row.saved_data&&!row.logbook_deleted_at)requireLogBookSite(req.logBookScope,row.saved_data.location);}
+  if(batch.kind==='vehicle'){const saved=rows.filter(row=>row.status==='posted'&&row.saved_data&&!row.logbook_deleted_at);const linked=await withVlbTripHandovers(pool,saved.map(row=>({id:row.saved_logbook_id,book_no:row.book_no,data:row.saved_data})),await filterLogBookSites(pool,req.logBookScope));const byId=new Map(linked.map(row=>[String(row.id),row.data]));for(const row of saved)row.saved_data=byId.get(String(row.saved_logbook_id));}
   return scanBatchReport(batch,rows);
  };
  app.get('/api/scan-batches/:id/report',...protect,wrap(async(req,res)=>{

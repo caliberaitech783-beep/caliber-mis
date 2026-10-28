@@ -23,6 +23,7 @@ export default function SearchableSelect({
   hint='',
   emptyText='No matching records found.',
   className='',
+  inputProps={},
 }){
   const id=useId();
   const input=useRef(null);
@@ -75,7 +76,7 @@ export default function SearchableSelect({
     {label&&<label htmlFor={id}>{label}{required?' *':''}</label>}
     <div className="searchable-select-control">
       <Search aria-hidden="true" />
-      <input id={id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
+      <input {...inputProps} id={id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
         aria-describedby={hint?`${id}-hint`:undefined} aria-busy={loading} disabled={disabled}
