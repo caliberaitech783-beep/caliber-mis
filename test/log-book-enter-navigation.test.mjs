@@ -85,7 +85,7 @@ function harness(){
   return {render,slots,focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
 
-test('VLB opening focuses Location once after masters load, without selecting a value or stealing focus on refresh',()=>withFrames(flush=>{
+test('VLB and ELB opening focus Location once after masters load without selecting a value or stealing focus',()=>withFrames(flush=>{
   const previous=globalThis.document,focused=[];
   globalThis.document={getElementById:()=>({querySelector:selector=>({matches:()=>false,focus:()=>focused.push(selector)})})};
   try {
@@ -93,9 +93,33 @@ test('VLB opening focuses Location once after masters load, without selecting a 
     app.slots[9]=false;app.render();app.focusLocation();flush();assert.equal(focused.length,1);assert.match(focused[0],/input.*select/);
     assert.equal(app.slots[0].location,'','autofocus never chooses a location for the user');
     app.slots[2]={...app.slots[2]};app.render();app.focusLocation();flush();assert.equal(focused.length,1);
-    const elb=harness();elb.render('equipment');elb.focusLocation();flush();assert.equal(focused.length,1);
-    const saved=harness();saved.slots[1]={book_no:'SAVED',data:{}};saved.render();saved.focusLocation();flush();assert.equal(focused.length,1);
+    const elb=harness();elb.slots[9]=true;elb.render('equipment');elb.focusLocation();flush();assert.equal(focused.length,1);
+    elb.slots[9]=false;elb.render('equipment');elb.focusLocation();flush();assert.equal(focused.length,2);
+    elb.slots[2]={...elb.slots[2]};elb.render('equipment');elb.focusLocation();flush();assert.equal(focused.length,2);
+    const saved=harness();saved.slots[1]={book_no:'SAVED',data:{}};saved.render();saved.focusLocation();flush();assert.equal(focused.length,2);
   } finally {globalThis.document=previous}
+}));
+
+test('actual ELB form follows the approved Enter sequence through Save regardless of its visual column order',()=>withFrames(flush=>{
+  const app=harness(),tree=app.render('equipment');
+  const fields=all(tree,node=>node.props.label&&node.props.children);
+  const ordered=fields.filter(node=>node.props.enterOrder).sort((a,b)=>a.props.enterOrder-b.props.enterOrder);
+  assert.deepEqual(ordered.map(node=>node.props.label),['Location','Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift hour','Shift','Job Card no.','Opening reading (HMR)','Closing reading (HMR)','Remark']);
+  assert.equal(fields.find(node=>node.props.label==='Operator name').props.skipEnter,true);
+  assert.equal(fields.some(node=>/KMR/.test(node.props.label)),false);
+  const controls=fields.filter(node=>node.props.enterOrder||node.props.label==='Operator name').map(node=>control(node.props.label,{
+    closest:selector=>selector==='[data-enter-skip="true"]'?(node.props.skipEnter?{}:null):node.props.enterOrder?{dataset:{enterOrder:node.props.enterOrder}}:null,
+  }));
+  const save=control('Save',{tagName:'BUTTON'});controls.push(save);
+  const form={querySelectorAll:()=>controls};
+  const sequence=[...ordered.map(node=>controls.find(c=>c.name===node.props.label)),save];
+  for(let i=0;i<sequence.length-1;i++){
+    advanceLogBookField(event(sequence[i],form));flush();
+    assert.equal(sequence[i+1].focused,true,`${sequence[i].name} → ${sequence[i+1].name}`);
+  }
+  const nativeFields=fields.filter(node=>['Shift hour','Shift'].includes(node.props.label));
+  for(const node of nativeFields)assert.doesNotMatch(String(node.props.children.props.onChange),/focusNextLogBookField/);
+  assert.equal(all(tree,node=>node.type==='form')[0].props.onKeyDown,advanceLogBookField);
 }));
 
 test('rendered VLB header follows the requested sequence and driver is explicitly skipped',()=>{

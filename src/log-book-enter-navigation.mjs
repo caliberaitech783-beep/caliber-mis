@@ -7,7 +7,7 @@ export function focusNextLogBookField(input, form) {
   const fields = [...form.querySelectorAll('input, select, textarea, button[data-enter-action]')].filter(field =>
     !field.matches(':disabled') && !field.readOnly && field.type !== 'hidden' && field.tabIndex >= 0 &&
     field.getClientRects().length && !field.closest('[data-enter-skip="true"]')
-  );
+  ).sort((a,b)=>Number(a.closest('[data-enter-order]')?.dataset?.enterOrder??999)-Number(b.closest('[data-enter-order]')?.dataset?.enterOrder??999));
   const index = fields.indexOf(input);
   if (index >= 0) fields[index + 1]?.focus();
 }
