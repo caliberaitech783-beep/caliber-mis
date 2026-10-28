@@ -86,7 +86,7 @@ function harness(){
   return {render,slots,runAccountLocation:()=>effects.find(effect=>effect.deps?.length===3&&effect.deps[2]===slots[2].accountLocation).run(),focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
 
-test('VLB and ELB opening focus Location once after masters load without selecting a value or stealing focus',()=>withFrames(flush=>{
+test('VLB and ELB focus the first editable field once after masters load without stealing focus',()=>withFrames(flush=>{
   const previous=globalThis.document,focused=[];
   globalThis.document={getElementById:()=>({querySelector:selector=>({matches:()=>false,focus:()=>focused.push(selector)})})};
   try {
@@ -101,26 +101,25 @@ test('VLB and ELB opening focus Location once after masters load without selecti
   } finally {globalThis.document=previous}
 }));
 
-test('actual ELB form follows the approved Enter sequence through Save regardless of its visual column order',()=>withFrames(flush=>{
-  const app=harness(),tree=app.render('equipment');
-  const fields=all(tree,node=>node.props.label&&node.props.children);
-  const ordered=fields.filter(node=>node.props.enterOrder).sort((a,b)=>a.props.enterOrder-b.props.enterOrder);
-  assert.deepEqual(ordered.map(node=>node.props.label),['Location','Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift hour','Shift','Job Card no.','Opening reading (HMR)','Closing reading (HMR)','Remark']);
-  assert.equal(fields.find(node=>node.props.label==='Operator name').props.skipEnter,true);
-  assert.equal(fields.some(node=>/KMR/.test(node.props.label)),false);
-  const controls=fields.filter(node=>node.props.enterOrder||node.props.label==='Operator name').map(node=>control(node.props.label,{
-    closest:selector=>selector==='[data-enter-skip="true"]'?(node.props.skipEnter?{}:null):node.props.enterOrder?{dataset:{enterOrder:node.props.enterOrder}}:null,
-  }));
-  const save=control('Save',{tagName:'BUTTON'});controls.push(save);
-  const form={querySelectorAll:()=>controls};
-  const sequence=[...ordered.map(node=>controls.find(c=>c.name===node.props.label)),save];
-  for(let i=0;i<sequence.length-1;i++){
-    advanceLogBookField(event(sequence[i],form));flush();
-    assert.equal(sequence[i+1].focused,true,`${sequence[i].name} → ${sequence[i+1].name}`);
-  }
-  const nativeFields=fields.filter(node=>['Shift hour','Shift'].includes(node.props.label));
-  for(const node of nativeFields)assert.doesNotMatch(String(node.props.children.props.onChange),/focusNextLogBookField/);
-  assert.equal(all(tree,node=>node.type==='form')[0].props.onKeyDown,advanceLogBookField);
+test('ELB shares VLB keyboard flow and controls while retaining equipment fields',()=>withFrames(flush=>{
+ const app=harness(),tree=app.render('equipment');
+ const fields=all(tree,node=>node.props.label&&node.props.children);
+ const labels=['Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','Job Card no.','Opening reading (HMR)','Closing reading (HMR)','Remark'];
+ const ordered=fields.filter(node=>labels.includes(node.props.label));
+ assert.deepEqual(ordered.map(node=>node.props.label),labels);
+ assert.equal(fields.find(node=>node.props.label==='Location').props.children.props.readOnly,true);
+ assert.equal(fields.find(node=>node.props.label==='Operator name').props.skipEnter,true);
+ assert.equal(fields.find(node=>node.props.label==='Shift').props.children.props.searchable,true);
+ assert.equal(fields.some(node=>/KMR/.test(node.props.label)),false);
+ const controls=ordered.map(node=>control(node.props.label));const save=control('Save',{tagName:'BUTTON'});controls.push(save);
+ const form={querySelectorAll:()=>controls};
+ for(let i=0;i<controls.length-1;i++){advanceLogBookField(event(controls[i],form));flush();assert.equal(controls[i+1].focused,true);}
+ assert.equal(all(tree,node=>node.type==='form')[0].props.onKeyDown,advanceLogBookField);
+ const buttons=all(tree,node=>node.type==='button').map(node=>React.Children.toArray(node.props.children).filter(child=>typeof child==='string').join(''));
+ for(const label of ['Query','First record','Last record','Edit','Save','Delete','Search','Print','Cancel','Exit','Status'])assert.ok(buttons.includes(label),label);
+ assert.ok(all(tree,node=>node.props.className==='logbook-page logbook-compact').length);
+ assert.ok(all(tree,node=>node.type==='h2'&&node.props.children==='Hours summary').length);
+ assert.equal(all(tree,node=>node.props['data-enter-action']==='add-trip').length,0);
 }));
 
 test('rendered VLB header follows the requested sequence and driver is explicitly skipped',()=>{
@@ -146,7 +145,7 @@ test('VLB and ELB employee ID dropdowns contain only employees at the selected s
     assert.equal(picker.props.searchable,true);
     assert.deepEqual(all(picker,node=>node.type==='option').map(node=>node.props.value),['','1']);
     picker.props.onChange({target:{value:'1'}});assert.equal(app.slots[0].employeeId,'1');assert.match(app.slots[7],/Local operator/);
-    if(kind==='vehicle'){app.slots[2].accountLocation='Jayant OC';app.render(kind);app.runAccountLocation();}else fields.find(node=>node.props.label==='Location').props.children.props.onChange({target:{value:'Jayant OC'}});
+    app.slots[2].accountLocation='Jayant OC';app.render(kind);app.runAccountLocation();
     assert.equal(app.slots[0].employeeId,'');
     const changed=all(app.render(kind),node=>node.props.label==='Employee ID / Caliber ID')[0].props.children;
     assert.deepEqual(all(changed,node=>node.type==='option').map(node=>node.props.value),['','2']);
@@ -188,5 +187,12 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
  const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['V12']);
+ all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
+});
+
+test('ELB account location persists on New entry and equipment search is scoped to that site',()=>{
+ const app=harness();app.slots[2]={...app.slots[2],accountLocation:'Sasti OC'};app.render('equipment');app.runAccountLocation();
+ const tree=app.render('equipment');assert.equal(app.slots[0].location,'Sasti OC');
+ const picker=all(tree,node=>node.props.kind==='equipment'&&node.props.onSelect)[0];assert.equal(picker.props.location,'Sasti OC');
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
 });

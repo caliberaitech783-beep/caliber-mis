@@ -29,7 +29,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const app=express();app.use(express.json());
  const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal'};next()};
  const requireAdministrator=(req,res,next)=>req.session.role==='super'?next():res.status(403).json({error:'Admin only'});
- registerLogBooks(app,{pool,requireSession,requireAdministrator});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
+ registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>[]}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base=`http://127.0.0.1:${server.address().port}`;
  const call=async(route,method='GET',body,auth='admin')=>{const r=await fetch(base+route,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
@@ -43,7 +43,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,revision:1})).status,409);
  assert.equal((await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),shiftId:5})).status,400);
  assert.equal((await call('/api/log-books/equipment','POST',{...body,requestKey:randomUUID()})).status,400);
- const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-10-26\/001$/);
+ const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-10-26\/001$/);assert.equal(equipment.data.data.breakdownHours,0);assert.equal(equipment.data.data.hoursSource.runningHours,6.5);assert.equal(equipment.data.data.idleHours,1.5);
  assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID()});assert.equal(second.data.book_no,'CAL/VLB/181026/S1/0002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-10-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'CAL/VLB/191026/S1/0001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
  assert.equal((await call('/api/log-books/vehicle?first=1')).data.records[0].id,first.data.id);const last=await call('/api/log-books/vehicle?last=1');assert.equal(last.data.records.length,1);assert.equal(last.data.records[0].id,nextDay.data.id);
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:1})).status,409);

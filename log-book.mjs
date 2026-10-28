@@ -170,7 +170,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      client=await pool.connect();await client.query('BEGIN');
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
      Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
-     if(kind==='vehicle'&&pulseMasterSync){try{const hours=await readHours({...data,runningHours:data.totalWorkingHmr});Object.assign(data,{breakdownHours:hours.breakdownHours,availabilityHours:hours.availabilityHours,idleHours:hours.idleHours,hoursSource:hours});}catch(e){data.hoursWarning=e.message;}}
+     if(pulseMasterSync){try{const hours=await readHours({...data,runningHours:data.totalWorkingHmr});Object.assign(data,{breakdownHours:hours.breakdownHours,availabilityHours:hours.availabilityHours,idleHours:hours.idleHours,hoursSource:hours});}catch(e){data.hoursWarning=e.message;}}
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
