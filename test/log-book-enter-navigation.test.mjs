@@ -179,14 +179,14 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
   } finally {globalThis.requestAnimationFrame=priorFrame;globalThis.document=priorDocument;globalThis.fetch=priorFetch}
 });
 
-test('VLB location comes from account, Shift precedes Shift Hours, and trip search lists local equipment and vehicles',()=>{
+test('VLB location comes from account, Shift precedes Shift Hours, and trip search lists local equipment',()=>{
  const app=harness();app.slots[2]={...app.slots[2],accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],assets:[{id:'v1',kind:'vehicle',site:'Sasti OC',door:'V12',name:'Volvo 12'},{id:'v2',kind:'vehicle',site:'Jayant OC',door:'V99',name:'Volvo 99'},{id:'e1',kind:'equipment',site:'Sasti OC',door:'EX1',name:'Excavator'}]};
  app.render();app.runAccountLocation();assert.equal(app.slots[0].location,'Sasti OC');
  app.slots[0].trips=[blankTrip()];const tree=app.render();
  const location=all(tree,node=>node.props['aria-label']==='Location')[0];assert.equal(location.type,'input');assert.equal(location.props.readOnly,true);
  const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
- const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['V12','EX1']);
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
 });
 

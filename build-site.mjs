@@ -1,7 +1,8 @@
+import {verifyBuiltUiRelease} from './scripts/verify-ui-release.mjs';
 import { build } from "vite";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,25 +54,17 @@ export async function resolveAppVersion({ env = process.env, cwd = process.cwd()
   return normalizedBuildIdentity(repositoryHead) || sourceTreeVersion(cwd);
 }
 
-export async function buildSite({ cwd = process.cwd(), env = process.env, buildClient = build } = {}) {
+export async function buildSite({ cwd = process.cwd(), env = process.env, buildClient = build, verifyOutput = buildClient === build } = {}) {
   const appVersion = await resolveAppVersion({ env, cwd });
-  const versionModulePath = path.join(cwd, generatedVersionModule);
-  const originalVersionModule = await readFile(versionModulePath).catch(() => null);
-  await writeFile(versionModulePath, `export const APP_VERSION = ${JSON.stringify(appVersion)};\n`);
-  try {
-    // /assets/* is reserved by an Azure Front Door route that can take several
-    // minutes to leave the data plane after it is disabled. A distinct bundle
-    // directory keeps every deployment reachable through the proven /* route.
-    await buildClient({ root: cwd, build: { assetsDir: "app-assets" } });
-  } finally {
-    if (originalVersionModule === null) await rm(versionModulePath, { force: true });
-    else await writeFile(versionModulePath, originalVersionModule);
-  }
+  // /assets/* is reserved by an Azure Front Door route. Keep all release assets
+  // under the established path, with a version supplied directly to the compiler.
+  await buildClient({ root: cwd, define: {__CALIBER_APP_VERSION__:JSON.stringify(appVersion)}, build: { assetsDir: "app-assets" } });
   await mkdir(path.join(cwd, "dist", "server"), { recursive: true });
   await mkdir(path.join(cwd, "dist", ".openai"), { recursive: true });
   await writeFile(path.join(cwd, "dist", "app-version.txt"), appVersion);
   await writeFile(path.join(cwd, "dist", "server", "index.js"), `export default { async fetch(request, env) { if (env.ASSETS) return env.ASSETS.fetch(request); return new Response("Caliber Pulse"); } };\n`);
   await writeFile(path.join(cwd, "dist", ".openai", "hosting.json"), JSON.stringify({ project_id: "appgprj_6a75aeab589c8191ad09746148ea8ead", d1: null, r2: null }));
+  if(verifyOutput)await verifyBuiltUiRelease({root:path.join(cwd,'dist'),expected:appVersion});
   return appVersion;
 }
 
