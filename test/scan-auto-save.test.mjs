@@ -25,6 +25,11 @@ test('complete cards post independently without approval; retries, validation an
  assert.equal((await call(first,99)).status,409);
  const saved=await call(first);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.status,'posted');assert.equal(saved.data.archive,null);assert.equal(archives,0);
  const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;assert.equal(stored.scanSaveMode,'automatic-validation');assert.equal(stored.autoSavedBy,'test-admin');assert.equal(stored.reviewedBy,undefined);
+ const reportBase='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
+ const reportResponse=await fetch(reportBase+'/report?cards=another-batch',{headers:{Authorization:'admin'}});assert.equal(reportResponse.status,200);const report=await reportResponse.json();assert.equal(report.batchId,batch);assert.equal(report.counts.cards,2);assert.equal(report.counts.saved,1);assert.equal(report.counts.pending,1);assert.equal(report.totals.trips,1);assert.equal(report.tables[1].rows.length,2);
+ const liveBatch=await(await fetch(reportBase,{headers:{Authorization:'admin'}})).json();assert.equal(liveBatch.cards.find(c=>c.id===first).saved_data.scanCardId,first);
+ const pdf=await fetch(reportBase+'/report.pdf',{headers:{Authorization:'admin'}});assert.equal(pdf.status,200);assert.match(pdf.headers.get('content-type'),/application\/pdf/);assert.ok(pdf.headers.get('content-disposition').includes(batch));assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+ assert.equal((await fetch(reportBase+'/report')).status,401);assert.equal((await fetch(reportBase+'/report.pdf',{headers:{Authorization:'normal'}})).status,403);
  assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
  assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);

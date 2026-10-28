@@ -80,6 +80,9 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   }
   const visible=(await call('/api/scan-batches')).data.batches.map(batch=>batch.id);
   assert.ok(visible.includes(scans.local.batch));assert.ok(!visible.includes(scans.remote.batch));
+  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/report')).status,200);
+  assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report')).status,403);
+  assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report.pdf')).status,403);
   assert.equal((await call('/api/scan-cards/'+scans.remote.card+'/image')).status,403);
   assert.equal((await call('/api/scan-cards/'+scans.ownWrongSite.card+'/auto-save','POST',{revision:1})).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.ownWrongSite.batch+'/post','POST',{cards:[{id:scans.ownWrongSite.card,revision:1}]})).status,403);
