@@ -2,7 +2,10 @@ import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.m
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
- return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
+ const selection=(view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]);
+ // Preserve the existing full VLB/ELB administrator workflow while the issuer adopts the new menu option.
+ if(page==='Deletion')return selection.includes('Deletion')||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));
+ return selection.includes(page);
 }
 export function misRequestAllowed(session,req){
  if(!session?.permissions?.separateMisCredentials)return true;

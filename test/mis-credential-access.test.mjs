@@ -43,3 +43,5 @@ test('MIS client forwards separate credentials only to the fixed HTTPS issuer an
  assert.ok(body.token);assert.equal(body.grant,undefined);assert.equal(calls[0].login,'person');assert.equal(calls[1].v[1],'a'.repeat(43));
  assert.equal(await client.validateSession('token',{permissions:{}}),null);
 });
+
+test('Deletion requires its explicit grant or existing access to both VLB and ELB; one book alone cannot reveal the other',()=>{const profile=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages,misMobileAccess:[]}});assert.equal(misPageAllowed(profile(['Vehicle Log Book']),'Deletion','desktop'),false);assert.equal(misPageAllowed(profile(['Vehicle Log Book','Equipment Log Book']),'Deletion','desktop'),true);assert.equal(misPageAllowed(profile(['Deletion']),'Deletion','desktop'),true);assert.equal(misPageAllowed(profile(['Vehicle Log Book','Equipment Log Book']),'Deletion','mobile'),false);assert.equal(misRequestAllowed(profile(['Vehicle Log Book','Equipment Log Book']),{path:'/api/log-book-deletions/entries',method:'GET'}),true);});
