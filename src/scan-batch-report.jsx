@@ -3,10 +3,10 @@ import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
 import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
 import './scan-batch-report.css';
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
-export default function ScanBatchReport({batch,cards,token}){
+export default function ScanBatchReport({batch,cards,token,ReportSection}){
  const [downloading,setDownloading]=useState(''),[error,setError]=useState('');
  const report=scanBatchReport(batch,cards);if(!report?.counts.cards)return null;
- const tables=scanBatchReportTables(report),cardTable=tables[1];
+ const tables=scanBatchReportTables(report);
  const download=async format=>{setDownloading(format);setError('');try{
   const response=await fetch('/api/scan-batches/'+batch.id+'/report'+(format==='pdf'?'.pdf':''),{cache:'no-store',headers:{Authorization:'Bearer '+token}});
   if(!response.ok){const body=await response.json().catch(()=>({}));throw Error(body.error||'The batch report could not be downloaded.');}
@@ -19,7 +19,7 @@ export default function ScanBatchReport({batch,cards,token}){
   <p className="scan-batch-report-scope">Batch ID: {report.batchId}. This report covers every card in this batch, regardless of the card filters below. Totals count saved cards only and refresh as cards save.</p>
   <dl>{[['Cards',report.counts.cards],['Saved',report.counts.saved],['Pending',report.counts.pending],['Rejected',report.counts.rejected],...(report.vehicle?[['Trips',report.totals.trips],['Kilometres',report.totals.kilometres]]:[]),['Working hours',report.totals.hours]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>
   {report.counts.pending>0&&<p role="status">{report.counts.pending} card(s) are still pending. Their draft values are listed separately from saved totals.</p>}
-  <details><summary>View card-wise report ({report.counts.cards} cards)</summary><div className="scan-batch-report-table"><table><thead><tr>{cardTable.columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{report.rows.map(r=><tr key={r.id}>{cardTable.columns.map(c=><td key={c.key}>{display(c.value(r))}</td>)}</tr>)}</tbody></table></div></details>
-  {report.vehicle&&tables.slice(2).map(table=><details key={table.name}><summary>{table.name} · saved cards only</summary><div className="scan-batch-report-table"><table><thead><tr>{table.columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{table.rows.map((r,i)=><tr key={i}>{table.columns.map(c=><td key={c.key}>{display(c.value(r))}</td>)}</tr>)}{!table.rows.length&&<tr><td colSpan={table.columns.length}>No saved trip details in this batch yet.</td></tr>}</tbody></table></div></details>)}
+  {ReportSection&&tables.map(table=><details key={table.name} open={table.name==='Cards'}><summary>{table.name}{table.name==='Individual trips'||table.name==='Loading equipment'?' · saved cards only':''}</summary><ReportSection title={table.title} category="scan-batch" description={report.name+' · Batch ID: '+report.batchId} columns={table.columns} rows={table.rows} emptyMessage="No matching data in this batch yet."/></details>)}
+
  </section>;
 }

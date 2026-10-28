@@ -7335,7 +7335,6 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
   </section>;
 }
 function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", children }) {
-  if (category === "iboss-accounts") exportLabel = "Print/Export";
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7355,7 +7354,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         <div className="generated-report-heading-actions">
           {headingControl}
           <div className="report-heading-table-actions" ref={setTableToolbarTarget} />
-          <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} smartLabels={category === "employee-tenure"} className="secondary" label={exportLabel} />
+          <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} className="secondary" label={exportLabel} />
         </div>
       </div>
       {controls}
@@ -7405,7 +7404,7 @@ function withTimelineLinks(columns, token) {
   });
 }
 function ReportsPage(props) {
-  if (String(props.activeReportCategory).startsWith('operations-')) return <OperationsReports session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} />;
+  if (String(props.activeReportCategory).startsWith('operations-')) return <OperationsReports ReportSection={ReportSection} session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} />;
   if (props.activeReportCategory === 'bd-ageing') return <BdAgeingReport key={props.session?.token} session={props.session} ReportSection={ReportSection} onBack={()=>props.setActiveReportCategory?.('general')} />;
   return <StandardReportsPage {...props} />;
 }
@@ -11942,8 +11941,8 @@ function App() {
   ) : renderedActive==='Pulse Master Sync' ? (
     <PulseMasterSync session={session}/>
   ) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
-    <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
-  ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
+    <BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
+  ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
   ) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
     <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
