@@ -7789,7 +7789,7 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
-const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope});
+const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:async({to,otp,requestId,count})=>sendMetaWhatsAppText({to,purpose:'logBookDeletionOtp',message:`Caliber Pulse-II/MIS deletion OTP: ${otp}. Request ${requestId}, ${count} VLB/ELB entries. Only enter this code after checking the exact record preview. Expires within 10 minutes.`},{env:await metaWhatsAppRuntimeEnv()})});
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 const scanArchiveSettings=scanArchiveConfig();

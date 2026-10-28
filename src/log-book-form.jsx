@@ -33,26 +33,26 @@ function Field({label,children,hint,wide=false,skipEnter=false,enterOrder}){retu
 
 
 
-export default function LogBookForm({kind,session,onExit,onBulkScan}){
+export default function LogBookForm({kind,session,onExit,onBulkScan,onDeletion}){
 
  const vehicle=kind==='vehicle',title=vehicle?'Vehicle Log Book':'Equipment Log Book';
 
  const [form,setForm]=useState(fresh),[saved,setSaved]=useState(null),[options,setOptions]=useState(null),[records,setRecords]=useState([]),[nextCursor,setNextCursor]=useState(null),[query,setQuery]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[working,setWorking]=useState(false),[loading,setLoading]=useState(true);
 
  const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
- const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
+ const [editing,setEditing]=useState(true),[showStatus,setShowStatus]=useState(false);
  const initialLocationFocused=useRef(false);
 
  useEffect(()=>{
    const saveShortcut=event=>{
      if(!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=='s'||event.altKey)return;
      event.preventDefault();
-     if(event.repeat||event.isComposing||!editing||working||loading||showDelete)return;
+     if(event.repeat||event.isComposing||!editing||working||loading)return;
      document.getElementById('logbook-entry-form')?.requestSubmit();
    };
    window.addEventListener('keydown',saveShortcut);
    return()=>window.removeEventListener('keydown',saveShortcut);
- },[editing,working,loading,showDelete]);
+ },[editing,working,loading]);
 
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Could not reach the log book service.');return body;};
 
@@ -114,7 +114,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
  const firstRecord=async()=>{try{const result=await api(`/api/log-books/${kind}?first=1`);if(result.records[0])openEntry(result.records[0]);else setSuccess('No saved records yet.');}catch(e){setError(e.message)}};
 
  const lastRecord=async()=>{try{const result=await api(`/api/log-books/${kind}?last=1`);if(result.records[0])openEntry(result.records[0]);else setSuccess('No saved records yet.');}catch(e){setError(e.message)}};
- const deleteRecord=async()=>{setWorking(true);try{await api(`/api/log-books/${kind}/${saved.id}`,{method:'DELETE',body:JSON.stringify({revision:saved.revision})});setShowDelete(false);newEntry();setSuccess('Record deleted from the active register.');await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+
 
  const printRecord=()=>{document.body.classList.add('printing-logbook');window.addEventListener('afterprint',()=>document.body.classList.remove('printing-logbook'),{once:true});window.print();};
 
@@ -122,7 +122,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
 
 
-   <header className="logbook-page-header"><div><span className="logbook-eyebrow">MIS / DAILY OPERATIONS</span><h1><BookOpen size={26}/>{title}</h1><p>{vehicle?'Vehicle readings, driver assignment and trip details.':'Equipment readings, shift and operator assignment.'}</p></div><div className="logbook-header-actions" role="toolbar" aria-label="Log book actions"><button type="button" onClick={()=>void load()} disabled={working||loading} title="Refresh masters"><RotateCcw size={15}/><span>Refresh</span></button><button type="button" onClick={newEntry} disabled={working}><Plus size={16}/>New entry</button>{onBulkScan&&<button type="button" onClick={onBulkScan}>Bulk scan cards</button>}{saved?.data.scanCardId&&<button type="button" onClick={viewSource}>View source scan</button>}<><button type="button" onClick={findRecords}><ListFilter size={16}/>Query</button><button type="button" onClick={firstRecord} disabled={working}><ChevronsLeft size={16}/>First record</button><button type="button" onClick={lastRecord} disabled={working}><ChevronsRight size={16}/>Last record</button><button type="button" onClick={()=>setEditing(true)} disabled={!saved||editing||working}><Pencil size={16}/>Edit</button><button type="submit" form="logbook-entry-form" disabled={!editing||working||loading}><Save size={16}/>Save</button><button type="button" onClick={()=>setShowDelete(true)} disabled={!saved||working}><Trash2 size={16}/>Delete</button><button type="button" onClick={findRecords}><Search size={16}/>Search</button><button type="button" onClick={printRecord}><Printer size={16}/>Print</button><button type="button" onClick={()=>saved?openEntry(saved):newEntry()} disabled={working}><X size={16}/>Cancel</button><button type="button" onClick={onExit} disabled={working}><LogOut size={16}/>Exit</button><button type="button" onClick={()=>setShowStatus(!showStatus)} aria-expanded={showStatus}><Info size={16}/>Status</button></></div></header>
+   <header className="logbook-page-header"><div><span className="logbook-eyebrow">MIS / DAILY OPERATIONS</span><h1><BookOpen size={26}/>{title}</h1><p>{vehicle?'Vehicle readings, driver assignment and trip details.':'Equipment readings, shift and operator assignment.'}</p></div><div className="logbook-header-actions" role="toolbar" aria-label="Log book actions"><button type="button" onClick={()=>void load()} disabled={working||loading} title="Refresh masters"><RotateCcw size={15}/><span>Refresh</span></button><button type="button" onClick={newEntry} disabled={working}><Plus size={16}/>New entry</button>{onDeletion&&<button type="button" onClick={()=>onDeletion(null)}>Bulk deletion</button>}{onBulkScan&&<button type="button" onClick={onBulkScan}>Bulk scan cards</button>}{saved?.data.scanCardId&&<button type="button" onClick={viewSource}>View source scan</button>}<><button type="button" onClick={findRecords}><ListFilter size={16}/>Query</button><button type="button" onClick={firstRecord} disabled={working}><ChevronsLeft size={16}/>First record</button><button type="button" onClick={lastRecord} disabled={working}><ChevronsRight size={16}/>Last record</button><button type="button" onClick={()=>setEditing(true)} disabled={!saved||editing||working}><Pencil size={16}/>Edit</button><button type="submit" form="logbook-entry-form" disabled={!editing||working||loading}><Save size={16}/>Save</button><button type="button" onClick={()=>onDeletion?.(saved)} disabled={!onDeletion||!saved||working}><Trash2 size={16}/>Delete</button><button type="button" onClick={findRecords}><Search size={16}/>Search</button><button type="button" onClick={printRecord}><Printer size={16}/>Print</button><button type="button" onClick={()=>saved?openEntry(saved):newEntry()} disabled={working}><X size={16}/>Cancel</button><button type="button" onClick={onExit} disabled={working}><LogOut size={16}/>Exit</button><button type="button" onClick={()=>setShowStatus(!showStatus)} aria-expanded={showStatus}><Info size={16}/>Status</button></></div></header>
 
    {loading&&<p role="status">Loading log books and synced masters…</p>}
 
@@ -132,7 +132,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
    {showStatus&&<div className="logbook-message" role="status">{saved?`${saved.book_no} · Saved · Revision ${saved.revision} · ${editing?'Editing':'View only'}`:'New entry · Not saved'} · {working?'Saving…':loading?'Loading masters…':'Ready'}</div>}
 
-   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
+
 
    <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
 
