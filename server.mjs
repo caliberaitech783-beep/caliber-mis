@@ -1,7 +1,9 @@
+import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
+import {registerMisTelegram} from './mis-telegram.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
 import {registerScanBackup} from './scan-backup.mjs';
-import {logBookSiteScope} from './log-book-access.mjs';
+import {logBookSiteScope,siteAllowed} from './log-book-access.mjs';
 import {registerGroqScanSettings} from './groq-scan-settings.mjs';
 import {createIntegrationSecretStore} from './integration-secret-store.mjs';
 import {registerScannerConnectorAuth} from './scanner-connector-auth.mjs';
@@ -4584,10 +4586,11 @@ function ticketProjection(){
     to_char(created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD HH24:MI') AS "createdAt"`;
 }
 
-function isTicketAdmin(session){return session?.role==='super'&&session?.permissions?.adminLevel!=='Manager'}
+function isTicketAdmin(session){return session?.permissions?.separateMisCredentials?isMisAdministrator(session):session?.role==='super'&&session?.permissions?.adminLevel!=='Manager'}
 const userManagesSite=(user,site)=>reportScopeIncludesSite(managerReportScope(user),site);
 
 async function ticketVisibleToSession(ticket,session){
+  if(session?.permissions?.separateMisCredentials)return isMisAdministrator(session)||Boolean(String(session.login||'').trim()&&String(ticket?.creatorLogin||'').trim().toLowerCase()===String(session.login).trim().toLowerCase());
   if(session?.role==='super'&&session?.permissions?.adminLevel!=='Manager')return true;
   if(session?.role!=='super')return String(ticket?.creatorLogin||'').trim().toLowerCase()===String(session?.login||'').trim().toLowerCase();
   // Managers always see the tickets they raised themselves, as in the ticket list.
@@ -5692,6 +5695,10 @@ app.post('/api/reports/director/send-email-test',requireSuper,async(req,res,next
   }catch(error){next(error)}
 });
 
+async function misTicketRecipients(client){
+ const {rows}=await client.query("SELECT DISTINCT login_name,permissions FROM auth_sessions WHERE permissions->>'separateMisCredentials'='true'");
+ return {adminLogins:rows.filter(row=>isMisAdministrator({role:'super',permissions:row.permissions})).map(row=>row.login_name),managerLogins:[]};
+}
 async function ticketSuperRecipients(client,{creatorRole,site}){
   const {rows}=await client.query(`SELECT record_data FROM master_records WHERE master_name='Users & employees'`);
   const adminLogins=[];
@@ -5772,10 +5779,10 @@ app.get('/api/tickets',requireSession,async(req,res,next)=>{
     const values=[];
     const conditions=[];
     let managerScope=null,managerLogin='';
-    if(req.session.role!=='super'){
+    if(req.session.role!=='super'||req.session.permissions?.separateMisCredentials&&!isMisAdministrator(req.session)){
       values.push(String(req.session.login||'').trim().toLowerCase());
       conditions.push(`lower(creator_login)=$${values.length}`);
-      managerScope=userSiteScope(await currentUserRecord(req.session));
+      managerScope=req.session.permissions?.separateMisCredentials?null:userSiteScope(await currentUserRecord(req.session));
     }else if(req.session.permissions?.adminLevel==='Manager'){
       const user=await currentUserRecord(req.session);
       values.push(managerRoleSelection(req.session.permissions?.managerRoles?.length?req.session.permissions.managerRoles:req.session.permissions?.managerRole).map(managerUserRole));
@@ -5822,7 +5829,7 @@ app.post('/api/tickets',requireSession,async(req,res,next)=>{
   const client=await pool.connect();
   try{
     const managerRoles=managerRoleSelection(req.session.permissions?.managerRoles?.length?req.session.permissions.managerRoles:req.session.permissions?.managerRole);
-    const creatorRole=req.session.role==='super'
+    const creatorRole=req.session.permissions?.separateMisCredentials?'MIS User':req.session.role==='super'
       ? req.session.permissions?.adminLevel==='Manager'&&managerRoles.length
         ? managerUserRole(managerRoles[0])
         : 'Admin'
@@ -5841,10 +5848,11 @@ app.post('/api/tickets',requireSession,async(req,res,next)=>{
     if(!validTicketMediaDataUrl(attachmentData))return res.status(400).json({error:'Upload a supported image or video up to 10 MB.'});
     const user=await currentUserRecord(req.session,client);
     const assignedSites=userSiteSelection(user);
-    const site=req.session.role==='super'
+    const site=req.session.role==='super'&&!req.session.permissions?.separateMisCredentials
       ? displaySiteName(user.site||user.location||user.currentLocation)||'Not assigned'
       : displaySiteName(req.body?.site||(assignedSites.length===1?assignedSites[0]:''));
-    if(req.session.role!=='super'&&!reportScopeIncludesSite(userSiteScope(user),site))
+    const ticketScope=req.session.permissions?.separateMisCredentials?logBookSiteScope(req.session,user):null;
+    if(ticketScope?!site||!(siteAllowed(ticketScope,site)||ticketScope.sites?.length===0&&site==='Not assigned'):req.session.role!=='super'&&!reportScopeIncludesSite(userSiteScope(user),site))
       return res.status(403).json({error:'Select one of your assigned sites for this ticket.'});
 
     await client.query('BEGIN');
@@ -5855,15 +5863,16 @@ app.post('/api/tickets',requireSession,async(req,res,next)=>{
     ]);
     const reference=ticketReference({site,date:new Date(inserted.rows[0].created_at),number:inserted.rows[0].id});
     const {rows}=await client.query(`UPDATE crm_tickets SET reference=$1 WHERE id=$2 RETURNING ${ticketProjection()}`,[reference,inserted.rows[0].id]);
-    const recipients=await ticketSuperRecipients(client,{creatorRole,site});
+    const recipients=req.session.permissions?.separateMisCredentials?await misTicketRecipients(client):await ticketSuperRecipients(client,{creatorRole,site});
     const creatorLogin=String(req.session.login||'').trim().toLowerCase();
     await addTicketNotifications(client,[...recipients.adminLogins,...recipients.managerLogins],reference,`${req.session.name||'A user'} (@${creatorLogin}) created ticket ${reference}.`,
       {templateKey:'ticketCreated',parameters:[reference,req.session.name||creatorLogin,site],context:{ticket:rows[0],url:publicBaseUrl()}},{whatsapp:false});
     await client.query('COMMIT');
     res.status(201).json(normalizeOperationalSiteFields(rows[0]));
-    void sendGenericWhatsAppAlertBestEffort([creatorLogin,...recipients.adminLogins],reference,`Ticket ${reference} was created.`,
+    if(req.session.permissions?.separateMisCredentials)void misTelegram.notify('created',rows[0]).catch(()=>{});
+    else void sendGenericWhatsAppAlertBestEffort([creatorLogin,...recipients.adminLogins],reference,`Ticket ${reference} was created.`,
       {templateKey:'ticketCreated',parameters:[reference,req.session.name||creatorLogin,site],context:{ticket:rows[0],url:publicBaseUrl()}},site);
-    sendTicketRaisedEmail(rows[0]).catch((error)=>console.error(`Ticket email failed for ${reference}:`,error.message));
+    if(!req.session.permissions?.separateMisCredentials)sendTicketRaisedEmail(rows[0]).catch((error)=>console.error(`Ticket email failed for ${reference}:`,error.message));
   }catch(error){await client.query('ROLLBACK').catch(()=>{});next(error)}finally{client.release()}
 });
 
@@ -5912,12 +5921,13 @@ app.patch('/api/tickets/resolve',requireSession,async(req,res,next)=>{
       resolutionAttachmentName,resolutionAttachmentType,String(req.session.name||'Admin'),reference]);
     if(!result.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Open ticket not found.'})}
     const ticket=result.rows[0];
-    const recipients=await ticketSuperRecipients(client,{creatorRole:ticket.creatorRole,site:ticket.site});
+    const recipients=req.session.permissions?.separateMisCredentials?await misTicketRecipients(client):await ticketSuperRecipients(client,{creatorRole:ticket.creatorRole,site:ticket.site});
     await addTicketNotifications(client,[ticket.creatorLogin,...recipients.managerLogins],ticket.reference,`Ticket ${ticket.reference} was resolved by ${req.session.name||'Admin'}.`,
       {templateKey:'ticketResolved',parameters:[ticket.reference,req.session.name||'Admin'],context:{ticket,url:publicBaseUrl()}},{whatsapp:false});
     await client.query('COMMIT');
     res.json(ticket);
-    void sendGenericWhatsAppAlertBestEffort([ticket.creatorLogin,...recipients.adminLogins],ticket.reference,`Ticket ${ticket.reference} was resolved.`,
+    if(req.session.permissions?.separateMisCredentials)void misTelegram.notify('resolved',ticket).catch(()=>{});
+    else void sendGenericWhatsAppAlertBestEffort([ticket.creatorLogin,...recipients.adminLogins],ticket.reference,`Ticket ${ticket.reference} was resolved.`,
       {templateKey:'ticketResolved',parameters:[ticket.reference,req.session.name||'Admin'],context:{ticket,url:publicBaseUrl()}},ticket.site);
   }catch(error){await client.query('ROLLBACK').catch(()=>{});next(error)}finally{client.release()}
 });
@@ -7788,6 +7798,16 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 });
 
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
+const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession});
+app.get('/api/mis-ticket-sites',requireSession,async(req,res,next)=>{
+ try{const scope=await logBookScope(req.session);let sites=scope.sites;if(sites===null){const {rows}=await pool.query("SELECT DISTINCT site FROM mis_log_books WHERE deleted_at IS NULL UNION SELECT record_data->>'site' AS site FROM master_records WHERE master_name='Equipment master'");sites=[...new Set(rows.map(row=>displaySiteName(row.site)).filter(Boolean))];if(!sites.length)sites=['Not assigned'];}res.set('Cache-Control','no-store').json({sites:sites.length?sites.map(displaySiteName):['Not assigned']});}catch(error){next(error)}
+});
+app.get('/api/mis-admin/status',requireSession,requireMisAdministrator,async(req,res,next)=>{
+ try{const {rows}=await pool.query("SELECT current_database() AS database,NOW() AS checked_at,(SELECT count(*)::int FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL) AS vlb,(SELECT count(*)::int FROM mis_log_books WHERE book_type='equipment' AND deleted_at IS NULL) AS elb,(SELECT count(*)::int FROM mis_scan_cards) AS scans");res.set('Cache-Control','no-store').json({...rows[0],connected:true,hotScanStorage:Boolean(scanImageStorage),scanBackupUrl:'/?page=scan-backup'});}catch(error){next(error)}
+});
+app.post('/api/mis-admin/backup',requireSession,requireMisAdministrator,async(req,res,next)=>{
+ try{const {filePath,...result}=await createStoredBackup({triggerType:'MIS manual backup',actor:req.session});req.audit={eventType:'Administration',module:'MIS Full Backup',action:'Create database recovery backup',targetReference:result.fileName};res.status(201).json(result);}catch(error){next(error)}
+});
 const groqScanSettings=registerGroqScanSettings(app,{store:integrationSecrets,requireSession,requireAdministrator});
 const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
 const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator});
@@ -8562,6 +8582,7 @@ async function initializeDatabase(){
     await migrate();
     await misSharedSignIn.initialize();
     await misCredentialClient.initialize();
+    await misTelegram.initialize();misTelegram.start();
     await misLoginHandoff.initialize();
     databaseReady=true;
     databaseError='';

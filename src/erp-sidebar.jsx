@@ -1,3 +1,4 @@
+import {isMisAdministrator} from '../mis-admin-access.mjs';
 import React, {useState} from 'react';
 import './erp-layout.css';
 import {ChevronDown, ChevronRight, LayoutDashboard, Search, Pin, LogOut, FileText} from 'lucide-react';
@@ -34,6 +35,6 @@ export default function ErpSidebar({active,setActive,logout,open,session,groups=
       })}
       {matches('Announcements')&&announcements}
     </nav>
-    <footer><strong>{session?.name}</strong><small>{session?.permissions?.adminLevel||'ERP workspace'}</small><button onClick={logout}><LogOut size={15}/>Sign out</button></footer>
+    <footer><strong>{session?.name}</strong><small>{session?.permissions?.separateMisCredentials?(isMisAdministrator(session)?'MIS Admin':'MIS User'):session?.permissions?.adminLevel||'ERP workspace'}</small><button onClick={logout}><LogOut size={15}/>Sign out</button></footer>
   </aside>;
 }
