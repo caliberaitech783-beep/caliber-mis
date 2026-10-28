@@ -8,7 +8,7 @@ const uuid=value=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}
 export function initialReportBatch(search){const id=new URLSearchParams(search).get('batch');return uuid(id)?id:'';}
 export function reportBatchUrl(href,id){const url=new URL(href);if(id)url.searchParams.set('batch',id);else url.searchParams.delete('batch');for(const key of ['card','filter'])url.searchParams.delete(key);return url.pathname+url.search+url.hash;}
 
-export default function ScanBatchReports({kind,session}){
+export default function ScanBatchReports({kind,session,ReportSection}){
  const code=kind==='vehicle'?'VLB':'ELB';
  const [batches,setBatches]=useState([]),[selected,setSelected]=useState(()=>initialReportBatch(window.location.search));
  const [reportView,setReportView]=useState('data'),[search,setSearch]=useState(''),[nextOffset,setNextOffset]=useState(null),[moreLoading,setMoreLoading]=useState(false);
@@ -35,6 +35,6 @@ export default function ScanBatchReports({kind,session}){
    {loading&&<p role="status">Loading batch report…</p>}{error&&<p className="scan-error" role="alert">{error}</p>}
    {listed&&!batches.length&&!selected&&!error&&<p>No scan/upload batches yet. Your batch reports will appear here after you scan or upload cards.</p>}
    {batch&&!cards.length&&<p>This batch has no cards yet. The report will appear as its cards arrive.</p>}
-  </section><nav className="scan-workflow-tabs" aria-label="Report view"><button type="button" className={reportView==='data'?'selected':''} aria-pressed={reportView==='data'} onClick={()=>setReportView('data')}>Data report</button><button type="button" className={reportView==='cards'?'selected':''} aria-pressed={reportView==='cards'} onClick={()=>setReportView('cards')}>Card Report</button></nav>{reportView==='cards'?<CardReportGallery key={batch?.id||'empty'} batch={batch} cards={cards} token={session.token}/>:<ScanBatchReport key={batch?.id||'empty'} batch={batch} cards={cards} token={session.token}/>}
+  </section><nav className="scan-workflow-tabs" aria-label="Report view"><button type="button" className={reportView==='data'?'selected':''} aria-pressed={reportView==='data'} onClick={()=>setReportView('data')}>Data report</button><button type="button" className={reportView==='cards'?'selected':''} aria-pressed={reportView==='cards'} onClick={()=>setReportView('cards')}>Card Report</button></nav>{reportView==='cards'?<CardReportGallery ReportSection={ReportSection} key={batch?.id||'empty'} batch={batch} cards={cards} token={session.token}/>:<ScanBatchReport ReportSection={ReportSection} key={batch?.id||'empty'} batch={batch} cards={cards} token={session.token}/>}
  </section>;
 }

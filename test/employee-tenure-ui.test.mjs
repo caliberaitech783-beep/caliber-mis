@@ -78,9 +78,9 @@ test('tenure header puts the controlled search before Refresh and removes explan
   assert.match(defaultHtml,/Search this report/);
 });
 
-test('tenure Generate offers Smart Print, Smart PDF and Smart Excel while retaining existing export handlers', () => {
+test('tenure uses the same Generate labels as other reports while retaining export handlers', () => {
   const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
-  assert.match(source,/smartLabels=\{category === "employee-tenure"\}/);
+  assert.doesNotMatch(source,/smartLabels=\{category === "employee-tenure"\}/);
   assert.match(source,/smartLabels && smartPrintItem && <button[^>]+onClick=\{printReport\}[^>]*><Printer \/> Smart Print/);
   assert.match(source,/onClick=\{downloadPdf\}[^>]*><Download \/> \{smartLabels \? "Smart PDF"/);
   assert.match(source,/onClick=\{downloadExcel\}[^>]*><FileSpreadsheet \/> \{smartLabels \? "Smart Excel"/);
