@@ -1,3 +1,5 @@
+import {employeeIdentity} from './employee-identity.mjs';
+import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
 import {CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {summarizePulseHours} from './log-book-hours.mjs';
@@ -62,13 +64,14 @@ export function normalizeLogBook(kind,input={}){
 
 const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
-export async function resolveLogBookData(client,kind,input){
+export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false}={}){
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
  const data=normalizeLogBook(kind,input);
      const masters=(await client.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[data.assetId,data.employeeId,data.shiftId,...(input.workOrderId?[number(input.workOrderId,'Work Order',{integer:true})]:[])]])).rows;
      const asset=masters.find(row=>String(row.id)===String(data.assetId)&&row.master_name==='Equipment master')?.record_data;
      const employee=masters.find(row=>String(row.id)===String(data.employeeId)&&['Users & employees','C-Dir Employee master','ERP Employee master','Employee master'].includes(row.master_name))?.record_data;
      const shift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
+     if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      if(!asset||!employee||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(assetBookKind(asset)!==kind)fail('Select an asset from the correct log book category.');
@@ -87,10 +90,10 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy){
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
  return result.rows[0];
 }
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync}){
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
- const protect=[requireSession,requireAdministrator];
+ const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){next(error)}}];
  
  app.get('/api/log-books/options',...protect,async(req,res,next)=>{
    try{await ensure();
@@ -98,23 +101,24 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set();const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
        if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),site});}
-       if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location),designation:text(r.designation||r.userGroup)});
+       if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.designation||r.userGroup)});
        if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);if(site)sites.add(site);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
        if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
        if(row.master_name==='Region master')for(const site of Array.isArray(r.sites)?r.sites:String(r.sites||'').split('|'))if(text(site))sites.add(text(site));
      }
      const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment'")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
-     res.set('Cache-Control','no-store');res.json({bookNumberCounters,assets,employees,shifts,sites:displaySiteSelection([...sites]).sort(),workOrders,workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
+     const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({bookNumberCounters,assets:assets.filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:displaySiteSelection([...sites]).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
  const readHours=async(input)=>{if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;if(!asset||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests(),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
- app.post('/api/log-books/hours',...protect,async(req,res)=>{try{res.set('Cache-Control','no-store').json(await readHours(req.body));}catch(e){res.status(400).json({error:e.message});}});
+ app.post('/api/log-books/hours',...protect,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours(req.body));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
      const first=req.query.first==='1',last=req.query.last==='1';
-     const {rows}=await pool.query(`SELECT id,book_no,book_type,data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null]);
+     const permittedSites=await filterLogBookSites(pool,req.logBookScope);
+     const {rows}=await pool.query(`SELECT id,book_no,book_type,data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites]);
      const more=rows.length>100;res.json({records:rows.slice(0,100),nextCursor:more?String(rows[99].id):null});
    }catch(error){next(error)}
  });
@@ -122,10 +126,12 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    let client;
    try{
      await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body),updating=Boolean(req.params.id);
+     requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
      client=await pool.connect();await client.query('BEGIN');
-     Object.assign(data,await resolveLogBookData(client,kind,req.body));
+     if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
+     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
      if(kind==='vehicle'&&pulseMasterSync){try{const hours=await readHours({...data,runningHours:data.totalWorkingHmr});Object.assign(data,{breakdownHours:hours.breakdownHours,availabilityHours:hours.availabilityHours,idleHours:hours.idleHours,hoursSource:hours});}catch(e){data.hoursWarning=e.message;}}
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
@@ -137,7 +143,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(!result.rowCount)throw Object.assign(new Error('This log book changed or is unavailable. Reload it before saving.'),{status:409});
      }else{
        const previous=(await client.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1',[requestKey])).rows[0];
-       if(previous){if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});await client.query('COMMIT');return res.json(previous);}
+       if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});await client.query('COMMIT');return res.json(previous);}
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
      await client.query('COMMIT');res.status(updating?200:201).json(result.rows[0]);
@@ -145,6 +151,6 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  }
  app.post('/api/log-books/:kind',...protect,save);
  app.put('/api/log-books/:kind/:id',...protect,save);
- app.delete('/api/log-books/:kind/:id',...protect,async(req,res,next)=>{try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))fail('Invalid log book.');const revision=number(req.body.revision,'Revision',{integer:true});const result=await pool.query('UPDATE mis_log_books SET deleted_at=NOW(),updated_at=NOW(),revision=revision+1 WHERE id=$1 AND book_type=$2 AND revision=$3 AND deleted_at IS NULL RETURNING id',[req.params.id,req.params.kind,revision]);if(!result.rowCount)return res.status(409).json({error:'Record changed or was already deleted. Refresh before deleting.'});res.json({deleted:true});}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}});
+ app.delete('/api/log-books/:kind/:id',...protect,async(req,res,next)=>{try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))fail('Invalid log book.');const prior=await pool.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2',[req.params.id,req.params.kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);const revision=number(req.body.revision,'Revision',{integer:true});const result=await pool.query('UPDATE mis_log_books SET deleted_at=NOW(),updated_at=NOW(),revision=revision+1 WHERE id=$1 AND book_type=$2 AND revision=$3 AND deleted_at IS NULL RETURNING id',[req.params.id,req.params.kind,revision]);if(!result.rowCount)return res.status(409).json({error:'Record changed or was already deleted. Refresh before deleting.'});res.json({deleted:true});}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}});
  return {initialize:ensure,readHours};
 }

@@ -16,7 +16,7 @@ test('VLB and ELB lookup accepts Employee ID and new Caliber ID, with no Oracle 
       {caliberId:'CMPL6666',caliberCode:'CMLL9999',name:'Duplicate Two'},
     ])await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1)",[JSON.stringify(row)]);
     const app=express();app.use(express.json());
-    registerErpEmployees(app,{pool:{query:(...args)=>db.query(...args)},config:null,requireSession:(r,s,n)=>n(),requireAdministrator:(r,s,n)=>n(),readSource:async()=>{oracleReads++;throw Error('Unexpected Oracle read')}});
+    registerErpEmployees(app,{getSiteScope:async()=>({sites:null}),pool:{query:(...args)=>db.query(...args)},config:null,requireSession:(r,s,n)=>n(),requireAdministrator:(r,s,n)=>n(),readSource:async()=>{oracleReads++;throw Error('Unexpected Oracle read')}});
     server=app.listen(0);const lookup=async id=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/log-books/employee-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({caliberId:id})});return {status:r.status,body:await r.json()}};
     for(const id of ['CMPL3228','cmll3228','3228']){
       const r=await lookup(id);assert.equal(r.status,200);assert.equal(r.body.id,'1');assert.equal(r.body.name,'Driver One');assert.equal(r.body.employeeId,'CMPL3228');assert.equal(r.body.caliberCode,'CMLL3228');

@@ -1,3 +1,4 @@
+import {employeeAtLocation} from '../log-book-access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -77,7 +78,7 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
-  const scope={React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+  const scope={employeeAtLocation,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
@@ -133,6 +134,22 @@ test('rendered VLB header follows the requested sequence and driver is explicitl
   for(const label of ['Shift hour','Shift']) {
     const dropdown=fields.find(node=>node.props.label===label).props.children;
     assert.doesNotMatch(String(dropdown.props.onChange),/focusNextLogBookField/,'arrow changes must not move focus');
+  }
+});
+
+test('VLB and ELB employee ID dropdowns contain only employees at the selected site and reset on site change',()=>{
+  for(const kind of ['vehicle','equipment']){
+    const app=harness();app.slots[2].employees=[{id:'1',name:'Local operator',caliberId:'CMPL1234',site:'Sasti OB'},{id:'2',name:'Other operator',caliberId:'CMPL5678',site:'Jayant OC'},{id:'3',name:'Unassigned',caliberId:'CMPL9999',site:''}];
+    app.slots[0]={...app.slots[0],location:'Sasti OC'};
+    const fields=all(app.render(kind),node=>node.props.label&&node.props.children);
+    const picker=fields.find(node=>node.props.label==='Employee ID / Caliber ID').props.children;
+    assert.equal(picker.props.searchable,true);
+    assert.deepEqual(all(picker,node=>node.type==='option').map(node=>node.props.value),['','1']);
+    picker.props.onChange({target:{value:'1'}});assert.equal(app.slots[0].employeeId,'1');assert.match(app.slots[7],/Local operator/);
+    fields.find(node=>node.props.label==='Location').props.children.props.onChange({target:{value:'Jayant OC'}});
+    assert.equal(app.slots[0].employeeId,'');
+    const changed=all(app.render(kind),node=>node.props.label==='Employee ID / Caliber ID')[0].props.children;
+    assert.deepEqual(all(changed,node=>node.type==='option').map(node=>node.props.value),['','2']);
   }
 });
 
