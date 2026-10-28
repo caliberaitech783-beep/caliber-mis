@@ -1,4 +1,4 @@
-CALIBER LOCAL SCANNER CONNECTOR 1.0.0
+CALIBER LOCAL SCANNER CONNECTOR 1.0.1
 Windows 10/11, 64-bit (x64). Includes Node.js 22.23.4; see Node-LICENSE.txt.
 
 1. Extract the entire ZIP into a folder on your PC.
@@ -31,3 +31,12 @@ Windows WIA and .NET Framework 4.x must be available (included with supported Wi
 The scanner helper does not depend on PowerShell script execution being enabled.
 This package is not digitally code-signed. Follow your organization's software approval process;
 the installer does not change execution policy or Windows security settings.
+
+VERSION 1.0.1 — SMALL SCAN UPLOADS
+Pages are converted to grayscale JPEG before upload, targeting 200–500 KB, with a 500 KB ceiling.
+Simple pages may be smaller than 200 KB. The connector keeps the highest quality that fits and does
+not reduce the longest edge below 1600 pixels. If a complex page cannot fit, it retains the original
+and asks you to use Upload files. Originals are retained unchanged; compressed -upload.jpg copies
+are stored alongside them. The scanner window displays the upload size in KB.
+When upgrading from 1.0.0: finish scanning, install this version, restart Windows, then double-click
+the updated Caliber Scanner shortcut. Reinstalling does not replace an already-running old process.

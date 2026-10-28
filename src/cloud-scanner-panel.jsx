@@ -10,8 +10,8 @@ export default function CloudScannerPanel({kind,token,onBatch,onComplete}){
   if(d.type==='scanner-progress')setMessage(String(d.message).slice(0,300));
   if(d.type==='scanner-page'){
    if(c.pending)return;c.pending=true;
-   try{const binary=d.bytes instanceof ArrayBuffer;if(!/^[a-f0-9-]{36}$/i.test(d.cardId)||(binary?d.bytes.byteLength>12000000:typeof d.base64!=='string'||d.base64.length>16000000))throw Error('Invalid scanner page.');
-    const api=async(path,body,image)=>{const r=await fetch(path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':image?'image/png':'application/json',...(image?{'X-Scan-Metadata':encodeURIComponent(JSON.stringify(body))}:{})},body:image||JSON.stringify(body)});const v=await r.json();if(!r.ok)throw Error(v.error||'Upload failed.');return v;};
+   try{const binary=d.bytes instanceof ArrayBuffer,imageType=binary&&new Uint8Array(d.bytes)[0]===255?'image/jpeg':'image/png';if(!/^[a-f0-9-]{36}$/i.test(d.cardId)||(binary?d.bytes.byteLength>12000000:typeof d.base64!=='string'||d.base64.length>16000000))throw Error('Invalid scanner page.');
+    const api=async(path,body,image)=>{const r=await fetch(path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':image?imageType:'application/json',...(image?{'X-Scan-Metadata':encodeURIComponent(JSON.stringify(body))}:{})},body:image||JSON.stringify(body)});const v=await r.json();if(!r.ok)throw Error(v.error||'Upload failed.');return v;};
     c.batch??=(await api('/api/scan-batches',{kind,name:'PC scanner · '+new Date().toLocaleString()})).id;
     await api('/api/scan-batches/'+c.batch+'/cards',{...(binary?{}:{base64:d.base64}),filename:String(d.filename||'Scanner page').slice(0,200),uploadKey:d.cardId,pageCount:1,expectedPages:1,...(d.paddleEvidence?{paddleEvidence:d.paddleEvidence}:{}),...(parseCaptureTiming(d.captureTiming)?{captureTiming:parseCaptureTiming(d.captureTiming)}:{})},binary?d.bytes:undefined);
     c.popup.postMessage({type:'scanner-ack',nonce:c.nonce,cardId:d.cardId},LOCAL);setMessage('Scan and extracted information uploaded as a draft. Check and correct it in online MIS.');

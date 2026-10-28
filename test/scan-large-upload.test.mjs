@@ -1,3 +1,4 @@
+import {createCanvas} from '@napi-rs/canvas';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -40,5 +41,10 @@ test('scanner upload accepts multi-megabyte scans and rejects malformed base64 w
  for(const header of ['%',encodeURIComponent('null'),encodeURIComponent('[]')]){
   const invalid=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/png','X-Scan-Metadata':header},body:png});assert.equal(invalid.status,400,await invalid.text());
  }
- assert.equal(stored.length,3);
+ const canvas=createCanvas(300,400);canvas.getContext('2d').fillRect(0,0,300,400);const jpeg=canvas.toBuffer('image/jpeg');
+ const jpegMetadata={uploadKey:randomUUID(),filename:'compressed-card.jpg'};
+ const jpgResponse=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/jpeg','X-Scan-Metadata':encodeURIComponent(JSON.stringify(jpegMetadata))},body:jpeg});
+ assert.equal(jpgResponse.status,201,await jpgResponse.text());assert.deepEqual(stored.at(-1)[4],jpeg);
+ const malformed=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/jpeg','X-Scan-Metadata':encodeURIComponent(JSON.stringify({...jpegMetadata,uploadKey:randomUUID()}))},body:Buffer.from([255,216,255,217])});assert.equal(malformed.status,400,await malformed.text());
+ assert.equal(stored.length,4);
 });
