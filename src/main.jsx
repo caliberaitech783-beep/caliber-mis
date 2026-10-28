@@ -1,3 +1,5 @@
+import OperationsReports from './operations-reports.jsx';
+import {operationReports} from './operations-report-model.mjs';
 import ScanBatchReports from './scan-batch-reports.jsx';
 import {misPageAllowed} from '../mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
@@ -7401,6 +7403,7 @@ function withTimelineLinks(columns, token) {
   });
 }
 function ReportsPage(props) {
+  if (String(props.activeReportCategory).startsWith('operations-')) return <OperationsReports session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} />;
   if (props.activeReportCategory === 'bd-ageing') return <BdAgeingReport key={props.session?.token} session={props.session} ReportSection={ReportSection} onBack={()=>props.setActiveReportCategory?.('general')} />;
   return <StandardReportsPage {...props} />;
 }
@@ -12058,7 +12061,7 @@ function App() {
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
-          {name:'Reports',pages:['VLB Reports','ELB Reports'].filter(canOpenAdminPage),keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}
         setActive={(x) => {

@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import {PGlite} from '@electric-sql/pglite';
+import {registerLogBooks,LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {encodeScanJson} from '../scan-text-storage.mjs';
+test('read-only operations endpoint enforces access, validates dates, returns beyond 100 rows and decodes scans',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA);await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB); CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,kind TEXT); CREATE TABLE mis_scan_cards(id TEXT,batch_id TEXT,filename TEXT,status TEXT,draft JSONB,error TEXT,logbook_id BIGINT,created_at TIMESTAMPTZ,ordinal INTEGER)');
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1)",[JSON.stringify({door:'V1',category:'Vehicle',site:'Sasti',password:'private-should-not-leak'})]);
+ const data={bookDate:'2026-10-28',location:'Sasti',door:'V1',assetId:1,shiftId:3,employeeId:2,shiftHours:8,openingHmr:0,closingHmr:6,trips:[]};
+ await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) SELECT 'BOOK-'||n,'vehicle','2026-10-28','Sasti',1,$1,md5(n::text)::uuid,'fixture' FROM generate_series(1,105) AS n",[JSON.stringify(data)]);
+ await db.exec("INSERT INTO mis_scan_batches VALUES('batch','vehicle')");
+ await db.query("INSERT INTO mis_scan_cards VALUES('card','batch','scan.png','review',$1,NULL,NULL,'2026-09-01',1)",[JSON.stringify(encodeScanJson({bookDate:'2026-10-28',location:'सास्ती'}))]);
+ const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+ const app=express();registerLogBooks(app,{pool:{query},requireSession:(req,res,next)=>{req.session={role:'super',permissions:{adminLevel:'Admin'},...(req.headers['x-site']?{site:req.headers['x-site']}:{})};return req.headers.authorization?next():res.status(401).json({error:'Sign in'});},requireAdministrator:(req,res,next)=>req.headers.authorization==='admin'?next():res.status(403).json({error:'Forbidden'})});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));t.after(()=>{server.closeAllConnections();server.close();});const url=`http://127.0.0.1:${server.address().port}/api/reports/operations`;
+ const call=(params,auth='admin')=>fetch(url+params,{headers:auth?{Authorization:auth}:{}});
+ assert.equal((await call('?from=2026-10-28&to=2026-10-28','')).status,401);assert.equal((await call('?from=2026-10-28&to=2026-10-28','other')).status,403);
+ for(const q of ['','?from=2026-02-31&to=2026-03-01','?from=2026-10-28&to=2026-10-01','?from=2024-01-01&to=2026-01-01'])assert.equal((await call(q)).status,400);
+ const response=await call('?from=2026-10-28&to=2026-10-28');const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.records.length,105);assert.equal(result.cards[0].draft.location,'सास्ती');assert.ok(!JSON.stringify(result).includes('private-should-not-leak'));assert.match(response.headers.get('cache-control'),/no-store/);
+ const scoped=await fetch(url+'?from=2026-10-28&to=2026-10-28',{headers:{Authorization:'admin','x-site':'Other'}});const scopedData=await scoped.json();assert.equal(scopedData.records.length,0);assert.equal(scopedData.cards.length,0);assert.equal(scopedData.assets.length,0);
+ assert.equal((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n,105);
+});

@@ -31,5 +31,5 @@ test('reports page remains available without cards and direct links preserve a b
  const app=harness(batches,'?page=elb-reports&batch='+elb),report=await app.flush('equipment');assert.equal(nodes(report,app.ScanBatchReport)[0].props.batch.id,elb);assert.deepEqual(nodes(report,'option').map(n=>n.props.value),['',elb]);
  assert.equal(app.initialReportBatch('?batch=../../invalid'),'');assert.equal(app.initialReportBatch('?batch='+id1),id1);
  assert.equal(app.reportBatchUrl('https://pulse-ll.cmll.in/?page=vlb-reports&card=old&filter=review',id1),'/?page=vlb-reports&batch='+id1);
- const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{name:'Reports',pages:['VLB Reports','ELB Reports'].filter(canOpenAdminPage)"));
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage)") && main.includes("reportCategory:'operations-'+r.id"));
 });

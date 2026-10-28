@@ -1,3 +1,4 @@
+import {decodeScanRow} from './scan-text-storage.mjs';
 import {validTripTimes,withVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {savedLogBookFilters} from './saved-log-book-filters.mjs';
 import {scanImageMime} from './scan-image-format.mjs';
@@ -99,6 +100,26 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){next(error)}}];
  
+ app.get('/api/reports/operations',...protect,async(req,res,next)=>{
+   try{
+     const {from,to}=req.query;
+     const valid=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+     if(!valid(from)||!valid(to)||to<from||(Date.parse(to)-Date.parse(from))/86400000>365)return res.status(400).json({error:'Choose a valid date range of at most 366 days.'});
+     await ensure();
+     const sourceRecords=(await pool.query('SELECT id,book_no,book_type,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date BETWEEN $1 AND $2 ORDER BY book_date,id',[from,to])).rows;
+     const visibleRecords=sourceRecords.filter(r=>siteAllowed(req.logBookScope,r.data.location));
+     const permittedSites=await filterLogBookSites(pool,req.logBookScope);
+     const linked=await withVlbTripHandovers(pool,visibleRecords.filter(r=>r.book_type==='vehicle'),permittedSites);
+     const records=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
+     const masters=(await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;
+     const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r)}));
+     const shifts=masters.filter(r=>r.master_name==='Shift Master').map(({id,record_data:r})=>({id:String(id),name:text(r.shiftName||r.name||r.shift),site:text(r.site||r.siteName)}));
+     const exists=(await pool.query("SELECT to_regclass('mis_scan_cards') AS cards,to_regclass('mis_scan_batches') AS batches")).rows[0];
+     const scanRows=exists?.cards&&exists?.batches?(await pool.query("SELECT c.id,c.filename,c.status,c.draft,c.error,c.logbook_id,l.book_no,b.kind,to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') AS scanned_date FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id WHERE c.draft->>'bookDate' BETWEEN $1 AND $2 OR to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') BETWEEN $1 AND $2 OR c.draft ? '__caliberUtf8JsonV1' ORDER BY c.created_at,c.ordinal",[from,to])).rows:[];
+     const cards=scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(req.logBookScope,c.draft?.location);});
+     res.set('Cache-Control','no-store').json({records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),cards,scanConnected:Boolean(exists?.cards&&exists?.batches)});
+   }catch(error){next(error)}
+ });
  app.get('/api/log-books/options',...protect,async(req,res,next)=>{
    try{await ensure();
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
