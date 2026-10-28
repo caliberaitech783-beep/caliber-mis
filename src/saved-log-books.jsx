@@ -19,7 +19,7 @@ export function SavedLogBookDetails({record,kind,imageUrl='',imageError=''}){
     [vehicle?'A Form / Trip Card number':'Job Card number',vehicle?data.aFormNo:data.jobCardNo],
     ...(vehicle?[['Opening KMR',data.openingKmr],['Closing KMR',data.closingKmr],['Total running KMR',data.totalRunningKmr]]:[]),
     ['Opening HMR',data.openingHmr],['Closing HMR',data.closingHmr],['Total working HMR',data.totalWorkingHmr],
-    ...(vehicle?[['Opening trips',data.openingTrips],['Ending trips',data.endingTrips],['Completed trips',data.completedTrips??data.totalTrips]]:[]),['Availability hours',data.availabilityHours],['Running hours',data.runningHours],['Breakdown hours',data.breakdownHours],['Idle hours',data.idleHours],
+    ...(vehicle?[['Opening trips',data.openingTrips],['Ending trips',data.endingTrips],['Completed trips',data.completedTrips??data.totalTrips]]:[]),['Availability hours',data.availabilityHours],['Running hours',data.runningHours],['Breakdown hours',data.breakdownHours],['BD hours source',data.breakdownHoursSource||(data.hoursSource?.source==='manual'?'manual':data.breakdownHours==null?'Unavailable':'Pulse')],['Idle hours',data.idleHours],
     ['Remark',data.remark]];
   return <div id="saved-logbook-details" className="saved-logbook-review"><section className="logbook-section"><h2>Saved {vehicle?'VLB':'ELB'} values</h2>
     <dl className="saved-logbook-values">{fields.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>

@@ -79,7 +79,7 @@ function harness(){
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
   const scope={employeeAtLocation,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
-  for(const name of ['SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
+  for(const name of ['BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
@@ -195,4 +195,10 @@ test('ELB account location persists on New entry and equipment search is scoped 
  const tree=app.render('equipment');assert.equal(app.slots[0].location,'Sasti OC');
  const picker=all(tree,node=>node.props.kind==='equipment'&&node.props.onSelect)[0];assert.equal(picker.props.location,'Sasti OC');
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
+});
+
+test('changing a shift or asset clears the prior manual BD fallback',()=>{
+ const app=harness();app.slots[0]={...app.slots[0],manualBreakdownHours:'2'};
+ let tree=app.render();all(tree,node=>node.props.name==='shiftId')[0].props.onChange({target:{value:'new-shift'}});assert.equal(app.slots[0].manualBreakdownHours,'');
+ app.slots[0].manualBreakdownHours='1';tree=app.render();all(tree,node=>node.props.kind==='vehicle'&&node.props.onSelect)[0].props.onSelect('next-asset');assert.equal(app.slots[0].manualBreakdownHours,'');
 });

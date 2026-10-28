@@ -29,7 +29,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const app=express();app.use(express.json());
  const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal'};next()};
  const requireAdministrator=(req,res,next)=>req.session.role==='super'?next():res.status(403).json({error:'Admin only'});
- registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>[]}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
+ let pulseAvailable=true;registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return[]}}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base=`http://127.0.0.1:${server.address().port}`;
  const call=async(route,method='GET',body,auth='admin')=>{const r=await fetch(base+route,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
@@ -66,5 +66,11 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call('/api/log-books/vehicle/'+opening.data.id,'DELETE',{revision:1})).status,200);
  const reopened=(await call('/api/log-books/vehicle?last=1')).data.records[0];
  assert.equal(reopened.id,closing.data.id);assert.equal(reopened.data.trips[0].tripStatus,'awaiting-loading');assert.equal(reopened.data.totalTrips,0);
+ for(const kind of ['vehicle','equipment']){
+  pulseAvailable=false;const fallbackBody={...body,assetId:kind==='vehicle'?1:4,manualBreakdownHours:'1.25',requestKey:randomUUID()};
+  const fallback=await call('/api/log-books/'+kind,'POST',fallbackBody);assert.equal(fallback.status,201);assert.equal(fallback.data.data.breakdownHours,1.25);assert.equal(fallback.data.data.breakdownHoursSource,'manual');
+  pulseAvailable=true;const recovered=await call('/api/log-books/'+kind+'/'+fallback.data.id,'PUT',{...fallbackBody,revision:1});assert.equal(recovered.status,200);assert.equal(recovered.data.data.breakdownHours,0);assert.equal(recovered.data.data.breakdownHoursSource,'pulse');assert.equal(recovered.data.data.manualBreakdownHours,null);
+ }
+
 
 });

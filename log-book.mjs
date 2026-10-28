@@ -1,3 +1,4 @@
+import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
 import {decodeScanRow} from './scan-text-storage.mjs';
 import {validTripTimes,withVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {savedLogBookFilters} from './saved-log-book-filters.mjs';
@@ -64,7 +65,7 @@ export function normalizeLogBook(kind,input={}){
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({equipmentName:machineLabel(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,
    totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+(timeMode==='without'||row.loadingTime&&row.unloadingTime?row.tripCount:0),0),
-   workOrderContract:null,breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
+   workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
 }
 
 const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
@@ -170,7 +171,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      client=await pool.connect();await client.query('BEGIN');
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
      Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
-     if(pulseMasterSync){try{const hours=await readHours({...data,runningHours:data.totalWorkingHmr});Object.assign(data,{breakdownHours:hours.breakdownHours,availabilityHours:hours.availabilityHours,idleHours:hours.idleHours,hoursSource:hours});}catch(e){data.hoursWarning=e.message;}}
+     await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;

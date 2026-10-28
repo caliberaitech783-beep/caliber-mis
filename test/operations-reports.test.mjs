@@ -10,3 +10,8 @@ test('duplicates and potential missing entries are separated',()=>{const rows=no
 test('meter exceptions and monthly grouping are calculated',()=>{const rows=normalise(records);const invalid={...rows[0],id:2,openingHmr:28,closingHmr:27,hours:-1,book:'BOOK2'};assert.match(buildOperationReport('meters',[...rows,invalid]).rows[0].at(-1),/Closing HMR below opening.*discontinuity/);assert.equal(buildOperationReport('trends',rows,{monthly:true}).rows[0][0],'2026-10');});
 test('CSV preserves commas, quotes and newlines while neutralising spreadsheet formulas',()=>{const csv=reportCsv(['Name'],[['=SUM(1,2)'],['A"B\nC']]);assert.ok(csv.includes('"\'=SUM(1,2)"'));assert.ok(csv.includes('"A""B\nC"'));});
 test('live handover completion counts are used instead of counting both driver cards',()=>{const source=[{...records[0],data:{...records[0].data,completedTrips:0}},{...records[0],id:2,data:{...records[0].data,completedTrips:3}}];const rows=normalise(source);assert.equal(rows.reduce((s,r)=>s+r.tripsTotal,0),3);assert.equal(buildOperationReport('daily',rows).rows[0][5],3);});
+
+test('breakdown report identifies a manual fallback instead of labelling it as Pulse data',()=>{
+ const row={...records[0],data:{...records[0].data,breakdownHours:1.5,breakdownHoursSource:'manual',hoursWarning:'Pulse offline'}};
+ const report=buildOperationReport('breakdown',normalise([row]));assert.equal(report.rows[0][8],1.5);assert.match(report.rows[0].at(-1),/Manual entry/);
+});
