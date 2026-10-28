@@ -1,6 +1,7 @@
 import {misPageAllowed} from '../mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
-import LogBookModeChoice from './log-book-mode-choice.jsx';
+import LogBookModeChoice,{LogBookSectionTabs} from './log-book-mode-choice.jsx';
+import SavedLogBooks from './saved-log-books.jsx';
 import EmployeeMaster from './employee-master.jsx';
 import {requestedMisPage,misPageUrl} from './mis-navigation.mjs';
 import BulkCardScanning from './bulk-card-scanning.jsx';
@@ -11609,7 +11610,7 @@ function App() {
     if(['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
     if(name==='Pulse Master Sync'||['Work Order master','Financial Year master','Company master'].includes(name))return isAdministrator;
-    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
+    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options','Saved VLB','Saved ELB'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
     if(session?.assignedRole==='HR User')return ['Dashboard','Reports','Tickets','CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(session?.assignedRole==='HR Manager')return ['CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(name==="User Sessions")return canViewUserSessions(session);
@@ -11933,10 +11934,12 @@ function App() {
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <PulseMasterSync session={session}/>
-  ) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canScan={isAdministrator} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+  ) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <BulkCardScanning key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
-  ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (
-    <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>
+  ) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
+  ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
+    <LogBookSectionTabs kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} active="manual" canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive)} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Saved VLB':'Saved ELB')}/>
+    <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
   ) : renderedActive === "Stock Statement" ? (
     <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "Purchase Order" ? (
@@ -12052,7 +12055,7 @@ function App() {
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
-          {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan']}].filter(item=>canOpenAdminPage(item.page))},
+          {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[],keepEmpty:canOpenAdminPage('Reports')},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}

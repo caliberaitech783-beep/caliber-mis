@@ -1,3 +1,5 @@
+import {savedLogBookFilters} from './saved-log-book-filters.mjs';
+import {scanImageMime} from './scan-image-format.mjs';
 import {employeeIdentity} from './employee-identity.mjs';
 import {logBookSiteScope,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
 import {CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
@@ -117,9 +119,22 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
      const first=req.query.first==='1',last=req.query.last==='1';
-     const permittedSites=await filterLogBookSites(pool,req.logBookScope);
-     const {rows}=await pool.query(`SELECT id,book_no,book_type,data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites]);
-     const more=rows.length>100;res.json({records:rows.slice(0,100),nextCursor:more?String(rows[99].id):null});
+     const filters=savedLogBookFilters(req.query);
+     if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
+     const permittedSites=await filterLogBookSites(pool,filters.location?{sites:[canonicalSiteName(filters.location)]}:req.logBookScope);
+     const {rows}=await pool.query(`SELECT id,book_no,book_type,data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND ($4::text IS NULL OR book_no ILIKE $4 OR data->>'door' ILIKE $4 OR data->>'employeeName' ILIKE $4 OR data->>'caliberId' ILIKE $4 OR data->>'aFormNo' ILIKE $4 OR data->>'jobCardNo' ILIKE $4 OR site ILIKE $4) AND ($5::date IS NULL OR book_date>=$5::date) AND ($6::date IS NULL OR book_date<=$6::date) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites,filters.search,filters.from,filters.to]);
+     const more=rows.length>100;res.set('Cache-Control','no-store').json({records:rows.slice(0,100),nextCursor:more?String(rows[99].id):null});
+   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
+ });
+ app.get('/api/log-books/:kind/:id/source-image',...protect,async(req,res,next)=>{
+   try{
+     await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid saved log book.'});
+     const record=(await pool.query('SELECT id,site,data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL',[req.params.id,req.params.kind])).rows[0];
+     if(!record||!siteAllowed(req.logBookScope,record.site))return res.status(404).json({error:'Saved scan is unavailable.'});
+     if(!/^[a-f0-9-]{36}$/i.test(record.data.scanCardId||''))return res.status(404).json({error:'This record has no source scan.'});
+     const card=(await pool.query('SELECT image FROM mis_scan_cards WHERE id=$1 AND logbook_id=$2',[record.data.scanCardId,record.id])).rows[0];
+     if(!card)return res.status(404).json({error:'Source scan is unavailable.'});
+     res.set('Cache-Control','no-store').type(scanImageMime(card.image)).send(card.image);
    }catch(error){next(error)}
  });
  async function save(req,res,next){
