@@ -2,7 +2,7 @@ import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.m
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
- if(page==='Scan Backup'){const selection=view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)];return selection.includes(page)||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));}
+ if(page==='Scan Backup'||page==='Deletion'){const selection=view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)];return selection.includes(page)||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));}
  return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
 }
 export function misRequestAllowed(session,req){
@@ -20,6 +20,7 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/erp-masters/'))return allowed(decodeURIComponent(route.split('/')[3]||''));
  if(/^\/api\/(?:pulse-master-sync|master-sync)(?:\/|$)/.test(route))return allowed('Pulse Master Sync');
  if(route==='/api/pulse-trip-verification'&&read||/^\/api\/pulse-trip-verification\/\d+\/retry$/.test(route)&&req.method==='POST')return ['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'].some(allowed);
+ if(route.startsWith('/api/log-book-deletions'))return allowed('Deletion');
  if(route.startsWith('/api/scan-backups'))return allowed('Scan Backup');
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');

@@ -43,3 +43,5 @@ test('MIS client forwards separate credentials only to the fixed HTTPS issuer an
  assert.ok(body.token);assert.equal(body.grant,undefined);assert.equal(calls[0].login,'person');assert.equal(calls[1].v[1],'a'.repeat(43));
  assert.equal(await client.validateSession('token',{permissions:{}}),null);
 });
+
+test('Deletion is granted explicitly or through both book workflows and cannot bypass site controls',()=>{const session=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages}});assert.equal(misPageAllowed(session(['Vehicle Log Book']),'Deletion','desktop'),false);assert.equal(misPageAllowed(session(['Vehicle Log Book','Equipment Log Book']),'Deletion','desktop'),true);assert.equal(misPageAllowed(session(['Deletion']),'Deletion','desktop'),true);assert.equal(misRequestAllowed(session(['Deletion']),{path:'/api/log-book-deletions/entries',method:'GET'}),true);assert.equal(misRequestAllowed(session(['Scan Backup']),{path:'/api/log-book-deletions/entries',method:'GET'}),false);});
