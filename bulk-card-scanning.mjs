@@ -105,7 +105,7 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
   try{
    await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224102)');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[initial.batch_id]);
    batch=await getBatch(c,initial.batch_id);const card=await getCard(c,initial.id,true);
-   if(card.status==='posted'){record=(await c.query('SELECT id,book_no FROM mis_log_books WHERE id=$1',[card.logbook_id])).rows[0];}
+   if(card.status==='posted'){record=(await c.query('SELECT id,book_no,data FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL',[card.logbook_id])).rows[0];if(!record)fail('The saved log book is unavailable. Reload this batch.',409);}
    else{
     if(card.revision!==req.body.revision)fail('Card changed. Reload before automatic saving.',409);
     requireLogBookSite(req.logBookScope,card.draft.location);

@@ -49,16 +49,19 @@ test('review links survive refresh and browser Back restores card status',()=>{
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,0);
 });
 
-test('only Needs attention opens the review page; other status options stay on the overview',()=>{
- const app=harness();
- for(const group of ['orange','red']){
-  const tree=app.render();nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+group)[0].props.onClick();
-  assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
-  assert.equal(nodes(app.render(),n=>n.props['aria-label']==='Cards in batch').length,0);
+test('Needs attention and Blank / no data both open review; All okay stays on overview',()=>{
+ for(const group of ['brown','red']){
+  const app=harness(),tree=app.render();
+  nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+group)[0].props.onClick();
+  assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');
+  assert.equal(new URL(app.window.location.href).searchParams.get('scanGroup'),group);
+  assert.equal(nodes(app.render(),n=>n.props.className==='scan-card-groups').length,0);
  }
- const tree=app.render();nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-brown')[0].props.onClick();
- assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');
+ const app=harness(),tree=app.render();
+ nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-orange')[0].props.onClick();
+ assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
 });
+
 test('review starts compact and heading can be restored while keeping Back and review content available',()=>{
  const app=harness('&scanView=review&scanGroup=brown');let tree=app.render();
  assert.equal(nodes(tree,n=>n.props.className==='scan-hero').length,0);

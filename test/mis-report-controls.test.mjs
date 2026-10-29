@@ -61,3 +61,20 @@ test('original-card index sends all cards to shared controls while gallery remai
   assert.equal(index.props.columns.find(c=>c.key==='filename').value(cards[30]),'Page 30');
   assert.ok(nodes(tree,'button').some(n=>n.props.children==='Next cards'));
 });
+
+test('Saved metric lists every posted card from either review path and excludes drafts and foreign batches',async()=>{
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const batch={id:'batch',kind:'vehicle',name:'Combined saves'};
+ const saved=(id,ordinal,mode)=>({id,batch_id:batch.id,ordinal,status:'posted',saved_data:{scanCardId:id,scanBatchId:batch.id,door:'V'+ordinal,scanSaveMode:mode}});
+ const cards=[saved('automatic',1,'automatic-validation'),saved('corrected',2,'manual-review'),{id:'pending',batch_id:batch.id,ordinal:3,status:'review',draft:{}},{...saved('foreign',4,'automatic-validation'),batch_id:'other'}];
+ let tree=render({batch,cards,token:'test'});
+ const button=nodes(tree,'button').find(node=>node.props['aria-label']==='Show all saved cards');
+ assert.equal(button.props.children,'2');button.props.onClick();
+ tree=render({batch,cards,token:'test'});
+ const cardTable=nodes(tree,ReportSection).find(node=>node.props.columns.some(c=>c.key==='ordinal'));
+ assert.deepEqual(cardTable.props.rows.map(row=>row.id),['automatic','corrected']);
+ assert.ok(nodes(tree,'summary').some(node=>node.props.children==='Saved cards'));
+ nodes(tree,'button').find(node=>node.props['aria-label']==='Show all batch cards').props.onClick();
+ const all=nodes(render({batch,cards,token:'test'}),ReportSection).find(node=>node.props.columns.some(c=>c.key==='ordinal'));
+ assert.equal(all.props.rows.length,3);
+});

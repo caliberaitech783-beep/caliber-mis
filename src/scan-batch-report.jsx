@@ -4,7 +4,7 @@ import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
 import './scan-batch-report.css';
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
 export default function ScanBatchReport({batch,cards,token,ReportSection}){
- const [downloading,setDownloading]=useState(''),[error,setError]=useState('');
+ const [downloading,setDownloading]=useState(''),[error,setError]=useState(''),[savedOnly,setSavedOnly]=useState(false);
  const report=scanBatchReport(batch,cards);if(!report?.counts.cards)return null;
  const tables=scanBatchReportTables(report);
  const download=async format=>{setDownloading(format);setError('');try{
@@ -17,9 +17,9 @@ export default function ScanBatchReport({batch,cards,token,ReportSection}){
   <header><div><h2>{report.title}</h2><p>{report.name} · {report.counts.cards} specific cards in this batch</p></div><div className="scan-actions"><button type="button" disabled={Boolean(downloading)} onClick={()=>download('xlsx')}>Download batch Excel</button><button type="button" disabled={Boolean(downloading)} onClick={()=>download('pdf')}>Download batch PDF</button></div></header>
   {downloading&&<p role="status">Preparing this batch's {downloading==='pdf'?'PDF':'Excel'} report…</p>}{error&&<p role="alert" className="scan-error">{error}</p>}
   <p className="scan-batch-report-scope">Batch ID: {report.batchId}. This report covers every card in this batch, regardless of the card filters below. Totals count saved cards only and refresh as cards save.</p>
-  <dl>{[['Cards',report.counts.cards],['Saved',report.counts.saved],['Pending',report.counts.pending],['Rejected',report.counts.rejected],...(report.vehicle?[['Trips',report.totals.trips],['Kilometres',report.totals.kilometres]]:[]),['Working hours',report.totals.hours]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>
+  <dl>{[['Cards',report.counts.cards],['Saved',report.counts.saved],['Pending',report.counts.pending],['Rejected',report.counts.rejected],...(report.vehicle?[['Trips',report.totals.trips],['Kilometres',report.totals.kilometres]]:[]),['Working hours',report.totals.hours]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{['Cards','Saved'].includes(label)?<button type="button" className="scan-report-count" aria-label={label==='Saved'?'Show all saved cards':'Show all batch cards'} aria-pressed={label==='Saved'?savedOnly:!savedOnly} onClick={()=>setSavedOnly(label==='Saved')}>{display(value)}</button>:display(value)}</dd></div>)}</dl>
   {report.counts.pending>0&&<p role="status">{report.counts.pending} card(s) are still pending. Their draft values are listed separately from saved totals.</p>}
-  {ReportSection&&tables.filter(table=>table.name!=='Individual trips'&&table.name!=='Loading equipment').map(table=><details key={table.name} open={table.name==='Cards'}><summary>{table.name}</summary><ReportSection title={table.title} category="scan-batch" description={report.name+' · Batch ID: '+report.batchId} columns={table.columns} rows={table.rows} emptyMessage="No matching data in this batch yet."/></details>)}
+  {ReportSection&&tables.filter(table=>table.name!=='Individual trips'&&table.name!=='Loading equipment').map(table=><details key={table.name} open={table.name==='Cards'}><summary>{table.name==='Cards'&&savedOnly?'Saved cards':table.name}</summary><ReportSection title={table.title} category="scan-batch" description={report.name+' · Batch ID: '+report.batchId} columns={table.columns} rows={table.name==='Cards'&&savedOnly?table.rows.filter(row=>row.saved):table.rows} emptyMessage={savedOnly&&table.name==='Cards'?'No cards have been saved to the log book yet.':'No matching data in this batch yet.'}/></details>)}
 
  </section>;
 }

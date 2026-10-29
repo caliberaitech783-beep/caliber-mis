@@ -49,3 +49,10 @@ export function scanBatchExportTables(report,{pdf=false}={}){
   return {...table,columns:columns.map(c=>({key:c.key,label:c.label})),rows:table.rows.map(row=>columns.map(c=>c.value(row)??''))};
  });
 }
+
+/** Apply a confirmed log-book response, irrespective of how the card was reviewed. */
+export function applySavedScanCard(card,record){
+ const data=record?.data;
+ if(!data||data.scanCardId!==card.id||data.scanBatchId!==card.batch_id)return card;
+ return {...card,status:'posted',logbook_id:record.id,book_no:record.book_no,saved_data:data,logbook_deleted_at:null,checks:{errors:[],warnings:[]}};
+}

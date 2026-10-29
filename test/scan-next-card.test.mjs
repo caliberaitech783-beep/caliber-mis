@@ -17,7 +17,7 @@ function harness({fail=false,autosaving=false,last=false}={}){
  const current=card('1'),next=card('2'),visible=last?[current]:[current,next],events=[];
  const location={href:'https://example.test/?batch=test&card=1&scanView=review#scan'};
  const dirtyRef={current:true},selectedRevision={current:'1:1'};
- const scope={card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push(['put',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible;},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
+ const scope={groupFilter:'brown',card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push(['put',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible;},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
  return {run:new Function(...Object.keys(scope),'return ('+handler+')')(...Object.values(scope)),events,location,selectedRevision};
 }
 test('successful explicit save advances after persistence and updates the card link',async()=>{
@@ -46,4 +46,10 @@ test('repeated rejection clicks send one request for only the selected card',asy
  assert.equal(requests[0][1],'/api/scan-cards/1');
  assert.equal(requests[0][2].action,'reject');
  assert.equal(h.events.some(e=>e[0]==='selected'),false);
+});
+test('blank-card review advances through rejected cards only when that group is open',()=>{
+ const rows=[card('1'),card('2','rejected')];
+ assert.equal(nextScanReviewCard(rows,'1'),null);
+ assert.equal(nextScanReviewCard(rows,'1',rows,{includeRejected:true}).id,'2');
+ assert.equal(nextScanReviewCard(rows,'2',rows,{includeRejected:true}),null);
 });
