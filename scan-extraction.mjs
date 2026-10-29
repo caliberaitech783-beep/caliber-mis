@@ -1,4 +1,4 @@
-import {fleetDoorKey} from './scan-fleet-door.mjs';
+import {linkedScanEquipment} from './scan-fleet-door.mjs';
 import {resolveTripGrid} from './trip-row-vision.mjs';
 import {matchScannedSite,hasDchLocation} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
@@ -23,7 +23,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(matchedSite)raw.location=matchedSite;
  const assets=masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)===kind);
  const doorAssets=locationNeedsReview?[]:raw.location?assets.filter(r=>{const site=r.record_data.currentLocation||r.record_data.site||r.record_data.location;return !site||canonicalSiteName(site)===canonicalSiteName(raw.location)}):assets;
- const asset=raw.door?one(doorAssets,r=>[r.record_data.door,r.record_data.doorNo,r.record_data.registration,r.record_data.reg,r.record_data.equipmentName].some(v=>v&&fleetDoorKey(v)===fleetDoorKey(raw.door))):null;
+ const linked=linkedScanEquipment(doorAssets.map(r=>({...r.record_data,id:r.id,kind,site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''})),raw.door,'',kind);const asset=linked?doorAssets.find(r=>r.id===linked.id):null;
  const assetSite=asset?.record_data.currentLocation||asset?.record_data.site||asset?.record_data.location||'';const knownSite=masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||'').find(s=>raw.location&&canonicalSiteName(s)===canonicalSiteName(raw.location));const location=locationNeedsReview?'':raw.location?(assetSite&&canonicalSiteName(assetSite)===canonicalSiteName(raw.location)?assetSite:knownSite||raw.location):assetSite;
  const employees=masters.filter(r=>['C-Dir Employee master','ERP Employee master','Employee master'].includes(r.master_name));
  const matchingEmployee=r=>raw.employeeCode?[r.record_data.caliberId,employeeCode(r.record_data),r.record_data.erpEmployeeCode,r.record_data.employeeCode].some(v=>v&&key(v).replace(/^CMPL/,'')===key(raw.employeeCode).replace(/^CMPL/,'')):raw.employee&&key(r.record_data.name||r.record_data.employee)===key(raw.employee);

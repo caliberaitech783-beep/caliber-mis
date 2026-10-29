@@ -9,3 +9,17 @@ test('scanned fleet initials, Caliber ID, date and latest location work order re
  const duplicate=[...masters,master(7,'Equipment master',{door:'S12',category:'vehicle',site:'Dhoptala OB'})];assert.equal(extractCard(text,'vehicle',duplicate).draft.assetId,'');
  assert.equal(extractCard(text,'vehicle',[]).draft.employeeId,'');
 });
+
+test('linked equipment resolves padded fleet doors within location and type, without guessing duplicates',async()=>{
+ const {linkedScanEquipment,fleetDoorKey}=await import('../scan-fleet-door.mjs');
+ const rows=[{id:'1',door:'Scania 1',kind:'vehicle',site:'Jayant OC'},{id:'2',door:'S01',kind:'vehicle',site:'Sasti OC'},{id:'3',door:'S/01',kind:'equipment',site:'Jayant OC'}];
+ assert.equal(fleetDoorKey('S/01'),fleetDoorKey('Scania 1'));
+ assert.equal(linkedScanEquipment(rows,'S/01','Jayant OC','vehicle').id,'1');
+ assert.equal(linkedScanEquipment(rows,'S/01','Sasti OC','vehicle').id,'2');
+ assert.equal(linkedScanEquipment(rows,'S/01','Unknown','vehicle'),null);
+ assert.equal(linkedScanEquipment(rows,'S/01','','vehicle'),null);
+ assert.equal(linkedScanEquipment([...rows,{...rows[0],id:'4'}],'S/01','Jayant OC','vehicle'),null);
+ assert.equal(linkedScanEquipment(rows,'','Jayant OC','vehicle'),null);
+ const extracted=extractCard('Site: Jayant OC\nDoor No: S/01','vehicle',[master(1,'Equipment master',{door:'Scania 1',category:'vehicle',site:'Jayant OC'})]);
+ assert.equal(extracted.draft.assetId,'1');assert.equal(extracted.draft.doorText,'S/01');
+});

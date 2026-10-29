@@ -1,3 +1,4 @@
+import {linkedScanEquipment} from '../scan-fleet-door.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
 import {handoverTimeNote} from './scan-handover-review.mjs';
 import ScanBatchReport from './scan-batch-report.jsx';
@@ -71,7 +72,7 @@ export default function BulkCardScanning({kind,session,ReportSection}){
  manualVisibility.current=retainManualFields(manualVisibility.current,visibilityKey,manualIssues);
  const correctionView=!showAll&&!['approved','posted','rejected'].includes(card?.status);
  // Keep complete trip rows visible even when header fields are filtered to corrections.
- const visibleField=key=>/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
+ const visibleField=key=>['doorText','assetId'].includes(key)||/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
  const visibleTrip=i=>!correctionView||['equipmentName','loadingTime','unloadingTime','tripCount'].some(k=>visibleField(`trips.${i}.${k}`));
  const fieldIssues=correctionView?manualIssues:allFieldIssues;
  const fieldClass=key=>{const state=scanFieldState(draft,key,fieldIssues);return state?`scan-field-invalid scan-field-${state}`:'';};
@@ -89,6 +90,11 @@ export default function BulkCardScanning({kind,session,ReportSection}){
    setNotice('Card '+next.ordinal+' saved automatically as '+result.record.book_no+'.');await load(next.batch_id);await list();
   }catch(e){if(e.message.startsWith('Pulse BD hours unavailable')){bdFetchUnavailable.current=true;setNotice('Card '+next.ordinal+': '+e.message);if(next.id===selectedCardRef.current){setPulseHours(null);setPulseHoursError(e.message);}}else setAutoSaveError(e.message);await load(next.batch_id).catch(()=>{});}finally{setBusy(false);setProgress('');}})();
  },[cards,kind,options,dirty,busy,connectionError,saveTick,bdFallbackMissing,pulseHours?.breakdownHours]);
+ useEffect(()=>{
+  if(!card||!options||!draft.location||['queued','reading','posted'].includes(card.status)||draft.assetId)return;
+  const linked=linkedScanEquipment(options.assets||[],draft.doorText,draft.location,kind);
+  if(linked){setDraft(d=>({...d,assetId:String(linked.id),manualBreakdownHours:''}));setDirty(true);setChecked(false);}
+ },[options,card?.id,card?.status,draft.doorText,draft.location,draft.assetId,kind]);
  const readonly=!card||['queued','reading','posted'].includes(card.status);
  useEffect(()=>{if(!card||!options||!draft.bookDate||!['vehicle','equipment'].includes(kind))return;const changes={};const orders=matchingWorkOrders(options.workOrders||[],draft.location,draft.bookDate);const latest=latestWorkOrder(options.workOrders||[],draft.location,draft.bookDate);if(!draft.workOrderId&&latest)changes.workOrderId=latest.id;const shift=selectedMasterShift(options.shifts||[],draft.location,draft.cardShift);if(!draft.shiftId&&shift)changes.shiftId=shift.id;const hours=CARD_SHIFTS[draft.cardShift]?.hours;if(hours&&Number(draft.shiftHours)!==hours)changes.shiftHours=hours;if(!draft.employeeId&&card.raw_fields?.employeeCode){const value=String(card.raw_fields.employeeCode).trim().toUpperCase();const matched=(options.employees||[]).filter(r=>[r.caliberId,r.employeeCode].some(v=>String(v||'').toUpperCase()===value));const preferred=matched.filter(r=>r.masterName==='Employee master');const candidates=preferred.length?preferred:matched;if(candidates.length===1)changes.employeeId=candidates[0].id;}if(changes.shiftId||changes.shiftHours)changes.manualBreakdownHours='';if(Object.keys(changes).length){setDraft(d=>({...d,...changes}));setDirty(true);setChecked(false);}},[options,draft.bookDate,draft.location,draft.cardShift,card?.id]);
  const difference=(a,b)=>a!==''&&b!==''&&a!=null&&b!=null&&Number.isFinite(Number(a))&&Number(b)>=Number(a)?(Number(b)-Number(a)).toFixed(2):'—';
