@@ -18,8 +18,8 @@ test('driver/operator missing-field names follow the book type',()=>{
  assert.match(scanFieldIssues({},'equipment').employeeId,/^Operator needs/);
 });
 test('scanned numeric C.ID resolves the full Employee Master ID without using handwritten name',()=>{
- const masters=[{id:42,master_name:'Employee master',record_data:{employeeId:'CMPL8311',employeeCode:'8311',name:'ANOOP SUNIL PAUL'}}];
- assert.equal(extractCard('C.ID CMPL - 8311\nDRIVER NAME Unreadable','vehicle',masters).draft.employeeId,'42');
- assert.equal(extractCard('DRIVER NAME Wrong text','vehicle',masters,{employeeCode:'8311'}).draft.employeeId,'42');
+ const masters=[{id:42,master_name:'Employee master',record_data:{employeeId:'CMPL8311',employeeCode:'8311',name:'ANOOP SUNIL PAUL',site:'Sasti OC'}}];
+ assert.equal(extractCard('Site: Sasti OC\nC.ID CMPL - 8311\nDRIVER NAME Unreadable','vehicle',masters).draft.employeeId,'42');
+ assert.equal(extractCard('Site: Sasti OC\nDRIVER NAME Wrong text','vehicle',masters,{employeeCode:'8311'}).draft.employeeId,'42');
  assert.equal(extractCard('C.ID 9999','vehicle',masters).draft.employeeId,'');
 });
