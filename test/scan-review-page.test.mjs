@@ -48,3 +48,24 @@ test('review links survive refresh and browser Back restores card status',()=>{
  assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,0);
 });
+
+test('only Needs attention opens the review page; other status options stay on the overview',()=>{
+ const app=harness();
+ for(const group of ['orange','red']){
+  const tree=app.render();nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+group)[0].props.onClick();
+  assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
+  assert.equal(nodes(app.render(),n=>n.props['aria-label']==='Cards in batch').length,0);
+ }
+ const tree=app.render();nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-brown')[0].props.onClick();
+ assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');
+});
+test('review heading can be hidden and restored while keeping Back and review content available',()=>{
+ const app=harness('&scanView=review&scanGroup=brown');let tree=app.render();
+ assert.equal(nodes(tree,n=>n.props.className==='scan-hero').length,1);
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Hide heading and summary')[0].props.onClick();tree=app.render();
+ assert.equal(nodes(tree,n=>n.props.className==='scan-hero').length,0);
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,1);
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Back to card status').length,1);
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Show heading and summary')[0].props.onClick();
+ assert.equal(nodes(app.render(),n=>n.props.className==='scan-hero').length,1);
+});

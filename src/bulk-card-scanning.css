@@ -70,3 +70,11 @@
 .scan-workspace.scan-review-workspace{grid-template-columns:145px minmax(0,1fr)}
 .scan-review-empty{padding:22px;background:var(--panel,#fff);border:1px solid #d9cfe5;border-radius:9px}
 @media(max-width:650px){.scan-workspace.scan-review-workspace{grid-template-columns:1fr}.scan-review-workspace>.scan-selected-card{grid-column:1}}
+
+.scan-review-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.scan-review-page .scan-preview-viewport{max-height:80vh}
+@media(min-width:1250px){.scan-review-page .scan-selected-card{grid-template-columns:minmax(280px,.85fr) minmax(0,1.4fr)}.scan-review-page .scan-selected-card>.scan-source{grid-row:auto;position:sticky;top:88px}}
+.scan-review-page .scan-selected-card.scan-source-expanded{grid-template-columns:minmax(0,1fr)}
+.scan-review-page .scan-source-expanded>.scan-source{grid-column:1;grid-row:1;position:static}
+.scan-review-page .scan-source-expanded>.scan-draft{grid-column:1;grid-row:2}
+.scan-review-page .scan-source-expanded .scan-preview-viewport{max-height:85vh}
