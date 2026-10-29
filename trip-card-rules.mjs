@@ -7,12 +7,18 @@ export function machineSummary(trips=[]){const map=new Map();for(const row of tr
 export function machineDiscrepancies(trips=[],printed=[]){const actual=new Map(machineSummary(trips).map(r=>[r.equipmentName,r.tripCount])),expected=new Map(machineSummary(printed).map(r=>[r.equipmentName,r.tripCount]));if(!printed.length)return [];return [...new Set([...actual.keys(),...expected.keys()])].flatMap(name=>actual.get(name)===expected.get(name)?[]:[`${name}: detail trips ${actual.get(name)||0}, scanned summary ${expected.get(name)||0}.`]);}
 export function matchingWorkOrders(rows,site,date){return rows.filter(r=>canonicalSiteName(r.site||r.location)===canonicalSiteName(site)&&site&&!r.sourceMissing&&(!(r.begin||r.commencementDate)||(r.begin||r.commencementDate)<=date)&&(!(r.end||r.completionDate)||(r.end||r.completionDate)>=date));}
 export function normalizeCardShift(value){const code=bookShiftCode(String(value||'').replace(/\s*\([ABC]\)\s*$/i,''));return ({S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'})[code]||'';}
-export function markedShift(text){
+export function markedShiftEvidence(text){
  const found=new Set(),source=String(text),token='(III|II|I|DAY|NIGHT|S[123]|[123ABC])',mark='(?:\\[\\s*[xX✓√]\\s*\\]|☑|✓|√)';
  for(const m of source.matchAll(new RegExp(mark+'\\s*'+token+'\\b','gi')))found.add(normalizeCardShift(m[1]));
- for(const m of source.matchAll(new RegExp('(?:^|\\n)\\s*'+token+'\\s*'+mark+'\\s*(?=\\n|$)','gi')))found.add(normalizeCardShift(m[1]));
+ for(const m of source.matchAll(new RegExp('(?:^|\\n)\\s*'+token+'(?:\\s*\\([ABC]\\))?(?:\\s+SHIFT)?\\s*'+mark+'\\s*(?=\\n|$)','gi')))found.add(normalizeCardShift(m[1]));
  for(const line of source.split('\n')){const plain=line.match(/^(?:\s*SHIFT\s*[:=-]\s*)([^\n]+)$/i)||line.match(/^\s*(DAY|NIGHT)\s*$/i);if(plain){const shift=normalizeCardShift(plain[1]);if(shift)found.add(shift);}}
- return found.size===1?[...found][0]:'';
+ return {value:found.size===1?[...found][0]:'',status:found.size>1?'unclear':found.size===1?'clear':'missing'};
+}
+export const markedShift=text=>markedShiftEvidence(text).value;
+export function manualTripShiftPatch(key,value,rows=[]){
+ if(key==='cardShift'){const shift=normalizeCardShift(value);return {cardShift:shift,shiftHours:CARD_SHIFTS[shift]?.hours||'',shiftId:''};}
+ if(key==='shiftId'){const row=rows.find(r=>String(r.id)===String(value));const shift=normalizeCardShift(row?.shiftCode)||normalizeCardShift(row?.name||row?.shiftName);return {cardShift:shift,shiftHours:CARD_SHIFTS[shift]?.hours||''};}
+ return {};
 }
 export function selectedMasterShift(rows,site,selection,date=''){
  const normalized=normalizeCardShift(selection),s=CARD_SHIFTS[normalized];if(!s||!site)return null;

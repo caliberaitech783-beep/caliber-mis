@@ -13,9 +13,10 @@ test('PC evidence creates a review draft online, preserves corrections, and post
  let card;for(let i=0;i<100;i++){card=(await call('/api/scan-batches/'+batch)).data.cards[0];if(card.status==='review')break;await new Promise(r=>setTimeout(r,20))}
  assert.equal(card.status,'review');assert.equal(card.draft.trips.length,18);assert.equal(card.draft.assetId,'1');assert.equal(card.draft.employeeId,'2');assert.equal(card.draft.aFormNo,'1042');assert.equal(card.draft.trips[3].loadingTime,'');assert.equal(card.raw_fields.provider,'paddleocr');assert.equal(card.checked_by,null);
  const post='/api/scan-batches/'+batch+'/post';assert.equal((await call(post,'POST',{cards:[{id,revision:card.revision}]})).status,409);
- const fixed={...card.draft,shiftId:'3',shiftHours:8,meterReviewFields:[],extractionReviewFields:[],trips:card.draft.trips.map(r=>({...r,loadingTime:r.loadingTime||'01:12'})),remark:'Checked and corrected test draft'};
+ const fixed={...card.draft,shiftId:'3',cardShift:'I',shiftHours:8,meterReviewFields:[],extractionReviewFields:[],trips:card.draft.trips.map(r=>({...r,loadingTime:r.loadingTime||'01:12'})),remark:'Checked and corrected test draft'};
  const saved=await call('/api/scan-cards/'+id,'PUT',{revision:card.revision,draft:fixed,action:'save'});assert.equal(saved.status,200);card=(await call('/api/scan-batches/'+batch)).data.cards[0];assert.equal(card.draft.remark,fixed.remark);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),0);
  assert.equal((await call('/api/scan-cards/'+id,'PUT',{revision:card.revision,draft:fixed,action:'approve',checked:false})).status,400);
+ const unconfirmed=await call('/api/scan-cards/'+id,'PUT',{revision:card.revision,draft:{...fixed,cardShift:''},action:'approve',checked:true});assert.equal(unconfirmed.status,400);assert.match(unconfirmed.data.error,/clearly marked Trip Card shift/);
  const approved=await call('/api/scan-cards/'+id,'PUT',{revision:card.revision,draft:fixed,action:'approve',checked:true});assert.equal(approved.status,200,JSON.stringify(approved.data));
  const posted=await call(post,'POST',{cards:[{id,revision:approved.data.revision}]});assert.equal(posted.status,200,JSON.stringify(posted.data));assert.equal(posted.data.count,1);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
 });
