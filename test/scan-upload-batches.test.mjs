@@ -41,3 +41,11 @@ test('MIS sidebar uses larger navigation labels',()=>{
  assert.match(css,/#admin-primary-navigation,#admin-primary-navigation \*\{color:#fff!important\}/);
  assert.match(css,/\.erp-group-toggle\[aria-expanded=true\]\{background:transparent!important/);
 });
+test('scan workflow uses the compact requested controls',()=>{
+ const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8'),css=readFileSync(new URL('../src/bulk-card-scanning.css',import.meta.url),'utf8');
+ assert.match(src,/className="scan-workflow-row"><GroqScanSettings[\s\S]*className="scan-workflow-actions"/);
+ assert.doesNotMatch(src,/Select PNG, JPG\/JPEG or PDF files/);
+ assert.match(src,/className="scan-upload-panel"><h2>Upload existing scans<\/h2><button/);
+ assert.match(css,/\.scan-hero h1,\.scan-hero h1 \*\{color:#fff!important\}/);
+ assert.match(css,/\.scan-workflow-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
+});
