@@ -28,6 +28,8 @@ export function recoverCardResponse(parsed,kind,fieldNames){
    issues.push(label+': '+['','equipment','loading time','unloading time'][cell]+' unreadable or invalid; check the original scan.');return null;
   })];
  })};
+ if(new Set(trips.r.map(row=>row[0])).size!==trips.r.length)issues.push('Trip numbering: duplicate printed numbers; check every row against the original scan.');
+ if(trips.r.some((row,index)=>index>0&&row[0]!==trips.r[index-1][0]+1))issues.push('Trip numbering: gaps or out-of-order numbers; confirm the complete table against the original scan.');
  if(kind==='vehicle'&&parsed.trips?.p!==true)issues.push('Trip table was not clearly confirmed by the reader.');
  return {fields,trips,issues};
 }
