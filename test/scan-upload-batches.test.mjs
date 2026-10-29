@@ -25,3 +25,7 @@ test('PDF uploads expose elapsed timing and a real abort controller',()=>{
  assert.match(server,/\/api\/scan-batches\/:id\/abort/);
  assert.match(server,/status IN\('queued','reading'\)/);
 });
+test('MIS header clock is kept on one line',()=>{
+ const css=readFileSync(new URL('../src/erp-layout.css',import.meta.url),'utf8');
+ assert.match(css,/\.top>\.header-clock\{[^}]*flex-wrap:nowrap;white-space:nowrap/);
+});

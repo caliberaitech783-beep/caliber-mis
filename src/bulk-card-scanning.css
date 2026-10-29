@@ -5,6 +5,7 @@
 
 /* Keep this workspace on the light report theme with dark text throughout. */
 .scan-page{background:#fff;color:#090909}.scan-page :where(p,small,span,strong,h1,h2,h3,label,summary,li,dt,dd,th,td,output,a,button,select,input,textarea){color:#090909}.scan-workflow-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.scan-workflow-actions .scan-workflow-tabs{margin-right:0}.scan-page button.scan-abort{background:#fff1f1;border-color:#c62828;color:#090909;font-weight:700}.scan-upload-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}.scan-upload-timer,.scan-upload-count{display:inline-flex;align-items:center;padding:12px 18px;border-radius:10px;background:#078765;color:#fff!important;font-weight:700;box-shadow:0 8px 22px #0787652e}
+.scan-hero{justify-content:flex-start;gap:0;flex-wrap:nowrap;padding:12px 16px}.scan-hero h1{margin:0}
 
 /* Labels remain black; brown marks incorrect values and red marks missing values. */
 .scan-page label,.scan-page .scan-fields label:nth-child(even),.scan-page label>span,.scan-page .scan-trip-row label{color:#000}

@@ -70,3 +70,11 @@ test('review starts compact and heading can be restored while keeping Back and r
  nodes(app.render(),n=>n.type==='button'&&n.props.children==='Hide heading and summary')[0].props.onClick();
  assert.equal(nodes(app.render(),n=>n.props.className==='scan-hero').length,0);
 });
+test('scan overview uses the compact title-only banner',()=>{
+ const hero=nodes(harness().render(),n=>n.props.className==='scan-hero')[0];
+ assert.equal(hero.type,'header');
+ assert.equal(React.Children.count(hero.props.children),1);
+ const heading=React.Children.only(hero.props.children);
+ assert.equal(heading.type,'h1');
+ assert.match(String(heading.props.children[1]),/Trip Cards · Scan & Review/);
+});

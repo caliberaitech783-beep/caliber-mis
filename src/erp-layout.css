@@ -40,5 +40,5 @@
 .app.erp-shell .top>.crumb>.page-back,.app.erp-shell .top>.crumb>svg{flex-shrink:0}
 .app.erp-shell .top>.crumb b{min-width:0;overflow-wrap:anywhere}
 .app.erp-shell .top>div:last-child{grid-column:3;grid-row:1;min-width:0;justify-self:end;flex-wrap:wrap}
-.app.erp-shell .top>.header-clock{position:static;left:auto;transform:none;grid-column:1/-1;grid-row:2;justify-self:center;justify-content:center;flex-wrap:wrap;row-gap:4px;--header-clock-size:clamp(16px,1.4vw,23px);line-height:1.3}
+.app.erp-shell .top>.header-clock{position:static;left:auto;transform:none;grid-column:1/-1;grid-row:2;justify-self:center;justify-content:center;flex-wrap:nowrap;white-space:nowrap;row-gap:4px;--header-clock-size:clamp(16px,1.4vw,23px);line-height:1.3}
 @media(max-width:760px){.app.erp-shell>main.content>.top{padding:10px 8px;column-gap:6px}.app.erp-shell .top>.header-clock{--header-clock-size:16px}}
