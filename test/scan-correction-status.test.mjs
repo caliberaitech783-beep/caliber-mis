@@ -4,7 +4,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
-const source=readFileSync(new URL('../src/scan-correction-status.jsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export default function','function');
+const source=readFileSync(new URL('../src/scan-correction-status.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace('export default function','function');
 const {code}=await transformWithOxc(source,'scan-correction-status.jsx',{jsx:{runtime:'classic'}});
 const Status=new Function('React',code+';return ScanCorrectionStatus;')(React);
 test('saved corrections and remaining checks produce one truthful combined status',()=>{
