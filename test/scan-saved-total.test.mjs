@@ -16,7 +16,7 @@ test('confirmed saves update the combined total immediately for corrected and al
 });
 
 test('one card with unavailable breakdown hours does not block a different valid card from saving',async()=>{
- const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const start=source.indexOf(" useEffect(()=>{\n  if(!options||dirty||busy||connectionError||savingRef.current");
  const end=source.indexOf("\n },[cards,kind,options",start);
  assert.ok(start>=0&&end>start);
