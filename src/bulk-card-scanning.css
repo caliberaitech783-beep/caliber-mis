@@ -112,21 +112,24 @@
  .scan-review-compact .scan-selected-card{grid-column:1;min-height:0;grid-template-columns:minmax(0,1fr) minmax(0,var(--scan-source-width,1fr));align-items:stretch;gap:8px}
  .scan-review-compact .scan-selected-card>.scan-draft{position:relative;grid-row:1;grid-column:1;min-height:0;overflow:hidden;padding:8px}
  .scan-review-compact .scan-draft-sheet{position:absolute;left:8px;top:8px;transform-origin:top left}
- .scan-review-compact .scan-draft-sheet h2{font-size:16px;margin:0 0 5px}
- .scan-review-compact .scan-draft-sheet h3,.scan-review-compact .scan-draft-sheet h4{font-size:14px;margin:5px 0}
+ .scan-review-compact .scan-draft-sheet h2{font-size:20px;margin:0 0 5px}
+ .scan-review-compact .scan-draft-sheet h3,.scan-review-compact .scan-draft-sheet h4{font-size:17px;margin:5px 0}
  .scan-review-compact .scan-draft-sheet .scan-field-key{font-size:13px}
- .scan-review-compact .scan-draft-sheet fieldset{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .scan-review-compact .scan-draft-sheet fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
  .scan-review-compact .scan-draft-sheet fieldset>.scan-fields,.scan-review-compact .scan-draft-sheet fieldset>.scan-trips,.scan-review-compact .scan-draft-sheet fieldset>.scan-actions,.scan-review-compact .scan-draft-sheet fieldset>p{grid-column:1/-1}
  .scan-review-compact .scan-draft-sheet fieldset>label{min-width:0}
  .scan-review-compact .scan-draft-sheet .scan-machine-summary .scan-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
- .scan-review-compact .scan-draft-sheet .scan-fields{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:5px}
- .scan-review-compact .scan-draft-sheet label{gap:2px;font-size:13px}
- .scan-review-compact .scan-draft-sheet input,.scan-review-compact .scan-draft-sheet select,.scan-review-compact .scan-draft-sheet textarea,.scan-review-compact .scan-draft-sheet button{padding:4px 5px;font-size:15px;min-height:0}
+ .scan-review-compact .scan-draft-sheet .scan-fields{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:5px}
+ .scan-review-compact .scan-draft-sheet label{gap:2px;font-size:15px}
+ .scan-review-compact .scan-draft-sheet input,.scan-review-compact .scan-draft-sheet select,.scan-review-compact .scan-draft-sheet textarea,.scan-review-compact .scan-draft-sheet button{padding:4px 5px;font-size:18px;min-height:0}
  .scan-review-compact .scan-draft-sheet small{font-size:11px;line-height:1.2}
  .scan-review-compact .scan-draft-sheet .scan-review-heading-row,.scan-review-compact .scan-draft-sheet .scan-field-key{margin-bottom:5px;gap:5px}
  .scan-review-compact .scan-draft-sheet .scan-error,.scan-review-compact .scan-draft-sheet .scan-warning,.scan-review-compact .scan-draft-sheet .scan-success{padding:4px 6px;margin:4px 0;font-size:12px;line-height:1.2}
  .scan-review-compact .scan-draft-sheet .scan-trips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px;padding:5px;margin-bottom:5px}
  .scan-review-compact .scan-draft-sheet .scan-trips>h3,.scan-review-compact .scan-draft-sheet .scan-trips>.scan-time-entry,.scan-review-compact .scan-draft-sheet .scan-trips>.scan-confirm,.scan-review-compact .scan-draft-sheet .scan-trips>button{grid-column:1/-1}
+ .scan-review-compact .scan-draft-sheet .scan-trips:not(:has(.scan-trip-row))>.scan-time-entry{grid-column:1;margin:0}
+ .scan-review-compact .scan-draft-sheet .scan-trips:not(:has(.scan-trip-row))>button{grid-column:2;justify-self:end}
+ .scan-review-compact .scan-draft-sheet .scan-trips>.scan-confirm{margin:3px 0}
  .scan-review-compact .scan-draft-sheet .scan-trip-row{grid-template-columns:minmax(60px,1fr) 40px auto;gap:3px;margin:0;align-items:end}
  .scan-review-compact .scan-draft-sheet .scan-trip-row:has(input[type=time]){grid-template-columns:minmax(60px,1fr) repeat(2,65px) 35px 40px auto}
  .scan-review-compact .scan-draft-sheet .scan-trip-row:has(>strong){grid-template-columns:auto minmax(60px,1fr) 35px auto}
