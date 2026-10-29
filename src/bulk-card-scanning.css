@@ -105,7 +105,7 @@
  .scan-review-compact>.scan-error,.scan-review-compact>.scan-success,.scan-review-compact>p{flex-shrink:0;margin:0;max-height:12dvh;overflow:auto}
  .scan-review-compact>.scan-review-workspace{flex:1;min-height:0;grid-template-columns:125px minmax(0,1fr);align-items:stretch;gap:8px}
  .scan-review-compact .scan-review-workspace>.scan-card-list{position:static;grid-row:auto;max-height:none;min-height:0;overflow:auto}
- .scan-review-compact .scan-selected-card{grid-column:2;min-height:0;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:stretch;gap:8px}
+ .scan-review-compact .scan-selected-card{grid-column:2;min-height:0;grid-template-columns:minmax(0,var(--scan-entry-width,1.15fr)) minmax(0,1fr);align-items:stretch;gap:8px}
  .scan-review-compact .scan-selected-card>.scan-draft{position:relative;grid-row:1;grid-column:1;min-height:0;overflow:hidden;padding:8px}
  .scan-review-compact .scan-draft-sheet{position:absolute;left:8px;top:8px;transform-origin:top left}
  .scan-review-compact .scan-draft-sheet h2{font-size:13px;margin:0 0 5px}
@@ -131,7 +131,7 @@
  .scan-review-compact .scan-preview-tools{flex-shrink:0;margin:8px 0}
  .scan-review-compact .scan-preview-viewport{flex:1;min-height:0;max-height:none}
  .scan-review-compact .scan-preview-viewport.scan-preview-fit{display:flex;align-items:center;justify-content:center;height:0;max-height:none}
- .scan-review-compact .scan-preview-fit>.scan-preview-image{height:100%;display:flex;align-items:center;justify-content:center}
+ .scan-review-compact .scan-preview-fit>.scan-preview-image{height:100%;display:flex;align-items:center;justify-content:flex-start}
  .scan-review-compact .scan-source .scan-preview-fit .scan-preview-image img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain}
  .scan-review-compact .scan-selected-card.scan-source-expanded{grid-template-columns:minmax(0,1fr)}
  .scan-review-compact .scan-source-expanded>.scan-source{grid-column:1}
@@ -144,7 +144,7 @@
  .scan-review-compact .scan-review-workspace>.scan-card-list{grid-column:1;grid-row:1;display:flex;gap:5px;max-height:75px;padding:4px;overflow:auto}
  .scan-review-compact .scan-card-list button{width:auto;min-width:100px;flex-shrink:0;margin:0;padding:5px}
  .scan-review-compact .scan-card-list button>small{display:none}
- .scan-review-compact .scan-selected-card{grid-column:1;grid-row:2;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+ .scan-review-compact .scan-selected-card{grid-column:1;grid-row:2;grid-template-columns:minmax(0,var(--scan-entry-width,1fr)) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
  .scan-review-compact .scan-selected-card.scan-source-expanded{grid-template-columns:minmax(0,1fr)}
  .scan-review-compact .scan-selected-card>.scan-source{grid-column:2;padding:6px}
  .scan-review-compact .scan-source-expanded>.scan-source{grid-column:1}
