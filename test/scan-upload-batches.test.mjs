@@ -28,4 +28,13 @@ test('PDF uploads expose elapsed timing and a real abort controller',()=>{
 test('MIS header clock is kept on one line',()=>{
  const css=readFileSync(new URL('../src/erp-layout.css',import.meta.url),'utf8');
  assert.match(css,/\.top>\.header-clock\{[^}]*flex-wrap:nowrap;white-space:nowrap/);
+ assert.match(css,/grid-template-columns:auto minmax\(240px,1fr\) auto auto;grid-template-rows:auto/);
+ assert.match(css,/\.top>\.header-clock\{[^}]*grid-column:3;grid-row:1/);
+ assert.match(css,/min-height:64px;padding:8px 20px/);
+});
+test('MIS sidebar uses larger navigation labels',()=>{
+ const css=readFileSync(new URL('../src/erp-layout.css',import.meta.url),'utf8');
+ assert.match(css,/#admin-primary-navigation \.erp-group-toggle\{font-size:12px\}/);
+ assert.match(css,/#admin-primary-navigation \.erp-page[^}]*font-size:14px/);
+ assert.match(css,/#admin-primary-navigation \.erp-brand-copy strong\{font-size:19px\}/);
 });
