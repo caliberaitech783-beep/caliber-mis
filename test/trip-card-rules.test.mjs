@@ -42,3 +42,19 @@ test('explicit shift labels and provider variants match numeric and named locati
  assert.equal(selectedMasterShift([...rows,{...rows[1],id:'duplicate'}],'Jayant OC','II'),null);
  assert.equal(selectedMasterShift(rows,'Sasti OC','II'),null);
 });
+
+test('Dudhichua East scanned Shift I links equivalent seed and Pulse shifts and follows card-date revisions',async()=>{
+ const {selectedMasterShift,cardShiftLabel}=await import('../trip-card-rules.mjs');
+ const seed={id:'10',site:'Dudhichua East OC',shiftName:'Shift A',shiftCode:'A',startTime:'05:00:00',endTime:'13:00:00'};
+ const imported={...seed,id:'20',shiftName:'I',shiftCode:'I',startTime:'05:00',endTime:'13:00'};
+ const rows=[imported,seed];
+ assert.equal(selectedMasterShift(rows,seed.site,'I','2026-10-28').id,'10');
+ assert.equal(cardShiftLabel(rows,seed.site,'I','2026-10-28'),'I · 05:00–13:00');
+ const draft=extractCard('Site: Dudhichua East OC\nDate: 28/10/26\nShift: I','vehicle',rows.map(r=>({id:r.id,master_name:'Shift Master',record_data:r}))).draft;
+ assert.equal(draft.shiftId,'10');
+ const revision={...seed,id:'30',effectiveFrom:'2026-10-01',effectiveTo:'2026-10-31',startTime:'06:00',endTime:'14:00'};
+ assert.equal(selectedMasterShift([...rows,revision],seed.site,'I','2026-10-28').id,'30');
+ assert.equal(selectedMasterShift([...rows,revision],seed.site,'I','2026-09-28').id,'10');
+ assert.equal(selectedMasterShift([...rows,{...seed,id:'40',startTime:'04:00'}],seed.site,'I','2026-10-28'),null);
+ assert.equal(selectedMasterShift(rows,'Dudhichua OC','I','2026-10-28'),null);
+});

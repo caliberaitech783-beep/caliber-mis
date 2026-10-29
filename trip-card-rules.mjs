@@ -13,17 +13,24 @@ export function markedShift(text){
  for(const line of source.split('\n')){const plain=line.match(/^(?:\s*SHIFT\s*[:=-]\s*)([^\n]+)$/i)||line.match(/^\s*(DAY|NIGHT)\s*$/i);if(plain){const shift=normalizeCardShift(plain[1]);if(shift)found.add(shift);}}
  return found.size===1?[...found][0]:'';
 }
-export function selectedMasterShift(rows,site,selection){
+export function selectedMasterShift(rows,site,selection,date=''){
  const normalized=normalizeCardShift(selection),s=CARD_SHIFTS[normalized];if(!s||!site)return null;
- const code=bookShiftCode(normalized),candidates=rows.filter(r=>String(r.status||'').toLowerCase()!=='inactive'&&canonicalSiteName(r.site||r.siteName)===canonicalSiteName(site));
+ const code=bookShiftCode(normalized),candidates=rows.filter(r=>!r.sourceMissing&&String(r.status||'').trim().toLowerCase()!=='inactive'&&canonicalSiteName(r.site||r.siteName)===canonicalSiteName(site)&&(!date||(!(r.effectiveFrom)||r.effectiveFrom<=date)&&(!(r.effectiveTo)||date<=r.effectiveTo)));
  const named=candidates.filter(r=>[r.shiftCode,r.shiftName,r.name,r.shift].some(value=>bookShiftCode(value)===code));
- if(named.length)return named.length===1?named[0]:null;
- const timed=candidates.filter(r=>s.start&&String(r.startTime||r.start||'').slice(0,5)===s.start);return timed.length===1?timed[0]:null;
+ let matches=named.length?named:candidates.filter(r=>s.start&&String(r.startTime||r.start||'').slice(0,5)===s.start);
+ // A dated revision supersedes undated seed records for the card's date.
+ if(date&&matches.some(r=>r.effectiveFrom)){const latest=matches.map(r=>r.effectiveFrom||'').sort().at(-1);matches=matches.filter(r=>r.effectiveFrom===latest);}
+ if(matches.length===1)return matches[0];
+ const clock=value=>{const m=String(value||'').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);return m&&Number(m[1])<24&&Number(m[2])<60&&Number(m[3]||0)<60?[m[1].padStart(2,'0'),m[2],m[3]||'00'].join(':'):'';};
+ const schedules=matches.map(r=>{const start=clock(r.startTime||r.start),end=clock(r.endTime||r.end);return start&&end?start+'|'+end:'';});
+ // Identical seeded/imported schedules are equivalent; different times remain ambiguous.
+ if(matches.length&&schedules.every(value=>value&&value===schedules[0]))return [...matches].sort((a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true}))[0];
+ return null;
 }
 
-export function cardShiftLabel(rows,site,selection){
+export function cardShiftLabel(rows,site,selection,date){
  const definition=CARD_SHIFTS[selection];if(!definition)return selection;
- const master=selectedMasterShift(rows,site,selection);
+ const master=selectedMasterShift(rows,site,selection,date);
  const start=String(master?.startTime||master?.start||'').slice(0,5),end=String(master?.endTime||master?.end||'').slice(0,5);
  return selection+' · '+(start?start+(end?'–'+end:''):definition.hours+' hours · select location shift');
 }
