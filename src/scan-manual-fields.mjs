@@ -6,7 +6,7 @@ import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
 export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
- const draft=normalizeScanEquipmentRows({...withScannedDoor(input,raw),...(raw?.machineNotation?.version===1?{machineNotationRuleVersion:1}:{}),trips:scanTripTimeInputs(input.trips)},options?.assets||[]);
+ const draft=normalizeScanEquipmentRows({...withScannedDoor(input,raw,kind),...(raw?.machineNotation?.version===1?{machineNotationRuleVersion:1}:{}),trips:scanTripTimeInputs(input.trips)},options?.assets||[]);
  // A generic "check extracted handwriting" marker does not mean a value needs
  // typing. Keep actual missing/invalid values and specific conflicts visible.
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options);

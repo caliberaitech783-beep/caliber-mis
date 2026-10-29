@@ -67,11 +67,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   const {fields,trips}=parseCardResponse(record.raw,kind);
   // Reuse the existing field-to-form adapter and consistency checks; no A/B API calls occur.
   const hints=hybridHints(fields,trips,kind,{}),{hybrid,...rest}=hints;
-  const originalDoor=rest.handwrittenFields.door,door=formatScannedDoor(originalDoor);
+  const originalDoor=rest.handwrittenFields.door,door=formatScannedDoor(originalDoor,kind);
   rest.handwrittenFields={...rest.handwrittenFields,door};
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
   rest.cardShift=normalizeCardShift(rest.cardShift);
-  return {...rest,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:'User-confirmed S/NN separator'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
+  return {...rest,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'User-confirmed S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
  function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
  return {recognize(image,{kind='vehicle',onProgress}={}){const key=kind+':'+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
