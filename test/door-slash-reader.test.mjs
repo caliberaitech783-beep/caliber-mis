@@ -18,7 +18,7 @@ test('slash release rereads old cached scans and preserves literal door evidence
  const cacheDir=await fs.mkdtemp(path.join(os.tmpdir(),'door-slash-'));
  t.after(()=>fs.rm(cacheDir,{recursive:true,force:true}));
  const image=Buffer.from('door-slash-card'),imageHash=createHash('sha256').update(image).digest('hex');
- const payload=door=>({documentType:'VLB',fields:{...Object.fromEntries(aFields('vehicle').map(k=>[k,{value:null,status:'missing'}])),door:{value:door,status:'clear'},machineSummary:[]},trips:{p:true,r:[]}});
+ const payload=door=>({documentType:'VLB',fields:{...Object.fromEntries(aFields('vehicle').map(k=>[k,{value:null,status:'missing'}])),site:{value:'Jayant OC',status:'clear'},door:{value:door,status:'clear'},machineSummary:[]},trips:{p:true,r:[]}});
  await fs.writeFile(path.join(cacheDir,imageHash+'-vehicle-single-v10.json'),JSON.stringify({imageHash,kind:'vehicle',model:'gemini-3.1-flash-lite',finishReason:'STOP',raw:JSON.stringify(payload('V1833'))}));
  let calls=0;
  const reader=createGeminiCardReader({cacheDir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,fetchImpl:async()=>{calls++;return {ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(payload('V/833'))}]}}]})};}});
