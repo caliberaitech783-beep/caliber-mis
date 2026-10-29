@@ -1,3 +1,4 @@
+import {completeScanTripDetails} from '../scan-trip-completion.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseCardResponse} from '../gemini-card-reader.mjs';
@@ -30,3 +31,5 @@ test('OC normalization after explicit re-extraction retains other manual correct
  const previous={location:'Majri OC',remark:'Checked',openingHmr:'100'},baseline={location:'Elsewhere',openingHmr:'90'},fresh={location:'Majri OB',tripLocationRuleVersion:1,openingHmr:'99'};
  const result=mergeReextractedDraft(previous,baseline,fresh);assert.equal(result.location,'Majri OB');assert.equal(result.remark,'Checked');assert.equal(result.openingHmr,'100');assert.equal(previous.location,'Majri OC');
 });
+
+test('recovered responses never carry equipment into unreadable rows or synthesize a summary',()=>{const draft={trips:[{equipmentName:'VPC1',tripCount:1},{equipmentName:'',tripCount:1}],scanMachineSummary:[]};assert.equal(completeScanTripDetails(draft,{responseRecoveryIssues:['Trip row 2: equipment unreadable']}),draft);assert.equal(draft.trips[1].equipmentName,'');assert.deepEqual(draft.scanMachineSummary,[]);});
