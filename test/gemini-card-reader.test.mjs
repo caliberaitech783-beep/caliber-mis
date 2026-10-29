@@ -60,6 +60,18 @@ test('a missing printed site is re-read once before the result is cached',async 
  assert.equal(calls,2);assert.equal(result.handwrittenFields.location,'SASTI OB');assert.ok(progress.some(item=>item.reason==='printed site missing or unclear'));
 });
 
+test('malformed trip rows trigger one complete table re-read before caching',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-table-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
+  calls++;const card=response();
+  if(calls===1)card.trips.r=[[1,'T50'],[2,'T50','05:58','06:16']];
+  else{assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/exactly \[tripNo,equipmentName,loadingTime,unloadingTime\]/);card.trips.r=[[1,'T50','05:26','05:44'],[2,'T50','05:58','06:16']];}
+  return ok(JSON.stringify(card));
+ }});
+ const result=await reader.recognize(Buffer.from('table-retry'));
+ assert.equal(calls,2);assert.equal(result.extraction.rows[0].loadingTime,'05:26');assert.equal(result.extraction.rows[0].unloadingTime,'05:44');assert.deepEqual(result.responseRecoveryIssues,[]);
+});
+
 test('concurrent workers still share the request-start rate gate',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-rate-gate-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const starts=[];
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:50,fetchImpl:async()=>{starts.push(Date.now());return ok(JSON.stringify(response()));}});
@@ -95,7 +107,7 @@ test('a new-parser cached malformed name retains original evidence without anoth
  const image=Buffer.from('valid-card-with-bad-name-cell');
  const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
  const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
- await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v14.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v15.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
  const result=await reader.recognize(image);
  assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');

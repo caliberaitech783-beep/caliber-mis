@@ -45,15 +45,16 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
  async function startRequest(){const turn=gate.then(async()=>{await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();});gate=turn.catch(()=>{});await turn;}
  async function run(image,kind,onProgress){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
-  const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v14.json`);
+  const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v15.json`);
   let record;try{const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {parseCardResponse(saved.raw,kind);record=saved;}}catch{}
   if(!record){
    const key=await getKey();await onProgress?.('extracting');
    const views=await prepareViews(image),parts=[{text:cardPrompt(kind)},{inlineData:{mimeType:'image/png',data:image.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
    const totalStarted=Date.now();
+   let retryInstruction='';
    for(let attempt=0;attempt<2;attempt++){
     await onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()});
-    const requestParts=attempt?[...parts,{text:'The previous extraction did not return a clear site. Re-inspect the printed SITE header in the full image and upright header detail. If it is legible, transcribe it exactly with status clear; do not infer it from other fields.'}]:parts;
+    const requestParts=attempt?[...parts,{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
     await startRequest();const started=Date.now();let res;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
@@ -63,7 +64,12 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:attempt+1,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     const parsed=parseCardResponse(record.raw,kind);
-    if(attempt<1&&parsed.fields.site.status!=='clear'){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'printed site missing or unclear',delayMs:0});continue;}
+    const malformed=parsed.issues.filter(issue=>/invalid response|expected four cells|unreadable or invalid|printed trip number unreadable|duplicate printed numbers|gaps or out-of-order|not clearly confirmed/i.test(issue));
+    if(attempt<1&&(parsed.fields.site.status!=='clear'||malformed.length)){
+     const siteMissing=parsed.fields.site.status!=='clear',reason=[siteMissing?'printed site missing or unclear':'',malformed.length?'malformed card content':''].filter(Boolean).join('; ');
+     retryInstruction=(siteMissing?'Re-inspect the printed SITE header in the full image and upright header detail. If it is legible, transcribe it exactly with status clear; do not infer it from other fields. ':'')+(malformed.length?'The previous response contained malformed or incomplete content. Re-read every populated header, meter, summary and trip-table cell from the images. Return every trip row as exactly [tripNo,equipmentName,loadingTime,unloadingTime], preserving blank cells as empty strings and unreadable cells as null. Do not omit visible loading or unloading times.':'');
+     await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason,delayMs:0});continue;
+    }
     await fs.mkdir(cacheDir,{recursive:true});await fs.writeFile(file+'.tmp',JSON.stringify(record),{mode:0o600});await fs.rename(file+'.tmp',file);
     break;
    }
