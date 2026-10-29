@@ -6,15 +6,17 @@ import {formatScannedDoor} from '../scan-door-text.mjs';
 
 test('literal door survives missing or different equipment-master labels',()=>{
  const hints={provider:'gemini',handwrittenFields:{door:'S 114'},text:''};
- const missing=extractCard('','vehicle',[],hints);assert.equal(missing.draft.doorText,'S 114');assert.equal(missing.draft.assetId,'');
- const matched=extractCard('','vehicle',[{id:42,master_name:'Equipment master',record_data:{door:'S114 - MH34ZZ1234',category:'VEHICLE'}}],hints);
- assert.equal(matched.draft.doorText,'S 114');assert.equal(matched.draft.assetId,'42');assert.equal(matched.raw.door,'S 114');
+ const missing=extractCard('','vehicle',[],hints);assert.equal(missing.draft.doorText,'S/14');assert.equal(missing.draft.assetId,'');
+ const matched=extractCard('','vehicle',[{id:42,master_name:'Equipment master',record_data:{door:'Scania 14 - MH34ZZ1234',category:'VEHICLE'}}],hints);
+ assert.equal(matched.draft.doorText,'S/14');assert.equal(matched.draft.assetId,'42');assert.equal(matched.raw.door,'S/14');
 });
 test('user-confirmed S separator changes only the exact S1NN pattern, preserving the original response and human corrections',()=>{
  for(const [input,expected]of [['S 114','S/14'],['S101','S/01'],['S/14','S/14'],['S 1 06','S/06'],['V114','V114'],['S14','S14'],['S1001','S1001']])assert.equal(formatScannedDoor(input),expected);
  const raw={gemini:{fields:{door:{value:'S114',status:'clear'}}},extractionDraft:{doorText:'S114'}};
  assert.equal(withScannedDoor({doorText:'S114'},raw).doorText,'S/14');assert.equal(raw.gemini.fields.door.value,'S114');
  assert.equal(withScannedDoor({doorText:'S/15'},raw).doorText,'S/15');
+ assert.equal(withScannedDoor({doorText:'51270'},{extractionDraft:{doorText:'51270'}}).doorText,'S/270');
+ const corrected=extractCard('','vehicle',[{id:270,master_name:'Equipment master',record_data:{door:'Scania 270',category:'vehicle'}}],{handwrittenFields:{door:'51270'}});assert.equal(corrected.draft.doorText,'S/270');assert.equal(corrected.draft.assetId,'270');
 });
 test('old cards show original scan text; saved corrections and intentional blanks win over extraction',()=>{
  const raw={door:'master label',gemini:{fields:{door:{value:'V-309',status:'clear'}}}};

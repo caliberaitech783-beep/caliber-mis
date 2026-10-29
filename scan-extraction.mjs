@@ -7,6 +7,7 @@ import {resolveTripGrid} from './trip-row-vision.mjs';
 import {matchScannedSite,hasDchLocation,tripCardLocation} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {assetBookKind} from './log-book.mjs';
+import {formatScannedDoor} from './scan-door-text.mjs';
 import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
@@ -24,6 +25,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(hints.cardNumber)raw.cardNo=String(hints.cardNumber);
  if(/\b(?:S\.?\s*N|INT|JNT)\b/i.test(raw.cardNo)||!/^[-A-Z0-9/]{1,40}$/i.test(raw.cardNo))raw.cardNo='';
  for(const field of ['door','location'])if(hints.handwrittenFields?.[field])raw[field]=hints.handwrittenFields[field];
+ raw.door=formatScannedDoor(raw.door,kind);
  const locationReadings=[raw.location,hints.handwritingCandidates?.location?.text,hints.handwritingCandidates?.location?.alternateText].filter(Boolean);
  const matchedSite=matchScannedSite(locationReadings,masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||''));
  const locationNeedsReview=!matchedSite&&(hasDchLocation(locationReadings)||Boolean(hints.handwritingCandidates?.location&&!hints.handwritingCandidates.location.value));
