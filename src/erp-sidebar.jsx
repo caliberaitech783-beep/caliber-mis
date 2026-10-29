@@ -1,12 +1,11 @@
 import {isMisAdministrator} from '../mis-admin-access.mjs';
 import React, {useState} from 'react';
 import './erp-layout.css';
-import {ChevronDown, ChevronRight, LayoutDashboard, Search, Pin, LogOut, FileText} from 'lucide-react';
+import {ChevronDown, ChevronRight, LayoutDashboard, Search, PanelLeftClose, LogOut, FileText} from 'lucide-react';
 
-export default function ErpSidebar({active,setActive,logout,open,session,groups=[],activeReportCategory='general',announcements=null}) {
+export default function ErpSidebar({active,setActive,logout,open,hidden=false,onHide,session,groups=[],activeReportCategory='general',announcements=null}) {
   const [expanded,setExpanded]=useState('MIS');
   const [query,setQuery]=useState('');
-  const [pinned,setPinned]=useState(true);
   const select=page=>setActive(page);
   const matches=name=>name.toLowerCase().includes(query.trim().toLowerCase());
   const label=item=>typeof item==='string'?item:item.label;
@@ -18,9 +17,9 @@ export default function ErpSidebar({active,setActive,logout,open,session,groups=
     const selected=(active===page||item.activePages?.includes(active))&&(!item.reportCategory||activeReportCategory===item.reportCategory);
     return <button key={name} className={`erp-page${selected?' selected':''}`} aria-current={selected?'page':undefined} onClick={()=>select(typeof item==='string'?item:{page,reportCategory:item.reportCategory})}><FileText size={14}/><span>{name}</span></button>;
   };
-  return <aside id="admin-primary-navigation" className={`erp-sidebar${open?' open':''}${pinned?' pinned':''}`} aria-label="Primary navigation">
+  return <aside id="admin-primary-navigation" hidden={hidden} inert={hidden||undefined} className={`erp-sidebar pinned${open?' open':''}`} aria-label="Primary navigation">
     <a className="erp-sidebar-brand" href="#" onClick={e=>{e.preventDefault();select('Dashboard')}}><span className="erp-brand-icon"><img src="/pulse-ii-icon.png" alt="Caliber Pulse-II"/></span><span className="erp-brand-copy"><strong>Caliber Pulse-II</strong><small>All Departments Linked In One Place</small></span></a>
-    <button className="erp-pin" aria-pressed={pinned} onClick={()=>setPinned(v=>!v)}><Pin size={13}/>{pinned?'Pinned open':'Pin open'}</button>
+    <button type="button" className="erp-pin" aria-label="Hide sidebar" onClick={onHide}><PanelLeftClose size={15}/>Hide sidebar</button>
     <label className="erp-menu-search"><Search size={14}/><input aria-label="Search menu" placeholder="Search pages…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
     <nav aria-label="ERP modules">
       {matches('Dashboard')&&<button className={`erp-page${active==='Dashboard'?' selected':''}`} onClick={()=>select('Dashboard')}><LayoutDashboard size={16}/>Dashboard</button>}

@@ -11508,6 +11508,7 @@ function App() {
     [requests, setRequests] = useState([]),
     [requestState, setRequestState] = useState({ token: "", loaded: false, error: "", updatedAt: 0 }),
     [menu, setMenu] = useState(false),
+    [sidebarHidden,setSidebarHidden]=useState(()=>{try{return localStorage.getItem("caliberSidebarHidden")==="true";}catch{return false;}}),
     [canGoBack, setCanGoBack] = useState(false),
     [theme, setTheme] = useState(() => {
       const saved = localStorage.getItem("nerveCenterTheme");
@@ -11517,6 +11518,7 @@ function App() {
     [globalVehicleHistoryTarget, setGlobalVehicleHistoryTarget] = useState(null),
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
+  const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   useEffect(()=>{
@@ -12064,10 +12066,12 @@ function App() {
       </RequestShiftProvider>
     );
   return (
-    <RequestShiftProvider token={session.token} requests={requests}><div className="app erp-shell">
+    <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarHidden?" sidebar-hidden":""}`}>
       {canOpenAdminPage('Scan Backup')&&<ScanBackupReminder session={session} onOpen={()=>selectMenu('Scan Backup')}/>}
 
       <ErpSidebar
+        hidden={sidebarHidden}
+        onHide={()=>{changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
@@ -12101,7 +12105,8 @@ function App() {
       />
       <main className="content">
         <div className="top">
-          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => setMenu(!menu)}>
+          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarHidden?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarHidden} aria-controls="admin-primary-navigation" onClick={()=>changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarHidden?"Show menu":"Hide menu"}</span></button>
+          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />
           </button>
           <div className="crumb">
