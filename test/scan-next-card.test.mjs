@@ -17,7 +17,7 @@ function harness({fail=false,autosaving=false,last=false}={}){
  const current=card('1'),next=card('2'),visible=last?[current]:[current,next],events=[];
  const location={href:'https://example.test/?batch=test&card=1&scanView=review#scan'};
  const dirtyRef={current:true},selectedRevision={current:'1:1'};
- const scope={card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async()=>{events.push(['put']);if(fail)throw Error('Save failed');},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible;},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
+ const scope={card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push(['put',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible;},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
  return {run:new Function(...Object.keys(scope),'return ('+handler+')')(...Object.values(scope)),events,location,selectedRevision};
 }
 test('successful explicit save advances after persistence and updates the card link',async()=>{
@@ -34,7 +34,16 @@ test('failed or in-flight save never advances or closes the card',async()=>{
   assert.equal(h.events.some(e=>['selected','overview'].includes(e[0])),false);
  }
 });
-test('last card returns to status overview; reject does not advance',async()=>{
+test('last card and successful rejection return to status overview without selecting another card',async()=>{
  const last=harness({last:true});await last.run('save');assert.ok(last.events.some(e=>e[0]==='overview'));
- const rejected=harness();await rejected.run('reject');assert.equal(rejected.events.some(e=>['selected','overview'].includes(e[0])),false);
+ const rejected=harness();await rejected.run('reject');assert.equal(rejected.events.some(e=>e[0]==='selected'),false);assert.ok(rejected.events.some(e=>e[0]==='overview'));
+});
+
+test('repeated rejection clicks send one request for only the selected card',async()=>{
+ const h=harness();await Promise.all([h.run('reject'),h.run('reject'),h.run('reject')]);
+ const requests=h.events.filter(e=>e[0]==='put');
+ assert.equal(requests.length,1);
+ assert.equal(requests[0][1],'/api/scan-cards/1');
+ assert.equal(requests[0][2].action,'reject');
+ assert.equal(h.events.some(e=>e[0]==='selected'),false);
 });
