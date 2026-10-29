@@ -4,7 +4,7 @@ import {tripClockForShift} from './trip-card-rules.mjs';
 export function cleanTripCell(type,text){
  const v=String(text||'').trim().replace(/^["'‘’“”]+|["'‘’“”.,;]+$/g,'').trim();
  if(type==='type')return /^[A-Za-z]{1,3}$/.test(v)?v.toUpperCase():'';
- if(type==='time'){const m=v.match(/^(\d{1,2})\s*[:.; ]\s*(\d{2})$/);return m&&Number(m[1])<24&&Number(m[2])<60?m[1].padStart(2,'0')+':'+m[2]:'';}
+ if(type==='time'){const m=v.match(/^(\d{1,2})\s*[:.; ]\s*(\d{1,2})$/);return m&&Number(m[1])<24&&Number(m[2])<60?m[1].padStart(2,'0')+':'+m[2].padStart(2,'0'):'';}
  const n=v.replace(/\s/g,'');return /^\d{1,5}$/.test(n)&&Number(n)>0?String(Number(n)):'';
 }
 export async function readTripGrid(bytes,text,{recognize}={}){
