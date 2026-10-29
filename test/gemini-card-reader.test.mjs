@@ -49,6 +49,17 @@ test('retry progress records timeout or HTTP reason without leaking the server k
  assert.equal(result.extraction.attempts,2);assert.ok(result.extraction.totalElapsedMs>=result.extraction.elapsedMs);assert.ok(progress.some(p=>p.stage==='retrying'&&p.reason==='HTTP 503'));assert.equal(JSON.stringify(progress).includes('never-display-secret'),false);
 });
 
+test('a missing printed site is re-read once before the result is cached',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-site-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const progress=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
+  calls++;const card=response();if(calls===1)card.fields.site=field(null);else card.fields.site=field('SASTI OB');
+  if(calls===2)assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/Re-inspect the printed SITE header/);
+  return ok(JSON.stringify(card));
+ }});
+ const result=await reader.recognize(Buffer.from('site-retry'),{onProgress:(stage,details)=>progress.push({stage,...details})});
+ assert.equal(calls,2);assert.equal(result.handwrittenFields.location,'SASTI OB');assert.ok(progress.some(item=>item.reason==='printed site missing or unclear'));
+});
+
 test('concurrent workers still share the request-start rate gate',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-rate-gate-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const starts=[];
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:50,fetchImpl:async()=>{starts.push(Date.now());return ok(JSON.stringify(response()));}});
@@ -56,7 +67,7 @@ test('concurrent workers still share the request-start rate gate',async t=>{
  assert.equal(starts.length,3);for(let i=1;i<starts.length;i++)assert.ok(starts[i]-starts[i-1]>=45,'parallel request bypassed shared rate gate');
 });
 
-test('one-request prompt reads inverted headers while keeping literal digits and times',()=>{assert.ok(cardPrompt('vehicle').includes('upside down'));assert.ok(cardPrompt('equipment').includes('header at the bottom'));});
+test('one-request prompt reads inverted headers and requires the printed site',()=>{assert.ok(cardPrompt('vehicle').includes('upside down'));assert.ok(cardPrompt('equipment').includes('header at the bottom'));assert.match(cardPrompt('vehicle'),/SITE: SASTI OB/);});
 
 test('one missing or malformed field cannot discard valid header, meter and trip data',()=>{
  for(const invalid of [undefined,null,{value:'',status:'clear'},{value:null,status:'clear'},'unstructured name',{value:{text:'name'},status:'clear'},{value:'Name',status:'invalid'},{value:'x'.repeat(301),status:'clear'}]){
@@ -84,7 +95,7 @@ test('a new-parser cached malformed name retains original evidence without anoth
  const image=Buffer.from('valid-card-with-bad-name-cell');
  const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
  const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
- await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v13.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v14.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
  const result=await reader.recognize(image);
  assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');
