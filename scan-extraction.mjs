@@ -1,6 +1,6 @@
 import {fleetDoorKey} from './scan-fleet-door.mjs';
 import {resolveTripGrid} from './trip-row-vision.mjs';
-import {matchScannedSite} from './scan-site-match.mjs';
+import {matchScannedSite,hasDchLocation} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {assetBookKind,employeeCode} from './log-book.mjs';
 import {CARD_SHIFTS,normalizeCardShift,markedShift,machineLabel,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
@@ -17,11 +17,14 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(hints.cardNumber)raw.cardNo=String(hints.cardNumber);
  if(/\b(?:S\.?\s*N|INT|JNT)\b/i.test(raw.cardNo)||!/^[-A-Z0-9/]{1,40}$/i.test(raw.cardNo))raw.cardNo='';
  for(const field of ['door','location'])if(hints.handwrittenFields?.[field])raw[field]=hints.handwrittenFields[field];
- const matchedSite=matchScannedSite([raw.location,hints.handwritingCandidates?.location?.text,hints.handwritingCandidates?.location?.alternateText],masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||''));if(matchedSite)raw.location=matchedSite;
+ const locationReadings=[raw.location,hints.handwritingCandidates?.location?.text,hints.handwritingCandidates?.location?.alternateText].filter(Boolean);
+ const matchedSite=matchScannedSite(locationReadings,masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||''));
+ const locationNeedsReview=!matchedSite&&(hasDchLocation(locationReadings)||Boolean(hints.handwritingCandidates?.location&&!hints.handwritingCandidates.location.value));
+ if(matchedSite)raw.location=matchedSite;
  const assets=masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)===kind);
- const doorAssets=raw.location?assets.filter(r=>{const site=r.record_data.currentLocation||r.record_data.site||r.record_data.location;return !site||canonicalSiteName(site)===canonicalSiteName(raw.location)}):assets;
+ const doorAssets=locationNeedsReview?[]:raw.location?assets.filter(r=>{const site=r.record_data.currentLocation||r.record_data.site||r.record_data.location;return !site||canonicalSiteName(site)===canonicalSiteName(raw.location)}):assets;
  const asset=raw.door?one(doorAssets,r=>[r.record_data.door,r.record_data.doorNo,r.record_data.registration,r.record_data.reg,r.record_data.equipmentName].some(v=>v&&fleetDoorKey(v)===fleetDoorKey(raw.door))):null;
- const assetSite=asset?.record_data.currentLocation||asset?.record_data.site||asset?.record_data.location||'';const knownSite=masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||'').find(s=>raw.location&&canonicalSiteName(s)===canonicalSiteName(raw.location));const location=raw.location?(assetSite&&canonicalSiteName(assetSite)===canonicalSiteName(raw.location)?assetSite:knownSite||raw.location):assetSite;
+ const assetSite=asset?.record_data.currentLocation||asset?.record_data.site||asset?.record_data.location||'';const knownSite=masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||'').find(s=>raw.location&&canonicalSiteName(s)===canonicalSiteName(raw.location));const location=locationNeedsReview?'':raw.location?(assetSite&&canonicalSiteName(assetSite)===canonicalSiteName(raw.location)?assetSite:knownSite||raw.location):assetSite;
  const employees=masters.filter(r=>['C-Dir Employee master','ERP Employee master','Employee master'].includes(r.master_name));
  const matchingEmployee=r=>raw.employeeCode?[r.record_data.caliberId,employeeCode(r.record_data),r.record_data.erpEmployeeCode,r.record_data.employeeCode].some(v=>v&&key(v).replace(/^CMPL/,'')===key(raw.employeeCode).replace(/^CMPL/,'')):raw.employee&&key(r.record_data.name||r.record_data.employee)===key(raw.employee);
  const imported=employees.filter(r=>r.master_name==='Employee master'),importMatches=imported.filter(matchingEmployee);
@@ -43,5 +46,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(hints.cardNumber&&hints.provider==='paddleocr')out.draft.extractionReviewFields.push(kind==='vehicle'?'aFormNo':'jobCardNo');
  if(hints.tripGrid){const grid=resolveTripGrid(hints.tripGrid,cardShift);out.draft.trips=grid.trips;out.draft.scanMachineSummary=grid.scanMachineSummary;out.draft.timeMode=grid.timeMode;out.raw.tripGrid=hints.tripGrid;out.raw.tripGridIssues=grid.issues;out.draft.extractionReviewFields.push('trips','scanMachineSummary');}
  out.draft.meterReviewMessages=Object.fromEntries(Object.entries(hints.handwritingCandidates||{}).filter(([k,c])=>c.conflict).map(([k,c])=>[k,'Handwriting passes disagree: '+(c.alternatives||[]).join(' / ')+'. Check the original scan.']));
+ out.raw.locationReadings=locationReadings;
+ if(locationNeedsReview){out.raw.locationMatchIssue='Location needs checking: confirm East/West and the matching Location Master entry.';out.draft.extractionReviewFields.push('location');}
  return out;
 }
