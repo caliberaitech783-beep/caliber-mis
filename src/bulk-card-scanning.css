@@ -87,3 +87,9 @@
 .scan-preview-viewport.scan-preview-fit{height:72vh;max-height:80vh;display:flex;align-items:center;justify-content:center}
 .scan-preview-fit>.scan-preview-image{height:100%;display:flex;align-items:center;justify-content:center}
 .scan-source .scan-preview-fit .scan-preview-image img{width:auto;max-width:100%;height:auto;max-height:100%;object-fit:contain}
+
+/* Match the viewer to the trimmed card instead of reserving a blank sheet. */
+.scan-preview-viewport.scan-preview-fit{height:auto;max-height:none;display:block;background:transparent;border:0}
+.scan-preview-fit>.scan-preview-image{height:auto;display:block}
+.scan-source .scan-preview-fit .scan-preview-image img{display:block;width:100%;height:auto;max-height:none;max-width:100%}
+.scan-review-page .scan-source-expanded .scan-preview-fit{max-height:none}
