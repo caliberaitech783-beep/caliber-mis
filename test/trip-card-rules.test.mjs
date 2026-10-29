@@ -29,7 +29,7 @@ test('scan shift labels and trip clocks follow each location master',async()=>{
 
 test('scan matches CMLL identifiers while preserving the written prefix and digits',()=>{
  const employees=[{id:20,master_name:'Employee master',record_data:{caliberId:'CMPL16560',name:'Driver',site:'Jayant OC'}}];
- for(const hints of [{},{employeeCode:'cmll16560'}]){const result=extractCard('Site: Jayant OC\nCaliber ID: CMLL16560','vehicle',employees,hints);assert.equal(result.raw.employeeCode,'CMLL16560');assert.equal(result.draft.employeeId,'20');}
+ for(const hints of [{},{employeeCode:'cmll16560'},{employeeCode:'CMLL1839.6'},{employeeCode:'CMLL-16560'}]){const expected=hints.employeeCode?.includes('1839')?'CMLL18396':'CMLL16560',result=extractCard('Site: Jayant OC\nCaliber ID: CMLL16560','vehicle',employees,hints);assert.equal(result.raw.employeeCode,expected);if(expected==='CMLL16560')assert.equal(result.draft.employeeId,'20');}
  assert.equal(extractCard('Caliber ID: OTHER16560','vehicle',employees).raw.employeeCode,'OTHER16560');
 });
 test('explicit shift labels and provider variants match numeric and named location masters',async()=>{

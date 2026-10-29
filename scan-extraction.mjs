@@ -17,7 +17,8 @@ export function extractCard(text,kind,masters=[],hints={}){
  const parsed=/^\d{4}-\d{2}-\d{2}$/.test(rawDate)?rawDate:m?`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';
  const validDate=parsed&&Number.isFinite(Date.parse(parsed+'T00:00:00Z'))&&new Date(parsed+'T00:00:00Z').toISOString().slice(0,10)===parsed,bookDate=validDate?parsed:'';
  const raw={door:pick('door(?:\\s*(?:no\\.?|number))?|vehicle(?:\\s*(?:no\\.?|number))?|equipment(?:\\s*(?:no\\.?|number))?'),location:pick('location|site'),employee:pick('driver(?: name)?|operator(?: name)?'),employeeCode:hints.employeeCode||pick('caliber id|c\\.?\\s*id|employee id|emp(?:loyee)? code'),shift:pick('shift'),workOrder:pick('wo\\.?\\s*cont\\.?|work order(?: no\\.?)?|contract'),cardNo:pick('form a|a form(?: no\\.?)?')||pick('trip card(?: no\\.?)?|job card(?: no\\.?)?|card(?: no\\.?)?|a form(?: no\\.?)?|form a')};
- raw.employeeCode=String(raw.employeeCode||'').trim().toUpperCase();
+ // Employee IDs are identifiers, never measurements: discard OCR punctuation.
+ raw.employeeCode=String(raw.employeeCode||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
  if(!raw.employeeCode&&/^(?:(?:CMPL|CMLL)[\s/-]*)?\d+$/i.test(raw.employee||''))raw.employeeCode=String(raw.employee).trim().toUpperCase();
  if(hints.cardNumber)raw.cardNo=String(hints.cardNumber);
  if(/\b(?:S\.?\s*N|INT|JNT)\b/i.test(raw.cardNo)||!/^[-A-Z0-9/]{1,40}$/i.test(raw.cardNo))raw.cardNo='';

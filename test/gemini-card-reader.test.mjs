@@ -57,3 +57,38 @@ test('concurrent workers still share the request-start rate gate',async t=>{
 });
 
 test('one-request prompt reads inverted headers while keeping literal digits and times',()=>{assert.ok(cardPrompt('vehicle').includes('upside down'));assert.ok(cardPrompt('equipment').includes('header at the bottom'));});
+
+test('one missing or malformed field cannot discard valid header, meter and trip data',()=>{
+ for(const invalid of [undefined,null,{value:'',status:'clear'},{value:null,status:'clear'},'unstructured name',{value:{text:'name'},status:'clear'},{value:'Name',status:'invalid'},{value:'x'.repeat(301),status:'clear'}]){
+  const card=response();card.fields.employeeName=invalid;
+  const parsed=parseCardResponse(JSON.stringify(card),'vehicle');
+  assert.equal(parsed.fields.employeeName.value,null);
+  assert.ok(['missing','unclear'].includes(parsed.fields.employeeName.status));
+  assert.equal(parsed.fields.employeeCode.value,'3943');assert.equal(parsed.fields.door.value,'V309');
+  assert.equal(parsed.fields.openingKmr.value,'222772.9');assert.equal(parsed.trips.r.length,2);
+ }
+ const card=response();card.fields.employeeName=field('सुरज कुमार');card.fields.openingHmr=field(0);
+ const parsed=parseCardResponse(JSON.stringify(card),'vehicle');
+ assert.equal(parsed.fields.employeeName.value,'सुरज कुमार');assert.equal(parsed.fields.openingHmr.value,'0');
+ card.fields.openingKmr={status:'clear',value:{guess:123}};
+ const uncertain=parseCardResponse(JSON.stringify(card),'vehicle');
+ assert.equal(uncertain.fields.openingKmr.value,null);assert.equal(uncertain.fields.openingKmr.status,'unclear');
+ assert.equal(uncertain.fields.closingKmr.value,'222836.3');
+});
+test('invalid response envelopes and unsafe trip rows still fail rather than inventing data',()=>{
+ for(const fields of [null,[],false])assert.throws(()=>parseCardResponse(JSON.stringify({...response(),fields}),'vehicle'),/Invalid Priority A JSON/);
+ const card=response();card.trips.r[0][0]=-1;const recovered=parseCardResponse(JSON.stringify(card),'vehicle');assert.ok(recovered.issues.some(issue=>issue.includes('printed trip number unreadable')));
+});
+test('a new-parser cached malformed name retains original evidence without another AI request',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-field-recovery-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const image=Buffer.from('valid-card-with-bad-name-cell');
+ const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
+ const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v13.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
+ const result=await reader.recognize(image);
+ assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');
+ assert.equal(result.handwrittenFields.openingKmr,'222772.9');assert.equal(result.extraction.rows.length,2);
+ assert.equal(result.extraction.originalResponse,raw);assert.equal(result.extraction.fields.employeeName.status,'unclear');
+ assert.ok(result.extraction.issues.some(issue=>issue==='employeeName: unclear'));
+});

@@ -2,7 +2,6 @@
 export function recoverCardResponse(parsed,kind,fieldNames){
  const issues=[];
  function field(input,label){
-  if((typeof input==='string'&&input.length>0&&input.length<=300)||(typeof input==='number'&&Number.isFinite(input))){issues.push(label+': response omitted its clarity status; verify the literal value.');return {value:String(input),status:'clear'};}
   if(input&&['missing','unclear'].includes(input.status))return {value:null,status:input.status};
   if(input?.status==='clear'&&(typeof input.value==='string'||typeof input.value==='number'&&Number.isFinite(input.value))&&String(input.value).length>0&&String(input.value).length<=300)return {value:String(input.value),status:'clear'};
   issues.push(label+': invalid response field; check the original scan.');return {value:null,status:'unclear'};
