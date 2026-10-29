@@ -5,8 +5,21 @@ export function machineLabel(value){const s=String(value||'').trim().toUpperCase
 export function machineSummary(trips=[]){const map=new Map();for(const row of trips){const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
 export function machineDiscrepancies(trips=[],printed=[]){const actual=new Map(machineSummary(trips).map(r=>[r.equipmentName,r.tripCount])),expected=new Map(machineSummary(printed).map(r=>[r.equipmentName,r.tripCount]));if(!printed.length)return [];return [...new Set([...actual.keys(),...expected.keys()])].flatMap(name=>actual.get(name)===expected.get(name)?[]:[`${name}: detail trips ${actual.get(name)||0}, scanned summary ${expected.get(name)||0}.`]);}
 export function matchingWorkOrders(rows,site,date){return rows.filter(r=>canonicalSiteName(r.site||r.location)===canonicalSiteName(site)&&site&&!r.sourceMissing&&(!(r.begin||r.commencementDate)||(r.begin||r.commencementDate)<=date)&&(!(r.end||r.completionDate)||(r.end||r.completionDate)>=date));}
-export function markedShift(text){const found=new Set();for(const m of String(text).matchAll(/(?:\[\s*[xX✓√]\s*\]|☑|✓|√)\s*(III|II|I|DAY|NIGHT)\b/gi))found.add(m[1].toUpperCase());for(const m of String(text).matchAll(/(?:^|\n)\s*(III|II|I|DAY|NIGHT)\s*(?:\[\s*[xX✓√]\s*\]|☑|✓|√)\s*(?=\n|$)/gi))found.add(m[1].toUpperCase());const plain=String(text).match(/(?:^|\n)\s*(?:SHIFT\s*[:=-]\s*)?(DAY|NIGHT)\s*(?:\n|$)/i);if(plain)found.add(plain[1].toUpperCase());if(found.size!==1)return '';const value=[...found][0];return value==='DAY'?'Day':value==='NIGHT'?'Night':value;}
-export function selectedMasterShift(rows,site,selection){const s=CARD_SHIFTS[selection];if(!s)return null;const code=bookShiftCode(selection);const candidates=rows.filter(r=>canonicalSiteName(r.site||r.siteName)===canonicalSiteName(site));const named=candidates.filter(r=>bookShiftCode(r.shiftCode||r.shiftName||r.name||r.shift)===code);if(named.length)return named.length===1?named[0]:null;const timed=candidates.filter(r=>s.start&&String(r.startTime||r.start||'').slice(0,5)===s.start);return timed.length===1?timed[0]:null;}
+export function normalizeCardShift(value){const code=bookShiftCode(String(value||'').replace(/\s*\([ABC]\)\s*$/i,''));return ({S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'})[code]||'';}
+export function markedShift(text){
+ const found=new Set(),source=String(text),token='(III|II|I|DAY|NIGHT|S[123]|[123ABC])',mark='(?:\\[\\s*[xX✓√]\\s*\\]|☑|✓|√)';
+ for(const m of source.matchAll(new RegExp(mark+'\\s*'+token+'\\b','gi')))found.add(normalizeCardShift(m[1]));
+ for(const m of source.matchAll(new RegExp('(?:^|\\n)\\s*'+token+'\\s*'+mark+'\\s*(?=\\n|$)','gi')))found.add(normalizeCardShift(m[1]));
+ for(const line of source.split('\n')){const plain=line.match(/^(?:\s*SHIFT\s*[:=-]\s*)([^\n]+)$/i)||line.match(/^\s*(DAY|NIGHT)\s*$/i);if(plain){const shift=normalizeCardShift(plain[1]);if(shift)found.add(shift);}}
+ return found.size===1?[...found][0]:'';
+}
+export function selectedMasterShift(rows,site,selection){
+ const normalized=normalizeCardShift(selection),s=CARD_SHIFTS[normalized];if(!s||!site)return null;
+ const code=bookShiftCode(normalized),candidates=rows.filter(r=>String(r.status||'').toLowerCase()!=='inactive'&&canonicalSiteName(r.site||r.siteName)===canonicalSiteName(site));
+ const named=candidates.filter(r=>[r.shiftCode,r.shiftName,r.name,r.shift].some(value=>bookShiftCode(value)===code));
+ if(named.length)return named.length===1?named[0]:null;
+ const timed=candidates.filter(r=>s.start&&String(r.startTime||r.start||'').slice(0,5)===s.start);return timed.length===1?timed[0]:null;
+}
 
 export function cardShiftLabel(rows,site,selection){
  const definition=CARD_SHIFTS[selection];if(!definition)return selection;
@@ -15,7 +28,7 @@ export function cardShiftLabel(rows,site,selection){
  return selection+' · '+(start?start+(end?'–'+end:''):definition.hours+' hours · select location shift');
 }
 
-export function bookShiftCode(value){const key=String(value||'').trim().toUpperCase().replace(/^SHIFT\s*|\s*SHIFT$/g,'').replace(/[ ._-]/g,'');return ({I:'S1',II:'S2',III:'S3',A:'S1',B:'S2',C:'S3',S1:'S1',S2:'S2',S3:'S3',DAY:'D',NIGHT:'N',D:'D',N:'N'})[key]||'';}
+export function bookShiftCode(value){const key=String(value||'').trim().toUpperCase().replace(/^SHIFT\s*|\s*SHIFT$/g,'').replace(/[ ._-]/g,'');return ({'1':'S1','2':'S2','3':'S3',I:'S1',II:'S2',III:'S3',A:'S1',B:'S2',C:'S3',S1:'S1',S2:'S2',S3:'S3',DAY:'D',NIGHT:'N',D:'D',N:'N'})[key]||'';}
 export function formatBookNumber(kind,date,counter,shift){if(kind==='vehicle'&&!bookShiftCode(shift))throw new Error('Select Shift I, II, III, Day or Night before generating a Vehicle Log Book number.');const [year,month,day]=date.split('-');return kind==='vehicle'?`CAL/VLB/${day}${month}${year.slice(-2)}/${bookShiftCode(shift)}/${String(counter).padStart(4,'0')}`:`CAL/ELB/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;}
 
 export function tripClockForShift(value,shift,master){const m=String(value).replace('.',':').match(/^(\d{1,2}):(\d{2})$/);if(!m)return value;let h=Number(m[1]);const start=String(master?.startTime||master?.start||'').match(/^(\d{2}):(\d{2})/);if(start&&h>=1&&h<=12&&Number(m[2])<60){const from=Number(start[1])*60+Number(start[2]),hours=CARD_SHIFTS[shift]?.hours||8;const candidates=[h%12,h%12+12].filter(hour=>(hour*60+Number(m[2])-from+1440)%1440<=hours*60);if(candidates.length===1)return String(candidates[0]).padStart(2,'0')+':'+m[2];return value;}if(shift==='I'&&h>=1&&h<=4)h+=12;if(shift==='II'&&h>=1&&h<=9)h+=12;if(shift==='III'){if(h>=9&&h<=11)h+=12;else if(h===12)h=0;}return String(h).padStart(2,'0')+':'+m[2];}

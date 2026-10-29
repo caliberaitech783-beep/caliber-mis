@@ -3,7 +3,7 @@ import {resolveTripGrid} from './trip-row-vision.mjs';
 import {matchScannedSite} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {assetBookKind,employeeCode} from './log-book.mjs';
-import {CARD_SHIFTS,markedShift,machineLabel,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
+import {CARD_SHIFTS,normalizeCardShift,markedShift,machineLabel,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
 export function extractCard(text,kind,masters=[],hints={}){
@@ -13,6 +13,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  const parsed=/^\d{4}-\d{2}-\d{2}$/.test(rawDate)?rawDate:m?`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';
  const validDate=parsed&&Number.isFinite(Date.parse(parsed+'T00:00:00Z'))&&new Date(parsed+'T00:00:00Z').toISOString().slice(0,10)===parsed,bookDate=validDate?parsed:'';
  const raw={door:pick('door(?:\\s*(?:no\\.?|number))?|vehicle(?:\\s*(?:no\\.?|number))?|equipment(?:\\s*(?:no\\.?|number))?'),location:pick('location|site'),employee:pick('driver(?: name)?|operator(?: name)?'),employeeCode:hints.employeeCode||pick('caliber id|c\\.?\\s*id|employee id|emp(?:loyee)? code'),shift:pick('shift'),workOrder:pick('wo\\.?\\s*cont\\.?|work order(?: no\\.?)?|contract'),cardNo:pick('form a|a form(?: no\\.?)?')||pick('trip card(?: no\\.?)?|job card(?: no\\.?)?|card(?: no\\.?)?|a form(?: no\\.?)?|form a')};
+ raw.employeeCode=String(raw.employeeCode||'').trim().replace(/^CMLL(?=[\s/-]*\d)/i,'CMPL');
  if(hints.cardNumber)raw.cardNo=String(hints.cardNumber);
  if(/\b(?:S\.?\s*N|INT|JNT)\b/i.test(raw.cardNo)||!/^[-A-Z0-9/]{1,40}$/i.test(raw.cardNo))raw.cardNo='';
  for(const field of ['door','location'])if(hints.handwrittenFields?.[field])raw[field]=hints.handwrittenFields[field];
@@ -25,7 +26,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  const matchingEmployee=r=>raw.employeeCode?[r.record_data.caliberId,employeeCode(r.record_data),r.record_data.erpEmployeeCode,r.record_data.employeeCode].some(v=>v&&key(v).replace(/^CMPL/,'')===key(raw.employeeCode).replace(/^CMPL/,'')):raw.employee&&key(r.record_data.name||r.record_data.employee)===key(raw.employee);
  const imported=employees.filter(r=>r.master_name==='Employee master'),importMatches=imported.filter(matchingEmployee);
  const employee=importMatches.length===1?importMatches[0]:importMatches.length?null:one(employees.filter(r=>r.master_name!=='Employee master'),matchingEmployee);
- const textShift=markedShift(text),cardShift=hints.cardShift&&textShift&&hints.cardShift!==textShift?'':hints.cardShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift);
+ const textShift=markedShift(text),hintShift=normalizeCardShift(hints.cardShift),cardShift=hintShift&&textShift&&hintShift!==textShift?'':hintShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift);
  const shift=mapped?mapped:!cardShift&&raw.shift?one(masters,r=>r.master_name==='Shift Master'&&canonicalSiteName(r.record_data.site||r.record_data.siteName)===canonicalSiteName(location)&&key(r.record_data.shiftName||r.record_data.name||r.record_data.shift)===key(raw.shift)):null;
  const orders=masters.filter(r=>['Work Order master','Work order master','Work Order Master','WO master'].includes(r.master_name)).map(r=>({...r.record_data,id:r.id}));const eligible=matchingWorkOrders(orders,location,bookDate),wo=raw.workOrder?one(eligible,r=>key(r.workOrderNo)===key(raw.workOrder)):latestWorkOrder(orders,location,bookDate);
  const [detailText,summaryText='']=text.split(/MACHINE[ -]*WISE\s+SUMMARY/i);const trips=[];

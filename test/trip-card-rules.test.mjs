@@ -25,3 +25,20 @@ test('scan shift labels and trip clocks follow each location master',async()=>{
  const draft=extractCard('Site: Jayant OC\nSHIFT [x] III\n1 V25 08:20 09:00','vehicle',localMasters).draft;
  assert.equal(draft.shiftId,'3');assert.equal(draft.trips[0].loadingTime,'20:20');
 });
+
+test('scan normalizes CMLL employee IDs without changing digits or other prefixes',()=>{
+ const employees=[{id:20,master_name:'Employee master',record_data:{caliberId:'CMPL16560',name:'Driver'}}];
+ for(const hints of [{},{employeeCode:'cmll16560'}]){const result=extractCard('Caliber ID: CMLL16560','vehicle',employees,hints);assert.equal(result.raw.employeeCode,'CMPL16560');assert.equal(result.draft.employeeId,'20');}
+ assert.equal(extractCard('Caliber ID: OTHER16560','vehicle',employees).raw.employeeCode,'OTHER16560');
+});
+test('explicit shift labels and provider variants match numeric and named location masters',async()=>{
+ const {selectedMasterShift}=await import('../trip-card-rules.mjs');
+ for(const value of ['II','Shift II','2','S2','B'])assert.equal(extractCard('Site: Jayant OC','vehicle',[],{cardShift:value}).draft.cardShift,'II');
+ for(const value of ['Shift: II','Shift: 2','Shift: B','SHIFT [x] S2'])assert.equal(markedShift(value),'II');
+ assert.equal(markedShift('SHIFT: I / II / III'),'');
+ const rows=[{id:'inactive',site:'Jayant OC',shiftCode:'2',status:'Inactive'},{id:'active',site:'Jayant OC',shiftCode:'2',name:'Second shift',startTime:'12:00'}];
+ assert.equal(selectedMasterShift(rows,'Jayant OC','II').id,'active');
+ assert.equal(selectedMasterShift([{id:'b',site:'Jayant OC',shiftCode:'custom',name:'Shift B'}],'Jayant OC','II').id,'b');
+ assert.equal(selectedMasterShift([...rows,{...rows[1],id:'duplicate'}],'Jayant OC','II'),null);
+ assert.equal(selectedMasterShift(rows,'Sasti OC','II'),null);
+});
