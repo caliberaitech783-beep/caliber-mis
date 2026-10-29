@@ -11,3 +11,12 @@ test('permanent report routes preserve only a matching scan batch and clear card
  assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=vlb-reports&batch=one','ELB Reports'),'/?page=elb-reports');
  assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=job-scan&batch=one','ELB Reports'),'/?page=elb-reports&batch=one');
 });
+
+test('VLB Scan opens Scan and Review without carrying an old Needs attention page through menu navigation',()=>{
+ const chooser=misPageUrl('https://pulse-ll.cmll.in/?page=trip-scan&batch=one&scanView=review&scanGroup=brown','Vehicle Log Book Options');
+ assert.equal(chooser,'/?page=vehicle-log-book');
+ assert.equal(misPageUrl('https://pulse-ll.cmll.in'+chooser,'Trip Card Bulk Scan'),'/?page=trip-scan');
+ assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=vlb-reports&batch=one&scanView=review&scanGroup=brown','Trip Card Bulk Scan'),'/?page=trip-scan&batch=one');
+ const direct='https://pulse-ll.cmll.in/?page=trip-scan&batch=one&scanView=review&scanGroup=brown';
+ assert.equal(misPageUrl(direct,'Trip Card Bulk Scan'),'/?page=trip-scan&batch=one&scanView=review&scanGroup=brown','browser Back and direct review links retain the chosen review page');
+});
