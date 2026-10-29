@@ -25,7 +25,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(hints.cardNumber)raw.cardNo=String(hints.cardNumber);
  if(/\b(?:S\.?\s*N|INT|JNT)\b/i.test(raw.cardNo)||!/^[-A-Z0-9/]{1,40}$/i.test(raw.cardNo))raw.cardNo='';
  for(const field of ['door','location'])if(hints.handwrittenFields?.[field])raw[field]=hints.handwrittenFields[field];
- raw.door=formatScannedDoor(raw.door,kind);
+ if(/^\s*5\s*[:.]?\s*1\s*\d{2,5}\s*$/.test(raw.door))raw.door=formatScannedDoor(raw.door,kind);
  const locationReadings=[raw.location,hints.handwritingCandidates?.location?.text,hints.handwritingCandidates?.location?.alternateText].filter(Boolean);
  const matchedSite=matchScannedSite(locationReadings,masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||''));
  const locationNeedsReview=!matchedSite&&(hasDchLocation(locationReadings)||Boolean(hints.handwritingCandidates?.location&&!hints.handwritingCandidates.location.value));
