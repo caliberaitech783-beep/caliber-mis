@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchScannedSite} from '../scan-site-match.mjs';
+import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../scan-site-match.mjs';
 import {extractCard} from '../scan-extraction.mjs';
 import {cardPrompt,MODEL} from '../gemini-card-reader.mjs';
 const east='Dudhichua East OC',west='Dudhichua OC',sites=[east,west,'Jayant OC'];
@@ -33,9 +33,25 @@ const text=location=>'Site: '+location+'\nDATE 28 10 26\nDoor No. V739\nSHIFT [x
 test('resolved DCH locations drive equipment, shift and work-order selection for the correct site',()=>{
  for(const [reading,site,index] of [['DCH (East)',east,0],['DCH (West)',west,1]]){
   const result=extractCard(text(reading),'vehicle',masters);
-  assert.equal(result.draft.location,site);assert.equal(result.draft.assetId,String(1+index));assert.equal(result.draft.shiftId,String(11+index));assert.equal(result.draft.workOrderId,String(21+index));
+  assert.equal(result.draft.location,tripCardLocation(site));assert.equal(result.draft.assetId,String(1+index));assert.equal(result.draft.shiftId,String(11+index));assert.equal(result.draft.workOrderId,String(21+index));
   assert.ok(result.raw.locationReadings.includes(reading));assert.equal(result.draft.doorText,'V739');
  }
+});
+test('new Trip Cards display OB while preserving literal OC evidence and master data',()=>{
+ const original=JSON.stringify(masters);
+ for(const reading of ['Majri OC','Majri oc','Majri Oc']){
+  const result=extractCard(text(reading),'vehicle',[]);
+  assert.equal(result.draft.location,'Majri OB');
+  assert.deepEqual(result.raw.locationReadings,[reading]);
+  assert.equal(result.raw.tripLocationRuleVersion,1);
+ }
+ assert.equal(extractCard(text(east),'equipment',masters).draft.location,east);
+ assert.equal(extractCard(text(east),'equipment',masters).raw.tripLocationRuleVersion,undefined);
+ assert.equal(JSON.stringify(masters),original);
+ assert.equal(tripCardLocation('Rock OC / OC (East)'),'Rock OB / OB (East)');
+ assert.equal(tripCardLocation('ROCK CLOCK OC123'),'ROCK CLOCK OC123');
+ assert.deepEqual(tripCardLocationChoices(['Majri OC','Majri OB'],'Majri OB',true),['Majri OB']);
+ assert.deepEqual(tripCardLocationChoices(['Majri OC'],'Majri OC',false),['Majri OC']);
 });
 test('ambiguous DCH and unreadable Gemini locations remain blank for review, even with one vehicle match',()=>{
  const onlyEast=masters.filter(row=>row.record_data.site===east||row.record_data.currentLocation===east);

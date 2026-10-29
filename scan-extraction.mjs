@@ -3,7 +3,7 @@ import {matchesEmployeeReference} from './employee-identity.mjs';
 import {employeeAtLocation} from './log-book-access.mjs';
 import {linkedScanEquipment} from './scan-fleet-door.mjs';
 import {resolveTripGrid} from './trip-row-vision.mjs';
-import {matchScannedSite,hasDchLocation} from './scan-site-match.mjs';
+import {matchScannedSite,hasDchLocation,tripCardLocation} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {assetBookKind} from './log-book.mjs';
 import {CARD_SHIFTS,normalizeCardShift,markedShift,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
@@ -55,6 +55,11 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(locationNeedsReview){out.raw.locationMatchIssue='Location needs checking: confirm East/West and the matching Location Master entry.';out.draft.extractionReviewFields.push('location');}
  out.raw.machineNotation={version:1,header:identifyCardMachine(raw.door,kind),headerMatchedAssetId:asset?String(asset.id):null};
  out.draft.machineNotationRuleVersion=1;
- if(kind==='vehicle')out.draft=normalizeScanEquipmentRows(out.draft,scanEquipmentMasters(masters));
+ if(kind==='vehicle'){
+  out.draft=normalizeScanEquipmentRows(out.draft,scanEquipmentMasters(masters));
+  out.draft.location=tripCardLocation(out.draft.location);
+  out.draft.tripLocationRuleVersion=1;
+  out.raw.tripLocationRuleVersion=1;
+ }
  return out;
 }
