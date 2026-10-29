@@ -55,3 +55,11 @@ test('the user-confirmed duplicated slash stroke never adds a leading one to S/N
  assert.equal(raw.gemini.fields.door.value,'V/1252');
  assert.equal(formatScannedDoor('V/1252','equipment'),'V/1252');
 });
+
+test('Eicher slash OCR is corrected globally without changing other vehicle numbers',()=>{
+ for(const input of ['E190','E 1 90','E:I90','E|90'])assert.equal(formatScannedDoor(input),'E/90',input);
+ for(const input of ['E90','E1900','V190','H190'])assert.equal(formatScannedDoor(input),input);
+ const raw={gemini:{fields:{door:{value:'E190',status:'clear'}}},extractionDraft:{doorText:'E190'}};
+ assert.equal(withScannedDoor({doorText:'E190'},raw).doorText,'E/90');
+ assert.equal(formatScannedDoor('E190','equipment'),'E190');
+});

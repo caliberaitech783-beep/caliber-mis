@@ -5,6 +5,9 @@ export function formatScannedDoor(value,kind='vehicle'){
  // Scania's handwritten S/ is commonly read as 51.
  const scania=value.match(/^\s*5\s*[:.]?\s*1\s*(\d{2,5})\s*$/);
  if(scania)return 'S/'+scania[1];
+ // Eicher E/NN separators are commonly returned as the digit 1.
+ const eicher=value.match(/^\s*E\s*[:.]?\s*(?:1|[Iil|])\s*(\d{2})\s*$/i);
+ if(eicher)return 'E/'+eicher[1];
  // User-confirmed widths: Scania S/NN and Volvo V/NNN. A duplicated
  // separator stroke can add a spurious 1 after the slash.
  const literal=value.match(/^\s*([A-Z]{1,5})\s*[:.]?\s*[/／⁄∕]\s*(\d+)\s*$/i);
