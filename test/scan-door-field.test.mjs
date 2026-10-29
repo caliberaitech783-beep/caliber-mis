@@ -23,3 +23,10 @@ test('old cards show original scan text; saved corrections and intentional blank
  assert.equal(withScannedDoor({doorText:''},raw).doorText,'');
  assert.equal(withScannedDoor({}, {gemini:{fields:{door:{value:null,status:'unclear'}}}}).doorText,'');
 });
+
+test('Job Card S/SPC numbers never receive the vehicle-specific S1NN slash correction',()=>{
+ const raw={gemini:{fields:{door:{value:'S114',status:'clear'}}}};
+ assert.equal(formatScannedDoor('S114','equipment'),'S114');
+ assert.equal(withScannedDoor({docType:'ELB',doorText:'S114'},raw).doorText,'S114');
+ assert.equal(withScannedDoor({},raw,'equipment').doorText,'S114');
+});

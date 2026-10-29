@@ -10,3 +10,10 @@ test('door prefix search is site-specific, case-insensitive and naturally sorted
  assert.deepEqual(searchSiteDoors(rows,'vehicle','Dhoptala OC','12'),[]);
 });
 test('door labels avoid repeating identical equipment names',()=>{assert.equal(doorLabel({door:'S12-MH123',name:'S12-MH123'}),'S12-MH123');});
+
+test('full-word and multi-letter door searches use the selected vehicle/equipment context',()=>{
+ const assets=[{id:'truck',kind:'vehicle',site:'Jayant OC',door:'H12'},{id:'hydra',kind:'equipment',site:'Jayant OC',door:'H12'},{id:'pc',kind:'equipment',site:'Jayant OC',door:'VPC19'}];
+ assert.deepEqual(searchSiteDoors(assets,'vehicle','Jayant OC','Haulpak').map(r=>r.id),['truck']);
+ assert.deepEqual(searchSiteDoors(assets,'equipment','Jayant OC','Hydra').map(r=>r.id),['hydra']);
+ for(const input of ['V','VPC','v p c','Volvo'])assert.deepEqual(searchSiteDoors(assets,'equipment','Jayant OC',input).map(r=>r.id),['pc']);
+});
