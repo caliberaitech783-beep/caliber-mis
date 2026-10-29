@@ -7,3 +7,9 @@
 .scan-batch-report button.scan-report-count{border:0;background:transparent;color:inherit;font:inherit;font-size:23px;font-weight:700;cursor:pointer;padding:0;min-width:36px;justify-content:flex-start;text-align:left;text-decoration:underline;text-underline-offset:4px}
 .scan-batch-report button.scan-report-count[aria-pressed=true]{color:var(--scan-primary,#522e90)}
 .scan-batch-report button.scan-report-count:focus-visible{outline:2px solid var(--scan-primary,#522e90);outline-offset:4px}
+
+.scan-batch-report>header{display:grid;grid-template-columns:minmax(200px,1fr) minmax(220px,360px);align-items:start}
+.scan-batch-report>header>.scan-actions{grid-column:1/-1}
+.scan-batch-report-search{display:block;min-width:0;align-self:center}
+.scan-batch-report-search input{box-sizing:border-box;width:100%;min-height:42px;border:1px solid #d9c9e8;border-radius:8px;padding:10px 12px;font:inherit;color:inherit;background:var(--panel,#fff)}
+@media(max-width:650px){.scan-batch-report>header{grid-template-columns:minmax(0,1fr)}.scan-batch-report-search{width:100%}}

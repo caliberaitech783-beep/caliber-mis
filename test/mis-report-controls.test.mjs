@@ -78,3 +78,15 @@ test('Saved metric lists every posted card from either review path and excludes 
  const all=nodes(render({batch,cards,token:'test'}),ReportSection).find(node=>node.props.columns.some(c=>c.key==='ordinal'));
  assert.equal(all.props.rows.length,3);
 });
+
+test('one search beside the batch report heading controls every table without duplicate search fields',async()=>{
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const props={batch:{id:'batch',kind:'vehicle',name:'Chosen batch'},cards:[{id:'card',batch_id:'batch',ordinal:1,status:'review',draft:{}}],token:'test'};
+ let tree=render(props);
+ const searches=nodes(tree,'input').filter(node=>node.props.type==='search');
+ assert.equal(searches.length,1);assert.equal(searches[0].props.placeholder,'Search this report');
+ assert.ok(nodes(nodes(tree,'header')[0],'input').includes(searches[0]));
+ searches[0].props.onChange({target:{value:'V/833'}});
+ tree=render(props);
+ for(const section of nodes(tree,ReportSection)){assert.equal(section.props.showSearch,false);assert.equal(section.props.query,'V/833');}
+});
