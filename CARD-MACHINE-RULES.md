@@ -42,5 +42,5 @@ The OCR prompt asks for literal single-letter, multi-letter and full-word input.
 The application applies the mapping; the original OCR text, original Gemini
 response, image and literal header text remain available. Existing saved
 logbooks and already stored scan drafts are not migrated. New extractions use
-rule version 1; explicitly edited loading rows also use the rule. No masters,
+machine notation version 1 plus body-rule version 2. For new scans H means Hydra; existing drafts without body-rule version 2 retain the earlier H-to-LPC interpretation. Explicitly edited loading rows retain their card’s rule version. No masters,
 images or saved business records are created or changed by deployment.

@@ -4,6 +4,7 @@ const blank=value=>value==null||String(value).trim()==='';
 // Derived values are kept separate from the literal extraction in raw_fields.
 export function completeScanTripDetails(input={},raw={}){
  raw=raw||{};
+ if(raw.responseRecoveryIssues?.length)return input; // Recovered cells require literal review, not derived assignments.
  const evidence=raw.gemini||raw.hybrid||{},originalRows=evidence.trips?.r||[];
  const trips=(input.trips||[]).map(row=>({...row}));
  let previous='',previousNumber=0,previousNotation=null;

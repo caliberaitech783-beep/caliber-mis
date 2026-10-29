@@ -12077,11 +12077,11 @@ function App() {
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
+          {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
           {name:'Telegram Integration',direct:true,pages:canOpenAdminPage('Telegram Integration')?['Telegram Integration']:[]},
           {name:'Admin',pages:MIS_ADMIN_PAGES.filter(canOpenAdminPage)},
-          {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
-          {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}
         setActive={(x) => {

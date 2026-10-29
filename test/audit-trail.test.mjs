@@ -112,7 +112,7 @@ test("server persists append-only audit events and exposes the detailed report",
   assert.match(client, /if \(!dateRange.fromDate && !dateRange.toDate\) params.set\("allDates","true"\)/);
   assert.match(server, /occurred_at >= \(\$1::date::timestamp AT TIME ZONE 'Asia\/Kolkata'\)/);
   assert.match(server, /occurred_at < \(\(\(\$2::date\+1\)::timestamp\) AT TIME ZONE 'Asia\/Kolkata'\)/);
-  assert.match(server, /DELETE FROM audit_events WHERE occurred_at<=\$1/);
+  assert.doesNotMatch(server, /DELETE FROM audit_events WHERE occurred_at<=\$1/);
   assert.match(server, /mail_confirmed_at=NOW\(\),purged_at=NOW\(\)/);
   assert.match(server, /action:'Administrator password change'/);
   assert.match(client, /function AuditTrailPage/);

@@ -32,14 +32,14 @@ test('rate-limited requests retry at most twice; bounded queue rejects excess sc
 test('VLB scanned through ELB cannot silently discard its KMR and trips',()=>{assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'VLB',fields:null,trips:{p:false,r:[]}}),'equipment'),/VLB card scanned on the ELB page/);assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'unknown'}),'vehicle'),/type could not be confirmed/);});
 
 test('two distinct cards progress independently; duplicate captures share one request and queued work remains bounded',async t=>{
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-parallel-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const releases=[];let calls=0;
- const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,maxPending:3,sleep:async()=>{},fetchImpl:async()=>{calls++;return new Promise(resolve=>releases.push(()=>resolve(ok(JSON.stringify(response())))));}});
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-parallel-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const releases=[],releaseByImage=new Map();let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,maxPending:3,sleep:async()=>{},fetchImpl:async(_url,options)=>{calls++;const image=Buffer.from(JSON.parse(options.body).contents[0].parts.find(part=>part.inlineData).inlineData.data,'base64').toString();return new Promise(resolve=>{const release=()=>resolve(ok(JSON.stringify(response())));releases.push(release);releaseByImage.set(image,release)});}});
  const one=reader.recognize(Buffer.from('slow')),same=reader.recognize(Buffer.from('slow')),two=reader.recognize(Buffer.from('fast')),three=reader.recognize(Buffer.from('next'));
  await assert.rejects(reader.recognize(Buffer.from('overflow')),/queue full/);
  while(releases.length<2)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
- releases[1]();await two;
- while(releases.length<3)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,3);releases[2]();await three;
- releases[0]();const [a,b]=await Promise.all([one,same]);assert.deepEqual(a,b);assert.notEqual(a,b);
+ releaseByImage.get('fast')();await two;
+ while(releases.length<3)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,3);releaseByImage.get('next')();await three;
+ releaseByImage.get('slow')();const [a,b]=await Promise.all([one,same]);assert.deepEqual(a,b);assert.notEqual(a,b);
 });
 
 test('retry progress records timeout or HTTP reason without leaking the server key',async t=>{
@@ -77,14 +77,14 @@ test('one missing or malformed field cannot discard valid header, meter and trip
 });
 test('invalid response envelopes and unsafe trip rows still fail rather than inventing data',()=>{
  for(const fields of [null,[],false])assert.throws(()=>parseCardResponse(JSON.stringify({...response(),fields}),'vehicle'),/Invalid Priority A JSON/);
- const card=response();card.trips.r[0][0]=-1;assert.throws(()=>parseCardResponse(JSON.stringify(card),'vehicle'),/Invalid Priority B/);
+ const card=response();card.trips.r[0][0]=-1;const recovered=parseCardResponse(JSON.stringify(card),'vehicle');assert.ok(recovered.issues.some(issue=>issue.includes('printed trip number unreadable')));
 });
-test('previously rejected cached employeeName payload recovers without another AI request',async t=>{
+test('a new-parser cached malformed name retains original evidence without another AI request',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-field-recovery-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const image=Buffer.from('valid-card-with-bad-name-cell');
  const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
  const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
- await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v12.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v13.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
  const result=await reader.recognize(image);
  assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');

@@ -2,6 +2,7 @@ import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
+import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './content-deletion-policy.mjs';
 import {registerScanBackup} from './scan-backup.mjs';
 import {logBookSiteScope,siteAllowed} from './log-book-access.mjs';
 import {registerGroqScanSettings} from './groq-scan-settings.mjs';
@@ -166,6 +167,7 @@ import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './whatsapp-r
 
 const {Pool}=pg;
 const app=express();
+app.use(enforceContentDeletionPolicy);
 // Azure Front Door / App Service terminate TLS and proxy to Node. Without this
 // every visitor shares the proxy's address, so per-IP limits (password reset
 // OTP requests) fired for the whole site instead of one user.
@@ -1664,6 +1666,7 @@ async function applyOwnerLogRetention(){
 }
 let logRetentionRunning=false;
 async function runLogRetention(now=new Date()){
+  if(!CONTENT_DELETION_POLICY.automaticPurges)return {skipped:true,reason:'Exact-item approval and WhatsApp OTP are required; automatic content cleanup is blocked.'};
   if(logRetentionRunning)return {skipped:true,reason:'already running'};
   logRetentionRunning=true;
   try{
@@ -2206,6 +2209,7 @@ async function createStoredBackup({triggerType='Manual',actor={},scheduleSlot=nu
 }
 
 async function pruneStoredBackups(){
+  if(!CONTENT_DELETION_POLICY.automaticPurges)return;
   const {settings}=await readBackupSettings();
   const {rows}=await pool.query(`SELECT id,storage_path FROM backup_runs
     WHERE storage_path<>'' AND trigger_type<>'Manual export' AND status='Completed'
@@ -5254,7 +5258,7 @@ async function publishCrmReportFiles({scopeLabel,start,end,openTickets=[],closed
   const pdfFilename=siteReportFilename('CRM',scopeLabel,slotKey,'pdf');
   const xlsxFilename=pdfFilename.replace(/\.pdf$/i,'.xlsx');
   const pdfCode=randomUUID().replace(/-/g,'').slice(0,10),xlsxCode=randomUUID().replace(/-/g,'').slice(0,10);
-  await pool.query(`DELETE FROM published_reports WHERE expires_at<=NOW()`);
+  // Expired report contents are retained; access expiry does not authorize deletion.
   await pool.query(`INSERT INTO published_reports (id,short_code,filename,content_type,file_data,expires_at) VALUES
     ($1,$2,$3,'application/pdf',$4,NOW()+INTERVAL '14 days'),
     ($5,$6,$7,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',$8,NOW()+INTERVAL '14 days')`,
@@ -5466,7 +5470,7 @@ async function publishDirectorReportFiles({baseUrl,slotKey,now=new Date(),report
     const xlsx=buildXlsxReportBundleBuffer({title:`${title} | ${subtitle}`,tables});
     const pdfFilename=siteReportFilename('Fleet',site,slotKey,'pdf'),xlsxFilename=siteReportFilename('Fleet',site,slotKey,'xlsx');
     const pdfCode=randomUUID().replace(/-/g,'').slice(0,16),xlsxCode=randomUUID().replace(/-/g,'').slice(0,16);
-    await pool.query(`DELETE FROM published_reports WHERE expires_at<=NOW()`);
+    // Expired report contents are retained; access expiry does not authorize deletion.
     await pool.query(`INSERT INTO published_reports (id,short_code,filename,content_type,file_data,expires_at) VALUES
       ($1,$2,$3,'application/pdf',$4,NOW()+INTERVAL '14 days'),
       ($5,$6,$7,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',$8,NOW()+INTERVAL '14 days')`,
@@ -5481,7 +5485,7 @@ async function publishDirectorReportFiles({baseUrl,slotKey,now=new Date(),report
   const sourceData=sourceDataForSites(await directorReportSourceData(),siteAccess);
   if(eventRequest)sourceData.requests=sourceDataForSites({requests:[eventRequest],equipmentRecords:[],transferRecords:[],shiftRecords:sourceData.shiftRecords||[]},siteAccess).requests;
   const tables=buildDirectorReportTables(sourceData).filter((table)=>!selectedTitles||selectedTitles.has(table.title));
-  await pool.query(`DELETE FROM published_reports WHERE expires_at<=NOW()`);
+  // Expired report contents are retained; access expiry does not authorize deletion.
   const links=[];
   const files=[];
   const shortReportCode=()=>randomUUID().replace(/-/g,'').slice(0,10);
@@ -8413,7 +8417,7 @@ async function sendScheduledAuditLogExports(now=new Date()){
     const activityWorkbook=buildXlsxWorkbookBuffer('Caliber Pulse User Activity',USER_ACTIVITY_EXPORT_COLUMNS,activityRows.map((row)=>USER_ACTIVITY_EXPORT_COLUMNS.map(({key})=>userActivityExportCell(row,key))));
     const auditShortCode=randomUUID().replace(/-/g,'').slice(0,16);
     const activityShortCode=randomUUID().replace(/-/g,'').slice(0,16);
-    await pool.query(`DELETE FROM published_reports WHERE expires_at<=NOW()`);
+    // Expired report contents are retained; access expiry does not authorize deletion.
     const [auditUrl,userActivityUrl]=await Promise.all([
       publishAuditWorkbook({shortCode:auditShortCode,filename:`Caliber Pulse-Audit-Trail-${slotKey}.xlsx`,workbook:auditWorkbook}),
       publishAuditWorkbook({shortCode:activityShortCode,filename:`Caliber Pulse-User-Activity-${slotKey}.xlsx`,workbook:activityWorkbook}),
@@ -8481,10 +8485,10 @@ async function sendScheduledAuditLogExports(now=new Date()){
     let purgedEventCount=0;
     try{
       await client.query('BEGIN');
-      const purged=await client.query(`DELETE FROM audit_events WHERE occurred_at<=$1`,[exportCutoff]);
+      const purged={rowCount:0}; // Export delivery never authorizes content deletion.
       purgedEventCount=Number(purged.rowCount||0);
-      await client.query(`DELETE FROM user_session_activity WHERE last_seen_at<=$1::timestamptz-INTERVAL '30 minutes'`,[exportCutoff]);
-      await client.query(`UPDATE user_session_activity SET started_at=$1,last_seen_at=$1,active_seconds=0 WHERE last_seen_at<=$1`,[exportCutoff]);
+      // Session activity is retained until exact-item approval and OTP.
+      // Preserve original activity history after export.
       status=`Sent - ${confirmedEmails} administrator email(s) confirmed${deliveryFailures?`; ${deliveryFailures} WhatsApp warning(s)`:''}`;
       await client.query(`UPDATE audit_log_export_runs SET status=$1,mail_confirmed_at=NOW(),purged_at=NOW(),purged_event_count=$2,updated_at=NOW() WHERE slot_key=$3`,[status,purgedEventCount,slotKey]);
       await client.query('COMMIT');

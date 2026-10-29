@@ -30,7 +30,7 @@ test('scheduled Audit Trail export publishes a protected Excel hyperlink to admi
   assert.match(server,/sendAuditLogExportEmail/);
   assert.match(server,/buildUserActivitySummary/);
   assert.match(server,/Administrator email confirmation incomplete/);
-  assert.match(server,/DELETE FROM audit_events WHERE occurred_at<=\$1/);
-  assert.match(server,/DELETE FROM user_session_activity/);
+  assert.doesNotMatch(server,/DELETE FROM audit_events WHERE occurred_at<=\$1/);
+  assert.match(server,/Session activity is retained until exact-item approval and OTP/);
   assert.match(server,/templateKey:'consolidatedRequestReport',purpose:'consolidatedRequestReport'/);
 });
