@@ -20,12 +20,14 @@ export const EQUIPMENT_MACHINE_RULES=[
 const prefixKey=value=>String(value||'').toUpperCase().replace(/[\s._/-]/g,'');
 const text=value=>String(value??'').normalize('NFKC').trim();
 const contextFor=kind=>kind==='vehicle'?'vehicle':'equipment';
+// Body shorthand differs from equipment headers: E means TPC and H means LPC.
+const TRIP_BODY_MACHINE_RULES=EQUIPMENT_MACHINE_RULES.map(rule=>({...rule,aliases:rule.code==='TPC'?[...rule.aliases,'E']:rule.code==='LPC'?[...rule.aliases,'H']:rule.code==='H'?rule.aliases.filter(alias=>alias!=='H'):rule.aliases}));
 export function identifyCardMachine(value,kind='equipment',{allowSuffix=false}={}){
  const original=text(value),withoutNumberLabel=original.replace(/\b(?:NUMBER|NO\.?)[ \t]*[:#=-]?[ \t]*(?=\d)/i,'');
  const input=(allowSuffix?(withoutNumberLabel.match(/^([A-Z][A-Z ._/-]*?\d+)(?:\s*[-·–—(].*)?$/i)?.[1]||withoutNumberLabel):withoutNumberLabel).toUpperCase();
  const numbered=input.match(/^([A-Z][A-Z ._/-]*?)[ \t]*(\d+)$/);
  const prefix=numbered?numbered[1]:/^[A-Z][A-Z ._/-]*$/.test(input)?input:'';
- const rule=(contextFor(kind)==='vehicle'?VEHICLE_MACHINE_RULES:EQUIPMENT_MACHINE_RULES).find(r=>r.aliases.some(alias=>prefixKey(alias)===prefixKey(prefix)));
+ const rule=(kind==='trip-body'?TRIP_BODY_MACHINE_RULES:contextFor(kind)==='vehicle'?VEHICLE_MACHINE_RULES:EQUIPMENT_MACHINE_RULES).find(r=>r.aliases.some(alias=>prefixKey(alias)===prefixKey(prefix)));
  if(!rule)return null;
  const number=numbered?.[2]||'';
  return {original,context:contextFor(kind),code:rule.code,label:rule.label,number,hasNumber:Boolean(number),canonical:rule.code+number,key:number?rule.code+number.replace(/^0+(?=\d)/,''):''};
@@ -68,11 +70,26 @@ export function scannedEquipmentName(value,assets=[],site=''){
 }
 export function normalizeScanEquipmentRows(input={},assets=[]){
  if(input.machineNotationRuleVersion!==1)return input;
- const normalize=rows=>(rows||[]).map(row=>({...row,equipmentName:scannedEquipmentName(row.equipmentName,assets,input.location)}));
+ const normalize=rows=>(rows||[]).map(row=>scannedTripEquipmentRow(row,assets,input.location));
  return {...input,trips:normalize(input.trips),scanMachineSummary:normalize(input.scanMachineSummary)};
+}
+export function scannedTripEquipmentRow(row={},assets=[],site=''){
+ const value=text(row.equipmentName),prior=row.equipmentNotation;
+ // A resolved master H door is Hydra, not fresh handwritten H shorthand.
+ if(prior&&value===prior.resolved)return {...row,equipmentName:scannedEquipmentName(value,assets,site)};
+ const lookup=tripBodyEquipmentReference(value);
+ const result=site?matchCardMachine(assets,lookup,site,'equipment'):{match:null};
+ const resolved=result.match?resolvedMachineName(result.match):lookup;
+ return {...row,equipmentName:resolved,equipmentNotation:{original:value,resolved}};
+}
+export function tripBodyEquipmentReference(value){
+ if(value==null)return value;
+ const machine=identifyCardMachine(value,'trip-body');
+ return machine?.hasNumber?machine.code==='H'?'Hydra'+machine.number:machine.canonical:text(value);
 }
 export function scanEquipmentMatchIssues(input={},assets=[]){
  if(input.machineNotationRuleVersion!==1)return {};
+ input=normalizeScanEquipmentRows(input,assets);
  const issues={};
  for(const [collection,rows]of [['trips',input.trips||[]],['scanMachineSummary',input.scanMachineSummary||[]]])for(const [index,row]of rows.entries()){
   if(!text(row.equipmentName))continue;
@@ -87,5 +104,5 @@ export function cardMachineHint(value,kind){
 }
 // A derived parsing aid only. The original OCR text and field values stay intact.
 export function compactScanEquipmentReferences(line){
- return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|[VTSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^[VTSL]$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
+ return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|[VETSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^HYDRA$/i.test(prefix)?'Hydra'+number:/^[VETSLH]$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
 }
