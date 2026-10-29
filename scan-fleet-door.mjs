@@ -1,7 +1,7 @@
 import {identifyCardMachine,matchCardMachine} from './scan-machine-rules.mjs';
 // Expand only explicit fleet labels; never infer a door from a model or registration.
 export function fleetDoorKey(value,kind='vehicle'){
- const rule=identifyCardMachine(value,kind,{allowSuffix:true});if(rule)return rule.key;
+ const rule=identifyCardMachine(value,kind,{allowSuffix:true});if(rule)return rule.key||rule.code;
  const text=String(value||'').trim().toUpperCase();
  const brand=text.match(/^(SCANIA|VOLVO)\s*[-/]?\s*(\d+)(?=$|[\s-])/);
  if(brand)return (brand[1]==='SCANIA'?'S':'V')+brand[2].replace(/^0+(?=\d)/,'');
