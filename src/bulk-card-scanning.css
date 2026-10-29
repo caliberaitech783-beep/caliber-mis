@@ -61,3 +61,9 @@
 .scan-preview-image{min-width:0;line-height:0}
 .scan-source .scan-preview-image img{display:block;width:100%;height:auto;max-height:none;margin:0;border:0;object-fit:contain}
 .scan-page .scan-handover-note{display:block;color:#455868;font-size:11px;line-height:1.4;margin-top:4px}
+
+.scan-workspace.scan-status-overview{display:block}
+.scan-status-overview>.scan-card-groups{width:175px;max-width:100%;position:static}
+.scan-workspace.scan-review-workspace{grid-template-columns:145px minmax(0,1fr)}
+.scan-review-empty{padding:22px;background:var(--panel,#fff);border:1px solid #d9cfe5;border-radius:9px}
+@media(max-width:650px){.scan-workspace.scan-review-workspace{grid-template-columns:1fr}.scan-review-workspace>.scan-selected-card{grid-column:1}}
