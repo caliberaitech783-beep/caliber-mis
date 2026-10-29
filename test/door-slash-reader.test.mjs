@@ -29,3 +29,15 @@ test('slash release rereads old cached scans and preserves literal door evidence
  assert.equal(result.extraction.fields.door.value,'V/833');
  await reader.recognize(image);assert.equal(calls,1);
 });
+
+test('reader corrects a punctuated S separator before populating or linking a draft',async t=>{
+ const cacheDir=await fs.mkdtemp(path.join(os.tmpdir(),'door-s62-'));t.after(()=>fs.rm(cacheDir,{recursive:true,force:true}));
+ const payload={documentType:'VLB',fields:{...Object.fromEntries(aFields('vehicle').map(k=>[k,{value:null,status:'missing'}])),door:{value:'S:162',status:'clear'},site:{value:'Jayant OC',status:'clear'},machineSummary:[]},trips:{p:true,r:[]}};
+ const reader=createGeminiCardReader({cacheDir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,fetchImpl:async()=>({ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(payload)}]}}]})})});
+ const result=await reader.recognize(Buffer.from('S/62'));
+ assert.equal(result.handwrittenFields.door,'S/62');assert.equal(result.handwritingCandidates.door.value,'S/62');
+ assert.equal(result.extraction.doorFormatting.original,'S:162');assert.equal(result.extraction.fields.door.value,'S:162');
+ const {extractCard}=await import('../scan-extraction.mjs');
+ const extracted=extractCard(result.text,'vehicle',[{id:62,master_name:'Equipment master',record_data:{door:'Scania 62',category:'vehicle',site:'Jayant OC'}}],result);
+ assert.equal(extracted.draft.doorText,'S/62');assert.equal(extracted.draft.assetId,'62');
+});

@@ -30,3 +30,15 @@ test('Job Card S/SPC numbers never receive the vehicle-specific S1NN slash corre
  assert.equal(withScannedDoor({docType:'ELB',doorText:'S114'},raw).doorText,'S114');
  assert.equal(withScannedDoor({},raw,'equipment').doorText,'S114');
 });
+
+test('Scania slash survives stray OCR punctuation and separator strokes without changing real suffix digits',()=>{
+ for(const input of ['S:162','S: 1 62','S.162','S|62','S I 62','s / 62','S: /62','S／62'])assert.equal(formatScannedDoor(input),'S/62',input);
+ for(const input of ['S/162','S/01','V/833','S/1001'])assert.equal(formatScannedDoor(input),input);
+ for(const input of ['S1620','V162','V1833','MP66ZD0582'])assert.equal(formatScannedDoor(input),input);
+ assert.equal(formatScannedDoor('S:162','equipment'),'S:162');
+ const raw={gemini:{fields:{door:{value:'S:162',status:'clear'}}},extractionDraft:{doorText:'S:162'}};
+ assert.equal(withScannedDoor({doorText:'S:162'},raw).doorText,'S/62');
+ assert.equal(withScannedDoor({doorText:'S/63'},raw).doorText,'S/63');
+ assert.equal(withScannedDoor({doorText:''},raw).doorText,'');
+ assert.equal(raw.gemini.fields.door.value,'S:162');
+});
