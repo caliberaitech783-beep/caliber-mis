@@ -33,7 +33,7 @@ test('Job Card S/SPC numbers never receive the vehicle-specific S1NN slash corre
 
 test('Scania slash survives stray OCR punctuation and separator strokes without changing real suffix digits',()=>{
  for(const input of ['S:162','S: 1 62','S.162','S|62','S I 62','s / 62','S: /62','S／62'])assert.equal(formatScannedDoor(input),'S/62',input);
- for(const input of ['S/162','S/01','V/833','S/1001'])assert.equal(formatScannedDoor(input),input);
+ for(const input of ['S/14','S/01','V/833','S/1001'])assert.equal(formatScannedDoor(input),input);
  for(const input of ['S1620','V162','V1833','MP66ZD0582'])assert.equal(formatScannedDoor(input),input);
  assert.equal(formatScannedDoor('S:162','equipment'),'S:162');
  const raw={gemini:{fields:{door:{value:'S:162',status:'clear'}}},extractionDraft:{doorText:'S:162'}};
@@ -41,4 +41,15 @@ test('Scania slash survives stray OCR punctuation and separator strokes without 
  assert.equal(withScannedDoor({doorText:'S/63'},raw).doorText,'S/63');
  assert.equal(withScannedDoor({doorText:''},raw).doorText,'');
  assert.equal(raw.gemini.fields.door.value,'S:162');
+});
+
+test('the user-confirmed duplicated slash stroke never adds a leading one to S/NN or V/NNN',()=>{
+ for(const [input,expected]of [['V/1252','V/252'],['V / 1833','V/833'],['S/162','S/62'],['V/125','V/125'],['S/14','S/14'],['S/01','S/01'],['H/1252','H/1252']])assert.equal(formatScannedDoor(input),expected);
+ const raw={gemini:{fields:{door:{value:'V/1252',status:'clear'}}},extractionDraft:{doorText:'V/1252'}};
+ const corrected=withScannedDoor({doorText:'V/1252',assetId:'wrong',manualBreakdownHours:3},raw);
+ assert.equal(corrected.doorText,'V/252');assert.equal(corrected.assetId,'');assert.equal(corrected.manualBreakdownHours,'');
+ assert.equal(withScannedDoor({doorText:'V/125',assetId:'human'},raw).doorText,'V/125');
+ assert.equal(withScannedDoor({doorText:'V/125',assetId:'human'},raw).assetId,'human');
+ assert.equal(raw.gemini.fields.door.value,'V/1252');
+ assert.equal(formatScannedDoor('V/1252','equipment'),'V/1252');
 });
