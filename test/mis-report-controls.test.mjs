@@ -35,13 +35,16 @@ test('all operational reports use shared controls with full filtered data, prese
   assert.equal(nodes(render({session:{token:'test'},reportId:'vehicle'}),'button').some(n=>n.props.children==='Print / Save PDF'),false);
 });
 
-test('VLB and ELB batch reports expose every table without mixing other batches or inventing ELB vehicle columns',async()=>{
+test('VLB and ELB batch reports hide individual trip and loading equipment sections while retaining scoped card data',async()=>{
   const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
   for(const kind of ['vehicle','equipment']){
     const batch={id:'batch',kind,name:'Chosen batch'},cards=Array.from({length:121},(_,i)=>({id:'card-'+i,batch_id:batch.id,ordinal:i+1,status:'review',draft:{door:'S/01',openingHmr:0,closingHmr:8}}));
     cards.push({id:'foreign',batch_id:'other',ordinal:122,status:'posted'});
     const sections=nodes(render({batch,cards,token:'test'}),ReportSection);
-    assert.equal(sections.length,kind==='vehicle'?4:2);
+    const visibleTables=scanBatchReportTables(scanBatchReport(batch,cards)).filter(table=>!['Individual trips','Loading equipment'].includes(table.name));
+    assert.deepEqual(sections.map(section=>section.props.title),visibleTables.map(table=>table.title));
+    const summaries=nodes(render({batch,cards,token:'test'}),'summary').map(node=>node.props.children);
+    assert.ok(!summaries.includes('Individual trips')&&!summaries.includes('Loading equipment'));
     const table=sections.find(n=>n.props.columns.some(c=>c.key==='ordinal'));
     assert.equal(table.props.rows.length,121);
     assert.ok(table.props.rows.every(row=>row.id!=='foreign'));
