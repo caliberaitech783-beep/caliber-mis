@@ -1,3 +1,4 @@
+import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
 import {machineDiscrepancies} from '../trip-card-rules.mjs';
@@ -5,7 +6,7 @@ import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
 export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
- const draft={...withScannedDoor(input,raw),trips:scanTripTimeInputs(input.trips)};
+ const draft=normalizeScanEquipmentRows({...withScannedDoor(input,raw),...(raw?.machineNotation?.version===1?{machineNotationRuleVersion:1}:{}),trips:scanTripTimeInputs(input.trips)},options?.assets||[]);
  // A generic "check extracted handwriting" marker does not mean a value needs
  // typing. Keep actual missing/invalid values and specific conflicts visible.
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options);
@@ -15,6 +16,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
   if(draft[key]&&Array.isArray(options[collection])&&!options[collection].some(row=>String(row.id)===String(draft[key])))issues[key]=label+' is not available in the current master list.';
  }
  if(kind==='vehicle'){
+  if(options)Object.assign(issues,scanEquipmentMatchIssues(draft,options.assets||[]));
   const summary=draft.scanMachineSummary||[];
   if(!summary.length||summary.some(r=>!String(r.equipmentName||'').trim()||!Number.isSafeInteger(Number(r.tripCount))||Number(r.tripCount)<1))issues.scanMachineSummary='Check the printed machine summary.';
   if(machineDiscrepancies(draft.trips||[],summary).length){issues.scanMachineSummary='Detail trips conflict with the printed summary.';for(const [i]of draft.trips.entries())issues[`trips.${i}.equipmentName`]='Check the machine assignment against the summary.';}
