@@ -6,7 +6,7 @@ import {resolveTripGrid} from './trip-row-vision.mjs';
 import {matchScannedSite,hasDchLocation,tripCardLocation} from './scan-site-match.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {assetBookKind} from './log-book.mjs';
-import {CARD_SHIFTS,normalizeCardShift,markedShift,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
+import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from './trip-card-rules.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
 export const scanEquipmentMasters=masters=>masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)==='equipment').map(r=>({...r.record_data,id:String(r.id),kind:'equipment',site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}));
@@ -34,7 +34,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  const matchingEmployee=r=>raw.employeeCode?matchesEmployeeReference(r.record_data,raw.employeeCode):raw.employee&&key(r.record_data.name||r.record_data.employee)===key(raw.employee);
  const imported=employees.filter(r=>r.master_name==='Employee master'),importMatches=imported.filter(matchingEmployee);
  const employee=importMatches.length===1?importMatches[0]:importMatches.length?null:one(employees.filter(r=>r.master_name!=='Employee master'),matchingEmployee);
- const textShift=markedShift(text),hintShift=normalizeCardShift(hints.cardShift),cardShift=hintShift&&textShift&&hintShift!==textShift?'':hintShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift,bookDate);
+ const shiftEvidence=markedShiftEvidence(text),textShift=shiftEvidence.value,hintShift=normalizeCardShift(hints.cardShift),shiftUnclear=shiftEvidence.status==='unclear'||(hints.shiftSelectionStatus&&hints.shiftSelectionStatus!=='clear')||Boolean(hintShift&&textShift&&hintShift!==textShift),cardShift=shiftUnclear?'':hintShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift,bookDate);
  const shift=mapped?mapped:!cardShift&&raw.shift?one(masters,r=>r.master_name==='Shift Master'&&canonicalSiteName(r.record_data.site||r.record_data.siteName)===canonicalSiteName(location)&&key(r.record_data.shiftName||r.record_data.name||r.record_data.shift)===key(raw.shift)):null;
  const orders=masters.filter(r=>['Work Order master','Work order master','Work Order Master','WO master'].includes(r.master_name)).map(r=>({...r.record_data,id:r.id}));const eligible=matchingWorkOrders(orders,location,bookDate),wo=raw.workOrder?one(eligible,r=>key(r.workOrderNo)===key(raw.workOrder)):latestWorkOrder(orders,location,bookDate);
  const [detailText,summaryText='']=text.split(/MACHINE[ -]*WISE\s+SUMMARY/i);const trips=[];
@@ -59,6 +59,11 @@ export function extractCard(text,kind,masters=[],hints={}){
   out.draft=normalizeScanEquipmentRows(out.draft,scanEquipmentMasters(masters));
   out.draft.location=tripCardLocation(out.draft.location);
   out.draft.tripLocationRuleVersion=1;
+  out.raw.shiftRuleVersion=1;
+  out.draft.shiftRuleVersion=1;
+  out.draft.shiftHours=CARD_SHIFTS[cardShift]?.hours||'';
+  if(!cardShift){out.draft.shiftId='';out.draft.extractionReviewFields.push('cardShift','shiftHours');}
+  out.raw.shiftSelectionStatus=cardShift?'clear':shiftUnclear?'unclear':'missing';
   out.raw.tripLocationRuleVersion=1;
  }
  return out;
