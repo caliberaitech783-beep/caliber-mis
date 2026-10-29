@@ -131,20 +131,34 @@ export default function BulkCardScanning({kind,session,ReportSection}){
   const panel=draftPanel.current,sheet=panel?.firstElementChild;
   if(!reviewPage||!reviewCompact||!panel||!sheet)return;
   const selectedPanel=panel.parentElement;
+  const source=selectedPanel.querySelector('.scan-source');
+  const viewer=source?.querySelector('.scan-preview-viewport');
+  const image=viewer?.querySelector('img');
   let frame;
   const fit=()=>{
-   const share=window.matchMedia('(min-width:900px)').matches?1.15/2.15:.5;
-   const width=(selectedPanel.clientWidth-8)*share-18,height=panel.clientHeight-16;
+   if(image?.naturalWidth&&image.naturalHeight&&viewer.clientHeight){
+    const maximum=(selectedPanel.clientWidth-8)*.55;
+    const minimum=Math.min(280,maximum);
+    const sourceWidth=Math.max(minimum,Math.min(maximum,viewer.clientHeight*image.naturalWidth/image.naturalHeight+22));
+    selectedPanel.style.setProperty('--scan-source-width',sourceWidth+'px');
+   }
+   const width=panel.clientWidth-16,height=panel.clientHeight-16;
    if(width<=0||height<=0)return;
-   sheet.style.width=Math.max(600,width)+'px';
-   const scale=Math.min(1,width/sheet.offsetWidth,height/sheet.offsetHeight);
+   // Reflow at each candidate size so spare width makes the entry larger.
+   let low=.05,high=2;
+   for(let step=0;step<12;step++){
+    const candidate=(low+high)/2;
+    sheet.style.width=width/candidate+'px';
+    if(sheet.offsetHeight*candidate<=height&&sheet.scrollWidth<=sheet.offsetWidth+1)low=candidate;else high=candidate;
+   }
+   const scale=low;
+   sheet.style.width=width/scale+'px';
    sheet.style.transform='scale('+scale+')';
-   selectedPanel.style.setProperty('--scan-entry-width',(sheet.offsetWidth*scale+18)+'px');
   };
   const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(fit);});
-  observer.observe(selectedPanel);observer.observe(panel);observer.observe(sheet);fit();
-  return()=>{observer.disconnect();cancelAnimationFrame(frame);sheet.style.width='';sheet.style.transform='';selectedPanel.style.removeProperty('--scan-entry-width');};
- },[reviewPage,reviewCompact,card?.id]);
+  observer.observe(selectedPanel);observer.observe(panel);observer.observe(sheet);if(viewer)observer.observe(viewer);fit();
+  return()=>{observer.disconnect();cancelAnimationFrame(frame);sheet.style.width='';sheet.style.transform='';selectedPanel.style.removeProperty('--scan-source-width');};
+ },[reviewPage,reviewCompact,card?.id,preview]);
  const originalScan=<div className="scan-source"><div className="scan-source-heading"><h2>Original scan{card?' · Card '+card.ordinal:''}</h2>{reviewPage&&<button type="button" aria-pressed={expandedScan} onClick={()=>setExpandedScan(value=>!value)}>{expandedScan?'Restore split view':'Expand scan'}</button>}{preview&&<a href={originalPreview||preview} target="_blank" rel="noreferrer">Open full-size scan</a>}</div>{preview?<><div className="scan-preview-tools" role="group" aria-label="Original card zoom controls"><button type="button" aria-label="Zoom out original card" title="Zoom out" disabled={zoom<=.5} onClick={()=>setZoom(z=>Math.max(.5,z-.25))}><ZoomOut size={18}/></button><button type="button" aria-label="Reset original card zoom" title="Fit scan to page" onClick={()=>setZoom(1)}>{zoom===1?'Fit page':Math.round(zoom*100)+'%'}</button><button type="button" aria-label="Zoom in original card" title="Zoom in" disabled={zoom>=4} onClick={()=>setZoom(z=>Math.min(4,z+.25))}><ZoomIn size={18}/></button><button type="button" onClick={()=>setRotation(r=>(r+180)%360)}>Rotate 180°</button></div><div key={selected} className={"scan-preview-viewport"+(zoom===1?" scan-preview-fit":"")} tabIndex={0} role="region" aria-label="Original card image; scroll to inspect the enlarged scan"><div className="scan-preview-image" style={{width:`${zoom*100}%`}}><img style={{transform:`rotate(${rotation}deg)`}} src={preview} alt={'Scanned '+title+' card '+(card?.ordinal||'')}/></div></div></>:<p>Select a card to see its scan.</p>}</div>;
  return <section className={`scan-page${reviewPage?' scan-review-page':''}${reviewPage&&reviewCompact?' scan-review-compact':''}`}>{reviewPage&&<div className="scan-review-controls"><button type="button" disabled={busy||dirty} onClick={()=>navigateReview(false)}>Back to card status</button><button type="button" aria-expanded={!reviewCompact} aria-controls="scan-review-heading" onClick={toggleReviewCompact}>{reviewCompact?'Show heading and summary':'Hide heading and summary'}</button></div>}{(!reviewPage||!reviewCompact)&&<header id="scan-review-heading" className="scan-hero"><div><small>MIS / BULK SCANNING</small><h1><ScanLine/>{reviewPage?'VLB · '+(CARD_GROUPS.find(g=>g.id===groupFilter)?.label||'Card review'):title+' · Scan & Review'}</h1><p>Read card → correct missing values → complete cards save automatically</p></div><div className="scan-actions"><button onClick={()=>selectBatch('')} disabled={busy||dirty}><Plus size={16}/>New batch</button><button onClick={()=>input.current.click()} disabled={busy||dirty}><Upload size={16}/>Upload files</button></div></header>}
  <input ref={input} type="file" accept={SCAN_UPLOAD_ACCEPT} multiple hidden onChange={upload}/>
