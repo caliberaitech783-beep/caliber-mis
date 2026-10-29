@@ -19,7 +19,7 @@ export default function ScanBatchReport({batch,cards,token,ReportSection}){
   <p className="scan-batch-report-scope">Batch ID: {report.batchId}. This report covers every card in this batch, regardless of the card filters below. Totals count saved cards only and refresh as cards save.</p>
   <dl>{[['Cards',report.counts.cards],['Saved',report.counts.saved],['Pending',report.counts.pending],['Rejected',report.counts.rejected],...(report.vehicle?[['Trips',report.totals.trips],['Kilometres',report.totals.kilometres]]:[]),['Working hours',report.totals.hours]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>
   {report.counts.pending>0&&<p role="status">{report.counts.pending} card(s) are still pending. Their draft values are listed separately from saved totals.</p>}
-  {ReportSection&&tables.map(table=><details key={table.name} open={table.name==='Cards'}><summary>{table.name}{table.name==='Individual trips'||table.name==='Loading equipment'?' · saved cards only':''}</summary><ReportSection title={table.title} category="scan-batch" description={report.name+' · Batch ID: '+report.batchId} columns={table.columns} rows={table.rows} emptyMessage="No matching data in this batch yet."/></details>)}
+  {ReportSection&&tables.filter(table=>table.name!=='Individual trips'&&table.name!=='Loading equipment').map(table=><details key={table.name} open={table.name==='Cards'}><summary>{table.name}</summary><ReportSection title={table.title} category="scan-batch" description={report.name+' · Batch ID: '+report.batchId} columns={table.columns} rows={table.rows} emptyMessage="No matching data in this batch yet."/></details>)}
 
  </section>;
 }
