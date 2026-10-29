@@ -18,6 +18,7 @@ import {CARD_SHIFTS,machineDiscrepancies} from './trip-card-rules.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {resolveLogBookData,insertLogBook} from './log-book.mjs';
 import {extractCard,scanEquipmentMasters} from './scan-extraction.mjs';
+import {tripCardLocation} from './scan-site-match.mjs';
 import {localCardOcr} from './local-card-ocr.mjs';
 const encodeScanJson=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanJson(value):value;
 const encodeScanText=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanText(value):value;
@@ -36,6 +37,7 @@ const publicCard=row=>{decodeScanRow(row);const {image,image_hash,...r}=row;retu
 const MASTER_SQL="SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id";
 const MASTER_NAMES=['Equipment master','C-Dir Employee master','ERP Employee master','Employee master','Shift Master','Work Order master'];
 export async function checkScanCard(client,kind,card,input=card.draft){
+ if(kind==='vehicle'&&card.raw_fields?.tripLocationRuleVersion===1)input={...input,location:tripCardLocation(input.location),tripLocationRuleVersion:1};
  // OCR notes describe the original extraction; current values determine review issues.
  const errors=[],warnings=[];let data;if(kind==='vehicle'&&(input.machineNotationRuleVersion===1||card.raw_fields?.machineNotation?.version===1)){const equipment=scanEquipmentMasters((await client.query(MASTER_SQL,[['Equipment master']])).rows);input=normalizeScanEquipmentRows({...input,machineNotationRuleVersion:1},equipment);errors.push(...new Set(Object.values(scanEquipmentMatchIssues(input,equipment))));}if(card.page_count<card.expected_pages)errors.push('The back page is missing. Reject this card and rescan both sides.');
  for(const [key,label] of [['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId',kind==='vehicle'?'Driver':'Operator'],['shiftId','Shift'],['shiftHours','Shift hours'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])])if(input[key]===undefined||input[key]===null||input[key]==='')errors.push(label+' is missing or unreadable.');
