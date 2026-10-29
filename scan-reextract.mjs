@@ -1,3 +1,4 @@
+import {tripCardLocation} from './scan-site-match.mjs';
 export function mergeReextractedDraft(previous={},baseline={},fresh={}){
  const result={...fresh};
  for(const [key,value]of Object.entries(previous)){
@@ -9,5 +10,6 @@ export function mergeReextractedDraft(previous={},baseline={},fresh={}){
  result.bookDateSource=previous.bookDateSource==='manual'?'manual':fresh.bookDateSource;
  result.extractionReviewFields=(fresh.extractionReviewFields||[]).filter(k=>result[k]===fresh[k]);
  result.meterReviewFields=(fresh.meterReviewFields||[]).filter(k=>result[k]===fresh[k]);
+ if(fresh.tripLocationRuleVersion===1)result.location=tripCardLocation(result.location);
  return result;
 }

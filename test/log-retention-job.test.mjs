@@ -1,3 +1,4 @@
+import {CONTENT_DELETION_POLICY} from '../content-deletion-policy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -16,54 +17,19 @@ function harness(stored, {lastRunDate = ''} = {}) {
       return {rowCount: 3, rows: []};
     },
   };
-  const api = new Function('pool', 'AUDIT_PURGE_MAX_DAYS', 'auditIndiaDateKey',
-    `${slice};return {storedLogRetention,runLogRetention,LOG_RETENTION_KEYS};`)(pool, 3650, () => '2026-09-22');
+  const api = new Function('pool', 'AUDIT_PURGE_MAX_DAYS', 'auditIndiaDateKey', 'CONTENT_DELETION_POLICY',
+    `${slice};return {storedLogRetention,runLogRetention,LOG_RETENTION_KEYS};`)(pool, 3650, () => '2026-09-22', CONTENT_DELETION_POLICY);
   return {...api, statements};
 }
 
 const now = new Date('2026-09-22T06:30:00Z');
 const daysBefore = (days) => new Date(now.getTime() - days * 86400000).toISOString();
 
-test('a setting saved before this release keeps its meaning: audit only, nothing else deleted', async () => {
-  const {runLogRetention, statements} = harness({auditDays: 5, activityDays: 0});
-  const result = await runLogRetention(now);
-  assert.equal(result.auditDeleted, 3);
-  assert.deepEqual(statements.map(({sql}) => sql.split(' WHERE')[0]).filter((sql) => !sql.startsWith('INSERT')),
-    ['DELETE FROM audit_events']);
-  for (const key of ['whatsappHistoryDeleted', 'notificationsDeleted', 'sessionMessagesDeleted', 'requestMediaCleared']) assert.equal(result[key], 0, key);
-});
-
-test('everything off means the job does nothing at all', async () => {
-  const {runLogRetention, statements} = harness({auditDays: 0, activityDays: 0, whatsappDays: 0, notificationDays: 0, mediaDays: 0});
-  assert.deepEqual(await runLogRetention(now), {skipped: true, reason: 'automatic clean-up is off'});
-  assert.equal(statements.length, 0);
-});
-
-test('each part deletes only what is older than its own number of days', async () => {
-  const {runLogRetention, statements} = harness({auditDays: 5, activityDays: 30, whatsappDays: 90, notificationDays: 60, mediaDays: 365});
-  const result = await runLogRetention(now);
-  const find = (prefix) => statements.find(({sql}) => sql.startsWith(prefix));
-
-  assert.deepEqual(find('DELETE FROM whatsapp_alert_history').values, [daysBefore(90)]);
-  assert.deepEqual(find('DELETE FROM crm_notifications').values, [daysBefore(60)]);
-  assert.deepEqual(find('DELETE FROM session_messages').values, [daysBefore(60)]);
-  assert.match(find('DELETE FROM session_messages').sql, /dismissed_at IS NOT NULL/);
-
-  const media = find('UPDATE maintenance_requests');
-  assert.deepEqual(media.values, [daysBefore(365)]);
-  assert.match(media.sql, /WHERE verified_at IS NOT NULL AND verified_at<\$1/, 'only requests MIS has verified');
-  assert.ok(!statements.some(({sql}) => sql.startsWith('DELETE FROM maintenance_requests')), 'no request is ever deleted');
-
-  assert.equal(result.whatsappHistoryDeleted, 3);
-  assert.equal(result.notificationsDeleted, 3);
-  assert.equal(result.sessionMessagesDeleted, 3);
-  assert.equal(result.requestMediaCleared, 3);
-});
-
-test('the job runs once per India day', async () => {
-  const {runLogRetention, statements} = harness({auditDays: 5, whatsappDays: 90}, {lastRunDate: '2026-09-22'});
-  assert.deepEqual(await runLogRetention(now), {skipped: true, reason: 'already ran today'});
-  assert.equal(statements.length, 0);
+test('automatic retention stays blocked for every saved setting and leaves all records untouched',async()=>{
+ for(const stored of [{auditDays:5,activityDays:0},{auditDays:0},{auditDays:5,activityDays:30,whatsappDays:90,notificationDays:60,mediaDays:365}]){
+  const {runLogRetention,statements}=harness(stored);const result=await runLogRetention(now);
+  assert.equal(result.skipped,true);assert.match(result.reason,/approval and WhatsApp OTP/);assert.equal(statements.length,0);
+ }
 });
 
 test('stored values outside 0 to 3650 fall back to the safe default', async () => {
@@ -89,7 +55,7 @@ test("the owner's 22-09-2026 numbers are applied once and keep every other part"
     },
   };
   const {applyOwnerLogRetention} = new Function('pool', 'AUDIT_PURGE_MAX_DAYS', 'auditIndiaDateKey',
-    `${slice};return {applyOwnerLogRetention};`)(pool, 3650, () => '2026-09-22');
+    `${slice};return {applyOwnerLogRetention};`)(pool, 3650, () => '2026-09-22', CONTENT_DELETION_POLICY);
 
   const result = await applyOwnerLogRetention();
   assert.deepEqual(result.next, {auditDays: 2, activityDays: 30, whatsappDays: 10, notificationDays: 10, mediaDays: 0});

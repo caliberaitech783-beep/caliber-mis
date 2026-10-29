@@ -53,8 +53,10 @@ export function extractCard(text,kind,masters=[],hints={}){
  out.draft.meterReviewMessages=Object.fromEntries(Object.entries(hints.handwritingCandidates||{}).filter(([k,c])=>c.conflict).map(([k,c])=>[k,'Handwriting passes disagree: '+(c.alternatives||[]).join(' / ')+'. Check the original scan.']));
  out.raw.locationReadings=locationReadings;
  if(locationNeedsReview){out.raw.locationMatchIssue='Location needs checking: confirm East/West and the matching Location Master entry.';out.draft.extractionReviewFields.push('location');}
+ out.raw.responseRecoveryIssues=hints.responseRecoveryIssues||[];
  out.raw.machineNotation={version:1,header:identifyCardMachine(raw.door,kind),headerMatchedAssetId:asset?String(asset.id):null};
  out.draft.machineNotationRuleVersion=1;
+ if(kind==='vehicle'){out.draft.tripBodyRuleVersion=2;out.raw.tripBodyRuleVersion=2;}
  if(kind==='vehicle'){
   out.draft=normalizeScanEquipmentRows(out.draft,scanEquipmentMasters(masters));
   out.draft.location=tripCardLocation(out.draft.location);

@@ -28,7 +28,7 @@ export function registerScanBackup(app,{pool,requireSession,requireAdministrator
   const jobs=(await pool.query('SELECT b.*,count(i.card_id)::int AS cards,count(i.verified_at)::int AS verified,COALESCE(sum(i.image_bytes),0)::text AS bytes FROM mis_scan_backups b LEFT JOIN mis_scan_backup_items i ON i.backup_id=b.id GROUP BY b.id ORDER BY b.window_start')).rows;
   const windows=backupWindows(first,now());
   const due=windows.filter(window=>!jobs.some(job=>new Date(job.window_start).toISOString()===window.from&&job.status==='complete'));
-  return {enabled:Boolean(imageStorage),hotDays:60,cycleDays:30,firstScanAt:first||null,nextDueAt:first?new Date(new Date(first).getTime()+60*DAY).toISOString():null,due,jobs};
+  return {enabled:Boolean(imageStorage),hotDays:60,cycleDays:30,firstScanAt:first||null,nextDueAt:first?new Date(new Date(first).getTime()+(jobs.filter(job=>job.status==='complete').length+2)*30*DAY).toISOString():null,due,jobs};
  }
  async function jobFor(id){if(!validId(id))fail('Invalid backup reference.');const job=(await pool.query('SELECT * FROM mis_scan_backups WHERE id=$1',[id])).rows[0];if(!job)fail('Backup not found.',404);return job;}
  app.get('/api/scan-backups',...protect,wrap(async(req,res)=>res.set('Cache-Control','no-store').json(await status())));

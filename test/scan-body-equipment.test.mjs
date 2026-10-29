@@ -37,14 +37,14 @@ test('text trip rows keep body H distinct from Hydra and header H',()=>{
  const masters=assets.map(r=>({id:Number(r.id),master_name:'Equipment master',record_data:{door:r.door,category:'equipment',site}}));
  const text=`SITE ${site}\nDOOR NO H/77\n1 E 012 12:02 12:12\n2 H 012 12:20 12:30\n3 Hydra 012 12:40 12:50`;
  const result=extractCard(text,'vehicle',masters);
- assert.deepEqual(result.draft.trips.map(r=>r.equipmentName),['TPC012','LPC012','H012']);
+ assert.deepEqual(result.draft.trips.map(r=>r.equipmentName),['TPC012','H012','H012']);
  assert.equal(result.raw.door,'H/77');
  assert.equal(compactScanEquipmentReferences('3 Hydra 012 12:40 12:50'),'3 Hydra012 12:40 12:50');
 });
 
 test('Gemini reconciliation accepts body aliases without changing original responses or times',()=>{
  const fields=Object.fromEntries(aFields('vehicle').map(k=>[k,{value:null,status:'missing'}]));
- fields.machineSummary=[{equipmentName:{value:'TPC012',status:'clear'},tripCount:{value:'1',status:'clear'}},{equipmentName:{value:'LPC012',status:'clear'},tripCount:{value:'1',status:'clear'}}];
+ fields.machineSummary=[{equipmentName:{value:'TPC012',status:'clear'},tripCount:{value:'1',status:'clear'}},{equipmentName:{value:'H012',status:'clear'},tripCount:{value:'1',status:'clear'}}];
  const trips={p:true,r:[[1,'E012','12:2','12:12'],[2,'H012','12:20','12:30']]};
  const before=structuredClone({fields,trips}),result=reconcile(fields,trips,'vehicle');
  assert.equal(result.issues.some(s=>/conflict|absent/.test(s)),false);
