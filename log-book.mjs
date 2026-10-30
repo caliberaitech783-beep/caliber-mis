@@ -1,4 +1,5 @@
 import {registerVlbBatches} from './vlb-batches.mjs';
+import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
 import {registerLogBookDeletion} from './log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
@@ -20,7 +21,7 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  book_date DATE NOT NULL,site TEXT NOT NULL,asset_id BIGINT NOT NULL,data JSONB NOT NULL,
  request_key UUID UNIQUE NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),revision INTEGER NOT NULL DEFAULT 1);
- ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA;
+ ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA;
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
@@ -94,9 +95,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy){
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
-       const counter=kind==='vehicle'?(await client.query('INSERT INTO mis_vlb_series_counters(book_date,last_number) VALUES($1,1) ON CONFLICT(book_date) DO UPDATE SET last_number=mis_vlb_series_counters.last_number+1 RETURNING last_number',[data.bookDate])).rows[0].last_number:(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number;
-       const [year,month,day]=data.bookDate.split('-');
-       const bookNo=formatBookNumber(kind,data.bookDate,counter,data.bookShiftCode||data.cardShift||data.shiftName);
+       const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
  await enqueueTripVerification(client,result.rows[0]);
  return result.rows[0];
@@ -141,7 +140,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(row.master_name==='Region master')for(const site of Array.isArray(r.sites)?r.sites:String(r.sites||'').split('|'))if(text(site))sites.add(text(site));
      }
      const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment'")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
-     const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({accountLocation:manualLogBookLocation(req.session,req.logBookScope),bookNumberCounters,assets:assets.filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:displaySiteSelection([...sites]).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
+     const vehicleCardCounters={M:{},S:{}};for(const r of (await pool.query('SELECT book_date::text AS book_day,shift,source,last_number FROM mis_vlb_card_counters')).rows)vehicleCardCounters[r.source][r.book_day+'/'+r.shift]=Number(r.last_number);
+     const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({accountLocation:manualLogBookLocation(req.session,req.logBookScope),bookNumberCounters,vehicleCardCounters,assets:assets.filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:displaySiteSelection([...sites]).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
  const readHours=async(input)=>{if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;if(!asset||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests({actor:input.actor}),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};

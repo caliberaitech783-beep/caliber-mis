@@ -3,10 +3,11 @@ import {canonicalSiteName} from '../site-location.mjs';
 import {displaySiteName} from '../region-scope.mjs';
 import {bookShiftCode,systemBookDate} from '../trip-card-rules.mjs';
 import {vlbRecordSource} from '../vlb-batch-format.mjs';
+import VlbBatchReport from './vlb-batch-report.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
 
-export default function VlbCreateBatch({session,onExit}){
+export default function VlbCreateBatch({session,onExit,ReportSection}){
  const [options,setOptions]=useState(null),[selection,setSelection]=useState({site:'',date:systemBookDate(),shift:''});
  const [preview,setPreview]=useState(null),[batches,setBatches]=useState([]),[openBatch,setOpenBatch]=useState(null),[viewed,setViewed]=useState(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
@@ -58,7 +59,7 @@ export default function VlbCreateBatch({session,onExit}){
    <div className="vlb-batch-actions"><button type="button" disabled={busy||loading||detailLoading||!batchStatusReady||!preview?.records.length||Boolean(openBatch)} onClick={create}>Create Batch{preview?' · '+preview.records.length+' cards':''}</button><button type="button" disabled={busy||loading} onClick={()=>{clearView();setRefresh(n=>n+1)}}>Refresh saved entries</button></div>
   </section>
   <section className="logbook-section"><h2>{viewed?viewed.name:'All matching saved entries'}</h2>{viewed&&<p>{viewed.closed_at?'CLOSED':'OPEN'} · {displaySiteName(viewed.site)} · {viewed.report_date} · {viewed.shift} <button type="button" disabled={busy||detailLoading} onClick={clearView}>Show unbatched entries</button></p>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan{!viewed?' · All included automatically.':''}</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Trip card</th><th>Vehicle</th><th>Driver</th><th>Source</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={viewed} ReportSection={ReportSection}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Trip card</th><th>Vehicle</th><th>Driver</th><th>Source</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
   </section>
   <section className="logbook-section"><h2>My batches</h2><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Batch ID</th><th>Cards</th><th>Status</th><th/></tr></thead><tbody>{batches.map(b=><tr key={b.id}><td>{b.name}</td><td>{b.entry_count}</td><td>{b.closed_at?'CLOSED':'OPEN'}</td><td><button type="button" disabled={busy||detailLoading} onClick={()=>view(b)}>View batch</button></td></tr>)}{!batches.length&&<tr><td colSpan={4}>No batches created yet.</td></tr>}</tbody></table></div></section>
  </section>;

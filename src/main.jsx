@@ -4113,7 +4113,7 @@ function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
     reportPortalTarget(),
   );
 }
-function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort, onClearSort, onReset, resetLabel = "Reset report", onSaveReport, onSavedReports }) {
+function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort, onClearSort, onReset, resetLabel = "Reset report", onSaveReport, onSavedReports, onPrint }) {
   const [open, setOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -4196,6 +4196,7 @@ function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort,
   return <div className="report-actions-menu">
     <button ref={triggerRef} type="button" className="report-actions-trigger" onClick={() => { if (open) close(); else setOpen(true); }} aria-expanded={open} aria-haspopup="menu"><span>Actions</span><ChevronDown /></button>
     {open && createPortal(<div ref={popoverRef} className="report-actions-popover" style={position} role="menu" aria-label="Report actions" onKeyDown={handleMenuKeyDown}>
+      {onPrint && <button type="button" role="menuitem" onClick={() => run(onPrint)}><Printer /><span>Smart Print</span></button>}
       <button type="button" role="menuitem" onClick={() => run(onColumns)}><Columns3 /><span>Columns</span></button>
       <button type="button" role="menuitem" onClick={() => run(onFilter)}><ListFilter /><span>Filter</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
       <div className="report-actions-divider" />
@@ -4217,7 +4218,7 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null }) {
+function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4298,7 +4299,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
       <div className="report-table-filter-toolbar">
         <label className="report-row-limit"><span>Rows</span><select aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
         <SavedReportsPanel title={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
@@ -7339,7 +7340,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7369,8 +7370,8 @@ function ReportSection({ title, description, category = "general", icon: ReportI
           <ReportTable
             layoutKey={title}
             title={title}
-            onExportViewChange={setExportView}
-            onResetSearch={() => setSearchQuery("")}
+            onExportViewChange={setExportView} smartPrintAction={smartPrintAction}
+            onResetSearch={() => { setSearchQuery(""); onResetSearch?.(); }}
             query={showSearch ? searchQuery : query}
             rows={rows}
             rowKey={rowKey}
@@ -11952,7 +11953,7 @@ function App() {
   ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onCreateBatch={()=>selectMenu('Create VLB Batch')} canCreateBatch={canOpenAdminPage('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/>
   ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
-  ) : renderedActive==='Create VLB Batch' ? (<VlbCreateBatch session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
+  ) : renderedActive==='Create VLB Batch' ? (<VlbCreateBatch ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>) : ['Saved VLB','Saved ELB'].includes(renderedActive) ? (<SavedLogBooks key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
     <LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></>
   ) : renderedActive === "Stock Statement" ? (
