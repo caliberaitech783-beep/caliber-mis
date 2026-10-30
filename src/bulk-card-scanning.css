@@ -114,6 +114,7 @@
 .scan-source-heading{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .scan-source-heading h2{flex:1 1 100%;margin:0}
 .scan-review-panel-toggle{display:none!important}
+html:has(.scan-review-compact),body:has(.scan-review-compact){overflow:hidden}
 @media(min-width:0px){
  .app.erp-shell:has(.scan-review-compact)>aside.erp-sidebar,.app.erp-shell:has(.scan-review-compact)>main.content>.top{visibility:hidden!important}
  .scan-review-compact{position:fixed;inset:0;z-index:1200;box-sizing:border-box;padding:8px;background:var(--bg,#f6f4fa);display:flex;flex-direction:column;gap:8px;overflow:hidden}
@@ -183,7 +184,7 @@
  .scan-review-compact .scan-preview-viewport{flex:1;min-height:0;max-height:none}
  .scan-review-compact .scan-preview-viewport.scan-preview-fit{display:flex;align-items:center;justify-content:center;height:0;max-height:none}
  .scan-review-compact .scan-preview-fit>.scan-preview-image{width:100%;height:100%;display:flex;align-items:center;justify-content:flex-start}
- .scan-review-compact .scan-source .scan-preview-fit .scan-preview-image img{width:100%;height:100%;max-width:none;max-height:none;object-fit:fill}
+ .scan-review-compact .scan-source .scan-preview-fit .scan-preview-image img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}
  .scan-review-compact .scan-selected-card.scan-source-expanded{grid-template-columns:minmax(0,1fr)}
  .scan-review-compact .scan-source-expanded>.scan-source{grid-column:1}
  .scan-review-compact .scan-source-expanded>.scan-draft{display:none}

@@ -90,3 +90,13 @@ test('one search beside the batch report heading controls every table without du
  tree=render(props);
  for(const section of nodes(tree,ReportSection)){assert.equal(section.props.showSearch,false);assert.equal(section.props.query,'V/833');}
 });
+
+test('the all-cards table stays visible while batch checks block saving and downloads',async()=>{
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'},batch={id:'batch',kind:'vehicle',expected_context:context};
+ const cards=Array.from({length:10},(_,i)=>{const id='card-'+i;return {id,batch_id:batch.id,ordinal:i+1,status:i<4?'posted':i===9?'reading':'review',draft:context,raw_fields:{extractionDraft:context},...(i<4?{saved_data:{...context,scanCardId:id,scanBatchId:batch.id}}:{})}});
+ const tree=render({batch,cards,token:'test',contextBlocked:true}),table=nodes(tree,'table').find(node=>node.props['aria-label']==='Scanned card summary');
+ assert.ok(table);assert.equal(nodes(nodes(table,'tbody')[0],'tr').length,10);
+ const cells=nodes(table,'td').map(node=>node.props.children);assert.equal(cells.filter(value=>value==='Saved').length,4);assert.equal(cells.filter(value=>value==='Pending correction / saving').length,5);assert.ok(cells.includes('Extracting'));
+ for(const button of nodes(tree,'button').filter(node=>['Download batch Excel','Download batch PDF'].includes(node.props.children)))assert.equal(button.props.disabled,true);
+});

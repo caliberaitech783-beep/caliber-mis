@@ -72,3 +72,18 @@ test('context-filtered reports count rejected cards even when their blank header
  assert.deepEqual(scanBatchExportTables(report).find(table=>table.name==='Cards').rows.map(row=>row[0]),[1]);
  assert.equal(report.summaryRows.find(row=>row.metric==='Rejected cards').value,2);
 });
+
+test('all-card preview includes saved, pending, extracting and mismatched rows without exporting unverified data',()=>{
+ const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:expected};
+ const saved=card('saved',1,{draft:expected,raw_fields:{extractionDraft:expected},saved_data:{...data,...expected,scanCardId:'saved',scanBatchId:batch.id}});
+ const pending=card('pending',2,{status:'review',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
+ const reading=card('reading',3,{status:'reading',draft:{},saved_data:null}),queued=card('queued',4,{status:'queued',draft:{},saved_data:null});
+ const wrong=card('wrong',5,{draft:{...expected,cardShift:'II'},raw_fields:{extractionDraft:{...expected,cardShift:'II'}},saved_data:{...data,...expected,scanCardId:'wrong',scanBatchId:batch.id}});
+ const preview=scanBatchReport(scoped,[saved,pending,reading,queued,wrong],null,{includeAllCards:true});
+ assert.deepEqual(preview.rows.map(row=>row.id),['saved','pending','reading','queued','wrong']);
+ assert.equal(preview.counts.cards,5);assert.equal(preview.counts.saved,1);assert.equal(preview.counts.pending,4);
+ assert.equal(preview.rows[2].status,'Extracting');assert.equal(preview.rows[4].status,'Date/site/shift mismatch');assert.equal(preview.rows[4].saved,false);
+ assert.deepEqual(preview.totals,{trips:2,kilometres:40,hours:6});
+ assert.deepEqual(scanBatchExportTables(preview).find(table=>table.name==='Cards').rows.map(row=>row[0]),[1]);
+ assert.deepEqual(scanBatchReport(scoped,[saved,pending,reading,queued,wrong]).rows.map(row=>row.id),['saved','pending'],'server export selection remains unchanged');
+});
