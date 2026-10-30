@@ -37,3 +37,15 @@ test('calculated totals follow corrected detail trips; explicit manual summaries
  const manual=completeScanTripDetails({...edited,scanMachineSummarySource:'manual',scanMachineSummary:[{equipmentName:'B75',tripCount:8}]});
  assert.equal(manual.scanMachineSummary[0].tripCount,8);
 });
+test('repeated T rows use the unique printed TPC machine number from the summary',()=>{
+ const trips=Array.from({length:9},(_,index)=>row(index+1,index===0?'TPC63 - 05':'T'));
+ const input={trips,scanMachineSummary:[{equipmentName:'TPC63',tripCount:9}]};
+ const result=completeScanTripDetails(input);
+ assert.deepEqual(result.trips.map(item=>item.equipmentName),Array(9).fill('TPC63'));
+ assert.equal(result.trips[1].equipmentSource,'machine-summary');
+ assert.equal(input.trips[1].equipmentName,'T');
+});
+test('summary inference never guesses between different TPC numbers',()=>{
+ const input={trips:[row(1,'T'),row(2,'T')],scanMachineSummary:[{equipmentName:'TPC63',tripCount:1},{equipmentName:'TPC64',tripCount:1}]};
+ assert.deepEqual(completeScanTripDetails(input).trips.map(item=>item.equipmentName),['T','T']);
+});
