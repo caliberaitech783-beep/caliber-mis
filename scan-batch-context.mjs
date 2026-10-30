@@ -15,11 +15,18 @@ export function scanContextIssues(context,draft={}){
  if(draft.cardShift!==context.cardShift)issues.push('Shift: '+(draft.cardShift||'unreadable')+'; expected '+context.cardShift);
  return issues;
 }
+// Compare the original extraction as well as the editable entry. Editing a
+// header must never turn a different physical card into a matching one.
+export function scanCardContextIssues(context,card,input=card.draft){
+ const evidence=card.raw_fields,source=evidence?.extractionDraft;
+ const original=source&&Array.isArray(evidence.locationReadings)&&!evidence.locationReadings.some(value=>String(value||'').trim())?{...source,location:''}:source;
+ return [...new Set([...(original?scanContextIssues(context,original):[]),...scanContextIssues(context,input)])];
+}
 export function scanContextGate(context,cards=[]){
  if(!context)return null;
  const active=cards.filter(c=>c.status!=='rejected');
  const waiting=active.some(c=>['queued','reading'].includes(c.status));
- const mismatches=active.filter(c=>!['queued','reading','posted'].includes(c.status)).map(c=>({id:c.id,revision:c.revision,ordinal:c.ordinal,filename:c.filename,issues:scanContextIssues(context,c.draft)})).filter(c=>c.issues.length);
+ const mismatches=active.filter(c=>!['queued','reading','posted'].includes(c.status)).map(c=>({id:c.id,revision:c.revision,ordinal:c.ordinal,filename:c.filename,issues:scanCardContextIssues(context,c)})).filter(c=>c.issues.length);
  return {context,waiting,mismatches,blocked:Boolean(context.cancelled||!context.confirmed||waiting||mismatches.length)};
 }
 export function requireScanUploadContext(kind,value){

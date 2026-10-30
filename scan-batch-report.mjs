@@ -1,3 +1,4 @@
+import {scanCardContextIssues} from './scan-batch-context.mjs';
 import {machineLabel} from './trip-card-rules.mjs';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
 const round=value=>Math.round(value*1000)/1000;
@@ -10,7 +11,7 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 // this report. Saved totals use the current log book values, never OCR drafts.
 export function scanBatchReport(batch,cards=[]){
  if(!batch?.id)return null;
- const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id).slice().sort((a,b)=>a.ordinal-b.ordinal);
+ const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id&&(!batch.expected_context||(!['queued','reading','rejected'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,c,{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
   const saved=card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);
@@ -29,7 +30,7 @@ export function scanBatchReport(batch,cards=[]){
  const totals={trips:vehicle?sum(saved.map(r=>r.trips)):null,kilometres:vehicle?sum(saved.map(r=>r.kilometres)):null,hours:sum(saved.map(r=>r.hours))};
  const title=`${vehicle?'Trip':'Job'} Card batch report · ${batch.id.slice(0,8)}`;
  const summaryRows=[['Batch ID',batch.id],['Batch name',batch.name||''],['Created',batch.created_at||''],['Cards in this batch',counts.cards],['Saved cards',counts.saved],['Pending / unresolved cards',counts.pending],['Rejected cards',counts.rejected],['Deleted log books',counts.deleted],...(vehicle?[['Trips (saved cards)',totals.trips],['Kilometres (saved cards)',totals.kilometres]]:[]),['Working hours (saved cards)',totals.hours]].map(([metric,value])=>({metric,value}));
- return {title,batchId:batch.id,name:batch.name||'',vehicle,counts,totals,rows,tripRows,summaryRows,machineRows:[...machines.values()].map(r=>({equipment:r.equipment,trips:r.trips,cards:r.cards.size,vehicles:r.vehicles.size})).sort((a,b)=>a.equipment.localeCompare(b.equipment))};
+ return {contextChecked:Boolean(batch.expected_context),title,batchId:batch.id,name:batch.name||'',vehicle,counts,totals,rows,tripRows,summaryRows,machineRows:[...machines.values()].map(r=>({equipment:r.equipment,trips:r.trips,cards:r.cards.size,vehicles:r.vehicles.size})).sort((a,b)=>a.equipment.localeCompare(b.equipment))};
 }
 
 const column=(key,label)=>({key,label,value:row=>row[key]});
@@ -45,6 +46,7 @@ export function scanBatchReportTables(report){
 export function scanBatchExportTables(report,{pdf=false}={}){
  return scanBatchReportTables(report).map((table,i)=>{
   const compact=['ordinal','status','cardNo','bookNo','bookDate','location','door','employeeName','shift','trips','kilometres','hours'];
+  if(report.contextChecked&&table.name==='Cards')table={...table,rows:table.rows.filter(row=>row.saved)};
   const columns=pdf&&i===1?table.columns.filter(c=>compact.includes(c.key)):table.columns;
   return {...table,columns:columns.map(c=>({key:c.key,label:c.label})),rows:table.rows.map(row=>columns.map(c=>c.value(row)??''))};
  });

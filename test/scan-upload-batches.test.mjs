@@ -3,7 +3,7 @@ test('each file selection creates its own batch instead of appending to the prev
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  const start=src.indexOf('const upload=async event=>'),end=src.indexOf('\n const update=',start);assert.ok(start>=0&&end>start);
  const memberships=new Map(),urls=[],created=[],reviewVisits=[];const activeRef={current:'earlier-batch'};const noop=()=>{};
- const scope={contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,activeRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},
+ const scope={awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,activeRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},
   window:{location:{href:'https://pulse-ll.cmll.in/?page=trip-scan&batch=earlier-batch&card=old-card'},history:{replaceState:(a,b,url)=>urls.push(url)}},
   api:async(url,config)=>{if(url==='/api/scan-batches'){const id='new-batch-'+(created.length+1);created.push(id);memberships.set(id,[]);return {id};}const id=url.split('/')[3];memberships.get(id).push(JSON.parse(config.body));return {};},
   uploadPageCount:async()=>2,pages:async function*(){yield {blob:{},name:'page 1'};yield {blob:{},name:'page 2'};},png:async()=>'image',load:async()=>{},list:async()=>{},

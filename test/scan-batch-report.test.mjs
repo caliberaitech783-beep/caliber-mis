@@ -35,3 +35,15 @@ test('linked handover legs retain driver credits and count one completed trip in
  assert.equal(report.rows[0].openingTrips,1);assert.equal(report.rows[1].endingTrips,1);
  assert.equal(scanBatchReport(batch,[loading]).totals.trips,0);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,1);
 });
+
+test('selected scan context keeps wrong, removed and unresolved cards out of Excel, including edited wrong originals',async()=>{
+ const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:{...expected,confirmed:true}};
+ const good=card('matching',1,{draft:{...data,...expected},saved_data:{...data,...expected,scanCardId:'matching',scanBatchId:batch.id},raw_fields:{extractionDraft:expected}});
+ const wrongDate=card('wrong-date',2,{draft:{...expected,bookDate:'2026-10-27'},saved_data:{...data,...expected,bookDate:'2026-10-27',scanCardId:'wrong-date',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,bookDate:'2026-10-27'}}});
+ const editedWrong=card('edited-wrong',3,{draft:expected,saved_data:{...data,...expected,scanCardId:'edited-wrong',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,cardShift:'II'}}});
+ const pending=card('pending-correct',4,{status:'review',draft:expected,saved_data:null});
+ const removed=card('removed',5,{status:'rejected',draft:expected,saved_data:null,review_note:'Removed from batch: wrong date, site or shift'});
+ const report=scanBatchReport(scoped,[good,wrongDate,editedWrong,pending,removed]);assert.deepEqual(report.rows.map(r=>r.id),['matching','pending-correct']);
+ const exported=scanBatchExportTables(report).find(t=>t.name==='Cards');assert.equal(exported.rows.length,1);assert.equal(exported.rows[0][0],1);assert.doesNotMatch(JSON.stringify(scanBatchExportTables(report)),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
+ const bytes=Buffer.from(await buildXlsxSheetsWorkbook(report.title,scanBatchExportTables(report)).arrayBuffer());assert.match(bytes.toString('utf8'),/BOOK-matching/);assert.doesNotMatch(bytes.toString('utf8'),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
+});
