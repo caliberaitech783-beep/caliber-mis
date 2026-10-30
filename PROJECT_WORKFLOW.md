@@ -1,5 +1,13 @@
 # Caliber Pulse project workflow
 
+## Saved VLB batches and card numbering
+
+Vehicle Log Book offers a fourth **Create Batch** card. Select a site, report date and shift to include every saved, unbatched Manual and Scan VLB entry matching that selection. Creating the batch atomically links the cards and retains their saved snapshots. Batch IDs use `CMLL/SASTI OC/30TH -OCT-26/S1/B01`; numbering increases within each site/date/shift. Each user may have one open batch across all sites, dates and shifts. **Close Batch** unlocks their next creation; cards already linked to a batch cannot be included again. Batch viewing and closure enforce ownership, VLB permissions and current site assignments.
+
+Opened batches offer **Smart Search**, **Actions → Smart Print** and **Generate → PDF/Excel**, using the shared reporting controls and the opened batch's snapshots. Search, selected columns and sorting feed the report exports without changing batch membership. Batch records are stored in `mis_vlb_batches` and `mis_vlb_batch_entries`.
+
+New Manual cards use `VLB_M/29TH-OCT26/S1/001`; new Scan cards use `VLB_S/29TH-OCT26/S1/001`. `mis_vlb_card_counters` assigns separate transactional series per source, card date and shift across sites/users. Scanner previews follow the same source/date/shift counters; final IDs are allocated on save. Existing card IDs, edits to those cards, batch IDs and ELB numbering retain their existing values. Schema changes add new tables without rewriting saved cards.
+
 ## Telegram BDMS chatbot
 
 Result lists now provide request-selection buttons and guided follow-ups: maintenance work and daily remarks, recorded lifecycle timestamps, permitted linked requests, permitted vehicle history, and role-appropriate first-trip/MIS details. Back to results and Main menu support navigation. `telegram-bdms-conversation.mjs` stores only selected request/list-query identifiers in conversation context, alongside the language preference. Each detail turn reloads current authorization and scoped records; unknown, archived or newly inaccessible selections are denied. The same engine powers the fictional local trial and authenticated preview.
