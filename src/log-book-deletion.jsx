@@ -8,6 +8,7 @@ const choices=(rows,value,current)=>[...new Set([...rows.map(value),current].fil
 const label=row=>`${row.book_no} · ID ${row.id} · ${type(row)} · ${source(row)} · ${row.data?.bookDate||''} · ${row.data?.location||row.site||''} · ${row.data?.door||''}`;
 
 export default function LogBookDeletion({session,context}){
+ const canViewHistory=session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase());
  const [rows,setRows]=useState([]),[cursor,setCursor]=useState(null),[history,setHistory]=useState([]),[view,setView]=useState('Entries');
  const [selected,setSelected]=useState(()=>new Set(context?.record?[String(context.record.id)]:[]));
  const [kind,setKind]=useState(context?.kind||''),[origin,setOrigin]=useState(context?.source||''),[search,setSearch]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState('');
@@ -29,8 +30,8 @@ export default function LogBookDeletion({session,context}){
   <p>Every deletion requires approval of the exact selection and a WhatsApp OTP sent to <strong>+91 9925565281</strong>. Records leave the active register and reports; source scans and recovery snapshots are retained.</p>
   {error&&<p role="alert" className="deletion-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
   {!preview&&<>
-   <nav aria-label="Deletion views">{['Entries','History'].map(tab=><button key={tab} disabled={busy} aria-pressed={view===tab} onClick={()=>{setView(tab);if(tab==='History')void run(async()=>setHistory((await api('history')).records));}}>{tab}</button>)}</nav>
-   {view==='Entries'?<>
+   <nav aria-label="Deletion views">{(canViewHistory?['Entries','History']:['Entries']).map(tab=><button key={tab} disabled={busy} aria-pressed={view===tab} onClick={()=>{setView(tab);if(tab==='History'&&canViewHistory)void run(async()=>setHistory((await api('history')).records));}}>{tab}</button>)}</nav>
+   {view==='Entries'||!canViewHistory?<>
     <fieldset disabled={busy}><legend>Find entries</legend><div className="deletion-filters">
      <label>Type<select value={kind} onChange={e=>setKind(e.target.value)}><option value="">All VLB / ELB</option><option value="vehicle">VLB</option><option value="equipment">ELB</option></select></label>
      <label>Entry source<select value={origin} onChange={e=>setOrigin(e.target.value)}><option value="">All sources</option><option>Scanned</option><option>Manual</option></select></label>
