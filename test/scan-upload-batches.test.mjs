@@ -2,8 +2,8 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 test('each file selection creates its own batch instead of appending to the previously viewed batch',async()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  const start=src.indexOf('const upload=async event=>'),end=src.indexOf('\n const update=',start);assert.ok(start>=0&&end>start);
- const memberships=new Map(),urls=[],created=[],reviewVisits=[];const activeRef={current:'earlier-batch'};const noop=()=>{};
- const scope={awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,activeRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},
+ const memberships=new Map([['earlier-batch',[]]]),urls=[],created=[],reviewVisits=[];const activeRef={current:'earlier-batch'},addonUploadRef={current:false};const noop=()=>{};
+ const scope={awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,batch:{id:'earlier-batch'},activeRef,addonUploadRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},contextGate:null,
   window:{location:{href:'https://pulse-ll.cmll.in/?page=trip-scan&batch=earlier-batch&card=old-card'},history:{replaceState:(a,b,url)=>urls.push(url)}},
   api:async(url,config)=>{if(url==='/api/scan-batches'){const id='new-batch-'+(created.length+1);created.push(id);memberships.set(id,[]);return {id};}const id=url.split('/')[3];memberships.get(id).push(JSON.parse(config.body));return {};},
   uploadPageCount:async()=>2,pages:async function*(){yield {blob:{},name:'page 1'};yield {blob:{},name:'page 2'};},png:async()=>'image',load:async()=>{},list:async()=>{},
@@ -11,8 +11,10 @@ test('each file selection creates its own batch instead of appending to the prev
  const upload=new Function(...Object.keys(scope),src.slice(start,end)+';return upload;')(...Object.values(scope));
  for(let i=0;i<2;i++)await upload({target:{files:[{name:'Trip cards.pdf',size:1000}],value:'Trip cards.pdf'}});
  assert.deepEqual(reviewVisits,[false,false],'uploads leave the review page for the status overview');
- assert.deepEqual(created,['new-batch-1','new-batch-2']);assert.equal(memberships.get('new-batch-1').length,2);assert.equal(memberships.get('new-batch-2').length,2);assert.equal(memberships.has('earlier-batch'),false);
+ assert.deepEqual(created,['new-batch-1','new-batch-2']);assert.equal(memberships.get('new-batch-1').length,2);assert.equal(memberships.get('new-batch-2').length,2);assert.equal(memberships.get('earlier-batch').length,0);
  assert.ok(urls[0].includes('batch=new-batch-1'));assert.ok(urls[1].includes('batch=new-batch-2'));assert.ok(urls.every(url=>!url.includes('card=')));
+ addonUploadRef.current=true;await upload({target:{files:[{name:'Addon.pdf',size:1000}],value:'Addon.pdf'}});
+ assert.deepEqual(created,['new-batch-1','new-batch-2'],'Addon does not create another batch');assert.equal(memberships.get('earlier-batch').length,2,'Addon appends to the selected batch');
 });
 test('PDF uploads expose elapsed timing and a real abort controller',()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
@@ -46,6 +48,8 @@ test('scan workflow uses the compact requested controls',()=>{
  assert.match(src,/className="scan-workflow-row"><GroqScanSettings[\s\S]*className="scan-workflow-actions"/);
  assert.doesNotMatch(src,/Select PNG, JPG\/JPEG or PDF files/);
  assert.match(src,/className="scan-upload-panel"><h2>Upload existing scans<\/h2><button/);
+ assert.match(src,/kind==='vehicle'&&<button type="button"[\s\S]*?title="Add cards only when card date, site and shift match this batch"[\s\S]*?>Addon<\/button>/);
+ assert.match(src,/let id=addon\?batch\.id:null/);
  assert.match(css,/\.scan-hero h1,\.scan-hero h1 \*\{color:#fff!important\}/);
  assert.match(css,/\.scan-workflow-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
 });
