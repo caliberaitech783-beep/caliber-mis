@@ -4113,7 +4113,7 @@ function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
     reportPortalTarget(),
   );
 }
-function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort, onClearSort, onReset, resetLabel = "Reset report", onSaveReport, onSavedReports, onPrint }) {
+function ReportActionsMenu({ activeFilterCount = 0, onColumns, onFilter, onSort, onClearSort, onReset, resetLabel = "Reset report", onPrint, onSaveReport, onSavedReports }) {
   const [open, setOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
