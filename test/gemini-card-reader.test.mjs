@@ -178,6 +178,18 @@ test('unreadable NO stays flagged without inventing a number or accepting a pref
  await reader.recognize(Buffer.from('unreadable number'));assert.equal(calls,4,'explicit re-reading must not reuse an incomplete prefix-only result');
 });
 
+test('an unreturned machine summary is read again, and a misplaced one is kept',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-summary-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0,retry='';
+ const opts={prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test-secret',minIntervalMs:0,sleep:async()=>{},fetchImpl:async(url,options)=>{calls++;const data=response();if(calls===1)data.fields.machineSummary=[];else retry=JSON.parse(options.body).contents[0].parts.at(-1).text;return ok(JSON.stringify(data));}};
+ const result=await createGeminiCardReader(opts).recognize(Buffer.from('card'));
+ assert.equal(calls,2);assert.match(retry,/no machine-wise summary/);assert.equal(result.extraction.summary[0].equipmentName,'T50');
+ const misplaced=response();misplaced.machineSummary=misplaced.fields.machineSummary;delete misplaced.fields.machineSummary;
+ assert.equal(parseCardResponse(JSON.stringify(misplaced),'vehicle').fields.machineSummary.length,1);
+ const blank=response();blank.fields.machineSummary=[];calls=0;
+ const still=await createGeminiCardReader({...opts,cacheDir:dir+'-blank',fetchImpl:async()=>{calls++;return ok(JSON.stringify(blank));}}).recognize(Buffer.from('blank'));
+ t.after(()=>fs.rm(dir+'-blank',{recursive:true,force:true}));
+ assert.equal(calls,2,'retries once only');assert.equal(still.extraction.summary.length,0,'a blank box is never invented');
+});
 test('malformed summary rows remain reviewable instead of failing the complete card',()=>{
  const card=response();card.fields.machineSummary=[null,'invalid',42];
  const parsed=parseCardResponse(JSON.stringify(card),'vehicle');

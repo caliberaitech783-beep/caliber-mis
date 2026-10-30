@@ -19,7 +19,7 @@ export function recoverCardResponse(parsed,kind,fieldNames){
  };
  const missingNumber=(value,label)=>{const machine=identifyCardMachine(value,'trip-body',{allowSuffix:true});if(machine&&!machine.hasNumber)issues.push(label+': equipment number missing or unreadable; re-read the NO column.');};
  const fields=Object.fromEntries(fieldNames.map(name=>[name,field(parsed.fields?.[name],name)]));
- const summary=parsed.fields?.machineSummary;
+ const summary=parsed.fields?.machineSummary??parsed.machineSummary;
  if(!Array.isArray(summary)||summary.length>40){issues.push('Machine summary: invalid response table; check and enter the summary from the scan.');fields.machineSummary=[];}
  else fields.machineSummary=summary.map((row,i)=>{
   const label='Summary row '+(i+1);

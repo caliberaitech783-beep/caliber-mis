@@ -3,6 +3,17 @@ import {createCanvas,loadImage} from '@napi-rs/canvas';
 // Complete overlapping columns retain header, meters and every trip row whether
 // the capture is upright or upside down. No orientation-dependent crop can hide
 // a header at the bottom. Original bytes are retained separately in the request.
+// The machine-wise summary sits under the trip grid. These bands show it larger,
+// upright for either capture orientation, beside the complete column views.
+export async function summaryDetailViews(bytes){
+ const image=await loadImage(bytes),{width,height}=image;
+ if(!width||!height||width*height>20000000)throw Error('Scan dimensions exceed the 20 megapixel limit.');
+ return Promise.all([['Bottom band containing the machine-wise summary',.62,0],['Top band containing the machine-wise summary',0,180]].map(async([label,y,degrees])=>{
+  const sy=Math.floor(y*height),sh=Math.min(height-sy,Math.ceil(.38*height)),canvas=createCanvas(width,sh),ctx=canvas.getContext('2d');
+  ctx.fillStyle='white';ctx.fillRect(0,0,width,sh);if(degrees===180){ctx.translate(width,sh);ctx.rotate(Math.PI);}ctx.drawImage(image,0,sy,width,sh,0,0,width,sh);
+  return {label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:await canvas.encode('jpeg',95)};
+ }));
+}
 export async function cardDetailViews(bytes){
  const image=await loadImage(bytes),{width,height}=image;
  if(!width||!height||width*height>20000000)throw Error('Scan dimensions exceed the 20 megapixel limit.');
