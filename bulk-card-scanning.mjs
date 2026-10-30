@@ -76,8 +76,8 @@ export async function checkScanCard(client,kind,card,input=card.draft){
  if(!input.workOrderId)warnings.push('No Work Order selected. Confirm whether this card requires a contract.');
  return {errors,warnings,data,number};
 }
-export function registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?3:1,getSiteScope=async()=>({sites:null})}){
- if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>3)throw Error('Scan concurrency must be 1, 2 or 3.');
+export function registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null})}){
+ if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>5)throw Error('Scan concurrency must be between 1 and 5.');
  let workers=0,timer,stopped=false;const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{
  req.logBookScope=await getSiteScope(req.session);
  if(req.logBookScope.sites!==null&&!req.logBookScope.sites.length)return res.status(403).json({error:'Assign a site or region to this MIS login before scanning.'});

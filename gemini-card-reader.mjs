@@ -38,10 +38,11 @@ export function parseCardResponse(raw,kind){
  validateA(recovered.fields,kind);validateB(recovered.trips,kind);
  return recovered;
 }
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareViews=cardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=4000,maxPending=8,concurrency=3,requestTimeoutMs=90000}={}){
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareViews=cardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=2000,maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
  let pending=0,active=0,last=0,gate=Promise.resolve();const queue=[],inFlight=new Map();
- if(!Number.isInteger(concurrency)||concurrency<1||concurrency>3)throw Error('Gemini concurrency must be 1, 2 or 3.');
- // Share a start gate across all workers, including retries: at most 15 starts/minute.
+ if(!Number.isInteger(concurrency)||concurrency<1||concurrency>5)throw Error('Gemini concurrency must be between 1 and 5.');
+ // Share a start gate across all workers, including retries. Faster starts are
+ // still bounded, and HTTP 429 responses retain their existing Retry-After fallback.
  async function startRequest(){const turn=gate.then(async()=>{await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();});gate=turn.catch(()=>{});await turn;}
  async function run(image,kind,onProgress){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');

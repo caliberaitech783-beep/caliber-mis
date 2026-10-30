@@ -134,16 +134,16 @@ test('V/252 cannot acquire a duplicated separator digit before equipment lookup'
  assert.equal(extracted.draft.doorText,'V/252');assert.equal(extracted.draft.assetId,'252');
 });
 
-test('three slow cards can extract together while the fourth remains queued',{timeout:5000},async t=>{
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-three-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+test('five slow cards can extract together while the sixth remains queued',{timeout:5000},async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-five-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const releases=[];let calls=0;
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return new Promise(resolve=>releases.push(()=>resolve(ok(JSON.stringify(response())))));}});
- const tasks=['one','two','three','four'].map(value=>reader.recognize(Buffer.from(value)));
- while(releases.length<3)await new Promise(resolve=>setImmediate(resolve));
- assert.equal(calls,3);releases[0]();await Promise.race(tasks);
- while(releases.length<4)await new Promise(resolve=>setImmediate(resolve));
- assert.equal(calls,4);for(const release of releases.slice(1))release();await Promise.all(tasks);
- assert.throws(()=>createGeminiCardReader({concurrency:4}),/concurrency/);
+ const tasks=['one','two','three','four','five','six'].map(value=>reader.recognize(Buffer.from(value)));
+ while(releases.length<5)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,5);releases[0]();await Promise.race(tasks);
+ while(releases.length<6)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,6);for(const release of releases.slice(1))release();await Promise.all(tasks);
+ assert.throws(()=>createGeminiCardReader({concurrency:6}),/concurrency/);
 });
 
 test('separate M and NO cells retain repeated V5 and L79 numbers and literal times',()=>{
