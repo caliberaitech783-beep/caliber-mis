@@ -21,7 +21,7 @@
 
 .scan-fields output{padding:9px;border:1px solid #dacee8;border-radius:5px;background:#f5f2fa;color:#000}.scan-machine-summary{margin:14px 0;padding:12px;border:1px solid #dacee8;border-radius:6px}.scan-machine-summary table{width:100%;border-collapse:collapse}.scan-machine-summary th,.scan-machine-summary td{text-align:left;padding:7px;border-bottom:1px solid #ddd}
 
-.scan-trip-row{grid-template-columns:1.3fr 1fr 1fr .7fr .8fr auto}.scan-trip-row output{display:block;padding:8px;background:#f4eff9;border:1px solid #dacee8;border-radius:5px;color:#111}@media(max-width:650px){.scan-trip-row{grid-template-columns:1fr 1fr}}
+.scan-trip-row{grid-template-columns:.65fr 1fr 1fr .7fr .8fr auto}.scan-trip-row>strong{align-self:start;justify-self:end;white-space:nowrap;margin-top:22px}.scan-trip-row output{display:block;padding:8px;background:#f4eff9;border:1px solid #dacee8;border-radius:5px;color:#111}@media(max-width:650px){.scan-trip-row{grid-template-columns:.5fr 1fr}}
 .groq-scan-settings{margin:16px 0;}
 .groq-scan-settings summary{cursor:pointer;}
 .groq-scan-settings form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;}
@@ -161,10 +161,10 @@
  .scan-review-compact .scan-draft-sheet .scan-trips>.scan-add-trip{grid-column:2;grid-row:2;align-self:center}
  .scan-review-compact .scan-draft-sheet .scan-trips>.scan-trip-row{grid-column:1/-1}
  .scan-review-compact .scan-draft-sheet .scan-trips>.scan-confirm{margin:3px 0}
- .scan-review-compact .scan-draft-sheet .scan-trip-row{grid-template-columns:minmax(110px,1fr) 55px auto;gap:6px;margin:0;align-items:end}
- .scan-review-compact .scan-draft-sheet .scan-trip-row:has(input[type=time]){grid-template-columns:minmax(110px,1fr) repeat(2,110px) 55px 65px auto}
- .scan-review-compact .scan-draft-sheet .scan-trip-row:has(>strong){grid-template-columns:auto minmax(110px,1fr) 55px auto}
- .scan-review-compact .scan-draft-sheet .scan-trip-row:has(>strong):has(input[type=time]){grid-template-columns:auto minmax(110px,1fr) repeat(2,110px) 55px auto}
+ .scan-review-compact .scan-draft-sheet .scan-trip-row{grid-template-columns:minmax(55px,.5fr) 55px auto;gap:6px;margin:0;align-items:end}
+ .scan-review-compact .scan-draft-sheet .scan-trip-row:has(input[type=time]){grid-template-columns:minmax(55px,.5fr) repeat(2,110px) 55px 65px auto}
+ .scan-review-compact .scan-draft-sheet .scan-trip-row:has(>strong){grid-template-columns:auto minmax(55px,.5fr) 55px auto}
+ .scan-review-compact .scan-draft-sheet .scan-trip-row:has(>strong):has(input[type=time]){grid-template-columns:auto minmax(55px,.5fr) repeat(2,110px) 55px auto}
  .scan-review-compact .scan-draft-sheet .scan-trip-row label{font-size:14px}
  .scan-review-compact .scan-draft-sheet .scan-machine-summary{padding:5px;margin:5px 0}
  .scan-review-compact .scan-draft-sheet th,.scan-review-compact .scan-draft-sheet td{padding:3px;font-size:12px}
