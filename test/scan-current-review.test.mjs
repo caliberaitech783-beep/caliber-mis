@@ -22,5 +22,6 @@ test('genuinely missing values, invalid readings, summaries and missing pages st
  const invalid=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:-1});assert.ok(invalid.errors.some(s=>/HMR/.test(s)));
  const summary=await checkScanCard(client,'vehicle',card,{...draft,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});assert.ok(summary.errors.some(s=>/summary mismatch/.test(s)));
  const back=await checkScanCard(client,'vehicle',{...card,expected_pages:2});assert.ok(back.errors.some(s=>/back page/.test(s)));
- const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.ok(hours.warnings.some(s=>/exceeds/.test(s)));
+ const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.ok(hours.errors.some(s=>/HMR.*Exceeds limit/.test(s)));assert.equal(hours.data,undefined);
+ const kmr=await checkScanCard(client,'vehicle',card,{...draft,closingKmr:251});assert.ok(kmr.errors.some(s=>/KMR.*Exceeds limit/.test(s)));assert.equal(kmr.data,undefined);
 });
