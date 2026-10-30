@@ -9,6 +9,8 @@ export async function cardDetailViews(bytes){
  const views=[];for(const degrees of [0,180])for(const [label,x,w] of [['Left overlapping full-height column',0,.54],['Right overlapping full-height column',.46,.54]]){
   const sx=Math.floor(x*width),sw=Math.min(width-sx,Math.ceil(w*width)),canvas=createCanvas(sw,height),ctx=canvas.getContext('2d');
   ctx.fillStyle='white';ctx.fillRect(0,0,sw,height);if(degrees===180){ctx.translate(sw,height);ctx.rotate(Math.PI);}ctx.drawImage(image,sx,0,sw,height,0,0,sw,height);
-  views.push({label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:await canvas.encode('jpeg',95)});
- }return views;
+  views.push({label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:canvas.encode('jpeg',95)});
+ }
+ // Native encoders run together; retain the same pixels, dimensions and quality.
+ return Promise.all(views.map(async view=>({...view,image:await view.image})));
 }

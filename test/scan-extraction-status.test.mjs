@@ -22,7 +22,11 @@ test('extraction timer ticks while reading, survives refresh, and stops when ext
  tree=app.render({...props,pending:1});assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'5 sec');
  const refreshed=harness(app.storage,105000);tree=refreshed.render({...props,pending:1});
  assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'5 sec');
- assert.equal(refreshed.render({...props,pending:0}),null);assert.equal(refreshed.timers.size,0);assert.equal(app.storage.size,0);
+ tree=refreshed.render({...props,pending:0});assert.equal(refreshed.timers.size,0);
+ assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'5 sec');
+ refreshed.advance(60);tree=refreshed.render({...props,pending:0});assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'5 sec');
+ const finalRefresh=harness(app.storage,165000);tree=finalRefresh.render({...props,pending:0});
+ assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'5 sec');
 });
 test('batch switching and invalid stored timestamps cannot show another batch elapsed time',()=>{
  const app=harness();let tree=app.render({batchId:'one',pending:1,total:1,uploading:false});app.advance(65);
@@ -33,4 +37,21 @@ test('batch switching and invalid stored timestamps cannot show another batch el
  const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.equal((page.match(/<ScanExtractionStatus /g)||[]).length,1);
  assert.ok(!page.includes('You can review completed cards while'));
+});
+
+const textContent=node=>Array.isArray(node)?node.map(textContent).join(''):React.isValidElement(node)?textContent(node.props.children):node??'';
+test('completed progress increases from 0/15 to 1/15, 2/15 and final 15/15',()=>{
+ const app=harness(),props={batchId:'progress',total:15,uploading:false};
+ for(const completed of [0,1,2,14,15]){
+  const tree=app.render({...props,pending:15-completed});
+  assert.match(textContent(nodes(tree,node=>node.props.role==='status')[0]),new RegExp(completed+'/15 cards processed'));
+  assert.match(textContent(tree),completed===15?/Extraction finished/:/Extracting/);
+ }
+ assert.equal(app.timers.size,0);
+ let tree=app.render({...props,pending:0,failed:2});assert.match(textContent(tree),/15\/15 cards processed · 2 failed/);
+ app.advance(20);tree=app.render({...props,pending:15});assert.match(textContent(tree),/0\/15 cards processed/);
+ assert.equal(nodes(tree,node=>node.props.role==='timer')[0].props.children,'0 sec');
+ assert.equal(app.timers.size,1);
+ assert.equal(app.render({...props,batchId:null,pending:0}),null);
+ assert.equal(app.render({...props,total:0,pending:0}),null);
 });
