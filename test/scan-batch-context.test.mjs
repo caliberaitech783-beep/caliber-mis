@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {parseScanContext,scanContextIssues,scanContextGate} from '../scan-batch-context.mjs';
+import {parseScanContext,scanContextReady,scanContextIssues,scanContextGate} from '../scan-batch-context.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'};
 test('scan selection requires a real date, site and marked shift and never trusts confirmed flags',()=>{
  for(const value of [null,{}, {...context,bookDate:'2026-02-30'},{...context,bookDate:'today'},{...context,location:''},{...context,cardShift:'bad'}])assert.throws(()=>parseScanContext(value));
+ for(const key of ['bookDate','location','cardShift'])assert.equal(scanContextReady({...context,[key]:''}),false);assert.equal(scanContextReady(context),true);
  assert.deepEqual(parseScanContext({...context,confirmed:true}),{...context,confirmed:false,cancelled:false});
  assert.deepEqual(scanContextIssues(context,{...context,location:'Sasti OB'}),[]);
  assert.equal(scanContextIssues(context,{}).length,3);
@@ -39,7 +40,8 @@ test('server blocks saving before batch check, checks exact removal revisions an
  const wrong=(await db.query('SELECT status,image,review_note FROM mis_scan_cards WHERE id=$1',[bad])).rows[0];assert.equal(wrong.status,'rejected');assert.deepEqual(Buffer.from(wrong.image),image);assert.match(wrong.review_note,/wrong date/);
  assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[good])).rows[0].status,'review');
  let stored=(await db.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].expected_context;assert.equal(scanContextGate(stored,[{id:good,status:'review',draft:context}]).blocked,false);
- assert.equal((await call(url,{action:'proceed'})).status,200);
+ for(const [key,value] of [['bookDate','2026-10-29'],['location','Other site'],['cardShift','Night']]){await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify({...context,[key]:value})]);assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409,'wrong '+key+' cannot save after approval');}
+ await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify(context)]);assert.equal((await call(url,{action:'proceed'})).status,200);
  assert.equal((await call(url,{action:'cancel'})).status,200);
  assert.equal((await call(url,{action:'proceed'})).status,409);
  assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409);
