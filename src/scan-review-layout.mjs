@@ -22,7 +22,7 @@ export function scanReviewHelp(message){
 }
 
 export function scanTripPageSize(height){
- return height>=1000?4:height>=800?3:2;
+ return height>=850?5:height>=700?3:2;
 }
 
 export function scanTripReviewPage(length,page=0,size=4){
