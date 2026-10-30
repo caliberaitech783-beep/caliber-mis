@@ -2,12 +2,15 @@ import {validScannedTime,normalizeScannedTime} from './scan-clock.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 
 const empty=value=>value==null||String(value).trim()==='';
-export function estimateMissingTripTimes(input={}){
- if(input.timeMode==='without')return input;
- return {...input,trips:(input.trips||[]).map(original=>{
+export function estimateMissingTripTimes(input={},raw={}){
+ if(input.timeMode==='without'||!input.trips?.length)return input;
+ return {...input,trips:(input.trips||[]).map((original,index)=>{
   const row={...original};
   for(const [missing,known,sign] of [['loadingTime','unloadingTime',-1],['unloadingTime','loadingTime',1]]){
    if(!empty(row[missing])||!validScannedTime(row[known]))continue;
+   const number=row.rowNumber||index+1,cell=raw.tripGrid?.rows?.find(r=>r.rowNumber===number)?.[missing==='loadingTime'?'loading':'unloading'];
+   const literal=(raw.gemini||raw.hybrid)?.trips?.r?.find(r=>r[0]===number);
+   if(cell?.present&&!cell.value||literal?.[missing==='loadingTime'?2:3]===null)continue;
    const time=normalizeScannedTime(row[known]),[h,m]=time.split(':').map(Number),minutes=(h*60+m+sign*22+1440)%1440;
    const value=String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
    row[missing]=value;
@@ -48,7 +51,7 @@ export function completePreviousShiftMachines(input={},records=[]){
 
 export async function fillScanTripEstimates(client,input={},raw={}){
  if(raw.responseRecoveryIssues?.length)return input;
- let next=estimateMissingTripTimes(input);
+ let next=estimateMissingTripTimes(input,raw);
  const needsMachine=(next.trips||[]).some(row=>(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
  const previous=previousScanShift(next);
  if(!needsMachine||!previous||!next.assetId||!next.location)return next;

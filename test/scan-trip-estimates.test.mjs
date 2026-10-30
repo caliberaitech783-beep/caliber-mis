@@ -18,6 +18,12 @@ test('previous shift crosses dates, month and year boundaries correctly',()=>{
  assert.deepEqual(previousScanShift({bookDate:'2026-10-29',cardShift:'Day'}),{bookDate:'2026-10-28',cardShift:'Night'});
  assert.equal(previousScanShift({bookDate:'',cardShift:'I'}),null);
 });
+test('unreadable written times remain blank and unchanged cards do not acquire new fields',()=>{
+ assert.deepEqual(estimateMissingTripTimes({location:'Sasti OC'}),{location:'Sasti OC'});
+ assert.equal(estimateMissingTripTimes(draft,{tripGrid:{rows:[{rowNumber:1,loading:{present:true,value:'',text:'62:19'}}]}}).trips[0].loadingTime,'');
+ assert.equal(estimateMissingTripTimes(draft,{gemini:{trips:{r:[[1,'',null,'08:22']]}}}).trips[0].loadingTime,'');
+ assert.equal(estimateMissingTripTimes(draft,{gemini:{trips:{r:[[1,'','','08:22']]}}}).trips[0].loadingTime,'08:00');
+});
 test('missing machine comes from previous shift terminal trip with provenance; printed machine is retained',()=>{
  const next=completePreviousShiftMachines({...draft,trips:[...draft.trips,{equipmentName:'VPC37',loadingTime:'09:40',unloadingTime:'10:00'}]},[source()]);
  assert.equal(next.trips[0].equipmentName,'VPC28');assert.match(tripEstimateNote(next.trips[0],'equipmentName'),/Taken from previous shift.*2026-10-29.*PREV\/1/);assert.equal(next.trips[1].equipmentName,'VPC37');

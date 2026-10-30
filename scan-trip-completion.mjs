@@ -57,6 +57,6 @@ export function completeScanTripDetails(input={},raw={}){
    return next;
   });
  }
- return estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})});
+ return estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})},raw);
 }
 
