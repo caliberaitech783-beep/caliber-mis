@@ -1,5 +1,5 @@
 import React,{useEffect,useRef} from 'react';
-export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onTransfer,onRecheck,onReview}){
+export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDelete,onTransfer,onRecheck,onReview}){
  const dialog=useRef(null),review=card.raw_fields.fleetReview;
  useEffect(()=>{const node=dialog.current;node.showModal();return()=>node.close()},[]);
  return <dialog ref={dialog} className="scan-equipment-dialog" aria-labelledby="scan-equipment-title" onCancel={event=>{event.preventDefault();onReview()}}>
@@ -8,5 +8,5 @@ export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onTr
  {error&&<p role="alert">{error}</p>}
  <section><h3>1. No equipment found / not present</h3><p>Reject this whole trip card. Its original scan stays in the audit history.</p><button type="button" disabled={busy} onClick={onReject}>Reject whole card</button></section>
  <section><h3>2. Existing transfer not completed</h3><p>Open Pulse → Vehicle Transfer, find the existing request for this equipment, and complete its pending source approval, destination verification or acceptance. Do not create a duplicate request.</p><a href="https://pulse.cmll.in/" target="_blank" rel="noreferrer" aria-disabled={busy} onClick={event=>{if(busy)event.preventDefault();else onTransfer()}}>Process existing transfer in Pulse</a><p>The card stays unapproved until Pulse confirms the selected site.</p></section>
- <footer><button type="button" disabled={busy} onClick={onRecheck}>Recheck Pulse assignment</button><button type="button" disabled={busy} onClick={onReview}>Review highlighted card</button></footer></dialog>;
+ <footer><button type="button" disabled={busy} onClick={onDelete}>Delete this card</button><button type="button" disabled={busy} onClick={onRecheck}>Recheck Pulse assignment</button><button type="button" disabled={busy} onClick={onReview}>Review highlighted card</button></footer></dialog>;
 }

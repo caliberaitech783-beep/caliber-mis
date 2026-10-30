@@ -138,9 +138,19 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  }
  app.post('/api/scan-cards/:id/fleet-review',...protect,wrap(async(req,res)=>{
   if(!readPulseFleet)fail('Pulse fleet verification is not configured.',503);
-  if(!['reject','transfer-pending','recheck'].includes(req.body.action))fail('Choose reject, existing transfer or recheck.');
+  if(!['reject','delete','transfer-pending','recheck'].includes(req.body.action))fail('Choose reject, existing transfer or recheck.');
   const initial=await getCard(pool,req.params.id);if(!['review','approved','error'].includes(initial.status))fail('Only unsaved review cards can be changed here.',409);
   if(initial.revision!==req.body.revision)fail('Card changed. Reload and retry.',409);
+  if(req.body.action==='delete'){
+   if(!initial.raw_fields?.fleetReview)fail('Recheck the fleet status before deleting.',409);
+   const c=await pool.connect();try{await c.query('BEGIN');const card=await getCard(c,initial.id,true);
+    if(card.revision!==req.body.revision||card.logbook_id||!['review','approved','error'].includes(card.status))fail('Card changed. Reload before deleting.',409);
+    if(card.image_blob_key){if(!imageStorage?.remove)fail('Image deletion is unavailable.',503);await imageStorage.remove(card.image_blob_key);}
+    const message='Card deleted manually by user. Upload again if needed.';
+    await c.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({fleetRejection:{message,deletedBy:req.session.login||req.session.name}}),message]);
+    await c.query('COMMIT');return res.json({deleted:true});
+   }catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}
+  }
   const review=await enforceFleet(initial,initial.draft,initial.raw_fields,req.session.login||req.session.name);
   if(!review)fail('Resolve this card\'s date, site and shift mismatch before equipment review.',409);
   if(review.error)fail(review.error,409);
