@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {nextScanReviewCard} from '../src/scan-next-card.mjs';
+import {nextScanReviewCard,scanReviewNeighbours} from '../src/scan-next-card.mjs';
 import {remainingScanCards} from '../src/scan-review-queue.mjs';
 import {applySavedScanCard} from '../scan-batch-report.mjs';
 const card=(id,status='review')=>({id,status,ordinal:Number(id)});
@@ -68,4 +68,21 @@ test('blank-card review advances through rejected cards only when that group is 
  assert.equal(nextScanReviewCard(rows,'1'),null);
  assert.equal(nextScanReviewCard(rows,'1',rows,{includeRejected:true}).id,'2');
  assert.equal(nextScanReviewCard(rows,'2',rows,{includeRejected:true}),null);
+});
+
+test('Previous and Next follow remaining cards and stop at either end without changing saved state',()=>{
+ const rows=[card('5'),card('7'),card('10')],before=JSON.stringify(rows);
+ assert.equal(scanReviewNeighbours(rows,'5').previous,null);assert.equal(scanReviewNeighbours(rows,'5').next.id,'7');
+ assert.equal(scanReviewNeighbours(rows,'7').previous.id,'5');assert.equal(scanReviewNeighbours(rows,'7').next.id,'10');
+ assert.equal(scanReviewNeighbours(rows,'10').next,null);assert.deepEqual(scanReviewNeighbours(rows,'missing'),{previous:null,next:null});
+ assert.equal(JSON.stringify(rows),before);
+});
+
+test('card navigation preserves unsaved corrections and never calls save or reject',()=>{
+ const line=source.split('\n').find(line=>line.startsWith(' const moveReview=')).trim().replace(/^const moveReview=/,'').replace(/;$/,'');
+ for(const blocked of ['busy','dirty','saving','none']){
+  const changes=[],location={href:'https://example.test/?scanView=review&card=5'},scope={busy:blocked==='busy',dirty:blocked==='dirty',savingRef:{current:blocked==='saving'},filtered:[card('5'),card('7')],selectedRevision:{current:'5:1'},setSelected:id=>changes.push(id),setError:()=>{},setNotice:()=>{},window:{location,history:{replaceState:(_a,_b,url)=>location.href=new URL(url,location.href).href}}};
+  new Function(...Object.keys(scope),'return ('+line+')')(...Object.values(scope))('7');
+  assert.deepEqual(changes,blocked==='none'?['7']:[]);assert.equal(new URL(location.href).searchParams.get('card'),blocked==='none'?'7':'5');
+ }
 });

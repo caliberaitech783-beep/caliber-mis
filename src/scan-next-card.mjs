@@ -9,3 +9,8 @@ export function nextScanReviewCard(visible,currentId,refreshed=visible,{includeR
  }
  return null;
 }
+
+export function scanReviewNeighbours(visible,currentId){
+ const index=visible.findIndex(card=>card.id===currentId);
+ return {previous:index>0?visible[index-1]:null,next:index>=0?visible[index+1]||null:null};
+}
