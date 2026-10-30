@@ -47,20 +47,14 @@ jobs:
           EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
           printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
 
-      - name: Stage and validate production package
+      - name: Verify complete deployment runtime
         run: |
-          node scripts/stage-production-release.mjs "$RUNNER_TEMP/mis-release"
-          cd "$RUNNER_TEMP/mis-release"
-          EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
+          node --check server.mjs
           node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
-          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Packaged pinned OCR model loaded offline.')" 
-          test ! -d node_modules/@electric-sql/pglite
-          test ! -d node_modules/embedded-postgres
-          du -sh . node_modules ocr-model-cache
-          zip -q -r -1 "$RUNNER_TEMP/mis-release.zip" .
-          ls -lh "$RUNNER_TEMP/mis-release.zip"
+          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
 
-# No artifact upload/download: build, validation and deployment share this runner.
+      # Keep the complete workspace format that Azure already runs.
+      # Build and deployment share one runner, avoiding the large artifact transfer.
       - name: Login to Azure
         uses: azure/login@v2
         with:
