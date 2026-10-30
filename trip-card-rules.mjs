@@ -4,7 +4,15 @@ export const CARD_SHIFTS={I:{hours:8,start:'05:00',label:'I · 05:00–13:00'},I
 export const systemBookDate=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 export function machineLabel(value){const s=String(value||'').trim().toUpperCase();return /^\d+$/.test(s)?'V'+String(Number(s)):/^V\s*-?\s*\d+$/.test(s)?'V'+String(Number(s.match(/\d+/)[0])):s;}
 export function machineSummary(trips=[]){const map=new Map();for(const row of trips){const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
-export function machineDiscrepancies(trips=[],printed=[]){const actual=new Map(machineSummary(trips).map(r=>[r.equipmentName,r.tripCount])),expected=new Map(machineSummary(printed).map(r=>[r.equipmentName,r.tripCount]));if(!printed.length)return [];return [...new Set([...actual.keys(),...expected.keys()])].flatMap(name=>actual.get(name)===expected.get(name)?[]:[`${name}: detail trips ${actual.get(name)||0}, scanned summary ${expected.get(name)||0}.`]);}
+export function machineTripTotal(trips=[]){return trips.reduce((total,row)=>total+(Number(row.tripCount)||0),0);}
+export function machineDiscrepancies(trips=[],printed=[]){
+ if(!printed.length)return [];
+ const actual=new Map(machineSummary(trips).map(r=>[r.equipmentName,r.tripCount])),expected=new Map(machineSummary(printed).map(r=>[r.equipmentName,r.tripCount]));
+ const issues=[...new Set([...actual.keys(),...expected.keys()])].flatMap(name=>actual.get(name)===expected.get(name)?[]:[name+': detail trips '+(actual.get(name)||0)+', scanned summary '+(expected.get(name)||0)+'.']);
+ const detailTotal=machineTripTotal(trips),summaryTotal=machineTripTotal(printed);
+ if(detailTotal!==summaryTotal)issues.push('Total trips: detail trips '+detailTotal+', scanned summary '+summaryTotal+'. Machine summary must equal Trip Details; count each trip once.');
+ return issues;
+}
 export function matchingWorkOrders(rows,site,date){return rows.filter(r=>canonicalSiteName(r.site||r.location)===canonicalSiteName(site)&&site&&!r.sourceMissing&&(!(r.begin||r.commencementDate)||(r.begin||r.commencementDate)<=date)&&(!(r.end||r.completionDate)||(r.end||r.completionDate)>=date));}
 export function normalizeCardShift(value){const code=bookShiftCode(String(value||'').replace(/\s*\([ABC]\)\s*$/i,''));return ({S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'})[code]||'';}
 export function markedShiftEvidence(text){

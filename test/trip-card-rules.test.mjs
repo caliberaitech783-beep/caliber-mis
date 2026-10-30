@@ -1,9 +1,9 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {extractCard} from '../scan-extraction.mjs';import {CARD_SHIFTS,markedShift,formatBookNumber,machineSummary,machineDiscrepancies,matchingWorkOrders,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {extractCard} from '../scan-extraction.mjs';import {CARD_SHIFTS,markedShift,formatBookNumber,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 const masters=[{id:1,master_name:'Equipment master',record_data:{equipmentName:'V189-2306675',category:'Vehicle',currentLocation:'Jayant OC'}},{id:2,master_name:'Employee master',record_data:{name:'MADAN PATEL',employeeId:'CMPL16560',employeeCode:'16560',site:'Jayant OC'}},{id:3,master_name:'Shift Master',record_data:{site:'Jayant OC',shiftName:'I',startTime:'05:00:00'}},{id:4,master_name:'Work Order master',record_data:{workOrderNo:'WO1',site:'Jayant OC'}}];
 test('Trip Card labelled data maps IDs, marked shifts, tabular meters, trip rows and machine summary',()=>{const text='Site: Jayant OC\nDATE 13 10 26\nDoor No. V189 Caliber ID 16560 FORM A 2230\nSHIFT [x] I (05:00-01:00) [ ] II (01:00-09:00) [ ] III (09:00-05:00)\nHMR (Hours) 19345 19351\nKMR (Kilometer) 257263 257328\n1 25 08:20 08:40\n2 25 09:20 09:40\nMACHINE-WISE SUMMARY\n1 25 2';const d=extractCard(text,'vehicle',masters).draft;assert.equal(d.docType,'VLB');assert.equal(d.bookDate,'2026-10-13');assert.equal(d.bookDateSource,'scan');assert.equal(d.employeeId,'2');assert.equal(d.aFormNo,'2230');assert.equal(d.assetId,'1');assert.equal(d.cardShift,'I');assert.equal(d.shiftHours,8);assert.equal(d.shiftId,'3');assert.equal(d.workOrderId,'4');assert.equal(d.openingKmr,'257263');assert.equal(d.closingHmr,'19351');assert.equal(d.trips.length,2);assert.equal(d.trips[0].equipmentName,'25'); // Missing M stays literal for review; never invent V.
 assert.deepEqual(machineDiscrepancies(d.trips,d.scanMachineSummary),[]);});
 test('only marked shifts are inferred; daytime/nighttime is 12 hours and uncertain marks stay blank',()=>{assert.equal(markedShift('SHIFT [ ] I [ ] II [x] III'),'III');assert.equal(markedShift('SHIFT [ ] I [ ] II [ ] III'),'');assert.equal(markedShift('[x] I [x] II'),'');for(const name of ['Day','Night']){const d=extractCard('Shift: '+name,'vehicle',[]).draft;assert.equal(d.cardShift,name);assert.equal(d.shiftHours,12)}assert.equal(CARD_SHIFTS.II.hours,8)});
-test('numbering, numeric equipment labels and per-location contract matching are deterministic',()=>{assert.equal(formatBookNumber('vehicle','2026-10-20',1,'I'),'CAL/VLB/201026/S1/0001');assert.equal(formatBookNumber('equipment','2026-10-20',1),'CAL/ELB/20-10-26/001');assert.deepEqual(machineSummary([{equipmentName:'25',tripCount:1},{equipmentName:'V25',tripCount:2}]),[{equipmentName:'V25',tripCount:3}]);assert.equal(machineDiscrepancies([{equipmentName:'25',tripCount:2}],[{equipmentName:'V25',tripCount:3}]).length,1);assert.equal(matchingWorkOrders([{site:'Jayant OC'},{site:'Sasti OC'}],'Jayant OB','2026-10-20').length,1)});
+test('numbering, numeric equipment labels and per-location contract matching are deterministic',()=>{assert.equal(formatBookNumber('vehicle','2026-10-20',1,'I'),'CAL/VLB/201026/S1/0001');assert.equal(formatBookNumber('equipment','2026-10-20',1),'CAL/ELB/20-10-26/001');assert.deepEqual(machineSummary([{equipmentName:'25',tripCount:1},{equipmentName:'V25',tripCount:2}]),[{equipmentName:'V25',tripCount:3}]);assert.equal(machineDiscrepancies([{equipmentName:'25',tripCount:2}],[{equipmentName:'V25',tripCount:3}]).length,2);assert.equal(matchingWorkOrders([{site:'Jayant OC'},{site:'Sasti OC'}],'Jayant OB','2026-10-20').length,1)});
 
 test('conflicting image and OCR marks do not select a shift',()=>{assert.equal(extractCard('SHIFT [x] I','vehicle',[],{cardShift:'III'}).draft.cardShift,'')});
 
@@ -58,4 +58,17 @@ test('Dudhichua East scanned Shift I links equivalent seed and Pulse shifts and 
  assert.equal(selectedMasterShift([...rows,revision],seed.site,'I','2026-09-28').id,'10');
  assert.equal(selectedMasterShift([...rows,{...seed,id:'40',startTime:'04:00'}],seed.site,'I','2026-10-28'),null);
  assert.equal(selectedMasterShift(rows,'Dudhichua OC','I','2026-10-28'),null);
+});
+
+test('three machines with five trips each total fifteen and reject inflated summaries',()=>{
+ const summary=['V1','V2','V3'].map(equipmentName=>({equipmentName,tripCount:5}));
+ const trips=summary.flatMap(r=>Array.from({length:5},()=>({equipmentName:r.equipmentName,tripCount:1})));
+ assert.deepEqual(machineSummary(trips),summary);
+ assert.equal(machineTripTotal(machineSummary(trips)),15);
+ assert.equal(machineTripTotal(trips),15);
+ assert.deepEqual(machineSummary(summary),summary);
+ assert.deepEqual(machineDiscrepancies(trips,summary),[]);
+ assert.ok(machineDiscrepancies(trips,summary.map(r=>({...r,tripCount:15}))).some(issue=>issue.includes('detail trips 15, scanned summary 45')));
+ assert.ok(machineDiscrepancies(trips,[...summary,summary[0]]).length);
+ assert.ok(machineDiscrepancies(trips,[{equipmentName:'V1',tripCount:6},{equipmentName:'V2',tripCount:4},summary[2]]).length);
 });
