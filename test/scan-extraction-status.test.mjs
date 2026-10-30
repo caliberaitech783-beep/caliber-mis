@@ -55,3 +55,10 @@ test('completed progress increases from 0/15 to 1/15, 2/15 and final 15/15',()=>
  assert.equal(app.render({...props,batchId:null,pending:0}),null);
  assert.equal(app.render({...props,total:0,pending:0}),null);
 });
+
+test('waiting cards are distinguished from requests actually extracting',()=>{
+ const app=harness(),props={batchId:'waiting',total:15,pending:15,uploading:false,reading:0};
+ let tree=app.render(props);assert.match(textContent(tree),/Waiting for extraction/);assert.match(textContent(tree),/0 reading · 15 waiting/);
+ tree=app.render({...props,reading:5});assert.match(textContent(tree),/Extracting/);assert.match(textContent(tree),/5 reading · 10 waiting/);
+ tree=app.render({...props,reading:4,pending:14});assert.match(textContent(tree),/1\/15 cards processed/);assert.match(textContent(tree),/4 reading · 10 waiting/);
+});

@@ -20,7 +20,7 @@ test('only untouched prefix-only trip extractions are requeued once, retaining h
  const result=await recoverMissingEquipmentNumbers(db);assert.deepEqual(result.rows.map(row=>row.id),['recover']);
  const row=(await db.query("SELECT * FROM mis_scan_cards WHERE id='recover'")).rows[0];
  assert.equal(row.status,'queued');assert.equal(row.revision,8);assert.equal(row.raw_fields.reextractPrevious.remark,'Keep header correction');
- assert.deepEqual(row.draft.trips,trips);assert.equal(row.raw_fields.equipmentNumberRecoveryVersion,1);
+ assert.deepEqual(row.draft.trips,trips);assert.equal(row.raw_fields.equipmentNumberRecoveryVersion,1);assert.equal(row.raw_fields.scanQueueOrigin,'repair');
  await db.query("UPDATE mis_scan_cards SET status='review' WHERE id='recover'");
  assert.equal((await recoverMissingEquipmentNumbers(db)).rows.length,0);
 });

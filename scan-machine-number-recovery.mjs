@@ -3,7 +3,7 @@ const PREFIXES=['V','E','T','S','L','H','D','G','PL','VPC','TPC','SPC','LPC'];
 // Header corrections are retained by the existing re-extraction merge.
 export async function recoverMissingEquipmentNumbers(pool){
  return pool.query(`UPDATE mis_scan_cards c
- SET raw_fields=c.raw_fields||jsonb_build_object('reextractPrevious',c.draft,'equipmentNumberRecoveryVersion',1),
+ SET raw_fields=c.raw_fields||jsonb_build_object('reextractPrevious',c.draft,'equipmentNumberRecoveryVersion',1,'scanQueueOrigin','repair'),
      status='queued',revision=c.revision+1,error=''
  FROM mis_scan_batches b
  WHERE b.id=c.batch_id AND b.kind='vehicle'
