@@ -79,7 +79,9 @@ jobs:
         with:
           app-name: 'caliber-mis-783'
           slot-name: 'Production'
-          package: ${{ runner.temp }}/mis-release.zip
+          # Deploy the complete validated workspace. The reduced ZIP package
+          # left Azure without a startable application and returned HTTP 503.
+          package: .
 
       - name: Verify Pulse-II release health
         env:
