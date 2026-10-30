@@ -19,7 +19,7 @@ jobs:
           POSTGRES_USER: release_check
           POSTGRES_PASSWORD: release_check
           POSTGRES_DB: caliber_mis
-        ports: ['5432/tcp']
+        ports: ['54320:5432']
         options: >-
           --health-cmd "pg_isready -U release_check -d caliber_mis"
           --health-interval 5s --health-timeout 5s --health-retries 10
@@ -34,4 +34,4 @@ jobs:
       - run: npm run build
       - run: node scripts/verify-server-start.mjs
         env:
-          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:${{ job.services.startup-postgres.ports[5432] }}/caliber_mis
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
