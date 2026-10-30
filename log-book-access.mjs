@@ -28,7 +28,10 @@ export async function allowedScanBatches(client,scope,login){
   if(scope.sites===null)return null;
   if(!scope.sites.length)return [];
   const locations=(await client.query("SELECT DISTINCT draft->>'location' AS site FROM mis_scan_cards")).rows.filter(row=>siteAllowed(scope,row.site)).map(row=>row.site);
-  const {rows}=await client.query("SELECT b.id FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING (b.created_by=$1 AND bool_and(COALESCE(c.status,'queued')<>'posted')) OR (count(c.id)>0 AND bool_and(COALESCE(c.draft->>'location','')=ANY($2::text[])))",[login,locations]);
+  // Keep the owner's unfinished batch accessible after individual cards save.
+  // Completed batches and other users still require every card to be in scope;
+  // saving a card separately enforces requireLogBookSite on its location.
+  const {rows}=await client.query("SELECT b.id FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING (b.created_by=$1 AND bool_or(COALESCE(c.status,'queued')<>'posted')) OR (count(c.id)>0 AND bool_and(COALESCE(c.draft->>'location','')=ANY($2::text[])))",[login,locations]);
   return rows.map(row=>row.id);
 }
 
