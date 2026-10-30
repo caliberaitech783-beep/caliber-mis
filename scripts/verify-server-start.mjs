@@ -4,9 +4,12 @@ import {fileURLToPath} from 'node:url';
 // Import the real server in an isolated process. No production credentials or
 // database are used: this checks module loading, built UI and HTTP startup.
 export function verifyServerStart({root=process.cwd(),entry='server.mjs',timeoutMs=20000}={}){
+ const database=process.env.RELEASE_CHECK_DATABASE_URL||'postgres://release_check:release_check@127.0.0.1:9/caliber_mis';
+ const target=new URL(database);
+ if(!['127.0.0.1','localhost'].includes(target.hostname)||target.pathname!=='/caliber_mis')throw Error('Startup checks require an isolated local caliber_mis database.');
  return new Promise((resolve,reject)=>{
   const child=spawn(process.execPath,[entry],{cwd:root,env:{...process.env,
-   DATABASE_URL:'postgres://release_check:release_check@127.0.0.1:9/caliber_mis',
+   DATABASE_URL:database,
    MIS_DATABASE_CONNECTION_MODE:'isolated',MIS_LOCAL_SCANNER_DATABASE:'false',
    DISABLE_SCHEDULED_JOBS:'true',LOCAL_SCAN_ENABLED:'false',PORT:'0',LISTEN_HOST:'127.0.0.1'
   },stdio:['ignore','pipe','pipe']});
