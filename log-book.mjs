@@ -58,7 +58,7 @@ export function normalizeLogBook(kind,input={}){
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,loadingTime,unloadingTime,tripCount,durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,loadingTime,unloadingTime,tripCount,...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
@@ -199,3 +199,4 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  app.delete('/api/log-books/:kind/:id',...protect,(_req,res)=>res.status(403).json({error:'Use Deletion to preview and approve exact records, then verify the WhatsApp OTP. Direct deletion is disabled.'}));
  return {initialize:ensure,readHours};
 }
+

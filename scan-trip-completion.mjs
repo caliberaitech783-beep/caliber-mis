@@ -1,3 +1,4 @@
+import {estimateMissingTripTimes} from './scan-trip-estimates.mjs';
 import {machineSummary,machineLabel} from './trip-card-rules.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 const blank=value=>value==null||String(value).trim()==='';
@@ -56,5 +57,6 @@ export function completeScanTripDetails(input={},raw={}){
    return next;
   });
  }
- return {...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})};
+ return estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})});
 }
+

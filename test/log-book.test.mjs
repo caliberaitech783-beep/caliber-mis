@@ -20,6 +20,12 @@ test('trip modes, overnight times and invalid meter/date inputs are validated',(
  assert.equal(assetBookKind({category:'Equipment'}),'equipment');assert.equal(assetBookKind({category:'Vehicle'}),'vehicle');
 });
 
+test('saved log books retain estimated time and previous-shift provenance',()=>{
+ const timeEstimates={loadingTime:{value:'08:00',minutes:22,anchorField:'unloadingTime',anchorValue:'08:22',dayOffset:0}},equipmentProvenance={value:'VPC28',date:'2026-10-28',shift:'III',bookNo:'PREV/1',logBookId:'1'};
+ const row=normalizeLogBook('vehicle',{...input(),trips:[{equipmentName:'VPC28',loadingTime:'08:00',unloadingTime:'08:22',tripCount:1,timeEstimates,equipmentProvenance}]}).trips[0];
+ assert.deepEqual(row.timeEstimates,timeEstimates);assert.deepEqual(row.equipmentProvenance,equipmentProvenance);assert.equal(row.equipmentSource,'previous-shift');assert.equal(row.durationMinutes,22);
+});
+
 test('database-backed log books enforce access, persist both forms, generate numbers, deduplicate retries and reject stale edits',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
  const masters=[['Equipment master',{category:'Vehicle',door:'V-TEST',currentLocation:'Sasti OC',equipmentName:'Tipper'}],['Users & employees',{employee:'Local form test',employeeId:'CM-TEST',phone:'private-not-exposed',passwordHash:'private-not-exposed'}],['Shift Master',{site:'Sasti OC',shiftName:'Shift A',startTime:'05:00:00',endTime:'13:00:00'}],['Equipment master',{category:'Equipment',door:'EQ-TEST',currentLocation:'Sasti OC',equipmentName:'Excavator'}],['Shift Master',{site:'Jayant OC',shiftName:'Shift A'}],['Work Order master',{woNo:'WO-TEST',site:'Sasti OC'}],['C-Dir Employee master',{name:'Driver test',empId:'EMP-123',site:'Sasti OC'}]];
@@ -74,3 +80,4 @@ test('database-backed log books enforce access, persist both forms, generate num
 
 
 });
+
