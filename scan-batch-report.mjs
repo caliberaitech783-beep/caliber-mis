@@ -11,7 +11,7 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 // this report. Saved totals use the current log book values, never OCR drafts.
 export function scanBatchReport(batch,cards=[],options=null){
  if(!batch?.id)return null;
- const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'&&(!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,{...c,raw_fields:c.raw_fields||{}},{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
+ const vehicle=batch.kind==='vehicle',batchMembers=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'),members=batchMembers.filter(c=>(!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,{...c,raw_fields:c.raw_fields||{}},{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
   const saved=card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);
@@ -27,7 +27,8 @@ export function scanBatchReport(batch,cards=[],options=null){
  });
  const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:i+1,equipment:machineLabel(t.equipmentName||''),loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount)})));
  const machines=new Map();for(const trip of tripRows){if(!trip.equipment||trip.trips===null)continue;const group=machines.get(trip.equipment)||{equipment:trip.equipment,trips:0,cards:new Set(),vehicles:new Set()};group.trips+=trip.trips;group.cards.add(trip.card);group.vehicles.add(trip.door);machines.set(trip.equipment,group);}
- const counts={cards:rows.length,saved:saved.length,rejected:members.filter(c=>c.status==='rejected').length,deleted:rows.filter(c=>c.deleted).length};counts.pending=counts.cards-counts.saved-counts.rejected-counts.deleted;
+ const rejectedCards=batchMembers.filter(card=>card.status==='rejected'),visibleIds=new Set(members.map(card=>card.id));
+ const counts={cards:rows.length+rejectedCards.filter(card=>!visibleIds.has(card.id)).length,saved:saved.length,rejected:rejectedCards.length,deleted:rows.filter(c=>c.deleted).length};counts.pending=counts.cards-counts.saved-counts.rejected-counts.deleted;
  const totals={trips:vehicle?sum(saved.map(r=>r.trips)):null,kilometres:vehicle?sum(saved.map(r=>r.kilometres)):null,hours:sum(saved.map(r=>r.hours))};
  const title=`${vehicle?'Trip':'Job'} Card batch report · ${batch.id.slice(0,8)}`;
  const summaryRows=[['Batch ID',batch.id],['Batch name',batch.name||''],['Created',batch.created_at||''],['Cards in this batch',counts.cards],['Saved cards',counts.saved],['Pending / unresolved cards',counts.pending],['Rejected cards',counts.rejected],['Deleted log books',counts.deleted],...(vehicle?[['Trips (saved cards)',totals.trips],['Kilometres (saved cards)',totals.kilometres]]:[]),['Working hours (saved cards)',totals.hours]].map(([metric,value])=>({metric,value}));

@@ -58,3 +58,17 @@ test('the on-screen report resolves the driver from the selected employee master
  const report=scanBatchReport(batch,[pending],{employees:[{id:42,name:'DRIVER NAME',caliberId:'CMLL42'}]});
  assert.equal(report.rows[0].employeeName,'DRIVER NAME');assert.equal(report.rows[0].employeeCode,'CMPL1');
 });
+
+test('context-filtered reports count rejected cards even when their blank headers cannot match',()=>{
+ const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:{...expected,confirmed:true}};
+ const good=card('saved',1,{draft:expected,saved_data:{...data,...expected,scanCardId:'saved',scanBatchId:batch.id},raw_fields:{extractionDraft:expected}});
+ const pending=card('pending',2,{status:'review',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
+ const rejected=card('rejected',3,{status:'rejected',draft:{},saved_data:null,raw_fields:{}});
+ const matchingRejected=card('matching-rejected',4,{status:'rejected',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
+ const removed=card('removed',5,{status:'rejected',draft:expected,saved_data:null,review_note:'Removed from batch: wrong date, site or shift'});
+ const report=scanBatchReport(scoped,[good,pending,rejected,matchingRejected,removed,card('foreign',6,{batch_id:'other',status:'rejected'})]);
+ assert.equal(report.counts.saved,1);assert.equal(report.counts.rejected,2);assert.equal(report.counts.pending,1);assert.equal(report.counts.cards,4);
+ assert.deepEqual(report.rows.map(row=>row.id),['saved','pending','matching-rejected']);
+ assert.deepEqual(scanBatchExportTables(report).find(table=>table.name==='Cards').rows.map(row=>row[0]),[1]);
+ assert.equal(report.summaryRows.find(row=>row.metric==='Rejected cards').value,2);
+});

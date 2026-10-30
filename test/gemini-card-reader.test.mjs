@@ -65,7 +65,7 @@ test('malformed trip rows trigger one complete table re-read before caching',asy
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
   calls++;const card=response();
   if(calls===1)card.trips.r=[[1,'T50'],[2,'T50','05:58','06:16']];
-  else{assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/exactly \[tripNo,equipmentName,loadingTime,unloadingTime\]/);card.trips.r=[[1,'T50','05:26','05:44'],[2,'T50','05:58','06:16']];}
+  else{assert.match(JSON.parse(options.body).contents[0].parts.at(-1).text,/exactly \[tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime\]/);card.trips.r=[[1,'T50','05:26','05:44'],[2,'T50','05:58','06:16']];}
   return ok(JSON.stringify(card));
  }});
  const result=await reader.recognize(Buffer.from('table-retry'));
@@ -107,7 +107,7 @@ test('a new-parser cached malformed name retains original evidence without anoth
  const image=Buffer.from('valid-card-with-bad-name-cell');
  const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
  const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
- await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v15.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v16.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
  const result=await reader.recognize(image);
  assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');
@@ -144,4 +144,43 @@ test('three slow cards can extract together while the fourth remains queued',{ti
  while(releases.length<4)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(calls,4);for(const release of releases.slice(1))release();await Promise.all(tasks);
  assert.throws(()=>createGeminiCardReader({concurrency:4}),/concurrency/);
+});
+
+test('separate M and NO cells retain repeated V5 and L79 numbers and literal times',()=>{
+ const card=response();card.trips.r=[[1,'V','5','05:51','06:04'],[2,'V','5','06:17','06:31'],[3,'L','79','08:10','08:25']];
+ card.fields.machineSummary=[{equipmentType:field('V'),equipmentNumber:field('5'),tripCount:field('2')},{equipmentType:field('L'),equipmentNumber:field('79'),tripCount:field('1')}];
+ const parsed=parseCardResponse(JSON.stringify(card),'vehicle');
+ assert.deepEqual(parsed.trips.r,[[1,'V5','05:51','06:04'],[2,'V5','06:17','06:31'],[3,'L79','08:10','08:25']]);
+ assert.deepEqual(parsed.fields.machineSummary.map(row=>row.equipmentName.value),['V5','L79']);assert.deepEqual(parsed.issues,[]);
+ assert.equal(card.trips.r[0][1],'V');assert.equal(card.trips.r[0][2],'5');
+ const zero=response();zero.trips.r=[{rowNumber:1,equipmentType:'V',equipmentNumber:'005',loadingTime:'05:51',unloadingTime:'06:04'}];
+ assert.equal(parseCardResponse(JSON.stringify(zero),'vehicle').trips.r[0][1],'V005');
+});
+test('prefix-only machine extraction triggers one targeted NO-column re-read',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-machine-no-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const progress=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
+  const card=response();if(++calls===1){card.trips.r=[[1,'V','05:51','06:04']];card.fields.machineSummary=[{equipmentName:field('V'),tripCount:field('1')}];}
+  else{assert.ok(JSON.parse(options.body).contents[0].parts.at(-1).text.includes('adjacent NO columns'));card.trips.r=[[1,'V','5','05:51','06:04']];card.fields.machineSummary=[{equipmentType:field('V'),equipmentNumber:field('5'),tripCount:field('1')}];}
+  return ok(JSON.stringify(card));
+ }});
+ const result=await reader.recognize(Buffer.from('V5 in adjacent table cells'),{onProgress:(stage,details)=>progress.push({stage,...details})});
+ assert.equal(calls,2);assert.equal(result.extraction.rows[0].equipmentName,'V5');
+ assert.equal(result.extraction.rows[0].loadingTime,'05:51');assert.deepEqual(result.responseRecoveryIssues,[]);
+ assert.ok(progress.some(event=>event.reason==='equipment number missing in NO column'));
+});
+test('unreadable NO stays flagged without inventing a number or accepting a prefix-only cache',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-unclear-no-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
+ const card=response();card.trips.r=[[1,'V',null,'05:51','06:04']];card.fields.machineSummary=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return ok(JSON.stringify(card));}});
+ const result=await reader.recognize(Buffer.from('unreadable number'));
+ assert.equal(calls,2);assert.equal(result.extraction.rows[0].equipmentName,'');
+ assert.ok(result.responseRecoveryIssues.some(issue=>issue.includes('equipment number missing or unreadable')));
+ await reader.recognize(Buffer.from('unreadable number'));assert.equal(calls,4,'explicit re-reading must not reuse an incomplete prefix-only result');
+});
+
+test('malformed summary rows remain reviewable instead of failing the complete card',()=>{
+ const card=response();card.fields.machineSummary=[null,'invalid',42];
+ const parsed=parseCardResponse(JSON.stringify(card),'vehicle');
+ assert.equal(parsed.fields.door.value,'V309');assert.equal(parsed.trips.r.length,2);
+ assert.ok(parsed.issues.some(issue=>issue.includes('Summary row')));
 });
