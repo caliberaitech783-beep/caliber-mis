@@ -1,3 +1,4 @@
+import {shiftMeterIssues} from '../trip-card-rules.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
 import {employeeAtLocation} from '../log-book-access.mjs';
 import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
@@ -29,7 +30,7 @@ const display=value=>value===null||value===undefined?'—':Number(value).toLocal
 
 const gap=(start,end)=>{if(!/^\d{2}:\d{2}(?::\d{2})?$/.test(start)||!/^\d{2}:\d{2}(?::\d{2})?$/.test(end))return null;const seconds=t=>t.split(':').reduce((sum,v,i)=>sum+Number(v)*[3600,60,1][i],0);return Math.round(((seconds(end)-seconds(start)+86400)%86400)/60*1000)/1000;};
 
-function Field({label,children,hint,wide=false,skipEnter=false,enterOrder}){return <label data-enter-order={enterOrder} data-enter-skip={skipEnter||undefined} className={`logbook-field${wide?' wide':''}`}><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>}
+function Field({label,children,hint,wide=false,skipEnter=false,enterOrder,issue}){return <label data-enter-order={enterOrder} data-enter-skip={skipEnter||undefined} className={`logbook-field${wide?' wide':''}${issue?' logbook-meter-invalid':''}`}><span>{label}</span>{issue?React.Children.map(children,child=>React.isValidElement(child)?React.cloneElement(child,{'aria-invalid':true}):child):children}{hint&&<small>{hint}</small>}{issue&&<small role="alert">{issue}</small>}</label>}
 
 
 
@@ -87,6 +88,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const asset=options?.assets.find(row=>row.id===String(form.assetId));
 
+ const meterIssues=shiftMeterIssues(form,kind);
  const kmr=delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
 
  useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,hmr,session.token]);
@@ -105,7 +107,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const openEntry=row=>{setEditing(false);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:row.data.trips||[]});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
- const save=async event=>{event.preventDefault();setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...form,...(vehicle?{trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))}:{}),revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+ const save=async event=>{event.preventDefault();if(Object.keys(meterIssues).length){setError(Object.values(meterIssues).join(' '));return;}setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...form,...(vehicle?{trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))}:{}),revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -128,6 +130,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
    {error&&<div className="logbook-message error" role="alert">{error}</div>}
 
+   {Object.keys(meterIssues).length>0&&<div className="logbook-message error" role="alert"><strong>Need Attention</strong>{Object.values(meterIssues).map(message=><p key={message}>{message}</p>)}</div>}
    {success&&<div className="logbook-message success" role="status">{success}</div>}
 
    {showStatus&&<div className="logbook-message" role="status">{saved?`${saved.book_no} · Saved · Revision ${saved.revision} · ${editing?'Editing':'View only'}`:'New entry · Not saved'} · {working?'Saving…':loading?'Loading masters…':'Ready'}</div>}
@@ -153,10 +156,10 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 <Field label="Shift hour"><SmartSelect name="shiftHours" disabled={!editing||working} required value={form.shiftHours} onChange={e=>{update('shiftHours',Number(e.target.value));}}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></SmartSelect></Field>
 <Field label={vehicle?'A Form no. (Trip Card)':'Job Card no.'}><input maxLength={200} value={(vehicle?form.aFormNo:form.jobCardNo)||''} onChange={e=>update(vehicle?'aFormNo':'jobCardNo',e.target.value)} placeholder={vehicle?'Enter A Form number':'Enter Job Card number'}/></Field>
 {vehicle&&<><Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
-<Field label="Closing reading (KMR)"><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
+<Field label="Closing reading (KMR)" issue={meterIssues.closingKmr}><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
 </>}<Field label="Opening reading (HMR)"><input type="number" min="0" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
-<Field label="Closing reading (HMR)"><input type="number" min="0" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
-<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR"><output>{fixed(hmr)}</output></Field>
+<Field label="Closing reading (HMR)" issue={meterIssues.closingHmr}><input type="number" min="0" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
+<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR" issue={meterIssues.closingKmr}><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR" issue={meterIssues.closingHmr}><output>{fixed(hmr)}</output></Field>
      </div></section>
 
      <div className="logbook-message" role="status">{assetMessage&&<p>{assetMessage}</p>}<button type="button" disabled={loading||working} onClick={()=>void reloadDoors()}>Reload doors</button>{assetMessage&&<> <a href="?page=master-sync" target="_blank" rel="noopener noreferrer">Open master sync</a></>}</div>

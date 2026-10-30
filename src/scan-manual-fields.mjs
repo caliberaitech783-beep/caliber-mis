@@ -1,3 +1,4 @@
+import {shiftMeterIssues} from '../trip-card-rules.mjs';
 import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
@@ -25,6 +26,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
    if(i>=0){if(draft.trips[i].equipmentSource==='previous-trip-row'&&/ambiguous or unreadable machine/.test(reason))continue;const key=/unloading/i.test(reason)?'unloadingTime':/loading/i.test(reason)?'loadingTime':'equipmentName';if(isBlankHandoverIssue(draft.trips[i],i,key,raw,reason))continue;issues[`trips.${i}.${key}`]=reason;}
   }
  }
+ Object.assign(issues,shiftMeterIssues(draft,kind));
  return issues;
 }
 

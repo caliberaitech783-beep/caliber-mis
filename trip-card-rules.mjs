@@ -1,5 +1,21 @@
 import {normalizeScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
+export function shiftMeterIssues(draft={},kind='vehicle'){
+ const issues={},hours=Number(draft.shiftHours);
+ if(![8,12].includes(hours))return issues;
+ for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+  const a=draft['opening'+meter],b=draft['closing'+meter];
+  if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
+  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:hours===8?250:350;
+  if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<opening)continue;
+  const difference=closing-opening;
+  if(difference-limit>Number.EPSILON*Math.max(1,Math.abs(opening),Math.abs(closing))*4){
+   const format=n=>Number(n.toFixed(3)),unit=meter==='Hmr'?'hours':'km';
+   issues['closing'+meter]=`${meter.toUpperCase()} difference (closing - opening) is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
+  }
+ }
+ return issues;
+}
 export const CARD_SHIFTS={I:{hours:8,start:'05:00',label:'I · 05:00–13:00'},II:{hours:8,start:'13:00',label:'II · 13:00–21:00'},III:{hours:8,start:'21:00',label:'III · 21:00–05:00'},Day:{hours:12,start:'',label:'Day · 12 hours'},Night:{hours:12,start:'',label:'Night · 12 hours'}};
 export const systemBookDate=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 export function machineLabel(value){const s=String(value||'').trim().toUpperCase();return /^\d+$/.test(s)?'V'+String(Number(s)):/^V\s*-?\s*\d+$/.test(s)?'V'+String(Number(s.match(/\d+/)[0])):s;}

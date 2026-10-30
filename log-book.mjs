@@ -9,7 +9,7 @@ import {savedLogBookFilters} from './saved-log-book-filters.mjs';
 import {scanImageMime} from './scan-image-format.mjs';
 import {employeeIdentity} from './employee-identity.mjs';
 import {logBookSiteScope,manualLogBookLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
-import {CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
+import {shiftMeterIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {summarizePulseHours} from './log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -51,6 +51,7 @@ export function normalizeLogBook(kind,input={}){
  if(closingHmr<openingHmr)fail('Closing HMR cannot be less than opening HMR.');
  const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR'):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR'):null;
  if(kind==='vehicle'&&closingKmr<openingKmr)fail('Closing KMR cannot be less than opening KMR.');
+ const meterErrors=Object.values(shiftMeterIssues(input,kind));if(meterErrors.length)fail(meterErrors.join(' '));
  const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');

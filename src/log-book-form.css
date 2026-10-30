@@ -16,3 +16,5 @@
 .logbook-sheet-spacer{min-height:1px}@media(max-width:740px){.logbook-sheet-spacer{display:none}}
 
 .logbook-page label,.logbook-page .logbook-field>span,.logbook-compact .logbook-field:nth-child(even)>span{color:#000}
+
+.logbook-meter-invalid input,.logbook-meter-invalid output{border:1px solid #dc2626!important;background:#fff1f2!important;color:#991b1b!important}.logbook-meter-invalid small{color:#b91c1c}
