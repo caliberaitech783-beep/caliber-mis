@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {scanBatchReport,scanBatchExportTables} from '../scan-batch-report.mjs';
+import {scanBatchReport,scanBatchReportTables,scanBatchExportTables} from '../scan-batch-report.mjs';
 import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
 const batch={id:'11111111-1111-4111-a111-111111111111',kind:'vehicle',name:'This scan run',created_at:'2026-10-28T12:00:00Z'};
 const data={aFormNo:'75',bookDate:'2026-10-19',location:'Sasti OC',door:'V1',caliberId:'CMPL1',employeeName:'Driver One',shiftName:'Shift I',shiftHours:8,openingKmr:0,closingKmr:40,totalRunningKmr:40,openingHmr:0,closingHmr:6,totalWorkingHmr:6,totalTrips:2,trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:2}]};
@@ -44,6 +44,7 @@ test('selected scan context keeps wrong, removed and unresolved cards out of Exc
  const pending=card('pending-correct',4,{status:'review',draft:expected,saved_data:null});
  const removed=card('removed',5,{status:'rejected',draft:expected,saved_data:null,review_note:'Removed from batch: wrong date, site or shift'});
  const report=scanBatchReport(scoped,[good,wrongDate,editedWrong,pending,removed]);assert.deepEqual(report.rows.map(r=>r.id),['matching','pending-correct']);
+ assert.equal(scanBatchReportTables(report).find(t=>t.name==='Cards').rows.length,1,'on-screen table exports also contain saved matching cards only');
  const exported=scanBatchExportTables(report).find(t=>t.name==='Cards');assert.equal(exported.rows.length,1);assert.equal(exported.rows[0][0],1);assert.doesNotMatch(JSON.stringify(scanBatchExportTables(report)),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
  const bytes=Buffer.from(await buildXlsxSheetsWorkbook(report.title,scanBatchExportTables(report)).arrayBuffer());assert.match(bytes.toString('utf8'),/BOOK-matching/);assert.doesNotMatch(bytes.toString('utf8'),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
 });
