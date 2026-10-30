@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import express from 'express';
+import {PGlite} from '@electric-sql/pglite';
+import {registerVlbBatches} from '../vlb-batches.mjs';
+import {vlbBatchName,vlbBatchSelection} from '../vlb-batch-format.mjs';
+
+test('batch format uses site, ordinal date, shift and padded sequence',()=>{
+ assert.equal(vlbBatchName({site:'Sasti OC',date:'2026-10-30',shift:'I'},1),'CMLL/SASTI OC/30TH -OCT-26/S1/B01');
+ for(const [day,suffix] of [[1,'ST'],[2,'ND'],[3,'RD'],[11,'TH'],[12,'TH'],[13,'TH'],[21,'ST'],[22,'ND'],[23,'RD'],[31,'ST']])assert.match(vlbBatchName({site:'Sasti OC',date:'2026-10-'+String(day).padStart(2,'0'),shift:'Shift B'},100),new RegExp('/'+day+suffix+' -OCT-26/S2/B100$'));
+ for(const patch of [{date:'2026-02-30'},{date:''},{site:''},{shift:'S4'}])assert.throws(()=>vlbBatchSelection({site:'Sasti OC',date:'2026-10-30',shift:'S1',...patch}));
+});
+
+test('batch APIs include every matching saved source, lock until close, retain snapshots and enforce authorization',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');
+ const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+ const pool={query,connect:async()=>({query,release(){}})};
+ const app=express();app.use(express.json());
+ const session=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization};req.logBookScope={sites:req.headers.authorization==='restricted'?['jayant ob']:['sasti ob']};next()};
+ const authorized=(req,res,next)=>req.session.login==='denied'?res.status(403).json({error:'Not allowed'}):next();
+ registerVlbBatches(app,{pool,protect:[session,authorized],ensureBooks:async()=>{}});
+ app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
+ const call=async(route='',method='GET',body,user='alice')=>{const response=await fetch(`http://127.0.0.1:${server.address().port}/api/vlb-batches${route}`,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
+ const add=async({site='Sasti OC',date='2026-10-30',shift='S1',kind='vehicle',deleted=false,scan=false}={})=>(await db.query('INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,created_by,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[randomUUID(),kind,site,date,JSON.stringify({location:site,bookDate:date,bookShiftCode:shift,door:'V07',scanCardId:scan?randomUUID():undefined,aFormNo:'CARD1'}),'another-user',deleted?new Date():null])).rows[0].id;
+ const selection={site:'Sasti OC',date:'2026-10-30',shift:'S1'},preview='/preview?'+new URLSearchParams(selection);
+ assert.equal((await call('', 'GET',undefined,'')).status,401);
+ assert.equal((await call('', 'GET',undefined,'denied')).status,403);
+ assert.equal((await call(preview,'GET',undefined,'restricted')).status,403);
+ const ids=[];for(let i=0;i<105;i++)ids.push(await add({site:i%2?'Sasti OB':'Sasti OC',scan:i%2===0}));
+ await add({kind:'equipment'});await add({site:'Jayant OC'});await add({date:'2026-10-29'});await add({deleted:true});const otherShift=await add({shift:'S2'});
+ const before=await call(preview);assert.equal(before.status,200);assert.equal(before.data.records.length,105);assert.equal(before.data.name,'CMLL/SASTI OC/30TH -OCT-26/S1/B01');
+ assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
+ const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,105);
+ assert.equal((await call(preview)).data.records.length,0);
+ assert.equal((await call('','POST',body)).data.id,created.data.id);
+ assert.equal((await call('','POST',{...body,shift:'S2'})).status,409);
+ assert.equal((await call('','POST',{...body,requestKey:randomUUID(),shift:'S2'})).status,409);
+ assert.equal((await call('/'+created.data.id,'GET',undefined,'bob')).status,404);
+ assert.equal((await call('/'+created.data.id+'/close','POST',{},'bob')).status,404);
+ assert.equal((await call('')).data.openBatch.id,created.data.id);
+ await db.query("UPDATE mis_log_books SET data=data||'{\"door\":\"CHANGED\"}'::jsonb WHERE id=$1",[ids[0]]);
+ assert.equal((await call('/'+created.data.id)).data.records[0].data.door,'V07');
+ const closed=await call('/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200);assert.ok(closed.data.closed_at);assert.equal(closed.data.entry_count,105);
+ assert.equal((await call('/'+created.data.id+'/close','POST',{})).data.closed_at,closed.data.closed_at);
+ assert.equal((await call('')).data.openBatch,null);
+ assert.equal((await call('','POST',{...selection,requestKey:randomUUID()})).status,400);
+ const newId=await add({scan:true});const second=await call('','POST',{...selection,requestKey:randomUUID()});assert.equal(second.status,201);assert.equal(second.data.name,'CMLL/SASTI OC/30TH -OCT-26/S1/B02');assert.deepEqual(second.data.records.map(r=>r.id),[newId]);
+ // Another user cannot include the same cards even after the first batch closes.
+ assert.equal((await call('','POST',{...selection,requestKey:randomUUID()},'bob')).status,400);
+ const shiftBatch=await call('','POST',{...selection,shift:'S2',requestKey:randomUUID()},'bob');assert.equal(shiftBatch.status,201);assert.deepEqual(shiftBatch.data.records.map(r=>r.id),[otherShift]);
+ assert.equal((await call('/'+second.data.id,'GET',undefined,'restricted')).status,404);
+ assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-02-31'}))).status,400);
+ assert.equal((await call('','POST',{...selection,requestKey:'bad'})).status,400);
+});

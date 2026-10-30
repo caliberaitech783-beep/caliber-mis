@@ -4,7 +4,7 @@ export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
  if(['Tickets','Telegram Integration'].includes(page))return true;
  if(MIS_ADMIN_PAGES.includes(page))return isMisAdministrator(session);
- page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
+ page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':['Saved VLB','Create VLB Batch'].includes(page)?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
  if(page==='Scan Backup'||page==='Deletion'){const selection=view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)];return selection.includes(page)||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));}
  return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
 }
@@ -37,6 +37,7 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/scan-backups'))return allowed('Scan Backup');
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
+ if(/^\/api\/vlb-batches(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
  if(route.startsWith('/api/log-books/equipment'))return allowed('Equipment Log Book');
  if(route.startsWith('/api/scan')||route.startsWith('/api/bulk-card')){const kind=req.misResourceKind||req.params?.kind||req.query?.kind||req.body?.kind;return kind==='vehicle'?allowed('Trip Card Bulk Scan'):kind==='equipment'?allowed('Job Card Bulk Scan'):allowed('Trip Card Bulk Scan')||allowed('Job Card Bulk Scan');}
  if(route==='/api/tickets/resolve')return req.method==='PATCH'&&isMisAdministrator(session);
