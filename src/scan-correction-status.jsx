@@ -1,6 +1,7 @@
 import React from 'react';
+import {scanReviewHelp} from './scan-review-layout.mjs';
 export default function ScanCorrectionStatus({errors=[],warnings=[],status='',dirty=false}){
- const issues=[...errors,...warnings];
+ const issues=[...errors,...warnings].map(scanReviewHelp);
  if(!status&&!issues.length)return null;
  const failed=status.startsWith('Not saved'),saved=status==='All scan corrections saved to MIS.';
  const message=saved?'Corrections saved.':status;

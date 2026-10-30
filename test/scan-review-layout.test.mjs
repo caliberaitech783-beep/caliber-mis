@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import {scanReviewFieldSection,scanTripPageSize,scanTripReviewPage,scanReviewTabForKey,scanReviewHelp} from '../src/scan-review-layout.mjs';
 
 test('routine field guidance is concise while specific validation messages remain intact',()=>{
- assert.equal(scanReviewHelp('Book date needs checking: enter the value from the scan.'),'Enter book date from scan.');
+ assert.equal(scanReviewHelp('Book date needs checking: enter the value from the scan.'),'Enter book date.');
  assert.equal(scanReviewHelp('Equipment Master is empty in this MIS database. Sync/import it before matching scans.'),'Equipment master is empty.');
  const conflict='Closing HMR must be greater than or equal to opening HMR.';
  assert.equal(scanReviewHelp(conflict),conflict);
+ assert.equal(scanReviewHelp('Enter the trip card number from the original scan.'),'Enter the trip card number.');
+ assert.equal(scanReviewHelp('Check the opening and closing readings against the original card.'),'Check the opening and closing readings.');
+ assert.equal(scanReviewHelp('Check the time against the scan.'),'Check the time.');
+ assert.equal(scanReviewHelp('Driver is missing or unreadable.'),'Enter driver.');
+ assert.equal(scanReviewHelp('Check the flagged extraction response issues against the original scan and confirm the corrections.'),'Check the highlighted fields and confirm corrections.');
 });
 
 test('section tabs support arrow keys and Home/End without treating typing as navigation',()=>{

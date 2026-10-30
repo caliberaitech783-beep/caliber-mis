@@ -15,10 +15,19 @@ export function scanReviewFieldSection(key){
 export function scanReviewHelp(message){
  const text=String(message||'');
  const missing=/^(.+) needs checking: enter the value from the scan\.$/.exec(text);
- if(missing)return 'Enter '+missing[1].toLowerCase()+' from scan.';
+ if(missing)return 'Enter '+missing[1].toLowerCase()+'.';
  const master=/^(Equipment|Employee|Shift|Work Contract) Master is empty in this MIS database\. Sync\/import it before matching scans\.$/i.exec(text);
  if(master)return master[1]+' master is empty.';
- return text;
+ const required=/^(.+) (?:is missing or unreadable|is required)\.$/.exec(text);
+ if(required)return 'Enter '+required[1].toLowerCase()+'.';
+ if(/^Check the flagged extraction (?:response )?issues /.test(text))return 'Check the highlighted fields and confirm corrections.';
+ if(text==='Extracted from handwriting: check this field against the original card.')return 'Check this value.';
+ if(text==='Handwritten reading: compare this value with the reading table and confirm or correct it.')return 'Check this reading.';
+ if(text.startsWith('Book Date could not be read.'))return 'Enter the card date.';
+ if(text.startsWith('Book date was not read from the scan;'))return 'Check the card date.';
+ if(text==='Printed machine-wise summary was not read. Compare the calculated totals with the paper summary.')return 'Check the equipment trip totals.';
+ if(text==='No trip rows extracted. Add all trip rows, or explicitly confirm the card has no trips.')return 'Add trip rows, or confirm no trips.';
+ return text.replace(/\s+(?:from|against) (?:the )?(?:original (?:trip )?card|original scan|scanned card|scan)\b/gi,'');
 }
 
 export function scanTripPageSize(height){
