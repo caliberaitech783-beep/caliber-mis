@@ -3,5 +3,5 @@
 .scan-backup-policy,.scan-backup-due{border:1px solid #9baab64d;border-radius:12px;padding:20px;margin:20px 0;background:var(--panel-bg,#ffffff0a)}
 .scan-backup-page button,.scan-backup-reminder button{padding:10px 16px;border:1px solid #72869b;border-radius:8px;background:#165e82;color:white;cursor:pointer}.scan-backup-page button:disabled{opacity:.5;cursor:default}
 .scan-backup-error{color:#c53030}.scan-backup-history{overflow:auto}.scan-backup-history table{width:100%;border-collapse:collapse}.scan-backup-history th,.scan-backup-history td{text-align:left;padding:12px;border-bottom:1px solid #9baab64d;vertical-align:top}
-.scan-backup-reminder{position:fixed;bottom:20px;right:20px;z-index:90;max-width:440px;display:flex;gap:16px;align-items:center;border-radius:12px;padding:14px 18px;background:#123f52;color:white;box-shadow:0 4px 24px #0003}
-@media(max-width:650px){.scan-backup-page{padding:14px;margin:8px}.scan-backup-reminder{left:12px;right:12px;bottom:12px}.scan-backup-page header{align-items:flex-start}}
+aside.scan-backup-reminder{position:fixed;inset:auto 20px 20px auto;width:auto;max-width:min(440px,calc(100vw - 40px));z-index:1200;display:flex;flex-direction:row;gap:16px;align-items:center;border-radius:12px;padding:14px 18px;background:#123f52;color:white;box-shadow:0 4px 24px #0003}
+@media(max-width:650px){.scan-backup-page{padding:14px;margin:8px}aside.scan-backup-reminder{inset:auto 12px 12px 12px;width:auto;max-width:none}.scan-backup-page header{align-items:flex-start}}
