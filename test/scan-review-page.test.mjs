@@ -49,8 +49,8 @@ test('review links survive refresh and browser Back restores card status',()=>{
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,0);
 });
 
-test('Needs attention and Blank / no data both open review; All okay stays on overview',()=>{
- for(const group of ['brown','red']){
+test('Needs attention, Blank / no data and Error open review; All okay stays on overview',()=>{
+ for(const group of ['brown','red','error']){
   const app=harness(),tree=app.render();
   nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+group)[0].props.onClick();
   assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');

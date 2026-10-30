@@ -9,17 +9,18 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 
 // Batch membership, rather than date, door or the visible card filter, defines
 // this report. Saved totals use the current log book values, never OCR drafts.
-export function scanBatchReport(batch,cards=[]){
+export function scanBatchReport(batch,cards=[],options=null){
  if(!batch?.id)return null;
  const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id&&(!batch.expected_context||(!['queued','reading','rejected'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,c,{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
   const saved=card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);
   const data=saved?card.saved_data:card.draft||{},raw=card.raw_fields||{};
+  const employee=(options?.employees||[]).find(row=>String(row.id)===String(data.employeeId||''));
   const totalTrips=vehicle?(number(data.totalTrips)??sum((data.trips||[]).map(t=>number(t.tripCount)))):null;
   return {id:card.id,ordinal:card.ordinal,saved,deleted,status:deleted?'Deleted log book':card.status==='posted'&&!saved?'Saved values unavailable':states[card.status]||card.status,
    bookNo:card.book_no||'',cardNo:(vehicle?data.aFormNo:data.jobCardNo)||'',bookDate:date(data.bookDate),location:data.location||'',door:data.door||data.doorText||raw.door||'',
-   employeeCode:data.caliberId||raw.employeeCode||'',employeeName:data.employeeName||raw.employeeName||'',shift:data.shiftName||data.cardShift||'',shiftHours:number(data.shiftHours),workOrder:data.workOrderContract||'',
+   employeeCode:data.caliberId||employee?.caliberId||employee?.employeeCode||raw.employeeCode||'',employeeName:data.employeeName||employee?.name||raw.employeeName||'',shift:data.shiftName||data.cardShift||'',shiftHours:number(data.shiftHours),workOrder:data.workOrderContract||'',
    openingKmr:number(data.openingKmr),closingKmr:number(data.closingKmr),kilometres:vehicle?(number(data.totalRunningKmr)??difference(data.openingKmr,data.closingKmr)):null,
    openingHmr:number(data.openingHmr),closingHmr:number(data.closingHmr),hours:number(data.totalWorkingHmr)??difference(data.openingHmr,data.closingHmr),trips:totalTrips,openingTrips:number(data.openingTrips),endingTrips:number(data.endingTrips),
    filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};

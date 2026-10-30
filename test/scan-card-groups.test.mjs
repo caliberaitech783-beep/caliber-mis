@@ -4,7 +4,7 @@ const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
  const rows=[card('okay'),card('manual',{draft:{...draft,employeeId:''}}),card('blank',{draft:{bookDateSource:'system-fallback',bookDate:'2026-10-24',shiftHours:8}}),card('failed',{status:'error'}),card('queued',{status:'queued',draft:{}}),card('reading',{status:'reading',draft:{}})];
- assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','red','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,1);assert.equal(s.red,2);assert.equal(s.pending,2);assert.equal(s.total,6);assert.equal(s.canSaveAll,false);
+ assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','error','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,1);assert.equal(s.red,1);assert.equal(s.error,1);assert.equal(s.pending,2);assert.equal(s.total,6);assert.equal(s.canSaveAll,false);
  assert.equal(cardReviewGroup(card('zero',{draft:{...draft,openingKmr:0}}),'vehicle'),'orange');
  assert.equal(cardReviewGroup(card('conflict',{checks:{errors:['Duplicate card.']}}),'vehicle'),'brown');
  assert.equal(cardReviewGroup(card('confirm',{checks:{errors:['Confirm or correct the highlighted meter readings.']}}),'vehicle'),'brown');
@@ -18,4 +18,8 @@ test('Save all unlocks only after every card is complete and explicitly human-ap
 });
 test('ELB does not require KMR or vehicle trips',()=>{
  const equipment={...draft,openingKmr:'',closingKmr:'',trips:[],scanMachineSummary:[],jobCardNo:'ELB-1'};assert.equal(cardReviewGroup(card('elb',{draft:equipment}),'equipment'),'orange');
+});
+test('report-only blanks do not remove an otherwise complete card from All okay',()=>{
+ const complete={...draft,bookNo:'',workOrderId:'',openingTrips:'',endingTrips:'',remark:''};
+ assert.equal(cardReviewGroup(card('optional-report-fields',{draft:complete}),'vehicle'),'orange');
 });

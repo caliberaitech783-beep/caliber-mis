@@ -81,6 +81,12 @@
 .scan-review-empty{padding:22px;background:var(--panel,#fff);border:1px solid #d9cfe5;border-radius:9px}
 @media(max-width:650px){.scan-workspace.scan-review-workspace{grid-template-columns:1fr}.scan-review-workspace>.scan-selected-card{grid-column:1}}
 
+.scan-batch-setting{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}.scan-batch-setting .scan-remove-batch{height:34px}
+.scan-page .scan-group-error{color:#9d2342;background:#ffe6ed;border-color:#c82f41}.scan-group-dot.error{background:#8f1735}
+.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1150px){.scan-settings>.scan-batch-setting{grid-column:1/-1}}
+@media(max-width:760px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 .scan-review-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .scan-review-page .scan-preview-viewport{max-height:80vh}
 @media(min-width:1250px){.scan-review-page .scan-selected-card{grid-template-columns:repeat(2,minmax(0,1fr))}.scan-review-page .scan-selected-card>.scan-source{grid-row:auto;position:sticky;top:88px}}

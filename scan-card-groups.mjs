@@ -3,7 +3,8 @@ import {manualScanIssues} from './src/scan-manual-fields.mjs';
 export const CARD_GROUPS=[
  {id:'orange',label:'All okay',description:'Values complete · saved automatically'},
  {id:'brown',label:'Needs attention',description:'Correct values or fill missing fields'},
- {id:'red',label:'Blank / no data',description:'No usable data, failed or rejected card'}
+ {id:'red',label:'Blank / no data',description:'No usable data or rejected card'},
+ {id:'error',label:'Error',description:'Extraction failed · retry or enter manually'}
 ];
 const present=value=>value!==null&&value!==undefined&&String(value).trim()!=='';
 export function hasCardData(card){
@@ -16,12 +17,13 @@ export function hasCardData(card){
 export function cardReviewGroup(card,kind,options=null){
  if(['queued','reading'].includes(card.status))return 'pending';
  if(card.status==='posted')return 'orange';
- if(['error','rejected'].includes(card.status)||!hasCardData(card))return 'red';
+ if(card.status==='error')return 'error';
+ if(card.status==='rejected'||!hasCardData(card))return 'red';
  if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options)).length||(card.checks?.errors||[]).length)return 'brown';
  return 'orange';
 }
 export function reviewGroupSummary(cards,kind,options=null){
- const counts={orange:0,brown:0,red:0,pending:0};
+ const counts={orange:0,brown:0,red:0,error:0,pending:0};
  for(const card of cards)counts[cardReviewGroup(card,kind,options)]++;
  const ready=cards.length>0&&counts.orange===cards.length;
  const approved=ready&&cards.every(c=>c.status==='posted'||(c.status==='approved'&&c.checked_by));

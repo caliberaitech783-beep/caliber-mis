@@ -3,9 +3,9 @@ import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
 import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
 import './scan-batch-report.css';
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
-export default function ScanBatchReport({batch,cards,token,ReportSection,contextBlocked=false}){
+export default function ScanBatchReport({batch,cards,token,ReportSection,contextBlocked=false,options=null}){
  const [downloading,setDownloading]=useState(''),[error,setError]=useState(''),[savedOnly,setSavedOnly]=useState(false),[search,setSearch]=useState('');
- const report=scanBatchReport(batch,cards);if(contextBlocked||!report?.counts.cards)return null;
+ const report=scanBatchReport(batch,cards,options);if(contextBlocked||!report?.counts.cards)return null;
  const tables=scanBatchReportTables(report);
  const cardTable=tables.find(table=>table.name==='Cards');
  const visibleCards=report.rows.filter(row=>(!savedOnly||row.saved)&&(!search.trim()||cardTable.columns.some(column=>display(column.value(row)).toLowerCase().includes(search.trim().toLowerCase()))));
