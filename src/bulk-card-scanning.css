@@ -220,4 +220,4 @@
 .scan-extraction-status{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0;padding:10px 14px;border:1px solid #d8cce7;border-radius:8px;background:#f5efff;color:#30243f;font-size:13px}
 .scan-extraction-status [role=timer]{font-variant-numeric:tabular-nums;font-size:17px;color:#522e90}
 .scan-review-compact .scan-extraction-status{margin:0;padding:5px 10px;font-size:12px}
-.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(6,minmax(0,1fr))}.scan-group-mismatch{background:#fff0e3!important;border-color:#be651d!important}.scan-group-dot.mismatch{background:#be651d}.scan-mismatch-panel{width:100%;max-height:none;margin:14px 0;box-shadow:none}@media(max-width:760px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(5,minmax(0,1fr))}.scan-mismatch-panel{width:100%;max-height:none;margin:14px 0;box-shadow:none}@media(max-width:760px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}

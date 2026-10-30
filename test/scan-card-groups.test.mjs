@@ -3,8 +3,8 @@ import {cardReviewGroup,reviewGroupSummary} from '../scan-card-groups.mjs';
 const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:50,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'V12',loadingTime:'01:03',unloadingTime:'01:12',tripCount:1}],scanMachineSummary:[{equipmentName:'V12',tripCount:1}]};
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
- const rows=[card('okay'),card('manual',{draft:{...draft,employeeId:''}}),card('blank',{draft:{bookDateSource:'system-fallback',bookDate:'2026-10-24',shiftHours:8}}),card('failed',{status:'error'}),card('queued',{status:'queued',draft:{}}),card('reading',{status:'reading',draft:{}})];
- assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','error','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,1);assert.equal(s.red,1);assert.equal(s.error,1);assert.equal(s.pending,2);assert.equal(s.total,6);assert.equal(s.canSaveAll,false);
+ const rows=[card('okay'),card('manual',{draft:{...draft,employeeId:''}}),card('blank',{draft:{bookDateSource:'system-fallback',bookDate:'2026-10-24',shiftHours:8}}),card('failed',{status:'error'}),card('mismatch',{context_mismatch:['Site: Other OC; expected Test site']}),card('queued',{status:'queued',draft:{}}),card('reading',{status:'reading',draft:{}})];
+ assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','error','error','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,1);assert.equal(s.red,1);assert.equal(s.error,2);assert.equal(s.pending,2);assert.equal(s.total,7);assert.equal(s.canSaveAll,false);
  assert.equal(cardReviewGroup(card('zero',{draft:{...draft,openingKmr:0}}),'vehicle'),'orange');
  assert.equal(cardReviewGroup(card('conflict',{checks:{errors:['Duplicate card.']}}),'vehicle'),'brown');
  assert.equal(cardReviewGroup(card('confirm',{checks:{errors:['Confirm or correct the highlighted meter readings.']}}),'vehicle'),'brown');
@@ -28,10 +28,10 @@ test('mixed 50-page batch separates five wrong-site cards without changing the o
  const context={bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'};
  const rows=Array.from({length:50},(_,i)=>{const d={...draft,...context,location:i<45?'Jayant OC':'Majri OC'};return card(String(i),{draft:d,raw_fields:{extractionDraft:d}})});
  const summary=reviewGroupSummary(rows,'vehicle',null,context);
- assert.equal(summary.total,50);assert.equal(summary.mismatch,5);
- assert.equal(rows.filter(c=>cardReviewGroup(c,'vehicle',null,context)!=='mismatch').length,45);
+ assert.equal(summary.total,50);assert.equal(summary.error,5);
+ assert.equal(rows.filter(c=>cardReviewGroup(c,'vehicle',null,context)!=='error').length,45);
  assert.equal(cardReviewGroup({...rows[49],status:'reading'},'vehicle',null,context),'pending');
  assert.equal(cardReviewGroup({...rows[49],status:'rejected'},'vehicle',null,context),'red');
  const changed={...rows[49],draft:{...rows[49].draft,location:'Jayant OC'}};
- assert.equal(cardReviewGroup(changed,'vehicle',null,context),'mismatch');
+ assert.equal(cardReviewGroup(changed,'vehicle',null,context),'error');
 });

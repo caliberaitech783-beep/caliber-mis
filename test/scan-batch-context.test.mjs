@@ -35,7 +35,7 @@ test('server blocks saving before batch check, checks exact removal revisions an
  const good=randomUUID(),bad=randomUUID(),image=Buffer.from('original-scan');
  for(const [id,ordinal,draft] of [[good,1,context],[bad,2,{...context,bookDate:'2026-10-29'}]])await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,batch,ordinal,'card '+ordinal,image,id,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);
  const url='/api/scan-batches/'+batch+'/validate-context';
- const visible=await (await fetch(root+'/api/scan-batches/'+batch)).json();assert.deepEqual(visible.cards.map(c=>c.id),[good]);assert.equal(visible.contextGate.mismatches[0].id,bad);
+ const visible=await (await fetch(root+'/api/scan-batches/'+batch)).json();assert.deepEqual(visible.cards.map(c=>c.id),[good,bad]);assert.equal(visible.contextGate.mismatches[0].id,bad);assert.match(visible.cards[1].context_mismatch.join(' '),/Date:/);
  const blockedReport=await fetch(root+'/api/scan-batches/'+batch+'/report');assert.equal(blockedReport.status,409);await blockedReport.body.cancel();
  assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409);
  assert.equal((await call(url,{action:'proceed'})).status,409);

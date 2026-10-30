@@ -48,7 +48,8 @@ const matchingPublicCard=(card,batch,session)=>{
  if(card.raw_fields?.connectorCaptureOnly&&String(session.login||'').startsWith('pc-scanner:'))return card;
  if(['queued','reading'].includes(card.status))return {...card,draft:{},raw_fields:{scanProgress:card.raw_fields?.scanProgress,captureTiming:card.raw_fields?.captureTiming}};
  if(['error','rejected'].includes(card.status))return card;
- return scanCardContextIssues(batch.expected_context,card).length?null:card;
+ const contextMismatch=scanCardContextIssues(batch.expected_context,card);
+ return contextMismatch.length?{...card,context_mismatch:contextMismatch}:card;
 };
 const MASTER_SQL="SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id";
 const MASTER_NAMES=['Equipment master','C-Dir Employee master','ERP Employee master','Employee master','Shift Master','Work Order master'];
