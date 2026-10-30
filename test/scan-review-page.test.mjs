@@ -81,3 +81,8 @@ test('scan overview uses the compact title-only banner',()=>{
  assert.equal(heading.type,'h1');
  assert.match(String(heading.props.children[1]),/Trip Cards · Scan & Review/);
 });
+
+test('the purple extraction strip stays on the overview and is omitted from card review',()=>{
+ assert.equal(nodes(harness().render(),node=>node.type===scope.ScanExtractionStatus).length,1);
+ assert.equal(nodes(harness('&scanView=review&scanGroup=brown').render(),node=>node.type===scope.ScanExtractionStatus).length,0);
+});

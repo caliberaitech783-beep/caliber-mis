@@ -220,6 +220,23 @@
 .scan-extraction-status{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0;padding:10px 14px;border:1px solid #d8cce7;border-radius:8px;background:#f5efff;color:#30243f;font-size:13px}
 .scan-extraction-status [role=timer]{font-variant-numeric:tabular-nums;font-size:17px;color:#522e90}
 .scan-review-compact .scan-extraction-status{margin:0;padding:5px 10px;font-size:12px}
+
+/* Compact toolbars on the full-form card review; keep scrolling entry fields. */
+.scan-review-page>.scan-hero{display:none}
+.scan-review-page .scan-selected-card>.scan-source{top:16px}
+.scan-review-page .scan-draft-heading{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content;align-items:center;column-gap:8px}
+.scan-review-page .scan-draft-heading>h2{grid-column:1;grid-row:1;white-space:nowrap;font-size:18px;margin:0}
+.scan-review-page .scan-draft-heading>.scan-review-heading-row{display:contents}
+.scan-review-page .scan-draft-heading>:not(h2):not(.scan-review-heading-row){grid-column:1/-1;min-width:0}
+.scan-review-page .scan-draft-heading>.scan-review-heading-row h2{display:block;grid-column:2;grid-row:1;min-width:0;margin:0;font-size:14px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scan-review-page .scan-draft-heading>.scan-review-heading-row>button{grid-column:3;grid-row:1;margin:0;white-space:nowrap;padding:5px 7px;font-size:14px;line-height:1.25}
+.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning,.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning :is(summary,p){font-size:24px;line-height:1.25}
+.scan-review-page .scan-source-toolbar{display:flex;align-items:center;flex-wrap:nowrap;gap:6px;overflow-x:auto;margin:0 0 4px;flex-shrink:0}
+.scan-review-page .scan-source-heading,.scan-review-page .scan-preview-tools{display:contents}
+.scan-review-page .scan-source-heading h2{flex:1 1 auto;min-width:0;margin:0;font-size:16px;white-space:nowrap}
+.scan-review-page .scan-source-toolbar :is(button,a){flex-shrink:0;white-space:nowrap}
+.scan-review-page .scan-source-toolbar button{min-width:28px;min-height:28px;padding:4px 6px}
+.scan-review-page .scan-source img{margin-top:0}
 .scan-status-overview>.scan-card-groups{grid-template-columns:repeat(5,minmax(0,1fr))}.scan-mismatch-panel{width:100%;max-height:none;margin:14px 0;box-shadow:none}@media(max-width:760px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .scan-field-fleet{background:#fff1d8!important;border-radius:6px;outline:2px solid #d88516;padding:5px}.scan-field-fleet input,.scan-field-fleet select{border-color:#bf6e00!important}.scan-fleet-review-banner{padding:10px 12px;margin:8px 0;background:#fff1d8;border:1px solid #e0a650;border-radius:8px;font-size:13px}.scan-fleet-review-banner button{margin:3px}.scan-review-compact>.scan-fleet-review-banner{flex-shrink:0;max-height:12vh;overflow:auto}.scan-equipment-dialog{width:min(570px,calc(100vw - 30px));max-height:85dvh;box-sizing:border-box;overflow:auto;padding:20px;border:1px solid #e3c89e;border-radius:12px;background:var(--panel,#fff);color:var(--text,#30243f);box-shadow:0 20px 70px #24163840}.scan-equipment-dialog::backdrop{background:#24163870}.scan-equipment-dialog h2{font-size:19px;margin:0 0 8px;color:#a7660c}.scan-equipment-dialog p,.scan-equipment-dialog li{font-size:13px;line-height:1.5}.scan-equipment-dialog ul{list-style:none;padding:0;max-height:20vh;overflow:auto}.scan-equipment-dialog li{padding:8px;background:#fff3df;border-radius:6px;margin:6px 0;color:#60401b}.scan-equipment-dialog li span,.scan-equipment-dialog li small{display:block}.scan-equipment-dialog section{border-top:1px solid #e6dce9;padding:10px 0}.scan-equipment-dialog h3{font-size:14px;margin:0}.scan-equipment-dialog button,.scan-equipment-dialog a{display:inline-block;font:13px system-ui;border:1px solid #d8cce7;border-radius:6px;padding:8px 10px;background:var(--panel,#fff);color:var(--scan-primary,#522e90);cursor:pointer;text-decoration:none}.scan-equipment-dialog a{background:var(--scan-primary,#522e90);color:#fff}.scan-equipment-dialog button:disabled{opacity:.5}.scan-equipment-dialog footer{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}

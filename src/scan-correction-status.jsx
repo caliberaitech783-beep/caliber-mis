@@ -5,5 +5,5 @@ export default function ScanCorrectionStatus({errors=[],warnings=[],status='',di
  const failed=status.startsWith('Not saved'),saved=status==='All scan corrections saved to MIS.';
  const message=saved?'Corrections saved.':status;
  const pending=issues.length?issues.length+' '+(issues.length===1?'item needs':'items need')+' checking.':'';
- return <div role="status" className={failed?'scan-error':dirty||issues.length?'scan-warning':'scan-success'}>{[message,pending].filter(Boolean).join(' ')}{issues.length>0&&<details><summary>View checks</summary>{issues.map((issue,index)=><p key={index}>{issue}</p>)}</details>}</div>;
+ return <div role="status" className={'scan-correction-status '+(failed?'scan-error':dirty||issues.length?'scan-warning':'scan-success')}>{[message,pending].filter(Boolean).join(' ')}{issues.length>0&&<details><summary>View checks</summary>{issues.map((issue,index)=><p key={index}>{issue}</p>)}</details>}</div>;
 }
