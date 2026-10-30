@@ -26,6 +26,7 @@ test('server blocks saving before batch check, checks exact removal revisions an
  const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,ocr:{recognize:async()=>({text:''}),close(){}}});await service.start();await service.stop();
  app.use((e,req,res,next)=>res.status(500).json({error:e.message}));const server=app.listen(0);t.after(()=>new Promise(r=>server.close(r)));const root='http://127.0.0.1:'+server.address().port;
  const call=async(path,body)=>{const r=await fetch(root+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()}};
+ assert.equal((await call('/api/scan-batches',{kind:'vehicle'})).status,400);
  assert.equal((await call('/api/scan-batches',{kind:'vehicle',expectedContext:{}})).status,400);
  const batch=(await call('/api/scan-batches',{kind:'vehicle',expectedContext:{...context,confirmed:true}})).data.id;
  const good=randomUUID(),bad=randomUUID(),image=Buffer.from('original-scan');
@@ -36,9 +37,11 @@ test('server blocks saving before batch check, checks exact removal revisions an
  await db.query("UPDATE mis_scan_cards SET status='reading' WHERE id=$1",[bad]);assert.equal((await call(url,{action:'discard',cards:[{id:bad,revision:1}]})).status,409);await db.query("UPDATE mis_scan_cards SET status='review' WHERE id=$1",[bad]);
  assert.equal((await call(url,{action:'discard',cards:[{id:bad,revision:99}]})).status,409);
  assert.equal((await call(url,{action:'discard',cards:[{id:good,revision:1}]})).status,409);
- const removed=await call(url,{action:'discard',cards:[{id:bad,revision:1}]});assert.equal(removed.status,200);assert.equal(removed.data.removed,1);
- const wrong=(await db.query('SELECT status,image,review_note FROM mis_scan_cards WHERE id=$1',[bad])).rows[0];assert.equal(wrong.status,'rejected');assert.deepEqual(Buffer.from(wrong.image),image);assert.match(wrong.review_note,/wrong date/);
+ const removed=await call(url,{action:'discard',cards:[{id:bad,revision:1}]});assert.equal(removed.status,409);assert.match(removed.data.error,/Card 2.*2026-10-29.*2026-10-30/);
+ const wrong=(await db.query('SELECT status,image,review_note FROM mis_scan_cards WHERE id=$1',[bad])).rows[0];assert.equal(wrong.status,'review');assert.deepEqual(Buffer.from(wrong.image),image);assert.equal(wrong.review_note,'');
  assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[good])).rows[0].status,'review');
+ await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[bad]);
+ await call(url,{action:'proceed'});
  let stored=(await db.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].expected_context;assert.equal(scanContextGate(stored,[{id:good,status:'review',draft:context}]).blocked,false);
  for(const [key,value] of [['bookDate','2026-10-29'],['location','Other site'],['cardShift','Night']]){await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify({...context,[key]:value})]);assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409,'wrong '+key+' cannot save after approval');}
  await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify(context)]);assert.equal((await call(url,{action:'proceed'})).status,200);

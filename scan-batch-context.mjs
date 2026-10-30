@@ -22,3 +22,12 @@ export function scanContextGate(context,cards=[]){
  const mismatches=active.filter(c=>!['queued','reading','posted'].includes(c.status)).map(c=>({id:c.id,revision:c.revision,ordinal:c.ordinal,filename:c.filename,issues:scanContextIssues(context,c.draft)})).filter(c=>c.issues.length);
  return {context,waiting,mismatches,blocked:Boolean(context.cancelled||!context.confirmed||waiting||mismatches.length)};
 }
+export function requireScanUploadContext(kind,value){
+ if(kind==='vehicle'||value!==undefined)return parseScanContext(value);
+ return null;
+}
+export function scanContextError(gate){
+ if(!gate)return 'Enter the card date, site and marked shift before scanning or uploading.';
+ if(gate.mismatches.length)return 'Upload blocked: cards must have the same date, site and marked shift. '+gate.mismatches.map(card=>'Card '+card.ordinal+' ('+(card.filename||card.id)+'): '+card.issues.join('; ')).join(' | ');
+ return gate.waiting?'Wait until every page has been read and its date and shift checked.':'Confirm the batch date, site and shift before proceeding.';
+}
