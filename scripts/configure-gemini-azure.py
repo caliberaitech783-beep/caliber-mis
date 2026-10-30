@@ -38,6 +38,9 @@ def configure():
             raise RuntimeError('Pulse-II Gemini settings update failed (HTTP %s).' % error.code) from None
 
     settings = call('POST', '/list')['properties']
+    if settings.get('GEMINI_API_KEY') == key and settings.get('MIS_GEMINI_API') == 'true':
+        print('Pulse-II Gemini configuration already verified; no settings update or extra restart needed.')
+        return
     settings['GEMINI_API_KEY'] = key
     settings['MIS_GEMINI_API'] = 'true'
     saved = call('PUT', '', {'properties': settings})['properties']

@@ -1,56 +1,66 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
 name: Build and deploy Node.js app to Azure Web App - caliber-mis-783
 
 on:
   push:
-    branches:
-      - 'main'
+    branches: [main]
   workflow_dispatch:
 
+# Finish an active release safely; GitHub replaces superseded pending runs.
+concurrency:
+  group: caliber-mis-783-release
+  cancel-in-progress: false
+
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
-
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      - name: Set up Node.js and npm download cache
+        uses: actions/setup-node@v4
         with:
           node-version: '22.x'
+          cache: npm
 
-      - name: npm install, build, and test
+      - name: Restore pinned handwriting model cache
+        uses: actions/cache@v4
+        with:
+          path: ocr-model-cache
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+
+      - name: Install exact locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify pinned handwriting model
+        run: npm run ocr:prepare
+
+      - name: Build complete UI
+        run: npm run build
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Verify built release identity
         run: |
-          npm install
-          npm run ocr:prepare
-          npm run build --if-present
-          npm run test --if-present
           EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
           printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: .
+      - name: Stage and validate production package
+        run: |
+          node scripts/stage-production-release.mjs "$RUNNER_TEMP/mis-release"
+          cd "$RUNNER_TEMP/mis-release"
+          EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
+          node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
+          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Packaged pinned OCR model loaded offline.')" 
+          test ! -d node_modules/@electric-sql/pglite
+          test ! -d node_modules/embedded-postgres
+          du -sh . node_modules ocr-model-cache
+          zip -q -r -1 "$RUNNER_TEMP/mis-release.zip" .
+          ls -lh "$RUNNER_TEMP/mis-release.zip"
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-
+# No artifact upload/download: build, validation and deployment share this runner.
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -69,7 +79,7 @@ jobs:
         with:
           app-name: 'caliber-mis-783'
           slot-name: 'Production'
-          package: .
+          package: ${{ runner.temp }}/mis-release.zip
 
       - name: Verify Pulse-II release health
         env:
