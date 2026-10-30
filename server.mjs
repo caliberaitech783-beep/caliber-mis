@@ -1237,7 +1237,7 @@ async function migrate(){
       for(const defaults of SHIFT_MASTER_DEFAULTS.filter(row=>row.site==='Majri OC')){
         const record=normalizeOperationalSiteFields(normalizeShiftRecord(defaults));
         const matches=shifts.filter(row=>shiftIdentity(normalizeOperationalSiteFields(row.record_data))===shiftIdentity(record));
-        for(const row of matches)await client.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2',[JSON.stringify({...row.record_data,startTime:record.startTime,endTime:record.endTime,...(row.record_data.start?{start:record.startTime}:{}),...(row.record_data.end?{end:record.endTime}:{})}),row.id]);
+        for(const row of matches)await client.query("UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name='Shift Master'",[JSON.stringify({...row.record_data,startTime:record.startTime,endTime:record.endTime,...(row.record_data.start?{start:record.startTime}:{}),...(row.record_data.end?{end:record.endTime}:{})}),row.id]);
         if(!matches.length)await client.query("INSERT INTO master_records(master_name,record_data) VALUES('Shift Master',$1::jsonb)",[JSON.stringify(record)]);
       }
       await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('majri_shift_timings_0400_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");

@@ -27,7 +27,7 @@ async function runStartup({users=[],initialized=true}={}){
       if(sql.startsWith('INSERT INTO master_records')){
         const target=sql.includes("SELECT 'Delayed Reason'")
           ?'Delayed Reason'
-          :sql.includes("VALUES ('Shift Master'")
+          :/VALUES\s*\(\s*'Shift Master'/.test(sql)
             ?'Shift Master'
             :values?.[0];
         assert.ok(['Repair type master','Breakdown Sub-Category','Delayed Reason','Shift Master'].includes(target),'startup must not insert a user account');
@@ -36,7 +36,8 @@ async function runStartup({users=[],initialized=true}={}){
       const delayedReasonTypeSeed=sql.startsWith("UPDATE master_records SET record_data=record_data||jsonb_build_object('repairTypes',$2::text)")&&sql.includes("WHERE master_name='Delayed Reason'");
       // The only permitted master delete trims the Delayed Reason master to the approved reasons.
       const delayedReasonCleanup=sql.startsWith("DELETE FROM master_records WHERE master_name='Delayed Reason'");
-      if(!delayedReasonTypeSeed&&!delayedReasonCleanup)assert.doesNotMatch(sql,/UPDATE master_records SET record_data|DELETE FROM (?:master_records|auth_sessions)/,'startup fixture must not rewrite accounts or credentials');
+      const shiftTimingUpdate=sql.startsWith('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2')&&sql.includes("AND master_name='Shift Master'");
+      if(!delayedReasonTypeSeed&&!delayedReasonCleanup&&!shiftTimingUpdate)assert.doesNotMatch(sql,/UPDATE master_records SET record_data|DELETE FROM (?:master_records|auth_sessions)/,'startup fixture must not rewrite accounts or credentials');
       return {rows:[],rowCount:0};
     },
     release(){released=true;},
