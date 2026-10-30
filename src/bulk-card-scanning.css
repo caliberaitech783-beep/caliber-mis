@@ -224,13 +224,20 @@
 /* Compact toolbars on the full-form card review; keep scrolling entry fields. */
 .scan-review-page>.scan-hero{display:none}
 .scan-review-page .scan-selected-card>.scan-source{top:16px}
-.scan-review-page .scan-draft-heading{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content;align-items:center;column-gap:8px}
+.scan-review-page .scan-draft-heading{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content;align-items:center;column-gap:8px;max-height:none;overflow:visible}
 .scan-review-page .scan-draft-heading>h2{grid-column:1;grid-row:1;white-space:nowrap;font-size:18px;margin:0}
 .scan-review-page .scan-draft-heading>.scan-review-heading-row{display:contents}
 .scan-review-page .scan-draft-heading>:not(h2):not(.scan-review-heading-row){grid-column:1/-1;min-width:0}
 .scan-review-page .scan-draft-heading>.scan-review-heading-row h2{display:block;grid-column:2;grid-row:1;min-width:0;margin:0;font-size:14px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scan-review-page .scan-draft-heading>.scan-review-heading-row>button{grid-column:3;grid-row:1;margin:0;white-space:nowrap;padding:5px 7px;font-size:14px;line-height:1.25}
 .scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning,.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning :is(summary,p){font-size:24px;line-height:1.25}
+.scan-review-page .scan-correction-status{height:auto;max-height:none;overflow:visible;overflow-wrap:anywhere}
+.scan-review-page .scan-correction-status.scan-warning{padding:10px 12px}
+.scan-review-page .scan-correction-status p{margin:10px 0}
+/* Let long checks grow with the entry instead of scrolling inside the yellow box. */
+.scan-review-compact .scan-draft-sheet{overflow:auto}
+.scan-review-compact .scan-draft-sheet fieldset{flex:0 0 auto;overflow:visible}
+.scan-review-compact .scan-draft-sheet .scan-entry-footer{position:sticky;bottom:0;background:var(--panel,#fff);z-index:1}
 .scan-review-page .scan-source-toolbar{display:flex;align-items:center;flex-wrap:nowrap;gap:6px;overflow-x:auto;margin:0 0 4px;flex-shrink:0}
 .scan-review-page .scan-source-heading,.scan-review-page .scan-preview-tools{display:contents}
 .scan-review-page .scan-source-heading h2{flex:1 1 auto;min-width:0;margin:0;font-size:16px;white-space:nowrap}
