@@ -42,6 +42,10 @@ export function createScanBlobStorage(config,{fetchImpl=fetch,env=process.env}={
    await read(key,hash);return {key,bytes:image.length,uploadedAt:new Date()};
   },
   read,
+  async remove(key){
+   const response=await request(key,{method:'DELETE',headers:{'x-ms-delete-snapshots':'include'}});
+   if(!response.ok&&response.status!==404)throw Error('Could not delete the rejected scan image. Retry fleet verification.');
+  },
   async hydrate(card){if(card?.image_blob_key)card.image=await read(card.image_blob_key,card.image_hash);return card;},
  };
 }
