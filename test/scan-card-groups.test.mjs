@@ -23,3 +23,15 @@ test('report-only blanks do not remove an otherwise complete card from All okay'
  const complete={...draft,bookNo:'',workOrderId:'',openingTrips:'',endingTrips:'',remark:''};
  assert.equal(cardReviewGroup(card('optional-report-fields',{draft:complete}),'vehicle'),'orange');
 });
+
+test('mixed 50-page batch separates five wrong-site cards without changing the other 45',()=>{
+ const context={bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'};
+ const rows=Array.from({length:50},(_,i)=>{const d={...draft,...context,location:i<45?'Jayant OC':'Majri OC'};return card(String(i),{draft:d,raw_fields:{extractionDraft:d}})});
+ const summary=reviewGroupSummary(rows,'vehicle',null,context);
+ assert.equal(summary.total,50);assert.equal(summary.mismatch,5);
+ assert.equal(rows.filter(c=>cardReviewGroup(c,'vehicle',null,context)!=='mismatch').length,45);
+ assert.equal(cardReviewGroup({...rows[49],status:'reading'},'vehicle',null,context),'pending');
+ assert.equal(cardReviewGroup({...rows[49],status:'rejected'},'vehicle',null,context),'red');
+ const changed={...rows[49],draft:{...rows[49].draft,location:'Jayant OC'}};
+ assert.equal(cardReviewGroup(changed,'vehicle',null,context),'mismatch');
+});

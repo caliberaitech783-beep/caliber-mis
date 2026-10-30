@@ -115,6 +115,8 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  async function enforceFleet(card,draft=card.draft,raw=card.raw_fields,actor){
   if(!readPulseFleet||card.status==='posted'||card.raw_fields?.fleetRejection)return null;
   const expected=(await pool.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
+  // Header mismatches belong to the user's mismatch queue, not fleet deletion.
+  if(expected&&scanCardContextIssues(expected,{...card,raw_fields:raw},draft).length)return null;
   draft={...draft,location:expected?.location||draft.location};
   const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;
   let rejection;try{const fleet=await readPulseFleet(actor);rejection=scanFleetAssignment(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');
