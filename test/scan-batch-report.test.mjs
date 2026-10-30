@@ -41,7 +41,7 @@ test('selected scan context keeps wrong, removed and unresolved cards out of Exc
  const good=card('matching',1,{draft:{...data,...expected},saved_data:{...data,...expected,scanCardId:'matching',scanBatchId:batch.id},raw_fields:{extractionDraft:expected}});
  const wrongDate=card('wrong-date',2,{draft:{...expected,bookDate:'2026-10-27'},saved_data:{...data,...expected,bookDate:'2026-10-27',scanCardId:'wrong-date',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,bookDate:'2026-10-27'}}});
  const editedWrong=card('edited-wrong',3,{draft:expected,saved_data:{...data,...expected,scanCardId:'edited-wrong',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,cardShift:'II'}}});
- const pending=card('pending-correct',4,{status:'review',draft:expected,saved_data:null});
+ const pending=card('pending-correct',4,{status:'review',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
  const removed=card('removed',5,{status:'rejected',draft:expected,saved_data:null,review_note:'Removed from batch: wrong date, site or shift'});
  const report=scanBatchReport(scoped,[good,wrongDate,editedWrong,pending,removed]);assert.deepEqual(report.rows.map(r=>r.id),['matching','pending-correct']);
  assert.equal(scanBatchReportTables(report).find(t=>t.name==='Cards').rows.length,1,'on-screen table exports also contain saved matching cards only');

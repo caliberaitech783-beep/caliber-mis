@@ -18,7 +18,7 @@ export function scanContextIssues(context,draft={}){
 // Compare the original extraction as well as the editable entry. Editing a
 // header must never turn a different physical card into a matching one.
 export function scanCardContextIssues(context,card,input=card.draft){
- const evidence=card.raw_fields,source=evidence?.extractionDraft;
+ const evidence=card.raw_fields,source=evidence?.extractionDraft||{};
  const original=source&&Array.isArray(evidence.locationReadings)&&!evidence.locationReadings.some(value=>String(value||'').trim())?{...source,location:''}:source;
  return [...new Set([...(original?scanContextIssues(context,original):[]),...scanContextIssues(context,input)])];
 }
