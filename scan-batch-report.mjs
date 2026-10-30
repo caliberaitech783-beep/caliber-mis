@@ -11,7 +11,7 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 // this report. Saved totals use the current log book values, never OCR drafts.
 export function scanBatchReport(batch,cards=[],options=null){
  if(!batch?.id)return null;
- const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id&&(!batch.expected_context||(!['queued','reading','rejected'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,c,{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
+ const vehicle=batch.kind==='vehicle',members=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'&&(!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,{...c,raw_fields:c.raw_fields||{}},{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
   const saved=card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);

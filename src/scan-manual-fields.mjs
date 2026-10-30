@@ -12,7 +12,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options);
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
  for(const key of draft.meterReviewFields||[])if(draft.meterReviewMessages?.[key])issues[key]=draft.meterReviewMessages[key];
- if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift'],['workOrderId','workOrders','Work Order']]){
+ if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift']]){
   if(draft[key]&&Array.isArray(options[collection])&&!options[collection].some(row=>String(row.id)===String(draft[key])))issues[key]=label+' is not available in the current master list.';
  }
  if(kind==='vehicle'){

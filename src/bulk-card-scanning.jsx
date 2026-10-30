@@ -14,7 +14,7 @@ import ScanBatchReport from './scan-batch-report.jsx';
 import {applySavedScanCard} from '../scan-batch-report.mjs';
 import {employeeAtLocation} from '../log-book-access.mjs';
 import {tripCardLocation,tripCardLocationChoices} from '../scan-site-match.mjs';
-import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
+import {canAutoSaveScanCard,blockingScanWarnings} from '../scan-auto-save.mjs';
 import {completeScanTripDetails} from '../scan-trip-completion.mjs';
 import {CARD_GROUPS,cardReviewGroup,reviewGroupSummary} from '../scan-card-groups.mjs';
 import {scanDraftSelection} from '../scan-draft-selection.mjs';
@@ -115,9 +115,9 @@ export default function BulkCardScanning({kind,session,ReportSection}){
  const visibleTrip=i=>!correctionView||['equipmentName','loadingTime','unloadingTime','tripCount'].some(k=>visibleField(`trips.${i}.${k}`));
  const fieldIssues=correctionView?manualIssues:allFieldIssues;
  const fieldClass=key=>{const state=scanFieldState(draft,key,fieldIssues);return state?`scan-field-invalid scan-field-${state}`:'';};
- const reviewWarnings=card?.checks?.warnings||[];
+ const reviewWarnings=card?.checks?.warnings||[],blockingReviewWarnings=blockingScanWarnings(reviewWarnings);
  const bdFallbackMissing=Boolean(pulseHoursError&&(draft.manualBreakdownHours===undefined||draft.manualBreakdownHours===null||draft.manualBreakdownHours===''));
- const reviewComplete=Boolean(!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!reviewWarnings.length);
+ const reviewComplete=Boolean(!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
   if(!options||dirty||busy||connectionError||savingRef.current||uploadingRef.current||contextGate?.blocked)return;
   const next=cards.find(c=>!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));

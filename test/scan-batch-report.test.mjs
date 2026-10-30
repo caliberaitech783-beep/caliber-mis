@@ -48,6 +48,11 @@ test('selected scan context keeps wrong, removed and unresolved cards out of Exc
  const exported=scanBatchExportTables(report).find(t=>t.name==='Cards');assert.equal(exported.rows.length,1);assert.equal(exported.rows[0][0],1);assert.doesNotMatch(JSON.stringify(scanBatchExportTables(report)),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
  const bytes=Buffer.from(await buildXlsxSheetsWorkbook(report.title,scanBatchExportTables(report)).arrayBuffer());assert.match(bytes.toString('utf8'),/BOOK-matching/);assert.doesNotMatch(bytes.toString('utf8'),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
 });
+test('a rejected matching card remains visible and is counted in a context-checked batch',()=>{
+ const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:{...expected,confirmed:true}};
+ const rejected=card('rejected-matching',1,{status:'rejected',draft:{...data,...expected},saved_data:null,raw_fields:{extractionDraft:expected}});
+ const report=scanBatchReport(scoped,[rejected]);assert.equal(report.counts.cards,1);assert.equal(report.counts.rejected,1);assert.equal(report.counts.pending,0);assert.equal(report.rows[0].status,'Rejected');
+});
 test('the on-screen report resolves the driver from the selected employee master',()=>{
  const pending=card('driver',1,{status:'review',saved_data:null,draft:{...data,employeeId:'42',employeeName:''},raw_fields:{employeeCode:'CMLL42'}});
  const report=scanBatchReport(batch,[pending],{employees:[{id:42,name:'DRIVER NAME',caliberId:'CMLL42'}]});

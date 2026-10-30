@@ -3,9 +3,10 @@ import express from 'express';import {PGlite} from '@electric-sql/pglite';import
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
 const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
-test('automatic saving requires complete, valid values and no remaining warnings',()=>{
+test('automatic saving requires complete valid values while Work Order remains optional',()=>{
  const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
  assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
+ assert.equal(canAutoSaveScanCard({...card,draft:{...valid,workOrderId:''},checks:{errors:[],warnings:['No Work Order selected. Confirm whether this card requires a contract.']}},'vehicle'),true);
  for(const c of [{...card,status:'posted'},{...card,status:'rejected'},{...card,checks:null},{...card,draft:{...valid,employeeId:''}},{...card,checks:{warnings:['Working hours exceed shift.']}},{...card,checks:{errors:['Duplicate scan.']}}])assert.equal(canAutoSaveScanCard(c,'vehicle'),false);
 });
 test('complete cards post independently without approval; retries, validation and concurrent edits are protected',async t=>{
