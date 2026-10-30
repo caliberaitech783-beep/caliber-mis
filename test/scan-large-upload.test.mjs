@@ -8,7 +8,7 @@ import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 test('scanner upload accepts multi-megabyte scans and rejects malformed base64 without crashing',async t=>{
  const batchId=randomUUID(),stored=[];
  const query=async(sql,args)=>{
-  if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle'}]};
+  if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle',expected_context:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}]};
   if(sql.includes('count(*) AS n'))return {rows:[{n:stored.length}]};
   if(sql.startsWith('INSERT INTO mis_scan_cards'))stored.push(args);
   return {rows:[]};

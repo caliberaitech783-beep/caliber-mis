@@ -9,7 +9,7 @@ test('local connector retains VLB/ELB images for online extraction without a loc
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assert.ok(r.ok);return r.json()};
  for(const kind of ['vehicle','equipment']){
-  const batch=await call('/api/scan-batches',{kind}),id=randomUUID();
+  const batch=await call('/api/scan-batches',{kind,expectedContext:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}),id=randomUUID();
   await call('/api/scan-batches/'+batch.id+'/cards',{uploadKey:id,filename:'Scanner.png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBEkAAAAASUVORK5CYII='});
   let row;for(let i=0;i<100;i++){row=(await db.query('SELECT status,raw_fields,image FROM mis_scan_cards WHERE id=$1',[id])).rows[0];if(row.status==='review')break;await new Promise(r=>setTimeout(r,20));}
   assert.equal(row.status,'review');assert.equal(row.raw_fields.connectorCaptureOnly,true);assert.ok(row.image.length>24);

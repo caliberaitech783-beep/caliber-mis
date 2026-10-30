@@ -89,7 +89,7 @@ test('new uploads store verified Blob references, legacy images still open, and 
  const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBEkAAAAASUVORK5CYII=','base64');
  const rows=new Map([[legacyId,{id:legacyId,batch_id:batchId,image,raw_fields:{},draft:{}}]]);let fail=false,puts=0;
  const query=async(sql,args=[])=>{
-  if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle'}]};
+  if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle',expected_context:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}]};
   if(sql.startsWith('SELECT * FROM mis_scan_cards'))return {rows:rows.has(args[0])?[rows.get(args[0])]:[]};
   if(sql.includes('count(*) AS n'))return {rows:[{n:rows.size}]};
   if(sql.startsWith('SELECT id FROM mis_scan_cards'))return {rows:rows.has(args[0])?[{id:args[0]}]:[]};
