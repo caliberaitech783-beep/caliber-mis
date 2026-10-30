@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {cardReviewGroup,reviewGroupSummary} from '../scan-card-groups.mjs';
+import {cardReviewGroup,reviewGroupSummary,cardIssueGroups,matchesCardGroup} from '../scan-card-groups.mjs';
 const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:50,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'V12',loadingTime:'01:03',unloadingTime:'01:12',tripCount:1}],scanMachineSummary:[{equipmentName:'V12',tripCount:1}]};
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
@@ -34,4 +34,14 @@ test('mixed 50-page batch separates five wrong-site cards without changing the o
  assert.equal(cardReviewGroup({...rows[49],status:'rejected'},'vehicle',null,context),'red');
  const changed={...rows[49],draft:{...rows[49].draft,location:'Jayant OC'}};
  assert.equal(cardReviewGroup(changed,'vehicle',null,context),'error');
+});
+
+test('issue filters count overlapping problems and clear corrected cards',()=>{
+ const bad=card('bad',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
+ const groups=['wrong-door','wrong-caliber','wrong-hmr','wrong-kmr','mws-ted'];
+ assert.deepEqual(cardIssueGroups(bad,'vehicle'),groups);
+ const counts=reviewGroupSummary([bad,card('good')],'vehicle');for(const group of groups){assert.equal(counts[group],1);assert.equal(matchesCardGroup(bad,group,'vehicle'),true);assert.equal(matchesCardGroup(card('fixed'),group,'vehicle'),false);}
+ assert.equal(counts.total,2);
+ for(const status of ['queued','reading','posted','rejected'])assert.deepEqual(cardIssueGroups({...bad,status},'vehicle'),[]);
+ assert.deepEqual(cardIssueGroups(card('empty',{draft:{},raw_fields:{}}),'vehicle'),[]);
 });
