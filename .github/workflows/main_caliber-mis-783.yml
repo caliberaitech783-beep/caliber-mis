@@ -50,6 +50,7 @@ jobs:
       - name: Verify complete deployment runtime
         run: |
           node --check server.mjs
+          node scripts/verify-server-start.mjs
           node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
           node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
 
