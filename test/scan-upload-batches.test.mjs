@@ -1,15 +1,17 @@
+import {createPdfUploadSession,transferScanGroups} from '../src/scan-upload-pipeline.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 test('each file selection creates its own batch instead of appending to the previously viewed batch',async()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  const start=src.indexOf('const upload=async event=>'),end=src.indexOf('\n const update=',start);assert.ok(start>=0&&end>start);
  const memberships=new Map([['earlier-batch',[]]]),urls=[],created=[],reviewVisits=[];const activeRef={current:'earlier-batch'},addonUploadRef={current:false};const noop=()=>{};
- const scope={awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,batch:{id:'earlier-batch'},activeRef,addonUploadRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},contextGate:null,
+ let loads=0;const scope={createPdfUploadSession,transferScanGroups,openUploadPdf:async()=>{throw Error('PDF loader is mocked by page fixtures');},awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,batch:{id:'earlier-batch'},activeRef,addonUploadRef,uploadingRef:{current:false},uploadController:{current:null},uploadStarted:{current:0},selectedRevision:{current:null},contextGate:null,
   window:{location:{href:'https://pulse-ll.cmll.in/?page=trip-scan&batch=earlier-batch&card=old-card'},history:{replaceState:(a,b,url)=>urls.push(url)}},
-  api:async(url,config)=>{if(url==='/api/scan-batches'){const id='new-batch-'+(created.length+1);created.push(id);memberships.set(id,[]);return {id};}const id=url.split('/')[3];memberships.get(id).push(JSON.parse(config.body));return {};},
-  uploadPageCount:async()=>2,pages:async function*(){yield {blob:{},name:'page 1'};yield {blob:{},name:'page 2'};},png:async()=>'image',load:async()=>{},list:async()=>{},
+  api:async(url,config)=>{if(url==='/api/scan-batches'){const id='new-batch-'+(created.length+1);created.push(id);memberships.set(id,[]);return {id};}const id=url.split('/')[3];assert.ok(config.body instanceof Blob);assert.equal(config.headers['Content-Type'],'image/png');memberships.get(id).push(JSON.parse(decodeURIComponent(config.headers['X-Scan-Metadata'])));return {};},
+  uploadPageCount:async()=>2,pages:async function*(){yield {blob:new Blob(['1'],{type:'image/png'}),name:'page 1',rendered:true};yield {blob:new Blob(['2'],{type:'image/png'}),name:'page 2',rendered:true};},png:async()=>{throw Error('Rendered PDF pages must not be re-encoded');},load:async()=>{loads++;},list:async()=>{},
   setExpectedContext:noop,setWorkflowTab:noop,setBusy:noop,setUploading:noop,setUploadElapsed:noop,setUploadedCount:noop,setUploadTotal:noop,setError:noop,setNotice:noop,setCards:noop,setSelected:noop,setBatch:noop,setGroupFilter:noop,setFilter:noop,setArchiveResult:noop,setResults:noop,setProgress:noop};
  const upload=new Function(...Object.keys(scope),src.slice(start,end)+';return upload;')(...Object.values(scope));
  for(let i=0;i<2;i++)await upload({target:{files:[{name:'Trip cards.pdf',size:1000}],value:'Trip cards.pdf'}});
+ assert.equal(loads,2,'one final batch refresh per upload instead of one for every page');
  assert.deepEqual(reviewVisits,[false,false],'uploads leave the review page for the status overview');
  assert.deepEqual(created,['new-batch-1','new-batch-2']);assert.equal(memberships.get('new-batch-1').length,2);assert.equal(memberships.get('new-batch-2').length,2);assert.equal(memberships.get('earlier-batch').length,0);
  assert.ok(urls[0].includes('batch=new-batch-1'));assert.ok(urls[1].includes('batch=new-batch-2'));assert.ok(urls.every(url=>!url.includes('card=')));

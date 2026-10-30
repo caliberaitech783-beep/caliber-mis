@@ -33,7 +33,7 @@ test('VLB scanned through ELB cannot silently discard its KMR and trips',()=>{as
 
 test('two distinct cards progress independently; duplicate captures share one request and queued work remains bounded',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-parallel-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const releases=[],releaseByImage=new Map();let calls=0;
- const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,maxPending:3,sleep:async()=>{},fetchImpl:async(_url,options)=>{calls++;const image=Buffer.from(JSON.parse(options.body).contents[0].parts.find(part=>part.inlineData).inlineData.data,'base64').toString();return new Promise(resolve=>{const release=()=>resolve(ok(JSON.stringify(response())));releases.push(release);releaseByImage.set(image,release)});}});
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,maxPending:3,concurrency:2,sleep:async()=>{},fetchImpl:async(_url,options)=>{calls++;const image=Buffer.from(JSON.parse(options.body).contents[0].parts.find(part=>part.inlineData).inlineData.data,'base64').toString();return new Promise(resolve=>{const release=()=>resolve(ok(JSON.stringify(response())));releases.push(release);releaseByImage.set(image,release)});}});
  const one=reader.recognize(Buffer.from('slow')),same=reader.recognize(Buffer.from('slow')),two=reader.recognize(Buffer.from('fast')),three=reader.recognize(Buffer.from('next'));
  await assert.rejects(reader.recognize(Buffer.from('overflow')),/queue full/);
  while(releases.length<2)await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
@@ -132,4 +132,16 @@ test('V/252 cannot acquire a duplicated separator digit before equipment lookup'
  assert.equal(result.handwrittenFields.door,'V/252');assert.equal(result.extraction.doorFormatting.original,'V/1252');
  const extracted=extractCard(result.text,'vehicle',[{id:252,master_name:'Equipment master',record_data:{door:'Volvo 252',category:'vehicle',site:'Sasti OC'}}],result);
  assert.equal(extracted.draft.doorText,'V/252');assert.equal(extracted.draft.assetId,'252');
+});
+
+test('three slow cards can extract together while the fourth remains queued',{timeout:5000},async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-three-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const releases=[];let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return new Promise(resolve=>releases.push(()=>resolve(ok(JSON.stringify(response())))));}});
+ const tasks=['one','two','three','four'].map(value=>reader.recognize(Buffer.from(value)));
+ while(releases.length<3)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,3);releases[0]();await Promise.race(tasks);
+ while(releases.length<4)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,4);for(const release of releases.slice(1))release();await Promise.all(tasks);
+ assert.throws(()=>createGeminiCardReader({concurrency:4}),/concurrency/);
 });
