@@ -3,22 +3,17 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {backupWindows,registerScanBackup,DAY} from '../scan-backup.mjs';
+import {manualBackupWindow,registerScanBackup,DAY} from '../scan-backup.mjs';
 import {scanBlobConfig,createScanBlobStorage,imageHash} from '../scan-blob-storage.mjs';
 import {copyBackup,verifiedFile,sha256} from '../src/scan-backup-files.mjs';
 import {misPageAllowed,misRequestAllowed} from '../mis-application-access.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 
-test('first backup at day 60, subsequent 30-day blocks, and backlog excludes the newest 30 days',()=>{
- const first='2026-01-01T00:00:00Z',at=days=>new Date(Date.parse(first)+days*DAY);
- assert.deepEqual(backupWindows(first,at(59)),[]);
- assert.equal(backupWindows(first,at(60)).length,1);
- const windows=backupWindows(first,at(120));assert.equal(windows.length,3);
- assert.equal(windows[0].from,new Date(first).toISOString());
- assert.equal(windows[0].to,at(30).toISOString());assert.equal(windows[2].to,at(90).toISOString());
- assert.deepEqual(backupWindows(null),[]);
+test('manual backup includes recent scans without a scheduled waiting period',()=>{
+ const first='2026-01-01T00:00:00Z',now=new Date(Date.parse(first)+DAY);
+ assert.deepEqual(manualBackupWindow(first,now),{from:new Date(first).toISOString(),to:new Date(now.getTime()+1).toISOString()});
+ assert.equal(manualBackupWindow(null),null);
 });
-
 test('private Hot uploads verify bytes and never overwrite or change tiers on retries',async()=>{
  const image=Buffer.from([255,216,255,1]),id=randomUUID(),batchId=randomUUID(),calls=[];let conflict=false;
  const store=createScanBlobStorage({account:'testscanstorage',container:'scanned-cards'},{env:{IDENTITY_ENDPOINT:'http://identity/token',IDENTITY_HEADER:'identity-header'},fetchImpl:async(url,options)=>{

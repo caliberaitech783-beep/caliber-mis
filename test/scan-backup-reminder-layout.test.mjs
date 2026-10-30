@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-
-const css=readFileSync(new URL('../src/scan-card-backup.css',import.meta.url),'utf8');
-
-test('scan backup reminder remains a bottom-right toast for every user',()=>{
-  assert.match(css,/aside\.scan-backup-reminder\{[^}]*position:fixed;[^}]*inset:auto 20px 20px auto;[^}]*width:auto;[^}]*z-index:1200;[^}]*flex-direction:row;/);
-  assert.match(css,/@media\(max-width:650px\)\{[\s\S]*?aside\.scan-backup-reminder\{[^}]*inset:auto 12px 12px 12px;[^}]*width:auto;/);
+import {manualBackupWindow} from '../scan-backup.mjs';
+test('scan backup has no global reminder, status error toast or Open Backup card',()=>{
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ const page=readFileSync(new URL('../src/scan-card-backup.jsx',import.meta.url),'utf8');
+ assert.doesNotMatch(main,/ScanBackupReminder/);
+ assert.doesNotMatch(page,/Open Backup|SSD backup status unavailable|setInterval|backup due/);
+ assert.match(page,/Manual SSD backup/);
+});
+test('manual backup is available immediately and includes the latest images',()=>{
+ const now=new Date('2026-10-30T06:00:00Z');
+ assert.deepEqual(manualBackupWindow(now,now),{from:now.toISOString(),to:'2026-10-30T06:00:00.001Z'});
+ assert.equal(manualBackupWindow(null,now),null);
 });

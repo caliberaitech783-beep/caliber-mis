@@ -2,7 +2,7 @@ import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
 import MisAdministration from './mis-admin.jsx';
 import MisTelegram from './mis-telegram.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
-import ScanCardBackup,{ScanBackupReminder} from './scan-card-backup.jsx';
+import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import OperationsReports from './operations-reports.jsx';
 import {operationReports} from './operations-report-model.mjs';
@@ -12067,7 +12067,7 @@ function App() {
     );
   return (
     <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarHidden?" sidebar-hidden":""}`}>
-      {canOpenAdminPage('Scan Backup')&&<ScanBackupReminder session={session} onOpen={()=>selectMenu('Scan Backup')}/>}
+
 
       <ErpSidebar
         hidden={sidebarHidden}

@@ -1,15 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {imageHash} from './scan-blob-storage.mjs';
 export const DAY=86400000;
-export function backupWindows(first,now=new Date()){
- if(!first)return [];
- const start=new Date(first).getTime();if(!Number.isFinite(start))throw Error('Invalid backup start.');
- const windows=[];
- for(let index=0;start+(index+2)*30*DAY<=new Date(now).getTime();index++){
-  const from=new Date(start+index*30*DAY).toISOString(),to=new Date(start+(index+1)*30*DAY).toISOString();
-  windows.push({from,to,dueAt:new Date(start+(index+2)*30*DAY).toISOString()});
- }
- return windows;
+export function manualBackupWindow(first,now=new Date()){
+ if(!first)return null;
+ const from=new Date(first).toISOString(),to=new Date(new Date(now).getTime()+1).toISOString();
+ return from<to?{from,to}:null;
 }
 export const SCAN_BACKUP_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_scan_backups(id UUID PRIMARY KEY,window_start TIMESTAMPTZ NOT NULL,window_end TIMESTAMPTZ NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_by TEXT NOT NULL,destination TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),completed_at TIMESTAMPTZ,UNIQUE(window_start,window_end));
@@ -26,15 +21,15 @@ export function registerScanBackup(app,{pool,requireSession,requireAdministrator
  async function status(){
   const first=(await pool.query('SELECT min(blob_uploaded_at) AS first FROM mis_scan_cards WHERE image_blob_key IS NOT NULL')).rows[0]?.first;
   const jobs=(await pool.query('SELECT b.*,count(i.card_id)::int AS cards,count(i.verified_at)::int AS verified,COALESCE(sum(i.image_bytes),0)::text AS bytes FROM mis_scan_backups b LEFT JOIN mis_scan_backup_items i ON i.backup_id=b.id GROUP BY b.id ORDER BY b.window_start')).rows;
-  const windows=backupWindows(first,now());
-  const due=windows.filter(window=>!jobs.some(job=>new Date(job.window_start).toISOString()===window.from&&job.status==='complete'));
-  return {enabled:Boolean(imageStorage),hotDays:60,cycleDays:30,firstScanAt:first||null,nextDueAt:first?new Date(new Date(first).getTime()+(jobs.filter(job=>job.status==='complete').length+2)*30*DAY).toISOString():null,due,jobs};
+  const incomplete=jobs.find(job=>job.status!=='complete');
+  const available=incomplete?{from:new Date(incomplete.window_start).toISOString(),to:new Date(incomplete.window_end).toISOString()}:manualBackupWindow(first,now());
+  return {enabled:Boolean(imageStorage),mode:'manual',firstScanAt:first||null,nextDueAt:null,due:[],available,jobs};
  }
  async function jobFor(id){if(!validId(id))fail('Invalid backup reference.');const job=(await pool.query('SELECT * FROM mis_scan_backups WHERE id=$1',[id])).rows[0];if(!job)fail('Backup not found.',404);return job;}
  app.get('/api/scan-backups',...protect,wrap(async(req,res)=>res.set('Cache-Control','no-store').json(await status())));
  app.post('/api/scan-backups',...protect,wrap(async(req,res)=>{
   if(!imageStorage)fail('Hot Blob storage is not enabled.',503);
-  const state=await status(),window=state.due[0];if(!window)fail('No 30-day backup block is due yet.',409);
+  const state=await status(),window=state.available;if(!window)fail('No scan images are available to back up.',409);
   const c=await pool.connect();try{
    await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224160)');
    let job=(await c.query('SELECT * FROM mis_scan_backups WHERE window_start=$1 AND window_end=$2 FOR UPDATE',[window.from,window.to])).rows[0];

@@ -8,11 +8,6 @@ async function request(session,url,body){
  const response=await fetch(url,{method:body?'POST':'GET',headers:{...headers(session),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const result=await response.json();if(!response.ok)throw Error(result.error||'Backup request failed.');return result;
 }
-export function ScanBackupReminder({session,onOpen}){
- const [due,setDue]=useState(0),[error,setError]=useState('');
- useEffect(()=>{let active=true;const check=()=>request(session,'/api/scan-backups').then(data=>{if(active){setDue(data.due?.length||0);setError('')}}).catch(error=>{if(active)setError(error.message)});check();const timer=setInterval(check,3600000);window.addEventListener('focus',check);return()=>{active=false;clearInterval(timer);window.removeEventListener('focus',check)}},[session.token]);
- return error?<aside className="scan-backup-reminder" role="alert"><span>SSD backup status unavailable: {error}</span><button onClick={onOpen}>Open Backup</button></aside>:due?<aside className="scan-backup-reminder" role="status"><span>SSD backup due · {due} block{due===1?'':'s'} of 30 days</span><button onClick={onOpen}>Open Backup</button></aside>:null;
-}
 export default function ScanCardBackup({session}){
  const [state,setState]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[progress,setProgress]=useState(null),[result,setResult]=useState(null);
  const load=useCallback(async()=>{try{setState(await request(session,'/api/scan-backups'));setError('')}catch(e){setError(e.message)}},[session.token]);
@@ -29,13 +24,13 @@ export default function ScanCardBackup({session}){
    setResult(copied);await load();
   }catch(e){if(e.name!=='AbortError')setError(e.message)}finally{setBusy(false)}
  }
- const due=state?.due?.[0];
- return <section className="scan-backup-page"><header><div><h1>Scanned Card Backup</h1><p>Copy a 30-day block to your SSD and verify every image.</p></div><button disabled={busy} onClick={load}>Refresh</button></header>
-  <div className="scan-backup-policy"><strong>Hot cloud storage + local SSD backup</strong><p>New scans remain in Hot storage. The first backup is due 60 days after the first new scan; subsequent blocks become due every 30 days. Existing cards and saved logbooks stay unchanged.</p><p>Backups copy images, saved values and review details. Cloud copies are retained.</p></div>
+ const available=state?.available;
+ return <section className="scan-backup-page"><header><div><h1>Scanned Card Backup</h1><p>Start a manual backup to your SSD and verify every image.</p></div><button disabled={busy} onClick={load}>Refresh</button></header>
+  <div className="scan-backup-policy"><strong>Hot cloud storage + local SSD backup</strong><p>Backups run only when you start them here. All currently stored scan images are included, with no scheduled cycle or waiting period.</p><p>Backups copy images, saved values and review details. Cloud copies are retained.</p></div>
   {error&&<p role="alert" className="scan-backup-error">{error}</p>}
-  {!state?<p>Loading backup status…</p>:!state.enabled?<p>Hot Blob storage is awaiting activation. No existing cards will be migrated.</p>:<div className="scan-backup-due"><h2>{due?'SSD backup due':'No backup due'}</h2><p>Next scheduled block: {date(state.nextDueAt)}. Reminders run while this app is open; a backup starts only after you choose an SSD folder.</p>
-   {due?<><p>Oldest eligible block: <strong>{date(due.from)} to {date(new Date(new Date(due.to).getTime()-1))}</strong></p><p>{state.due.length} block{state.due.length===1?'':'s'} waiting. Choose your SSD folder, keep the drive connected and this page open. Interrupted backups can be retried; matching files are verified and reused.</p></>:<p>{state.firstScanAt?'First scan: '+date(state.firstScanAt)+'. Check back for the next 30-day block.':'The cycle starts with the first new scan stored in Hot Blob Storage.'}</p>}
-   <button disabled={busy||!due} onClick={start}>{busy?'Backing up…':'Choose SSD folder and back up'}</button>
+  {!state?<p>Loading backup status…</p>:!state.enabled?<p>Hot Blob storage is awaiting activation. No existing cards will be migrated.</p>:<div className="scan-backup-due"><h2>Manual SSD backup</h2>
+   {available?<p>Ready to back up scans from <strong>{date(available.from)} to {date(new Date(new Date(available.to).getTime()-1))}</strong>. Choose your SSD folder and keep this page open. Incomplete backups can be resumed.</p>:<p>No scan images are available to back up.</p>}
+   <button disabled={busy||!available} onClick={start}>{busy?'Backing up…':'Choose SSD folder and back up'}</button>
   </div>}
   {busy&&progress&&<p role="status">Verified {progress.count.toLocaleString()} cards · {size(progress.bytes)}. Keep this page open.</p>}
   {result&&<p role="status">Backup verified: {result.count.toLocaleString()} cards · {size(result.bytes)} · {result.folder}</p>}
