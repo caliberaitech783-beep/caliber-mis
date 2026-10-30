@@ -6,6 +6,8 @@ const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',assetId:'
 test('automatic saving requires complete valid values while Work Order remains optional',()=>{
  const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
  assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
+ assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetBlock:{message:'Verify the machine first.'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetRejection:{message:'Original needs recovery.'}}},'vehicle'),false);
  assert.equal(canAutoSaveScanCard({...card,draft:{...valid,workOrderId:''},checks:{errors:[],warnings:['No Work Order selected. Confirm whether this card requires a contract.']}},'vehicle'),true);
  for(const c of [{...card,status:'posted'},{...card,status:'rejected'},{...card,checks:null},{...card,draft:{...valid,employeeId:''}},{...card,checks:{warnings:['Working hours exceed shift.']}},{...card,checks:{errors:['Duplicate scan.']}}])assert.equal(canAutoSaveScanCard(c,'vehicle'),false);
 });
@@ -45,3 +47,4 @@ test('complete cards post independently without approval; retries, validation an
  pulseAvailable=true;
  const equipmentBatch=randomUUID(),equipmentId=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[equipmentBatch,'equipment','Equipment','test-admin']);await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'job.png',$3,$4,$5,'review')",[equipmentId,equipmentBatch,Buffer.from('job image'),randomUUID(),JSON.stringify({...valid,doorText:'E1',assetId:'4',trips:[],scanMachineSummary:[]})]);assert.equal((await call(equipmentId)).status,200);
 });
+

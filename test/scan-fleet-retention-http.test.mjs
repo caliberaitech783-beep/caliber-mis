@@ -1,0 +1,30 @@
+import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';
+import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
+import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+
+test('blocked HTTP saves retain viewable images and correction data; rechecking a valid fleet clears the block',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
+ const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+ const pool={query,connect:async()=>({query,release(){}})};
+ const app=express();app.use(express.json());const session=(req,res,next)=>{req.session={login:'owner'};next()};
+ const fleet=[{door:'V1',currentLocation:'Sasti OC'},{door:'D19',currentLocation:'Sasti OC'}];let removed=0;
+ const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:(req,res,next)=>next(),ocr:{close(){}},readPulseFleet:async()=>fleet,imageStorage:{hydrate:async card=>card,remove:async()=>{removed++;throw Error('Fleet validation must never delete an image')}}});
+ await service.start();t.after(()=>service.stop());app.use((error,req,res,next)=>res.status(error.status||500).json({error:error.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
+ const base='http://127.0.0.1:'+server.address().port,cardId=randomUUID(),batchId=randomUUID();
+ const draft={doorText:'V99',bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}],remark:'Keep these corrections'};
+ for(const row of [[1,'Equipment master',{category:'Vehicle',door:'V99',currentLocation:'Sasti OC'}],[2,'Employee master',{name:'Driver',caliberId:'CMPL1'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}]])await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[row[0],row[1],JSON.stringify(row[2])]);
+ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBEkAAAAASUVORK5CYII=','base64');
+ await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','Retain test','owner')",[batchId]);
+ await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,ocr_text,raw_fields,draft,status) VALUES($1,$2,1,'original.png',$3,'unique-image-hash','OCR text',$4,$5,'review')",[cardId,batchId,image,JSON.stringify({originalExtraction:'Keep me'}),JSON.stringify(draft)]);
+ const post=revision=>fetch(base+'/api/scan-cards/'+cardId+'/auto-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision})});
+ assert.equal((await post(1)).status,409);
+ let saved=(await db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[cardId])).rows[0];assert.equal(saved.status,'review');assert.deepEqual(saved.draft,draft);assert.equal(saved.ocr_text,'OCR text');assert.equal(saved.raw_fields.originalExtraction,'Keep me');assert.ok(saved.raw_fields.fleetBlock||saved.raw_fields.fleetReview?.issues?.length);assert.deepEqual(Buffer.from(saved.image),image);assert.equal(removed,0);
+ const preview=await fetch(base+'/api/scan-cards/'+cardId+'/image');assert.equal(preview.status,200);assert.deepEqual(Buffer.from(await preview.arrayBuffer()),image);
+ const batch=await (await fetch(base+'/api/scan-batches/'+batchId)).json();assert.equal(batch.cards.length,1);assert.ok(batch.cards[0].checks.errors.some(message=>/fleet|equipment|kept for review/i.test(message)));
+ fleet.push({door:'V99',currentLocation:'Sasti OC'});
+ await db.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||$2::jsonb WHERE id=$1",[cardId,JSON.stringify({fleetRestoration:{backupId:'verified-backup'},fleetBlock:{message:'Restored card needs manual review'}})]);
+ assert.equal((await post(saved.revision)).status,409,'a restored review hold must not be cleared by automatic saving');
+ const corrected=await fetch(base+'/api/scan-cards/'+cardId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:saved.revision,draft,action:'save'})});assert.equal(corrected.status,200,await corrected.text());
+ saved=(await db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[cardId])).rows[0];assert.equal(saved.raw_fields.fleetBlock,undefined);assert.equal(saved.status,'review');assert.deepEqual(saved.draft,draft);assert.deepEqual(Buffer.from(saved.image),image);assert.equal(saved.logbook_id,null);assert.equal((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n,0);assert.equal(removed,0);
+});
