@@ -61,6 +61,14 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
  slots[2]={records:[],name:batch.name};assert.equal(button(render(),'Create Batch').props.disabled,false,'new batch can start empty');
  slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.ok(button(render(),'Open existing batch'));
+ slots[3]=[{...batch,created_by:'alice'},{...batch,id:'other',name:'Other open batch',created_by:'bob'},{...batch,id:'closed',name:'Locked batch',created_by:'alice',closed_at:'2026-10-30T10:00:00Z'}];slots[14]={login:'alice',mis:true};slots[4]={...batch,created_by:'alice'};
+ tree=render();let html=renderToStaticMarkup(tree);assert.ok(html.indexOf('vlb-batch-setup')<html.indexOf('Open batch:'));assert.ok(html.indexOf('vlb-batch-tabs')<html.indexOf('All matching saved entries')||html.includes('CLOSED'));
+ const tab=label=>nodes(tree,n=>n.props.role==='tab'&&n.props.children===label)[0];assert.equal(tab('Open').props['aria-selected'],true);assert.doesNotMatch(html,/Locked batch/);
+ tab('Close').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Close')[0].props['aria-selected'],true);
+ const rows=nodes(tree,n=>n.type==='tr');const ownerRow=rows.find(n=>renderToStaticMarkup(n).includes('CMLL/SASTI'));const otherRow=rows.find(n=>renderToStaticMarkup(n).includes('Other open batch'));assert.equal(button(ownerRow,'Save &amp; lock batch').props.disabled,false);assert.equal(button(otherRow,'Save &amp; lock batch').props.disabled,true);
+ await button(ownerRow,'Save &amp; lock batch').props.onClick();assert.ok(calls.at(-1).url.endsWith('/batch1/close'));assert.equal(calls.at(-1).request.method,'POST');
+ tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));const approval=button(tree,'Request PM approval');assert.ok(approval);await approval.props.onClick();assert.equal(slots[15],true,'locked edit opens the existing approval dialog');assert.equal(calls.at(-1).request.method,'GET','editing a locked batch does not bypass approval');
+
 });
 
 test('approval popup requests a reason, shows pending state, and consumes only an approved grant',async()=>{
