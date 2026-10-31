@@ -11,6 +11,12 @@ import {MODEL,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hy
 
 export {MODEL};
 export const geminiEnabled=env=>env.MIS_GEMINI_API==='true'||(env.MIS_LOCAL_SCANNER_DATABASE==='true'&&env.MIS_GEMINI_HYBRID==='true');
+export function geminiHttpError(status){
+ if(status===402)return 'Gemini extraction failed (HTTP 402). Billing is not active for the Google AI project used by this server. Ask an administrator to enable billing or replace MIS_GEMINI_API_KEY with a key from a billed project, then click Retry OCR. The original scan is retained; no alternate provider was used.';
+ if(status===429)return 'Gemini extraction failed (HTTP 429). The Google AI project quota is exhausted or temporarily rate-limited. Wait for quota to reset or ask an administrator to increase it, then click Retry OCR. The original scan is retained; no alternate provider was used.';
+ if([401,403].includes(status))return `Gemini extraction failed (HTTP ${status}). The server API key is invalid or does not have access to this Gemini model. Ask an administrator to verify MIS_GEMINI_API_KEY, then click Retry OCR. The original scan is retained; no alternate provider was used.`;
+ return `Gemini extraction failed (HTTP ${status}). The Gemini service rejected the request. Click Retry OCR after the service is available. The original scan is retained; no alternate provider was used.`;
+}
 export async function configuredGeminiKey(env=process.env){
  if(env.GEMINI_API_KEY?.trim())return env.GEMINI_API_KEY.trim();
  if(env.MIS_LOCAL_SCANNER_DATABASE==='true')return localGeminiKey();
@@ -61,7 +67,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     await startRequest();const started=Date.now();let res;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
     catch{if(attempt<1){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:2000});await sleep(2000);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
-    if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<1){const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});await res.body?.cancel?.();await sleep(delayMs);continue;}await res.body?.cancel?.();throw Error(`Gemini extraction failed (HTTP ${res.status}). Check API quota/billing for 429, or key/access for 401/403. No alternate provider was used.`);}
+    if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<1){const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});await res.body?.cancel?.();await sleep(delayMs);continue;}await res.body?.cancel?.();throw Error(geminiHttpError(res.status));}
     let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}
     record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:attempt+1,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');

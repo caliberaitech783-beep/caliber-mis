@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createGeminiCardReader,parseCardResponse,cardPrompt,MODEL} from '../gemini-card-reader.mjs';
+import {createGeminiCardReader,parseCardResponse,cardPrompt,geminiHttpError,MODEL} from '../gemini-card-reader.mjs';
 import {aFields} from '../gemini-hybrid.mjs';
 import {extractCard} from '../scan-extraction.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
@@ -27,6 +27,14 @@ test('rate-limited requests retry at most twice; bounded queue rejects excess sc
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-single-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
  const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',maxPending:1,minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return {ok:false,status:429,headers:{get:()=> '1'}}}});
  const first=reader.recognize(Buffer.from('one'));await assert.rejects(reader.recognize(Buffer.from('two')),/queue full/);await assert.rejects(first,/HTTP 429/);assert.equal(calls,2);
+});
+
+test('HTTP 402 identifies the billing fix and is not retried',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-billing-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
+ const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return {ok:false,status:402,headers:{get:()=>null},body:{cancel:async()=>{}}}}});
+ await assert.rejects(reader.recognize(Buffer.from('billing-required')),error=>/HTTP 402/.test(error.message)&&/enable billing/.test(error.message)&&/MIS_GEMINI_API_KEY/.test(error.message)&&/original scan is retained/.test(error.message));
+ assert.equal(calls,1);
+ assert.match(geminiHttpError(403),/invalid or does not have access/);
 });
 
 test('VLB scanned through ELB cannot silently discard its KMR and trips',()=>{assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'VLB',fields:null,trips:{p:false,r:[]}}),'equipment'),/VLB card scanned on the ELB page/);assert.throws(()=>parseCardResponse(JSON.stringify({documentType:'unknown'}),'vehicle'),/type could not be confirmed/);});
