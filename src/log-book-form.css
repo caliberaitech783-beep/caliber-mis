@@ -117,3 +117,6 @@
 .app.erp-shell:has(.logbook-vehicle) .top>.crumb{font-size:16px;font-weight:800;color:var(--ink)}
 .app.erp-shell:has(.logbook-vehicle) .top>.crumb b{font-size:17px;font-weight:800}
 .logbook-vehicle .logbook-header-actions button{font-size:13px;font-weight:800;min-height:36px;padding:7px 10px}
+.logbook-vehicle .logbook-header-actions{flex-wrap:nowrap;overflow-x:auto}
+.logbook-vehicle-trips .logbook-table th,
+.logbook-vehicle .logbook-breakdown-details .logbook-table th{font-size:13px;font-weight:800}

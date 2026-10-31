@@ -105,7 +105,7 @@ test('VLB and ELB focus the first editable field once after masters load without
 test('ELB shares VLB keyboard flow and controls while retaining equipment fields',()=>withFrames(flush=>{
  const app=harness(),tree=app.render('equipment');
  const fields=all(tree,node=>node.props.label&&node.props.children);
- const labels=['Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','Job Card no.','Opening reading (HMR)','Closing reading (HMR)','Remark'];
+ const labels=['Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','Job Card no.','Opening HMR','Closing HMR','Remark'];
  const ordered=fields.filter(node=>labels.includes(node.props.label));
  assert.deepEqual(ordered.map(node=>node.props.label),labels);
  assert.equal(fields.find(node=>node.props.label==='Location').props.children.props.readOnly,true);
@@ -128,7 +128,7 @@ test('rendered VLB header follows the requested sequence and driver is explicitl
   const fields=all(tree,node=>node.props.label&&node.props.children);
   assert.deepEqual(fields.slice(0,19).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
     'Location','Book date','Project name','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
-    'Opening reading (KMR)','Closing reading (KMR)','Opening reading (HMR)','Closing reading (HMR)','R engine opening (HMR)','R engine closing (HMR)','Remark',
+    'Opening KMR','Closing KMR','Opening HMR','Closing HMR','R engine opening (HMR)','R engine closing (HMR)','Remark',
   ]);
   assert.equal(fields.find(node=>node.props.label==='Driver name').props.skipEnter,true);
   for(const label of ['Shift hour','Shift']) {
