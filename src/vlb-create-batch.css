@@ -1,2 +1,26 @@
 .vlb-batch-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.vlb-batch-fields label{display:grid;gap:6px;min-width:0}.vlb-batch-fields input,.vlb-batch-fields select{width:100%;min-width:0;padding:10px;border:1px solid #cfbee0;border-radius:7px;background:var(--panel,#fff);color:var(--text,#251b30)}.vlb-batch-notice{padding:18px;margin:16px 0;border-left:4px solid var(--brand-purple,#6036a0);background:var(--panel,#f5effb);border-radius:8px}.vlb-batch-notice p{margin:8px 0}.vlb-batch-actions{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}.vlb-batch-id,.vlb-create-batch h2{overflow-wrap:anywhere}.vlb-create-batch button{cursor:pointer}.vlb-create-batch button:disabled{opacity:.5;cursor:not-allowed}@media(max-width:700px){.vlb-batch-fields{grid-template-columns:1fr}}
 .vlb-batch-governance textarea{min-height:90px;width:100%;padding:10px;border:1px solid #cfbee0;border-radius:7px;background:var(--panel,#fff);color:var(--text,#251b30);font:inherit}.vlb-batch-governance details{margin-top:14px}.vlb-batch-governance td{max-width:420px;overflow-wrap:anywhere}
+
+/* Use the space for readable batch details rather than oversized section gaps. */
+.vlb-create-batch>.logbook-page-header{gap:12px;margin-bottom:12px}
+.vlb-create-batch>.logbook-page-header h1{margin:0 0 4px}
+.vlb-create-batch>.logbook-page-header p{font-size:14px;color:var(--text,#251b30)}
+.vlb-create-batch>.logbook-section{padding:14px 16px;margin-bottom:12px}
+.vlb-create-batch>.logbook-section>h2{margin:0 0 10px;font-size:20px;line-height:1.25}
+.vlb-create-batch>.logbook-section>p{margin:6px 0 10px;font-size:14px;line-height:1.4}
+.vlb-create-batch .vlb-batch-fields{gap:12px}
+.vlb-create-batch .vlb-batch-fields label{font-size:14px;font-weight:600}
+.vlb-create-batch .vlb-batch-actions{gap:8px;margin:10px 0 0}
+.vlb-create-batch>.vlb-batch-setup{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px 12px}
+.vlb-batch-setup>.vlb-batch-fields{grid-column:1;grid-row:1}
+.vlb-create-batch .vlb-batch-setup>.vlb-batch-actions{grid-column:2;grid-row:1;margin:0}
+.vlb-create-batch .vlb-batch-setup>p{grid-column:1/-1;margin:0}
+.vlb-create-batch .logbook-table{font-size:14px}
+.vlb-create-batch .logbook-table th{padding:9px 10px;font-size:12px;font-weight:700;color:var(--text,#251b30)}
+.vlb-create-batch .vlb-batch-list td{font-size:18px;font-weight:650;color:var(--text,#251b30);line-height:1.35}
+.vlb-create-batch .vlb-batch-list td:first-child{overflow-wrap:anywhere}
+.vlb-create-batch .vlb-batch-list td:nth-child(2){font-size:20px;font-weight:750}
+.vlb-create-batch .vlb-batch-list td:nth-child(3){font-weight:750;white-space:nowrap}
+.vlb-create-batch .vlb-batch-list button{font-size:14px;padding:8px 12px;white-space:nowrap}
+@media(max-width:1000px){.vlb-create-batch>.vlb-batch-setup{grid-template-columns:minmax(0,1fr)}.vlb-create-batch .vlb-batch-setup>.vlb-batch-actions{grid-column:1;grid-row:auto}}
+@media(max-width:700px){.vlb-create-batch>.logbook-section{padding:12px}.vlb-create-batch .vlb-batch-list .logbook-table{min-width:580px}}
