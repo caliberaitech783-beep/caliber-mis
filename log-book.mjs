@@ -101,12 +101,12 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy){
  await enqueueTripVerification(client,result.rows[0]);
  return result.rows[0];
 }
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,getSiteScope=async session=>logBookSiteScope(session)}){
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){next(error)}}];
  registerVlbBatches(app,{pool,protect,ensureBooks:ensure});
- registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
+ registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
  
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
    try{
