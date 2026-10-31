@@ -84,7 +84,7 @@ function harness(){
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
-  return {render,slots,runAccountLocation:()=>effects.find(effect=>effect.deps?.length===3&&effect.deps[2]===slots[2].accountLocation).run(),focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
+  return {render,slots,runAccountLocation:()=>effects.find(effect=>effect.deps?.length===4&&effect.deps[2]===slots[2]).run(),focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
 
 test('VLB and ELB focus the first editable field once after masters load without stealing focus',()=>withFrames(flush=>{
