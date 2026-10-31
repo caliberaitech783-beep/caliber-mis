@@ -38,7 +38,7 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  await db.query('UPDATE mis_scan_cards SET image_blob_key=$2 WHERE id=$1',[scanId,blobKey]);
  await db.query("INSERT INTO mis_scan_backup_items(backup_id,card_id,blob_key,image_hash,image_bytes,metadata) VALUES('80000000-0000-4000-8000-000000000001',$1,$2,'same-image',3,$3)",[scanId,blobKey,JSON.stringify({logbookId:b.id,originalExtraction:{secret:'OCR source'},savedLogbookData:b.data})]);
  const candidate={id:'20000000-0000-4000-8000-000000000001',image_hash:'same-image',created_at:'2099-01-01',batch_id:batchId,raw_fields:{},draft:{}};
- const duplicate=async()=> (await checkScanCard(db,'equipment',candidate)).errors.some(e=>e.includes('duplicates an earlier card'));
+ const duplicate=async()=> (await checkScanCard(db,'equipment',candidate)).errors.some(e=>e==='Duplicate card.');
  assert.equal(await duplicate(),true);
  assert.equal((await api('entries',undefined,'')).status,401);assert.equal((await api('entries',undefined,'normal')).status,403);
  assert.equal((await api('entries')).data.records.length,3);

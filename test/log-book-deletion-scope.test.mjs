@@ -56,8 +56,8 @@ test('exact manifest discovers duplicates across states and batches, binds SSD f
  assert.equal((await api(p.id+'/local-receipts',{approval:p.approval,receipts:receipts.slice(0,1)})).data.pendingFiles.length,7);
  assert.equal((await api(p.id+'/local-receipts',{approval:p.approval,receipts},'other-admin')).status,409);
  const finished=await api(p.id+'/local-receipts',{approval:p.approval,receipts:receipts.slice(1)});assert.equal(finished.data.complete,true);assert.equal((await api('pending')).data.requests.length,0);
- const candidate={id:randomUUID(),batch_id:randomUUID(),image_hash:h1,created_at:'2099-01-01',raw_fields:{},draft:{}};assert.equal((await checkScanCard(db,'vehicle',candidate)).errors.some(e=>e.includes('duplicates an earlier card')),false);
- candidate.image_hash=h4;assert.equal((await checkScanCard(db,'vehicle',candidate)).errors.some(e=>e.includes('duplicates an earlier card')),true);
+ const candidate={id:randomUUID(),batch_id:randomUUID(),image_hash:h1,created_at:'2099-01-01',raw_fields:{},draft:{}};assert.equal((await checkScanCard(db,'vehicle',candidate)).errors.some(e=>e==='Duplicate card.'),false);
+ candidate.image_hash=h4;assert.equal((await checkScanCard(db,'vehicle',candidate)).errors.some(e=>e==='Duplicate card.'),true);
  const stored=(await db.query('SELECT snapshot,otp_hash FROM mis_log_book_deletions WHERE id=$1',[p.id])).rows[0];assert.equal(stored.otp_hash,null);assert.equal(stored.snapshot[0].data,undefined);
  assert.equal((await db.query("SELECT count(*)::int AS n FROM mis_scan_backup_items WHERE metadata ? 'originalExtraction'")).rows[0].n,0);
  await service.cleanupBlobs();assert.equal(removed.length,9);
