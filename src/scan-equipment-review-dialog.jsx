@@ -6,7 +6,9 @@ export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDe
  <h2 id="scan-equipment-title">Equipment missing or not at this site</h2><p>Card {card.ordinal} · {card.filename}</p>
  {review.error&&<p role="alert">{review.error}</p>}<ul>{review.issues.map(issue=><li key={issue.key}><strong>{issue.door}</strong><span>Selected site: {issue.selectedSite}</span><span>Pulse location: {issue.pulseSite}</span><small>{issue.fields.filter(field=>field.startsWith('trips.')).length} trip row(s) flagged</small></li>)}</ul>
  {error&&<p role="alert">{error}</p>}
- <section><h3>1. Delete this card</h3><p>Delete only this card and its original scan after confirmation.</p><button type="button" disabled={busy} onClick={onDelete}>Delete this card</button></section>
- <section><h3>2. Existing transfer not completed</h3><p>Complete the pending approval or acceptance in Pulse → Vehicle Transfer. Use the existing request, then recheck here.</p><a href="https://pulse.cmll.in/" target="_blank" rel="noreferrer" aria-disabled={busy} onClick={event=>{if(busy)event.preventDefault();else onTransfer()}}>Process existing transfer in Pulse</a><p>The card stays on hold until Pulse confirms this site.</p></section>
+ <div className="scan-equipment-choices">
+ <section><h3>1. Delete this card</h3><p>Delete this card and its original scan after confirmation.</p><button type="button" disabled={busy} onClick={onDelete}>Delete this card</button></section>
+ <section><h3>2. Pending transfer in Pulse</h3><p>Complete the existing transfer in Pulse, then recheck this card.</p><a href="https://pulse.cmll.in/" target="_blank" rel="noreferrer" aria-disabled={busy} onClick={event=>{if(busy)event.preventDefault();else onTransfer()}}>Process transfer in Pulse</a></section>
+ </div>
  <footer><button type="button" disabled={busy} onClick={onReject} title="Reject the card and retain its original scan in the audit history">Reject whole card</button><button type="button" disabled={busy} onClick={onRecheck}>Recheck Pulse assignment</button><button type="button" disabled={busy} onClick={onReview}>Review highlighted card</button></footer></dialog>;
 }
