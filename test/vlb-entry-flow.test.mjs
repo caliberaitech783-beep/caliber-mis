@@ -14,6 +14,21 @@ test('selected batch fixes manual and scan context with the effective site shift
  for(const patch of [{location:'Sasti OC'},{bookDate:'2026-10-30'},{cardShift:'II'}])assert.equal(sameVlbEntryContext(batch,{...vlbEntryContext(batch),...patch}),false);
 });
 
+test('manual and scan entry keep the site and batch popup on one row and auto-fetch one open site batch',async()=>{
+ const fs=await import('node:fs');const React=(await import('react')).default;const {transformWithOxc}=await import('vite');
+ const source=fs.readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
+ const compiled=source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
+ const {code}=await transformWithOxc(compiled,'vlb-create-batch.jsx',{jsx:{runtime:'classic'}});
+ const openVlbEntryBatches=new Function('React','canonicalSiteName',code+';return openVlbEntryBatches')(React,(await import('../site-location.mjs')).canonicalSiteName);
+ const open={id:'open',site:'Jayant OB',closed_at:null},closed={id:'closed',site:'Jayant OC',closed_at:'2026-10-31T10:00:00Z'},other={id:'other',site:'Sasti OC',closed_at:null};
+ assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['open']);
+ assert.match(source,/entryMatching\.length!==1/,'auto-fetch waits for exactly one open batch');
+ assert.match(source,/\[entryMode,selection\.site,batchStatusReady,batches\]/,'auto-fetch reruns when the asynchronous batch list arrives');
+ const css=fs.readFileSync(new URL('../src/vlb-create-batch.css',import.meta.url),'utf8');
+ assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-setup\{[^}]*justify-content:flex-start[^}]*flex-wrap:nowrap/);
+ assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-notice\{[^}]*display:flex[^}]*align-items:center/);
+});
+
 test('empty batches accept repeated manual and scan cards; admin can use other authorized sites',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');

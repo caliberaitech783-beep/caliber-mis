@@ -21,6 +21,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const [batchSearch,setBatchSearch]=useState('');
  const [batchTab,setBatchTab]=useState('open');
  const [pmApprovalTrial,setPmApprovalTrial]=useState(null);
+ const autoOpenedEntryBatch=useRef('');
  const lockedSite=!entryMode&&!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
  useEffect(()=>{if(lockedSite)setSelection(current=>({...current,site:options?.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(lockedSite))||displaySiteName(lockedSite)}));},[lockedSite,options]);
  const read=async(url,{signal,method='GET',body}={})=>{
@@ -50,10 +51,15 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const shifts=availableShifts(options,selection);
   if(!shifts.some(s=>s.code===selection.shift))setSelection(current=>({...current,shift:shifts[0]?.code||''}));
  },[options,selection.site,selection.date,selection.shift]);
- const change=(key,value)=>{requestKey.current=crypto.randomUUID();setPreview(null);setViewed(null);setShowApproval(false);++detailRequest.current;setDetailLoading(false);setSelection(current=>({...current,[key]:value}));if(entryMode&&key==='site'){const matching=batches.filter(batch=>!batch.closed_at&&canonicalSiteName(batch.site)===canonicalSiteName(value));if(matching.length===1)view(matching[0],true)}};
+ const change=(key,value)=>{requestKey.current=crypto.randomUUID();setPreview(null);setViewed(null);setShowApproval(false);++detailRequest.current;setDetailLoading(false);setSelection(current=>({...current,[key]:value}));if(entryMode&&key==='site'){autoOpenedEntryBatch.current='';onSelected?.(null)}};
  const clearView=()=>{++detailRequest.current;setDetailLoading(false);setViewed(null);setShowApproval(false)};
- const view=async(batch,open=false)=>{const id=++detailRequest.current;setDetailLoading(true);setError('');try{const result=await read('/api/vlb-batches/'+batch.id);if(id===detailRequest.current){setViewed(result);setShowApproval(Boolean(open&&result.closed_at&&actor?.mis));if(open&&!result.closed_at)onSelected?.(result)}}catch(e){if(id===detailRequest.current)setError(e.message)}finally{if(id===detailRequest.current)setDetailLoading(false)}};
- const entryMatching=entryMode?batches.filter(batch=>!batch.closed_at&&canonicalSiteName(batch.site)===canonicalSiteName(selection.site)):[];
+ const view=async(batch,open=false)=>{const id=++detailRequest.current;setDetailLoading(true);setError('');try{const result=await read('/api/vlb-batches/'+batch.id);if(id===detailRequest.current){setViewed(result);setShowApproval(Boolean(open&&result.closed_at&&actor?.mis));if(open&&!result.closed_at)onSelected?.(result)}}catch(e){if(id===detailRequest.current){if(entryMode&&autoOpenedEntryBatch.current===batch.id)autoOpenedEntryBatch.current='';setError(e.message)}}finally{if(id===detailRequest.current)setDetailLoading(false)}};
+ const entryMatching=entryMode?openVlbEntryBatches(batches,selection.site):[];
+ useEffect(()=>{
+  if(!entryMode||!selection.site||!batchStatusReady||entryMatching.length!==1){if(entryMatching.length!==1)autoOpenedEntryBatch.current='';return}
+  const batch=entryMatching[0];if(autoOpenedEntryBatch.current===batch.id)return;
+  autoOpenedEntryBatch.current=batch.id;view(batch,true);
+ },[entryMode,selection.site,batchStatusReady,batches]);
  const create=async()=>{setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches',{method:'POST',body:{...selection,requestKey:requestKey.current}});
   ++detailRequest.current;setDetailLoading(false);setViewed(batch);requestKey.current=crypto.randomUUID();setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1);if(!batch.closed_at)onSelected?.(batch);
@@ -96,4 +102,8 @@ export function availableShifts(options,selection){
   const code=bookShiftCode(shift.shiftCode)||bookShiftCode(shift.name);if(code&&!found.has(code))found.set(code,{code,name:shift.name});
  }
  return [...found.values()];
+}
+export function openVlbEntryBatches(batches,site){
+ if(!site)return [];
+ return batches.filter(batch=>!batch.closed_at&&canonicalSiteName(batch.site)===canonicalSiteName(site));
 }
