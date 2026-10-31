@@ -187,7 +187,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
-     client=await pool.connect();await client.query('BEGIN');if(kind==='vehicle')await lockVlbBatchWrites(client);
+     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');if(kind==='vehicle')await lockVlbBatchWrites(client);
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
      Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
      await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});

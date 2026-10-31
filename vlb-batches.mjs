@@ -38,7 +38,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   if(!req.batchActor.login||!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
   res.set('Cache-Control','no-store');await fn(req,res);
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
- const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
+ const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
   const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site));

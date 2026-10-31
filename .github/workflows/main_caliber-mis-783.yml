@@ -51,6 +51,8 @@ jobs:
         run: npm run build
 
       - name: Run full test suite
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: npm test
 
       - name: Verify built release identity

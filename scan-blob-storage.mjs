@@ -42,9 +42,15 @@ export function createScanBlobStorage(config,{fetchImpl=fetch,env=process.env}={
    await read(key,hash);return {key,bytes:image.length,uploadedAt:new Date()};
   },
   read,
-  async remove(key){
-   const response=await request(key,{method:'DELETE',headers:{'x-ms-delete-snapshots':'include'}});
-   if(!response.ok&&response.status!==404)throw Error('Could not delete the rejected scan image. Retry fleet verification.');
+  async stat(key){
+   const response=await request(key,{method:'HEAD'});
+   if(response.status===404)return {exists:false,etag:null,bytes:null,sha256:null,location:base+key};
+   if(!response.ok)throw Object.assign(Error('The source image could not be verified. No deletion was prepared.'),{status:503});
+   return {exists:true,etag:response.headers.get('etag'),bytes:Number(response.headers.get('content-length')),sha256:response.headers.get('x-ms-meta-sha256'),location:base+key};
+  },
+  async remove(key,{etag}={}){
+   const response=await request(key,{method:'DELETE',headers:{'x-ms-delete-snapshots':'include',...(etag?{'If-Match':etag}:{})}});
+   if(!response.ok&&response.status!==404)throw Object.assign(Error('Could not delete the approved scan image.'),{status:response.status});
   },
   async hydrate(card){if(card?.image_blob_key)card.image=await read(card.image_blob_key,card.image_hash);return card;},
  };

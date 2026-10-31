@@ -31,7 +31,7 @@ export function registerScanBackup(app,{pool,requireSession,requireAdministrator
   if(!imageStorage)fail('Hot Blob storage is not enabled.',503);
   const state=await status(),window=state.available;if(!window)fail('No scan images are available to back up.',409);
   const c=await pool.connect();try{
-   await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224160)');
+   await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock(709224160)');
    let job=(await c.query('SELECT * FROM mis_scan_backups WHERE window_start=$1 AND window_end=$2 FOR UPDATE',[window.from,window.to])).rows[0];
    if(!job){const id=randomUUID();job=(await c.query('INSERT INTO mis_scan_backups(id,window_start,window_end,created_by) VALUES($1,$2,$3,$4) RETURNING *',[id,window.from,window.to,req.session.login||req.session.name])).rows[0];
     await c.query(`INSERT INTO mis_scan_backup_items(backup_id,card_id,blob_key,image_hash,image_bytes,metadata)
@@ -49,7 +49,7 @@ export function registerScanBackup(app,{pool,requireSession,requireAdministrator
  }));
  app.get('/api/scan-backups/:id/images/:cardId',...protect,wrap(async(req,res)=>{
   if(!imageStorage)fail('Hot storage is unavailable.',503);await jobFor(req.params.id);if(!validId(req.params.cardId))fail('Invalid card reference.');
-  const item=(await pool.query('SELECT * FROM mis_scan_backup_items WHERE backup_id=$1 AND card_id=$2',[req.params.id,req.params.cardId])).rows[0];if(!item)fail('Card not found in this backup.',404);
+  const item=(await pool.query('SELECT * FROM mis_scan_backup_items WHERE backup_id=$1 AND card_id=$2',[req.params.id,req.params.cardId])).rows[0];if(!item||item.metadata?.permanentlyDeleted)fail('Card not found in this backup.',404);
   const bytes=await imageStorage.read(item.blob_key,item.image_hash);if(imageHash(bytes)!==item.image_hash)fail('Image verification failed.',502);
   res.set('Cache-Control','no-store').type('application/octet-stream').send(bytes);
  }));
