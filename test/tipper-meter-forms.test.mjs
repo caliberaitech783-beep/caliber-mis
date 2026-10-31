@@ -21,7 +21,7 @@ const snippet = source.slice(source.indexOf("function MeterReadingFields"), sour
 // Meter payload tests begin after the separately tested On road/Idle decision.
 const transformed = await transformWithOxc(snippet.replace('const idleDecision = useRef(false);','const idleDecision = useRef(true);'), "request-forms.jsx", {jsx: {runtime: "classic"}});
 const forms = evaluate(transformed.code + "\nreturn {RequestEditForm, CloseRequestForm};", {
-  React, ...equipment,
+  React, SmartSelect: "select", ...equipment,
   useState: value => [typeof value === "function" ? value() : value, () => {}],
   useRef: value => ({current: value}),
   useMemo: fn => fn(), useMasterRecords: () => [[]],

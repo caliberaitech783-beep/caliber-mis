@@ -49,7 +49,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const records=[{id:1,book_no:'VLB-1',data:{door:'V07'}},{id:2,book_no:'VLB-2',data:{door:'V12',scanCardId:'saved-scan'}}],batch={id:'batch1',name:'CMLL/SASTI OC/30TH -OCT-26/S1/B01',records,site:'Sasti OC',report_date:'2026-10-30',shift:'S1'};
  const fetch=async(url,request)=>{calls.push({url,request});return {ok:true,json:async()=>({...batch,closed_at:'2026-10-30T10:00:00Z',closure_revision:1})}};
- const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null},['VlbCreateBatch','availableShifts']);
+ const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null},['VlbCreateBatch','availableShifts']);
  const options={sites:['Sasti OC'],shifts:[{site:'Sasti OB',name:'Shift A',shiftCode:'I'},{site:'Sasti OC',name:'Shift B',shiftCode:'II'},{site:'Jayant OC',name:'Shift C',shiftCode:'III'},{site:'Sasti OC',name:'Night',status:'inactive'}]};
  const selection={site:'Sasti OC',date:'2026-10-30',shift:'S1'};assert.deepEqual(availableShifts(options,selection).map(s=>s.code),['S1','S2']);
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'},onExit(){}})};
@@ -76,7 +76,7 @@ test('approval popup requests a reason, shows pending state, and consumes only a
  const slots=[];let cursor=0;const calls=[];let changes=0,dismissed=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>url.endsWith('/reopen-request')?{id:'request',requested_by:'alice',status:'pending',closure_revision:1}:{id:'batch',records:[]}}};
- const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
+ const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
  let batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};const actor={login:'alice',mis:true};
  const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,actor,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
@@ -91,7 +91,7 @@ test('PM approval screen requires a rejection reason and sends the selected requ
  const slots=[];let cursor=0;const calls=[];let changes=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>({})}};
- const {ApprovalRequest}=await compile('vlb-batch-approvals.jsx',{React,useState,useRef:()=>({current:0}),useEffect:()=>{},fetch,displaySiteName,batchDateTime:()=>'-'},['ApprovalRequest']);
+ const {ApprovalRequest}=await compile('vlb-batch-approvals.jsx',{React,SmartSelect:"select",useState,useRef:()=>({current:0}),useEffect:()=>{},fetch,displaySiteName,batchDateTime:()=>'-'},['ApprovalRequest']);
  let request={id:'request2',batch_id:'batch',name:'B01',site:'Sasti OC',requested_by:'alice',reason:'Extra cards',status:'pending',current_revision:1,closure_revision:1,canDecide:true};
  const render=()=>{cursor=0;return ApprovalRequest({request,session:{token:'test'},onChanged:async()=>changes++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];

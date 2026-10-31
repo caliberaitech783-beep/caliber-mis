@@ -30,7 +30,7 @@ test('bank status filters include partial banks, exclude no activity, and combin
 test('bank list renders selected status, counts, amounts and bank detail actions',async()=>{
  const source=fs.readFileSync(new URL('../src/iboss-bank-reconciliation.jsx',import.meta.url),'utf8').replace(/^import .*;\r?$/gm,'').replace('export default function','function');
  const {code}=await transformWithOxc(source,'component.jsx',{jsx:{runtime:'classic'}});
- const Component=new Function('React','reconciliationBanks',`${code};return ReconciliationControls;`)(React,reconciliationBanks);
+ const Component=new Function('React','reconciliationBanks',`const SmartSelect="select";${code};return ReconciliationControls;`)(React,reconciliationBanks);
  const ReportSection=({title,rows,columns,emptyMessage})=>React.createElement('table',{'aria-label':title},React.createElement('tbody',null,rows.length?rows.map((row,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},c.render?.(row)??c.value(row))))):React.createElement('tr',null,React.createElement('td',null,emptyMessage))));
  const render=(status,bank='')=>renderToStaticMarkup(React.createElement(Component,{ReportSection,rows,status,bank,onBank:()=>{},onStatus:()=>{}}));
  const html=render('unreconciled');
