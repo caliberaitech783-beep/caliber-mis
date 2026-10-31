@@ -179,7 +179,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
      </section>}
 
-     {vehicle&&<p className="logbook-message logbook-handover-help">For a shift handover, enter the time this driver recorded and leave the other time blank. Loading is credited to this card's driver; unloading is credited to the next card's driver. Matching site and door rows close one trip across shifts or dates.</p>}
+
      {vehicle&&!editing&&saved&&<div className="logbook-trip-totals"><span>Opening trips (loaded): <strong>{saved.data.openingTrips??0}</strong></span><span>Ending trips (unloaded): <strong>{saved.data.endingTrips??0}</strong></span><span>Completed trips: <strong>{saved.data.completedTrips??saved.data.totalTrips}</strong></span></div>}
      {vehicle&&<details className="logbook-section logbook-machine-details"><summary>Machine-wise summary · {machineTripTotal(form.trips)} trips</summary><div className="logbook-section-title"><h2>Machine-wise summary</h2><span>Calculated from trip details</span></div><table className="logbook-table"><thead><tr><th>Equipment name</th><th>Total trips</th></tr></thead><tbody>{machineSummary(form.trips).map(row=><tr key={row.equipmentName}><td>{row.equipmentName}</td><td>{row.tripCount}</td></tr>)}</tbody><tfoot><tr><th scope="row">Total trips</th><td>{machineTripTotal(form.trips)}</td></tr></tfoot></table></details>}
      <ManualLogBookDetails form={form} update={update} vehicle={vehicle} editing={editing&&!working} setWorking={setWorking} onError={setError}/>
