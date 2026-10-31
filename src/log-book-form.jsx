@@ -123,7 +123,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  const printRecord=()=>{document.body.classList.add('printing-logbook');window.addEventListener('afterprint',()=>document.body.classList.remove('printing-logbook'),{once:true});window.print();};
 
- return <section className="logbook-page logbook-compact logbook-single-sheet">
+ return <section className={`logbook-page logbook-compact logbook-single-sheet${vehicle?' logbook-vehicle':''}`}>
 
 
 

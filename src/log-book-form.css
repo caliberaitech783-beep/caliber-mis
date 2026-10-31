@@ -107,3 +107,13 @@
  .logbook-single-sheet .equipment-combobox-control input{padding-right:22px!important}
  .logbook-single-sheet .equipment-combobox-control>svg{right:4px;top:50%;width:13px;height:13px}
 }
+
+/* Keep the VLB manual header focused on the batch controls themselves. */
+.logbook-vehicle .vlb-batch-setup>h2,
+.logbook-vehicle .vlb-batch-setup>p[role="status"]{display:none}
+.logbook-vehicle .vlb-batch-setup .vlb-batch-notice{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap}
+.logbook-vehicle .vlb-batch-setup .vlb-batch-notice>p{display:none}
+.logbook-vehicle .vlb-batch-setup .vlb-batch-actions{display:flex;align-items:center;gap:12px;margin:0}
+.app.erp-shell:has(.logbook-vehicle) .top>.crumb{font-size:16px;font-weight:800;color:var(--ink)}
+.app.erp-shell:has(.logbook-vehicle) .top>.crumb b{font-size:17px;font-weight:800}
+.logbook-vehicle .logbook-header-actions button{font-size:13px;font-weight:800;min-height:36px;padding:7px 10px}
