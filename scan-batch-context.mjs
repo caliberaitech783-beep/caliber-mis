@@ -15,6 +15,9 @@ export function scanContextIssues(context,draft={}){
  if(draft.cardShift!==context.cardShift)issues.push('Shift: '+(draft.cardShift||'unreadable')+'; expected '+context.cardShift);
  return issues;
 }
+export function scanContextSelectionChanged(batch,selection){
+ return Boolean(batch?.id&&batch.kind==='vehicle'&&(!batch.expected_context?scanContextReady(selection):scanContextIssues(batch.expected_context,selection||{}).length));
+}
 // Compare the original extraction as well as the editable entry. Editing a
 // header must never turn a different physical card into a matching one.
 export function scanCardContextIssues(context,card,input=card.draft){

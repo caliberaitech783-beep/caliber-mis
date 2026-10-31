@@ -75,14 +75,16 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const scans={};
   for(const [key,site,owner] of [['local','Sasti OC','other'],['remote','Jayant OC','other'],['ownWrongSite','Jayant OC','site']]){
     const batch=randomUUID(),card=randomUUID();scans[key]={batch,card};
-    await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle',$2,$3)",[batch,key,owner]);
-    await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status,checked_by) VALUES($1,$2,1,'test', $3,'test',$4,'approved','site')",[card,batch,Buffer.from('test'),JSON.stringify({location:site})]);
+    const selected={bookDate:'2026-10-30',location:site,cardShift:'I'};
+    await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle',$2,$3,$4::jsonb)",[batch,key,owner,JSON.stringify({...selected,confirmed:true})]);
+    await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status,checked_by) VALUES($1,$2,1,'test', $3,'test',$4,$5::jsonb,'approved','site')",[card,batch,Buffer.from('test'),JSON.stringify(selected),JSON.stringify({extractionDraft:selected})]);
   }
   const visible=(await call('/api/scan-batches')).data.batches.map(batch=>batch.id);
   assert.ok(visible.includes(scans.local.batch));assert.ok(!visible.includes(scans.remote.batch));
   assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/report')).status,200);
   assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report')).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report.pdf')).status,403);
+  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/context','POST',{expectedContext:{bookDate:'2026-10-30',location:'Jayant OC',cardShift:'I'}})).status,403,'a user cannot attach another site through Scan setup');
   assert.equal((await call('/api/scan-cards/'+scans.remote.card+'/image')).status,403);
   assert.equal((await call('/api/scan-cards/'+scans.ownWrongSite.card+'/auto-save','POST',{revision:1})).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.ownWrongSite.batch+'/post','POST',{cards:[{id:scans.ownWrongSite.card,revision:1}]})).status,403);

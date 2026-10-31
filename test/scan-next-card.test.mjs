@@ -15,11 +15,11 @@ test('next correction follows the visible queue and skips completed or processin
 });
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
 const handler=source.split('\n').find(line=>line.startsWith(' const review=async')).trim().replace(/^const review=/,'').replace(/;$/,'');
-function harness({fail=false,postFail=false,autosaving=false,last=false}={}){
+function harness({fail=false,postFail=false,autosaving=false,last=false,contextBlocked=false}={}){
  const current=card('1'),next=card('2'),visible=last?[current]:[current,next],events=[];
  const location={href:'https://example.test/?batch=test&card=1&scanView=review#scan'};
  const dirtyRef={current:true},selectedRevision={current:'1:1'};
- const scope={groupFilter:'brown',card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push([config.method==='PUT'?'put':'post',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');if(config.method==='POST'){if(postFail)throw Error('Equipment is not assigned to this site');return {record:{id:9,book_no:'TEST/0001',data:{scanCardId:current.id,scanBatchId:'test'}},archive:null};}return {revision:2};},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible.map(row=>row.id===current.id&&!postFail?{...row,status:'posted'}:row);},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,remainingScanCards,applySavedScanCard,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
+ const scope={contextBlocked,groupFilter:'brown',card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push([config.method==='PUT'?'put':'post',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');if(config.method==='POST'){if(postFail)throw Error('Equipment is not assigned to this site');return {record:{id:9,book_no:'TEST/0001',data:{scanCardId:current.id,scanBatchId:'test'}},archive:null};}return {revision:2};},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible.map(row=>row.id===current.id&&!postFail?{...row,status:'posted'}:row);},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,remainingScanCards,applySavedScanCard,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
  return {run:new Function(...Object.keys(scope),'return ('+handler+')')(...Object.values(scope)),events,location,selectedRevision};
 }
 test('successful explicit save advances after persistence and updates the card link',async()=>{
@@ -38,6 +38,13 @@ test('failed or in-flight save never advances or closes the card',async()=>{
   const h=harness(options);await h.run('save');
   assert.equal(h.events.some(e=>['selected','overview'].includes(e[0])),false);
  }
+});
+
+test('a blocked batch cannot save or advance, while rejecting a wrong card remains available',async()=>{
+ const blocked=harness({contextBlocked:true});await blocked.run('save');
+ assert.equal(blocked.events.some(event=>['put','post','selected'].includes(event[0])),false);
+ assert.match(blocked.events.find(event=>event[0]==='error')?.[1],/Saving is blocked/);
+ await blocked.run('reject');assert.equal(blocked.events.filter(event=>event[0]==='put').length,1);
 });
 
 test('failed validation retains the corrected draft without reporting a completed save',async()=>{

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate} from '../scan-batch-context.mjs';
+import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate,scanContextSelectionChanged} from '../scan-batch-context.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'};
@@ -20,6 +20,18 @@ test('scan selection requires a real date, site and marked shift and never trust
  assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,bookDate:'2026-10-29'}}}).length,1,'editing a different card to match does not accept its original');
  assert.equal(scanContextGate({...context,confirmed:true},[{status:'reading'}]).blocked,true);
  assert.equal(scanContextGate({...context,confirmed:true,cancelled:true},[]).blocked,true);
+});
+
+test('setup changes cannot silently reuse a different entry selection',()=>{
+ const batch={id:'entry',kind:'vehicle',expected_context:context};
+ assert.equal(scanContextSelectionChanged(batch,context),false);
+ assert.equal(scanContextSelectionChanged({...batch,expected_context:null},context),true);
+ for(const [key,value] of [['bookDate','2026-10-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanContextSelectionChanged(batch,{...context,[key]:value}),true);
+ assert.equal(scanContextSelectionChanged({...batch,expected_context:{...context,location:'Jayant OC'}},{...context,location:'Jayant OB'}),false);
+ const jayant={...context,location:'Jayant OC'},jayantCard={...context,location:'Jayant OB'};
+ assert.deepEqual(scanCardContextIssues(jayant,{draft:jayantCard,raw_fields:{extractionDraft:jayantCard,locationReadings:['Jayant OC']}}),[],'Jayant OC and OB remain the same site');
+ assert.equal(scanContextSelectionChanged(batch,{...context,bookDate:''}),true,'partially edited setup must pause saving too');
+ for(const [key,value] of [['bookDate','2026-10-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,[key]:value}}}).length,1);
 });
 test('server blocks saving before batch check, checks exact removal revisions and retains original wrong scans',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
@@ -55,5 +67,28 @@ test('server blocks saving before batch check, checks exact removal revisions an
  assert.equal((await call(url,{action:'cancel'})).status,200);
  assert.equal((await call(url,{action:'proceed'})).status,409);
  assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409);
+ assert.equal((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n,0);
+ // Legacy entries used to skip context checks entirely, even after manual edits.
+ const legacy=randomUUID(),legacyGood=randomUUID(),legacyWrong=randomUUID();
+ await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','Legacy entry','test-admin')",[legacy]);
+ const wrongOriginal={...context,bookDate:'2026-10-29',location:'Jayant OC',cardShift:'II'};
+ for(const [id,ordinal,original] of [[legacyGood,1,context],[legacyWrong,2,wrongOriginal]])await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,legacy,ordinal,'legacy '+ordinal,image,id,JSON.stringify(context),JSON.stringify({extractionDraft:original})]);
+ assert.equal((await call('/api/scan-cards/'+legacyGood+'/auto-save',{revision:1})).status,409);
+ const legacyApproval=await fetch(root+'/api/scan-cards/'+legacyGood,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'approve',checked:true,draft:context})});assert.equal(legacyApproval.status,409);assert.match((await legacyApproval.json()).error,/Scan setup/);
+ assert.equal((await call('/api/scan-batches/'+legacy+'/post',{cards:[{id:legacyGood,revision:1},{id:legacyWrong,revision:1}]})).status,409);
+ for(const extension of ['/report','/report.pdf'])assert.equal((await fetch(root+'/api/scan-batches/'+legacy+extension)).status,409);
+ const unselected=await(await fetch(root+'/api/scan-batches/'+legacy)).json();assert.match(unselected.cards[0].context_mismatch[0],/Scan setup/);
+ const select='/api/scan-batches/'+legacy+'/context';
+ assert.equal((await call(select,{expectedContext:{}})).status,400);
+ const chosen=await call(select,{expectedContext:context});assert.equal(chosen.status,200);assert.equal(chosen.data.expectedContext.confirmed,false);
+ assert.equal((await call(select,{expectedContext:{...context,location:'Sasti OB'}})).status,200,'an equivalent site is an idempotent retry');
+ assert.equal((await call(select,{expectedContext:wrongOriginal})).status,409,'the selected context cannot be overwritten to accept another card');
+ const checkedLegacy=await(await fetch(root+'/api/scan-batches/'+legacy)).json();
+ assert.deepEqual(checkedLegacy.contextGate.mismatches.map(card=>card.id),[legacyWrong]);
+ assert.equal(checkedLegacy.contextGate.mismatches[0].issues.length,3,'all three original mismatches remain after manually matching the entry fields');
+ assert.equal((await call('/api/scan-batches/'+legacy+'/validate-context',{action:'proceed'})).status,409);
+ assert.equal((await call('/api/scan-cards/'+legacyGood+'/auto-save',{revision:1})).status,409,'matching cards wait for the user to remove wrong cards');
+ const removedLegacy=await call('/api/scan-batches/'+legacy+'/validate-context',{action:'discard',cards:[{id:legacyWrong,revision:1}]});assert.equal(removedLegacy.status,200);assert.equal(removedLegacy.data.remaining,1);
+ const legacyReport=await(await fetch(root+'/api/scan-batches/'+legacy+'/report')).json();assert.equal(legacyReport.tables.find(table=>table.name==='Cards').rows.length,0,'unposted drafts never enter exports');
  assert.equal((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n,0);
 });

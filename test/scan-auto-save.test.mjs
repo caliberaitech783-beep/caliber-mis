@@ -2,12 +2,13 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
-const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
+const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
 test('automatic saving requires complete valid values while Work Order remains optional',()=>{
  const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
  assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
  assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetBlock:{message:'Verify the machine first.'}}},'vehicle'),false);
  assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetRejection:{message:'Original needs recovery.'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...card,context_mismatch:['Wrong date.']},'vehicle'),false);
  assert.equal(canAutoSaveScanCard({...card,draft:{...valid,workOrderId:''},checks:{errors:[],warnings:['No Work Order selected. Confirm whether this card requires a contract.']}},'vehicle'),true);
  for(const c of [{...card,status:'posted'},{...card,status:'rejected'},{...card,checks:null},{...card,draft:{...valid,employeeId:''}},{...card,checks:{warnings:['Working hours exceed shift.']}},{...card,checks:{errors:['Duplicate scan.']}}])assert.equal(canAutoSaveScanCard(c,'vehicle'),false);
 });
@@ -21,15 +22,18 @@ test('complete cards post independently without approval; retries, validation an
  let pulseAvailable=true;let archives=0;const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readHours:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return {breakdownHours:0}},ocr:{close(){}},archiveSavedBatch:async(b,rows)=>{assert.ok(rows.every(r=>r.status==='posted'));archives++;return {status:'saved'}}});await service.start();t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(id,revision=1,auth='admin')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+id+'/auto-save',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({revision})});return {status:r.status,data:r.headers.get('content-type')?.includes('json')?await r.json():null}};
- const batch=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Auto save test','test-admin']);
- const add=async(ordinal,draft,hash=randomUUID())=>{const id=randomUUID();await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'test.png',$4,$5,$6,'review')",[id,batch,ordinal,Buffer.from('retained image'),hash,JSON.stringify(draft)]);return id};
+ const batch=randomUUID(),context={bookDate:valid.bookDate,location:valid.location,cardShift:valid.cardShift};await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Auto save test','test-admin']);
+ const add=async(ordinal,draft,hash=randomUUID())=>{const id=randomUUID();await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,'test.png',$4,$5,$6,$7::jsonb,'review')",[id,batch,ordinal,Buffer.from('retained image'),hash,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);return id};
  const first=await add(1,valid),second=await add(2,{...valid,aFormNo:'76',employeeId:''});
+ assert.equal((await call(first)).status,409,'a complete legacy card still needs a saved selection');
+ const setupRoot='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
+ for(const [route,body] of [['/context',{expectedContext:context}],['/validate-context',{action:'proceed'}]]){const checked=await fetch(setupRoot+route,{method:'POST',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(checked.status,200,await checked.text())}
  assert.equal((await call(first,1,'')).status,401);assert.equal((await call(first,1,'normal')).status,403);
  assert.equal((await call(first,99)).status,409);
  const saved=await call(first);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.status,'posted');assert.equal(saved.data.archive,null);assert.equal(archives,0);
  const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;assert.equal(stored.scanSaveMode,'automatic-validation');assert.equal(stored.autoSavedBy,'test-admin');assert.equal(stored.reviewedBy,undefined);
  const reportBase='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
- const reportResponse=await fetch(reportBase+'/report?cards=another-batch',{headers:{Authorization:'admin'}});assert.equal(reportResponse.status,200);const report=await reportResponse.json();assert.equal(report.batchId,batch);assert.equal(report.counts.cards,2);assert.equal(report.counts.saved,1);assert.equal(report.counts.pending,1);assert.equal(report.totals.trips,1);assert.equal(report.tables[1].rows.length,2);
+ const reportResponse=await fetch(reportBase+'/report?cards=another-batch',{headers:{Authorization:'admin'}});assert.equal(reportResponse.status,200);const report=await reportResponse.json();assert.equal(report.batchId,batch);assert.equal(report.counts.cards,2);assert.equal(report.counts.saved,1);assert.equal(report.counts.pending,1);assert.equal(report.totals.trips,1);assert.equal(report.tables[1].rows.length,1,'only saved matching cards enter Excel');
  const liveBatch=await(await fetch(reportBase,{headers:{Authorization:'admin'}})).json();assert.equal(liveBatch.cards.find(c=>c.id===first).saved_data.scanCardId,first);
  const pdf=await fetch(reportBase+'/report.pdf',{headers:{Authorization:'admin'}});assert.equal(pdf.status,200);assert.match(pdf.headers.get('content-type'),/application\/pdf/);assert.ok(pdf.headers.get('content-disposition').includes(batch));assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
  assert.equal((await fetch(reportBase+'/report')).status,401);assert.equal((await fetch(reportBase+'/report.pdf',{headers:{Authorization:'normal'}})).status,403);
