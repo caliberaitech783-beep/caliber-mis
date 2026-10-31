@@ -1,6 +1,7 @@
 import {MAX_SCAN_ENTRY_CARDS} from '../public/scan-entry-limit.mjs';
 import {shiftMeterIssues} from '../trip-card-rules.mjs';
 import ScanEquipmentReviewDialog from './scan-equipment-review-dialog.jsx';
+import {fleetReviewKey,nextFleetReviewPrompt} from './scan-fleet-review-prompt.mjs';
 import {scanFleetSignature} from '../scan-fleet-assignment.mjs';
 import {createPdfUploadSession,transferScanGroups} from './scan-upload-pipeline.mjs';
 import ScanBatchMismatchDialog from './scan-batch-mismatch-dialog.jsx';
@@ -72,13 +73,17 @@ export default function BulkCardScanning({kind,session,ReportSection}){
  const [mismatchListOpen,setMismatchListOpen]=useState(false);
  useEffect(()=>setMismatchListOpen(false),[batch?.id]);
  const [fleetDismissed,setFleetDismissed]=useState(()=>new Set()),[fleetOpenId,setFleetOpenId]=useState('');
- const fleetReviewKey=card=>card.id+':'+card.raw_fields.fleetReview.signature;
  const fleetCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.issues?.length>0);
  const fleetErrorCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.error);
  const fleetDialogCard=fleetCards.find(card=>card.id===fleetOpenId);
  const resolveFleet=async(card,action)=>{if(action==='delete'&&!window.confirm('Delete only card '+card.ordinal+' and its original scan?'))return;setBusy(true);setError('');try{const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',body:JSON.stringify({action,revision:card.revision})});for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);if(action==='recheck'&&result.ready)setOptions(await api('/api/log-books/options'));await load(card.batch_id);setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setNotice(result.deleted?'Selected card deleted manually. Other cards are unchanged.':result.rejected?'Card '+card.ordinal+' rejected. Other cards are unchanged.':action==='transfer-pending'?'Card held: complete the existing transfer in Pulse, then recheck.':result.ready?'Pulse confirms the equipment site. This card can continue.':'Transfer is still incomplete or equipment is not registered. Card remains blocked.');}catch(error){setError(error.message)}finally{setBusy(false)}};
  const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,...fleetCards.map(fleetReviewKey)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle')navigateReview(true,'all')};
  const [expectedContext,setExpectedContext]=useState({bookDate:'',location:'',cardShift:''}),[scannerBusy,setScannerBusy]=useState(false),[contextGate,setContextGate]=useState(null);const addonUploadRef=useRef(false);
+ useEffect(()=>{
+  if(fleetOpenId||busy||dirty||uploading||scannerBusy)return;
+  const next=nextFleetReviewPrompt(cards,fleetDismissed);
+  if(next)setFleetOpenId(next.id);
+ },[cards,fleetDismissed,fleetOpenId,busy,dirty,uploading,scannerBusy]);
  const awaitingContext=Boolean(contextGate?.blocked&&!contextGate.context.cancelled);
  const accountSite=options?.accountLocation||'';
  useEffect(()=>{if(accountSite)setExpectedContext(current=>current.location===accountSite?current:{...current,location:accountSite})},[accountSite]);
@@ -177,6 +182,7 @@ export default function BulkCardScanning({kind,session,ReportSection}){
  {!reviewPage&&<section className="scan-context-selection" aria-label="Scan setup"><div className="scan-context-title"><ScanLine size={20}/><div><h2>Scan setup</h2><p>{accountSite?"Site from your admin account":"Choose date, site and shift"}</p></div></div><fieldset disabled={busy||uploading||scannerBusy||awaitingContext}><label>Card date<input aria-label="Card date" type="date" required value={expectedContext.bookDate} onInput={e=>{setExpectedContext(v=>({...v,bookDate:e.target.value}))}}/></label><label className="scan-context-site">Site{accountSite?<input aria-label="Site" readOnly value={accountSite} title="Assigned to your admin account"/>:<select aria-label="Site" required value={expectedContext.location} onChange={e=>setExpectedContext(v=>({...v,location:e.target.value}))}><option value="">Choose site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</select>}</label><label>Shift<select aria-label="Shift" required value={expectedContext.cardShift} onChange={e=>{setExpectedContext(v=>({...v,cardShift:e.target.value}))}}><option value="">Choose shift</option>{Object.entries(CARD_SHIFTS).map(([id,row])=><option key={id} value={id}>{['Day','Night'].includes(id)?row.label:cardShiftLabel(options?.shifts||[],expectedContext.location,id,expectedContext.bookDate)}</option>)}</select></label><span className={"scan-selection-readiness "+(contextReady()?"ready":"waiting")} role="status">{awaitingContext?contextGate.mismatches.length?"Wrong cards blocked":"Checking card headers…":contextReady()?"Ready":"Complete required fields"}</span><button type="button" onClick={()=>{setExpectedContext(current=>({...current,bookDate:'',cardShift:''}));setWorkflowTab('review')}}>Cancel</button></fieldset></section>}
  {mismatchListOpen&&<div id="scan-mismatch-list">{contextGate?.mismatches.length>0&&!contextGate.context.cancelled?<ScanBatchMismatchDialog gate={contextGate} busy={busy||dirty||contextGate.waiting||uploading||scannerBusy||!contextGate.mismatches.length} error={error} onDiscard={()=>resolveContext('discard')} onCancel={()=>resolveContext('cancel')}/>:<p role="status">No mismatch cards to review.</p>}</div>}
  {contextGate?.context.cancelled&&!reviewPage&&<p className="scan-warning" role="status">Batch cancelled. Start a new scan or upload.</p>}
+ {fleetCards.length>0&&<section className="scan-fleet-review-banner" role="status"><strong>Equipment missing or not at this site · {fleetCards.length} card(s) on hold.</strong> Delete the card or process its pending transfer in Pulse, then recheck. <button type="button" disabled={busy||dirty} onClick={()=>setFleetOpenId((fleetCards.find(row=>row.id===selected)||fleetCards[0]).id)}>Equipment review</button></section>}
 
  {cards.some(card=>card.raw_fields?.fleetRejection)&&<section className="scan-error" role="alert"><strong>Pulse fleet check: fresh upload required</strong><ul>{cards.filter(card=>card.raw_fields?.fleetRejection).map(card=><li key={card.id}>Card {card.ordinal} · {card.filename}: {card.raw_fields.fleetRejection.message}</li>)}</ul></section>}
  {fleetDialogCard&&<ScanEquipmentReviewDialog key={fleetDialogCard.id} card={fleetDialogCard} busy={busy} error={error} onDelete={()=>resolveFleet(fleetDialogCard,'delete')} onReject={()=>resolveFleet(fleetDialogCard,'reject')} onTransfer={()=>resolveFleet(fleetDialogCard,'transfer-pending')} onRecheck={()=>resolveFleet(fleetDialogCard,'recheck')} onReview={()=>reviewFleetCard(fleetDialogCard)}/>}
