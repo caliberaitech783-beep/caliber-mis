@@ -64,6 +64,7 @@ test('batch APIs include every matching saved source, remain open until closed, 
  const removed=await call('/'+shiftBatch.data.id+'/archive','POST',{},'bob');assert.equal(removed.status,200);assert.equal(removed.data.removed,true);
  assert.equal((await call('/'+shiftBatch.data.id)).status,404);
  assert.equal((await db.query('SELECT count(*)::int AS count FROM mis_vlb_batch_entries WHERE batch_id=$1',[shiftBatch.data.id])).rows[0].count,1,'removal preserves batch cards');
+ const restoredBatch=await call('','POST',{...selection,shift:'S2',requestKey:randomUUID()},'bob');assert.equal(restoredBatch.status,201,JSON.stringify(restoredBatch.data));assert.equal(restoredBatch.data.id,shiftBatch.data.id,'same archived batch is restored');assert.equal(restoredBatch.data.entry_count,1,'restored batch retains its cards');assert.equal(restoredBatch.data.archived_at,null);
  assert.equal((await call('/'+created.data.id,'GET',undefined,'restricted')).status,404);
  assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-02-31'}))).status,400);
  assert.equal((await call('','POST',{...selection,requestKey:'bad'})).status,400);

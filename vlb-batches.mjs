@@ -80,8 +80,16 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(prior){if(batchLogin(creator(prior))!==user||prior.site!==selection.site||prior.report_date!==selection.date||prior.shift!==selection.shift)fail('Batch save reference already used.');repeated=true;return details(client,await visible(client,prior.id,req),req)}
    const existing=await matchingVlbBatch(client,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
-   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND closed_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
+   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const records=await eligible(client,selection);
+   const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL FOR UPDATE',[selection.date,selection.shift])).rows;
+   const archived=archivedRows.find(batch=>canonicalSiteName(batch.site)===selection.site);
+   if(archived){
+    const restored=(await client.query('UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3 WHERE id=$4 RETURNING *,book_date::text AS report_date',[req.body.requestKey,user,req.batchActor.admin?null:user,archived.id])).rows[0];
+    await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r ON CONFLICT(logbook_id) DO NOTHING',[restored.id,JSON.stringify(records)]);
+    await auditVlbBatch(client,restored,user,'restored_to_batch_list',{logbookIdsAdded:records.map(r=>r.id)});
+    return details(client,restored,req);
+   }
    const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy,continuous_entry,creator_login) VALUES($1,$2,$3,$4,$5,1,$6,$7,NULL,0,TRUE,TRUE,$8) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,req.batchActor.admin?null:user,req.body.requestKey,user])).rows[0];
    await client.query('INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id) VALUES($1,$2,$3,$4)',[selection.site,selection.date,selection.shift,batch.id]);
    await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r',[batch.id,JSON.stringify(records)]);
