@@ -68,6 +68,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const rows=nodes(tree,n=>n.type==='tr');const ownerRow=rows.find(n=>renderToStaticMarkup(n).includes('CMLL/SASTI'));const otherRow=rows.find(n=>renderToStaticMarkup(n).includes('Other open batch'));assert.equal(button(ownerRow,'Save &amp; lock batch').props.disabled,false);assert.equal(button(otherRow,'Save &amp; lock batch').props.disabled,true);
  await button(ownerRow,'Save &amp; lock batch').props.onClick();assert.ok(calls.at(-1).url.endsWith('/batch1/close'));assert.equal(calls.at(-1).request.method,'POST');
  tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Edit')[0].props.onClick();tree=render();assert.ok(button(tree,'Edit batch'));const approval=button(tree,'Request PM approval');assert.ok(approval);await approval.props.onClick();assert.equal(slots[15],true,'locked edit opens the existing approval dialog');assert.equal(calls.at(-1).request.method,'GET','editing a locked batch does not bypass approval');
+ slots[18]={active:true,endsAt:'2026-11-10T13:00:00Z'};tree=render();assert.ok(button(tree,'Reopen batch'));assert.equal(button(tree,'Request PM approval'),undefined);assert.match(renderToStaticMarkup(tree),/VLB trial: PM approval is paused until/);
 
 });
 
@@ -83,6 +84,7 @@ test('approval popup requests a reason, shows pending state, and consumes only a
  nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Additional cards received'}});tree=render();await button(tree,'Request PM approval').props.onClick();
  assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen-request');assert.equal(calls[0].body.reason,'Additional cards received');assert.equal(changes,1);tree=render();assert.match(renderToStaticMarkup(tree),/Awaiting PM approval/);assert.equal(button(tree,'Request PM approval'),undefined);
  batch={...batch,canReopen:true,requests:[{id:'request',requested_by:'alice',status:'approved',closure_revision:1,decided_by:'pm'}]};tree=render();assert.match(renderToStaticMarkup(tree),/PM approval granted/);await button(tree,'Reopen approved batch').props.onClick();assert.equal(calls[1].url,'/api/vlb-batches/batch/reopen');assert.equal(dismissed,1);
+ batch={...batch,pmApprovalTrial:{active:true,endsAt:'2026-11-10T13:00:00Z'},requests:[]};tree=render();assert.match(renderToStaticMarkup(tree),/Reopen during VLB trial/);assert.equal(nodes(tree,n=>n.type==='textarea').length,0);await button(tree,'Reopen batch').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch/reopen');
 });
 
 test('PM approval screen requires a rejection reason and sends the selected request and review remark',async()=>{

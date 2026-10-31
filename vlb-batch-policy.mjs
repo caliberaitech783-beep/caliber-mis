@@ -38,6 +38,9 @@ export const VLB_BATCH_SCHEMA=`
  id UUID PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),closure_revision INTEGER NOT NULL,
  requested_by TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','used')),
  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),decided_by TEXT,decision_note TEXT,decided_at TIMESTAMPTZ,used_at TIMESTAMPTZ);
+ ALTER TABLE mis_vlb_reopen_requests ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS trial_reopened_until TIMESTAMPTZ;
+ CREATE TABLE IF NOT EXISTS mis_vlb_pm_trials(id TEXT PRIMARY KEY,started_at TIMESTAMPTZ NOT NULL,ends_at TIMESTAMPTZ NOT NULL,CHECK(ends_at=started_at+INTERVAL '240 hours'));
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_pending_reopen ON mis_vlb_reopen_requests(batch_id,requested_by,closure_revision) WHERE status='pending';
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
@@ -67,6 +70,7 @@ export async function assertVlbBatchWrite(client,data,actor,recordId){
  if(linked&&(canonicalSiteName(linked.site)!==canonicalSiteName(data.location)||linked.report_date!==data.bookDate||linked.shift!==vlbRecordShift(data)))batchFail('A batched card must retain its original site, date and shift.');
  const matching=await matchingVlbBatch(client,data);
  const batch=linked||matching;if(!batch)return null;
+ if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
  if(batch.closed_at)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before saving or changing cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
