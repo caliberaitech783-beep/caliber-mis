@@ -24,6 +24,16 @@ test('report-only blanks do not remove an otherwise complete card from All okay'
  assert.equal(cardReviewGroup(card('optional-report-fields',{draft:complete}),'vehicle'),'orange');
 });
 
+test('a VLB with readable header and meters but a blank trip table is Blank / no data',()=>{
+ const blankTripCard=card('blank-trip-card',{draft:{...draft,trips:[],scanMachineSummary:[],doorText:'V/153',assetId:'153',employeeId:'5567',aFormNo:'965',openingHmr:'22664',closingHmr:'22665',openingKmr:'200700.7',closingKmr:'200705.7'}});
+ assert.equal(cardReviewGroup(blankTripCard,'vehicle'),'red');
+ assert.equal(cardDisplayGroup(blankTripCard,'vehicle'),'red');
+ assert.equal(matchesCardGroup(blankTripCard,'red','vehicle'),true);
+ assert.deepEqual(cardIssueGroups(blankTripCard,'vehicle'),[]);
+ const withTrip=structuredClone(blankTripCard);withTrip.draft.trips=[{equipmentName:'V12',tripCount:1}];
+ assert.notEqual(cardDisplayGroup(withTrip,'vehicle'),'red');
+});
+
 test('Needs attention contains only cards not already covered by a specific issue filter',()=>{
  const categorized=card('categorized',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
  const remaining=card('remaining',{draft:{...draft,shiftId:''}});
@@ -64,7 +74,7 @@ test('a card with overlapping problems is counted in exactly one stable issue gr
 
 test('all status counts equal the uploaded-card total for small and large batches',()=>{
  for(const size of [1,20,120]){
-  const rows=Array.from({length:size},(_,index)=>index%4===0?card(String(index),{draft:{...draft,doorText:'',assetId:'',closingHmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}}):index%4===1?card(String(index),{draft:{...draft,shiftId:''}}):index%4===2?card(String(index),{status:'error'}):card(String(index)));
+  const rows=Array.from({length:size},(_,index)=>index%5===0?card(String(index),{draft:{...draft,doorText:'',assetId:'',closingHmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}}):index%5===1?card(String(index),{draft:{...draft,shiftId:''}}):index%5===2?card(String(index),{status:'error'}):index%5===3?card(String(index),{draft:{...draft,trips:[],scanMachineSummary:[]}}):card(String(index)));
   const counts=reviewGroupSummary(rows,'vehicle');
   assert.equal(CARD_GROUPS.reduce((sum,group)=>sum+counts[group.id],0)+counts.pending,size);
  }
