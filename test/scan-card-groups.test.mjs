@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {cardReviewGroup,reviewGroupSummary,cardIssueGroups,matchesCardGroup} from '../scan-card-groups.mjs';
+import {CARD_GROUPS,cardReviewGroup,reviewGroupSummary,cardIssueGroups,cardDisplayGroup,matchesCardGroup} from '../scan-card-groups.mjs';
 const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:50,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'V12',loadingTime:'01:03',unloadingTime:'01:12',tripCount:1}],scanMachineSummary:[{equipmentName:'V12',tripCount:1}]};
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
@@ -31,10 +31,12 @@ test('Needs attention contains only cards not already covered by a specific issu
  assert.deepEqual(cardIssueGroups(categorized,'vehicle'),groups);
  const counts=reviewGroupSummary([categorized,remaining,card('good')],'vehicle');
  assert.equal(counts.brown,1);
- for(const group of groups)assert.equal(counts[group],1);
+ assert.equal(counts['wrong-door'],1);
+ for(const group of groups.slice(1))assert.equal(counts[group],0);
  assert.equal(matchesCardGroup(categorized,'brown','vehicle'),false);
  assert.equal(matchesCardGroup(remaining,'brown','vehicle'),true);
- for(const group of groups)assert.equal(matchesCardGroup(categorized,group,'vehicle'),true);
+ assert.equal(matchesCardGroup(categorized,'wrong-door','vehicle'),true);
+ for(const group of groups.slice(1))assert.equal(matchesCardGroup(categorized,group,'vehicle'),false);
 });
 
 test('mixed 50-page batch separates five wrong-site cards without changing the other 45',()=>{
@@ -49,12 +51,21 @@ test('mixed 50-page batch separates five wrong-site cards without changing the o
  assert.equal(cardReviewGroup(changed,'vehicle',null,context),'error');
 });
 
-test('issue filters count overlapping problems and clear corrected cards',()=>{
+test('a card with overlapping problems is counted in exactly one stable issue group',()=>{
  const bad=card('bad',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
  const groups=['wrong-door','wrong-caliber','wrong-hmr','wrong-kmr','mws-ted'];
  assert.deepEqual(cardIssueGroups(bad,'vehicle'),groups);
- const counts=reviewGroupSummary([bad,card('good')],'vehicle');for(const group of groups){assert.equal(counts[group],1);assert.equal(matchesCardGroup(bad,group,'vehicle'),true);assert.equal(matchesCardGroup(card('fixed'),group,'vehicle'),false);}
+ assert.equal(cardDisplayGroup(bad,'vehicle'),'wrong-door');
+ const counts=reviewGroupSummary([bad,card('good')],'vehicle');assert.equal(counts['wrong-door'],1);for(const group of groups.slice(1))assert.equal(counts[group],0);
  assert.equal(counts.total,2);
  for(const status of ['queued','reading','posted','rejected'])assert.deepEqual(cardIssueGroups({...bad,status},'vehicle'),[]);
  assert.deepEqual(cardIssueGroups(card('empty',{draft:{},raw_fields:{}}),'vehicle'),[]);
+});
+
+test('all status counts equal the uploaded-card total for small and large batches',()=>{
+ for(const size of [1,20,120]){
+  const rows=Array.from({length:size},(_,index)=>index%4===0?card(String(index),{draft:{...draft,doorText:'',assetId:'',closingHmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}}):index%4===1?card(String(index),{draft:{...draft,shiftId:''}}):index%4===2?card(String(index),{status:'error'}):card(String(index)));
+  const counts=reviewGroupSummary(rows,'vehicle');
+  assert.equal(CARD_GROUPS.reduce((sum,group)=>sum+counts[group.id],0)+counts.pending,size);
+ }
 });
