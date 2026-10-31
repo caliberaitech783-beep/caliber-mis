@@ -58,6 +58,18 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,1),existingBatch});
  }));
  app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>res.json(await details(pool,await visible(pool,req.params.id,req),req))));
+ app.delete('/api/vlb-batches/:id',...protect,handle(async(req,res)=>{
+  if(!req.batchActor.canCreate)fail('Only an authorized MIS user can delete a batch.',403);
+  res.json(await transaction(async client=>{
+   const batch=await visible(client,req.params.id,req);
+   await client.query('DELETE FROM mis_vlb_reopen_requests WHERE batch_id=$1',[batch.id]);
+   await client.query('DELETE FROM mis_vlb_batch_audit WHERE batch_id=$1',[batch.id]);
+   await client.query('DELETE FROM mis_vlb_batch_entries WHERE batch_id=$1',[batch.id]);
+   await client.query('DELETE FROM mis_vlb_batch_scopes WHERE batch_id=$1',[batch.id]);
+   await client.query('DELETE FROM mis_vlb_batches WHERE id=$1',[batch.id]);
+   return {deleted:true,id:batch.id,name:batch.name};
+  }));
+ }));
  app.post('/api/vlb-batches',...protect,handle(async(req,res)=>{
   if(!req.batchActor.canCreate)fail('Only an authorized MIS user can create a batch.',403);
   const user=req.batchActor.login,selection=vlbBatchSelection(req.body);requireLogBookSite(req.logBookScope,selection.site);
