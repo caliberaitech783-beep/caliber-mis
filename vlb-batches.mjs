@@ -69,17 +69,18 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
    if((await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(created_by)=$1 OR lower(amendment_by)=$1) AND closed_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const records=await eligible(client,selection);if(!records.length)fail('No saved, unbatched Manual or Scan entries match this site, date and shift.',400);
-   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key) VALUES($1,$2,$3,$4,$5,1,$6,$7) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,user,req.body.requestKey])).rows[0];
+   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy) VALUES($1,$2,$3,$4,$5,1,$6,$7,NOW(),1,TRUE) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,user,req.body.requestKey])).rows[0];
    await client.query('INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id) VALUES($1,$2,$3,$4)',[selection.site,selection.date,selection.shift,batch.id]);
    await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r',[batch.id,JSON.stringify(records)]);
-   await auditVlbBatch(client,batch,user,'created',{logbookIds:records.map(r=>r.id)});return details(client,batch,req);
+   await auditVlbBatch(client,batch,user,'created',{logbookIds:records.map(r=>r.id)});
+   await auditVlbBatch(client,batch,user,'saved_and_locked',{closureRevision:1});return details(client,batch,req);
   });res.status(repeated?200:201).json(result);
  }));
  app.post('/api/vlb-batches/:id/close',...protect,handle(async(req,res)=>res.json(await transaction(async client=>{
   const batch=await visible(client,req.params.id,req);if(!isOwner(batch,req.batchActor))fail('Only the active batch owner can close this batch.',403);
   if(batch.closed_at)return details(client,batch,req);
   const closed=(await client.query('UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1 WHERE id=$1 RETURNING *,book_date::text AS report_date',[batch.id])).rows[0];
-  await auditVlbBatch(client,batch,req.batchActor.login,'closed',{closureRevision:closed.closure_revision});return details(client,closed,req);
+  await auditVlbBatch(client,batch,req.batchActor.login,'saved_and_locked',{closureRevision:closed.closure_revision,savedWithoutChanges:true});return details(client,closed,req);
  }))));
  app.post('/api/vlb-batches/:id/reopen-request',...protect,handle(async(req,res)=>{
   if(!req.batchActor.mis)fail('Only an MIS user can request batch reopening.',403);
@@ -106,7 +107,8 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(!request)fail('Reopening request is unavailable.',404);
    if(request.requested_by===req.batchActor.login)fail('A Project Manager cannot approve their own reopening request.',403);
    if(!batch.closed_at||request.closure_revision!==batch.closure_revision||request.status!=='pending')fail('This request is no longer pending for the current closure.');
-   const status=req.body.decision==='approve'?'approved':'rejected',note=String(req.body.note||'').trim().slice(0,2000);
+   const status=req.body.decision==='approve'?'approved':'rejected',note=String(req.body.note||'').trim();
+   if(note.length>2000||status==='rejected'&&!note)fail('Enter a PM review remark of up to 2000 characters. A reason is required for rejection.',400);
    const result=(await client.query('UPDATE mis_vlb_reopen_requests SET status=$1,decided_by=$2,decision_note=$3,decided_at=NOW() WHERE id=$4 RETURNING *',[status,req.batchActor.login,note,request.id])).rows[0];
    await auditVlbBatch(client,batch,req.batchActor.login,'reopen_'+status,{requestId:request.id,requestedBy:request.requested_by,note});return result;
   }));
@@ -123,7 +125,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    const opened=(await client.query('UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1 WHERE id=$2 RETURNING *,book_date::text AS report_date',[req.batchActor.login,batch.id])).rows[0];
    await client.query("UPDATE mis_vlb_reopen_requests SET status='used',used_at=NOW() WHERE id=$1",[request.id]);
    await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request.id,approvedBy:request.decided_by});
-   const records=await eligible(client,{site:canonicalSiteName(batch.site),date:batch.report_date,shift:batch.shift});for(const record of records)await syncVlbBatchRecord(client,record,req.batchActor.login);
+   const records=await eligible(client,{site:canonicalSiteName(batch.site),date:batch.report_date,shift:batch.shift});for(const record of records)await syncVlbBatchRecord(client,record,req.batchActor.login,{relock:false});
    return details(client,opened,req);
   }));
  }));

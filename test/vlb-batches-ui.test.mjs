@@ -10,6 +10,7 @@ import {bookShiftCode,systemBookDate} from '../trip-card-rules.mjs';
 import {vlbRecordSource} from '../vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed,misRequestAllowed} from '../mis-application-access.mjs';
+import {formatDisplayDateTime} from '../date-time-format.mjs';
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -29,41 +30,64 @@ test('VLB has four cards, ELB retains three, and batch access inherits the VLB p
  assert.equal(misPageAllowed({...session,permissions:{...session.permissions,misDesktopAccess:['Equipment Log Book']}},'Create VLB Batch','desktop'),false);
 });
 
+test('dedicated PM navigation permits only review routes without granting VLB editing permissions',()=>{
+ const pm={role:'super',permissions:{separateMisCredentials:true,adminLevel:'Manager',managerRoles:['Project Manager'],misDesktopAccess:[]}};
+ assert.equal(requestedMisPage('?page=vlb-batch-approvals'),'Batch reopening approvals');
+ assert.equal(misPageAllowed(pm,'Batch reopening approvals'),true);
+ assert.equal(misRequestAllowed(pm,{path:'/api/vlb-batches/approvals',method:'GET'}),true);
+ const path='/api/vlb-batches/00000000-0000-4000-8000-000000000001';
+ assert.equal(misRequestAllowed(pm,{path:path+'/reopen-decision',method:'POST'}),true);
+ for(const route of ['/api/vlb-batches',path+'/reopen-request',path+'/reopen',path+'/close'])assert.equal(misRequestAllowed(pm,{path:route,method:'POST'}),false);
+ const production={...pm,permissions:{...pm.permissions,managerRoles:['Production Manager']}};
+ assert.equal(misPageAllowed(production,'Batch reopening approvals'),false);
+ assert.equal(misRequestAllowed(production,{path:path+'/reopen-decision',method:'POST'}),false);
+});
+
 test('Create and Close Batch controls follow saved membership and open batch state',async()=>{
  const slots=[];let cursor=0;const calls=[];
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const records=[{id:1,book_no:'VLB-1',data:{door:'V07'}},{id:2,book_no:'VLB-2',data:{door:'V12',scanCardId:'saved-scan'}}],batch={id:'batch1',name:'CMLL/SASTI OC/30TH -OCT-26/S1/B01',records,site:'Sasti OC',report_date:'2026-10-30',shift:'S1'};
- const fetch=async(url,request)=>{calls.push({url,request});return {ok:true,json:async()=>url.endsWith('/close')?{...batch,closed_at:'2026-10-30T10:00:00Z'}:batch}};
- const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null},['VlbCreateBatch','availableShifts']);
+ const fetch=async(url,request)=>{calls.push({url,request});return {ok:true,json:async()=>({...batch,closed_at:'2026-10-30T10:00:00Z',closure_revision:1})}};
+ const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null},['VlbCreateBatch','availableShifts']);
  const options={sites:['Sasti OC'],shifts:[{site:'Sasti OB',name:'Shift A',shiftCode:'I'},{site:'Sasti OC',name:'Shift B',shiftCode:'II'},{site:'Jayant OC',name:'Shift C',shiftCode:'III'},{site:'Sasti OC',name:'Night',status:'inactive'}]};
  const selection={site:'Sasti OC',date:'2026-10-30',shift:'S1'};assert.deepEqual(availableShifts(options,selection).map(s=>s.code),['S1','S2']);
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'},onExit(){}})};
  render();slots[0]=options;slots[1]=selection;slots[2]={records,name:batch.name};slots[8]=false;slots[13]=true;
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
  let tree=render();assert.match(renderToStaticMarkup(tree),/2 cards · 1 Manual \+ 1 Scan/);assert.equal(button(tree,'Create Batch').props.disabled,false);
- await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,true);assert.equal(button(tree,'Close Batch').props.disabled,false);
+ await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false);assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);
  const sent=JSON.parse(calls[0].request.body);assert.deepEqual({site:sent.site,date:sent.date,shift:sent.shift},selection);assert.ok(sent.requestKey);assert.equal(sent.records,undefined,'server selects all entries');
- await button(tree,'Close Batch').props.onClick();tree=render();assert.equal(button(tree,'Close Batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
+ slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
  slots[2]={records:[],name:batch.name};assert.equal(button(render(),'Create Batch').props.disabled,true);
  slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.ok(button(render(),'Open existing batch'));
 });
 
-test('batch governance shows request, approval and authorized reopening actions',async()=>{
+test('approval popup requests a reason, shows pending state, and consumes only an approved grant',async()=>{
+ const slots=[];let cursor=0;const calls=[];let changes=0,dismissed=0;
+ const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
+ const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>url.endsWith('/reopen-request')?{id:'request',requested_by:'alice',status:'pending',closure_revision:1}:{id:'batch',records:[]}}};
+ const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
+ let batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};const actor={login:'alice',mis:true};
+ const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,actor,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
+ const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
+ let tree=render();assert.equal(button(tree,'Request PM approval').props.disabled,true);assert.match(renderToStaticMarkup(tree),/PM approval required/);
+ nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Additional cards received'}});tree=render();await button(tree,'Request PM approval').props.onClick();
+ assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen-request');assert.equal(calls[0].body.reason,'Additional cards received');assert.equal(changes,1);tree=render();assert.match(renderToStaticMarkup(tree),/Awaiting PM approval/);assert.equal(button(tree,'Request PM approval'),undefined);
+ batch={...batch,canReopen:true,requests:[{id:'request',requested_by:'alice',status:'approved',closure_revision:1,decided_by:'pm'}]};tree=render();assert.match(renderToStaticMarkup(tree),/PM approval granted/);await button(tree,'Reopen approved batch').props.onClick();assert.equal(calls[1].url,'/api/vlb-batches/batch/reopen');assert.equal(dismissed,1);
+});
+
+test('PM approval screen requires a rejection reason and sends the selected request and review remark',async()=>{
  const slots=[];let cursor=0;const calls=[];let changes=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
- const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>({id:'request'})}};
- const {VlbBatchGovernance}=await compile('vlb-batch-governance.jsx',{React,useState,useEffect:()=>{},fetch},['VlbBatchGovernance']);
- let batch={id:'batch',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};let actor={login:'alice',mis:true,pm:false};
- const render=()=>{cursor=0;return VlbBatchGovernance({session:{token:'test'},batch,actor,refresh:0,onChanged:async()=>{changes++}})};
+ const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>({})}};
+ const {ApprovalRequest}=await compile('vlb-batch-approvals.jsx',{React,useState,useRef:()=>({current:0}),useEffect:()=>{},fetch,displaySiteName,batchDateTime:()=>'-'},['ApprovalRequest']);
+ let request={id:'request2',batch_id:'batch',name:'B01',site:'Sasti OC',requested_by:'alice',reason:'Extra cards',status:'pending',current_revision:1,closure_revision:1,canDecide:true};
+ const render=()=>{cursor=0;return ApprovalRequest({request,session:{token:'test'},onChanged:async()=>changes++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
- let tree=render();assert.equal(button(tree,'Request PM approval').props.disabled,true);
- nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Additional cards received'}});tree=render();assert.equal(button(tree,'Request PM approval').props.disabled,false);
- await button(tree,'Request PM approval').props.onClick();assert.equal(calls[0].url,'/api/vlb-batches/batch/reopen-request');assert.equal(calls[0].body.reason,'Additional cards received');assert.equal(changes,1);
- batch={...batch,requests:[{id:'request',status:'pending',closure_revision:1,reason:'Additional cards received'}]};assert.equal(button(render(),'Request PM approval'),undefined);assert.equal(button(render(),'Reopen approved batch'),undefined);
- batch={...batch,canReopen:true,requests:[{id:'request',status:'approved',closure_revision:1,reason:'Additional cards received'}]};await button(render(),'Reopen approved batch').props.onClick();assert.equal(calls[1].url,'/api/vlb-batches/batch/reopen');
- actor={login:'pm',pm:true};slots[1]=[{id:'request2',batch_id:'batch',name:'B01',requested_by:'alice',reason:'Extra cards',status:'pending',current_revision:1,closure_revision:1,canDecide:true}];
- await button(render(),'Approve reopening').props.onClick();assert.deepEqual(calls[2].body,{requestId:'request2',decision:'approve'});
- slots[1]=[{...slots[1][0],canDecide:false}];assert.equal(button(render(),'Approve reopening'),undefined,'unassigned reviewers get no decision controls');
+ await button(render(),'Reject request').props.onClick();assert.equal(calls.length,0);assert.match(renderToStaticMarkup(render()),/Enter a rejection reason/);
+ nodes(render(),n=>n.type==='textarea')[0].props.onChange({target:{value:'Please verify the meter readings'}});await button(render(),'Reject request').props.onClick();assert.deepEqual(calls[0].body,{requestId:'request2',decision:'reject',note:'Please verify the meter readings'});assert.equal(changes,1);
+ await button(render(),'Approve reopening').props.onClick();assert.equal(calls[1].body.decision,'approve');
+ request={...request,canDecide:false,status:'approved',decision_note:'Checked against original scan',decided_by:'pm'};assert.equal(button(render(),'Approve reopening'),undefined);assert.match(renderToStaticMarkup(render()),/Checked against original scan/);
 });
 
 test('opened batch search and shared export controls use only its saved snapshots',async()=>{

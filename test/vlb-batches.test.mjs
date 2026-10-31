@@ -12,7 +12,7 @@ test('batch format uses site, ordinal date, shift and padded sequence',()=>{
  for(const patch of [{date:'2026-02-30'},{date:''},{site:''},{shift:'S4'}])assert.throws(()=>vlbBatchSelection({site:'Sasti OC',date:'2026-10-30',shift:'S1',...patch}));
 });
 
-test('batch APIs include every matching saved source, lock until close, retain snapshots and enforce authorization',async t=>{
+test('batch APIs include every matching saved source, save locked, retain snapshots and enforce authorization',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
@@ -38,10 +38,10 @@ test('batch APIs include every matching saved source, lock until close, retain s
  assert.equal((await call(preview)).data.records.length,0);
  assert.equal((await call('','POST',body)).data.id,created.data.id);
  assert.equal((await call('','POST',{...body,shift:'S2'})).status,409);
- assert.equal((await call('','POST',{...body,requestKey:randomUUID(),shift:'S2'})).status,409);
+ assert.equal((await call('','POST',{...body,requestKey:randomUUID()})).status,409);
  assert.equal((await call('/'+created.data.id,'GET',undefined,'bob')).status,200);
  assert.equal((await call('/'+created.data.id+'/close','POST',{},'bob')).status,403);
- assert.equal((await call('')).data.openBatch.id,created.data.id);
+ assert.equal((await call('')).data.openBatch,null);assert.ok(created.data.closed_at);assert.equal(created.data.closure_revision,1);
  await db.query("UPDATE mis_log_books SET data=data||'{\"door\":\"CHANGED\"}'::jsonb WHERE id=$1",[ids[0]]);
  assert.equal((await call('/'+created.data.id)).data.records[0].data.door,'V07');
  const closed=await call('/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200);assert.ok(closed.data.closed_at);assert.equal(closed.data.entry_count,131);

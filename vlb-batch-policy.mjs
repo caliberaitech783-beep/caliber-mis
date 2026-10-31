@@ -36,7 +36,14 @@ export const VLB_BATCH_SCHEMA=`
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_pending_reopen ON mis_vlb_reopen_requests(batch_id,requested_by,closure_revision) WHERE status='pending';
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
- occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),detail JSONB NOT NULL DEFAULT '{}');`;
+ occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),detail JSONB NOT NULL DEFAULT '{}');
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS saved_lock_policy BOOLEAN NOT NULL DEFAULT FALSE;
+ WITH migrated AS (
+  UPDATE mis_vlb_batches SET saved_lock_policy=TRUE,closed_at=COALESCE(closed_at,NOW()),amendment_by=NULL,
+   closure_revision=closure_revision+CASE WHEN closed_at IS NULL THEN 1 ELSE 0 END
+  WHERE saved_lock_policy=FALSE RETURNING id,created_by
+ ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
+ SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
 export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");
@@ -58,10 +65,23 @@ export async function assertVlbBatchWrite(client,data,actor,recordId){
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
-export async function syncVlbBatchRecord(client,record,actor){
+export async function lockSavedVlbBatches(client,actor,recordIds){
+ if(!recordIds.length)return [];
+ await lockVlbBatchWrites(client);
+ const batches=(await client.query(`SELECT DISTINCT b.* FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id
+  WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL`,[recordIds])).rows;
+ for(const batch of batches){
+  if(batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('Only the approved MIS user can save this reopened batch.',403);
+  await client.query('UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1 WHERE id=$1',[batch.id]);
+  await auditVlbBatch(client,batch,actor,'saved_and_locked',{closureRevision:batch.closure_revision+1,logbookIds:recordIds});
+ }
+ return batches.map(batch=>batch.id);
+}
+export async function syncVlbBatchRecord(client,record,actor,{relock=true}={}){
  if(record.book_type!=='vehicle')return;
  const batch=await assertVlbBatchWrite(client,record.data,actor,record.id);if(!batch)return;
  const before=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE logbook_id=$1',[record.id])).rows[0]?.snapshot;
  await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  await auditVlbBatch(client,batch,actor,before?'card_updated':'card_added',{logbookId:record.id,before:before||null,after:record});
+ if(relock)await lockSavedVlbBatches(client,actor,[record.id]);
 }

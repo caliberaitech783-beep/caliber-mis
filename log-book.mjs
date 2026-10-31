@@ -95,13 +95,13 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  data.chassis=text(asset.chassis||asset.chassisNo);
  return data;
 }
-export async function insertLogBook(client,kind,data,requestKey,createdBy){
+export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
        if(kind==='vehicle')await assertVlbBatchWrite(client,data,createdBy);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
  await enqueueTripVerification(client,result.rows[0]);
- await syncVlbBatchRecord(client,result.rows[0],createdBy);
+ await syncVlbBatchRecord(client,result.rows[0],createdBy,batchOptions);
  return result.rows[0];
 }
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,getSiteScope=async session=>logBookSiteScope(session)}){
