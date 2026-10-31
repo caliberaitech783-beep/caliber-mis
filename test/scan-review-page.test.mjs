@@ -10,18 +10,18 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  const module=await import(new URL('../src/'+match[2],import.meta.url));
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
-for(const name of ['ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
-const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
- const slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
+ const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
  const location={href:'https://example.com/?page=vlb-scan'+search,get search(){return new URL(this.href).search}};
- const window={location,history:{pushState(_state,_unused,path){location.href=new URL(path,location.href).href}},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:()=>{}};
+ const window={location,history:{pushState(_state,_unused,path){location.href=new URL(path,location.href).href},replaceState(_state,_unused,path){location.href=new URL(path,location.href).href}},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:()=>{}};
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const useRef=initial=>{const i=refCursor++;return refs[i]||(refs[i]={current:initial})};
- const Component=new Function(...Object.keys({...scope,window,useState,useRef,useEffect:()=>{}}),code+';return BulkCardScanning')(...Object.values({...scope,window,useState,useRef,useEffect:fn=>effects.push(fn)}));
+ const Component=new Function(...Object.keys({...scope,testCapture,window,useState,useRef,useEffect:()=>{}}),code+';return BulkCardScanning')(...Object.values({...scope,testCapture,window,useState,useRef,useEffect:fn=>effects.push(fn)}));
  const render=()=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
- return {render,window,listeners,effects,slots};
+ return {render,window,listeners,effects,slots,testCapture};
 }
 test('VLB scan and upload overview show status without correction or scan panels; attention opens a separate URL and Back restores overview',()=>{
  const app=harness();let tree=app.render();
@@ -91,4 +91,31 @@ test('fleet upload details start collapsed and automatic-save alert hides repeat
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
  assert.match(source,/autoSaveError&&<div role="alert" className="scan-error">Automatic Saving Stopped <button/);
  assert.doesNotMatch(source,/Automatic saving stopped: \{autoSaveError\}/);
+});
+
+
+test('highlighted equipment review returns to the same choices using page Back, browser Back and refresh',()=>{
+ const app=harness('&batch=batch-1');app.render();
+ const card={id:'card-1',batch_id:'batch-1',ordinal:1,filename:'trip.png',status:'review',draft:{},raw_fields:{fleetReview:{issues:[{key:'trip',door:'E1',selectedSite:'Sasti',pulseSite:'Majri',fields:['trips.0.equipmentName']}]}}};
+ app.testCapture.setCards([card]);
+ let tree=app.render();
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Equipment review')[0].props.onClick();
+ tree=app.render();
+ nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.onReview();
+ // Keep the card unselected so this navigation test does not need editor fixtures.
+ app.testCapture.setSelected('');tree=app.render();
+ assert.equal(new URL(app.window.location.href).searchParams.get('scanReviewReturn'),card.id);
+ assert.equal(new URL(app.window.location.href).searchParams.get('batch'),'batch-1');
+ const backApp=app;
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Back to equipment review')[0].props.onClick();
+ tree=backApp.render();
+ assert.equal(nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.card.id,card.id);
+ assert.equal(new URL(backApp.window.location.href).searchParams.has('scanView'),false);
+ assert.equal(new URL(backApp.window.location.href).searchParams.get('batch'),'batch-1');
+ const origin='&batch=batch-1&scanEquipment=card-1';
+ for(const refreshed of [false,true]){
+  const target=harness(refreshed?origin:'&batch=batch-1&scanView=review&scanReviewReturn=card-1');target.render();target.testCapture.setCards([card]);
+  if(!refreshed){target.effects[0]();target.window.location.href='https://example.com/?page=vlb-scan'+origin;target.listeners.get('popstate')();}
+  assert.equal(nodes(target.render(),n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.card.id,card.id);
+ }
 });
