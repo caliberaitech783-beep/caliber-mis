@@ -37,8 +37,9 @@ test('schema upgrade retains legacy IDs while real manual and scan inserts use i
  await db.query("INSERT INTO mis_vlb_series_counters VALUES('2026-10-29',15)");
  await db.exec(LOG_BOOK_SCHEMA);
  const input={bookDate:'2026-10-29',location:'Sasti OC',assetId:1,bookShiftCode:'S1'};
- const manual=await insertLogBook(db,'vehicle',input,randomUUID(),'manual-user');
- const scan=await insertLogBook(db,'vehicle',{...input,scanCardId:randomUUID()},randomUUID(),'scan-user');
+ const client={query:(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):db.query(sql,args)};
+ const manual=await insertLogBook(client,'vehicle',input,randomUUID(),'manual-user');
+ const scan=await insertLogBook(client,'vehicle',{...input,scanCardId:randomUUID()},randomUUID(),'scan-user');
  assert.equal(manual.book_no,'VLB_M/29TH-OCT26/S1/001');assert.equal(scan.book_no,'VLB_S/29TH-OCT26/S1/001');
  assert.equal((await db.query("SELECT book_no FROM mis_log_books WHERE created_by='legacy'")).rows[0].book_no,old);
  assert.equal((await db.query('SELECT last_number FROM mis_vlb_series_counters')).rows[0].last_number,15);
