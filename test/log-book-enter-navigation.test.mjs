@@ -118,7 +118,7 @@ test('ELB shares VLB keyboard flow and controls while retaining equipment fields
  assert.equal(all(tree,node=>node.type==='form')[0].props.onKeyDown,advanceLogBookField);
  const buttons=all(tree,node=>node.type==='button').map(node=>React.Children.toArray(node.props.children).filter(child=>typeof child==='string').join(''));
  for(const label of ['Query','First record','Last record','Edit','Save','Delete','Search','Print','Cancel','Exit','Status'])assert.ok(buttons.includes(label),label);
- assert.ok(all(tree,node=>node.props.className==='logbook-page logbook-compact').length);
+ assert.ok(all(tree,node=>node.props.className==='logbook-page logbook-compact logbook-single-sheet').length);
  assert.ok(all(tree,node=>node.type==='h2'&&node.props.children==='Hours summary').length);
  assert.equal(all(tree,node=>node.props['data-enter-action']==='add-trip').length,0);
 }));
@@ -126,9 +126,9 @@ test('ELB shares VLB keyboard flow and controls while retaining equipment fields
 test('rendered VLB header follows the requested sequence and driver is explicitly skipped',()=>{
   const tree=harness().render();
   const fields=all(tree,node=>node.props.label&&node.props.children);
-  assert.deepEqual(fields.slice(0,16).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
-    'Location','Book date','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
-    'Opening reading (KMR)','Closing reading (KMR)','Opening reading (HMR)','Closing reading (HMR)','Remark',
+  assert.deepEqual(fields.slice(0,19).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
+    'Location','Book date','Project name','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
+    'Opening reading (KMR)','Closing reading (KMR)','Opening reading (HMR)','Closing reading (HMR)','R engine opening (HMR)','R engine closing (HMR)','Remark',
   ]);
   assert.equal(fields.find(node=>node.props.label==='Driver name').props.skipEnter,true);
   for(const label of ['Shift hour','Shift']) {
