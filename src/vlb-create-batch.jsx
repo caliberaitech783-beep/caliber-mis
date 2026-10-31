@@ -21,7 +21,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const [batchSearch,setBatchSearch]=useState('');
  const [batchTab,setBatchTab]=useState('open');
  const [pmApprovalTrial,setPmApprovalTrial]=useState(null);
- const lockedSite=!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
+ const lockedSite=!entryMode&&!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
  useEffect(()=>{if(lockedSite)setSelection(current=>({...current,site:options?.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(lockedSite))||displaySiteName(lockedSite)}));},[lockedSite,options]);
  const read=async(url,{signal,method='GET',body}={})=>{
   const response=await fetch(url,{method,signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
@@ -29,7 +29,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  };
  useEffect(()=>{const controller=new AbortController();
   read('/api/log-books/options',{signal:controller.signal}).then(data=>{
-   setOptions(data);const site=data.accountLocation||(data.sites?.length===1?data.sites[0]:'');
+   setOptions(data);const site=entryMode?'':data.accountLocation||(data.sites?.length===1?data.sites[0]:'');
    setSelection(current=>({...current,site,shift:''}));
   }).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false)}});
   return()=>controller.abort();
@@ -68,6 +68,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const records=viewed?.records||preview?.records||[],manual=records.filter(r=>vlbRecordSource(r)==='VLB Manual').length;
  const shifts=options?availableShifts(options,selection):[];
  const visibleBatches=batches.filter(b=>(!selection.site||canonicalSiteName(b.site)===canonicalSiteName(selection.site))&&(!batchSearch.trim()||[b.name,b.site,b.report_date,b.shift,b.closed_at?'locked':'open'].join(' ').toLowerCase().includes(batchSearch.trim().toLowerCase()))&&(batchTab==='edit'||!b.closed_at));
+ if(entryMode){const matching=batches.filter(batch=>!batch.closed_at&&canonicalSiteName(batch.site)===canonicalSiteName(selection.site));return <section className="logbook-page vlb-create-batch vlb-entry-batch-picker"><section className="logbook-section vlb-batch-setup"><div className="vlb-batch-fields"><label>Site name<select value={selection.site} disabled={busy||!options} onChange={event=>change('site',event.target.value)}><option value="">Select site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</select></label></div>{selection.site&&matching.length>0&&<div className="vlb-batch-notice" role="dialog" aria-label="Open batch"><strong>Open batch{matching.length===1?'':'es'} for {selection.site}</strong><div className="vlb-batch-actions">{matching.map(batch=><button key={batch.id} type="button" disabled={busy||detailLoading} onClick={()=>view(batch,true)}>Open {batch.name}</button>)}</div></div>}{selection.site&&batchStatusReady&&!matching.length&&<p>No open batch is available for this site. Create the batch from Create Batch first.</p>}</section></section>}
  return <section className="logbook-page vlb-create-batch"><header className="logbook-page-header"><div><h1>{entryMode?"Select VLB batch":"Create Batch"}</h1><p>Combine all saved VLB Manual and VLB Scan cards for one site, date and shift.</p></div><button type="button" onClick={onExit}>Back to VLB</button></header>
   <section className="logbook-section vlb-batch-setup"><div className="vlb-batch-fields"><label>Site name<SmartSelect value={selection.site} disabled={busy||!options||Boolean(lockedSite)} onChange={e=>change('site',e.target.value)}><option value="">Select site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</SmartSelect></label><label>Report date<input type="date" value={selection.date} disabled={busy} onChange={e=>change('date',e.target.value)}/></label><label>Shift<SmartSelect value={selection.shift} disabled={busy||!selection.site} onChange={e=>change('shift',e.target.value)}><option value="">Select shift</option>{shifts.map(s=><option key={s.code} value={s.code}>{s.code} · {s.name}</option>)}</SmartSelect></label></div>
    {preview&&<p className="vlb-batch-id">{preview.existingBatch?'Existing batch':'Batch ID preview'}: <strong>{preview.name}</strong></p>}

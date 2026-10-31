@@ -42,7 +42,7 @@ test('empty batches accept repeated manual and scan cards; admin can use other a
  await assert.rejects(()=>syncVlbBatchRecord(pool,{id:8,book_no:'VLB-8',book_type:'vehicle',data:{location:'Jayant OB',bookDate:'2026-10-31',bookShiftCode:'S1'}},'alice'),/closed/);
 });
 
-test('batch selection offers the requested entry action and passes the same batch to either editor',async()=>{
+test('batch selection opens the requested editor directly without an intermediate action screen',async()=>{
  const fs=await import('node:fs');const React=(await import('react')).default;const {renderToStaticMarkup}=await import('react-dom/server');const {transformWithOxc}=await import('vite');
  const source=fs.readFileSync(new URL('../src/vlb-entry-workspace.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
  const {code}=await transformWithOxc(source,'vlb-entry-workspace.jsx',{jsx:{runtime:'classic'}});
@@ -50,14 +50,11 @@ test('batch selection offers the requested entry action and passes the same batc
  const nodes=(tree,predicate)=>{const found=[];const walk=n=>{if(Array.isArray(n))return n.forEach(walk);if(!React.isValidElement(n))return;if(predicate(n))found.push(n);walk(n.props.children)};walk(tree);return found};
  for(const mode of ['manual','scan']){
   const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v]};
-  const Picker=()=>null,Editor=()=>null;const saved=[];let closed=false;
-  const fetch=async()=>({ok:true,json:async()=>({...batch,closed_at:closed?'locked':null})});
+  const Picker=()=>null,Editor=()=>null;const saved=[];
+  const fetch=async()=>({ok:true,json:async()=>batch});
   const workspace=new Function('React','useState','useEffect','VlbCreateBatch','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,fetch,{setItem:(...v)=>saved.push(v)},{location:{href:'https://example.test/?page=trip-scan&batch=old'},history:{replaceState(){}}});
   const render=()=>{cursor=0;return workspace({kind:'vehicle',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   nodes(render(),n=>n.type===Picker)[0].props.onSelected(batch);
-  const title=mode==='manual'?'Manual entry':'Scan / Upload files';let tree=render();assert.ok(saved.some(v=>v[1]===batch.id));
-  await nodes(tree,n=>n.type==='button'&&n.props.children===title)[0].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,batch.id);
-  nodes(tree,n=>n.type==='button'&&n.props.children==='Search / change batch')[0].props.onClick();nodes(render(),n=>n.type===Picker)[0].props.onSelected(batch);closed=true;
-  await nodes(render(),n=>n.type==='button'&&n.props.children===title)[0].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Editor).length,0);assert.match(renderToStaticMarkup(tree),/has been locked/);
+  const tree=render();assert.ok(saved.some(v=>v[1]===batch.id));assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,batch.id);assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
  }
 });
