@@ -59,7 +59,7 @@ test("today is applied once in IST; clearing, rerendering and explicit ranges re
   for (const initialValue of ['', encodeDateRange('2026-09-01', '2026-09-05')]) {
     let state, value=initialValue;
     const initialized={current:false}, effects=[], changes=[];
-    const bindings={React,describeDateRange,encodeDateRange,parseDateRange,indiaToday:()=> '2026-09-30',
+    const bindings={SmartSelect: "select",React,describeDateRange,encodeDateRange,parseDateRange,indiaToday:()=> '2026-09-30',
       useId:()=> 'default-test',useRef:()=>initialized,useEffect:callback=>effects.push(callback),
       useState(initial){if(state===undefined)state=initial();return[state,next=>{state=next;}];}};
     const Component=new Function('DateInput',...Object.keys(bindings),`${code};return RecordDateRange;`)(DateInput,...Object.values(bindings));
@@ -81,7 +81,7 @@ test("today is applied once in IST; clearing, rerendering and explicit ranges re
 
 test("visible From and To fields apply valid ranges, preserve the prior filter for reversed dates, and reset", () => {
   let state, currentValue="";
-  const bindings={React,describeDateRange,encodeDateRange,parseDateRange,useId:()=>"date-test",useRef:()=>({current:false}),useEffect(){},useState(initial){if(state===undefined)state=initial();return[state,next=>{state=next;}];}};
+  const bindings={SmartSelect: "select",React,describeDateRange,encodeDateRange,parseDateRange,useId:()=>"date-test",useRef:()=>({current:false}),useEffect(){},useState(initial){if(state===undefined)state=initial();return[state,next=>{state=next;}];}};
   const Component=new Function('DateInput',...Object.keys(bindings),`${code};return RecordDateRange;`)(DateInput,...Object.values(bindings));
   const render=()=>Component({label:"Started",value:currentValue,onChange:value=>{currentValue=value;}});
   const change=(label,value)=>descendants(render(),node=>(node.type==="input"||node.type===DateInput)&&node.props["aria-label"]===label)[0].props.onChange({target:{value}});
@@ -113,7 +113,7 @@ test("Reports stay on their existing table implementation; dated workflow tables
 
 test('non-dashboard filters remain blank and unfiltered on mount',()=>{
   const effects=[],changes=[];
-  const bindings={React,describeDateRange,encodeDateRange,parseDateRange,indiaToday,
+  const bindings={SmartSelect: "select",React,describeDateRange,encodeDateRange,parseDateRange,indiaToday,
     useId:()=> 'all-days',useRef:()=>({current:false}),useEffect:callback=>effects.push(callback),useState:initial=>[initial(),()=>{}]};
   const Component=new Function('DateInput',...Object.keys(bindings),`${code};return RecordDateRange;`)(DateInput,...Object.values(bindings));
   const tree=Component({label:'Started',value:'',onChange:value=>changes.push(value)});

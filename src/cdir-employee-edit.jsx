@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 
 export default function CdirEmployeeEdit({person,token,onClose,onSaved}){
@@ -32,9 +33,9 @@ export default function CdirEmployeeEdit({person,token,onClose,onSaved}){
       }catch(err){setError(err.message);}finally{lock.current=false;setSaving(false);}
     }}>
       <fieldset disabled={saving} style={{border:0,padding:0}}><div className="formgrid">{data.fields.map(field=><label key={field.key}>{field.label}
-        {field.options?<select value={record[field.key]||''} onChange={event=>setRecord(current=>({...current,[field.key]:event.target.value}))}>
+        {field.options?<SmartSelect value={record[field.key]||''} onChange={event=>setRecord(current=>({...current,[field.key]:event.target.value}))}>
           {[...new Set(['',...(field.options||[]),record[field.key]||''])].map(value=><option key={value} value={value}>{value||'Select / not recorded'}</option>)}
-        </select>:<input type={field.type==='date'?'date':field.key==='email'?'email':'text'} maxLength={500} value={record[field.key]||''} onChange={event=>setRecord(current=>({...current,[field.key]:event.target.value}))}/>}
+        </SmartSelect>:<input type={field.type==='date'?'date':field.key==='email'?'email':'text'} maxLength={500} value={record[field.key]||''} onChange={event=>setRecord(current=>({...current,[field.key]:event.target.value}))}/>}
       </label>)}</div></fieldset>
       <p>Changes apply only when you save. Contact details are shared across placements with the same employee ID.</p>
       <footer><button type="button" disabled={saving} onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={saving}>{saving?'Saving…':'Save changes'}</button></footer>

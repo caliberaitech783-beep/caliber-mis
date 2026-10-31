@@ -177,7 +177,7 @@ test("OEM dashboard sits between Total and Breakdown and shares the existing fil
   assert.ok(source.includes('const oemFrom = oemLive ? "" : dashboardFrom;'));
   assert.ok(source.includes('const oemTo = oemLive ? "" : dashboardTo;'));
   assert.ok(source.includes('regions: fleetRegionInsights, oem: dashboardOem'));
-  assert.ok(source.includes('<select aria-label="OEM"'));
+  assert.ok(source.includes('<SmartSelect aria-label="OEM"'));
   assert.match(source, /<OemBreakdownDetails[^>]+selection=\{oemDrilldown\}/);
   const details = readFileSync(new URL("../src/oem-breakdown-details.jsx", import.meta.url), "utf8");
   assert.ok(details.includes('<DashboardRecordBrowser'));

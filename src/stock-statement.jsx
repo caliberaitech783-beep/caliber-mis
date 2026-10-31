@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {FileBarChart, RefreshCw} from 'lucide-react';
 import './stock-statement.css';
@@ -27,8 +28,8 @@ export default function StockStatement({token, ReportSection}) {
     <h1><FileBarChart aria-hidden="true"/> Stock Statement</h1>
     <p>View and search stock items by location.</p>
     <div className="stock-statement-filters">
-      <label>Location<select value={location} onChange={event=>setLocation(event.target.value)}><option value="">All locations</option>{[...new Set(data.rows.map(row=>row.location))].sort().map(value=><option key={value}>{value}</option>)}</select></label>
-      <label>Item group<select value={group} onChange={event=>setGroup(event.target.value)}><option value="">All item groups</option>{[...new Set(data.rows.map(row=>row.itemGroup))].filter(Boolean).sort().map(value=><option key={value}>{value}</option>)}</select></label>
+      <label>Location<SmartSelect value={location} onChange={event=>setLocation(event.target.value)}><option value="">All locations</option>{[...new Set(data.rows.map(row=>row.location))].sort().map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
+      <label>Item group<SmartSelect value={group} onChange={event=>setGroup(event.target.value)}><option value="">All item groups</option>{[...new Set(data.rows.map(row=>row.itemGroup))].filter(Boolean).sort().map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
       <button type="button" disabled={data.loading} onClick={()=>setAttempt(value=>value+1)}><RefreshCw/> Refresh</button>
     </div>
     {data.loading?<p role="status">Loading stock from Oracle…</p>:data.error?<p role="alert">{data.error}</p>:<ReportSection title="Stock Statement" category="stock-statement" description={`Inventory items by location. Checked ${new Date(data.checkedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}.`} rows={rows} columns={columns} rowKey={row=>row.serialNo} emptyMessage="No stock matches the selected filters."/>}

@@ -40,7 +40,7 @@ function harness() {
     addEventListener(type, handler) {if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(handler);},
     removeEventListener(type, handler) {listeners.get(type)?.delete(handler);},
   };
-  const scope = {requestStatusLabel,React, useState, useRef: value => useState(() => ({current: value}))[0], useEffect,
+  const scope = {SmartSelect: "select",requestStatusLabel,React, useState, useRef: value => useState(() => ({current: value}))[0], useEffect,
     Date: {now: () => now}, document, window: {setInterval(callback) {const id = ++nextTimer; timers.set(id, callback); return id;}, clearInterval(id) {timers.delete(id);}},
     InfoPulseContent: Null, InfoPulseBirthday: Null, createPortal: tree => tree,
     ...Object.fromEntries(["Activity", "PulseIcon", "MapPin", "Clock", "X", "Truck", "ChevronDown", "Bell", "ExportMenu"].map(name => [name, Null])),

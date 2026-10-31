@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 test('OCR completion replaces the reading draft without autosaving stale empty values',async()=>{
  const file=new URL('../src/bulk-card-scanning.jsx',import.meta.url);
  let source=readFileSync(file,'utf8');
- const scope={};
+ const scope={SmartSelect: "select",};
  for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+\.mjs)';/gm)){
   const module=await import(new URL(match[2],file));
   for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];

@@ -105,7 +105,7 @@ const availabilityPercentFromCounts = (row = {}) => {
 };
 
 function dashboardSection(date) {
-  const scope = {
+  const scope = {SmartSelect: "select",
     dashboardReconnecting: false,
     React, availabilityRequestsForDate, dashboardFleetSnapshot, liveEquipmentMetrics, liveEquipmentRoadStatus, recordBelongsToSite, availabilityPercentFromCounts,
     throughputRequests: requests, dashboardDate: "2026-01-01", breakdownSummaryFrom: date, breakdownSummaryTo: date, todayKey: "2026-09-10", throughputEquipment: assets,

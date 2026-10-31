@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {FileBarChart,RefreshCw} from 'lucide-react';
 import DateInput from './date-input.mjs';
@@ -50,8 +51,8 @@ export default function PoGrnReconciliation({token,ReportSection}) {
    <p className="po-grn-explanation">One row per PO item and specification. Receipts include all non-cancelled GRNs through {formatDisplayDate(range.to)} for POs created within the selected dates. Statuses are current. Pending receipt quantity = ordered minus recorded received quantity, with a minimum of zero. Accepted and rejected quantities are shown separately; quantities are compared within each unit.</p>
    <div className="po-grn-tabs" role="group" aria-label="Merged report view">{[['items','PO Fulfilment'],['receipts','GRN Detail'],['unmatched','Unlinked GRNs'],['vendors','Vendor Follow-up']].map(([key,label])=><button key={key} type="button" aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</div>
    <div className="stock-statement-filters">
-    <label>Vendor<select value={vendor} onChange={event=>setVendor(event.target.value)}><option value="">All vendors</option>{vendors.map(value=><option key={value}>{value}</option>)}</select></label>
-    {tab==='items'&&<label>Focus<select value={filter} onChange={event=>setFilter(event.target.value)}>{filters.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>}
+    <label>Vendor<SmartSelect value={vendor} onChange={event=>setVendor(event.target.value)}><option value="">All vendors</option>{vendors.map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
+    {tab==='items'&&<label>Focus<SmartSelect value={filter} onChange={event=>setFilter(event.target.value)}>{filters.map(([key,label])=><option key={key} value={key}>{label}</option>)}</SmartSelect></label>}
    </div>
    {tab==='unmatched'&&<p>Within the receipt period, {data.summary.withoutPoLines} lines have no PO reference and {data.summary.brokenPoLines} reference a PO item/specification that could not be found. Non-PO receipts may be legitimate; review the match reason before following up.</p>}
    {tab==='receipts'&&<p>{data.summary.outsideCohortLines} receipt lines link to POs outside the selected PO dates. They appear here and are excluded from PO fulfilment totals.</p>}

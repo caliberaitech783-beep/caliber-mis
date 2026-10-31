@@ -57,7 +57,7 @@ const REQUESTS = [
 function harness() {
   const slots = [], effects = [], timers = [];
   let cursor = 0;
-  const bindings = {
+  const bindings = {SmartSelect: "select",
     React, ...data, ...dates, ...timing, ...reasons, ...exportModel, requestStatusLabel, parseIstTimestamp, DailyUpdatesPanel,
     useState(initial) {const slot = cursor++; if (!(slot in slots)) slots[slot] = typeof initial === 'function' ? initial() : initial; return [slots[slot], next => {slots[slot] = typeof next === 'function' ? next(slots[slot]) : next;}];},
     useEffect(callback) {const slot = cursor++; if (!(slot in slots)) {slots[slot] = true; effects.push(callback);}},

@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React from 'react';
 import {reconciliationBanks} from './iboss-reconciliation-banks.mjs';
 const amount=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -11,8 +12,8 @@ export default function ReconciliationControls({rows,bank,status,onBank,onStatus
  const cr=(status==='reconciled'?0:sum('UNCLEAR_CR'))+(status==='unreconciled'?0:sum('RECONCILED_CR'));
  return <section aria-label="Bank reconciliation filters and balances">
   <div className="iboss-dash-controls">
-   <label>Bank account<select value={bank} onChange={event=>onBank(event.target.value)}><option value="">All banks</option>{banks.map(([code,name])=><option key={code} value={code}>{name} ({code})</option>)}</select></label>
-   <label>ERP reconciliation status<select value={status} onChange={event=>onStatus(event.target.value)}><option value="unreconciled">Not reconciled</option><option value="reconciled">Reconciled</option><option value="both">Both</option></select></label>
+   <label>Bank account<SmartSelect value={bank} onChange={event=>onBank(event.target.value)}><option value="">All banks</option>{banks.map(([code,name])=><option key={code} value={code}>{name} ({code})</option>)}</SmartSelect></label>
+   <label>ERP reconciliation status<SmartSelect value={status} onChange={event=>onStatus(event.target.value)}><option value="unreconciled">Not reconciled</option><option value="reconciled">Reconciled</option><option value="both">Both</option></SmartSelect></label>
   </div>
   <p>Dates follow the selected voucher-date range. “Reconcile Date (voucher date)” is a display value; actual ERP reconciliation date and status remain separate.</p>
   <h3>Banks with {status==='unreconciled'?'not reconciled':status==='reconciled'?'reconciled':'reconciled or not reconciled'} entries — {matchingBanks.length} banks</h3>

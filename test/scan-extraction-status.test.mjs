@@ -8,7 +8,7 @@ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').repl
 const nodes=(tree,predicate)=>{const result=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))result.push(node);visit(node.props.children)};visit(tree);return result;};
 function harness(storage=new Map(),initial=100000){
  const hooks=[],pending=[],timers=new Set();let cursor=0,changed=false,now=initial;
- const scope={React,Date:{now:()=>now},sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval:fn=>{timers.add(fn);return fn;},clearInterval:fn=>timers.delete(fn)};
+ const scope={SmartSelect: "select",React,Date:{now:()=>now},sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval:fn=>{timers.add(fn);return fn;},clearInterval:fn=>timers.delete(fn)};
  scope.useState=initial=>{const i=cursor++;hooks[i]??={value:typeof initial==='function'?initial():initial};return [hooks[i].value,value=>{const next=typeof value==='function'?value(hooks[i].value):value;if(!Object.is(next,hooks[i].value)){hooks[i].value=next;changed=true;}}];};
  scope.useEffect=(fn,deps)=>{const i=cursor++,prior=hooks[i];if(!prior||deps.some((value,n)=>!Object.is(value,prior.deps[n]))){hooks[i]={deps};pending.push(()=>{prior?.cleanup?.();hooks[i].cleanup=fn();});}};
  const component=new Function(...Object.keys(scope),code+';return {ScanExtractionStatus,formatExtractionTime};')(...Object.values(scope));

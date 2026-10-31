@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {UsersRound,SlidersHorizontal,RotateCcw,FilterX} from 'lucide-react';
 import './employee-tenure-report.css';
@@ -62,11 +63,11 @@ export default function EmployeeTenureReport({token, ReportSection}) {
     <div className="employee-tenure-filters">
       <div className="employee-tenure-filter-heading"><SlidersHorizontal aria-hidden="true"/><strong>Filter employees</strong></div>
       <label>Counted through <DateInput aria-label="Employee tenure counted through" value={asOf} max={today} onChange={event => {if (event.target.value && event.target.value <= today) setAsOf(event.target.value);}} /></label>
-      <label>Minimum completed service <select aria-label="Minimum completed service" value={minimum} onChange={event => setMinimum(Number(event.target.value))}>{TENURE_MONTHS.map(months => <option value={months} key={months}>{months}+ months</option>)}</select></label>
-      {fields.map(([key, label]) => <label key={key}>{label} <select aria-label={label} value={filters[key]} onChange={event => setFilters(current => ({...current, [key]: event.target.value}))}>
+      <label>Minimum completed service <SmartSelect aria-label="Minimum completed service" value={minimum} onChange={event => setMinimum(Number(event.target.value))}>{TENURE_MONTHS.map(months => <option value={months} key={months}>{months}+ months</option>)}</SmartSelect></label>
+      {fields.map(([key, label]) => <label key={key}>{label} <SmartSelect aria-label={label} value={filters[key]} onChange={event => setFilters(current => ({...current, [key]: event.target.value}))}>
         <option value="">All {key === 'category' ? 'categories' : `${label.toLowerCase()}s`}</option>
         {[...new Set([...available.map(row => row[key]), filters[key]].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map(value => <option key={value} value={value}>{value}</option>)}
-      </select></label>)}
+      </SmartSelect></label>)}
       <button type="button" onClick={() => {setFilters({site: '', region: '', department: '', category: '', designation: ''});setReason('');}}><FilterX aria-hidden="true"/>Clear filters</button>
       <div className="employee-tenure-search-actions">
         <label className="employee-tenure-search"><input type="search" data-smart-search aria-label="Search employee tenure report" placeholder="Search this report" value={search} onChange={event => setSearch(event.target.value)} /></label>
@@ -75,9 +76,9 @@ export default function EmployeeTenureReport({token, ReportSection}) {
     </div>
     {data.loading || data.token !== token ? <p role="status">Loading employee records…</p> : data.error ? <p role="alert">{data.error} Use Refresh to retry.</p> : <>
 
-      {view === 'excluded' && <label className="employee-tenure-reason">Exclusion reason <select aria-label="Exclusion reason" value={reason} onChange={event => setReason(event.target.value)}>
+      {view === 'excluded' && <label className="employee-tenure-reason">Exclusion reason <SmartSelect aria-label="Exclusion reason" value={reason} onChange={event => setReason(event.target.value)}>
         <option value="">All reasons</option><option>Missing joining date</option><option>Invalid joining date</option>
-      </select></label>}
+      </SmartSelect></label>}
       {view === 'excluded' ? <ReportSection key="excluded" title={`Excluded Employees · ${formatDisplayDate(asOf)}${filterSummary ? ` · ${filterSummary}` : ''}${reason ? ` · ${reason}` : ''}`} headingControl={viewTabs} category="employee-tenure" query={search} showSearch={false} description="Active employees whose joining date is missing or invalid. Tenure cannot be calculated until the joining date is corrected in C-Dir Masters." columns={excludedColumns} rows={excludedRows} rowKey={(row, index) => row.empId || `${row.name}-${index}`} emptyMessage="No excluded employees match the selected filters." /> : <ReportSection title={`Employee Tenure Report · ${formatDisplayDate(asOf)} · ${minimum}+ months${filterSummary ? ` · ${filterSummary}` : ''}`} headingControl={viewTabs} category="employee-tenure" query={search} showSearch={false} description={`Counted through ${formatDisplayDate(asOf)}. Example: 3Y 2M 15D means 3 years, 2 months and 15 days. Roster: ${data.directory.meta?.generated || 'Employee master'}.`} columns={columns} rows={report.rows} rowKey={(row, index) => row.empId || `${row.name}-${index}`} emptyMessage="No currently working employees match the selected filters and tenure." />}
     </>}
   </section>;

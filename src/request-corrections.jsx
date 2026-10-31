@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {CheckCircle2,Eye,ImageUp,LockKeyhole,Pencil,RefreshCw,Search,Send,ShieldCheck,Trash2,X} from 'lucide-react';
 import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,requestCorrectionFields,requestCorrectionReviewRemarkError} from '../request-correction-policy.mjs';
@@ -35,11 +36,11 @@ function CorrectionField({field,value,onChange,options=[]}){
   if(field.optionsSource&&options.length){
     const current=String(value??'').trim();
     const choices=current&&!options.some((option)=>option.toLowerCase()===current.toLowerCase())?[current,...options]:options;
-    return <label><span>{field.label}</span><select value={choices.find((option)=>option.toLowerCase()===current.toLowerCase())??''} onChange={(event)=>onChange(event.target.value)}><option value="" disabled>Select {field.label.toLowerCase()}</option>{choices.map((option)=><option value={option} key={option}>{option}</option>)}</select></label>;
+    return <label><span>{field.label}</span><SmartSelect value={choices.find((option)=>option.toLowerCase()===current.toLowerCase())??''} onChange={(event)=>onChange(event.target.value)}><option value="" disabled>Select {field.label.toLowerCase()}</option>{choices.map((option)=><option value={option} key={option}>{option}</option>)}</SmartSelect></label>;
   }
   if(field.kind==='boolean')return <label className="correction-checkbox"><input type="checkbox" checked={value===true} onChange={(event)=>onChange(event.target.checked)} /><span>{field.label}</span></label>;
   if(field.kind==='textarea')return <label><span>{field.label}</span><textarea value={value??''} onChange={(event)=>onChange(event.target.value)} rows="3" /></label>;
-  if(field.kind==='select')return <label><span>{field.label}</span><select value={value??''} onChange={(event)=>onChange(event.target.value)}>{field.options.map((option)=><option value={option} key={option||'blank'}>{option||'Not recorded'}</option>)}</select></label>;
+  if(field.kind==='select')return <label><span>{field.label}</span><SmartSelect value={value??''} onChange={(event)=>onChange(event.target.value)}>{field.options.map((option)=><option value={option} key={option||'blank'}>{option||'Not recorded'}</option>)}</SmartSelect></label>;
   if(field.kind==='datetime')return <label><span>{field.label} (12-hour)</span><TwelveHourDateTimeInput includeSeconds value={localInputValue(value)} onChange={onChange} /></label>;
   return <label><span>{field.label}</span><input type={field.kind==='meter'?'number':'text'} step={field.kind==='meter'?'0.01':undefined} value={value??''} onChange={(event)=>onChange(event.target.value)} /></label>;
 }
@@ -133,7 +134,7 @@ function NewCorrectionForm({requests,token,Dialog,onSaved,allowedTypes=[],fieldO
   };
   return <form className="correction-create" onSubmit={submit}>
     <div className="correction-form-heading"><div><Pencil /><span><b>Request a correction</b><small>The live record remains unchanged until PM approval and final Admin correction.</small></span></div><b>Department manager request</b></div>
-    <div className="correction-form-grid top"><SearchableSelect label="Maintenance request" options={requestOptions} value={reference} onChange={setReference} required placeholder="Search request, door, equipment, chassis, or site" emptyText="No matching maintenance request found." /><label><span>Correction type *</span><select value={type} onChange={(event)=>setType(event.target.value)}>{correctionTypes.map((key)=><option key={key} value={key}>{REQUEST_CORRECTION_TYPES[key].label}</option>)}</select></label></div>
+    <div className="correction-form-grid top"><SearchableSelect label="Maintenance request" options={requestOptions} value={reference} onChange={setReference} required placeholder="Search request, door, equipment, chassis, or site" emptyText="No matching maintenance request found." /><label><span>Correction type *</span><SmartSelect value={type} onChange={(event)=>setType(event.target.value)}>{correctionTypes.map((key)=><option key={key} value={key}>{REQUEST_CORRECTION_TYPES[key].label}</option>)}</SmartSelect></label></div>
     {selected&&<><div className="correction-request-summary"><b><RequestTimelineButton reference={selected.ref} token={token} Dialog={Dialog} /></b><span>{selected.site}</span><span>{selected.equipment} · {selected.door}</span><span>Status: {selected.status}</span></div><div className="correction-form-grid">{fields.map((field)=><CorrectionField key={field.key} field={field} value={values[field.key]} options={fieldOptions[field.optionsSource]||[]} onChange={(value)=>setValues((current)=>({...current,[field.key]:value}))} />)}</div></>}
     <label><span>Reason for correction * (minimum 10 characters)</span><textarea rows="3" value={reason} onChange={(event)=>setReason(event.target.value)} placeholder="Explain the error, the correct value, and why the record must be changed." required /></label>
     <label className="correction-upload"><ImageUp /><span><b>{evidence?.name||'Upload correction evidence *'}</b><small>JPG, PNG, or WebP · maximum 5 MB</small></span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event)=>readEvidence(event.target.files?.[0])} required={!evidence} /></label>

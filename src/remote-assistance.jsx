@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useRef, useState} from "react";
 import {createPortal} from "react-dom";
 import {record as recordRemoteSession, Replayer} from "rrweb";
@@ -50,8 +51,8 @@ export function RemoteAssistanceRequestDialog({row,token,onClose,onRequested}){
       <form onSubmit={submit}>
         <div className="remote-assistance-recipient"><b>{row.name||"Unknown user"}</b><span>{row.login||"No login"} · {row.location||"Not assigned"}</span><i>Online</i></div>
         <div className="remote-assistance-fields">
-          <label><span>Access level</span><select value={accessLevel} onChange={(event)=>setAccessLevel(event.target.value)}><option value="control">Control this Caliber Pulse tab</option><option value="view">View this Caliber Pulse tab only</option></select></label>
-          <label><span>Maximum duration</span><select value={durationMinutes} onChange={(event)=>setDurationMinutes(Number(event.target.value))}><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option></select></label>
+          <label><span>Access level</span><SmartSelect value={accessLevel} onChange={(event)=>setAccessLevel(event.target.value)}><option value="control">Control this Caliber Pulse tab</option><option value="view">View this Caliber Pulse tab only</option></SmartSelect></label>
+          <label><span>Maximum duration</span><SmartSelect value={durationMinutes} onChange={(event)=>setDurationMinutes(Number(event.target.value))}><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option></SmartSelect></label>
           <label className="wide"><span>Reason for assistance</span><textarea autoFocus maxLength="500" rows="4" value={reason} onChange={(event)=>{setReason(event.target.value);setError("");}} placeholder="Describe why access is required..." /></label>
         </div>
         <div className="remote-assistance-boundary"><ShieldCheck /><p><b>User approval is required.</b> Access is restricted to the open Caliber Pulse tab. Other applications, device files, passwords, file inputs, and operating-system controls are not available.</p></div>

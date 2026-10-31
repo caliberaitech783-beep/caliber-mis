@@ -67,7 +67,7 @@ function harness(config,{fetch:fetchImpl=async()=>response(),readAttachment}={})
     readAsDataURL(file){if(file.failRead)this.onerror();else{this.result=file.data||'data:image/png;base64,dGVzdA==';this.onload();}}
   }
   const readTicketAttachment=readAttachment||new Function('FileReader',`${attachmentSource};return readTicketAttachment;`)(FileReader);
-  const scope={userSiteSelection,React,useState,useRef,useEffect,Modal:Null,EnhancedSpeechComplaint:Null,Send:Null,CheckCircle2:Null,readTicketAttachment,
+  const scope={SmartSelect: "select",userSiteSelection,React,useState,useRef,useEffect,Modal:Null,EnhancedSpeechComplaint:Null,Send:Null,CheckCircle2:Null,readTicketAttachment,
     alert:()=>assert.fail('Ticket forms must use inline feedback, not native alert'),
     FormData:class {constructor(values){this.values=values;}get(key){return this.values[key]??'';}},
     fetch:async(...args)=>{calls.push(args);return fetchImpl(...args);},

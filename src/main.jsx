@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
 import MisAdministration from './mis-admin.jsx';
 import MisTelegram from './mis-telegram.jsx';
@@ -878,7 +879,7 @@ function Login({ onLogin, theme, toggleTheme }) {
           <h2>{accountsPortal?'Accounts sign in':'Welcome Back'}</h2>
           <p>{accountsPortal?'Sign in with your authorised Accounts user ID.':'Sign in to access your MIS workspace.'}</p>
           <div className="single-login-note"><ShieldCheck /><span><b>One secure login</b><small>Your workspace and permissions are assigned by your administrator.</small></span></div>
-          {!accountsPortal&&loginRoles.length>0&&<label>Choose your assigned workspace<select required value={selectedLoginRole} onChange={event=>setSelectedLoginRole(event.target.value)}><option value="">Select workspace</option>{loginRoles.map(role=><option key={role}>{role}</option>)}</select></label>}
+          {!accountsPortal&&loginRoles.length>0&&<label>Choose your assigned workspace<SmartSelect required value={selectedLoginRole} onChange={event=>setSelectedLoginRole(event.target.value)}><option value="">Select workspace</option>{loginRoles.map(role=><option key={role}>{role}</option>)}</SmartSelect></label>}
           <label className="login-label" htmlFor="login-username">User name</label>
           <div className="login-input">
             <User aria-hidden="true" />
@@ -929,11 +930,11 @@ function Login({ onLogin, theme, toggleTheme }) {
               ].map(([name, label, value, pick]) => (
                 <label key={name}>
                   <small>{label}</small>
-                  <select name={name} value={value} onChange={(event) => pick(event.target.value)}>
+                  <SmartSelect name={name} value={value} onChange={(event) => pick(event.target.value)}>
                     {speechLanguages.map(([, englishName, code, nativeName]) => (
                       <option key={code} value={code}>{nativeName}{nativeName === englishName ? "" : ` · ${englishName}`}</option>
                     ))}
-                  </select>
+                  </SmartSelect>
                 </label>
               ))}
             </div>
@@ -2594,7 +2595,7 @@ function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFle
   ].filter(Boolean);
   // The whole dashboard: PDF and Smart Print capture it as it is on screen; Excel has every section.
   const dashboardExportMenu = (className) => <ExportMenu title="Fleet control dashboard" columns={dashboardKpiExportColumns} rows={dashboardExportRows} excelSheets={dashboardExcelSheets} className={className} label="Print/Export" dashboardPdf />;
-  const renderDashboardHeader = (inDialog = false) => <DashboardFilterBar inDialog={inDialog} bannerRef={inDialog ? undefined : dashboardBannerRef} collapsedAction={inDialog ? null : dashboardExportMenu("dashboard-banner-export")}><label><span>Region</span><select aria-label="Region" value={dashboardRegion} onChange={(event) => { setDashboardRegion(event.target.value); setDashboardSite("all"); }}><option value="all">{restrictToScope?"All assigned sites":"All regions"}</option>{availableRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</select></label>{<label className="mine-site-filter"><span>Site</span><select aria-label="Site" value={dashboardSite} onChange={(event) => setDashboardSite(event.target.value)}><option value="all">All {selectedRegion?.code || ""} sites</option>{selectedSites.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>}<label className="mine-shift-filter"><span>Shift Master</span><select aria-label="Shift Master" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label><label className="mine-date-filter"><span>From</span><DateInput aria-label="Dashboard from date" value={dashboardFrom} max={dashboardTo || todayKey} onChange={(event) => updateDashboardRange("from", event.target.value)} /></label><label className="mine-date-filter"><span>To</span><DateInput aria-label="Dashboard to date" value={dashboardTo} min={dashboardFrom || undefined} max={todayKey} onChange={(event) => updateDashboardRange("to", event.target.value)} /></label>{showOemBreakdowns && <label className="mine-oem-filter"><span>OEM</span><select aria-label="OEM" value={dashboardOem} onChange={(event) => filterOemChart(event.target.value)}><option value="all">All OEMs</option>{oemChart.oems.map((oem) => <option key={oem.key} value={oem.key}>{oem.label}</option>)}</select></label>}<span className="mine-updated"><Activity /> {!equipmentLoaded ? (equipmentLoadError ? "Unavailable" : "Loading") : dashboardReconnecting ? "Reconnecting" : dashboardIsLive ? "Live" : "Filtered"} · {filteredDateLabel}{dashboardShift !== "all" ? ` · ${dashboardShiftLabel}` : ""}</span>{dashboardExportMenu("dashboard-export-trigger")}{inDialog && <button type="button" className="dashboard-export-trigger dashboard-filter-reset" onClick={resetOemFilters}>Reset filters</button>}</DashboardFilterBar>;
+  const renderDashboardHeader = (inDialog = false) => <DashboardFilterBar inDialog={inDialog} bannerRef={inDialog ? undefined : dashboardBannerRef} collapsedAction={inDialog ? null : dashboardExportMenu("dashboard-banner-export")}><label><span>Region</span><SmartSelect aria-label="Region" value={dashboardRegion} onChange={(event) => { setDashboardRegion(event.target.value); setDashboardSite("all"); }}><option value="all">{restrictToScope?"All assigned sites":"All regions"}</option>{availableRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</SmartSelect></label>{<label className="mine-site-filter"><span>Site</span><SmartSelect aria-label="Site" value={dashboardSite} onChange={(event) => setDashboardSite(event.target.value)}><option value="all">All {selectedRegion?.code || ""} sites</option>{selectedSites.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>}<label className="mine-shift-filter"><span>Shift Master</span><SmartSelect aria-label="Shift Master" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</SmartSelect></label><label className="mine-date-filter"><span>From</span><DateInput aria-label="Dashboard from date" value={dashboardFrom} max={dashboardTo || todayKey} onChange={(event) => updateDashboardRange("from", event.target.value)} /></label><label className="mine-date-filter"><span>To</span><DateInput aria-label="Dashboard to date" value={dashboardTo} min={dashboardFrom || undefined} max={todayKey} onChange={(event) => updateDashboardRange("to", event.target.value)} /></label>{showOemBreakdowns && <label className="mine-oem-filter"><span>OEM</span><SmartSelect aria-label="OEM" value={dashboardOem} onChange={(event) => filterOemChart(event.target.value)}><option value="all">All OEMs</option>{oemChart.oems.map((oem) => <option key={oem.key} value={oem.key}>{oem.label}</option>)}</SmartSelect></label>}<span className="mine-updated"><Activity /> {!equipmentLoaded ? (equipmentLoadError ? "Unavailable" : "Loading") : dashboardReconnecting ? "Reconnecting" : dashboardIsLive ? "Live" : "Filtered"} · {filteredDateLabel}{dashboardShift !== "all" ? ` · ${dashboardShiftLabel}` : ""}</span>{dashboardExportMenu("dashboard-export-trigger")}{inDialog && <button type="button" className="dashboard-export-trigger dashboard-filter-reset" onClick={resetOemFilters}>Reset filters</button>}</DashboardFilterBar>;
   return (
     <div className={`mine-dashboard ${theme === "dark" ? "mine-dashboard-night" : "mine-dashboard-day"}${showFleetBreakdowns ? " breakdown-dashboard-view" : ""}${showOemBreakdowns ? " mine-oem-view" : ""}`}>
       {renderDashboardHeader()}
@@ -2651,9 +2652,9 @@ function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFle
             <button type="button" className="throughput-filter-eye" title={throughputFiltersHidden ? "Show region and date filters" : "Hide region and date filters"} aria-label={throughputFiltersHidden ? "Show region and date filters" : "Hide region and date filters"} aria-expanded={!throughputFiltersHidden} aria-controls="throughput-region-date-filters" onClick={(event) => { event.stopPropagation(); setThroughputFiltersHidden(hidden => !hidden); }}>{throughputFiltersHidden ? <EyeOff /> : <Eye />}</button>
           </header>
           <div id="throughput-region-date-filters" hidden={throughputFiltersHidden} ref={throughputFiltersRef} className="dashboard-breakdown-period-controls dashboard-breakdown-summary-controls" role="group" aria-label="Site-wise BD date range">
-            <label><span>Region</span><select aria-label="Vehicle throughput region" value={selectedThroughputRegion?.code || "all"} onChange={(event) => { setThroughputRegion(event.target.value); setThroughputSite("all"); setRoadFocusSite(""); }}><option value="all">All regions</option>{throughputRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</select></label>
-            {selectedThroughputRegion && <label><span>Site</span><select aria-label="Vehicle throughput site" value={activeThroughputSite} onChange={(event) => { setThroughputSite(event.target.value); setRoadFocusSite(""); }}><option value="all">All sites</option>{throughputSiteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>}
-            {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Vehicle throughput shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>}
+            <label><span>Region</span><SmartSelect aria-label="Vehicle throughput region" value={selectedThroughputRegion?.code || "all"} onChange={(event) => { setThroughputRegion(event.target.value); setThroughputSite("all"); setRoadFocusSite(""); }}><option value="all">All regions</option>{throughputRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</SmartSelect></label>
+            {selectedThroughputRegion && <label><span>Site</span><SmartSelect aria-label="Vehicle throughput site" value={activeThroughputSite} onChange={(event) => { setThroughputSite(event.target.value); setRoadFocusSite(""); }}><option value="all">All sites</option>{throughputSiteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>}
+            {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><SmartSelect aria-label="Vehicle throughput shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</SmartSelect></label>}
             <label><span>From date</span><DateInput aria-label="Site-wise BD from date" value={breakdownSummaryStartKey} max={todayKey} onChange={(event) => updateBreakdownSummaryRange("from", event.target.value)} /></label>
             <label><span>To date</span><DateInput aria-label="Site-wise BD to date" value={breakdownSummaryEndKey} max={todayKey} onChange={(event) => updateBreakdownSummaryRange("to", event.target.value)} /></label>
             <button type="button" onClick={resetBreakdownSummaryRange} disabled={breakdownSummaryIsToday && !breakdownSummaryManual}>Reset dates</button>
@@ -2767,8 +2768,8 @@ function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFle
               <label><span>From</span><DateInput aria-label="Request lifecycle from date" value={requestTrendFrom || safeTrendStartKey} min={requestTrendEarliestKey} max={requestTrendTo || requestTrendEndKey} onChange={(event) => setRequestTrendFrom(event.target.value)} /></label>
               <div className="mine-request-lifecycle-end-controls">
                 <label><span>To</span><DateInput aria-label="Request lifecycle to date" value={requestTrendTo || requestTrendEndKey} min={requestTrendFrom || undefined} max={localDateKey(now)} onChange={(event) => setRequestTrendTo(event.target.value)} /></label>
-                <label><span>Region</span><select aria-label="Request lifecycle region" value={requestLifecycleRegion || requestLifecycleSite ? requestTrendRegion : "all"} onChange={(event) => setRequestTrendRegion(event.target.value)}><option value="all">All regions</option>{requestLifecycleRegions.map((region) => <optgroup key={region.code} label={region.code}><option value={region.code}>{region.code}</option>{region.sites.map((site) => <option key={site} value={`site:${site}`}>{site}</option>)}</optgroup>)}</select></label>
-                {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Request lifecycle shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</select></label>}
+                <label><span>Region</span><SmartSelect aria-label="Request lifecycle region" value={requestLifecycleRegion || requestLifecycleSite ? requestTrendRegion : "all"} onChange={(event) => setRequestTrendRegion(event.target.value)}><option value="all">All regions</option>{requestLifecycleRegions.map((region) => <optgroup key={region.code} label={region.code}><option value={region.code}>{region.code}</option>{region.sites.map((site) => <option key={site} value={`site:${site}`}>{site}</option>)}</optgroup>)}</SmartSelect></label>
+                {dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><SmartSelect aria-label="Request lifecycle shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</SmartSelect></label>}
               </div>
               {equipmentLoaded && <ExportMenu {...lifecycleSectionTable()} className="mine-section-export" printSection />}
             </div>
@@ -2840,7 +2841,7 @@ function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFle
       </Modal>}
       {!showOemBreakdowns && <section className="mine-dashboard-lower-grid">
       <section {...cardAction("trend:all", "Breakdown trend")} className="mine-panel mine-breakdown-trend">
-        <header><div><span className="mine-eyebrow">Reliability intelligence</span><h2>Breakdown trend</h2><p>Recorded breakdown history</p></div><div className="mine-trend-controls"><label><MapPin /><select aria-label="Breakdown trend site" value={activeTrendSite} onChange={(event) => setBreakdownTrendSite(event.target.value)}><option value="all">All visible sites</option>{trendAvailableSites.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>{dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Breakdown trend shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</select></label>}<label className="mine-trend-anchor"><span>From</span><DateInput aria-label="Breakdown trend from date" max={todayKey} value={breakdownTrendStartKey} onChange={(event) => updateBreakdownTrendRange("from", event.target.value)} /></label><label className="mine-trend-anchor"><span>To</span><DateInput aria-label="Breakdown trend to date" max={todayKey} value={breakdownTrendAnchorKey} onChange={(event) => updateBreakdownTrendRange("to", event.target.value)} /></label><div className="mine-trend-summary-row"><div className="mine-trend-period" role="group" aria-label="Breakdown trend period">{[7, 14, 30].map((days) => <button type="button" key={days} className={breakdownTrendPeriodDays === days ? "active" : ""} onClick={() => { setBreakdownTrendDays(days); setBreakdownTrendFrom(""); setBreakdownTrendRangeError(""); }}>{days}D</button>)}</div>{equipmentLoaded && breakdownTrend.length > 0 && <ExportMenu {...trendSectionTable()} className="mine-section-export" printSection />}<button type="button" className="mine-trend-view-all" onClick={() => openAssetDrilldown("trend:all")}>View all <ChevronRight /></button>{equipmentLoaded && <div className="mine-trend-summary"><article {...listAction("trend:all", "All recorded breakdown requests")}><span>Recorded</span><strong>{breakdownTrendTotal.toLocaleString()}</strong><small>{breakdownTrendPeriodDays} selected days</small></article><article {...listAction("trend:all", "Recorded requests for the daily baseline")}><span>Daily baseline</span><strong>{breakdownTrendAverage}</strong><small>Recorded per day</small></article></div>}</div></div>{breakdownTrendRangeError && <small role="alert">{breakdownTrendRangeError}</small>}</header>
+        <header><div><span className="mine-eyebrow">Reliability intelligence</span><h2>Breakdown trend</h2><p>Recorded breakdown history</p></div><div className="mine-trend-controls"><label><MapPin /><SmartSelect aria-label="Breakdown trend site" value={activeTrendSite} onChange={(event) => setBreakdownTrendSite(event.target.value)}><option value="all">All visible sites</option>{trendAvailableSites.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>{dashboardShiftOptions.length > 0 && <label><span>Shift Master</span><SmartSelect aria-label="Breakdown trend shift" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((shift) => <option key={shift.key} value={shift.key}>{shift.label}</option>)}</SmartSelect></label>}<label className="mine-trend-anchor"><span>From</span><DateInput aria-label="Breakdown trend from date" max={todayKey} value={breakdownTrendStartKey} onChange={(event) => updateBreakdownTrendRange("from", event.target.value)} /></label><label className="mine-trend-anchor"><span>To</span><DateInput aria-label="Breakdown trend to date" max={todayKey} value={breakdownTrendAnchorKey} onChange={(event) => updateBreakdownTrendRange("to", event.target.value)} /></label><div className="mine-trend-summary-row"><div className="mine-trend-period" role="group" aria-label="Breakdown trend period">{[7, 14, 30].map((days) => <button type="button" key={days} className={breakdownTrendPeriodDays === days ? "active" : ""} onClick={() => { setBreakdownTrendDays(days); setBreakdownTrendFrom(""); setBreakdownTrendRangeError(""); }}>{days}D</button>)}</div>{equipmentLoaded && breakdownTrend.length > 0 && <ExportMenu {...trendSectionTable()} className="mine-section-export" printSection />}<button type="button" className="mine-trend-view-all" onClick={() => openAssetDrilldown("trend:all")}>View all <ChevronRight /></button>{equipmentLoaded && <div className="mine-trend-summary"><article {...listAction("trend:all", "All recorded breakdown requests")}><span>Recorded</span><strong>{breakdownTrendTotal.toLocaleString()}</strong><small>{breakdownTrendPeriodDays} selected days</small></article><article {...listAction("trend:all", "Recorded requests for the daily baseline")}><span>Daily baseline</span><strong>{breakdownTrendAverage}</strong><small>Recorded per day</small></article></div>}</div></div>{breakdownTrendRangeError && <small role="alert">{breakdownTrendRangeError}</small>}</header>
         {equipmentLoaded?<div className="mine-breakdown-trend-body">
           <section className="mine-trend-visual"><div className="mine-trend-legend"><span {...listAction("trend:all", "All recorded breakdown requests")}><i className="actual" />Actual</span><b aria-label="Breakdown trend selected period">From: {formatDisplayDate(breakdownTrendStartKey)} · To: {formatDisplayDate(breakdownTrendAnchorKey)}</b></div><div className="mine-trend-chart" aria-label={`${breakdownTrendPeriodDays} day recorded breakdown chart`}><div className="mine-trend-chart-days" style={{ minWidth: `${Math.max(0, breakdownTrend.length * 26 - 4)}px` }}><div className="mine-trend-chart-grid" aria-hidden="true">{breakdownTrendScale.ticks.map((tick) => <i key={tick} style={{ bottom: `${tick / maxBreakdownTrend * 100}%` }} />)}</div>{breakdownTrend.map((day, index) => <div {...trendPointAction(`trend:${day.kind}:${day.date}`, `${formatDisplayDate(day.date)}: ${day.count} ${day.kind === "forecast" ? "forecast, open supporting records" : "recorded breakdown requests"}`)} className={`mine-trend-day ${day.kind}${day.anchor ? " anchor" : ""}`} key={`${day.kind}-${day.date}`} title={`${formatDisplayDate(day.date)}: ${day.count} ${day.kind === "forecast" ? "forecast" : "recorded"} breakdown${day.count === 1 ? "" : "s"}`}><span><i style={{ height: `${day.count / maxBreakdownTrend * 100}%` }}><b>{day.count}</b></i></span><small>{index === 0 || index === breakdownTrend.length - 1 || breakdownTrendPeriodDays <= 14 || index % 5 === 0 || day.anchor ? formatDisplayDate(day.date) : ""}</small></div>)}</div></div></section>
         </div>:<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="dashboard-breakdown-trend-state" />}
@@ -2998,7 +2999,7 @@ function BreakdownTable({ rows = breakdowns, showBreakdownDays = false, stickyHe
     return () => document.removeEventListener("pointerdown", closeFilter);
   }, [openFilter]);
   return (
-    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className={`table-search-toolbar${stableToolbar ? " manager-table-search-toolbar" : ""}`}><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(requestStatusLabel).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label>}{showDateFilter && <label className="table-date-filter"><CalendarDays /><DateInput aria-label="Filter by started date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>}<div className="toolbar-actions-end">{actionsBesideSearch && <div className="master-actions-slot" ref={setActionsToolbarTarget} />}{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}{!stableToolbar && <ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} smartPrintItem />}</div></div><div id={statusPanelId || undefined} role={statusPanelId ? "tabpanel" : undefined} aria-labelledby={statusPanelLabelledBy || undefined} className={`${showBreakdownDays ? "scroll mobile-breakdown-table" : "scroll"}${stickyHeader ? " master-table-scroll" : ""}`}>
+    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className={`table-search-toolbar${stableToolbar ? " manager-table-search-toolbar" : ""}`}><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><SmartSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(requestStatusLabel).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</SmartSelect></label>}{showDateFilter && <label className="table-date-filter"><CalendarDays /><DateInput aria-label="Filter by started date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>}<div className="toolbar-actions-end">{actionsBesideSearch && <div className="master-actions-slot" ref={setActionsToolbarTarget} />}{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}{!stableToolbar && <ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} smartPrintItem />}</div></div><div id={statusPanelId || undefined} role={statusPanelId ? "tabpanel" : undefined} aria-labelledby={statusPanelLabelledBy || undefined} className={`${showBreakdownDays ? "scroll mobile-breakdown-table" : "scroll"}${stickyHeader ? " master-table-scroll" : ""}`}>
       <ActionsTable className="breakdown-table-auto-fit" closedTimeAfterStarted={showClosedAt} onFilteredRows={onDeleteSelected ? trackFilteredRows : null} exportTitle={stableToolbar ? exportTitle : ""} printTitle={stableToolbar ? "Manager dashboard requests" : ""} toolbarTarget={actionsBesideSearch ? actionsToolbarTarget : null} toolbarPortal={actionsBesideSearch} onClearToolbarFilters={() => { setStatusFilter(""); setDateFilter(""); }}>
         <thead>
           <tr>
@@ -3563,12 +3564,12 @@ function TableParameterFilter({ columns = [], rows = [], filters = {}, onFilterC
       <div className="table-parameter-filter-head"><div><strong>Filter report</strong><span>Choose values to compare report records.</span></div><button type="button" onClick={() => setOpen(false)} aria-label="Close report filters" title="Close"><X /></button></div>
       <div className="table-parameter-filter-fields">
         {columns.map((column) => (
-          <label key={column.key}><span>{column.label}</span><select value={filters[column.key] || ""} onChange={(event) => onFilterChange(column.key, event.target.value)}>
+          <label key={column.key}><span>{column.label}</span><SmartSelect value={filters[column.key] || ""} onChange={(event) => onFilterChange(column.key, event.target.value)}>
             <option value="">All {column.label}</option>
             {parseDateRange(filters[column.key]) && <option value={filters[column.key]}>{describeDateRange(parseDateRange(filters[column.key]))}</option>}
             {parseFilterValues(filters[column.key]).length > 1 && <option value={filters[column.key]}>{describeFilterValues(filters[column.key])}</option>}
             {(columnValues[column.key] || []).map((value) => <option key={value || EMPTY_TABLE_FILTER_VALUE} value={value || EMPTY_TABLE_FILTER_VALUE}>{value || "(Blank)"}</option>)}
-          </select></label>
+          </SmartSelect></label>
         ))}
       </div>
       <div className="table-parameter-filter-foot"><button type="button" onClick={onClearFilters} disabled={!activeFilterCount}><X /> Clear filters</button>{dialogMode && <button type="button" className="primary" onClick={() => setOpen(false)}>Apply</button>}</div>
@@ -4109,7 +4110,7 @@ function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-sort-dialog" role="dialog" aria-modal="true" aria-labelledby="report-sort-title" onPointerDown={(event) => event.stopPropagation()}>
         <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close"><X /></button></header>
-        <div><label><span>Column</span><select value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select></label><label><span>Direction</span><select value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label></div>
+        <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></SmartSelect></label></div>
         <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!columnKey} onClick={() => onApply(columnKey, direction)}>Apply</button></footer>
       </section>
     </div>,
@@ -4300,7 +4301,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const printSavedView = () => openSmartPrint({ title: reportTitle, columns: displayedColumns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
-        <label className="report-row-limit"><span>Rows</span><select aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
+        <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
         <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
         <SavedReportsPanel title={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint onPrint={printSavedView} />
@@ -4694,10 +4695,10 @@ function CDirFieldInput({ name, label, type, defaultValue = "", required = false
   const current = String(defaultValue ?? "");
   if (!refMaster) {
     const options = String(type).slice("options:".length).split("|");
-    return <label>{label}{required ? " *" : ""}<select name={name} required={required} defaultValue={current}>
+    return <label>{label}{required ? " *" : ""}<SmartSelect name={name} required={required} defaultValue={current}>
       {current && !options.includes(current) && <option value={current}>{current}</option>}
       {options.map((option) => <option key={option} value={option}>{option || "Not set"}</option>)}
-    </select></label>;
+    </SmartSelect></label>;
   }
   const values = [...new Set(records.map((record) => String(record[refKey] ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return <SearchableSelect label={label} name={name} required={required} defaultValue={current}
@@ -4955,26 +4956,26 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                 ) : type === "mobile-role-select" ? (
                   <label key={key}>
                     {label}
-                    <select name={key} defaultValue="">
+                    <SmartSelect name={key} defaultValue="">
                       <option value="">Not assigned</option>
                       {mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option} — {mobileRoleAuthority[option]}</option>)}
-                      </select>
+                      </SmartSelect>
                     </label>
                 ) : name === "Users & employees" && key === "site" ? (
                   <label key={key}>
                     {label} *
-                    <select name={key} required defaultValue="">
+                    <SmartSelect name={key} required defaultValue="">
                       <option value="" disabled>Select location</option>
                       {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-                    </select>
+                    </SmartSelect>
                   </label>
                 ) : name === "Users & employees" && key === "userType" ? (
                   <label key={key}>
                     {label} *
-                    <select name={key} required defaultValue="">
+                    <SmartSelect name={key} required defaultValue="">
                       <option value="" disabled>Select user type</option>
                       {persistedUserTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                    </select>
+                    </SmartSelect>
                   </label>
                 ) : type === "user-select" ? (
                   <SearchableSelect key={key} label={label} name={key} required defaultValue=""
@@ -4997,22 +4998,22 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                     </span>
                   ) : type === "site-select" ? (
                     <>{label} *
-                    <select name={key} required defaultValue="">
+                    <SmartSelect name={key} required defaultValue="">
                       <option value="" disabled>Select a site</option>
                       {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-                    </select></>
+                    </SmartSelect></>
                   ) : type === "time" ? (
                     <>{label} (12-hour) *<TwelveHourTimeInput includeSeconds name={key} required /></>
                   ) : type === "date" ? (
                     <>{label}<DateInput name={key} /></>
                   ) : type === "shift-status" ? (
-                    <>{label} *<select name={key} required defaultValue="Active"><option>Active</option><option>Inactive</option></select></>
+                    <>{label} *<SmartSelect name={key} required defaultValue="Active"><option>Active</option><option>Inactive</option></SmartSelect></>
                   ) : name === "Equipment master" && key === "status" ? (
                     <>{label} *
-                    <select name={key} required defaultValue="Operational"><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></select></>
+                    <SmartSelect name={key} required defaultValue="Operational"><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></SmartSelect></>
                   ) : key === "level" ? (
                     <>{label} *
-                    <select name={key} required defaultValue="">
+                    <SmartSelect name={key} required defaultValue="">
                       <option value="" disabled>
                         Select level
                       </option>
@@ -5021,7 +5022,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                           {level}
                         </option>
                       ))}
-                    </select>
+                    </SmartSelect>
                     </>
                   ) : (
                     <>{label}{key === fields[0][0] ? " *" : ""}
@@ -5290,23 +5291,23 @@ function Equipment({
           />
         </div>
         <div className="master-actions-slot" ref={setActionsToolbarTarget} />
-        <select value={road} onChange={(e) => setRoad(e.target.value)}>
+        <SmartSelect value={road} onChange={(e) => setRoad(e.target.value)}>
           <option value="all">All road statuses</option>
           <option value="onroad">On Road</option>
           <option value="offroad">Off Road</option>
           <option value="idle">Idle</option>
-        </select>
-        <select value={location} onChange={(e) => setLocation(e.target.value)}>
+        </SmartSelect>
+        <SmartSelect value={location} onChange={(e) => setLocation(e.target.value)}>
           <option value="">All locations</option>
           {locations.map((site) => (
             <option key={site}>{site}</option>
           ))}
-        </select>
-        <select value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)}>
+        </SmartSelect>
+        <SmartSelect value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)}>
           <option value="all">All categories</option>
           <option value="equipment">Equipment</option>
           <option value="vehicle">Vehicles</option>
-        </select>
+        </SmartSelect>
         <TableParameterFilter columns={filterColumns} rows={records} filters={columnFilters} onFilterChange={updateColumnFilter} onClearFilters={() => setColumnFilters({})} />
       </div>
       <div className="scroll master-table-scroll" onClick={() => setOpenFilter(null)}>
@@ -5423,7 +5424,7 @@ function Equipment({
             <div className="formgrid">
               {equipmentEditFields.map(([key, label]) => (
                 <label key={key}>{label}
-                  {key==="status"?<select name={key} defaultValue={editing[key]||"Operational"}><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></select>:<input name={key} defaultValue={editing[key] || ""} />}
+                  {key==="status"?<SmartSelect name={key} defaultValue={editing[key]||"Operational"}><option value="Operational">On road</option><option value="Off road">Off road</option><option value="Idle">Idle</option></SmartSelect>:<input name={key} defaultValue={editing[key] || ""} />}
                 </label>
               ))}
             </div>
@@ -5793,7 +5794,7 @@ function EnhancedSpeechComplaint({
     <label className="full speechfield">
       <span>{label}</span>
       <div className="speechtools">
-        <select
+        <SmartSelect
           aria-label="Spoken language"
           value={lang}
           disabled={listening || working}
@@ -5804,7 +5805,7 @@ function EnhancedSpeechComplaint({
               {nativeName === name ? name : `${nativeName} · ${name}`}
             </option>
           ))}
-        </select>
+        </SmartSelect>
         <button
           type="button"
           className={listening ? "recording" : ""}
@@ -6036,7 +6037,7 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
           <label style={{gridColumn:"1 / -1"}}>Shift<input readOnly aria-label="Shift" value={shiftData.loading?'Loading shift…':requestShiftLabel({site:currentLocation,start:`${requestDate} ${requestTime}`},shiftData.shifts)} /></label>
           <label>
             Equipment group *
-            <select
+            <SmartSelect
               name="equipmentGroup"
               required
               value={equipmentGroup}
@@ -6062,11 +6063,11 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
                   {group.label}
                 </option>
               ))}
-            </select>
+            </SmartSelect>
           </label>
           <label>
             Type of breakdown *
-            <select
+            <SmartSelect
               name="category"
               required
               defaultValue=""
@@ -6088,7 +6089,7 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
                   </option>
                 ))}
               {!repairTypeRecords.some(record => /^others?$/i.test(String(record.repairType || "").trim())) && <option value="Other">Other</option>}
-            </select>
+            </SmartSelect>
           </label>
           <div>
             <EquipmentCombobox key={`${assignedLocation}|${equipmentGroup}`} records={groupRecords}
@@ -6161,7 +6162,7 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
             <AlertTriangle />
             <span>
               <b>{duplicateConflict.idleApprovalPending ? "Pending idle approval" : duplicateConflict.checkFailed ? "Door-number check unavailable" : "Already off road / under maintenance"}</b>
-              {duplicateConflict.idleApprovalPending || duplicateConflict.checkFailed ? duplicateConflict.message : <>Request {duplicateConflict.existingReference} remains open.<p>{duplicateConflict.complaint}</p><label>Is this breakdown for the same reason?<select required value={existingReason} onChange={event=>setExistingReason(event.target.value)}><option value="">Select reason</option><option value="same">Same reason — create linked ticket</option><option value="different">Different reason — create linked ticket</option></select></label></>}
+              {duplicateConflict.idleApprovalPending || duplicateConflict.checkFailed ? duplicateConflict.message : <>Request {duplicateConflict.existingReference} remains open.<p>{duplicateConflict.complaint}</p><label>Is this breakdown for the same reason?<SmartSelect required value={existingReason} onChange={event=>setExistingReason(event.target.value)}><option value="">Select reason</option><option value="same">Same reason — create linked ticket</option><option value="different">Different reason — create linked ticket</option></SmartSelect></label></>}
             </span>
           </div>
         )}
@@ -6455,11 +6456,11 @@ function Generic({ name, requests = [] }) {
           <input data-smart-search type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder={"Search " + name.toLowerCase()} />
         </div>
         {isReport && (
-          <select>
+          <SmartSelect>
             <option>All regions</option>
             <option>WCL</option>
             <option>NCL</option>
-          </select>
+          </SmartSelect>
         )}
       </div>
       {isReport && (
@@ -7915,7 +7916,7 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
               </details>
               <div className="report-schedule-toolbar">
                 {reportAccess.canManageAll
-                  ? <label><span>User role</span><select value={selectedScheduleDesignation} onChange={(event) => setSelectedScheduleDesignation(event.target.value)}>{scheduleDesignationOptions.map((designation) => <option key={designation.key} value={designation.key}>{designation.label}</option>)}</select></label>
+                  ? <label><span>User role</span><SmartSelect value={selectedScheduleDesignation} onChange={(event) => setSelectedScheduleDesignation(event.target.value)}>{scheduleDesignationOptions.map((designation) => <option key={designation.key} value={designation.key}>{designation.label}</option>)}</SmartSelect></label>
                   : <div className="report-schedule-owner"><span>My report schedule</span><b>{reportScheduleOwner.name || session?.name || reportScheduleOwner.login}</b><small>{selectedScheduleMeta.label} · <i>{userScheduleCustomised ? "Customised by you" : "Using role default"}</i></small></div>}
                 {!reportAccess.canManageAll && userScheduleCustomised && <button type="button" className="report-schedule-reset" onClick={resetUserReportSchedule} disabled={reportScheduleSaving}><RotateCcw /> Use role default</button>}
                 <label className="report-schedule-switch"><input type="checkbox" aria-label={reportAccess.canManageAll ? "Role default reports active" : "My scheduled reports active"} checked={selectedScheduleConfig.enabled} onChange={(event) => updateScheduleDesignation((designation) => ({ ...designation, enabled: event.target.checked }))} /><span>Active</span></label>
@@ -7939,8 +7940,8 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
                     <button type="button" onClick={() => removeReportSchedule(schedule.key)} aria-label="Delete schedule"><Trash2 /></button>
                   </header>
                   <div className="report-schedule-fields">
-                    <label><span>Frequency</span><select value={schedule.cadence} onChange={(event) => updateReportSchedule(schedule.key, { cadence: event.target.value, weekday: event.target.value === "weekly" ? (schedule.weekday ?? 1) : null, intervalDays: event.target.value === "interval" ? (schedule.intervalDays || 7) : null })}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Every N days</option></select></label>
-                    {schedule.cadence === "weekly" && <label><span>Day</span><select value={schedule.weekday} onChange={(event) => updateReportSchedule(schedule.key, { weekday: Number(event.target.value) })}>{["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>}
+                    <label><span>Frequency</span><SmartSelect value={schedule.cadence} onChange={(event) => updateReportSchedule(schedule.key, { cadence: event.target.value, weekday: event.target.value === "weekly" ? (schedule.weekday ?? 1) : null, intervalDays: event.target.value === "interval" ? (schedule.intervalDays || 7) : null })}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Every N days</option></SmartSelect></label>
+                    {schedule.cadence === "weekly" && <label><span>Day</span><SmartSelect value={schedule.weekday} onChange={(event) => updateReportSchedule(schedule.key, { weekday: Number(event.target.value) })}>{["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}</SmartSelect></label>}
                     {schedule.cadence === "interval" && <label><span>Repeat every</span><div className="report-interval-input"><input type="number" min="2" max="31" value={schedule.intervalDays} onChange={(event) => updateReportSchedule(schedule.key, { intervalDays: Number(event.target.value) })} /><small>days</small></div></label>}
                     <label className="report-time-field"><span>IST time slots (12-hour)</span><div>{schedule.times.map((time, index) => <span key={`${schedule.key}-${index}`}><TwelveHourTimeInput aria-label={`Report delivery time ${index+1}`} value={time} required onChange={(nextTime) => updateReportSchedule(schedule.key, { times: schedule.times.map((item, itemIndex) => itemIndex === index ? nextTime : item) })} /><button type="button" onClick={() => updateReportSchedule(schedule.key, { times: schedule.times.filter((_, itemIndex) => itemIndex !== index) })} aria-label="Remove time"><X /></button></span>)}<button type="button" onClick={() => updateReportSchedule(schedule.key, { times: [...schedule.times, "19:00"] })} disabled={schedule.times.length >= 6}>+ Time</button></div></label>
                   </div>
@@ -8065,8 +8066,8 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
           </label> : null}
           controls={selectedReport.breakdownScopeFilter ? <div className="vehicle-breakdown-scope-filter">
             <label><span><CalendarDays /> Month</span><input type="month" value={breakdownMonth} onChange={(event) => { setBreakdownMonth(event.target.value); setBreakdownOccurrencesTarget(null); }} /></label>
-            <label><span><Network /> Region</span><select value={breakdownRegion} onChange={(event) => { setBreakdownRegion(event.target.value); setBreakdownSite(""); setBreakdownOccurrencesTarget(null); }}><option value="all">All regions</option>{REGION_DATA.map((region) => <option key={region.code} value={region.code}>{region.code} · {region.name}</option>)}</select></label>
-            <label><span><MapPin /> Site</span><select value={breakdownSite} onChange={(event) => { setBreakdownSite(event.target.value); setBreakdownOccurrencesTarget(null); }}><option value="">All sites</option>{breakdownSiteOptions.map((site) => <option key={site} value={site}>{displaySiteName(site)}</option>)}</select></label>
+            <label><span><Network /> Region</span><SmartSelect value={breakdownRegion} onChange={(event) => { setBreakdownRegion(event.target.value); setBreakdownSite(""); setBreakdownOccurrencesTarget(null); }}><option value="all">All regions</option>{REGION_DATA.map((region) => <option key={region.code} value={region.code}>{region.code} · {region.name}</option>)}</SmartSelect></label>
+            <label><span><MapPin /> Site</span><SmartSelect value={breakdownSite} onChange={(event) => { setBreakdownSite(event.target.value); setBreakdownOccurrencesTarget(null); }}><option value="">All sites</option>{breakdownSiteOptions.map((site) => <option key={site} value={site}>{displaySiteName(site)}</option>)}</SmartSelect></label>
             <button type="button" onClick={() => { setBreakdownMonth(indiaDateTimeInputValue(new Date()).slice(0, 7)); setBreakdownRegion("all"); setBreakdownSite(""); setBreakdownOccurrencesTarget(null); }}><RotateCcw /> Reset</button>
             <p><b>{maximumVehicleBreakdownRows.length}</b> vehicle{maximumVehicleBreakdownRows.length === 1 ? "" : "s"} with breakdowns in this selection</p>
           </div> : null}
@@ -8317,7 +8318,7 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
                           ))}
                         </div>
                       ) : name === "Privilege" && type === "mobile-role-select" ? (
-                        <select
+                        <SmartSelect
                           className="privilege-site-select"
                           value={privilegeSelectionValue(value)}
                           disabled={rowSaving}
@@ -8329,9 +8330,9 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
                             <option value={privilegeSelectionValue(value)}>{privilegeSelectionValue(value)}</option>
                           )}
                           {mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                        </select>
+                        </SmartSelect>
                       ) : name === "Privilege" && type === "site-select" ? (
-                        <select
+                        <SmartSelect
                           className="privilege-site-select"
                           value={privilegeSelectionValue(value)}
                           disabled={rowSaving}
@@ -8343,7 +8344,7 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
                             <option value={privilegeSelectionValue(value)}>{privilegeSelectionValue(value)}</option>
                           )}
                           {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
-                        </select>
+                        </SmartSelect>
                       ) : name === "Privilege" && type === "checkbox" ? (
                         <input
                           className="privilege-inline-checkbox"
@@ -8411,15 +8412,15 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
                   <div>{privilegeAccessOptions.map((option) => <label key={option}><input type="radio" name={key} value={option} required defaultChecked={privilegeAccessValue(editing[key]) === option} /><span>{option}</span></label>)}</div>
                 </fieldset>
               ) : type === "mobile-role-select" ? (
-                <label key={key}>{label} *<select name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Not assigned</option>{mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option} — {mobileRoleAuthority[option]}</option>)}</select></label>
+                <label key={key}>{label} *<SmartSelect name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Not assigned</option>{mobileUserRoleOptions.map((option) => <option key={option} value={option}>{option} — {mobileRoleAuthority[option]}</option>)}</SmartSelect></label>
               ) : type === "site-select" ? (
-                <label key={key}>{label} *<select name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Select site</option>{privilegeSelectionValue(editing[key]) && !siteOptions.includes(privilegeSelectionValue(editing[key])) && <option value={privilegeSelectionValue(editing[key])}>{privilegeSelectionValue(editing[key])}</option>}{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>
+                <label key={key}>{label} *<SmartSelect name={key} required defaultValue={privilegeSelectionValue(editing[key])}><option value="" disabled>Select site</option>{privilegeSelectionValue(editing[key]) && !siteOptions.includes(privilegeSelectionValue(editing[key])) && <option value={privilegeSelectionValue(editing[key])}>{privilegeSelectionValue(editing[key])}</option>}{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>
               ) : type === "time" ? (
                 <label key={key}>{label} (12-hour) *<TwelveHourTimeInput includeSeconds name={key} required defaultValue={editing[key] || ""} /></label>
               ) : type === "date" ? (
                 <label key={key}>{label}<DateInput name={key} defaultValue={editing[key] || ""} /></label>
               ) : type === "shift-status" ? (
-                <label key={key}>{label} *<select name={key} required defaultValue={editing[key] || "Active"}><option>Active</option><option>Inactive</option></select></label>
+                <label key={key}>{label} *<SmartSelect name={key} required defaultValue={editing[key] || "Active"}><option>Active</option><option>Inactive</option></SmartSelect></label>
               ) : type === "user-select" ? (
                 <SearchableSelect key={key} label={label} name={key} required defaultValue={editing[key] || ""}
                   options={[
@@ -8440,22 +8441,22 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
                     <span><b>{label}</b><small>Enable this privilege</small></span>
                   </span>
                 ) : key === "level" ? (
-                  <select name={key} required defaultValue={editing[key] || ""}>
+                  <SmartSelect name={key} required defaultValue={editing[key] || ""}>
                     <option value="" disabled>Select level</option>
                     {["L1", "L2", "L3", "L4"].map((level) => <option key={level}>{level}</option>)}
-                  </select>
+                  </SmartSelect>
                 ) : name === "Users & employees" && key === "site" ? (
-                  <select name={key} required defaultValue={displaySiteName(editing[key])}>
+                  <SmartSelect name={key} required defaultValue={displaySiteName(editing[key])}>
                     <option value="" disabled>Select location</option>
                     {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
                     {displaySiteName(editing[key]) && !siteOptions.includes(displaySiteName(editing[key])) && <option value={displaySiteName(editing[key])}>{displaySiteName(editing[key])}</option>}
-                  </select>
+                  </SmartSelect>
                 ) : name === "Users & employees" && key === "userType" ? (
-                  <select name={key} required defaultValue={editing[key] || ""}>
+                  <SmartSelect name={key} required defaultValue={editing[key] || ""}>
                     <option value="" disabled>Select user type</option>
                     {persistedUserTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                     {editing[key] && !persistedUserTypeOptions.includes(editing[key]) && <option value={editing[key]}>{editing[key]}</option>}
-                  </select>
+                  </SmartSelect>
                 ) : <input className={name === "Users & employees" && ["login","employee"].includes(key) ? "uppercase-user-field" : ""} name={key} defaultValue={editing[key] || ""} required={key === fields[0][0]} />}
               </label>)
             )}
@@ -8854,7 +8855,7 @@ function MetaWhatsAppSetup() {
     <form className="meta-whatsapp-form" onSubmit={saveSettings}>
       <div className="meta-whatsapp-form-heading"><div><h2>Provider credentials</h2><p>Credentials are encrypted in transit and secrets are never returned to this page.</p></div><ShieldCheck /></div>
       <div className="meta-whatsapp-fields">
-        <label><span>Delivery provider</span><select value={form.provider} onChange={updateField("provider")}><option value="fast2sms">Fast2SMS</option><option value="meta">Meta Cloud API</option></select></label>
+        <label><span>Delivery provider</span><SmartSelect value={form.provider} onChange={updateField("provider")}><option value="fast2sms">Fast2SMS</option><option value="meta">Meta Cloud API</option></SmartSelect></label>
         <label><span>Phone Number ID</span><input inputMode="numeric" required value={form.phoneNumberId} onChange={updateField("phoneNumberId")} placeholder="Meta phone number ID" /></label>
         <label><span>WhatsApp Business Account ID</span><input inputMode="numeric" value={form.businessAccountId} onChange={updateField("businessAccountId")} placeholder="Meta business account ID" /></label>
         <label><span>Graph API version</span><input required value={form.graphVersion} onChange={updateField("graphVersion")} placeholder="v25.0" /></label>
@@ -9047,9 +9048,9 @@ function WhatsAppReport({type, requests = []}) {
       <header>
         <div><h1>{navigationLabel(type)}</h1><p>{today} · {visibleRows.length} {isSite ? "sites" : "OEMs"} included</p></div>
         <div className="whatsapp-report-actions">
-          {!isSite && <select aria-label="Filter OEMs by coalfield" value={oemRegion} onChange={(event) => setOemRegion(event.target.value)}>
+          {!isSite && <SmartSelect aria-label="Filter OEMs by coalfield" value={oemRegion} onChange={(event) => setOemRegion(event.target.value)}>
             <option value="all">All coalfields</option><option value="WCL">WCL</option><option value="NCL">NCL</option>
-          </select>}
+          </SmartSelect>}
           <button className="whatsapp-share" onClick={share}><Send /> Share on WhatsApp</button>
         </div>
       </header>
@@ -9513,7 +9514,7 @@ function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenR
         <div className="formgrid">
           <label>Designation<input value={editingRow.designation} readOnly aria-readonly="true" /></label>
           <label>Section *<input name="section" defaultValue={editingRow.section} required autoFocus /></label>
-          <label>Level *<select name="level" defaultValue={String(editingRow.level).replace(/^L/i, "")} required>{[1, 2, 3, 4].map((level) => <option key={level} value={level}>L{level}</option>)}</select></label>
+          <label>Level *<SmartSelect name="level" defaultValue={String(editingRow.level).replace(/^L/i, "")} required>{[1, 2, 3, 4].map((level) => <option key={level} value={level}>L{level}</option>)}</SmartSelect></label>
           <div className="wrs-note full"><strong>Report days and times</strong><p>Open Reports → WhatsApp delivery settings for role defaults, or My report schedule for your personal timing. Save any report or site access changes here before leaving.</p><button type="button" className="wrs-outline-button" onClick={onOpenReportSettings}>Open Reports</button></div>
           <fieldset className="hierarchy-access-editor full">
             <legend>Reporting files</legend>
@@ -9780,7 +9781,7 @@ function DailyRemarkForm({ request, close, onSave }) {
   const delayedReasonOptions=typeDelayedReasons;
   return <Modal title={`Daily updates · ${request.ref}`} close={close}><div className="daily-update-journal">
     {history.length>0&&<section className="daily-update-history"><header><div><b>Previous daily updates</b><span>{history.length} saved record{history.length===1?"":"s"}</span></div><span className="readonly-badge"><LockKeyhole /> Read only</span></header><DailyUpdatesPanel remarks={history} category={request.category} formatDateTime={formatTwelveHourDateTime} missingLabel="Not recorded" /></section>}
-    <form className="form daily-update-form" onSubmit={(event) => {event.preventDefault();const form=new FormData(event.currentTarget);const delayedReason=String(form.get("delayedReason")||"").trim();onSave({remark:form.get("remark"),delayReason:delayedReason,delayedReason});}}><header><span>{todayRemark?"Update today’s record":"New daily record"}</span><b>{today}</b></header>{todayRemark&&<div className="daily-update-complete"><ShieldCheck /><div><b>Today’s update can be edited</b><span>Maintenance Users can update this record until the end of today.</span></div></div>}<label>Breakdown type<input value={request.category||"Breakdown"} readOnly aria-readonly="true" /></label><label>Today’s maintenance update *<textarea name="remark" required defaultValue={todayRemark?.remark||""} placeholder="What work was completed today?" /></label><label>Delayed reason *<select name="delayedReason" required key={delayedReasonOptions.join("|")} defaultValue={delayedReasonOptions.includes(savedDelayedReason)?savedDelayedReason:""}><option value="">Select delayed reason</option>{delayedReasonOptions.map((reason)=><option key={reason} value={reason}>{reason}</option>)}</select><small>Reasons shown are for breakdown type {request.category||"Breakdown"}.</small></label><footer><button type="button" onClick={close}>Cancel</button><button className="primary">{todayRemark?"Update today’s entry":"Save today’s update"} <ChevronRight /></button></footer></form>
+    <form className="form daily-update-form" onSubmit={(event) => {event.preventDefault();const form=new FormData(event.currentTarget);const delayedReason=String(form.get("delayedReason")||"").trim();onSave({remark:form.get("remark"),delayReason:delayedReason,delayedReason});}}><header><span>{todayRemark?"Update today’s record":"New daily record"}</span><b>{today}</b></header>{todayRemark&&<div className="daily-update-complete"><ShieldCheck /><div><b>Today’s update can be edited</b><span>Maintenance Users can update this record until the end of today.</span></div></div>}<label>Breakdown type<input value={request.category||"Breakdown"} readOnly aria-readonly="true" /></label><label>Today’s maintenance update *<textarea name="remark" required defaultValue={todayRemark?.remark||""} placeholder="What work was completed today?" /></label><label>Delayed reason *<SmartSelect name="delayedReason" required key={delayedReasonOptions.join("|")} defaultValue={delayedReasonOptions.includes(savedDelayedReason)?savedDelayedReason:""}><option value="">Select delayed reason</option>{delayedReasonOptions.map((reason)=><option key={reason} value={reason}>{reason}</option>)}</SmartSelect><small>Reasons shown are for breakdown type {request.category||"Breakdown"}.</small></label><footer><button type="button" onClick={close}>Cancel</button><button className="primary">{todayRemark?"Update today’s entry":"Save today’s update"} <ChevronRight /></button></footer></form>
   </div></Modal>;
 }
 
@@ -10019,7 +10020,7 @@ function MobileWorkflowTable({ closedTimeAfterStarted = false, rows = [], showAc
     return () => document.removeEventListener("pointerdown", closeFilter);
   }, [openFilter]);
   return (
-    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className="table-search-toolbar"><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><select aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(statusLabel).filter(Boolean))].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>}<div className="toolbar-actions-end"><div className="workflow-actions-slot" ref={setActionsToolbarTarget} />{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}<ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} highlightRow={lateAcceptanceHighlight} /></div></div><div className="scroll mobile-workflow-table">
+    <><button type="button" className="maintenance-table-menu" aria-label="Table search and filters" aria-expanded={mobileControlsOpen} aria-controls={mobileControlsId} onClick={() => setMobileControlsOpen((open) => !open)}><Menu /> Search &amp; status</button><div id={mobileControlsId} data-mobile-open={mobileControlsOpen} className="table-search-toolbar"><label><Search /><input data-smart-search type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this table" /></label>{showStatusFilter && <label><ListFilter /><SmartSelect aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All statuses</option>{[...new Set(rows.map(statusLabel).filter(Boolean))].map((value) => <option key={value} value={value}>{value}</option>)}</SmartSelect></label>}<div className="toolbar-actions-end"><div className="workflow-actions-slot" ref={setActionsToolbarTarget} />{onDeleteSelected && <div className="request-bulk-delete"><button type="button" onClick={() => setSelectedRefs(new Set(deletionRows.map((row) => row.ref)))}>Select all filtered</button><button type="button" disabled={!selectedRefs.size} onClick={() => setSelectedRefs(new Set())}>Clear selection</button><button type="button" className="danger" disabled={!selectedRows.length} onClick={() => onDeleteSelected(selectedRows)}><Trash2 /> Delete selected ({selectedRows.length})</button></div>}<ExportMenu title={exportTitle} columns={filterColumns} rows={sortedRows} highlightRow={lateAcceptanceHighlight} /></div></div><div className="scroll mobile-workflow-table">
       <ActionsTable className="workflow-table" closedTimeAfterStarted={closedTimeAfterStarted} recordDateFilter={idleDateFilter ? { label: "Idle Vehicle Date", value: idleDateRange, onChange: setIdleDateRange } : null} toolbarTarget={actionsToolbarTarget} toolbarPortal onClearToolbarFilters={() => setStatusFilter("")} onFilteredRows={onDeleteSelected ? trackFilteredRows : null}>
         <thead><tr>
           {showActions && actionsFirst && <th>Actions</th>}
@@ -10148,7 +10149,7 @@ function RequestEditForm({ request, equipmentRecords = [], close, onSave, onRequ
         <label>Equipment group<input value={normalizeEquipmentGroup(request.equipmentGroup) || request.equipment || ""} readOnly aria-readonly="true" /></label>
         <label>
           Type of breakdown *
-          <select name="category" required value={editCategory} onChange={(event) => setEditCategory(event.target.value)} disabled={!repairTypesLoaded || !repairTypeRecords.length} aria-busy={!repairTypesLoaded}>
+          <SmartSelect name="category" required value={editCategory} onChange={(event) => setEditCategory(event.target.value)} disabled={!repairTypesLoaded || !repairTypeRecords.length} aria-busy={!repairTypesLoaded}>
             <option value="" disabled>
               {!repairTypesLoaded ? "Loading repair types..." : repairTypeRecords.length ? "Select repair type" : "No repair types available"}
             </option>
@@ -10157,18 +10158,18 @@ function RequestEditForm({ request, equipmentRecords = [], close, onSave, onRequ
                   {category}
                 </option>
               ))}
-          </select>
+          </SmartSelect>
         </label>
         <label>Door number<input value={request.door || ""} readOnly aria-readonly="true" /></label>
         <label>Chassis number<input value={request.chassis || ""} readOnly aria-readonly="true" /></label>
         <label>Site location<input value={request.site || "Not assigned"} readOnly aria-readonly="true" /></label>
         <label>Date *<DateInput name="date" required defaultValue={parts.date} readOnly aria-readonly="true" /></label>
         <label>{request.acceptanceRequired ? "Production timing" : "Timing"} (12-hour with seconds)<input name="time" type="hidden" value={time} /><input value={displayTime(time)} readOnly aria-readonly="true" /></label>
-        {acceptingRequest && <label>Breakdown responsibility *<select name="oemResponsibility" required defaultValue={request.oemResponsibility || ""}><option value="">Select OEM or NON OEM</option><option value="OEM">OEM</option><option value="NON OEM">NON OEM</option></select></label>}
+        {acceptingRequest && <label>Breakdown responsibility *<SmartSelect name="oemResponsibility" required defaultValue={request.oemResponsibility || ""}><option value="">Select OEM or NON OEM</option><option value="OEM">OEM</option><option value="NON OEM">NON OEM</option></SmartSelect></label>}
         {request.acceptedAt && onAddDailyRemark && <MaintenanceOemChoice key={request.ref} request={request} canEdit={canEditResponsibility} />}
         {request.acceptanceRequired && <label>Acceptance timing<input value={acceptanceTime ? formatTwelveHourDateTime(acceptanceTime, true) : "Not accepted yet"} readOnly aria-readonly="true" /><small>{request.acceptedAt ? "Vehicle accepted by Maintenance." : "The server records the actual time when you accept the vehicle."}</small></label>}
         <MaintenanceEtcInput value={expectedCompletionAt} displayValue={displayedInitialEtc} onChange={setExpectedCompletionAt} changeUsed={request.expectedCompletionChangeUsed === true} />
-        {etcDelayed && <label className="full">Delayed reason *<select name="delayedReason" required defaultValue={etcDelayedReasonOptions.includes(request.delayedReason) ? request.delayedReason : ""} key={editCategory}><option value="">Select delayed reason</option>{etcDelayedReasonOptions.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select><small>The ETC is being pushed later. Reasons shown are for breakdown type {editCategory || "Breakdown"}.</small></label>}
+        {etcDelayed && <label className="full">Delayed reason *<SmartSelect name="delayedReason" required defaultValue={etcDelayedReasonOptions.includes(request.delayedReason) ? request.delayedReason : ""} key={editCategory}><option value="">Select delayed reason</option>{etcDelayedReasonOptions.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</SmartSelect><small>The ETC is being pushed later. Reasons shown are for breakdown type {editCategory || "Breakdown"}.</small></label>}
         {etcChanged && <label className="full">Reason for changing ETC *<textarea name="correctionReason" required maxLength={500} placeholder="Explain why the previous expected completion time needs to change." /><small>Previous ETC: {displayDateTime(displayedInitialEtcLabel)}. Both values, your name and this reason will be retained.</small></label>}
         <MeterReadingFields request={request} stage="opening" equipmentRecords={equipmentRecords} required={requireMeters} />
         <label className="full">Trip card upload (optional)<input name="openingMeterFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setOpeningMeterFile(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{openingMeterFile ? `${openingMeterFile.name} · ${(openingMeterFile.size / 1024 / 1024).toFixed(1)} MB` : request.openingMeterFileUploaded ? "Existing trip card saved · choose a file only to replace it." : "JPEG, PNG, WebP, or PDF · maximum 5 MB"}</small>{request.openingMeterFileUploaded && <MeterFileCell request={request} stage="opening" />}</label>
@@ -10264,7 +10265,7 @@ function CloseRequestForm({ request, linkedRequests = [], equipmentRecords = [],
         <label>Turn around time (TAT)<input value={turnaroundTime} readOnly /></label>
       {request.issues?.length>0 && <fieldset className="full"><legend>Outstanding issues — mark fixed issues</legend>{request.issues.map((issue,index)=><label key={index}><input type="checkbox" name="resolvedIssues" value={index} defaultChecked={issue.resolved} disabled={issue.resolved} />{issue.reason}{issue.resolved?" (fixed)":""}</label>)}</fieldset>}
         {status==="Running BD" && <p className="full">The vehicle will go to MIS for verification; the ticket remains open until all issues are fixed.</p>}
-        <label>Status *<select name="status" disabled={submitting} value={status} onChange={event=>{setStatus(event.target.value);if(event.target.value==="Running BD")setIdeal(false)}}><option value="Closed">On road — maintenance completed</option><option value="Running BD">On road with breakdown — Running BD</option></select></label>
+        <label>Status *<SmartSelect name="status" disabled={submitting} value={status} onChange={event=>{setStatus(event.target.value);if(event.target.value==="Running BD")setIdeal(false)}}><option value="Closed">On road — maintenance completed</option><option value="Running BD">On road with breakdown — Running BD</option></SmartSelect></label>
         <EnhancedSpeechComplaint
           label="Things done in maintenance *"
           name="maintenanceWork"
@@ -10304,9 +10305,9 @@ function CloseRequestForm({ request, linkedRequests = [], equipmentRecords = [],
           </div>
           {ideal && <>
             <label className="idle-reason-field">Idle reason *
-              <select name="idleReason" required value={idleReason} aria-describedby="maintenance-idle-summary" onChange={(event)=>setIdleReason(event.target.value)}>
+              <SmartSelect name="idleReason" required value={idleReason} aria-describedby="maintenance-idle-summary" onChange={(event)=>setIdleReason(event.target.value)}>
                 <option value="">Select idle reason</option><option>No driver</option><option>No work</option>
-              </select>
+              </SmartSelect>
             </label>
             <div id="maintenance-idle-summary" className="idle-summary" role="status">
               {idleReason && <strong>Selected idle reason: {idleReason}</strong>}
@@ -10523,12 +10524,12 @@ function TicketCreateForm({ session, close, onCreated }) {
   return <Modal title="Create support ticket" close={dismiss}>
     <form className="form ticket-form" onSubmit={submit}>
       <div className="formgrid">
-        {chooseSite && <label className="full">Site *<select key={ticketSites.join("|")} name="site" required defaultValue={ticketSites.length === 1 ? ticketSites[0] : ""} disabled={!sitesLoaded}>
+        {chooseSite && <label className="full">Site *<SmartSelect key={ticketSites.join("|")} name="site" required defaultValue={ticketSites.length === 1 ? ticketSites[0] : ""} disabled={!sitesLoaded}>
           <option value="" disabled>{sitesLoaded ? "Select a site" : "Loading assigned sites…"}</option>
           {ticketSites.map((site) => <option key={site} value={site}>{site}</option>)}
-        </select></label>}
+        </SmartSelect></label>}
 
-        <label className="full">Priority *<select name="priority" required defaultValue="Medium"><option>Low</option><option>Medium</option><option>High</option></select></label>
+        <label className="full">Priority *<SmartSelect name="priority" required defaultValue="Medium"><option>Low</option><option>Medium</option><option>High</option></SmartSelect></label>
         <EnhancedSpeechComplaint label="Description" name="message" audioName="messageAudio" buttonLabel="Record ticket audio" placeholder="Describe the issue, or select Hindi / English and speak in that language." required={false} />
         <label className="full ticket-attachment-field"><span>Image or video attachment</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><button type="button" className="camera-upload-button" onClick={(event)=>{event.preventDefault();capturePhotoForInput(event.currentTarget.previousElementSibling);}}>Take photo</button><small>{attachment ? `${attachment.name} · ${(attachment.size / 1024 / 1024).toFixed(1)} MB` : "Optional · JPEG, PNG, WebP, MP4, WebM, or MOV · maximum 10 MB"}</small></label>
       </div>
@@ -10693,7 +10694,7 @@ function TicketPage({ session }) {
   };
   return <section className="ticket-page">
     <header className="ticket-page-head"><div><span>CRM support</span><h1>Tickets</h1><p>{session?.permissions?.adminLevel === "Manager" ? "Tickets created by users in your assigned team and location." : isAdmin ? "All support tickets across every user and site." : "Create and track your support requests."}</p></div><div className="ticket-page-actions"><div className="ticket-status-tabs" role="group" aria-label="Ticket status"><button type="button" aria-pressed={ticketStatus === "all"} onClick={() => setTicketStatus("all")}>All <b>{sameScope ? ticketCounts.all : "…"}</b></button><button type="button" className="ticket-status-open" aria-pressed={ticketStatus === "open"} onClick={() => setTicketStatus("open")}>Open tickets <b>{sameScope ? ticketCounts.open : "…"}</b></button><button type="button" className="ticket-status-closed" aria-pressed={ticketStatus === "closed"} onClick={() => setTicketStatus("closed")}>Closed tickets <b>{sameScope ? ticketCounts.closed : "…"}</b></button></div><ExportMenu title="CRM tickets report" columns={ticketExportColumns} rows={tickets} smartPrintItem />{canCreate && <button className="primary" onClick={() => setCreating(true)}><Plus /> Create ticket</button>}</div></header>
-    <div className="ticket-toolbar"><div className="ticket-toolbar-controls"><label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{ticketCategories.map((item) => <option key={item}>{item}</option>)}</select></label><div className="master-actions-slot" ref={setActionsToolbarTarget} /></div><span>{loading ? "Loading tickets…" : `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`}</span></div>
+    <div className="ticket-toolbar"><div className="ticket-toolbar-controls"><label>Category<SmartSelect value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{ticketCategories.map((item) => <option key={item}>{item}</option>)}</SmartSelect></label><div className="master-actions-slot" ref={setActionsToolbarTarget} /></div><span>{loading ? "Loading tickets…" : `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`}</span></div>
     {error && <div className="hierarchy-save-error" role="alert"><span>{error}{tickets.length > 0 ? " Showing previously loaded tickets." : ""}</span><button type="button" onClick={refresh} disabled={loading}>Retry</button></div>}
     <div className="ticket-table-wrap"><ActionsTable printTitle="CRM tickets" recordDateFilter={{ label: "Created", value: ticketDateRange, onChange: setTicketDateRange }} toolbarTarget={actionsToolbarTarget} toolbarPortal><thead><tr><th>Ticket ID</th><th>User</th><th>Site</th><th>Category</th><th>Priority</th><th>Description</th><th>Audio</th><th>Attachment</th><th>Status</th><th>Resolution</th>{isAdmin && <th>Action</th>}</tr></thead><tbody>{tickets.length ? tickets.map((ticket) => <tr key={ticket.reference}><td><b>{ticket.reference}</b><small>{displayDateTime(ticket.createdAt)}</small></td><td>{ticket.creatorName}<small>@{ticket.creatorLogin} · {ticket.creatorRole}</small></td><td>{ticket.site}</td><td>{ticket.category}</td><td><Status>{ticket.priority || "Medium"}</Status></td><td className="ticket-message">{ticket.message || "Audio description"}</td><td>{ticket.messageAudioAvailable ? <ProtectedAudio url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/message-audio`} token={session.token} label="Ticket audio" /> : "—"}</td><td><TicketAttachment ticket={ticket} token={session.token} /></td><td><Status>{ticket.status}</Status></td><td>{ticket.resolutionMessage || ticket.resolutionAudioAvailable || ticket.resolutionAttachmentAvailable ? <span>{ticket.resolutionMessage || "Audio resolution"}{ticket.resolutionAudioAvailable && <ProtectedAudio url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/resolution-audio`} token={session.token} label="Resolution audio" />}{ticket.resolutionAttachmentAvailable && <TicketMedia url={`/api/tickets/${encodeURIComponent(ticket.reference)}/media/resolution-attachment`} token={session.token} name={ticket.resolutionAttachmentName} type={ticket.resolutionAttachmentType} label="Resolution" />}<small>{ticket.resolvedBy} · {displayDateTime(ticket.resolvedAt)}</small></span> : "—"}</td>{isAdmin && <td>{!isClosedTicket(ticket) ? <button className="primary compact" onClick={() => setResolving(ticket)}>Resolve</button> : "Resolved"}</td>}</tr>) : <tr><td colSpan={isAdmin ? 11 : 10} className="empty-state">{loading ? "Loading tickets…" : "No tickets found."}</td></tr>}</tbody></ActionsTable></div>
     {sameAccount && canCreate && creating && <TicketCreateForm key={session.token} session={session} close={() => setCreating(false)} onCreated={applySavedTicket} />}
@@ -11191,9 +11192,9 @@ function NotificationBell({ session, onOpenEntry }) {
   const notificationPanel = <div ref={panelRef} className={`notification-popover${notificationOverlayMode ? " notification-popover-mobile" : ""}`} role="dialog" aria-modal={notificationOverlayMode ? "true" : undefined} aria-label="Notifications">
     <header><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications"><X /></button></div></header>
     <div className="notification-filters">
-      <label className="notification-site-filter">Filter by site<select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">All sites</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</select></label>
-      <label className="notification-site-filter notification-category-filter">Filter by category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories ({siteItems.length})</option>{categoryOptions.map(category => <option key={category.key} value={category.key}>{category.label} ({category.count})</option>)}</select></label>
-      <label className="notification-site-filter notification-sound-filter">Bell sound<span className="notification-sound-controls"><select value={bellSound} onChange={(event) => { const next = saveNotificationSound(event.target.value); setBellSound(next); playNotificationSound(next); }}>{NOTIFICATION_SOUNDS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select><button type="button" className="notification-sound-play" onClick={() => playNotificationSound(bellSound)} aria-label="Play the selected bell sound" title="Play the selected bell sound"><Volume2 /></button></span><small>{NOTIFICATION_SOUNDS.find((option) => option.id === bellSound)?.hint}</small></label>
+      <label className="notification-site-filter">Filter by site<SmartSelect value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">All sites</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>
+      <label className="notification-site-filter notification-category-filter">Filter by category<SmartSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories ({siteItems.length})</option>{categoryOptions.map(category => <option key={category.key} value={category.key}>{category.label} ({category.count})</option>)}</SmartSelect></label>
+      <label className="notification-site-filter notification-sound-filter">Bell sound<span className="notification-sound-controls"><SmartSelect value={bellSound} onChange={(event) => { const next = saveNotificationSound(event.target.value); setBellSound(next); playNotificationSound(next); }}>{NOTIFICATION_SOUNDS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</SmartSelect><button type="button" className="notification-sound-play" onClick={() => playNotificationSound(bellSound)} aria-label="Play the selected bell sound" title="Play the selected bell sound"><Volume2 /></button></span><small>{NOTIFICATION_SOUNDS.find((option) => option.id === bellSound)?.hint}</small></label>
     </div>
     <div className="notification-list">{visibleItems.length ? visibleItems.map((item) => <button type="button" key={item.id} onClick={() => openEntry(item)}><NotificationMessage item={item} /><small>{formatDisplayDateTime(item.createdAt)}</small></button>) : <p>{categoryFilter ? "No notifications for these filters." : siteFilter ? "No notifications for this site." : "No notifications yet."}</p>}</div>
   </div>;

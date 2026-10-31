@@ -38,7 +38,7 @@ function harness(hookName = "useMasterRecords") {
       queued.push(() => {effects.get(index)?.cleanup?.(); effects.set(index, {deps, cleanup: effect()});});
     }
   };
-  const scope = {
+  const scope = {SmartSelect: "select",
     useState, useEffect, useRef: value => useState(() => ({current: value}))[0],
     authToken: "fixture-account-a", AbortController, performance,
     document, window: {...events("window"), dispatchEvent() {},
@@ -151,7 +151,7 @@ test("dashboard refresh never leaks previous account fleet data or scope", async
 
 test("cross-tab closure refreshes a same-size fleet snapshot and failure recovers on the next poll", async () => {
   const app = harness("useDashboardEquipment");
-  const scope = {restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
+  const scope = {SmartSelect: "select",restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
   const offroad = [{id: 1, door: "D-01", dashboardRoadStatus: "offroad"}];
   const onroad = [{...offroad[0], dashboardRoadStatus: "onroad"}];
   app.render(); app.effects();
@@ -175,7 +175,7 @@ test("cross-tab closure refreshes a same-size fleet snapshot and failure recover
 
 test("the fleet count refreshes when the server's next midnight arrives", async () => {
   const app = harness("useDashboardEquipment");
-  const scope = {restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
+  const scope = {SmartSelect: "select",restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
   app.render(); app.effects();
   app.requests[0].respond(fleetResponse(oldEquipment, scope)); await settle();
   app.render(); app.effects();
@@ -188,7 +188,7 @@ test("the fleet count refreshes when the server's next midnight arrives", async 
 
 test("fleet refresh retains its timestamp through errors and retries until success", async () => {
   const app = harness("useDashboardEquipment");
-  const scope = {restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
+  const scope = {SmartSelect: "select",restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
   app.render(); app.effects();
   app.requests[0].respond(fleetResponse(oldEquipment, scope)); await settle();
   const checked = app.render().updatedAt;

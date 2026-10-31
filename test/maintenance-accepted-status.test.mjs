@@ -46,7 +46,7 @@ function harness(name = 'MobileWorkflowTable') {
     if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
     return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
   };
-  const scope = { isIdleVehicleRequest,
+  const scope = {SmartSelect: "select", isIdleVehicleRequest,
     ResponsibilityHistoryCell: Null, responsibilityHistoryText: row => row.oemResponsibility || 'Not assigned',
     isDurationColumn, compareDurationValues, defaultDurationSort, calculateBreakdownMinutes, dailyUpdatesExportText,
     requestMeterReadings, requestMeterReadingLabel, breakdownMeterValue,

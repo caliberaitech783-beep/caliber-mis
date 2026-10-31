@@ -16,7 +16,7 @@ const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const h = React.createElement;
 const source = main.slice(main.indexOf("function FilterableHeader("), main.indexOf("const EMPTY_TABLE_FILTER_VALUE ="));
 const { code } = await transformWithOxc(source, "duration-menu.jsx", { jsx: { runtime: "classic" } });
-const bindings = { reportPortalTarget: () => ({}), React, isDurationColumn, ...dateRanges, ...multiFilters, EMPTY_TABLE_FILTER_VALUE: "__empty_table_filter_value__", CalendarDays: () => null, createPortal: (child) => child, document: { body: {} },
+const bindings = {SmartSelect: "select", reportPortalTarget: () => ({}), React, isDurationColumn, ...dateRanges, ...multiFilters, EMPTY_TABLE_FILTER_VALUE: "__empty_table_filter_value__", CalendarDays: () => null, createPortal: (child) => child, document: { body: {} },
   useState: (initial) => [initial, () => {}], useRef: () => ({ current: null }), useEffect() {},
   matchesSmartSearch: () => true, ...Object.fromEntries(["ArrowUp", "ArrowDown", "ArrowUpDown", "X", "Search"].map((name) => [name, () => null])) };
 const Header = new Function(...Object.keys(bindings), `${code}; return FilterableHeader;`)(...Object.values(bindings));
@@ -104,7 +104,7 @@ test("all duration tables default to descending, preferring breakdown days over 
 test("request and report sorting keeps manual ascending through live data updates and supports clear sort", () => {
   const source = main.slice(main.indexOf("function comparableValue("), main.indexOf("function SortableHeader("));
   let state;
-  const bindings = { isDurationColumn, compareDurationValues, sortCollator: new Intl.Collator(undefined, { numeric: true }), useMemo: (fn) => fn(),
+  const bindings = {SmartSelect: "select", isDurationColumn, compareDurationValues, sortCollator: new Intl.Collator(undefined, { numeric: true }), useMemo: (fn) => fn(),
     useState(initial) { state ??= typeof initial === "function" ? initial() : initial; return [state, (next) => { state = typeof next === "function" ? next(state) : next; }]; } };
   const useRows = new Function(...Object.keys(bindings), `${source}; return useSortableRows;`)(...Object.values(bindings));
   for (const key of ["breakdownDays", "hours", "tat", "prodToMis"]) {

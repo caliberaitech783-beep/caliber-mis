@@ -16,13 +16,13 @@ test('shared searchable picker supports accessible search, keyboard selection, a
   assert.match(component,/role="listbox"/);
   assert.match(component,/ArrowDown/);
   assert.match(component,/event\.key==='Enter'/);
-  assert.match(component,/type="hidden" name=\{name\} value=\{selectedValue\}/);
+  assert.match(component,/type="hidden" form=\{inputProps\.form\} name=\{name\} value=\{selectedValue\}/);
   assert.match(component,/matching\.slice\(0,100\)/);
   assert.match(styles,/max-height:min\(320px,42dvh\)/);
   assert.match(styles,/@media\(max-width:700px\)/);
 });
 
-test('large request, vehicle, and employee lists use search while short fixed lists remain selects',()=>{
+test('large request, vehicle, and employee lists use search alongside searchable short lists',()=>{
   assert.match(corrections,/Search request, door, equipment, chassis, or site/);
   assert.match(corrections,/Search request, user, site, reason, or status/);
   assert.match(transfers,/Search door, registration, make, model, chassis, or site/);

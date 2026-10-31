@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowRightLeft, CheckCircle2, Clock, MapPin, Plus, RefreshCw, Search, Send, ShieldCheck, Truck, X} from 'lucide-react';
 import {formatDisplayDate, formatDisplayDateTime} from '../date-time-format.mjs';
@@ -80,10 +81,10 @@ function TransferForm({Dialog, equipment, sites, token, onClose, onSaved}) {
         <label>Transfer number<input name="transferNo" placeholder="Auto-generated if left blank" /></label>
         <label>Current source site<input value={source} readOnly placeholder="Select a vehicle" /></label>
         <label>Destination site *
-          <select name="destination" required defaultValue="" disabled={!source}>
+          <SmartSelect name="destination" required defaultValue="" disabled={!source}>
             <option value="" disabled>Select destination</option>
             {destinations.map((site) => <option key={site}>{site}</option>)}
-          </select>
+          </SmartSelect>
         </label>
         <label>Driver<input name="driver" placeholder="Driver name" /></label>
         <label>Diesel quantity<input name="dieselQty" inputMode="decimal" placeholder="Quantity at dispatch" /></label>

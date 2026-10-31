@@ -18,7 +18,7 @@ function harness({settings=policy.defaultWhatsAppReportSettings(),section='deliv
   let cursor=0;
   const requests=[],closed=[];
   const TwelveHourTimeInput=({value,onChange,...props})=>React.createElement('input',{...props,type:'text',value,onChange:event=>onChange?.(event.target.value)});
-  const bindings={React,...policy,...templates,TwelveHourTimeInput,document:{body:{}},createPortal:child=>child,useEffect(){},
+  const bindings={React,SmartSelect:"select",...policy,...templates,TwelveHourTimeInput,document:{body:{}},createPortal:child=>child,useEffect(){},
     useState(initial){const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},
     useRef(initial){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];},
     readApiJson:async response=>response,
@@ -131,9 +131,9 @@ test('report schedule UI keeps timed options and clearly separates shared defaul
 });
 
 test('changing frequency clears unused cadence fields while keeping selected times and reports',async()=>{
-  const field=main.match(/<label><span>Frequency<\/span><select[\s\S]*?<\/select><\/label>/)[0];
+  const field=main.match(/<label><span>Frequency<\/span><SmartSelect[\s\S]*?<\/SmartSelect><\/label>/)[0];
   const {code:fieldCode}=await transformWithOxc(`function Frequency(schedule,updateReportSchedule){return (${field});}`,'schedule-frequency.jsx',{jsx:{runtime:'classic'}});
-  const Frequency=new Function('React',`${fieldCode};return Frequency;`)(React);
+  const Frequency=new Function('React',`const SmartSelect="select";${fieldCode};return Frequency;`)(React);
   let schedule={key:'personal',cadence:'interval',weekday:4,intervalDays:5,times:['07:00','19:00'],reports:['Fleet report']};
   const choose=cadence=>{
     const tree=Frequency(schedule,(_key,changes)=>{schedule={...schedule,...changes};});

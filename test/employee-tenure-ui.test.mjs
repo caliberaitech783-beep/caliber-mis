@@ -17,7 +17,7 @@ test('employee report passes exact tenure and nine requested columns to the expo
   ]}}}];
   let cursor=0, received;
   const Section=props=>{received=props;return React.createElement('div',null,props.rows.map(row=>row.label).join(','));};
-  const bindings={React,UsersRound:()=>null,SlidersHorizontal:()=>null,RotateCcw:()=>null,FilterX:()=>null,DateInput,formatDisplayDate,TENURE_MONTHS,buildEmployeeTenureReport,useMemo:fn=>fn(),useEffect:()=>{},useState(initial){const i=cursor++;return [slots[i] ?? initial,value=>{slots[i]=value;}];}};
+  const bindings={SmartSelect: "select",React,UsersRound:()=>null,SlidersHorizontal:()=>null,RotateCcw:()=>null,FilterX:()=>null,DateInput,formatDisplayDate,TENURE_MONTHS,buildEmployeeTenureReport,useMemo:fn=>fn(),useEffect:()=>{},useState(initial){const i=cursor++;return [slots[i] ?? initial,value=>{slots[i]=value;}];}};
   const Component=new Function(...Object.keys(bindings),code+'; return EmployeeTenureReport;')(...Object.values(bindings));
   const render=token=>{cursor=0;return renderToStaticMarkup(Component({token,ReportSection:Section}));};
   assert.match(render('fixture'),/0Y 3M 15D/);
@@ -69,7 +69,7 @@ test('tenure header puts the controlled search before Refresh and removes explan
   const {code: sectionCode}=await transformWithOxc(section,'report-section.jsx',{jsx:{runtime:'classic'}});
   let tableProps;
   const Null=()=>null;
-  const scope={React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],FileBarChart:Null,ExportMenu:Null,Search:Null,ReportTable:props=>{tableProps=props;return null;}};
+  const scope={SmartSelect: "select",React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],FileBarChart:Null,ExportMenu:Null,Search:Null,ReportTable:props=>{tableProps=props;return null;}};
   const Section=new Function(...Object.keys(scope),sectionCode+'; return ReportSection;')(...Object.values(scope));
   const html=renderToStaticMarkup(React.createElement(Section,{title:'Employee tenure',query:'Example',showSearch:false}));
   assert.equal(tableProps.query,'Example');

@@ -20,7 +20,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 function harness(component, {prompt = () => new Promise(() => {}), start = 100000} = {}) {
   let now = start, cursor = 0, dirty = false, timerId = 0;
   const slots = [], effects = [], intervals = new Map(), listeners = new Map();
-  const bindings = {
+  const bindings = {SmartSelect: "select",
     React, Date: {now: () => now},
     useState(initial) {
       const at = cursor++;

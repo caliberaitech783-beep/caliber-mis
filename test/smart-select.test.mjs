@@ -1,8 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import React from 'react';import {transformWithOxc} from 'vite';
-test('long master lists become searchable while preserving IDs, required validation and native short choices',async()=>{
+test('long master lists become searchable while preserving IDs, required validation and searchable short choices',async()=>{
  const source=fs.readFileSync(new URL('../src/smart-select.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),{code}=await transformWithOxc(source,'smart-select.jsx',{jsx:{runtime:'classic'}}),SearchableSelect=()=>null;
  const Component=new Function('React','SearchableSelect',code+';return SmartSelect;')(React,SearchableSelect);
  const options=[React.createElement('option',{key:'empty',value:''},'Select driver'),...Array.from({length:10},(_,i)=>React.createElement('option',{key:i,value:String(i+1)},'Driver '+i))];let changed;
  const result=Component({children:options,required:true,name:'employeeId',value:'2',onChange:e=>{changed=e.target.value}});assert.equal(result.type,SearchableSelect);assert.equal(result.props.options.length,10);assert.equal(result.props.value,'2');result.props.onChange('5');assert.equal(changed,'5');
- assert.equal(Component({children:options.slice(0,3)}).type,'select');assert.equal(Component({children:options.slice(0,3),searchable:true}).type,SearchableSelect);assert.equal(Component({children:options,multiple:true}).type,'select');
+  const grouped=Component({children:React.createElement(React.Fragment,null,React.createElement('optgroup',{label:'West',disabled:true},React.createElement('option',{value:'majri'},'Majri OC')),React.createElement('option',{value:'jayant'},'Jayant OC')),id:'site',name:'siteId','data-enter-order':'2'});
+ assert.equal(grouped.props.options[0].description,'West');assert.equal(grouped.props.options[0].disabled,true);assert.equal(grouped.props.defaultValue,'jayant');assert.equal(grouped.props.inputProps.id,'site');assert.equal(grouped.props.inputProps['data-enter-order'],'2');assert.equal(grouped.props.name,'siteId');
+ assert.equal(Component({children:options.slice(0,3)}).type,SearchableSelect);assert.equal(Component({children:options,searchable:false}).type,'select');assert.equal(Component({children:options.slice(0,3),searchable:true}).type,SearchableSelect);assert.equal(Component({children:options,multiple:true}).type,'select');
 });

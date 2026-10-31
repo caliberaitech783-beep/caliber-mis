@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useState} from 'react';
 import {sessionTimeSummary,formatSessionDuration} from './login-session-duration.mjs';
 import {LOGIN_ACTIVITY_FILTERS,loginActivityRows} from './login-activity.mjs';
@@ -45,7 +46,7 @@ export function UserLoginActivity({token,Table,formatDate,query=''}){
   return <div className="login-activity-panel">
     <div className="login-activity-heading"><div><span className="login-history-eyebrow">User activity overview</span><h2>Never logged in / Days since last login</h2></div><span className="login-activity-count" role="status"><strong>{loading?'…':rows.length}</strong> users shown{data&&!loading?` · ${neverCount} never logged in`:''}</span></div>
     <form className="login-activity-controls" onSubmit={event=>{event.preventDefault();setRefresh(value=>value+1);}}>
-      <label>Show<select value={filter} onChange={event=>setFilter(event.target.value)}>{LOGIN_ACTIVITY_FILTERS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+      <label>Show<SmartSelect value={filter} onChange={event=>setFilter(event.target.value)}>{LOGIN_ACTIVITY_FILTERS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</SmartSelect></label>
       <button type="submit" className="secondary">Refresh</button>
     </form>
     <details className="login-history-help"><summary>About login history and activity</summary><p>“Never logged in” means no login is on record for the account. Days since last login count India calendar days from the most recent recorded login. Continuous tracking began {data?.trackingSince?formatDate(data.trackingSince):'recently'}; an account created before that with no later login also shows as never logged in. Login days counts days with a new sign-in, not total time worked.</p></details>

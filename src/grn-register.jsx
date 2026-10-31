@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {FileBarChart, RefreshCw} from 'lucide-react';
 import DateInput from './date-input.mjs';
@@ -51,9 +52,9 @@ export default function GrnRegister({token,ReportSection}) {
     </form>
     {validation&&<p role="alert">{validation}</p>}
     <div className="stock-statement-filters">
-      <label>Document status<select value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option>{options.status.map(value=><option key={value}>{value}</option>)}</select></label>
-      <label>Doctype<select value={type} onChange={event=>setType(event.target.value)}><option value="">All document types</option>{options.type.map(value=><option key={value}>{value}</option>)}</select></label>
-      <label>Department<select value={department} onChange={event=>setDepartment(event.target.value)}><option value="">All departments</option>{options.department.map(value=><option key={value}>{value}</option>)}</select></label>
+      <label>Document status<SmartSelect value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option>{options.status.map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
+      <label>Doctype<SmartSelect value={type} onChange={event=>setType(event.target.value)}><option value="">All document types</option>{options.type.map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
+      <label>Department<SmartSelect value={department} onChange={event=>setDepartment(event.target.value)}><option value="">All departments</option>{options.department.map(value=><option key={value}>{value}</option>)}</SmartSelect></label>
     </div>
     {data.loading?<p role="status">Loading goods receipt notes from Oracle…</p>:data.error?<p role="alert">{data.error}</p>:<ReportSection title="GRN Register" category="grn-register" description={`${formatDisplayDate(range.from)} to ${formatDisplayDate(range.to)} · Checked ${new Date(data.checkedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}`} rows={rows} columns={grnColumns} rowKey={row=>row.id} emptyMessage="No goods receipt notes match the selected filters."/>}
   </section>;

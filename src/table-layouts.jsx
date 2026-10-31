@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, { useEffect, useState } from "react";
 import { changeTableLayout, matchingTableLayout, readTableLayouts, tableLayoutAccount, tableLayoutStorageKey } from "./table-layouts.mjs";
 import "./table-layouts.css";
@@ -33,13 +34,13 @@ export function useTableLayouts(table, columns) {
 export function TableLayoutSelect({ store, visibleKeys, onSelect }) {
   if (!store.layouts.length) return null;
   return <label className="table-layout-quick-select"><span>Layout</span>
-    <select aria-label="Table layout" value={matchingTableLayout(store.layouts, visibleKeys)?.id || ""} onChange={event => {
+    <SmartSelect aria-label="Table layout" value={matchingTableLayout(store.layouts, visibleKeys)?.id || ""} onChange={event => {
       const layout = store.layouts.find(item => item.id === Number(event.target.value));
       if (layout) onSelect([...layout.keys]);
     }}>
       <option value="" disabled>Custom layout</option>
       {store.layouts.map(layout => <option key={layout.id} value={layout.id}>{layout.name}</option>)}
-    </select>
+    </SmartSelect>
   </label>;
 }
 
@@ -60,14 +61,14 @@ export function TableLayoutControls({ store, draftKeys, defaultKeys, onSelect })
   };
   return <div className="table-layout-controls">
     <div className="table-layout-controls-row">
-      <label><span>Saved table layouts</span><select aria-label="Saved table layouts" value={selected?.id || ""} onChange={event => {
+      <label><span>Saved table layouts</span><SmartSelect aria-label="Saved table layouts" value={selected?.id || ""} onChange={event => {
         const layout = store.layouts.find(item => item.id === Number(event.target.value));
         setSelectedId(layout?.id || ""); setMode(""); setError(""); setNotice("");
         if (layout) onSelect([...layout.keys]);
       }}>
         <option value="" disabled>Custom layout</option>
         {store.layouts.map(layout => <option key={layout.id} value={layout.id}>{layout.name}</option>)}
-      </select></label>
+      </SmartSelect></label>
       <button type="button" disabled={!draftKeys.length || !!store.error} onClick={() => startNaming("save")}>Save as new layout</button>
       <button type="button" disabled={!selected || !modified || !draftKeys.length || !!store.error} onClick={() => change("update", "Layout updated. Choose Apply to use these columns.")}>Update layout</button>
       <button type="button" disabled={!selected || !!store.error} onClick={() => startNaming("rename")}>Rename</button>

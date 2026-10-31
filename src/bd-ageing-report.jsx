@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useState} from 'react';
 import {canViewBdAgeingReport} from '../bd-ageing-report.mjs';
 import {formatDisplayDateTime} from '../date-time-format.mjs';
@@ -51,8 +52,8 @@ export default function BdAgeingReport({session, ReportSection, onBack}) {
     {loading && <p role="status">Loading open breakdowns…</p>}
     {data && <><p>{view.rows.length} of {data.total} requests · {data.scope?.label || 'Assigned sites'} · Updated {formatDisplayDateTime(data.generatedAt)} IST</p>
       <div className="bd-ageing-filters">
-        <label>Region<select aria-label="BD ageing region" value={region} onChange={event=>{setRegion(event.target.value);setSite('all');}}><option value="all">All regions</option>{[...new Set([...view.regions,...(region==='all'?[]:[region])])].map(value=><option key={value} value={value}>{value}</option>)}</select></label>
-        <label>Site<select aria-label="BD ageing site" value={site} onChange={event=>setSite(event.target.value)}><option value="all">All sites</option>{view.sites.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}{site!=='all'&&!view.sites.some(item=>item.key===site)&&<option value={site}>{site} (no current requests)</option>}</select></label>
+        <label>Region<SmartSelect aria-label="BD ageing region" value={region} onChange={event=>{setRegion(event.target.value);setSite('all');}}><option value="all">All regions</option>{[...new Set([...view.regions,...(region==='all'?[]:[region])])].map(value=><option key={value} value={value}>{value}</option>)}</SmartSelect></label>
+        <label>Site<SmartSelect aria-label="BD ageing site" value={site} onChange={event=>setSite(event.target.value)}><option value="all">All sites</option>{view.sites.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}{site!=='all'&&!view.sites.some(item=>item.key===site)&&<option value={site}>{site} (no current requests)</option>}</SmartSelect></label>
         <button type="button" disabled={ageing==='all'&&region==='all'&&site==='all'} onClick={()=>{setAgeing('all');setRegion('all');setSite('all');}}>Reset filters</button>
       </div>
       <div className="bd-ageing-tabs" role="tablist" aria-label="Breakdown ageing" onKeyDown={event=>{

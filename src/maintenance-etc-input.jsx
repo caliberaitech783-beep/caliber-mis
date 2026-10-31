@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useState} from 'react';
 import './maintenance-etc-input.css';
 import DateInput from "./date-input.mjs";
@@ -86,9 +87,9 @@ export default function MaintenanceEtcInput({value, displayValue = value, onChan
     <legend>ETC (Expected Time For Completion) *</legend>
     <div className="maintenance-etc-controls">
       <label>Date<DateInput required min={minimum.slice(0, 10)} value={parts.date} disabled={!editing} onChange={e => change('date', e.target.value)} /></label>
-      <label>AM/PM<select required value={parts.period} disabled={!editing} onChange={e => change('period', e.target.value)}><option value="">AM/PM</option>{['AM', 'PM'].map(period => <option key={period} disabled={etcPeriodDisabled(parts.date, period, minimum)}>{period}</option>)}</select></label>
-      <label>Hour<select required value={parts.hour} disabled={!editing || !parts.period} onChange={e => change('hour', e.target.value)}><option value="">Hour</option>{hours.map(hour => <option key={hour} disabled={etcHourDisabled(parts, hour, minimum)}>{hour}</option>)}</select></label>
-      <label>Minute<select required value={parts.minute} disabled={!editing || !parts.period || !parts.hour} onChange={e => change('minute', e.target.value)}><option value="">Minute</option>{minutes.map(minute => <option key={minute} disabled={etcMinuteDisabled(parts, minute, minimum)}>{minute}</option>)}</select></label>
+      <label>AM/PM<SmartSelect required value={parts.period} disabled={!editing} onChange={e => change('period', e.target.value)}><option value="">AM/PM</option>{['AM', 'PM'].map(period => <option key={period} disabled={etcPeriodDisabled(parts.date, period, minimum)}>{period}</option>)}</SmartSelect></label>
+      <label>Hour<SmartSelect required value={parts.hour} disabled={!editing || !parts.period} onChange={e => change('hour', e.target.value)}><option value="">Hour</option>{hours.map(hour => <option key={hour} disabled={etcHourDisabled(parts, hour, minimum)}>{hour}</option>)}</SmartSelect></label>
+      <label>Minute<SmartSelect required value={parts.minute} disabled={!editing || !parts.period || !parts.hour} onChange={e => change('minute', e.target.value)}><option value="">Minute</option>{minutes.map(minute => <option key={minute} disabled={etcMinuteDisabled(parts, minute, minimum)}>{minute}</option>)}</SmartSelect></label>
     </div>
     <input type="hidden" name="expectedCompletionAt" value={currentValue} />
     {!editing && hasExistingEtc && !changeUsed && <button type="button" className="etc-replace-button" onClick={replacePastEtc}>Change to a future ETC</button>}

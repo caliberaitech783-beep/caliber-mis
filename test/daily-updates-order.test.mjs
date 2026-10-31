@@ -65,7 +65,7 @@ test("the chosen order is remembered on the device and survives a broken storage
 const source = readFileSync(new URL("../src/daily-updates-list.jsx", import.meta.url), "utf8")
   .replace(/^import .*;\r?\n/gm, "").replace(/^export (default )?/gm, "");
 const { code } = await transformWithOxc(source, "daily-updates-list.jsx", { jsx: { runtime: "classic" } });
-const bindings = { React, useSyncExternalStore: React.useSyncExternalStore, ...order, formatDisplayDateTime };
+const bindings = {SmartSelect: "select", React, useSyncExternalStore: React.useSyncExternalStore, ...order, formatDisplayDateTime };
 const { DailyUpdatesList, DailyUpdatesPanel, setDailyUpdatesOrder } = new Function(...Object.keys(bindings), `${code}; return { DailyUpdatesList, DailyUpdatesPanel, setDailyUpdatesOrder };`)(...Object.values(bindings));
 const render = (props, Component = DailyUpdatesList) => renderToStaticMarkup(React.createElement(Component, props));
 

@@ -1,6 +1,7 @@
 import React,{useEffect,useId,useMemo,useRef,useState} from 'react';
 import {ChevronDown,Search} from 'lucide-react';
 import './searchable-select.css';
+import {matchesSmartSearch} from '../smart-search.mjs';
 
 const normalize=(value)=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const normalizedOption=(option)=>typeof option==='string'
@@ -23,6 +24,7 @@ export default function SearchableSelect({
   hint='',
   emptyText='No matching records found.',
   className='',
+  style,
   inputProps={},
 }){
   const id=useId();
@@ -38,13 +40,13 @@ export default function SearchableSelect({
   const selected=allOptions.find((option)=>option.value===selectedValue);
   const matching=useMemo(()=>{
     const needle=normalize(query??'');
-    return needle?allOptions.filter((option)=>normalize(`${option.label} ${option.description} ${option.keywords}`).includes(needle)):allOptions;
+    return needle?allOptions.filter((option)=>matchesSmartSearch(needle,option.label,option.value,option.description,option.keywords)):allOptions;
   },[allOptions,query]);
   const visibleOptions=matching.slice(0,100);
   const expanded=open&&!disabled;
   const activeOption=expanded?visibleOptions[active]:null;
 
-  useEffect(()=>{input.current?.setCustomValidity(required&&!selected?'Select a value from the matching list.':'')},[required,selected]);
+  useEffect(()=>{input.current?.setCustomValidity(required&&(!selected||!selectedValue)?'Select a value from the matching list.':'')},[required,selected,selectedValue]);
   useEffect(()=>{list.current?.querySelector('[data-active="true"]')?.scrollIntoView({block:'nearest'})},[active]);
 
   const commit=(next,option=null)=>{
@@ -70,13 +72,13 @@ export default function SearchableSelect({
     }
   };
 
-  return <div className={`searchable-select ${className}`.trim()} onBlur={(event)=>{
+  return <div className={`searchable-select ${className}`.trim()} style={style} onBlur={(event)=>{
     if(!event.currentTarget.contains(event.relatedTarget)){setOpen(false);setActive(-1);setQuery(null)}
   }}>
-    {label&&<label htmlFor={id}>{label}{required?' *':''}</label>}
+    {label&&<label htmlFor={inputProps.id||id}>{label}{required?' *':''}</label>}
     <div className="searchable-select-control">
       <Search aria-hidden="true" />
-      <input {...inputProps} id={id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
+      <input {...inputProps} id={inputProps.id||id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
         aria-describedby={hint?`${id}-hint`:undefined} aria-busy={loading} disabled={disabled}
@@ -85,7 +87,7 @@ export default function SearchableSelect({
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
       <ChevronDown aria-hidden="true" />
     </div>
-    {name&&<input type="hidden" name={name} value={selectedValue} disabled={disabled} />}
+    {name&&<input type="hidden" form={inputProps.form} name={name} value={selectedValue} disabled={disabled} />}
     {hint&&<small id={`${id}-hint`} className="searchable-select-hint">{hint}</small>}
     {expanded&&<div className="searchable-select-menu">
       <div className="searchable-select-count" role="status">{matching.length} {matching.length===1?'match':'matches'}{matching.length>visibleOptions.length?` · showing first ${visibleOptions.length}`:''}</div>

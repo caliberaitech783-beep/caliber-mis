@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useEffect,useId,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Filter,ChevronLeft,ChevronRight,X,CalendarDays} from 'lucide-react';
@@ -9,9 +10,9 @@ function TimeField({label,value,onChange}) {
   const parts=timeParts(value);
   const change=(key,next)=>onChange(timeFromParts({...parts,[key]:next}));
   return <fieldset className="report-period-time"><legend>{label}</legend>
-    <select aria-label={`${label} hour`} value={parts.hour} onChange={e=>change('hour',e.target.value)}>{Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')).map(hour=><option key={hour}>{hour}</option>)}</select><span>:</span>
-    <select aria-label={`${label} minute`} value={parts.minute} onChange={e=>change('minute',e.target.value)}>{Array.from({length:60},(_,i)=>String(i).padStart(2,'0')).map(minute=><option key={minute}>{minute}</option>)}</select>
-    <select aria-label={`${label} AM or PM`} value={parts.period} onChange={e=>change('period',e.target.value)}><option>AM</option><option>PM</option></select>
+    <SmartSelect aria-label={`${label} hour`} value={parts.hour} onChange={e=>change('hour',e.target.value)}>{Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')).map(hour=><option key={hour}>{hour}</option>)}</SmartSelect><span>:</span>
+    <SmartSelect aria-label={`${label} minute`} value={parts.minute} onChange={e=>change('minute',e.target.value)}>{Array.from({length:60},(_,i)=>String(i).padStart(2,'0')).map(minute=><option key={minute}>{minute}</option>)}</SmartSelect>
+    <SmartSelect aria-label={`${label} AM or PM`} value={parts.period} onChange={e=>change('period',e.target.value)}><option>AM</option><option>PM</option></SmartSelect>
   </fieldset>;
 }
 export function ReportPeriodDialog({from,to,onApply,onClose}) {

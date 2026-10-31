@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {beginDownload} from './download-notice.mjs';
 import {responseTotalBytes,trackedBody,transferLabel,transferPercent} from './transfer-progress.mjs';
@@ -149,10 +150,10 @@ function ScheduleTime({value,onChange}){
     onChange(`${String(normalized).padStart(2,'0')}:${String(nextMinute).padStart(2,'0')}`);
   };
   return <div className="backup-time-control" aria-label="Scheduled backup time">
-    <select value={hour} onChange={(event)=>update(Number(event.target.value))} aria-label="Hour">{Array.from({length:12},(_,index)=>index+1).map(option=><option key={option}>{option}</option>)}</select>
+    <SmartSelect value={hour} onChange={(event)=>update(Number(event.target.value))} aria-label="Hour">{Array.from({length:12},(_,index)=>index+1).map(option=><option key={option}>{option}</option>)}</SmartSelect>
     <span>:</span>
-    <select value={minute} onChange={(event)=>update(hour,Number(event.target.value))} aria-label="Minute">{[0,15,30,45].map(option=><option key={option} value={option}>{String(option).padStart(2,'0')}</option>)}</select>
-    <select value={period} onChange={(event)=>update(hour,minute,event.target.value)} aria-label="AM or PM"><option>AM</option><option>PM</option></select>
+    <SmartSelect value={minute} onChange={(event)=>update(hour,Number(event.target.value))} aria-label="Minute">{[0,15,30,45].map(option=><option key={option} value={option}>{String(option).padStart(2,'0')}</option>)}</SmartSelect>
+    <SmartSelect value={period} onChange={(event)=>update(hour,minute,event.target.value)} aria-label="AM or PM"><option>AM</option><option>PM</option></SmartSelect>
   </div>;
 }
 

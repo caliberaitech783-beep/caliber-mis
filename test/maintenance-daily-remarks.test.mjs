@@ -19,7 +19,7 @@ test("overdue maintenance requests support daily remarks and twice-daily reminde
   assert.match(source, /<DailyUpdatesPanel remarks=\{history\} category=\{request\.category\} formatDateTime=\{formatTwelveHourDateTime\} missingLabel="Not recorded" \/>/);
   assert.match(source, /<MaintenanceRemarks remarks=\{row\.dailyRemarks\} category=\{row\.category\} \/>/);
   assert.match(server, /const delayReason=String\(req\.body\?\.delayReason\|\|''\)\.trim\(\)\|\|dailyDelayedReason;/);
-  assert.match(source, /<label>Delayed reason \*<select name="delayedReason" required/);
+  assert.match(source, /<label>Delayed reason \*<SmartSelect name="delayedReason" required/);
   assert.match(source, /<label>Breakdown type<input value=\{request\.category\|\|"Breakdown"\} readOnly/);
   assert.match(source, /delayedReasonsForRepairType\(request\.category,delayedReasonRecords\|\|\[\]\)/);
   assert.match(server, /ALTER TABLE maintenance_daily_remarks ADD COLUMN IF NOT EXISTS delayed_reason TEXT NOT NULL DEFAULT ''/);

@@ -14,7 +14,7 @@ test("dashboard region selection exposes its sites and filters every scoped data
   assert.doesNotMatch(source, /visibleUsers = selectedRegion/);
   assert.match(source, /locationBreakdowns = selectedRegion \|\| dashboardSite !== "all" \? scopedBreakdowns\.filter\(\(record\) => activeSites\.some/);
   assert.doesNotMatch(source, /selectedRegion && <label className="mine-site-filter">/);
-  assert.match(source, /<select aria-label="Site" value=\{dashboardSite\}/);
+  assert.match(source, /<SmartSelect aria-label="Site" value=\{dashboardSite\}/);
   assert.match(source, /selectedSites\.map\(\(site\) => <option key=\{site\} value=\{site\}>\{site\}<\/option>\)/);
 });
 

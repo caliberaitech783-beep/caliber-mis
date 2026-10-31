@@ -116,7 +116,7 @@ test('site filtering handles all sites, legacy messages, missing sites and casin
   assert.match(source,/visibleItems\.map\(\(item\)/);
   assert.match(source,/alerts\.map\(\(item\)/);
   assert.match(source,/className="notification-site"/);
-  assert.match(source,/Filter by site<select value=\{siteFilter\}/);
+  assert.match(source,/Filter by site<SmartSelect value=\{siteFilter\}/);
   assert.equal(source.match(/<NotificationMessage item=\{item\}/g)?.length,2);
 });
 

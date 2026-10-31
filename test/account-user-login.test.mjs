@@ -58,7 +58,7 @@ test('selected login portal rejects cross-portal IDs before login, including mis
 test('saving Account User clears inherited administrative and operational selections',()=>{
   const client=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   const source=client.match(/function applyUserRoleDefaults\(record\) \{[\s\S]*?\n\}/)[0];
-  const scope={assignedUserRoles:user=>String(user.userRoles||user.userGroup||'').split(/\s*\|\s*/),privilegeSelectionValue:value=>value,mobileUserRoleOptions:['Account User','Tender User'],displaySiteSelection:()=>[],ADMIN_SUBMENU_OPTIONS,mobileAccessKey:key=>'mobile'+key,GENERAL_USER_ROLE:'General User'};
+  const scope={SmartSelect: "select",assignedUserRoles:user=>String(user.userRoles||user.userGroup||'').split(/\s*\|\s*/),privilegeSelectionValue:value=>value,mobileUserRoleOptions:['Account User','Tender User'],displaySiteSelection:()=>[],ADMIN_SUBMENU_OPTIONS,mobileAccessKey:key=>'mobile'+key,GENERAL_USER_ROLE:'General User'};
   const apply=new Function(...Object.keys(scope),`${source};return applyUserRoleDefaults;`)(...Object.values(scope));
   const saved=apply({userGroup:'Account User',adminLevel:'Super Admin',desktopUserMenuAccess:'Requests',mobileUserMenuAccess:'Masters',read:true,edit:true});
   assert.equal(saved.userType,'Account User');

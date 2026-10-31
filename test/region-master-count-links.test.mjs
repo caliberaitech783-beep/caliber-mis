@@ -24,7 +24,7 @@ test("region totals open the entire region, site totals retain only the chosen s
   const sites = ["Sasti OB", "SASTI II", "Majri OB"];
   const slots = [];
   let cursor = 0, opened;
-  const bindings = {React, liveEquipmentMetrics, recordBelongsToSite, vehicles: [],
+  const bindings = {SmartSelect: "select",React, liveEquipmentMetrics, recordBelongsToSite, vehicles: [],
     regionSites: (record) => record.sites, matchesSmartSearch: () => true, useEffect() {},
     useState(initial) {const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial; return [slots[index], (next) => {slots[index] = next;}];},
     useMasterRecords: () => [equipment],

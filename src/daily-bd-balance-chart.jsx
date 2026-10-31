@@ -1,3 +1,4 @@
+import SmartSelect from './smart-select.jsx';
 import React, {useMemo, useState} from 'react';
 import {ArrowDown, ArrowRight, ArrowUp, Info, MapPin, RotateCcw} from 'lucide-react';
 import {DAILY_BD_METRICS, buildDailyBdBalance, shiftBdDate} from './daily-bd-balance.mjs';
@@ -74,9 +75,9 @@ export default function DailyBdBalanceChart({records = [], sites = [], scopeLabe
     <header className="bd-balance-header">
       <div><span className="mine-eyebrow">Daily breakdown movement</span><h2>Daily BD balance</h2><p>Opening + BD In − BD Out = Closing + Idle <ArrowRight aria-hidden="true"/> Idle shown separately</p></div>
       <div className="bd-balance-controls">
-        <label><span>View</span><select aria-label="Daily BD balance view" value={view} onChange={event => setView(event.target.value)}><option value="chart">Daily movement chart</option><option value="sites">Every site BD balance</option></select></label>
-        <label><span><MapPin aria-hidden="true"/> Site</span><select aria-label="Daily BD balance site" value={activeSite} onChange={event => setSite(event.target.value)}><option value="">All sites</option>{sites.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
-        {shiftOptions.length > 0 && <label><span>Shift Master</span><select aria-label="Daily BD balance shift" value={activeShift} onChange={event => onShiftChange?.(event.target.value)}><option value={DAILY_BD_ALL_SHIFTS}>All shifts</option>{shiftOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>}
+        <label><span>View</span><SmartSelect aria-label="Daily BD balance view" value={view} onChange={event => setView(event.target.value)}><option value="chart">Daily movement chart</option><option value="sites">Every site BD balance</option></SmartSelect></label>
+        <label><span><MapPin aria-hidden="true"/> Site</span><SmartSelect aria-label="Daily BD balance site" value={activeSite} onChange={event => setSite(event.target.value)}><option value="">All sites</option>{sites.map(name => <option key={name} value={name}>{name}</option>)}</SmartSelect></label>
+        {shiftOptions.length > 0 && <label><span>Shift Master</span><SmartSelect aria-label="Daily BD balance shift" value={activeShift} onChange={event => onShiftChange?.(event.target.value)}><option value={DAILY_BD_ALL_SHIFTS}>All shifts</option>{shiftOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</SmartSelect></label>}
         <label><span>From</span><DateInput aria-label="Daily BD balance from date" value={from} max={today} onChange={event => changeDate('from', event.target.value)}/></label>
         <label><span>To</span><DateInput aria-label="Daily BD balance to date" value={to} max={today} onChange={event => changeDate('to', event.target.value)}/></label>
         <div className="mine-trend-period" role="group" aria-label="Daily BD balance period">{[1,7,14,30].map(days => <button type="button" key={days} aria-pressed={range.days === days} className={range.days === days ? 'active' : ''} onClick={() => preset(days)}>{days === 1 ? 'Today' : `${days}D`}</button>)}</div>

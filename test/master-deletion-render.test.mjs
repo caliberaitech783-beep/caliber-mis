@@ -11,7 +11,7 @@ test('populated Users & employees renders without an approval flag and C-Dir acc
   const end=source.indexOf('\nfunction ',start+1);
   const {code}=await transformWithOxc(source.slice(start,end),'master.jsx',{jsx:{runtime:'classic'}});
   const empty=()=>null;
-  const bindings={React,useState:v=>[v,()=>{}],useEffect:()=>{},
+  const bindings={SmartSelect: "select",React,useState:v=>[v,()=>{}],useEffect:()=>{},
     masterFields:{'Users & employees':[['employee','Employee','text']],'C-Dir Employee master':[['employee','Employee','text']]},
     userPrivilegeFields:[],userSubmenuFields:[],isCdirMaster:n=>n.startsWith('C-Dir'),
     matchesSmartSearch:()=>true,tableRowMatchesFilters:()=>true,useSortableRows:rows=>[rows,{},()=>{}],

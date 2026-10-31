@@ -20,7 +20,7 @@ for(const [file,name,initialProps,selectionValue] of [
     const state=[],refs=[],frames=[];let cursor=0,refCursor=0,tree,value='';
     const input=()=>find(tree,n=>n.props.role==='combobox')[0];
     // Model a mouse/touch option taking focus, so restoring input focus fires onFocus.
-    const scope={React,ChevronDown:()=>null,Search:()=>null,searchSiteDoors,doorLabel,...equipment,
+    const scope={SmartSelect: "select",React,ChevronDown:()=>null,Search:()=>null,searchSiteDoors,doorLabel,...equipment,
       requestAnimationFrame:fn=>frames.push(fn),useId:()=>name,
       useMemo:fn=>fn(),useEffect:()=>{},
       useRef:()=>{const i=refCursor++;return refs[i]??= {current:{focus(){input().props.onFocus({currentTarget:{select(){}}})},setCustomValidity(){},querySelector(){return null}}}},

@@ -29,7 +29,7 @@ function harness(initialWidth, transferAllowed=false) {
     }
     return queries.get(query);
   };
-  const scope = {document: {getElementById:()=>null,addEventListener: (type, fn) => listeners.set(type, fn), removeEventListener: type => listeners.delete(type)}, React, useState, useEffect: effect => effects.push(effect), window: {matchMedia},
+  const scope = {SmartSelect: "select",document: {getElementById:()=>null,addEventListener: (type, fn) => listeners.set(type, fn), removeEventListener: type => listeners.delete(type)}, React, useState, useEffect: effect => effects.push(effect), window: {matchMedia},
     BdmsAssistant: Null, masterNav: [["Equipment master", Null]], nav: [["Dashboard", Null]], whatsappNav: [], operationalWorkspaceNav: [], reportCategoryTabs: [],
     navigationPermissionsForView: permission => permission, masterAccessAllows: () => true, accessAllows: () => true,
     reportCategoryIdsForUser: () => [], reportAccessAllows: () => true, ibossAccountsAllowed, isSessionViewOnlyUser, canViewBdAgeingReport, useEmployeeTransferAccess:()=>transferAllowed,

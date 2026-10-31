@@ -53,7 +53,7 @@ function harness(session = production) {
       queued.push(() => { prior?.cleanup?.(); effects.set(index, {deps, cleanup: effect()}); });
     }
   };
-  const scope = {
+  const scope = {SmartSelect: "select",
     React, useState, useEffect, filterRecordsByDate, useRef: value => useState(() => ({current: value}))[0],
     document, window: {...events("window"),
       setInterval(fn, duration) {timers.set(++timerId, {fn, duration}); return timerId;},

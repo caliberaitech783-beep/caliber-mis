@@ -19,7 +19,7 @@ for (const [name, start, end] of definitions) {
   test(`${name}: a transient background refresh never replaces an existing master page with a loading/error screen`, () => {
     const fixture = [{id: "fixture", door: "D-01"}];
     for (const [loaded, error, expectedScreen] of [[true, "", null], [true, "Connection interrupted", null], [false, "", MasterLoader], [false, "Connection interrupted", MasterLoadError]]) {
-      const scope = {
+      const scope = {SmartSelect: "select",
         React, CDIR_MASTERS, useMasterRecords: () => [fixture, Null, loaded, Null, Null, Null, error, Null], vehicles: [], subsidiaryData: [],
         MasterLoadError, MasterLoader, OriginalEquipment: Null, OriginalGeneric: Null,
         masterFields: {"OEM master": [["oem", "OEM name"]]}, MasterPage: Null, RegionMasterPage: Null,

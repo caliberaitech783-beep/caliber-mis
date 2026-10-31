@@ -31,7 +31,7 @@ const button = (tree, value) => find(tree, node => node.type === 'button' && tex
 function harness() {
   const slots = [], calls = []; let cursor = 0;
   const bindings = {
-    React, ...ledger, dashboardCountScale, recordedBreakdownRangeLength, recordBelongsToSite, formatDisplayDate, dailyBdBalanceExport, timestampMatchesShift,
+    React,SmartSelect: 'select', ...ledger, dashboardCountScale, recordedBreakdownRangeLength, recordBelongsToSite, formatDisplayDate, dailyBdBalanceExport, timestampMatchesShift,
     useMemo: fn => fn(),
     useState(initial) {const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => {slots[i] = value;}];},
     ...Object.fromEntries(['ArrowDown', 'ArrowRight', 'ArrowUp', 'Info', 'MapPin', 'RotateCcw'].map(name => [name, () => null])),

@@ -37,7 +37,7 @@ test('notice persists until successful manual close and late polling cannot rest
   const slots=[],effects=[];
   const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];};
   const ticket={reference:'TIC/SITE/1',resolutionMessage:'Fixed',resolvedBy:'Admin'};
-  const scope={React,useState,useRef:value=>{const [ref]=useState({current:value});return ref},useEffect:fn=>{effects.push(fn)},startVisiblePoll:fn=>{poll=fn;return()=>{}},ProtectedAudio:()=>null,ProtectedAttachment:()=>null,
+  const scope={SmartSelect: "select",React,useState,useRef:value=>{const [ref]=useState({current:value});return ref},useEffect:fn=>{effects.push(fn)},startVisiblePoll:fn=>{poll=fn;return()=>{}},ProtectedAudio:()=>null,ProtectedAttachment:()=>null,
     fetch:async(url)=>({ok:url.endsWith('resolution-notices')||!failClose,json:async()=>url.endsWith('resolution-notices')?[ticket]:failClose?{error:'Network failure'}:{acknowledged:true}})};
   const Component=new Function(...Object.keys(scope),code+';return TicketResolutionNotices;')(...Object.values(scope));
   const render=()=>{cursor=0;return Component({token:'fixture'});};

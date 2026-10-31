@@ -59,7 +59,7 @@ function managerHarness(equipment, equipmentState = {}) {
     if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
     return [slots[index], (value) => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }];
   };
-  const scope = { isIdleVehicleRequest,
+  const scope = {SmartSelect: "select", isIdleVehicleRequest,
     React, useState, useMemo: (calculate) => calculate(), fleetAssetRequestDetails, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses, requestWithEquipmentMasterDetails,
     recordBelongsToSite, managerRoleSelection, visibleInMisRequests, visibleInMisHistory, isProductionFirstTripPending,
     equipmentGroupLabel: (row) => row.group || row.category || "Unspecified",
@@ -281,7 +281,7 @@ function mutationHarness({ ok = true, status = ok ? 200 : 409, saved = { ...clos
   const events = [];
   const calls = [];
   const win = { prompt: () => reason };
-  const scope = {
+  const scope = {SmartSelect: "select",
     window: win, session: { token: "fixture-token" }, authToken: "fixture-token", requests: initial, requestLoadSequence: { current: 0 },
     setRequests: (update) => { rows = typeof update === "function" ? update(rows) : update; events.push("local-state"); },
     notifyRequestChange: (window) => { assert.equal(window, win); events.push("notify"); },

@@ -37,7 +37,7 @@ function harness(code, name, extra = {}) {
     return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
   };
   const scope = { React, useState, useRef: value => useState(() => ({ current: value }))[0], useEffect: (effect) => effects.push(effect), ...extra };
-  const component = new Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope));
+  const component = new Function(...Object.keys(scope), `const SmartSelect="select";${code}; return ${name};`)(...Object.values(scope));
   return {
     render(props = {}) { cursor = 0; effects.length = 0; return component(props); },
     async runEffects() { for (const effect of effects.splice(0)) await effect(); },
@@ -55,7 +55,7 @@ const unused = () => {
 test('login form offers two language dropdowns and keeps both choices', () => {
   assert.match(loginSource, /useState\(\(\) => preferredLanguageCodes\(\)\[0\] \|\| "en"\)/);
   assert.match(loginSource, /const \[secondaryLanguage, setSecondaryLanguage\] = useState/);
-  assert.match(loginSource, /<select name=\{name\} value=\{value\}/);
+  assert.match(loginSource, /<SmartSelect name=\{name\} value=\{value\}/);
   assert.match(loginSource, /\["preferredLanguage", "Language 1 \u00b7 \u092d\u093e\u0937\u093e 1"/);
   assert.match(loginSource, /\["secondaryLanguage", "Language 2 \u00b7 \u092d\u093e\u0937\u093e 2"/);
   assert.match(loginSource, /speechLanguages\.map\(\(\[, englishName, code, nativeName\]\) => \(/, 'every supported language is listed');

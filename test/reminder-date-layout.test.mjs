@@ -15,7 +15,7 @@ test('both first-trip reminders can be dismissed without changing the pending qu
     const {code}=await transformWithOxc(`const render=()=>(${expression});`,'reminder.jsx',{jsx:{runtime:'classic'}});
     let dismissed=false,tab='requests';
     const rows=Array.from({length:1985},(_,id)=>({id}));
-    const bindings={React,CheckCircle2:()=>null,X:()=>null,productionManagerView:true,isProductionWorker:true,isProductionManager:true,
+    const bindings={SmartSelect: "select",React,CheckCircle2:()=>null,X:()=>null,productionManagerView:true,isProductionWorker:true,isProductionManager:true,
       productionFirstTripRows:rows,setFirstTripReminderDismissed:value=>{dismissed=value;},setQueueTab:value=>{tab=value;},setTab:value=>{tab=value;}};
     const render=()=>new Function(...Object.keys(bindings),'firstTripReminderDismissed','tab',`${code};return render();`)(...Object.values(bindings),dismissed,tab);
     const tree=render();

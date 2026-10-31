@@ -58,7 +58,7 @@ test('overlapping background batch polls coalesce; an explicit refresh reads aft
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  assert.ok(line);
  let requests=0,release,rows=[];const gate=new Promise(resolve=>release=resolve),noop=()=>{};
- const scope={vlbBatch:undefined,batchLoads:{current:new Map()},activeRef:{current:'batch'},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
+ const scope={SmartSelect: "select",vlbBatch:undefined,batchLoads:{current:new Map()},activeRef:{current:'batch'},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
  const first=load('batch',false),same=load('batch',false),fresh=load('batch');
  assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,2);assert.equal(rows[0].revision,2);

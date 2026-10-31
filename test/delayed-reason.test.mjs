@@ -65,7 +65,7 @@ test('breakdown types stored in the Delayed Reason master drive the picker and t
   const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
   assert.match(client,/\["repairTypes", "Breakdown types \(comma separated, or All\)"\]/);
   assert.match(client,/const etcDelayed = etcChanged && expectedCompletionAt\.slice\(0,16\) > initialEtc;/);
-  assert.match(client,/etcDelayed && <label className="full">Delayed reason \*<select name="delayedReason" required/);
+  assert.match(client,/etcDelayed && <label className="full">Delayed reason \*<SmartSelect name="delayedReason" required/);
   assert.match(client,/delayedReasonsForRepairType\(editCategory, delayedReasonRecords \|\| \[\]\)/);
   assert.match(server,/delayed_reason_repair_types_seeded_v1/);
   assert.match(server,/delayed_reason=CASE WHEN \$12<>'' THEN \$12 ELSE delayed_reason END/);

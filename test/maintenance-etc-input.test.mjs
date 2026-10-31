@@ -9,7 +9,7 @@ import DateInput from '../src/date-input.mjs';
 const source = readFileSync(new URL('../src/maintenance-etc-input.jsx', import.meta.url), 'utf8');
 const compiled = await transformWithOxc(source.replace(/^import .*;$/gm, '').replace(/export default /g, '').replace(/export /g, ''), 'maintenance-etc-input.jsx', {jsx:{runtime:'classic'}});
 const {etcParts, etcValue, etcMinimum, etcMinimumLabel, isEtcBackdated, etcPeriodDisabled, etcHourDisabled, etcMinuteDisabled} = new Function(`${compiled.code};return {etcParts,etcValue,etcMinimum,etcMinimumLabel,isEtcBackdated,etcPeriodDisabled,etcHourDisabled,etcMinuteDisabled};`)();
-const MaintenanceEtcInput = new Function('React', 'useState', 'DateInput', `${compiled.code};return MaintenanceEtcInput;`)(React, React.useState, DateInput);
+const MaintenanceEtcInput = new Function('React', 'useState', 'DateInput', `const SmartSelect="select";${compiled.code};return MaintenanceEtcInput;`)(React, React.useState, DateInput);
 
 test('ETC 12-hour display preserves every stored hour and minute', () => {
   for (let hour=0;hour<24;hour++) for (const minute of ['00','30','59']) {
@@ -24,7 +24,7 @@ test('ETC remains required and submits the existing field name without incomplet
   assert.equal(etcValue(etcParts('')), '');
   for (const key of ['date','hour','minute','period']) assert.equal(etcValue({...etcParts('2026-11-10T14:56'),[key]:''}), '');
   assert.match(source, /type="hidden" name="expectedCompletionAt"/);
-  assert.equal((source.match(/<DateInput required|<select required/g)||[]).length, 4);
+  assert.equal((source.match(/<DateInput required|<SmartSelect required/g)||[]).length, 4);
   const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   assert.match(main, /<MaintenanceEtcInput value=\{expectedCompletionAt\} displayValue=\{displayedInitialEtc\} onChange=\{setExpectedCompletionAt\} changeUsed=\{request\.expectedCompletionChangeUsed === true\}/);
   assert.match(main, /expectedCompletionAt: form.get\("expectedCompletionAt"\)/);
