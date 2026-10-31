@@ -6,7 +6,7 @@ test('clear extracted values including zero and literal short-hour times need no
 });
 test('missing, invalid and conflicting values stay visible without exposing healthy fields',()=>{
  const issues=manualScanIssues({...valid,assetId:'',aFormNo:'',closingKmr:-1,trips:[{...valid.trips[0],loadingTime:'25:00'}]});
- for(const key of ['assetId','aFormNo','closingKmr','trips.0.loadingTime'])assert.ok(issues[key]);
+ for(const key of ['assetId','closingKmr','trips.0.loadingTime'])assert.ok(issues[key]);
  for(const key of ['bookDate','doorText','employeeId','openingKmr','trips.0.unloadingTime'])assert.equal(issues[key],undefined);
  const conflict=manualScanIssues({...valid,scanMachineSummary:[{equipmentName:'V12',tripCount:2}]});assert.ok(conflict.scanMachineSummary);assert.ok(conflict['trips.0.equipmentName']);
 });
@@ -39,5 +39,19 @@ test('literal blank handover times do not become red fields or block automatic s
   assert.equal(cardReviewGroup(card,'vehicle'),'orange');
   const source=raw.gemini.trips.r[0];source[key==='loadingTime'?2:3]=null;
   assert.ok(manualScanIssues(draft,'vehicle',raw)['trips.0.'+key]);
+ }
+});
+
+test('missing printed number and absent Work Order master stay All okay for VLB and ELB',async()=>{
+ const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
+ const {cardReviewGroup}=await import('../scan-card-groups.mjs');
+ const options={assets:[{id:'1'}],employees:[{id:'2'}],shifts:[{id:'3'}],workOrders:[]};
+ for(const kind of ['vehicle','equipment']){
+  const draft={...valid,aFormNo:'',jobCardNo:'',workOrderId:'',extractionReviewFields:[],meterReviewFields:[]};
+  const card={status:'review',draft,raw_fields:{},checks:{errors:[],warnings:[]}};
+  assert.deepEqual(manualScanIssues(draft,kind,{},options),{});
+  assert.equal(cardReviewGroup(card,kind,options),'orange');
+  assert.equal(canAutoSaveScanCard(card,kind,options),true);
+  assert.equal(cardReviewGroup({...card,draft:{...draft,employeeId:''}},kind,options),'brown');
  }
 });
