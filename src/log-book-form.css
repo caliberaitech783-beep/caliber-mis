@@ -18,3 +18,44 @@
 .logbook-page label,.logbook-page .logbook-field>span,.logbook-compact .logbook-field:nth-child(even)>span{color:#000}
 
 .logbook-meter-invalid input,.logbook-meter-invalid output{border:1px solid #dc2626!important;background:#fff1f2!important;color:#991b1b!important}.logbook-meter-invalid small{color:#b91c1c}
+
+/* One sheet manual entry, with scrolling inside the detail grids. */
+.logbook-single-sheet{background:#eaf0f6;border-color:#b8c4d1;padding:0 10px 8px;border-radius:5px}
+.logbook-single-sheet .logbook-page-header{margin:0 -10px 8px;padding:7px 12px 0;background:#344c6b}
+.logbook-single-sheet .logbook-eyebrow,.logbook-single-sheet .logbook-page-header p{display:none}
+.logbook-single-sheet .logbook-page-header h1{font-size:15px;margin:0 0 7px}.logbook-single-sheet .logbook-page-header h1 svg{width:17px;height:17px}
+.logbook-single-sheet .logbook-header-actions{margin:0 -12px;padding:4px 8px;justify-content:flex-start;gap:3px;background:#f7f9fc}
+.logbook-single-sheet .logbook-header-actions button{flex-direction:row;font-size:10px;padding:5px 7px;min-width:0;min-height:28px;border:1px solid #c7d0dc;background:#fff;gap:4px}
+.logbook-single-sheet .logbook-edit-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px 12px}
+.logbook-single-sheet .logbook-section{margin:0;padding:7px;border-color:#b8c4d1;background:white;border-radius:3px;min-width:0}
+.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child,.logbook-single-sheet .logbook-edit-fields>.logbook-section:has([data-enter-action="add-trip"]),.logbook-single-sheet .logbook-wide,.logbook-single-sheet .logbook-machine-details,.logbook-single-sheet .logbook-master-help,.logbook-single-sheet .logbook-handover-help{grid-column:1/-1}
+.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child{border:0;background:transparent;padding:2px 12px 4px 0}
+.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child>.logbook-section-title{display:none}
+.logbook-single-sheet .logbook-fields{gap:4px 30px}.logbook-single-sheet .logbook-field{grid-template-columns:143px minmax(0,1fr);gap:4px}
+.logbook-single-sheet .logbook-field>span{font-size:11px}.logbook-single-sheet .logbook-field>small{display:none}.logbook-single-sheet .logbook-field.logbook-meter-invalid>small{display:block}
+.logbook-single-sheet input,.logbook-single-sheet select,.logbook-single-sheet textarea{min-height:25px;height:25px;padding:3px 6px;font-size:12px;border-color:#b8c4d1;border-radius:2px}
+.logbook-single-sheet .logbook-field output{min-height:25px;height:25px;padding:3px 7px;border-color:#b8c4d1;background:#f3f6fa}
+.logbook-single-sheet .logbook-field input[name="location"]{background:#d9fbfc}
+.logbook-single-sheet .logbook-section-title{border:0;margin:0 0 5px;padding:0;min-height:23px}.logbook-single-sheet .logbook-section-title h2{font-size:11px;color:#344c6b}
+.logbook-single-sheet .logbook-section-title>span,.logbook-single-sheet .logbook-trip-actions>span{font-size:10px;color:#63758a}
+.logbook-single-sheet .logbook-trip-actions{gap:8px}.logbook-single-sheet .logbook-trip-actions button{padding:3px 7px;font-size:10px}
+.logbook-single-sheet .logbook-table th{font-size:10px;padding:4px;background:#f3f6fa;border-color:#b8c4d1;color:#3d5169}
+.logbook-single-sheet .logbook-table td{padding:1px 2px;border-color:#cdd6e1;height:27px}.logbook-single-sheet .logbook-table td input{min-width:65px;height:24px;min-height:24px;font-size:11px;padding:2px 5px;border:1px solid transparent}
+.logbook-single-sheet .logbook-table td:first-child input{min-width:140px}.logbook-single-sheet .logbook-table tbody tr:nth-child(odd){background:#fff}.logbook-single-sheet .logbook-table tbody tr:first-child{background:#fffed5}
+.logbook-single-sheet .logbook-table-wrap{max-height:164px;overflow:auto}.logbook-single-sheet .logbook-job-details .logbook-table-wrap{max-height:112px}.logbook-single-sheet .logbook-breakdown-details .logbook-table-wrap{max-height:84px}
+.logbook-single-sheet .logbook-table thead{position:sticky;top:0;z-index:1}.logbook-single-sheet .logbook-table-wrap .logbook-table{min-width:780px}
+.logbook-single-sheet .logbook-trip-totals{margin:5px 0 0;font-size:10px;gap:18px}.logbook-single-sheet .logbook-trip-totals small{display:none}
+.logbook-single-sheet .logbook-master-help{margin:0;padding:2px 7px;font-size:10px;border:0}.logbook-single-sheet .logbook-master-help button{padding:2px 5px;font-size:10px}
+.logbook-single-sheet .logbook-handover-help{margin:0;padding:3px 7px;font-size:10px;line-height:1.35;background:transparent}
+.logbook-single-sheet .logbook-machine-details{padding:4px 8px;font-size:10px}.logbook-single-sheet .logbook-machine-details summary{cursor:pointer;color:#344c6b}
+.logbook-single-sheet .logbook-hours-summary .logbook-fields{grid-template-columns:1fr 1fr;gap:4px 12px}.logbook-single-sheet .logbook-hours-summary .logbook-field{display:flex;align-items:stretch;gap:2px}.logbook-single-sheet .logbook-hours-summary .logbook-field>span{text-align:left;font-size:10px;color:#63758a}
+.logbook-single-sheet .logbook-hours-summary .logbook-section-title>span{max-width:260px;font-size:9px;text-align:right}.logbook-single-sheet .logbook-hours-summary .logbook-field small{font-size:9px}.logbook-single-sheet .logbook-note{display:none}
+.logbook-single-sheet .logbook-attachment-actions{display:flex;align-items:center;gap:9px;margin-top:5px}.logbook-single-sheet .logbook-attachment-actions button,.logbook-single-sheet .logbook-attachment button{padding:3px 5px;font-size:10px}.logbook-single-sheet .logbook-attachment-actions small{font-size:9px;color:#63758a}
+.logbook-single-sheet .logbook-attachment{display:flex;gap:5px;align-items:center;margin-top:4px;font-size:10px}.logbook-single-sheet .logbook-attachment>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logbook-single-sheet .logbook-save-bar{margin:7px 0 0}.logbook-single-sheet .logbook-save-bar button{padding:6px 14px;font-size:11px}.logbook-single-sheet .logbook-register{margin-top:10px}.logbook-single-sheet .logbook-register[hidden]{display:none}
+@media(max-width:850px){.logbook-single-sheet .logbook-field{grid-template-columns:115px minmax(0,1fr)}.logbook-single-sheet .logbook-fields{column-gap:15px}}
+@media(max-width:740px){.logbook-single-sheet .logbook-edit-fields{display:block}.logbook-single-sheet .logbook-section{margin-bottom:8px}.logbook-single-sheet .logbook-fields{grid-template-columns:1fr}.logbook-single-sheet input,.logbook-single-sheet select,.logbook-single-sheet textarea{font-size:16px;min-height:34px;height:34px}.logbook-single-sheet .logbook-table td input{font-size:14px}.logbook-single-sheet .logbook-section-title{flex-wrap:wrap}.logbook-single-sheet .logbook-header-actions button{min-height:33px}.logbook-single-sheet .logbook-table-wrap{max-height:205px}}
+@media print{.logbook-single-sheet .logbook-edit-fields{display:block}.logbook-single-sheet .logbook-table-wrap{max-height:none!important;overflow:visible}.logbook-single-sheet .logbook-table thead{position:static}.logbook-single-sheet .logbook-master-help,.logbook-single-sheet .logbook-attachment-actions{display:none}.logbook-single-sheet .logbook-fields{grid-template-columns:1fr 1fr}}
+
+
+.logbook-single-sheet .logbook-attachment a{display:inline-flex;align-items:center;gap:4px;color:var(--lb-purple);font-size:10px;border:1px solid #c7d0dc;border-radius:3px;padding:3px 5px;text-decoration:none;background:#fff}

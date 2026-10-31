@@ -79,5 +79,18 @@ test('database-backed log books enforce access, persist both forms, generate num
  }
 
 
+ // New manual grids round-trip through the existing authenticated save routes.
+ const pdf='data:application/pdf;base64,'+Buffer.from('%PDF-1.4\nmanual test').toString('base64');
+ const extra={breakdownDetails:[{detail:'Hose leak',startTime:'08:00',endTime:'08:20',actionTaken:'Replaced',mechanic:'Test',tmExecution:'Done',remark:'Checked'},{detail:'',startTime:'',endTime:'',actionTaken:'',mechanic:'',tmExecution:'',remark:''}],manualAttributes:[{name:'Material',value:'Coal'}],manualAttachments:[{name:'manual.pdf',data:pdf}],projectName:'Manual project'};
+ for(const kind of ['vehicle','equipment']){
+  const payload={...body,...extra,assetId:kind==='vehicle'?1:4,requestKey:randomUUID(),...(kind==='vehicle'?{trips:[{...body.trips[0],jobType:'Coal haulage',remark:'Trip checked'}]}:{jobDetails:[{jobType:'Loading',tripCount:18,uom:'Trips',startDate:'2026-10-18',startTime:'08:00',endDate:'2026-10-18',endTime:'09:00',remark:'Job checked'}]})};
+  const made=await call('/api/log-books/'+kind,'POST',payload);assert.equal(made.status,201,JSON.stringify(made.data));assert.equal(made.data.data.breakdownDetails.length,1);assert.equal(made.data.data.breakdownDetails[0].remark,'Checked');assert.equal(made.data.data.manualAttachments[0].data,pdf);
+  if(kind==='equipment')assert.equal(made.data.data.jobDetails[0].durationHours,1);else assert.equal(made.data.data.trips[0].remark,'Trip checked');
+  const list=(await call('/api/log-books/'+kind)).data.records;const listed=list.find(row=>row.id===made.data.id);assert.equal(listed.data.manualAttachments[0].data,undefined,'register excludes attachment bodies');
+  const attached=await call('/api/log-books/'+kind+'/'+made.data.id+'/manual-attachments');assert.equal(attached.status,200);assert.equal(attached.data.attachments[0].data,pdf);
+  const edited=await call('/api/log-books/'+kind+'/'+made.data.id,'PUT',{...payload,revision:made.data.revision,breakdownDetails:[{...extra.breakdownDetails[0],remark:'Corrected'}]});assert.equal(edited.status,200);assert.equal(edited.data.data.breakdownDetails[0].remark,'Corrected');
+ }
+
 });
+
 

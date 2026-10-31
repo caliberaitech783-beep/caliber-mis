@@ -1,10 +1,11 @@
+import {blankJob,blankBreakdown,padManualRows} from '../manual-log-book-details.mjs';
 import {employeeAtLocation} from '../log-book-access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
-import {advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
+import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
 import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
 import * as rules from '../trip-card-rules.mjs';
 import {canonicalSiteName} from '../site-location.mjs';
@@ -78,8 +79,8 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
-  const scope={employeeAtLocation,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
-  for(const name of ['BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
+  const scope={blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+  for(const name of ['ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
@@ -161,12 +162,12 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
   try {
     const app=harness();let tree=app.render();
     all(tree,node=>node.props['data-enter-action']==='add-trip')[0].props.onClick();
-    while(frames.length)frames.shift()();assert.equal(app.slots[0].trips.length,1);assert.match(focused[0],/="0"/);
+    while(frames.length)frames.shift()();assert.equal(app.slots[0].trips.length,6);assert.match(focused[0],/="5"/);
     app.slots[0]={...app.slots[0],trips:[{equipmentName:'V12',loadingTime:'08:00',unloadingTime:'08:30',tripCount:1}]};
     tree=app.render();
-    const count=all(tree,node=>node.props['aria-label']==='No. of trips row 1')[0];
-    const root={querySelector:selector=>({focus:()=>focused.push(selector)})};
-    count.props.onKeyDown(event({},{},{currentTarget:{closest:()=>root}}));
+    const count=all(tree,node=>node.props['aria-label']==='Trip remark row 1')[0];
+    const root={querySelector:selector=>({focus:()=>focused.push(selector),scrollIntoView(){}})};
+    count.props.onKeyDown(event({},{},{currentTarget:{closest:()=>root},stopPropagation(){}}));
     while(frames.length)frames.shift()();assert.equal(app.slots[0].trips.length,2);assert.match(focused.at(-1),/="1"/);
     tree=app.render();
     const empty=all(tree,node=>node.props['aria-label']==='Equipment name row 2')[0];
@@ -202,3 +203,4 @@ test('changing a shift or asset clears the prior manual BD fallback',()=>{
  let tree=app.render();all(tree,node=>node.props.name==='shiftId')[0].props.onChange({target:{value:'new-shift'}});assert.equal(app.slots[0].manualBreakdownHours,'');
  app.slots[0].manualBreakdownHours='1';tree=app.render();all(tree,node=>node.props.kind==='vehicle'&&node.props.onSelect)[0].props.onSelect('next-asset');assert.equal(app.slots[0].manualBreakdownHours,'');
 });
+

@@ -1,6 +1,7 @@
+import {MANUAL_ROW_LIMIT} from '../manual-log-book-details.mjs';
 // An untouched row is an entry placeholder, not a trip to submit or count.
 export const isEmptyTripPlaceholder = row => !String(row.equipmentName ?? '').trim() &&
-  !row.loadingTime && !row.unloadingTime && Number(row.tripCount) === 1;
+  !row.loadingTime && !row.unloadingTime && !String(row.jobType??'').trim() && !String(row.remark??'').trim() && Number(row.tripCount) === 1;
 
 export function focusNextLogBookField(input, form) {
   if (!form) return;
@@ -82,3 +83,14 @@ export function advanceEquipmentLogBookField(event) {
     focusNextLogBookField(input, form);
   });
 }
+
+
+const isEnter=event=>event.key==='Enter'&&!event.isComposing&&!event.nativeEvent?.isComposing&&!event.shiftKey&&!event.ctrlKey&&!event.altKey&&!event.metaKey;
+export function continueManualRemark(event,rows,index,blank,onChange,selector){
+ if(!isEnter(event))return;
+ event.preventDefault();event.stopPropagation();if(event.repeat)return;
+ if(index===rows.length-1){if(rows.length>=MANUAL_ROW_LIMIT)return;onChange([...rows,blank()]);}
+ const root=event.currentTarget.closest('.logbook-section');
+ requestAnimationFrame(()=>{const input=root?.querySelector(`[${selector}="${index+1}"]`);input?.focus();input?.scrollIntoView({block:'nearest'});});
+}
+

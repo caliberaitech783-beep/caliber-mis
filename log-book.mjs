@@ -1,3 +1,4 @@
+import {normalizeManualDetails} from './manual-log-book-details.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
@@ -62,11 +63,11 @@ export function normalizeLogBook(kind,input={}){
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,loadingTime,unloadingTime,tripCount,...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
- return {bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
+ return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
    openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({equipmentName:machineLabel(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,
@@ -157,9 +158,16 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const filters=savedLogBookFilters(req.query);
      if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
      const permittedSites=await filterLogBookSites(pool,filters.location?{sites:[canonicalSiteName(filters.location)]}:req.logBookScope);
-     const {rows}=await pool.query(`SELECT id,book_no,book_type,data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND ($4::text IS NULL OR book_no ILIKE $4 OR data->>'door' ILIKE $4 OR data->>'employeeName' ILIKE $4 OR data->>'caliberId' ILIKE $4 OR data->>'aFormNo' ILIKE $4 OR data->>'jobCardNo' ILIKE $4 OR site ILIKE $4) AND ($5::date IS NULL OR book_date>=$5::date) AND ($6::date IS NULL OR book_date<=$6::date) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites,filters.search,filters.from,filters.to]);
+     const {rows}=await pool.query(`SELECT id,book_no,book_type,CASE WHEN jsonb_typeof(data->'manualAttachments')='array' THEN jsonb_set(data,'{manualAttachments}',(SELECT COALESCE(jsonb_agg(file-'data'),'[]'::jsonb) FROM jsonb_array_elements(data->'manualAttachments') file)) ELSE data END AS data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND ($4::text IS NULL OR book_no ILIKE $4 OR data->>'door' ILIKE $4 OR data->>'employeeName' ILIKE $4 OR data->>'caliberId' ILIKE $4 OR data->>'aFormNo' ILIKE $4 OR data->>'jobCardNo' ILIKE $4 OR site ILIKE $4) AND ($5::date IS NULL OR book_date>=$5::date) AND ($6::date IS NULL OR book_date<=$6::date) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites,filters.search,filters.from,filters.to]);
      const more=rows.length>100;const records=req.params.kind==='vehicle'?await withVlbTripHandovers(pool,rows.slice(0,100),permittedSites):rows.slice(0,100);res.set('Cache-Control','no-store').json({records,nextCursor:more?String(rows[99].id):null});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
+ });
+ app.get('/api/log-books/:kind/:id/manual-attachments',...protect,async(req,res,next)=>{
+  try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid log book.'});
+   const record=(await pool.query('SELECT site,data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL',[req.params.id,req.params.kind])).rows[0];
+   if(!record||!siteAllowed(req.logBookScope,record.site))return res.status(404).json({error:'Log book unavailable.'});
+   res.set('Cache-Control','no-store').json({attachments:record.data.manualAttachments||[]});
+  }catch(error){next(error)}
  });
  app.get('/api/log-books/:kind/:id/source-image',...protect,async(req,res,next)=>{
    try{
@@ -206,4 +214,5 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  app.delete('/api/log-books/:kind/:id',...protect,(_req,res)=>res.status(403).json({error:'Use Deletion to preview and approve exact records, then verify the WhatsApp OTP. Direct deletion is disabled.'}));
  return {initialize:ensure,readHours};
 }
+
 
