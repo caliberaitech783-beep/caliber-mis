@@ -33,7 +33,7 @@ try{
  $item.Properties.Item('6151').Value=[int]($physicalX*[double]$item.Properties.Item('6147').Value)
  $item.Properties.Item('6152').Value=[int]($physicalY*[double]$item.Properties.Item('6148').Value)
  $count=0
- $limit=$(if($hasFeeder){120}else{1})
+ $limit=$(if($hasFeeder){40}else{1})
  while($count -lt $limit){
    try{$image=$item.Transfer('{B96B3CAF-0728-11D3-9D7B-0000F81EF32E}')}
    catch{
@@ -47,5 +47,5 @@ try{
    $image.SaveFile([IO.Path]::Combine($out,$name))
    Emit @{type='page';filename=$name;page=$count}
  }
- Emit @{type='complete';pages=$count;limitReached=($count -eq 120)}
+ Emit @{type='complete';pages=$count;limitReached=($hasFeeder -and $count -eq $limit)}
 }catch{Emit @{type='error';message=('Windows scanner: '+$_.Exception.Message)};exit 1}

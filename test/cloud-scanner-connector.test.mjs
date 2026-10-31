@@ -1,3 +1,4 @@
+import {MAX_SCAN_ENTRY_CARDS} from '../public/scan-entry-limit.mjs';
 import {parseScanContext} from '../scan-batch-context.mjs';
 import {parseCaptureTiming,scanTimingLabel} from '../public/scan-timing.mjs';
 import {checkScannerAvailability,SCANNER_UNAVAILABLE} from '../src/scanner-availability.mjs';
@@ -7,8 +8,8 @@ test('scanner bridge rejects untrusted origin/window/nonce and uploads trusted p
  const effects=[],requests=[],messages=[];let listener,nonce,opened,review;
  const popup={closed:false,location:{href:""},close:()=>{},postMessage:(v,origin)=>messages.push({v,origin})};
  const window={location:{origin:'https://pulse-ll.cmll.in'},addEventListener:(_,f)=>listener=f,removeEventListener:()=>{},open:url=>{opened=url;return popup}};
- let available=false;const errors=[];let closed=0;popup.close=()=>{closed++};
- const scope={parseScanContext,setInterval:()=>0,clearInterval:()=>{},checkScannerAvailability:async()=>{if(!available)throw Error(SCANNER_UNAVAILABLE)},parseCaptureTiming,scanTimingLabel,React,useState:v=>[v,value=>{if(typeof value==='string')errors.push(value)}],useEffect:f=>effects.push(f),useRef:v=>({current:v}),window,fetch:async(url,options)=>{requests.push({url,contentType:options.headers['Content-Type'],body:options.headers['Content-Type'].startsWith('image/')?JSON.parse(decodeURIComponent(options.headers['X-Scan-Metadata'])):JSON.parse(options.body),image:options.headers['Content-Type'].startsWith('image/')?options.body:undefined});return {ok:true,json:async()=>(url==='/api/scanner-connector/ticket'?{ticket:'a'.repeat(64)}:{id:'test-batch'})}}};
+ let available=false,createdEntries=0;const errors=[];let closed=0;popup.close=()=>{closed++};
+ const scope={MAX_SCAN_ENTRY_CARDS,parseScanContext,setInterval:()=>0,clearInterval:()=>{},checkScannerAvailability:async()=>{if(!available)throw Error(SCANNER_UNAVAILABLE)},parseCaptureTiming,scanTimingLabel,React,useState:v=>[v,value=>{if(typeof value==='string')errors.push(value)}],useEffect:f=>effects.push(f),useRef:v=>({current:v}),window,fetch:async(url,options)=>{requests.push({url,contentType:options.headers['Content-Type'],body:options.headers['Content-Type'].startsWith('image/')?JSON.parse(decodeURIComponent(options.headers['X-Scan-Metadata'])):JSON.parse(options.body),image:options.headers['Content-Type'].startsWith('image/')?options.body:undefined});return {ok:true,json:async()=>(url==='/api/scanner-connector/ticket'?{ticket:'a'.repeat(64)}:{id:url==='/api/scan-batches'?(++createdEntries===1?'test-batch':'test-batch-'+createdEntries):'uploaded-card'})}}};
  const C=new Function(...Object.keys(scope),code+';return CloudScannerPanel;')(...Object.values(scope));const tree=C({expectedContext:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'},kind:'vehicle',token:'synthetic-online-token',onBatch:id=>review=id});effects[0]();
  function find(node,direct=false){if(!React.isValidElement(node))return;if(node.type==='button'&&(direct?node.props.children==='Open installed connector directly':node.props.children!=='Open installed connector directly'))return node;for(const n of React.Children.toArray(node.props.children)){const found=find(n,direct);if(found)return found;}}
  await find(tree).props.onClick();assert.equal(closed,1);assert.equal(popup.location.href,'');assert.equal(requests.length,0);assert.ok(errors.includes(SCANNER_UNAVAILABLE));
@@ -20,6 +21,12 @@ test('scanner bridge rejects untrusted origin/window/nonce and uploads trusted p
  assert.equal(requests.length,0);await listener({origin:'http://127.0.0.1:4174',source:popup,data:d});assert.equal(requests.length,2);assert.equal(requests[1].url,'/api/scan-batches/test-batch/cards');assert.deepEqual(requests[1].body.paddleEvidence,d.paddleEvidence);assert.deepEqual(requests[1].body.captureTiming,d.captureTiming);assert.equal(messages[0].v.type,'scanner-ack');assert.doesNotMatch(JSON.stringify(messages),/synthetic-online-token/);
  const bytes=Uint8Array.of(1,2,3).buffer;await listener({origin:'http://127.0.0.1:4174',source:popup,data:{...d,bytes,base64:undefined,cardId:'22222222-2222-4222-a222-222222222222'}});assert.equal(requests.length,3);assert.equal(requests[2].image,bytes);assert.equal(requests[2].body.base64,undefined);assert.equal(messages.at(-1).v.error,undefined);
  const jpeg=Uint8Array.of(255,216,255,217).buffer;await listener({origin:'http://127.0.0.1:4174',source:popup,data:{...d,bytes:jpeg,base64:undefined,filename:'page.jpg',cardId:'33333333-3333-4333-a333-333333333333'}});assert.equal(requests.at(-1).contentType,'image/jpeg');assert.equal(requests.at(-1).image,jpeg);
+
+ for(let i=0;i<38;i++)await listener({origin:'http://127.0.0.1:4174',source:popup,data:{...d,cardId:crypto.randomUUID()}});
+ assert.equal(createdEntries,2,'The scanner bridge continues in another entry after 40 cards');
+ assert.equal(requests.filter(r=>r.url==='/api/scan-batches/test-batch/cards').length,40);
+ assert.equal(requests.filter(r=>r.url==='/api/scan-batches/test-batch-2/cards').length,1);
+ await listener({origin:'http://127.0.0.1:4174',source:popup,data:d});assert.equal(requests.at(-1).url,'/api/scan-batches/test-batch/cards','A retry goes to its original entry after rollover');
  await listener({origin:'http://127.0.0.1:4174',source:popup,data:{type:'scanner-complete',nonce}});assert.equal(review,'test-batch');assert.ok(requests.every(r=>!r.url.endsWith('/post')));
 });
 test('scanner reachability handles missing services and browser permission denial without navigating',async()=>{

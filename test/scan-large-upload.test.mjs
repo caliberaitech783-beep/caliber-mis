@@ -9,6 +9,7 @@ test('scanner upload accepts multi-megabyte scans and rejects malformed base64 w
  const batchId=randomUUID(),stored=[];
  const query=async(sql,args)=>{
   if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle',expected_context:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}]};
+  if(sql.startsWith('SELECT id FROM mis_scan_cards WHERE id=$1 AND batch_id=$2'))return {rows:stored.filter(row=>row[0]===args[0]).map(row=>({id:row[0]}))};
   if((sql.includes('count(*) AS n')||sql.includes('MAX(ordinal)')))return {rows:[{n:stored.length}]};
   if(sql.startsWith('INSERT INTO mis_scan_cards'))stored.push(args);
   return {rows:[]};
@@ -47,4 +48,9 @@ test('scanner upload accepts multi-megabyte scans and rejects malformed base64 w
  assert.equal(jpgResponse.status,201,await jpgResponse.text());assert.deepEqual(stored.at(-1)[4],jpeg);
  const malformed=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'image/jpeg','X-Scan-Metadata':encodeURIComponent(JSON.stringify({...jpegMetadata,uploadKey:randomUUID()}))},body:Buffer.from([255,216,255,217])});assert.equal(malformed.status,400,await malformed.text());
  assert.equal(stored.length,4);
+ for(let i=4;i<40;i++){const response=await upload(png.toString('base64'));assert.equal(response.status,201,await response.text());}
+ const full=await upload(png.toString('base64'));assert.equal(full.status,409);assert.match((await full.json()).error,/40 cards/);assert.equal(stored.length,40);
+ const retry=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batchId+'/cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uploadKey:stored[0][0],base64:png.toString('base64')})});
+ assert.equal(retry.status,200,'Retrying an existing card is safe even at the 40-card ceiling');assert.equal(stored.length,40);
+
 });
