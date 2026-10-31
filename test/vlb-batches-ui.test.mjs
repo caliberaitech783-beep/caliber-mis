@@ -18,9 +18,10 @@ async function compile(file,scope,names){
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
 }
 const nodes=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
-test('VLB has four cards, ELB retains three, and batch access inherits the VLB permission',async()=>{
+test('VLB and ELB show three entry options and standalone batch access inherits the VLB permission',async()=>{
  const icon=()=>null,{LogBookModeChoice}=await compile('log-book-mode-choice.jsx',{React,BookOpen:icon,Keyboard:icon,ScanLine:icon,Layers:icon},['LogBookModeChoice']);
- let clicked=false;const cards=nodes(LogBookModeChoice({kind:'vehicle',onCreateBatch:()=>clicked=true}),n=>n.type==='button');assert.equal(cards.length,4);assert.match(renderToStaticMarkup(cards[3]),/Create Batch/);cards[3].props.onClick();assert.ok(clicked);
+ const cards=nodes(LogBookModeChoice({kind:'vehicle'}),n=>n.type==='button');assert.equal(cards.length,3);assert.doesNotMatch(renderToStaticMarkup(LogBookModeChoice({kind:'vehicle'})),/Create Batch/);
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)'"));assert.ok(main.includes("activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']"));
  assert.equal(nodes(LogBookModeChoice({kind:'equipment'}),n=>n.type==='button').length,3);
  assert.equal(requestedMisPage('?page=vlb-create-batch'),'Create VLB Batch');
  assert.equal(misPageUrl('https://mis.example/?page=trip-scan&batch=old','Create VLB Batch'),'/?page=vlb-create-batch');
