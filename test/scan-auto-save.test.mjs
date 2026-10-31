@@ -50,5 +50,23 @@ test('complete cards post independently without approval; retries, validation an
  const manual=await call(fallback,2);assert.equal(manual.status,200);const manualData=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[manual.data.record.id])).rows[0].data;assert.equal(manualData.breakdownHours,1.5);assert.equal(manualData.breakdownHoursSource,'manual');assert.equal(manualData.hoursSource.enteredBy,'test-admin');
  pulseAvailable=true;
  const equipmentBatch=randomUUID(),equipmentId=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[equipmentBatch,'equipment','Equipment','test-admin']);await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'job.png',$3,$4,$5,'review')",[equipmentId,equipmentBatch,Buffer.from('job image'),randomUUID(),JSON.stringify({...valid,doorText:'E1',assetId:'4',trips:[],scanMachineSummary:[]})]);assert.equal((await call(equipmentId)).status,200);
+
+ // No printed card number and no Work Order master must still save. Null card
+ // numbers allow distinct unnumbered scans without colliding in the unique index.
+ await db.query("DELETE FROM master_records WHERE id=5");
+ const unnumbered={...valid,aFormNo:'',jobCardNo:'',workOrderId:''};
+ for(const ordinal of [7,8]){
+  const id=await add(ordinal,unnumbered);
+  const result=await call(id);
+  assert.equal(result.status,200,JSON.stringify(result));
+  assert.ok(result.data.record.book_no);
+  const row=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[result.data.record.id])).rows[0].data;
+  assert.equal(row.scanCardNumber,null);
+  assert.equal(row.workOrderContract,null);
+ }
+ const noNumberHash=randomUUID(),original=await add(9,unnumbered,noNumberHash);
+ assert.equal((await call(original)).status,200);
+ const imageDuplicate=await add(10,unnumbered,noNumberHash);
+ assert.equal((await call(imageDuplicate)).status,409,'duplicate image remains blocked without a printed number');
 });
 

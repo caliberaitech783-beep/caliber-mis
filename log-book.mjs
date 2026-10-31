@@ -195,7 +195,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL',[req.params.id,kind])).rows[0]?.data;if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt'])data[key]=prior[key];data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'');if(!data.scanCardNumber)fail('A scanned log book must retain its card number.');}
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL',[req.params.id,kind])).rows[0]?.data;if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt'])data[key]=prior[key];data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}
        if(kind==='vehicle')await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);
        const revision=number(req.body.revision,'Revision',{integer:true});
        result=await client.query('UPDATE mis_log_books SET book_date=$1,site=$2,asset_id=$3,data=$4::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$5 AND book_type=$6 AND revision=$7 AND deleted_at IS NULL RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[data.bookDate,data.location,data.assetId,JSON.stringify(data),req.params.id,kind,revision]);
