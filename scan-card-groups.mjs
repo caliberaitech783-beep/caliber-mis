@@ -35,7 +35,11 @@ export function cardReviewGroup(card,kind,options=null,context=null){
 }
 export function reviewGroupSummary(cards,kind,options=null,context=null){
  const counts={orange:0,brown:0,red:0,error:0,pending:0,...Object.fromEntries(ISSUE_CARD_GROUPS.map(group=>[group.id,0]))};
- for(const card of cards){counts[cardReviewGroup(card,kind,options,context)]++;for(const group of cardIssueGroups(card,kind,options))counts[group]++;}
+ for(const card of cards){
+  const primary=cardReviewGroup(card,kind,options,context),issueGroups=cardIssueGroups(card,kind,options);
+  if(primary!=='brown'||issueGroups.length===0)counts[primary]++;
+  for(const group of issueGroups)counts[group]++;
+ }
  const ready=cards.length>0&&counts.orange===cards.length;
  const approved=ready&&cards.every(c=>c.status==='posted'||(c.status==='approved'&&c.checked_by));
  return {...counts,total:cards.length,ready,canSaveAll:Boolean(approved&&cards.some(c=>c.status!=='posted'))};
@@ -51,4 +55,9 @@ export function cardIssueGroups(card,kind,options=null){
  if(kind==='vehicle'&&machineDiscrepancies(draft.trips||[],draft.scanMachineSummary||[]).length)groups.push('mws-ted');
  return groups;
 }
-export function matchesCardGroup(card,group,kind,options=null,context=null){return group==='all'||(ISSUE_CARD_GROUPS.some(item=>item.id===group)?cardIssueGroups(card,kind,options).includes(group):cardReviewGroup(card,kind,options,context)===group);}
+export function matchesCardGroup(card,group,kind,options=null,context=null){
+ if(group==='all')return true;
+ const issueGroups=cardIssueGroups(card,kind,options);
+ if(ISSUE_CARD_GROUPS.some(item=>item.id===group))return issueGroups.includes(group);
+ return cardReviewGroup(card,kind,options,context)===group&&(group!=='brown'||issueGroups.length===0);
+}

@@ -91,7 +91,7 @@ test('new uploads store verified Blob references, legacy images still open, and 
  const query=async(sql,args=[])=>{
   if(sql.startsWith('SELECT * FROM mis_scan_batches'))return {rows:[{id:batchId,kind:'vehicle',expected_context:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}]};
   if(sql.startsWith('SELECT * FROM mis_scan_cards'))return {rows:rows.has(args[0])?[rows.get(args[0])]:[]};
-  if(sql.includes('count(*) AS n'))return {rows:[{n:rows.size}]};
+  if((sql.includes('count(*) AS n')||sql.includes('MAX(ordinal)')))return {rows:[{n:rows.size}]};
   if(sql.startsWith('SELECT id FROM mis_scan_cards'))return {rows:rows.has(args[0])?[{id:args[0]}]:[]};
   if(sql.startsWith('INSERT INTO mis_scan_cards'))rows.set(args[0],{id:args[0],batch_id:args[1],image:args[4],image_hash:args[5],image_blob_key:args[9],image_bytes:args[10],blob_uploaded_at:args[11],raw_fields:{},draft:{}});
   return {rows:[]};

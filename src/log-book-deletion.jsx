@@ -5,7 +5,7 @@ const source=row=>row.data?.scanCardId?'Scanned':'Manual';
 const type=row=>row.book_type==='vehicle'?'VLB':'ELB';
 const contains=(value,text)=>String(value??'').toLowerCase().includes(text.trim().toLowerCase());
 const choices=(rows,value,current)=>[...new Set([...rows.map(value),current].filter(Boolean))].sort();
-const label=row=>`${row.book_no} · ID ${row.id} · ${type(row)} · ${source(row)} · ${row.data?.bookDate||''} · ${row.data?.location||row.site||''} · ${row.data?.door||''}`;
+const label=row=>`${row.book_no} · ID ${row.id} · ${type(row)} · ${row.data?source(row):"Audit"} · ${row.data?.bookDate||''} · ${row.data?.location||row.site||''} · ${row.data?.door||''}`;
 
 export default function LogBookDeletion({session,context}){
  const canViewHistory=session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase());
@@ -24,10 +24,10 @@ export default function LogBookDeletion({session,context}){
  const reset=()=>{setPreview(null);setSent(false);setApproval('');setOtp('');setError('');};
  const review=()=>run(async()=>{const p=await api('preview',{records:chosen.map(r=>({id:r.id,revision:r.revision})),reason});setPreview(p);setApproval('');setOtp('');setSent(false);setNotice('');});
  const send=()=>run(async()=>{await api(preview.id+'/otp',{approval});setSent(true);});
- const confirm=()=>run(async()=>{const result=await api(preview.id+'/confirm',{approval,otp});setNotice(`${result.deleted} entries removed from the active register. Audit reference: ${result.requestId}.`);reset();setSelected(new Set());setReason('');await load();});
+ const confirm=()=>run(async()=>{const result=await api(preview.id+'/confirm',{approval,otp});setNotice(result.cleanupPending?'Entries removed. Source image deletion is pending a storage retry; application restore is unavailable.':`${result.deleted} entries and linked source scans permanently deleted. Audit reference: ${result.requestId}.`);reset();setSelected(new Set());setReason('');await load();});
  return <section className="logbook-deletion">
   <header><div><small>PULSE-II / MIS</small><h1>Deletion</h1><p>Bulk deletion for scanned and manually entered VLB and ELB records.</p></div><button disabled={busy||!!preview} onClick={()=>run(async()=>{setSelected(new Set());await load();})}>Refresh entries</button></header>
-  <p>Every deletion requires approval of the exact selection and a WhatsApp OTP sent to <strong>+91 9925565281</strong>. Records leave the active register and reports; source scans and recovery snapshots are retained.</p>
+  <p>Every deletion requires approval of the exact selection and a WhatsApp OTP sent to <strong>+91 9925565281</strong>. Selected records and linked source scans are permanently deleted from the application database. Only a minimal audit remains; external backups and exports may retain copies.</p>
   {error&&<p role="alert" className="deletion-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
   {!preview&&<>
    <nav aria-label="Deletion views">{(canViewHistory?['Entries','History']:['Entries']).map(tab=><button key={tab} disabled={busy} aria-pressed={view===tab} onClick={()=>{setView(tab);if(tab==='History'&&canViewHistory)void run(async()=>setHistory((await api('history')).records));}}>{tab}</button>)}</nav>
@@ -43,14 +43,15 @@ export default function LogBookDeletion({session,context}){
     {!filtered.length&&!busy&&<p>No matching entries.</p>}{cursor&&<button disabled={busy} onClick={()=>run(()=>load(cursor))}>Load more entries</button>}
     <label>Reason for deletion<textarea maxLength={2000} rows={3} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/></label>
     <button disabled={busy||!chosen.length||chosen.length>500||!reason.trim()} onClick={review}>Preview deletion ({chosen.length})</button><small>Up to 500 records per approved request.</small>
-   </>:<><p>Latest 100 completed deletions. Recovery requires an administrator using the retained database records and snapshots.</p>{history.map(h=><details key={h.id}><summary>{new Date(h.completed_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} · {h.snapshot.length} entries · {h.actor}</summary><p>Request: {h.id}</p><p>Reason: {h.reason}</p><p>Approved: {h.approved_at} · WhatsApp accepted: {h.delivered_at} · OTP verified at completion.</p><ul>{h.snapshot.map(r=><li key={r.id}>{label(r)}</li>)}</ul></details>)}</>}
+   </>:<><p>Latest 100 completed deletions. Permanent deletions have no application restore. Older deletions may have retained records.</p>{history.map(h=><details key={h.id}><summary>{new Date(h.completed_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} · {h.snapshot.length} entries · {h.actor}</summary><p>Request: {h.id}</p><p>Reason: {h.reason}</p><p>Approved: {h.approved_at} · WhatsApp accepted: {h.delivered_at} · OTP verified at completion.</p><ul>{h.snapshot.map(r=><li key={r.id}>{label(r)}</li>)}</ul></details>)}</>}
   </>}
   {preview&&<section className="deletion-review" aria-label="Exact deletion approval">
    <h2>Review {preview.records.length} exact records</h2><p>Request: {preview.id}</p><p><strong>Reason:</strong> {preview.reason}</p><p><strong>Impact and recovery:</strong> {preview.impact}</p>
+   <p><strong>Linked source scans to permanently delete:</strong></p><ul>{(preview.scans||[]).map(scan=><li key={scan.id}>{scan.filename} · Scan ID {scan.id} · Batch {scan.batch_id} · Card {scan.ordinal} · Revision {scan.revision} · Storage: {scan.image_blob_key||"Database"}</li>)}</ul>{!preview.scans?.length&&<p>No linked source scans.</p>}
    <ul>{preview.records.map(row=><li key={row.id}>{label(row)} · Revision {row.revision}</li>)}</ul>
    <p>Approval applies only to these IDs and revisions. This request expires within {preview.expiresInMinutes} minutes. Changes require a fresh preview and approval.</p>
    <label>Type this exact approval phrase:<code>{preview.approval}</code><input value={approval} disabled={busy||sent} onChange={e=>setApproval(e.target.value)} autoComplete="off"/></label>
-   {!sent?<button disabled={busy||approval!==preview.approval} onClick={send}>Approve selection and send WhatsApp OTP</button>:<><p>OTP sent to {preview.recipient}. Enter it to complete this approved deletion.</p><label>WhatsApp OTP<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} disabled={busy} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))}/></label><button className="deletion-danger" disabled={busy||otp.length!==6} onClick={confirm}>Verify OTP and delete {preview.records.length} entries</button></>}
+   {!sent?<button disabled={busy||approval!==preview.approval} onClick={send}>Approve selection and send WhatsApp OTP</button>:<><p>OTP sent to {preview.recipient}. Enter it to complete this approved deletion.</p><label>WhatsApp OTP<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} disabled={busy} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))}/></label><button className="deletion-danger" disabled={busy||otp.length!==6} onClick={confirm}>Verify OTP and permanently delete {preview.records.length} entries</button></>}
    <button disabled={busy} onClick={reset}>Cancel / change selection</button>
   </section>}
   {busy&&<p role="status">Working…</p>}

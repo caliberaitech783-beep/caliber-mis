@@ -7829,10 +7829,10 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
-const logBooks=registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request})});
+const scanImageStorage=createScanBlobStorage(scanBlobConfig());
+const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request})});
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
-const scanImageStorage=createScanBlobStorage(scanBlobConfig());
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});

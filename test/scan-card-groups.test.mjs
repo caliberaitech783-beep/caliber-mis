@@ -4,7 +4,7 @@ const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
  const rows=[card('okay'),card('manual',{draft:{...draft,employeeId:''}}),card('blank',{draft:{bookDateSource:'system-fallback',bookDate:'2026-10-24',shiftHours:8}}),card('failed',{status:'error'}),card('mismatch',{context_mismatch:['Site: Other OC; expected Test site']}),card('queued',{status:'queued',draft:{}}),card('reading',{status:'reading',draft:{}})];
- assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','error','error','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,1);assert.equal(s.red,1);assert.equal(s.error,2);assert.equal(s.pending,2);assert.equal(s.total,7);assert.equal(s.canSaveAll,false);
+ assert.deepEqual(rows.map(c=>cardReviewGroup(c,'vehicle')),['orange','brown','red','error','error','pending','pending']);const s=reviewGroupSummary(rows,'vehicle');assert.equal(s.orange,1);assert.equal(s.brown,0);assert.equal(s['wrong-caliber'],1);assert.equal(s.red,1);assert.equal(s.error,2);assert.equal(s.pending,2);assert.equal(s.total,7);assert.equal(s.canSaveAll,false);
  assert.equal(cardReviewGroup(card('zero',{draft:{...draft,openingKmr:0}}),'vehicle'),'orange');
  assert.equal(cardReviewGroup(card('conflict',{checks:{errors:['Duplicate card.']}}),'vehicle'),'brown');
  assert.equal(cardReviewGroup(card('confirm',{checks:{errors:['Confirm or correct the highlighted meter readings.']}}),'vehicle'),'brown');
@@ -22,6 +22,19 @@ test('ELB does not require KMR or vehicle trips',()=>{
 test('report-only blanks do not remove an otherwise complete card from All okay',()=>{
  const complete={...draft,bookNo:'',workOrderId:'',openingTrips:'',endingTrips:'',remark:''};
  assert.equal(cardReviewGroup(card('optional-report-fields',{draft:complete}),'vehicle'),'orange');
+});
+
+test('Needs attention contains only cards not already covered by a specific issue filter',()=>{
+ const categorized=card('categorized',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
+ const remaining=card('remaining',{draft:{...draft,shiftId:''}});
+ const groups=['wrong-door','wrong-caliber','wrong-hmr','wrong-kmr','mws-ted'];
+ assert.deepEqual(cardIssueGroups(categorized,'vehicle'),groups);
+ const counts=reviewGroupSummary([categorized,remaining,card('good')],'vehicle');
+ assert.equal(counts.brown,1);
+ for(const group of groups)assert.equal(counts[group],1);
+ assert.equal(matchesCardGroup(categorized,'brown','vehicle'),false);
+ assert.equal(matchesCardGroup(remaining,'brown','vehicle'),true);
+ for(const group of groups)assert.equal(matchesCardGroup(categorized,group,'vehicle'),true);
 });
 
 test('mixed 50-page batch separates five wrong-site cards without changing the other 45',()=>{
