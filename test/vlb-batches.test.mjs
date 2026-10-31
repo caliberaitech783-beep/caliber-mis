@@ -60,10 +60,10 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.equal((await call('/'+created.data.id+'/close','POST',{})).status,200);
  assert.equal((await call('/'+created.data.id+'/reopen','POST',{})).status,403,'used approvals cannot reopen a new closure');
  const shiftBatch=await call('','POST',{...selection,shift:'S2',requestKey:randomUUID()},'bob');assert.equal(shiftBatch.status,201);assert.deepEqual(shiftBatch.data.records.map(r=>r.id),[otherShift]);
- assert.equal((await call('/'+shiftBatch.data.id,'DELETE',undefined,'pm')).status,403);
- const removed=await call('/'+shiftBatch.data.id,'DELETE',undefined,'bob');assert.equal(removed.status,200);assert.equal(removed.data.deleted,true);
+ assert.equal((await call('/'+shiftBatch.data.id+'/archive','POST',{},'pm')).status,403);
+ const removed=await call('/'+shiftBatch.data.id+'/archive','POST',{},'bob');assert.equal(removed.status,200);assert.equal(removed.data.removed,true);
  assert.equal((await call('/'+shiftBatch.data.id)).status,404);
- assert.deepEqual((await call('/preview?'+new URLSearchParams({...selection,shift:'S2'}))).data.records.map(r=>r.id),[otherShift]);
+ assert.equal((await db.query('SELECT count(*)::int AS count FROM mis_vlb_batch_entries WHERE batch_id=$1',[shiftBatch.data.id])).rows[0].count,1,'removal preserves batch cards');
  assert.equal((await call('/'+created.data.id,'GET',undefined,'restricted')).status,404);
  assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-02-31'}))).status,400);
  assert.equal((await call('','POST',{...selection,requestKey:'bad'})).status,400);

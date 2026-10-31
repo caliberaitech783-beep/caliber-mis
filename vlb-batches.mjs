@@ -17,7 +17,7 @@ async function eligible(client,selection){
 }
 async function visible(client,id,req){
  if(!uuid(id))fail('Invalid batch ID.',400);
- const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1',[id])).rows[0];
+ const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
  if(!batch||!siteAllowed(req.logBookScope,batch.site))fail('Batch is unavailable.',404);
  return batch;
 }
@@ -41,7 +41,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
+  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b)}));
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
   const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),canClose:isOwner(open,req.batchActor)}:{id:open.id,restricted:true}):null;
@@ -58,16 +58,13 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,1),existingBatch});
  }));
  app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>res.json(await details(pool,await visible(pool,req.params.id,req),req))));
- app.delete('/api/vlb-batches/:id',...protect,handle(async(req,res)=>{
-  if(!req.batchActor.canCreate)fail('Only an authorized MIS user can delete a batch.',403);
+ app.post('/api/vlb-batches/:id/archive',...protect,handle(async(req,res)=>{
+  if(!req.batchActor.canCreate)fail('Only an authorized MIS user can remove a batch.',403);
   res.json(await transaction(async client=>{
    const batch=await visible(client,req.params.id,req);
-   await client.query('DELETE FROM mis_vlb_reopen_requests WHERE batch_id=$1',[batch.id]);
-   await client.query('DELETE FROM mis_vlb_batch_audit WHERE batch_id=$1',[batch.id]);
-   await client.query('DELETE FROM mis_vlb_batch_entries WHERE batch_id=$1',[batch.id]);
-   await client.query('DELETE FROM mis_vlb_batch_scopes WHERE batch_id=$1',[batch.id]);
-   await client.query('DELETE FROM mis_vlb_batches WHERE id=$1',[batch.id]);
-   return {deleted:true,id:batch.id,name:batch.name};
+   await auditVlbBatch(client,batch,req.batchActor.login,'removed_from_batch_list',{cardsPreserved:true});
+   await client.query('UPDATE mis_vlb_batches SET archived_at=NOW() WHERE id=$1',[batch.id]);
+   return {removed:true,id:batch.id,name:batch.name};
   }));
  }));
  app.post('/api/vlb-batches',...protect,handle(async(req,res)=>{

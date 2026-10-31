@@ -59,8 +59,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const batch=await read('/api/vlb-batches/'+closing.id+'/close',{method:'POST'});
   ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(current=>current?.id===batch.id?null:current);setRefresh(n=>n+1);
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
- const remove=async batch=>{if(!window.confirm('Delete batch '+batch.name+'? The saved VLB cards will remain available.'))return;setBusy(true);setError('');try{
-  await read('/api/vlb-batches/'+batch.id,{method:'DELETE'});if(viewed?.id===batch.id)clearView();if(openBatch?.id===batch.id)setOpenBatch(null);setBatches(current=>current.filter(item=>item.id!==batch.id));setRefresh(n=>n+1);
+ const remove=async batch=>{if(!window.confirm('Remove batch '+batch.name+' from the batch list? Its saved VLB cards and audit history will be preserved.'))return;setBusy(true);setError('');try{
+  await read('/api/vlb-batches/'+batch.id+'/archive',{method:'POST'});if(viewed?.id===batch.id)clearView();if(openBatch?.id===batch.id)setOpenBatch(null);setBatches(current=>current.filter(item=>item.id!==batch.id));setRefresh(n=>n+1);
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
  const changed=async batch=>{if(batch){++detailRequest.current;setViewed(batch);setOpenBatch(batch.closed_at?null:batch);if(!batch.closed_at)onSelected?.(batch)}setRefresh(n=>n+1)};
  const records=viewed?.records||preview?.records||[],manual=records.filter(r=>vlbRecordSource(r)==='VLB Manual').length;

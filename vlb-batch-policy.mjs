@@ -11,6 +11,7 @@ export const VLB_BATCH_SCHEMA=`
  -- Preserve the legacy per-user open-slot index. Admin batches use creator_login
  -- for attribution and a NULL legacy slot so different authorized sites can stay open.
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS creator_login TEXT;
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ALTER COLUMN created_by DROP NOT NULL;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_batch_per_user ON mis_vlb_batches(created_by) WHERE closed_at IS NULL;
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_entries(
@@ -54,7 +55,7 @@ export const batchFail=(message,status=409)=>{throw Object.assign(new Error(mess
 export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");
 export const auditVlbBatch=(client,batch,actor,action,detail={})=>client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[batch.id,batchLogin(actor),action,JSON.stringify(detail)]);
 export async function matchingVlbBatch(client,data){
- const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
+ const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NULL ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
  const matching=rows.filter(b=>canonicalSiteName(b.site)===canonicalSiteName(data.location));
  if(matching.length>1)batchFail('Multiple historical batches exist for this site/date/shift. They require separate review; no batches or cards were changed.');
  return matching[0]||null;
