@@ -38,7 +38,7 @@ test('PostgreSQL serializes duplicate creation, save/close races and approval co
  assert.equal((await pool.query("SELECT count(*)::int AS n FROM mis_vlb_reopen_requests WHERE status='used'")).rows[0].n,1);
  const other=owner==='alice'?'bob':'alice';assert.equal((await save(other)).status,403);
  const amendments=await Promise.all([save(owner,true),save(owner,true)]);assert.deepEqual(amendments.map(r=>r.status).sort(),[201,409],'only one concurrent save can consume the approved amendment');
- assert.ok((await call(path,undefined,owner)).data.closed_at,'the winning save locks the batch in the same transaction');
+ assert.equal((await call(path,undefined,owner)).data.closed_at,null,'continuous entry remains open after the winning save');
  assert.equal((await call(path+'/close',{},owner)).status,200);assert.equal((await call(path+'/reopen',{},owner)).status,403);
  await assert.rejects(()=>pool.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,closed_at,request_key) VALUES($1,'duplicate','sasti ob','2026-10-30','S1',2,'other',NOW(),$2)",[randomUUID(),randomUUID()]),e=>e.code==='23505');
 });

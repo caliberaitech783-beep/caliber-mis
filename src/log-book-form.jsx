@@ -1,3 +1,4 @@
+import {vlbEntryFields,sameVlbEntryContext} from './vlb-entry-context.mjs';
 import ManualLogBookDetails from './manual-log-book-details.jsx';
 import {blankJob,blankBreakdown,padManualRows} from '../manual-log-book-details.mjs';
 import {shiftMeterIssues} from '../trip-card-rules.mjs';
@@ -36,7 +37,7 @@ function Field({label,children,hint,wide=false,skipEnter=false,enterOrder,issue}
 
 
 
-export default function LogBookForm({kind,session,onExit,onBulkScan}){
+export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
 
  const vehicle=kind==='vehicle',title=vehicle?'Vehicle Log Book':'Equipment Log Book';
 
@@ -78,7 +79,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
    return()=>cancelAnimationFrame(frame);
  },[vehicle,loading,options,editing,saved]);
 
- const update=(key,value)=>{setForm(current=>({...current,[key]:value,...(key==='bookDate'?{bookDateSource:'manual'}:{}),...(['bookDate','assetId','location','shiftId','shiftHours'].includes(key)?{manualBreakdownHours:''}:{})}));setSuccess('');};
+ const update=(key,value)=>{if(vlbBatch&&['location','bookDate','shiftId','shiftHours'].includes(key))return;setForm(current=>({...current,[key]:value,...(key==='bookDate'?{bookDateSource:'manual'}:{}),...(['bookDate','assetId','location','shiftId','shiftHours'].includes(key)?{manualBreakdownHours:''}:{})}));setSuccess('');};
 
  const assetMessage=missingAssetMessage(options,kind,form.location);
  const reloadDoors=async()=>{setWorking(true);setError('');try{setOptions(await api('/api/log-books/options'));setSuccess('Equipment Master reloaded. Your entry has been kept.')}catch(e){setError(e.message)}finally{setWorking(false)}};
@@ -96,7 +97,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
  useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,hmr,session.token]);
 
- useEffect(()=>{if(saved)return;const location=options?.accountLocation||'';setForm(current=>current.location===location?current:{...current,location,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options?.accountLocation]);
+ useEffect(()=>{if(saved)return;if(vlbBatch){setForm(current=>({...current,...vlbEntryFields(vlbBatch,options)}));return;}const location=options?.accountLocation||'';setForm(current=>current.location===location?current:{...current,location,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options,vlbBatch?.id]);
 
 
  const selectAsset=id=>{const row=options?.assets.find(asset=>asset.id===id);setForm(current=>({...current,assetId:id,manualBreakdownHours:'',...(!current.location&&row?.site?{location:row.site,shiftId:''}:{})}));setSuccess('');};
@@ -106,11 +107,11 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
  const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
 
  const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
- const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||''});setSaved(null);setEditing(true);setSuccess('');setError('');};
+ const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||'',...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setSuccess('');setError('');};
 
  const openEntry=async row=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setEditing(false);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
- const save=async event=>{event.preventDefault();if(Object.keys(meterIssues).length){setError(Object.values(meterIssues).join(' '));return;}setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...form,...(vehicle?{trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))}:{}),revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+ const save=async event=>{event.preventDefault();if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(meterIssues).length){setError(Object.values(meterIssues).join(' '));return;}setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...form,...(vehicle?{trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))}:{}),revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -146,17 +147,17 @@ export default function LogBookForm({kind,session,onExit,onBulkScan}){
 
      <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
 
-<Field label="Location" hint={options?.accountLocation?'From your account':'Assign one location to your account to enter this log book'}><input name="location" readOnly required value={form.location} aria-label="Location"/></Field>
+<Field label="Location" hint={vlbBatch?'Fixed by the selected VLB batch':options?.accountLocation?'From your account':'Assign one location to your account to enter this log book'}><input name="location" readOnly required value={form.location} aria-label="Location"/></Field>
 <Field label="Doc type"><input readOnly value={vehicle?'VLB':'Equipment Log Book'}/></Field>
-<Field label="Book date"><ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/></Field>
+<Field label="Book date">{vlbBatch?<input aria-label="Book date" readOnly value={form.bookDate}/>:<ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/>}</Field>
 <Field label="Book no." hint={vehicle?'VLB_M/DDTH-MMMYY/{S1|S2|S3|D|N}/001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><input readOnly value={saved?.book_no||'AUTO'}/></Field>
 <Field label="Project name"><input maxLength={500} value={form.projectName||form.location} onChange={e=>update('projectName',e.target.value)}/></Field>
 <Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
 <Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Latest work order for this location/date':eligibleWorkOrders.length>1?'Latest eligible work order selected; equal-date ties require selection':'No matching Work Order available'}><SmartSelect disabled={!editing||working} value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></Field>
 <Field label="Employee ID / Caliber ID" hint="Enter either ID to fetch the employee name"><SmartSelect searchable name="employeeId" aria-label="Employee ID / Caliber ID" disabled={!editing||working||!form.location} required value={form.employeeId} onChange={e=>{update('employeeId',e.target.value);const row=options?.employees.find(r=>r.id===e.target.value);if(row)setSuccess((vehicle?'Driver':'Operator')+' found: '+row.name+' · '+row.caliberId);}}><option value="">Select employee at this location</option>{(options?.employees||[]).filter(row=>employeeAtLocation(row,form.location)).map(row=><option key={row.id} value={row.id}>{row.caliberId||row.employeeCode}{row.caliberCode?' / '+row.caliberCode:''} · {row.name}</option>)}</SmartSelect></Field>
-<Field label="Shift" hint={form.cardShift?'Marked on card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><SmartSelect name="shiftId" searchable disabled={!editing||working} required value={form.shiftId} onChange={e=>{update('shiftId',e.target.value);}}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</SmartSelect></Field>
+<Field label="Shift" hint={form.cardShift?'Marked on card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><SmartSelect name="shiftId" searchable disabled={Boolean(vlbBatch)||!editing||working} required value={form.shiftId} onChange={e=>{update('shiftId',e.target.value);}}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</SmartSelect></Field>
 <Field label={vehicle?'Driver name':'Operator name'} skipEnter><SmartSelect disabled={!editing||working} required value={form.employeeId} onChange={e=>update('employeeId',e.target.value)}><option value="">Select {vehicle?'driver':'operator'}</option>{options?.employees.filter(row=>employeeAtLocation(row,form.location)).map(row=><option key={row.id} value={row.id}>{row.name}{row.caliberId?' · '+row.caliberId:''}</option>)}</SmartSelect></Field>
-<Field label="Shift hour"><SmartSelect name="shiftHours" disabled={!editing||working} required value={form.shiftHours} onChange={e=>{update('shiftHours',Number(e.target.value));}}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></SmartSelect></Field>
+<Field label="Shift hour"><SmartSelect name="shiftHours" disabled={Boolean(vlbBatch)||!editing||working} required value={form.shiftHours} onChange={e=>{update('shiftHours',Number(e.target.value));}}><option value={8}>8 Hour</option><option value={12}>12 Hour</option></SmartSelect></Field>
 <Field label={vehicle?'A Form no. (Trip Card)':'Job Card no.'}><input maxLength={200} value={(vehicle?form.aFormNo:form.jobCardNo)||''} onChange={e=>update(vehicle?'aFormNo':'jobCardNo',e.target.value)} placeholder={vehicle?'Enter A Form number':'Enter Job Card number'}/></Field>
 {vehicle&&<><Field label="Opening reading (KMR)"><input type="number" min="0" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
 <Field label="Closing reading (KMR)" issue={meterIssues.closingKmr}><input type="number" min="0" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>

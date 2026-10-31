@@ -8,6 +8,10 @@ export const VLB_BATCH_SCHEMA=`
  closed_at TIMESTAMPTZ,request_key UUID UNIQUE NOT NULL,UNIQUE(site,book_date,shift,sequence));
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS amendment_by TEXT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS closure_revision INTEGER NOT NULL DEFAULT 0;
+ -- Preserve the legacy per-user open-slot index. Admin batches use creator_login
+ -- for attribution and a NULL legacy slot so different authorized sites can stay open.
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS creator_login TEXT;
+ ALTER TABLE mis_vlb_batches ALTER COLUMN created_by DROP NOT NULL;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_batch_per_user ON mis_vlb_batches(created_by) WHERE closed_at IS NULL;
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_entries(
  batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),logbook_id BIGINT PRIMARY KEY REFERENCES mis_log_books(id),snapshot JSONB NOT NULL);
@@ -37,6 +41,7 @@ export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),detail JSONB NOT NULL DEFAULT '{}');
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS continuous_entry BOOLEAN NOT NULL DEFAULT FALSE;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS saved_lock_policy BOOLEAN NOT NULL DEFAULT FALSE;
  WITH migrated AS (
   UPDATE mis_vlb_batches SET saved_lock_policy=TRUE,closed_at=COALESCE(closed_at,NOW()),amendment_by=NULL,
@@ -69,7 +74,7 @@ export async function lockSavedVlbBatches(client,actor,recordIds){
  if(!recordIds.length)return [];
  await lockVlbBatchWrites(client);
  const batches=(await client.query(`SELECT DISTINCT b.* FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id
-  WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL`,[recordIds])).rows;
+  WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL AND b.continuous_entry=FALSE`,[recordIds])).rows;
  for(const batch of batches){
   if(batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('Only the approved MIS user can save this reopened batch.',403);
   await client.query('UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1 WHERE id=$1',[batch.id]);

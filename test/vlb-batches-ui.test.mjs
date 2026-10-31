@@ -58,7 +58,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false);assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);
  const sent=JSON.parse(calls[0].request.body);assert.deepEqual({site:sent.site,date:sent.date,shift:sent.shift},selection);assert.ok(sent.requestKey);assert.equal(sent.records,undefined,'server selects all entries');
  slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
- slots[2]={records:[],name:batch.name};assert.equal(button(render(),'Create Batch').props.disabled,true);
+ slots[2]={records:[],name:batch.name};assert.equal(button(render(),'Create Batch').props.disabled,false,'new batch can start empty');
  slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.ok(button(render(),'Open existing batch'));
 });
 

@@ -39,7 +39,10 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  const scan=async(user='alice',options)=>{await db.exec('BEGIN');try{const data={...await resolveLogBookData(pool,'vehicle',input),scanCardId:randomUUID()};const result=await insertLogBook(pool,'vehicle',data,randomUUID(),user,options);await db.exec('COMMIT');return result}catch(e){await db.exec('ROLLBACK');throw e}};
  const scanned=await scan();
  const created=await call('/api/vlb-batches','POST',createBody);assert.equal(created.status,201,JSON.stringify(created.data));const path='/api/vlb-batches/'+created.data.id;
- assert.ok(created.data.closed_at,'creating a batch saves it locked immediately');assert.equal(created.data.closure_revision,1);assert.equal(created.data.entry_count,3);
+ assert.equal(created.data.closed_at,null,'new batches stay open');assert.equal(created.data.closure_revision,0);assert.equal(created.data.entry_count,3);
+ // Preserve coverage of historical single-amendment batches separately from new continuous batches.
+ await db.query('UPDATE mis_vlb_batches SET continuous_entry=FALSE WHERE id=$1',[created.data.id]);
+ assert.equal((await call(path+'/close','POST',{})).status,200);
  assert.ok(created.data.records.some(r=>r.id===scanned.id&&r.data.scanCardId));assert.ok(created.data.records.some(r=>r.id===manual.data.id&&!r.data.scanCardId));
  const countBefore=Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n);
  assert.equal((await save()).status,409);await assert.rejects(()=>scan(),/closed/);assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n),countBefore);
