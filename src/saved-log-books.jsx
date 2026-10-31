@@ -11,7 +11,7 @@ export function savedLogBookQuery({search='',location='',from='',to=''},before='
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
 const bookDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('-'):display(value);
 
-export function SavedLogBookDetails({record,kind,imageUrl='',imageError=''}){
+export function SavedLogBookDetails({record,kind,imageUrl='',imageError='',ReportSection}){
   const data=record.data||{},vehicle=kind==='vehicle';
   const fields=[['Book number',record.book_no],['Book date',bookDate(data.bookDate)],['Location',data.location],
     [vehicle?'Door number':'Equipment / Door number',data.door],['Equipment name',data.assetName],['Employee ID / Caliber ID',data.caliberId],
@@ -21,15 +21,26 @@ export function SavedLogBookDetails({record,kind,imageUrl='',imageError=''}){
     ['Opening HMR',data.openingHmr],['Closing HMR',data.closingHmr],['Total working HMR',data.totalWorkingHmr],
     ...(vehicle?[['Opening trips',data.openingTrips],['Ending trips',data.endingTrips],['Completed trips',data.completedTrips??data.totalTrips]]:[]),['Availability hours',data.availabilityHours],['Running hours',data.runningHours],['Breakdown hours',data.breakdownHours],['BD hours source',data.breakdownHoursSource||(data.hoursSource?.source==='manual'?'manual':data.breakdownHours==null?'Unavailable':'Pulse')],['Idle hours',data.idleHours],
     ['Remark',data.remark]];
-  return <div id="saved-logbook-details" className="saved-logbook-review"><section className="logbook-section"><h2>Saved {vehicle?'VLB':'ELB'} values</h2>
+  const reportTitle=(vehicle?'VLB':'ELB')+' report · '+record.book_no;
+  const reportDescription=[bookDate(data.bookDate),data.location,data.door].filter(Boolean).join(' · ');
+  const reportRows=fields.map(([field,value])=>({field,value:display(value)}));
+  const tripColumns=[{key:'row',label:'Row',value:row=>row.row},{key:'equipmentName',label:'Equipment',value:row=>display(row.equipmentName)},
+    ...(data.timeMode!=='without'?[{key:'loadingTime',label:'Loading time',value:row=>display(row.loadingTime)},{key:'unloadingTime',label:'Unloading time',value:row=>display(row.unloadingTime)}]:[]),
+    {key:'tripCount',label:'Trips',value:row=>display(row.tripCount)},{key:'handover',label:'Handover',value:row=>[display(row.tripStatus),...(row.handoverLinks||[]).map(link=>(link.role==='loading'?'Unloaded by':'Loaded by')+' '+link.counterpart.driverName+' · '+link.counterpart.bookNo+' · '+link.counterpart.date+' · '+link.loadingTime+' → '+link.unloadingTime)].join('\n')}];
+  return <><div id="saved-logbook-details" className="saved-logbook-review"><section className="logbook-section"><h2>Saved {vehicle?'VLB':'ELB'} values</h2>
     <dl className="saved-logbook-values">{fields.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>
     {vehicle&&<><h3>Individual trips</h3><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Row</th><th>Equipment</th>{data.timeMode!=='without'&&<><th>Loading time</th><th>Unloading time</th></>}<th>Trips</th><th>Handover</th></tr></thead><tbody>{(data.trips||[]).map((trip,index)=><tr key={index}><td>{index+1}</td><td>{display(trip.equipmentName)}</td>{data.timeMode!=='without'&&<><td>{display(trip.loadingTime)}</td><td>{display(trip.unloadingTime)}</td></>}<td>{display(trip.tripCount)}</td><td>{display(trip.tripStatus)}{trip.handoverLinks?.map((link,i)=><div key={i}>{link.role==='loading'?'Unloaded by':'Loaded by'} {link.counterpart.driverName} · {link.counterpart.bookNo} · {link.counterpart.date} · {link.loadingTime} → {link.unloadingTime}</div>)}</td></tr>)}</tbody></table></div>
       {(data.machineSummary||[]).length>0&&<><h3>Machine-wise summary</h3><table className="logbook-table"><thead><tr><th>Equipment</th><th>Trips</th></tr></thead><tbody>{data.machineSummary.map((row,index)=><tr key={index}><td>{display(row.equipmentName)}</td><td>{display(row.tripCount)}</td></tr>)}</tbody></table></>}
     </>}
-  </section><section className="logbook-section"><h2>Original scan</h2>{!data.scanCardId?<p>This entry was saved without a source scan.</p>:imageUrl?<><a href={imageUrl} target="_blank" rel="noreferrer">Open full-size scan</a><img className="saved-logbook-image" src={imageUrl} alt={'Original scan for '+record.book_no}/></>:imageError?<p role="alert">{imageError}</p>:<p role="status">Loading source scan…</p>}</section></div>;
+  </section><section className="logbook-section"><h2>Original scan</h2>{!data.scanCardId?<p>This entry was saved without a source scan.</p>:imageUrl?<><a href={imageUrl} target="_blank" rel="noreferrer">Open full-size scan</a><img className="saved-logbook-image" src={imageUrl} alt={'Original scan for '+record.book_no}/></>:imageError?<p role="alert">{imageError}</p>:<p role="status">Loading source scan…</p>}</section></div>
+  {ReportSection&&<section className="saved-logbook-reports" aria-label={reportTitle}><h2>Report</h2>
+    <ReportSection title={reportTitle} description={reportDescription} category="saved-logbook" smartPrintAction exportLabel="Print / Export" columns={[{key:'field',label:'Field',value:row=>row.field},{key:'value',label:'Saved value',value:row=>row.value}]} rows={reportRows}/>
+    {vehicle&&<ReportSection title={'Individual trips · '+record.book_no} description={reportDescription} category="saved-logbook-trips" smartPrintAction exportLabel="Print / Export" columns={tripColumns} rows={(data.trips||[]).map((trip,index)=>({...trip,row:index+1}))} emptyMessage="No individual trips saved for this log book."/>}
+    {vehicle&&data.machineSummary?.length>0&&<ReportSection title={'Machine-wise summary · '+record.book_no} description={reportDescription} category="saved-logbook-machines" smartPrintAction exportLabel="Print / Export" columns={[{key:'equipmentName',label:'Equipment',value:row=>display(row.equipmentName)},{key:'tripCount',label:'Trips',value:row=>display(row.tripCount)}]} rows={data.machineSummary}/>}
+  </section>}</>;
 }
 
-export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canScan=true}){
+export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canScan=true,ReportSection}){
   const vehicle=kind==='vehicle',code=vehicle?'VLB':'ELB';
   const [filters,setFilters]=useState({search:'',location:'',from:'',to:''}),[sites,setSites]=useState([]),[records,setRecords]=useState([]),[cursor,setCursor]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[selected,setSelected]=useState(null),[imageUrl,setImageUrl]=useState(''),[imageError,setImageError]=useState(''),[refresh,setRefresh]=useState(0),[imageFor,setImageFor]=useState(null);
   const requestId=useRef(0);
@@ -61,6 +72,6 @@ export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canSc
       {error&&<p role="alert" className="logbook-message error">{error}</p>}{loading&&<p role="status">Loading saved {code}…</p>}
       <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Date</th><th>Location</th><th>{vehicle?'Door':'Equipment'}</th><th>Employee ID</th><th>{vehicle?'Driver':'Operator'}</th><th/></tr></thead><tbody>{records.map(record=><tr key={record.id} aria-selected={String(selected?.id)===String(record.id)}><td>{record.book_no}</td><td>{bookDate(record.data.bookDate)}</td><td>{display(record.data.location)}</td><td>{display(record.data.door)}</td><td>{display(record.data.caliberId)}</td><td>{display(record.data.employeeName)}</td><td><button type="button" onClick={()=>setSelected(record)}>View {code}</button></td></tr>)}{!records.length&&!loading&&<tr><td colSpan={7}>No saved {code} entries match these filters.</td></tr>}</tbody></table></div>{cursor&&<button type="button" disabled={loading} onClick={()=>void load(cursor)}>Load more saved {code}</button>}
     </section>{vehicle&&selected&&<PulseTripVerification session={session} logbookId={selected.id}/>}
-    {selected&&<SavedLogBookDetails key={selected.id} record={selected} kind={kind} imageUrl={String(imageFor)===String(selected.id)?imageUrl:''} imageError={String(imageFor)===String(selected.id)?imageError:''}/>}
+    {selected&&<SavedLogBookDetails key={selected.id} record={selected} kind={kind} ReportSection={ReportSection} imageUrl={String(imageFor)===String(selected.id)?imageUrl:''} imageError={String(imageFor)===String(selected.id)?imageError:''}/>}
   </section>;
 }
