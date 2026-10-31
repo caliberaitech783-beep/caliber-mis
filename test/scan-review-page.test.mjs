@@ -86,3 +86,9 @@ test('the purple extraction strip stays on the overview and is omitted from card
  assert.equal(nodes(harness().render(),node=>node.type===scope.ScanExtractionStatus).length,1);
  assert.equal(nodes(harness('&scanView=review&scanGroup=brown').render(),node=>node.type===scope.ScanExtractionStatus).length,0);
 });
+
+test('fleet upload details start collapsed and automatic-save alert hides repeated validation text',()=>{
+ assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
+ assert.match(source,/autoSaveError&&<div role="alert" className="scan-error">Automatic Saving Stopped <button/);
+ assert.doesNotMatch(source,/Automatic saving stopped: \{autoSaveError\}/);
+});

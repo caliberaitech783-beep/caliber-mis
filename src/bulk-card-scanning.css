@@ -261,3 +261,4 @@
 .scan-status-overview>.scan-card-groups>button:not(.scan-group-button){flex-direction:column}
 @media(max-width:1200px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}}
 @media(max-width:760px){.scan-status-overview>.scan-card-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.scan-fleet-rejection-details{margin:6px 0}.scan-fleet-rejection-details>summary{display:inline-block;cursor:pointer;font-size:10px;color:var(--scan-primary);text-decoration:underline}.scan-fleet-rejection-details>.scan-error{margin-top:5px}
