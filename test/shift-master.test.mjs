@@ -12,7 +12,7 @@ test('supplied Shift Master workbook rows are represented once with the supplied
   assert.ok(normalized.filter(record=>record.shiftCode!=='DAY').every((record)=>shiftDurationMinutes(record)===480));
   const east=normalized.filter(record=>record.site==='Dudhichua East OC');
   assert.deepEqual(east.map(record=>[record.shiftCode,record.startTime,record.endTime]),[['A','05:00:00','13:00:00'],['B','13:00:00','21:00:00'],['C','21:00:00','05:00:00'],['DAY','08:00:00','20:00:00'],['NIGHT','21:00:00','05:00:00']]);
-  assert.equal(normalized.find((record)=>record.site==='Jayant OC'&&record.shiftCode==='A').startTime,'04:00:00');
+  assert.deepEqual(normalized.filter(record=>record.site==='Jayant OC').map(record=>[record.shiftCode,record.startTime,record.endTime]),[['A','05:00:00','13:00:00'],['B','13:00:00','21:00:00'],['C','21:00:00','05:00:00']]);
   assert.equal(normalized.find((record)=>record.site==='Sasti OC'&&record.shiftCode==='C').endTime,'05:00:00');
 });
 
@@ -38,6 +38,7 @@ test('Shift Master is wired into navigation, CRUD, seed data, and Equipment Mast
   assert.match(client,/"Sync drivers & models" : "Sync Oracle"/);
   assert.doesNotMatch(client,/fetch\("\/api\/oracle\/equipment\/sync"/);
   assert.match(server,/shift_master_defaults_seeded_v1/);
+  assert.match(server,/jayant_shift_timings_0500_v1/);
   assert.match(server,/master==='Equipment master'\|\|master==='Shift Master'/);
   assert.match(server,/normalizeShiftRecord\(record\)/);
 });

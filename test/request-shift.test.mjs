@@ -10,19 +10,19 @@ import {withSerialColumn} from '../serial-column.mjs';
 
 test('request shift follows site-specific boundaries, overnight and saved history',()=>{
   const label=(site,start)=>shifts.requestShiftLabel({site,start},SHIFT_MASTER_DEFAULTS);
-  assert.equal(label('Jayant OC','2026-10-03 11:59:59'),'Shift A');
-  assert.equal(label('Jayant OC','2026-10-03 12:00:00'),'Shift B');
+  assert.equal(label('Jayant OC','2026-10-03 12:59:59'),'Shift A');
+  assert.equal(label('Jayant OC','2026-10-03 13:00:00'),'Shift B');
   assert.equal(label('Sasti OC','2026-10-03 12:00:00'),'Shift A');
   assert.equal(label('Sasti OC','2026-10-03 23:30:00'),'Shift C');
   assert.equal(label('Sasti OC','2026-10-04 04:59:59'),'Shift C');
   assert.equal(label('Unknown','2026-10-03 12:00:00'),'Shift not set');
   assert.equal(shifts.requestShiftLabel({requestShift:'Shift A'},[]),'Shift A');
   const inactive=SHIFT_MASTER_DEFAULTS.map(row=>({...row,status:'Inactive'}));
-  assert.equal(shifts.requestShiftLabel({site:'Jayant OC',start:'2026-10-03 12:00:00'},inactive),'Shift not set');
+  assert.equal(shifts.requestShiftLabel({site:'Jayant OC',start:'2026-10-03 13:00:00'},inactive),'Shift not set');
 });
 
 test('Shift stays first in request exports without duplicate serial numbers or changing summaries',()=>{
-  const rows=[{ref:'REQ-1',site:'Jayant OC',start:'2026-10-03 12:00:00'}];
+  const rows=[{ref:'REQ-1',site:'Jayant OC',start:'2026-10-03 13:00:00'}];
   const columns=shifts.requestShiftColumns([{key:'ref',label:'Job reference'}],rows,SHIFT_MASTER_DEFAULTS);
   assert.equal(columns[0].value(rows[0]),'Shift B');
   const data=withSerialColumn(columns,[['Shift B','REQ-1']]);
