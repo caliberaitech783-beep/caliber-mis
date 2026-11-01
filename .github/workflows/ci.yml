@@ -34,6 +34,21 @@ jobs:
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
       - run: npm run build
+      - run: node scripts/verify-server-start.mjs
+        env:
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+
+
+  logbook-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
       - name: Install browser for log-book layout checks
         run: |
           npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
@@ -47,7 +62,3 @@ jobs:
           name: logbook-layout-checks
           path: layout-checks/
           if-no-files-found: ignore
-      - run: node scripts/verify-server-start.mjs
-        env:
-          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
-

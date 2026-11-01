@@ -76,7 +76,7 @@
   /* Named fields keep optional correction fields from shifting the time/gap columns. */
   #scan-entry-fields .scan-trip-entry {
     display: grid;
-    grid-template-columns: 82px minmax(190px,1fr) 132px 132px 56px 94px 44px;
+    grid-template-columns: 82px minmax(190px,1fr) 132px 132px 72px 94px 44px;
     grid-template-areas: "serial equipment loading unloading trips gap remove";
     gap: 7px;
     align-items: start;
@@ -106,7 +106,7 @@
     grid-template-areas: "serial equipment trips remove";
   }
   #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
-    grid-template-columns: 82px minmax(190px,1fr) 132px 132px 56px 44px;
+    grid-template-columns: 82px minmax(190px,1fr) 132px 132px 72px 44px;
     grid-template-areas: "serial equipment loading unloading trips remove";
   }
   #scan-entry-fields .scan-machine-summary .scan-trip-row {
@@ -183,6 +183,12 @@
   .app .saved-logbook-review .saved-logbook-values { gap: 12px; }
   .app .scan-batch-report :is(th,td) { padding: 8px; }
   .app .scan-batch-report .scan-report-issues { white-space: normal; }
+  @container scan-review (min-width:950px) {
+    #scan-entry-fields { --logbook-label-size: 18px; }
+  }
+  @container logbook-entry (min-width:950px) {
+    #logbook-entry-form { --logbook-label-size: 18px; }
+  }
   @container scan-review (max-width:800px) {
     .scan-page .scan-draft-sheet #scan-entry-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
     #scan-entry-fields .scan-trip-entry,
