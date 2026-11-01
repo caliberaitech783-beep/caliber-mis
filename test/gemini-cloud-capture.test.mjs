@@ -1,3 +1,5 @@
+import {createCanvas} from '@napi-rs/canvas';
+const scanFixture=colour=>{const canvas=createCanvas(2,2),context=canvas.getContext('2d');context.fillStyle=colour;context.fillRect(0,0,2,2);return canvas.toBuffer('image/png').toString('base64')};
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 test('local connector retains VLB/ELB images for online extraction without a local model request or log-book posting',async t=>{
@@ -10,7 +12,7 @@ test('local connector retains VLB/ELB images for online extraction without a loc
  const call=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assert.ok(r.ok);return r.json()};
  for(const kind of ['vehicle','equipment']){
   const batch=await call('/api/scan-batches',{kind,expectedContext:{bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'}}),id=randomUUID();
-  await call('/api/scan-batches/'+batch.id+'/cards',{uploadKey:id,filename:'Scanner.png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBEkAAAAASUVORK5CYII='});
+  await call('/api/scan-batches/'+batch.id+'/cards',{uploadKey:id,filename:'Scanner.png',base64:scanFixture(kind==='vehicle'?'red':'blue')});
   let row;for(let i=0;i<100;i++){row=(await db.query('SELECT status,raw_fields,image FROM mis_scan_cards WHERE id=$1',[id])).rows[0];if(row.status==='review')break;await new Promise(r=>setTimeout(r,20));}
   assert.equal(row.status,'review');assert.equal(row.raw_fields.connectorCaptureOnly,true);assert.ok(row.image.length>24);
  }
