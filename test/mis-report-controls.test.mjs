@@ -19,8 +19,8 @@ async function component(file,name,scope={},initial=[]){
 }
 
 test('all operational reports use shared controls with full filtered data, preserving zero and unavailable values',async()=>{
-  const records=Array.from({length:137},(_,i)=>({id:i,book_no:'BOOK-'+i,book_type:i===136?'equipment':'vehicle',data:{bookDate:'2026-10-28',location:i===135?'Other':'Site A',door:'V'+i,assetId:i,shiftName:'Day',shiftHours:8,openingHmr:0,closingHmr:0,openingKmr:0,closingKmr:10,breakdownHours:null,trips:[{equipmentName:'L1',tripCount:1,loadingTime:'08:00',unloadingTime:'08:10'}]}}));
-  const filters={from:'2026-10-01',to:'2026-10-31',site:'Site A',shift:'',asset:'',employee:'',workOrder:'',loading:''};
+  const records=Array.from({length:137},(_,i)=>({id:i,book_no:'BOOK-'+i,book_type:i===136?'equipment':'vehicle',data:{bookDate:'2026-12-28',location:i===135?'Other':'Site A',door:'V'+i,assetId:i,shiftName:'Day',shiftHours:8,openingHmr:0,closingHmr:0,openingKmr:0,closingKmr:10,breakdownHours:null,trips:[{equipmentName:'L1',tripCount:1,loadingTime:'08:00',unloadingTime:'08:10'}]}}));
+  const filters={from:'2026-12-01',to:'2026-12-31',site:'Site A',shift:'',asset:'',employee:'',workOrder:'',loading:''};
   const data={records},render=await component('operations-reports.jsx','OperationsReports',operations,[filters,data,'',false,0,false]);
   for(const {id} of operations.operationReports){
     const tree=render({session:{token:'test'},reportId:id}),sections=nodes(tree,ReportSection);
@@ -29,7 +29,7 @@ test('all operational reports use shared controls with full filtered data, prese
     assert.deepEqual(sections[0].props.rows,expected.rows,id);
     assert.deepEqual(sections[0].props.columns.map(c=>c.label),expected.columns,id);
     if(expected.rows.length)assert.deepEqual(sections[0].props.columns.map(c=>c.value(expected.rows[0])),expected.rows[0],id);
-    assert.match(sections[0].props.title,/2026-10-01 to 2026-10-31/);
+    assert.match(sections[0].props.title,/2026-12-01 to 2026-12-31/);
     if(id==='vehicle')assert.equal(sections[0].props.rows.length,135,'all rows beyond the former 100-row page reach print/export');
     if(id==='breakdown')assert.ok(sections[0].props.rows.some(row=>row.includes(null)));
   }
@@ -56,7 +56,7 @@ test('VLB and ELB batch reports hide individual trip and loading equipment secti
 test('original-card index sends all cards to shared controls while gallery remains paginated',async()=>{
   const render=await component('card-reports.jsx','CardReportGallery');
   const cards=Array.from({length:31},(_,i)=>({id:'card-'+i,ordinal:i+1,filename:'Page '+i,page_count:1}));
-  const tree=render({batch:{id:'batch',name:'Batch',created_at:'2026-10-28'},cards,token:'test'});
+  const tree=render({batch:{id:'batch',name:'Batch',created_at:'2026-12-28'},cards,token:'test'});
   const index=nodes(tree,ReportSection)[0];assert.equal(index.props.rows.length,31);
   assert.equal(index.props.columns.find(c=>c.key==='filename').value(cards[30]),'Page 30');
   assert.ok(nodes(tree,'button').some(n=>n.props.children==='Next cards'));
@@ -91,7 +91,7 @@ test('one search beside the batch report heading controls every table without du
 
 test('the all-cards table stays visible while batch checks block saving and downloads',async()=>{
  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
- const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'},batch={id:'batch',kind:'vehicle',expected_context:context};
+ const context={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'},batch={id:'batch',kind:'vehicle',expected_context:context};
  const cards=Array.from({length:10},(_,i)=>{const id='card-'+i;return {id,batch_id:batch.id,ordinal:i+1,status:i<4?'posted':i===9?'reading':'review',draft:context,raw_fields:{extractionDraft:context},...(i<4?{saved_data:{...context,scanCardId:id,scanBatchId:batch.id}}:{})}});
  const tree=render({batch,cards,token:'test',contextBlocked:true}),table=nodes(tree,'table').find(node=>node.props['aria-label']==='Scanned card summary');
  assert.ok(table);assert.equal(nodes(nodes(table,'tbody')[0],'tr').length,10);

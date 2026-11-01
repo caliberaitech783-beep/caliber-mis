@@ -1,9 +1,11 @@
+import {requireOperationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripCardLocation} from './scan-site-match.mjs';
 import {CARD_SHIFTS} from './trip-card-rules.mjs';
 export function parseScanContext(value){
  const {bookDate,location,cardShift}=value||{};
  if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate||'')||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate||typeof location!=='string'||!location.trim()||location.length>200||!Object.hasOwn(CARD_SHIFTS,cardShift))throw new Error('Choose a valid card date, site and shift before scanning or uploading.');
+ requireOperationalDate(bookDate);
  return {bookDate,location:location.trim(),cardShift,confirmed:false,cancelled:false};
 }
 export function scanContextReady(value){try{parseScanContext(value);return true}catch{return false}}

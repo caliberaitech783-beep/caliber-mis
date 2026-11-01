@@ -1,3 +1,4 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,14 +10,14 @@ import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {createPulseMasterSync} from '../pulse-master-sync.mjs';
 import {planTripVerification,sameTripVehicle,enqueueTripVerification,tripVerificationMarker,createTripVerification,registerTripVerification} from '../pulse-trip-verification.mjs';
 
-const record=()=>({id:1,book_type:'vehicle',book_no:'CAL/VLB/281026/S1/0001',data:{scanCardId:randomUUID(),bookDate:'2026-10-28',location:'Sasti OC',door:'V101',chassis:'CH101',registration:'MH01AB101',masterShiftStart:'05:00:00',shiftHours:8,cardShift:'I',bookShiftCode:'S1',timeMode:'with',openingHmr:100,closingHmr:105,openingKmr:200,closingKmr:240,trips:[{equipmentName:'V2',tripCount:1,loadingTime:'10:35:00',unloadingTime:'10:55:00'}]}});
-const request=()=>({ref:'BD-TEST-101',site:'Sasti OC',door:'V101',chassis:'CH101',status:'Closed',start:'2026-10-28 08:00:00',closedAt:'2026-10-28 10:00:00',meterType:'KMR',openingMeterReadings:{HMR:'100',KMR:'200'}});
-const now=Date.parse('2026-10-28T15:00:00+05:30');
+const record=()=>({id:1,book_type:'vehicle',book_no:'CAL/VLB/281026/S1/0001',data:{scanCardId:randomUUID(),bookDate:'2026-12-28',location:'Sasti OC',door:'V101',chassis:'CH101',registration:'MH01AB101',masterShiftStart:'05:00:00',shiftHours:8,cardShift:'I',bookShiftCode:'S1',timeMode:'with',openingHmr:100,closingHmr:105,openingKmr:200,closingKmr:240,trips:[{equipmentName:'V2',tripCount:1,loadingTime:'10:35:00',unloadingTime:'10:55:00'}]}});
+const request=()=>({ref:'BD-TEST-101',site:'Sasti OC',door:'V101',chassis:'CH101',status:'Closed',start:'2026-12-28 08:00:00',closedAt:'2026-12-28 10:00:00',meterType:'KMR',openingMeterReadings:{HMR:'100',KMR:'200'}});
+const now=Date.parse('2026-12-28T15:00:00+05:30');
 
 test('matches the same site and vehicle, uses the earliest post-closure loading, and keeps meter identities',()=>{
  const card=record();card.data.trips.unshift({equipmentName:'V2',tripCount:1,loadingTime:'07:00',unloadingTime:'07:25'});
  const plan=planTripVerification(card,[request()],{now});assert.equal(plan.status,'ready');
- assert.equal(plan.firstTripAt,'2026-10-28T05:05:00.000Z');assert.equal(plan.payload.firstTripTime,'10:35:00');assert.equal(plan.payload.closingMeterReading,'240');
+ assert.equal(plan.firstTripAt,'2026-12-28T05:05:00.000Z');assert.equal(plan.payload.firstTripTime,'10:35:00');assert.equal(plan.payload.closingMeterReading,'240');
  assert.deepEqual(plan.payload.closingMeterReadings,{HMR:'105',KMR:'240'});assert.match(plan.payload.firstTripRemark,/CAL\/VLB/);
  assert.equal(sameTripVehicle(card.data,{door:'V101',chassis:'DIFFERENT'}),false);
  assert.equal(sameTripVehicle(card.data,{door:'V101',reg:'MH01DIFFERENT'}),false);
@@ -27,8 +28,8 @@ test('matches the same site and vehicle, uses the earliest post-closure loading,
 
 test('overnight trips use the following calendar day and do not guess grouped, incomplete or invalid times',()=>{
  const card=record();Object.assign(card.data,{masterShiftStart:'21:00:00',cardShift:'III',trips:[{tripCount:1,loadingTime:'00:20',unloadingTime:'00:40'}]});
- const bd={...request(),start:'2026-10-28 21:30:00',closedAt:'2026-10-28 23:50:00'};
- const plan=planTripVerification(card,[bd],{now:now+86400000});assert.equal(plan.status,'ready');assert.equal(plan.payload.firstTripDate,'2026-10-29');assert.equal(plan.payload.firstTripTime,'00:20:00');
+ const bd={...request(),start:'2026-12-28 21:30:00',closedAt:'2026-12-28 23:50:00'};
+ const plan=planTripVerification(card,[bd],{now:now+86400000});assert.equal(plan.status,'ready');assert.equal(plan.payload.firstTripDate,'2026-12-29');assert.equal(plan.payload.firstTripTime,'00:20:00');
  for(const patch of [{loadingTime:''},{unloadingTime:''},{tripCount:2},{loadingTime:'24:00'},{loadingTime:'05:10',unloadingTime:'05:20'},{loadingTime:'00:40',unloadingTime:'00:20'}]){
   const edited=structuredClone(card);Object.assign(edited.data.trips[0],patch);assert.equal(planTripVerification(edited,[bd],{now:now+86400000}).status,'review');
  }
@@ -37,9 +38,9 @@ test('overnight trips use the following calendar day and do not guess grouped, i
 
 test('ambiguous breakdowns, intervening breakdowns, conflicting first trips and meters require review',()=>{
  const card=record(),bd=request();
- for(const requests of [[bd,{...bd,ref:'SECOND'}],[bd,{...bd,ref:'NEW',status:'Open',start:'2026-10-28 10:20:00'}],[{...bd,firstTripAt:'2026-10-28 10:25:00'}],[{...bd,productionFirstTripAt:'2026-10-28 10:25:00'}],[{...bd,openingMeterReadings:{KMR:999}}],[{...bd,closedAt:'2026-10-28 11:00:00'}],[{...bd,start:'2026-10-28 11:00:00'}]])assert.equal(planTripVerification(card,requests,{now}).status,'review');
+ for(const requests of [[bd,{...bd,ref:'SECOND'}],[bd,{...bd,ref:'NEW',status:'Open',start:'2026-12-28 10:20:00'}],[{...bd,firstTripAt:'2026-12-28 10:25:00'}],[{...bd,productionFirstTripAt:'2026-12-28 10:25:00'}],[{...bd,openingMeterReadings:{KMR:999}}],[{...bd,closedAt:'2026-12-28 11:00:00'}],[{...bd,start:'2026-12-28 11:00:00'}]])assert.equal(planTripVerification(card,requests,{now}).status,'review');
  const noTimes=record();noTimes.data.timeMode='without';assert.equal(planTripVerification(noTimes,[bd],{now}).status,'review');
- const already={...bd,verifiedAt:'2026-10-28 11:00:00',firstTripAt:'2026-10-28 10:35:00',firstTripRemark:tripVerificationMarker(card)};
+ const already={...bd,verifiedAt:'2026-12-28 11:00:00',firstTripAt:'2026-12-28 10:35:00',firstTripRemark:tripVerificationMarker(card)};
  assert.equal(planTripVerification(card,[already],{now}).status,'verified');
  assert.equal(planTripVerification(card,[{...already,firstTripRemark:'Verified manually'}],{now}).status,'pending');
 });
@@ -49,10 +50,11 @@ async function fixture(t){
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB); CREATE TABLE pulse_master_links(master_name TEXT,source_id TEXT,local_id BIGINT REFERENCES master_records(id),PRIMARY KEY(master_name,source_id));'+LOG_BOOK_SCHEMA+SCAN_SCHEMA);
  const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
+ t.mock.method(Date,'now',()=>now);
  const card=record(),image=createCanvas(10,10).toBuffer('image/png');card.data.assetId=1;
  const batch=randomUUID();await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','Test','MIS tester')",[batch]);
  await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,status) VALUES($1,$2,1,'test.png',$3,'test-hash','approved')",[card.data.scanCardId,batch,image]);
- await query('BEGIN');const saved=await insertLogBook(pool,'vehicle',card.data,card.data.scanCardId,'MIS tester');await db.query("UPDATE mis_scan_cards SET status='posted',logbook_id=$1 WHERE id=$2",[saved.id,card.data.scanCardId]);await query('COMMIT');
+ await prepareVlbFixture(db,card.data,'MIS tester');await query('BEGIN');const saved=await insertLogBook(pool,'vehicle',card.data,card.data.scanCardId,'MIS tester');await db.query("UPDATE mis_scan_cards SET status='posted',logbook_id=$1 WHERE id=$2",[saved.id,card.data.scanCardId]);await query('COMMIT');
  return {db,pool,card:{...saved,data:card.data},image};
 }
 
@@ -65,8 +67,8 @@ test('saved scan → durable queue → Pulse API verification; retry after timeo
   if(path==='/api/masters')return Response.json({'Equipment master':[]});
   if(path==='/api/requests'){reads++;return Response.json([source]);}
   assert.equal(path,'/api/requests/BD-TEST-101/verify');assert.equal(options.method,'PATCH');
-  const payload=JSON.parse(options.body);assert.equal(payload.firstTripDate,'2026-10-28');assert.equal(payload.firstTripTime,'10:35:00');assert.equal(payload.closingMeterReading,'240');assert.match(payload.firstTripCardImage,/^data:image\/png;base64,/);
-  writes++;source={...source,verifiedAt:new Date().toISOString(),firstTripAt:'2026-10-28T10:35:00+05:30',firstTripRemark:payload.firstTripRemark};
+  const payload=JSON.parse(options.body);assert.equal(payload.firstTripDate,'2026-12-28');assert.equal(payload.firstTripTime,'10:35:00');assert.equal(payload.closingMeterReading,'240');assert.match(payload.firstTripCardImage,/^data:image\/png;base64,/);
+  writes++;source={...source,verifiedAt:new Date().toISOString(),firstTripAt:'2026-12-28T10:35:00+05:30',firstTripRemark:payload.firstTripRemark};
   if(loseResponse){loseResponse=false;throw Error('Network timeout after source commit');}return Response.json(source);
  }});
  await pulse.connect({username:'fixture-admin',password:'synthetic-only'});expired=true;

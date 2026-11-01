@@ -23,11 +23,11 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  const base=`http://127.0.0.1:${server.address().port}`;
  const call=async(path,body,auth='admin',method=body?'POST':'GET')=>{const r=await fetch(base+path,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
  const api=(path,body,auth)=>call('/api/log-book-deletions/'+path,body,auth);
- const seed=async(n,kind='vehicle',scanned=false)=>{const data={bookDate:'2026-10-28',location:'Sasti',door:'V-'+n,...(scanned?{scanCardId:'00000000-0000-4000-8000-'+String(n).padStart(12,'0')}:{})};return (await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,'2026-10-28','Sasti',1,$3,md5($1)::uuid,'fixture') RETURNING *",['BOOK-'+n,kind,JSON.stringify(data)])).rows[0];};
+ const seed=async(n,kind='vehicle',scanned=false)=>{const data={bookDate:'2026-12-28',location:'Sasti',door:'V-'+n,...(scanned?{scanCardId:'00000000-0000-4000-8000-'+String(n).padStart(12,'0')}:{})};return (await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,'2026-12-28','Sasti',1,$3,md5($1)::uuid,'fixture') RETURNING *",['BOOK-'+n,kind,JSON.stringify(data)])).rows[0];};
  const preview=async(records,auth='admin')=>{const r=await api('preview',{records:records.map(r=>({id:r.id,revision:r.revision})),reason:'Duplicate entries'},auth);assert.equal(r.status,200,JSON.stringify(r.data));if(r.data.manifest.files.length){const bound=await api(r.data.id+'/files',{scopeHash:r.data.scopeHash,files:r.data.manifest.files.map(f=>({key:f.key,exists:false,bytes:0,sha256:null}))});assert.equal(bound.status,200,JSON.stringify(bound.data));return bound.data;}return r.data;};
  const a=await seed(1),b=await seed(2,'equipment',true),c=await seed(3);
  await db.query("INSERT INTO mis_pulse_trip_verifications(logbook_id) VALUES($1),($2)",[a.id,c.id]);
- await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key) VALUES('60000000-0000-4000-8000-000000000001','fixture','Sasti','2026-10-28','I',1,'fixture','70000000-0000-4000-8000-000000000001')");
+ await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key) VALUES('60000000-0000-4000-8000-000000000001','fixture','Sasti','2026-12-28','I',1,'fixture','70000000-0000-4000-8000-000000000001')");
  await db.query("INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES('60000000-0000-4000-8000-000000000001',$1,$3),('60000000-0000-4000-8000-000000000001',$2,$4)",[a.id,c.id,JSON.stringify(a),JSON.stringify(c)]);
  await db.exec(SCAN_BACKUP_SCHEMA);
  await db.query("INSERT INTO mis_scan_backups(id,window_start,window_end,created_by) VALUES('80000000-0000-4000-8000-000000000001',NOW()-INTERVAL '1 day',NOW(),'fixture')");
@@ -107,7 +107,7 @@ test('approved blob cleanup survives storage failure and retries only the exact 
  const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA+SCAN_SCHEMA);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
- const book=(await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('BLOB-BOOK','vehicle','2026-10-31','Sasti',1,'{}','30000000-0000-4000-8000-000000000001','fixture') RETURNING *")).rows[0];
+ const book=(await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('BLOB-BOOK','vehicle','2026-12-31','Sasti',1,'{}','30000000-0000-4000-8000-000000000001','fixture') RETURNING *")).rows[0];
  const batch='40000000-0000-4000-8000-000000000001',scan='50000000-0000-4000-8000-000000000001';
  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','blob test','fixture')",[batch]);
  const key='vehicle/'+batch+'/'+scan+'.png';

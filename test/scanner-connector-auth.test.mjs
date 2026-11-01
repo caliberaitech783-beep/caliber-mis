@@ -7,7 +7,7 @@ test('online scanner authorization is single use; local token cannot approve, po
  app.use(async(req,res)=>{try{res.json({session:await auth.authenticate(req),expectedContext:req.body?.expectedContext})}catch(e){res.status(e.status||500).json({error:e.message})}});
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());base='http://127.0.0.1:'+server.address().port;
  const call=(path,body,headers={})=>new Promise((resolve,reject)=>{const req=http.request(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...headers}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>resolve({status:res.statusCode,json:async()=>JSON.parse(data)}))});req.on('error',reject);req.end(body?JSON.stringify(body):undefined)});
- const nonce=randomUUID(),kind='vehicle',expectedContext={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'};assert.equal((await call('/api/scanner-connector/ticket',{nonce,kind})).status,401);
+ const nonce=randomUUID(),kind='vehicle',expectedContext={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};assert.equal((await call('/api/scanner-connector/ticket',{nonce,kind})).status,401);
  assert.equal((await call('/api/scanner-connector/ticket',{nonce,kind},{Authorization:'Bearer online-session'})).status,400);
  const {ticket}=await(await call('/api/scanner-connector/ticket',{nonce,kind,expectedContext},{Authorization:'Bearer online-session'})).json();assert.match(ticket,/^[a-f0-9]{64}$/);
  const local={Host:'127.0.0.1:4174',Origin:'http://127.0.0.1:4174','X-Caliber-Scanner':'1'};

@@ -6,8 +6,8 @@ import express from 'express';
 import {createScanBatch,tripBatchPrefix,SCAN_BATCH_NAMING_SCHEMA} from '../scan-batch-naming.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 
-const context={bookDate:'2026-10-29',location:'JAYANT',cardShift:'I'};
-const prefix='CMLL/2026-10-29/JAYANT/S1/NITINKUMAR';
+const context={bookDate:'2026-12-29',location:'JAYANT',cardShift:'I'};
+const prefix='CMLL/2026-12-29/JAYANT/S1/NITINKUMAR';
 const batchSchema=`CREATE TABLE mis_scan_batches(id UUID PRIMARY KEY,kind TEXT,name TEXT,created_by TEXT,expected_context JSONB);`;
 
 test('names use the selected card date, site, shift and signed-in username',()=>{
@@ -16,7 +16,7 @@ test('names use the selected card date, site, shift and signed-in username',()=>
  assert.equal(tripBatchPrefix({...context,cardShift:'III'},'nitinkumar'),prefix.replace('/S1/','/S3/'));
  assert.throws(()=>tripBatchPrefix({...context,bookDate:'2026-02-30'},'nitinkumar'));
  assert.throws(()=>tripBatchPrefix(context,'  '));
- assert.equal(tripBatchPrefix({...context,location:'East/West'},'a\\b'), 'CMLL/2026-10-29/EAST-WEST/S1/A-B');
+ assert.equal(tripBatchPrefix({...context,location:'East/West'},'a\\b'), 'CMLL/2026-12-29/EAST-WEST/S1/A-B');
 });
 
 test('persistent counters allocate new batches and retain existing names',async t=>{
@@ -34,7 +34,7 @@ test('persistent counters allocate new batches and retain existing names',async 
  await assert.rejects(()=>create({id:first.id}));
  assert.equal((await create()).name,prefix+'/B12');
  assert.equal((await db.query('SELECT name FROM mis_scan_batches WHERE id=$1',[first.id])).rows[0].name,first.name);
- for(const options of [{user:'other'}, {expectedContext:{...context,bookDate:'2026-10-30'}}, {expectedContext:{...context,cardShift:'II'}}, {expectedContext:{...context,location:'OTHER'}}])assert.ok((await create(options)).name.endsWith('/B01'));
+ for(const options of [{user:'other'}, {expectedContext:{...context,bookDate:'2026-12-30'}}, {expectedContext:{...context,cardShift:'II'}}, {expectedContext:{...context,location:'OTHER'}}])assert.ok((await create(options)).name.endsWith('/B01'));
  const equipment=await create({kind:'equipment',name:'Original job-card name',expectedContext:undefined});
  assert.equal(equipment.name,'Original job-card name');
 });

@@ -1,3 +1,4 @@
+import {operationalScanSql} from './operational-start.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
@@ -7826,10 +7827,10 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
 const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession});
 app.get('/api/mis-ticket-sites',requireSession,async(req,res,next)=>{
- try{const scope=await logBookScope(req.session);let sites=scope.sites;if(sites===null){const {rows}=await pool.query("SELECT DISTINCT site FROM mis_log_books WHERE deleted_at IS NULL UNION SELECT record_data->>'site' AS site FROM master_records WHERE master_name='Equipment master'");sites=[...new Set(rows.map(row=>displaySiteName(row.site)).filter(Boolean))];if(!sites.length)sites=['Not assigned'];}res.set('Cache-Control','no-store').json({sites:sites.length?sites.map(displaySiteName):['Not assigned']});}catch(error){next(error)}
+ try{const scope=await logBookScope(req.session);let sites=scope.sites;if(sites===null){const {rows}=await pool.query("SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$ AND deleted_at IS NULL UNION SELECT record_data->>'site' AS site FROM master_records WHERE master_name='Equipment master'");sites=[...new Set(rows.map(row=>displaySiteName(row.site)).filter(Boolean))];if(!sites.length)sites=['Not assigned'];}res.set('Cache-Control','no-store').json({sites:sites.length?sites.map(displaySiteName):['Not assigned']});}catch(error){next(error)}
 });
 app.get('/api/mis-admin/status',requireSession,requireMisAdministrator,async(req,res,next)=>{
- try{const {rows}=await pool.query("SELECT current_database() AS database,NOW() AS checked_at,(SELECT count(*)::int FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL) AS vlb,(SELECT count(*)::int FROM mis_log_books WHERE book_type='equipment' AND deleted_at IS NULL) AS elb,(SELECT count(*)::int FROM mis_scan_cards) AS scans");res.set('Cache-Control','no-store').json({...rows[0],connected:true,hotScanStorage:Boolean(scanImageStorage),scanBackupUrl:'/?page=scan-backup'});}catch(error){next(error)}
+ try{const {rows}=await pool.query(`SELECT current_database() AS database,NOW() AS checked_at,(SELECT count(*)::int FROM mis_log_books WHERE book_type='vehicle' AND book_date>=$$2026-11-01$$ AND deleted_at IS NULL) AS vlb,(SELECT count(*)::int FROM mis_log_books WHERE book_type='equipment' AND book_date>=$$2026-11-01$$ AND deleted_at IS NULL) AS elb,(SELECT count(*)::int FROM mis_scan_cards c WHERE ${operationalScanSql('c')}) AS scans`);res.set('Cache-Control','no-store').json({...rows[0],connected:true,hotScanStorage:Boolean(scanImageStorage),scanBackupUrl:'/?page=scan-backup'});}catch(error){next(error)}
 });
 app.post('/api/mis-admin/backup',requireSession,requireMisAdministrator,async(req,res,next)=>{
  try{const {filePath,...result}=await createStoredBackup({triggerType:'MIS manual backup',actor:req.session});req.audit={eventType:'Administration',module:'MIS Full Backup',action:'Create database recovery backup',targetReference:result.fileName};res.status(201).json(result);}catch(error){next(error)}

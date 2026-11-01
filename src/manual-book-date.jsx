@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {operationalDate,OPERATIONAL_START_MESSAGE} from '../operational-start.mjs';
 
 const display=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('-'):'';
 export default function ManualBookDate({value,onChange}){
@@ -11,8 +12,8 @@ export default function ManualBookDate({value,onChange}){
    const match=/^(\d{2})-(\d{2})-(\d{4})$/.exec(text);
    const iso=match?`${match[3]}-${match[2]}-${match[1]}`:'';
    const date=new Date(iso+'T00:00:00Z');
-   const valid=Boolean(iso)&&Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===iso;
-   event.target.setCustomValidity(text&&!valid?'Enter a valid date in DD-MM-YYYY format.':'');
+   const valid=Boolean(iso)&&Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===iso&&operationalDate(iso);
+   event.target.setCustomValidity(text&&!valid?OPERATIONAL_START_MESSAGE+' Enter DD-MM-YYYY.':'');
    emitted.current=valid?iso:'';
    onChange(emitted.current);
  };

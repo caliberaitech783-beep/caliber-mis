@@ -1,3 +1,4 @@
+import {requireOperationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
 
@@ -20,7 +21,7 @@ export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_scopes(
  site TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,batch_id UUID UNIQUE NOT NULL REFERENCES mis_vlb_batches(id),PRIMARY KEY(site,book_date,shift));
  INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id)
- SELECT site,book_date,shift,(array_agg(id))[1] FROM mis_vlb_batches GROUP BY site,book_date,shift HAVING count(*)=1 ON CONFLICT DO NOTHING;
+ SELECT site,book_date,shift,(array_agg(id))[1] FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ GROUP BY site,book_date,shift HAVING count(*)=1 ON CONFLICT DO NOTHING;
  CREATE OR REPLACE FUNCTION mis_vlb_prevent_duplicate_scope() RETURNS trigger LANGUAGE plpgsql AS $guard$
  BEGIN
   LOCK TABLE mis_vlb_batch_scopes IN EXCLUSIVE MODE;
@@ -36,9 +37,9 @@ export const VLB_BATCH_SCHEMA=`
  END $install$;
  CREATE OR REPLACE FUNCTION mis_vlb_prevent_multiple_open_site_batches() RETURNS trigger LANGUAGE plpgsql AS $open_site_guard$
  BEGIN
-  IF NEW.closed_at IS NULL AND NEW.archived_at IS NULL THEN
+  IF NEW.closed_at IS NULL AND NEW.archived_at IS NULL AND NEW.book_date>=$$2026-11-01$$ THEN
    LOCK TABLE mis_vlb_batches IN SHARE ROW EXCLUSIVE MODE;
-   IF EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.site=NEW.site AND b.closed_at IS NULL AND b.archived_at IS NULL AND b.id<>NEW.id) THEN
+   IF EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.site=NEW.site AND b.book_date>=$$2026-11-01$$ AND b.closed_at IS NULL AND b.archived_at IS NULL AND b.id<>NEW.id) THEN
     RAISE EXCEPTION 'Close the existing open batch before creating another batch for this site' USING ERRCODE='23505';
    END IF;
   END IF;
@@ -65,7 +66,7 @@ export const VLB_BATCH_SCHEMA=`
  WITH migrated AS (
   UPDATE mis_vlb_batches SET saved_lock_policy=TRUE,closed_at=COALESCE(closed_at,NOW()),amendment_by=NULL,
    closure_revision=closure_revision+CASE WHEN closed_at IS NULL THEN 1 ELSE 0 END
-  WHERE saved_lock_policy=FALSE RETURNING id,created_by
+  WHERE saved_lock_policy=FALSE AND book_date>=$$2026-11-01$$ RETURNING id,created_by
  ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
  SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
@@ -73,18 +74,21 @@ export const batchFail=(message,status=409)=>{throw Object.assign(new Error(mess
 export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");
 export const auditVlbBatch=(client,batch,actor,action,detail={})=>client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[batch.id,batchLogin(actor),action,JSON.stringify(detail)]);
 export async function matchingVlbBatch(client,data){
- const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NULL ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
+ const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND book_date>=$$2026-11-01$$ AND shift=$2 AND archived_at IS NULL ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
  const matching=rows.filter(b=>canonicalSiteName(b.site)===canonicalSiteName(data.location));
  if(matching.length>1)batchFail('Multiple historical batches exist for this site/date/shift. They require separate review; no batches or cards were changed.');
  return matching[0]||null;
 }
 export async function assertVlbBatchWrite(client,data,actor,recordId){
+ requireOperationalDate(data.bookDate);
  await lockVlbBatchWrites(client);
  let linked;
  if(recordId)linked=(await client.query('SELECT b.*,b.book_date::text AS report_date FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1',[recordId])).rows[0];
  if(linked&&(canonicalSiteName(linked.site)!==canonicalSiteName(data.location)||linked.report_date!==data.bookDate||linked.shift!==vlbRecordShift(data)))batchFail('A batched card must retain its original site, date and shift.');
  const matching=await matchingVlbBatch(client,data);
- const batch=linked||matching;if(!batch)return null;
+ const batch=linked||matching;if(!batch)batchFail('Create or open the site/date/shift batch before saving a VLB entry. Standalone VLB saving is discontinued.',409);
+ if(batch.archived_at||batch.deleted_at)batchFail('This batch is unavailable. Open an active site/date/shift batch before saving.');
+ requireOperationalDate(batch.report_date);
  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
  if(batch.closed_at)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before saving or changing cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);

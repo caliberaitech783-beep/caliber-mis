@@ -15,7 +15,7 @@ test('10-day trial withdraws only the approved pending request, is restart-safe,
  await db.exec(VLB_BATCH_SCHEMA);
  const id=randomUUID(),other=randomUUID(),requestId=randomUUID(),otherRequest=randomUUID();
  for(const [batch,name,site] of [[id,'CMLL/JAYANT OC/30TH -OCT-26/S3/B01','jayant ob'],[other,'Unrelated batch','sasti ob']]){
-  await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy) VALUES($1,$2,$3,'2026-10-30','S3',1,'alice',$4,NOW(),1,TRUE)",[batch,name,site,randomUUID()]);
+  await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy) VALUES($1,$2,$3,'2026-12-30','S3',1,'alice',$4,NOW(),1,TRUE)",[batch,name,site,randomUUID()]);
  }
  for(const [request,batch] of [[requestId,id],[otherRequest,other]])await db.query("INSERT INTO mis_vlb_reopen_requests(id,batch_id,closure_revision,requested_by,reason) VALUES($1,$2,1,'alice','Additional cards required')",[request,batch]);
  const before=(await db.query('SELECT * FROM mis_vlb_batches WHERE id=$1',[id])).rows[0];
@@ -40,13 +40,13 @@ test('10-day trial withdraws only the approved pending request, is restart-safe,
  assert.equal((await call('/'+id+'/reopen','POST','restricted')).status,404);
  assert.equal((await call('/'+id+'/reopen','POST','pm')).status,403);
  const opened=await call('/'+id+'/reopen','POST');assert.equal(opened.status,200,JSON.stringify(opened.data));assert.ok(opened.data.trial_reopened_until);
- await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-10-30',bookShiftCode:'S3'},'bob'),/another MIS user/);
- await assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-10-30',bookShiftCode:'S3'},'alice');
+ await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'bob'),/another MIS user/);
+ await assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'alice');
  await db.query("UPDATE mis_vlb_pm_trials SET started_at=NOW()-INTERVAL '241 hours',ends_at=NOW()-INTERVAL '1 hour' WHERE id=$1",[VLB_PM_TRIAL_ID]);
  await db.query("UPDATE mis_vlb_batches SET trial_reopened_until=NOW()-INTERVAL '1 hour' WHERE id=$1",[id]);
  assert.equal((await vlbPmTrial(db)).active,false);
  assert.equal((await call('/'+id)).data.canContinue,false);
- await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-10-30',bookShiftCode:'S3'},'alice'),/trial has expired/);
+ await assert.rejects(()=>assertVlbBatchWrite(pool,{location:'Jayant OC',bookDate:'2026-12-30',bookShiftCode:'S3'},'alice'),/trial has expired/);
  assert.equal((await call('/'+id+'/close','POST')).status,200);
  assert.equal((await call('/'+id+'/reopen','POST')).status,403,'PM approval automatically resumes');
  assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_vlb_batch_audit WHERE action=$1',['reopen_request_withdrawn'])).rows[0].n,1);

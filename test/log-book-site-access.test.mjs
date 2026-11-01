@@ -1,3 +1,4 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -42,7 +43,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
     ['wo','Work Order master',{woNo:'WO-SASTI',site:'Sasti OC'}],
     ['otherWo','Work Order master',{woNo:'WO-JAYANT',site:'Jayant OC'}],
   ])ids[key]=(await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',[master,JSON.stringify(data)])).rows[0].id;
-  for(const site of ['Sasti OB','Jayant OC'])for(const kind of ['vehicle','equipment'])await db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,1,$5,$6,$7)',[site+kind,kind,'2026-10-28',site,JSON.stringify({location:site}),randomUUID(),'fixture']);
+  for(const site of ['Sasti OB','Jayant OC'])for(const kind of ['vehicle','equipment'])await db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,1,$5,$6,$7)',[site+kind,kind,'2026-12-28',site,JSON.stringify({location:site,bookDate:'2026-12-28'}),randomUUID(),'fixture']);
   const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
   const pool={query,connect:async()=>({query,release(){}})};
   const profiles={admin:{},site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
@@ -55,7 +56,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getSiteScope:async session=>logBookSiteScope(session),ocr:{recognize:async()=>({}),close(){}}});
   app.use((err,req,res,next)=>res.status(err.status||500).json({error:err.message}));
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
-  const call=async(path,method='GET',body,auth='site')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+  const call=async(path,method='GET',body,auth='site')=>{if(body&&['POST','PUT'].includes(method)&&path.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
   const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
   for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,true);assert.deepEqual(scanOptions.data.sites,['Dhoptala OC (2nd)','Dudhichua East OC','Dudhichua OC','Gauri Pauni OC (2nd)','Jayant OC','Lalpeth OC','Majri OC','Sasti OC']);assert.equal(scanOptions.data.assets.length,3);}
   const options=await call('/api/log-books/options');assert.equal(options.data.canSelectSite,false);assert.deepEqual(options.data.sites,['Sasti OC']);
@@ -67,7 +68,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
     const r=await call('/api/log-books/'+kind+suffix);assert.equal(r.status,200);assert.equal(r.data.records.length,1);assert.equal(r.data.records[0].data.location,'Sasti OB');
     assert.equal((await call('/api/log-books/'+kind+suffix,'GET',null,'unassigned')).data.records.length,0);
   }
-  const body={bookDate:'2026-10-28',location:'Sasti OC',assetId:ids.vehicle,employeeId:ids.driver,shiftId:ids.shift,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:10,closingHmr:11,trips:[],requestKey:randomUUID()};
+  const body={bookDate:'2026-12-28',location:'Sasti OC',assetId:ids.vehicle,employeeId:ids.driver,shiftId:ids.shift,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:10,closingHmr:11,trips:[],requestKey:randomUUID()};
   assert.equal((await call('/api/log-books/vehicle','POST',{...body,location:'Jayant OC'})).status,403);
   assert.equal((await call('/api/log-books/vehicle','POST',{...body,employeeId:ids.otherDriver})).status,400);
   const other=(await db.query("SELECT id FROM mis_log_books WHERE site='Jayant OC' AND book_type='vehicle'")).rows[0].id;
@@ -84,7 +85,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const scans={};
   for(const [key,site,owner] of [['local','Sasti OC','other'],['remote','Jayant OC','other'],['ownWrongSite','Jayant OC','site']]){
     const batch=randomUUID(),card=randomUUID();scans[key]={batch,card};
-    const selected={bookDate:'2026-10-30',location:site,cardShift:'I'};
+    const selected={bookDate:'2026-12-30',location:site,cardShift:'I'};
     await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle',$2,$3,$4::jsonb)",[batch,key,owner,JSON.stringify({...selected,confirmed:true})]);
     await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status,checked_by) VALUES($1,$2,1,'test', $3,'test',$4,$5::jsonb,'approved','site')",[card,batch,Buffer.from('test'),JSON.stringify(selected),JSON.stringify({extractionDraft:selected})]);
   }
@@ -93,12 +94,12 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/report')).status,200);
   assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report')).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report.pdf')).status,403);
-  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/context','POST',{expectedContext:{bookDate:'2026-10-30',location:'Jayant OC',cardShift:'I'}})).status,403,'a user cannot attach another site through Scan setup');
+  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/context','POST',{expectedContext:{bookDate:'2026-12-30',location:'Jayant OC',cardShift:'I'}})).status,403,'a user cannot attach another site through Scan setup');
   assert.equal((await call('/api/scan-cards/'+scans.remote.card+'/image')).status,403);
   assert.equal((await call('/api/scan-cards/'+scans.ownWrongSite.card+'/auto-save','POST',{revision:1})).status,403);
   assert.equal((await call('/api/scan-batches/'+scans.ownWrongSite.batch+'/post','POST',{cards:[{id:scans.ownWrongSite.card,revision:1}]})).status,403);
   // Old originals remain discoverable beyond the first 100 batches, with the same site protection.
-  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,created_at) SELECT gen_random_uuid(),'vehicle','History '||n,'site','2026-10-01'::timestamptz FROM generate_series(1,105) n");
+  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,created_at) SELECT gen_random_uuid(),'vehicle','History '||n,'site','2026-12-01'::timestamptz FROM generate_series(1,105) n");
   const first=(await call('/api/scan-batches')).data,second=(await call('/api/scan-batches?offset='+first.nextOffset)).data;
   assert.equal(first.batches.length,100);assert.equal(first.nextOffset,100);assert.equal(second.nextOffset,null);assert.ok(second.batches.length>=5);
   assert.equal(new Set([...first.batches,...second.batches].map(b=>b.id)).size,first.batches.length+second.batches.length,'history pages do not repeat batches with matching timestamps');

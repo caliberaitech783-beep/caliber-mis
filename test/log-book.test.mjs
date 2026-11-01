@@ -1,3 +1,4 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -5,7 +6,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../log-book.mjs';
 
-const input=()=>({bookDate:'2026-10-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:150,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
+const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:150,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
 test('template totals use the correct meter pairs, preserve zero and keep missing integration data unavailable',()=>{
  const row=normalizeLogBook('vehicle',{...input(),openingKmr:0,closingKmr:0,totalRunningKmr:999,breakdownHours:0});
  assert.equal(row.docType,'VLB');assert.equal(row.totalRunningKmr,0);assert.equal(row.totalWorkingHmr,6.5);assert.equal(row.trips[0].gapMinutes,null);assert.equal(row.trips[0].durationMinutes,20);assert.equal(row.totalTrips,1);
@@ -21,7 +22,7 @@ test('trip modes, overnight times and invalid meter/date inputs are validated',(
 });
 
 test('saved log books retain estimated time and previous-shift provenance',()=>{
- const timeEstimates={loadingTime:{value:'08:00',minutes:22,anchorField:'unloadingTime',anchorValue:'08:22',dayOffset:0}},equipmentProvenance={value:'VPC28',date:'2026-10-28',shift:'III',bookNo:'PREV/1',logBookId:'1'};
+ const timeEstimates={loadingTime:{value:'08:00',minutes:22,anchorField:'unloadingTime',anchorValue:'08:22',dayOffset:0}},equipmentProvenance={value:'VPC28',date:'2026-12-28',shift:'III',bookNo:'PREV/1',logBookId:'1'};
  const row=normalizeLogBook('vehicle',{...input(),trips:[{equipmentName:'VPC28',loadingTime:'08:00',unloadingTime:'08:22',tripCount:1,timeEstimates,equipmentProvenance}]}).trips[0];
  assert.deepEqual(row.timeEstimates,timeEstimates);assert.deepEqual(row.equipmentProvenance,equipmentProvenance);assert.equal(row.equipmentSource,'previous-shift');assert.equal(row.durationMinutes,22);
 });
@@ -39,11 +40,11 @@ test('database-backed log books enforce access, persist both forms, generate num
  let pulseAvailable=true;registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return[]}}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base=`http://127.0.0.1:${server.address().port}`;
- const call=async(route,method='GET',body,auth='admin')=>{const r=await fetch(base+route,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+ const call=async(route,method='GET',body,auth='admin')=>{if(body&&['POST','PUT'].includes(method)&&route.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch(base+route,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
  assert.equal((await call('/api/log-books/vehicle','GET',undefined,'')).status,401);assert.equal((await call('/api/log-books/vehicle','GET',undefined,'normal')).status,403);
  for(const name of ['Dudhicua East OC','Dudhichua East OC','Dudhichua East OB'])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Site master',JSON.stringify({name})]);
  const options=await call('/api/log-books/options');assert.deepEqual(options.data.sites.filter(site=>/east/i.test(site)),['Dudhichua East OC']);assert.equal(options.status,200);assert.equal(options.data.employees[0].caliberId,'EMP-123');assert.ok(!JSON.stringify(options.data).includes('private-not-exposed'));
- assert.equal(options.data.workOrders[0].number,'WO-TEST');const body={...input(),employeeId:7,workOrderId:6,trips:[{...input().trips[0],equipmentName:'TA35'},{...input().trips[0],equipmentName:'U49'}],scanMachineSummary:[{equipmentName:'T35',tripCount:1},{equipmentName:'U49',tripCount:1}],requestKey:randomUUID()};const first=await call('/api/log-books/vehicle','POST',body);assert.equal(first.status,201);assert.match(first.data.book_no,/^VLB_M\/18TH-OCT26\/S1\/001$/);assert.equal(first.data.data.totalRunningKmr,50);assert.equal(first.data.data.caliberId,'EMP-123');assert.equal(first.data.data.workOrderContract,'WO-TEST');
+ assert.equal(options.data.workOrders[0].number,'WO-TEST');const body={...input(),employeeId:7,workOrderId:6,trips:[{...input().trips[0],equipmentName:'TA35'},{...input().trips[0],equipmentName:'U49'}],scanMachineSummary:[{equipmentName:'T35',tripCount:1},{equipmentName:'U49',tripCount:1}],requestKey:randomUUID()};const first=await call('/api/log-books/vehicle','POST',body);assert.equal(first.status,201);assert.match(first.data.book_no,/^VLB_M\/18TH-DEC26\/S1\/001$/);assert.equal(first.data.data.totalRunningKmr,50);assert.equal(first.data.data.caliberId,'EMP-123');assert.equal(first.data.data.workOrderContract,'WO-TEST');
  assert.equal(first.data.data.trips[0].equipmentName,'Tpc 35');assert.equal(first.data.data.trips[0].originalEquipmentName,'TA35');assert.equal(first.data.data.scanMachineSummary[0].equipmentName,'Tpc 35');assert.equal(first.data.data.trips[1].equipmentName,'Vpc 49');assert.equal(first.data.data.trips[1].originalEquipmentName,'U49');assert.equal(first.data.data.scanMachineSummary[1].equipmentName,'Vpc 49');
  const invalidLoading={...body,requestKey:randomUUID(),trips:[{...body.trips[0],equipmentName:'V-TEST',equipmentId:'1',equipmentSource:'master-selection'}],scanMachineSummary:[]};assert.equal((await call('/api/log-books/vehicle','POST',invalidLoading)).status,400);
  const repeat=await call('/api/log-books/vehicle','POST',body);assert.equal(repeat.status,200);assert.equal(repeat.data.book_no,first.data.book_no);
@@ -52,8 +53,8 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,revision:1})).status,409);
  assert.equal((await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),shiftId:5})).status,400);
  assert.equal((await call('/api/log-books/equipment','POST',{...body,requestKey:randomUUID()})).status,400);
- const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-10-26\/001$/);assert.equal(equipment.data.data.breakdownHours,0);assert.equal(equipment.data.data.hoursSource.runningHours,6.5);assert.equal(equipment.data.data.idleHours,1.5);
- assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID()});assert.equal(second.data.book_no,'VLB_M/18TH-OCT26/S1/002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-10-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'VLB_M/19TH-OCT26/S1/001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
+ const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-12-26\/001$/);assert.equal(equipment.data.data.breakdownHours,0);assert.equal(equipment.data.data.hoursSource.runningHours,6.5);assert.equal(equipment.data.data.idleHours,1.5);
+ assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID()});assert.equal(second.data.book_no,'VLB_M/18TH-DEC26/S1/002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-12-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'VLB_M/19TH-DEC26/S1/001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
  assert.equal((await call('/api/log-books/vehicle?first=1')).data.records[0].id,first.data.id);const last=await call('/api/log-books/vehicle?last=1');assert.equal(last.data.records.length,1);assert.equal(last.data.records[0].id,nextDay.data.id);
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:1})).status,403);
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:2},'normal')).status,403);
@@ -61,9 +62,9 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.ok((await call('/api/log-books/vehicle')).data.records.some(r=>r.id===first.data.id));
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...body,revision:3})).status,409);
  // Complementary driver cards link even when they arrive in reverse order.
- const closingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-10-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
+ const closingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-12-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
  const closing=await call('/api/log-books/vehicle','POST',closingBody);assert.equal(closing.status,201);assert.equal(closing.data.data.totalTrips,0);
- const openingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-10-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
+ const openingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-12-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
  const opening=await call('/api/log-books/vehicle','POST',openingBody);assert.equal(opening.status,201);assert.equal(opening.data.data.openingTrips,1);
  const linked=(await call('/api/log-books/vehicle')).data.records;
  const end=linked.find(r=>r.id===closing.data.id),start=linked.find(r=>r.id===opening.data.id);
@@ -86,7 +87,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const pdf='data:application/pdf;base64,'+Buffer.from('%PDF-1.4\nmanual test').toString('base64');
  const extra={breakdownDetails:[{detail:'Hose leak',startTime:'08:00',endTime:'08:20',actionTaken:'Replaced',mechanic:'Test',tmExecution:'Done',remark:'Checked'},{detail:'',startTime:'',endTime:'',actionTaken:'',mechanic:'',tmExecution:'',remark:''}],manualAttributes:[{name:'Material',value:'Coal'}],manualAttachments:[{name:'manual.pdf',data:pdf}],projectName:'Manual project'};
  for(const kind of ['vehicle','equipment']){
-  const payload={...body,...extra,assetId:kind==='vehicle'?1:4,requestKey:randomUUID(),...(kind==='vehicle'?{trips:[{...body.trips[0],jobType:'Coal haulage',remark:'Trip checked'}],scanMachineSummary:body.scanMachineSummary.slice(0,1)}:{jobDetails:[{jobType:'Loading',tripCount:18,uom:'Trips',startDate:'2026-10-18',startTime:'08:00',endDate:'2026-10-18',endTime:'09:00',remark:'Job checked'}]})};
+  const payload={...body,...extra,assetId:kind==='vehicle'?1:4,requestKey:randomUUID(),...(kind==='vehicle'?{trips:[{...body.trips[0],jobType:'Coal haulage',remark:'Trip checked'}],scanMachineSummary:body.scanMachineSummary.slice(0,1)}:{jobDetails:[{jobType:'Loading',tripCount:18,uom:'Trips',startDate:'2026-12-18',startTime:'08:00',endDate:'2026-12-18',endTime:'09:00',remark:'Job checked'}]})};
   const made=await call('/api/log-books/'+kind,'POST',payload);assert.equal(made.status,201,JSON.stringify(made.data));assert.equal(made.data.data.breakdownDetails.length,1);assert.equal(made.data.data.breakdownDetails[0].remark,'Checked');assert.equal(made.data.data.manualAttachments[0].data,pdf);
   if(kind==='equipment')assert.equal(made.data.data.jobDetails[0].durationHours,1);else assert.equal(made.data.data.trips[0].remark,'Trip checked');
   const list=(await call('/api/log-books/'+kind)).data.records;const listed=list.find(row=>row.id===made.data.id);assert.equal(listed.data.manualAttachments[0].data,undefined,'register excludes attachment bodies');

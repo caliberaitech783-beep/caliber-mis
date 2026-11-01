@@ -1,3 +1,4 @@
+import {operationalScanSql} from './operational-start.mjs';
 // Keep interactive uploads ahead of automatic repair work and share workers
 // between batches instead of draining every old card before a new batch starts.
 export const SCAN_QUEUE_SCHEMA=`
@@ -13,7 +14,7 @@ export async function requestScanBatch(pool,batchId){
 export async function claimNextScanCard(pool){
  return pool.query(`WITH picked AS (
   SELECT c.id,c.batch_id FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id
-  WHERE c.status='queued'
+  WHERE c.status='queued' AND ${operationalScanSql('c')}
   ORDER BY CASE WHEN b.extraction_requested_at>NOW()-INTERVAL '30 seconds' THEN 0 ELSE 1 END,
    CASE WHEN ${scanQueueBackground('c')} THEN 1 ELSE 0 END,
    (SELECT count(*) FROM mis_scan_cards active WHERE active.batch_id=c.batch_id AND active.status='reading'),

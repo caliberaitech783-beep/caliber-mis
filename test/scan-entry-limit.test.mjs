@@ -35,7 +35,7 @@ test('local PDFs retain all pages across 40-card entries and folder retries do n
  const service=registerLocalDocumentScanning(app,{pool,requireSession:auth,requireAdministrator:auth,inbox,outputRoot:path.join(root,'jobs'),enabled:true,bulkScanning:{pump(){}}});
  await service.start();app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
- const call=async(route,body)=>{const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/local-scanner/'+route,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify({kind:'vehicle',expectedContext:{bookDate:'2026-10-31',location:'Sasti OC',cardShift:'I'},...body})}:{})});const data=await response.json();assert.ok(response.ok,JSON.stringify(data));return data;};
+ const call=async(route,body)=>{const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/local-scanner/'+route,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify({kind:'vehicle',expectedContext:{bookDate:'2026-12-31',location:'Sasti OC',cardShift:'I'},...body})}:{})});const data=await response.json();assert.ok(response.ok,JSON.stringify(data));return data;};
  const wait=async id=>{for(let i=0;i<1000;i++){const job=await call('jobs/'+id);if(job.status!=='running'){assert.equal(job.status,'complete',job.error);return job;}await new Promise(resolve=>setTimeout(resolve,20));}throw Error('PDF import timed out');};
  const first=await wait((await call('folder',{})).id);
  assert.equal(first.pages,81);assert.equal(first.entry_batch_ids.length,3);

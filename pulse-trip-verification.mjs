@@ -92,7 +92,7 @@ export function createTripVerification({pool,pulse,enabled=true}){
      await client.query('BEGIN');
      // Lock both the job and card: editing/deleting the saved card waits for this decision.
      const row=(await client.query(`SELECT j.*,l.id,l.book_no,l.book_type,l.data,l.created_by FROM mis_pulse_trip_verifications j
-      JOIN mis_log_books l ON l.id=j.logbook_id WHERE j.status='pending' AND j.next_attempt_at<=NOW() AND l.deleted_at IS NULL
+      JOIN mis_log_books l ON l.id=j.logbook_id WHERE j.status='pending' AND j.next_attempt_at<=NOW() AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
       ORDER BY j.next_attempt_at,j.logbook_id LIMIT 1 FOR UPDATE OF j,l SKIP LOCKED`)).rows[0];
      if(!row){await client.query('COMMIT');break;}
      let result;
@@ -135,17 +135,17 @@ export function registerTripVerification(app,{pool,pulse,requireSession,requireA
   if(id&&!/^\d+$/.test(id))return res.status(400).json({error:'Invalid saved card.'});
   const sites=await filterLogBookSites(pool,await getSiteScope(req.session));
   const jobs=(await pool.query(`SELECT j.*,l.book_no,l.site,l.data->>'door' AS door,l.data->>'scanCardNumber' AS card_number
-   FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id WHERE l.deleted_at IS NULL AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) AND ($2::bigint IS NULL OR l.id=$2)
+   FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) AND ($2::bigint IS NULL OR l.id=$2)
    ORDER BY j.updated_at DESC,j.logbook_id DESC LIMIT 100`,[sites,id||null])).rows;
   const counts=(await pool.query(`SELECT j.status,COUNT(*)::int AS count FROM mis_pulse_trip_verifications j JOIN mis_log_books l ON l.id=j.logbook_id
-   WHERE l.deleted_at IS NULL AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) GROUP BY j.status`,[sites])).rows;
+   WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR l.site=ANY($1::text[])) GROUP BY j.status`,[sites])).rows;
   res.set('Cache-Control','no-store').json({...service.status(),jobs,counts:Object.fromEntries(counts.map(r=>[r.status,r.count]))});
  }catch(error){next(error)}});
  app.post('/api/pulse-trip-verification/:id/retry',requireSession,requireAdministrator,async(req,res,next)=>{try{
   if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid saved card.'});
   const client=await pool.connect();try{
    await client.query('BEGIN');
-   const record=(await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[req.params.id])).rows[0];
+   const record=(await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id])).rows[0];
    if(!record){await client.query('ROLLBACK');return res.status(404).json({error:'Saved card unavailable.'});}
    requireLogBookSite(await getSiteScope(req.session),record.site);
    await client.query("UPDATE mis_pulse_trip_verifications SET status='pending',reason='MIS requested a recheck',next_attempt_at=NOW(),updated_at=NOW() WHERE logbook_id=$1 AND status<>'verified'",[req.params.id]);

@@ -1,3 +1,4 @@
+import {operationalDate} from './operational-start.mjs';
 import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from './vlb-pm-trial.mjs';
 import {randomUUID} from 'node:crypto';
 import {canonicalSiteName} from './site-location.mjs';
@@ -17,17 +18,17 @@ async function eligible(client,selection){
  return rows.filter(r=>canonicalSiteName(r.site)===selection.site&&vlbRecordShift(r.data)===selection.shift);
 }
 async function openSiteBatch(client,site,excludeId){
- const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE closed_at IS NULL AND archived_at IS NULL AND ($1::uuid IS NULL OR id<>$1) ORDER BY created_at,id",[excludeId||null])).rows;
+ const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL AND ($1::uuid IS NULL OR id<>$1) ORDER BY created_at,id",[excludeId||null])).rows;
  return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
 }
 async function visible(client,id,req){
  if(!uuid(id))fail('Invalid batch ID.',400);
- const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
+ const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL AND book_date>=$$2026-11-01$$',[id])).rows[0];
  if(!batch||!siteAllowed(req.logBookScope,batch.site))fail('Batch is unavailable.',404);
  return batch;
 }
 async function details(client,batch,req){
- const records=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE batch_id=$1 ORDER BY logbook_id',[batch.id])).rows.map(r=>r.snapshot);
+ const records=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE batch_id=$1 ORDER BY logbook_id',[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
  const requests=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND withdrawn_at IS NULL ORDER BY requested_at DESC',[batch.id])).rows.filter(r=>r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,batch.site));
  const audit=(await client.query('SELECT * FROM mis_vlb_batch_audit WHERE batch_id=$1 ORDER BY id DESC LIMIT 200',[batch.id])).rows;
  const pmApprovalTrial=await vlbPmTrial(client);
@@ -48,14 +49,14 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
+  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b)}));
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
   const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),canClose:isOwner(open,req.batchActor)}:{id:open.id,restricted:true}):null;
   res.json({pmApprovalTrial:await vlbPmTrial(pool),batches,openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
  app.get('/api/vlb-batches/approvals',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
+  const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
   res.json({requests:rows.filter(r=>siteAllowed(req.logBookScope,r.site)&&(r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,r.site))).map(r=>({...r,canDecide:r.status==='pending'&&r.closure_revision===r.current_revision&&Boolean(r.closed_at)&&batchPmAtSite(req.batchActor,r.site)&&r.requested_by!==req.batchActor.login}))});
  }));
  app.get('/api/vlb-batches/preview',...protect,handle(async(req,res)=>{
@@ -87,17 +88,17 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
    const siteOpen=await openSiteBatch(client,selection.site);
    if(siteOpen)fail('Close the open batch '+siteOpen.name+' before creating another batch for this site, regardless of date or shift.');
-   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
+   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const records=await eligible(client,selection);
    const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL FOR UPDATE',[selection.date,selection.shift])).rows;
    const archived=archivedRows.find(batch=>canonicalSiteName(batch.site)===selection.site);
    if(archived){
-    const restored=(await client.query('UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3 WHERE id=$4 RETURNING *,book_date::text AS report_date',[req.body.requestKey,user,req.batchActor.admin?null:user,archived.id])).rows[0];
+    const restored=(await client.query('UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3 WHERE id=$4 RETURNING *,book_date::text AS report_date',[req.body.requestKey,user,null,archived.id])).rows[0];
     await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r ON CONFLICT(logbook_id) DO NOTHING',[restored.id,JSON.stringify(records)]);
     await auditVlbBatch(client,restored,user,'restored_to_batch_list',{logbookIdsAdded:records.map(r=>r.id)});
     return details(client,restored,req);
    }
-   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy,continuous_entry,creator_login) VALUES($1,$2,$3,$4,$5,1,$6,$7,NULL,0,TRUE,TRUE,$8) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,req.batchActor.admin?null:user,req.body.requestKey,user])).rows[0];
+   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy,continuous_entry,creator_login) VALUES($1,$2,$3,$4,$5,1,$6,$7,NULL,0,TRUE,TRUE,$8) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,null,req.body.requestKey,user])).rows[0];
    await client.query('INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id) VALUES($1,$2,$3,$4)',[selection.site,selection.date,selection.shift,batch.id]);
    await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r',[batch.id,JSON.stringify(records)]);
    await auditVlbBatch(client,batch,user,'created',{logbookIds:records.map(r=>r.id)});
@@ -151,8 +152,8 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    const pmApprovalTrial=await vlbPmTrial(client);
    if(!pmApprovalTrial.active&&!request)fail('Site PM approval is required for this MIS user and the current batch closure.',403);
    if(!pmApprovalTrial.active){const approver=await getActor({login:request.decided_by},client);if(!batchPmAtSite(approver,batch.site))fail('The approving PM is no longer assigned to this site. Request approval from the current site PM.',403);}
-   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE closed_at IS NULL AND (lower(COALESCE(creator_login,created_by))=ANY($1::text[]) OR lower(amendment_by)=$2)',[[req.batchActor.login,batchLogin(creator(batch))],req.batchActor.login])).rows.length)fail('Close the existing open batch before reopening this batch.');
-   const opened=(await client.query('UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1,trial_reopened_until=$4,creator_login=COALESCE(creator_login,created_by),created_by=CASE WHEN $3 THEN NULL ELSE created_by END WHERE id=$2 RETURNING *,book_date::text AS report_date',[req.batchActor.login,batch.id,req.batchActor.admin,pmApprovalTrial.active?pmApprovalTrial.endsAt:null])).rows[0];
+   if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ AND closed_at IS NULL AND (lower(COALESCE(creator_login,created_by))=ANY($1::text[]) OR lower(amendment_by)=$2)',[[req.batchActor.login,batchLogin(creator(batch))],req.batchActor.login])).rows.length)fail('Close the existing open batch before reopening this batch.');
+   const opened=(await client.query('UPDATE mis_vlb_batches SET closed_at=NULL,amendment_by=$1,trial_reopened_until=$3,creator_login=COALESCE(creator_login,created_by),created_by=NULL WHERE id=$2 RETURNING *,book_date::text AS report_date',[req.batchActor.login,batch.id,pmApprovalTrial.active?pmApprovalTrial.endsAt:null])).rows[0];
    if(request)await client.query("UPDATE mis_vlb_reopen_requests SET status='used',used_at=NOW() WHERE id=$1",[request.id]);
    await auditVlbBatch(client,batch,req.batchActor.login,'reopened',{requestId:request?.id||null,approvedBy:pmApprovalTrial.active?null:request.decided_by,...(pmApprovalTrial.active?{trialId:VLB_PM_TRIAL_ID,trialEndsAt:pmApprovalTrial.endsAt}:{})});
    const records=await eligible(client,{site:canonicalSiteName(batch.site),date:batch.report_date,shift:batch.shift});for(const record of records)await syncVlbBatchRecord(client,record,req.batchActor.login,{relock:false});

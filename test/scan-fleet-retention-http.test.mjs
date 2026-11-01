@@ -1,3 +1,4 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';
 import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
@@ -12,7 +13,7 @@ test('blocked HTTP saves retain viewable images and correction data; rechecking 
  await service.start();t.after(()=>service.stop());app.use((error,req,res,next)=>res.status(error.status||500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const base='http://127.0.0.1:'+server.address().port,cardId=randomUUID(),batchId=randomUUID();
- const draft={doorText:'V99',bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}],remark:'Keep these corrections'};
+ const draft={doorText:'V99',bookDate:'2026-12-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}],remark:'Keep these corrections'};
  for(const row of [[1,'Equipment master',{category:'Vehicle',door:'V99',currentLocation:'Sasti OC'}],[2,'Employee master',{name:'Driver',caliberId:'CMPL1'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}]])await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[row[0],row[1],JSON.stringify(row[2])]);
  const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBEkAAAAASUVORK5CYII=','base64');
  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','Retain test','owner')",[batchId]);

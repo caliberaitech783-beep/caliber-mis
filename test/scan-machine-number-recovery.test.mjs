@@ -1,3 +1,4 @@
+import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
@@ -6,6 +7,7 @@ import {recoverMissingEquipmentNumbers} from '../scan-machine-number-recovery.mj
 test('only untouched prefix-only trip extractions are requeued once, retaining header corrections',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec("CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,kind TEXT);CREATE TABLE mis_scan_cards(id TEXT PRIMARY KEY,batch_id TEXT,status TEXT,checked_by TEXT,logbook_id INTEGER,error TEXT,revision INTEGER,draft JSONB,raw_fields JSONB);INSERT INTO mis_scan_batches VALUES('batch','vehicle'),('elb','equipment')");
+ await extendOperationalScanFixture(db);
  const trips=[{rowNumber:1,equipmentName:'V',loadingTime:'05:51',unloadingTime:'06:04',tripCount:1}];
  const insert=async(id,overrides={})=>{
   const draft={trips,remark:'Keep header correction',...overrides.draft},raw={gemini:{},extractionDraft:{trips},...overrides.raw};

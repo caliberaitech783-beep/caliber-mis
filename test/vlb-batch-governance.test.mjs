@@ -30,15 +30,16 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(path,method='GET',body,user='alice')=>{const r=await fetch(`http://127.0.0.1:${server.address().port}`+path,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,data:await r.json()}};
- const input={bookDate:'2026-10-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}]};
+ const input={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}]};
  const save=async(patch={},user='alice')=>call('/api/log-books/vehicle','POST',{...input,...patch,requestKey:randomUUID()},user);
+ const initialBatch=await call('/api/vlb-batches','POST',{site:'Sasti OC',date:input.bookDate,shift:'S1',requestKey:randomUUID()});assert.equal(initialBatch.status,201,JSON.stringify(initialBatch.data));
  const seed=await save();assert.equal(seed.status,201,JSON.stringify(seed.data));
- const createBody={site:'Sasti OC',date:'2026-10-30',shift:'S1',requestKey:randomUUID()};
+ const createBody={site:'Sasti OC',date:'2026-12-30',shift:'S1',requestKey:randomUUID()};
 
  const manual=await save({},'bob');assert.equal(manual.status,201,JSON.stringify(manual.data));
  const scan=async(user='alice',options)=>{await db.exec('BEGIN');try{const data={...await resolveLogBookData(pool,'vehicle',input),scanCardId:randomUUID()};const result=await insertLogBook(pool,'vehicle',data,randomUUID(),user,options);await db.exec('COMMIT');return result}catch(e){await db.exec('ROLLBACK');throw e}};
  const scanned=await scan();
- const created=await call('/api/vlb-batches','POST',createBody);assert.equal(created.status,201,JSON.stringify(created.data));const path='/api/vlb-batches/'+created.data.id;
+ const created=await call('/api/vlb-batches/'+initialBatch.data.id);assert.equal(created.status,200,JSON.stringify(created.data));const path='/api/vlb-batches/'+created.data.id;
  assert.equal(created.data.closed_at,null,'new batches stay open');assert.equal(created.data.closure_revision,0);assert.equal(created.data.entry_count,3);
  // Preserve coverage of historical single-amendment batches separately from new continuous batches.
  await db.query('UPDATE mis_vlb_batches SET continuous_entry=FALSE WHERE id=$1',[created.data.id]);
@@ -48,7 +49,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  assert.equal((await save()).status,409);await assert.rejects(()=>scan(),/closed/);assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n),countBefore);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,409);
  assert.equal((await call('/api/vlb-batches','POST',{...createBody,requestKey:randomUUID()})).status,409,'closed scopes cannot get B02');
- const s2=await save({shiftId:4,cardShift:'II'});assert.equal(s2.status,201);assert.equal((await call(path)).data.entry_count,3,'next shift stays unbatched');
+ const s2=await save({shiftId:4,cardShift:'II'});assert.equal(s2.status,409);assert.equal((await call(path)).data.entry_count,3,'next shift requires its own batch');
  const req=await call(path+'/reopen-request','POST',{reason:'Additional cards received after closure'});assert.equal(req.status,200);assert.equal((await call(path+'/reopen-request','POST',{reason:'Retry reason'})).data.id,req.data.id);
  assert.equal((await call(path+'/reopen','POST',{})).status,403);
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'production')).status,403,'Production Manager is not PM');
@@ -76,7 +77,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  assert.equal((await call(path+'/reopen','POST',{})).status,403,'used grant cannot reopen after a save');assert.equal((await save()).status,409);
  const grant=async()=>{const r=await call(path+'/reopen-request','POST',{reason:'Another checked amendment'});assert.equal(r.status,200,JSON.stringify(r.data));assert.equal((await call(path+'/reopen-decision','POST',{requestId:r.data.id,decision:'approve'},'pm')).status,200);const opened=await call(path+'/reopen','POST',{});assert.equal(opened.status,200,JSON.stringify(opened.data));return opened.data;};
  await grant();
- assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,bookDate:'2026-10-29',revision:1})).status,409,'batched cards cannot move to another scope');
+ assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,bookDate:'2026-12-29',revision:1})).status,409,'batched cards cannot move to another scope');
  const amended=await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,remark:'Approved amendment',revision:1});assert.equal(amended.status,200,JSON.stringify(amended.data));
  batch=(await call(path)).data;assert.ok(batch.closed_at,'editing a saved card locks its batch');assert.equal(batch.records.find(r=>r.id===manual.data.id).data.remark,'Approved amendment');
  await grant();await scan();batch=(await call(path)).data;assert.ok(batch.closed_at,'individual scan saves relock');assert.equal(batch.entry_count,5);
@@ -88,7 +89,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.some(e=>e.action==='reopen_rejected'));assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,5);
  assert.equal((await call(path+'/reopen','POST',{})).status,403);
 
- await assert.rejects(()=>db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at) VALUES($1,'duplicate','sasti ob','2026-10-30','S1',2,'other',$2,NOW())",[randomUUID(),randomUUID()]),/already exists/,'database guard rejects duplicate batches');
+ await assert.rejects(()=>db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at) VALUES($1,'duplicate','sasti ob','2026-12-30','S1',2,'other',$2,NOW())",[randomUUID(),randomUUID()]),/already exists/,'database guard rejects duplicate batches');
  const pm=await vlbBatchActor(pool,{login:'pm'});assert.ok(batchPmAtSite(pm,'Sasti OC'));assert.equal(batchPmAtSite(pm,'Jayant OC'),false);
  const production=await vlbBatchActor(pool,{login:'production'});assert.equal(production.pm,false);
  await db.query("UPDATE master_records SET record_data=record_data||'{\"sourceMissing\":true}'::jsonb WHERE id=12");assert.equal((await vlbBatchActor(pool,{login:'pm'})).pm,false,'missing source users cannot act as PM');
@@ -98,16 +99,16 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
 test('legacy duplicate batches are preserved and blocked for separate review',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY);CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT UNIQUE,site TEXT,book_date DATE,shift TEXT,sequence INTEGER,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),closed_at TIMESTAMPTZ,request_key UUID)');
- for(let n=1;n<=2;n++)await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,closed_at,request_key) VALUES($1,$2,'sasti ob','2026-10-30','S1',$3,'old',NOW(),$4)",[randomUUID(),'Legacy B0'+n,n,randomUUID()]);
+ for(let n=1;n<=2;n++)await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,closed_at,request_key) VALUES($1,$2,'sasti ob','2026-12-30','S1',$3,'old',NOW(),$4)",[randomUUID(),'Legacy B0'+n,n,randomUUID()]);
  await db.exec(VLB_BATCH_SCHEMA);assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_vlb_batches')).rows[0].n),2);
- await assert.rejects(()=>matchingVlbBatch(db,{location:'Sasti OC',bookDate:'2026-10-30',bookShiftCode:'S1'}),/separate review/);
+ await assert.rejects(()=>matchingVlbBatch(db,{location:'Sasti OC',bookDate:'2026-12-30',bookShiftCode:'S1'}),/separate review/);
  assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_vlb_batches')).rows[0].n),2);
 });
 
 test('existing saved batches adopt the lock policy once without losing entries or audit history',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY)');await db.exec(VLB_BATCH_SCHEMA);
- const id=randomUUID();await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key) VALUES($1,'Legacy saved batch','sasti ob','2026-10-30','S1',1,'alice',$2)",[id,randomUUID()]);
+ const id=randomUUID();await db.query("INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key) VALUES($1,'Legacy saved batch','sasti ob','2026-12-30','S1',1,'alice',$2)",[id,randomUUID()]);
  await db.query('INSERT INTO mis_log_books(id) VALUES(1)');await db.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,1,$2::jsonb)',[id,JSON.stringify({id:1,data:{door:'V07'}})]);
  await db.exec(VLB_BATCH_SCHEMA);
  const batch=(await db.query('SELECT * FROM mis_vlb_batches WHERE id=$1',[id])).rows[0];assert.ok(batch.closed_at);assert.equal(batch.closure_revision,1);assert.equal(batch.saved_lock_policy,true);

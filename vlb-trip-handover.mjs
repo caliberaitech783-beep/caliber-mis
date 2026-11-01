@@ -1,3 +1,4 @@
+import {operationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
 
@@ -17,7 +18,7 @@ const reference=(record,index)=>({logBookId:String(record.id),bookNo:record.book
 // Rebuild from active source cards on every read. Corrections, deletion, late scans
 // and uploads in reverse order therefore cannot leave stale or duplicate links.
 export function linkVlbTripHandovers(records){
- const output=records.map(record=>({...record,data:{...record.data,trips:(record.data.trips||[]).map(row=>({...row,handoverLinks:[]}))}}));
+ const output=records.filter(r=>operationalDate(r.data?.bookDate)).map(record=>({...record,data:{...record.data,trips:(record.data.trips||[]).map(row=>({...row,handoverLinks:[]}))}}));
  const groups=new Map();
  for(const record of output){
   const data=record.data;data.openingTrips=0;data.endingTrips=0;data.completedTrips=0;
@@ -58,7 +59,7 @@ export function linkVlbTripHandovers(records){
 export async function withVlbTripHandovers(client,records,permittedSites=null){
  if(!records.length)return records;
  const partial=(await client.query(`SELECT id,book_no,book_type,data FROM mis_log_books
- WHERE book_type='vehicle' AND deleted_at IS NULL AND ($1::text[] IS NULL OR site=ANY($1::text[]))
+ WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR site=ANY($1::text[]))
  AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'trips') AS trip
  WHERE (COALESCE(trip->>'loadingTime','')='') <> (COALESCE(trip->>'unloadingTime','')=''))`,[permittedSites])).rows;
  const all=new Map(partial.map(row=>[String(row.id),row]));for(const row of records)all.set(String(row.id),row);

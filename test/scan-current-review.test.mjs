@@ -10,7 +10,7 @@ const masters=[
 ];
 masters.push({id:6,master_name:'Equipment master',record_data:{category:'Equipment',door:'D19',currentLocation:'Sasti OC'}});
 const client={query:async sql=>({rows:sql.includes('FROM master_records')?masters:[]})};
-const draft={bookDate:'2026-10-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}],meterReviewFields:['openingHmr'],extractionReviewFields:['shiftHours']};
+const draft={bookDate:'2026-12-19',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}],meterReviewFields:['openingHmr'],extractionReviewFields:['shiftHours']};
 const card={id:'11111111-1111-4111-a111-111111111111',batch_id:'22222222-2222-4222-a222-222222222222',draft,page_count:1,expected_pages:1,confidence:null,review_note:'shiftHours: missing',raw_fields:{extractionWarning:'Gemini: check extracted values against the scan. shiftHours: missing printedTotalTrips: missing',tripGridIssues:['Trip 1: loading time unclear']}};
 
 test('complete current values clear historical OCR warnings without requiring a second confirmation',async()=>{

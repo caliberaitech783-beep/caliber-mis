@@ -1,8 +1,9 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
-const valid={doorText:'V321',bookDate:'2026-10-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
+const valid={doorText:'V321',bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
 test('automatic saving requires complete valid values while Work Order remains optional',()=>{
  const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
  assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
@@ -20,7 +21,7 @@ test('complete cards post independently without approval; retries, validation an
  let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
  const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
  const app=express();app.use(express.json());const session=(q,s,n)=>{if(!q.headers.authorization)return s.sendStatus(401);q.session={login:'test-admin'};n()},admin=(q,s,n)=>q.headers.authorization==='admin'?n():s.sendStatus(403);
- let pulseAvailable=true;let archives=0;const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readHours:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return {breakdownHours:0}},ocr:{close(){}},archiveSavedBatch:async(b,rows)=>{assert.ok(rows.every(r=>r.status==='posted'));archives++;return {status:'saved'}}});await service.start();t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ let pulseAvailable=true;let archives=0;const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readHours:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return {breakdownHours:0}},ocr:{close(){}},archiveSavedBatch:async(b,rows)=>{assert.ok(rows.every(r=>r.status==='posted'));archives++;return {status:'saved'}}});await service.start();await prepareVlbFixture(db,valid);t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(id,revision=1,auth='admin')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+id+'/auto-save',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({revision})});return {status:r.status,data:r.headers.get('content-type')?.includes('json')?await r.json():null}};
  const batch=randomUUID(),context={bookDate:valid.bookDate,location:valid.location,cardShift:valid.cardShift};await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Auto save test','test-admin']);

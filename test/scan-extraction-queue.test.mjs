@@ -1,14 +1,15 @@
+import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {SCAN_QUEUE_SCHEMA,claimNextScanCard,requestScanBatch} from '../scan-extraction-queue.mjs';
 async function setup(t){
  const db=new PGlite();t.after(()=>db.close());
- await db.exec(`CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,created_at TIMESTAMPTZ DEFAULT '2026-01-01T00:00:00Z');
+ await db.exec(`CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,created_at TIMESTAMPTZ DEFAULT '2026-12-01T00:00:00Z');
  CREATE TABLE mis_scan_cards(id TEXT PRIMARY KEY,batch_id TEXT,status TEXT,created_at TIMESTAMPTZ,ordinal INTEGER,raw_fields JSONB DEFAULT '{}');
  INSERT INTO mis_scan_batches(id) VALUES('old'),('fresh'),('other');`);
- await db.exec(SCAN_QUEUE_SCHEMA);
- const add=async(id,batch,ordinal,raw={},status='queued')=>db.query('INSERT INTO mis_scan_cards(id,batch_id,status,created_at,ordinal,raw_fields) VALUES($1,$2,$3,$4,$5,$6)',[id,batch,status,'2026-01-01T00:00:00Z',ordinal,JSON.stringify(raw)]);
+ await db.exec(SCAN_QUEUE_SCHEMA);await extendOperationalScanFixture(db);
+ const add=async(id,batch,ordinal,raw={},status='queued')=>db.query('INSERT INTO mis_scan_cards(id,batch_id,status,created_at,ordinal,raw_fields) VALUES($1,$2,$3,$4,$5,$6)',[id,batch,status,'2026-12-01T00:00:00Z',ordinal,JSON.stringify(raw)]);
  return {db,add,claim:async()=> (await claimNextScanCard(db)).rows[0]};
 }
 test('fresh upload starts ahead of a backlog of automatic equipment-number rereads',async t=>{

@@ -7,9 +7,9 @@ import {registerVlbBatches} from '../vlb-batches.mjs';
 import {vlbBatchName,vlbBatchSelection} from '../vlb-batch-format.mjs';
 
 test('batch format uses site, ordinal date, shift and padded sequence',()=>{
- assert.equal(vlbBatchName({site:'Sasti OC',date:'2026-10-30',shift:'I'},1),'CMLL/SASTI OC/30TH -OCT-26/S1/B01');
- for(const [day,suffix] of [[1,'ST'],[2,'ND'],[3,'RD'],[11,'TH'],[12,'TH'],[13,'TH'],[21,'ST'],[22,'ND'],[23,'RD'],[31,'ST']])assert.match(vlbBatchName({site:'Sasti OC',date:'2026-10-'+String(day).padStart(2,'0'),shift:'Shift B'},100),new RegExp('/'+day+suffix+' -OCT-26/S2/B100$'));
- for(const patch of [{date:'2026-02-30'},{date:''},{site:''},{shift:'S4'}])assert.throws(()=>vlbBatchSelection({site:'Sasti OC',date:'2026-10-30',shift:'S1',...patch}));
+ assert.equal(vlbBatchName({site:'Sasti OC',date:'2026-12-30',shift:'I'},1),'CMLL/SASTI OC/30TH -DEC-26/S1/B01');
+ for(const [day,suffix] of [[1,'ST'],[2,'ND'],[3,'RD'],[11,'TH'],[12,'TH'],[13,'TH'],[21,'ST'],[22,'ND'],[23,'RD'],[31,'ST']])assert.match(vlbBatchName({site:'Sasti OC',date:'2026-12-'+String(day).padStart(2,'0'),shift:'Shift B'},100),new RegExp('/'+day+suffix+' -DEC-26/S2/B100$'));
+ for(const patch of [{date:'2026-02-30'},{date:''},{site:''},{shift:'S4'}])assert.throws(()=>vlbBatchSelection({site:'Sasti OC',date:'2026-12-30',shift:'S1',...patch}));
 });
 
 test('batch APIs include every matching saved source, remain open until closed, retain snapshots and enforce authorization',async t=>{
@@ -24,19 +24,19 @@ test('batch APIs include every matching saved source, remain open until closed, 
  app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(route='',method='GET',body,user='alice')=>{const response=await fetch(`http://127.0.0.1:${server.address().port}/api/vlb-batches${route}`,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
- const add=async({site='Sasti OC',date='2026-10-30',shift='S1',kind='vehicle',deleted=false,scan=false,scanEntry}={})=>(await db.query('INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,created_by,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[randomUUID(),kind,site,date,JSON.stringify({location:site,bookDate:date,bookShiftCode:shift,door:'V07',scanCardId:scan?randomUUID():undefined,scanBatchId:scanEntry,aFormNo:'CARD1'}),'another-user',deleted?new Date():null])).rows[0].id;
- const selection={site:'Sasti OC',date:'2026-10-30',shift:'S1'},preview='/preview?'+new URLSearchParams(selection);
+ const add=async({site='Sasti OC',date='2026-12-30',shift='S1',kind='vehicle',deleted=false,scan=false,scanEntry}={})=>(await db.query('INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,created_by,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[randomUUID(),kind,site,date,JSON.stringify({location:site,bookDate:date,bookShiftCode:shift,door:'V07',scanCardId:scan?randomUUID():undefined,scanBatchId:scanEntry,aFormNo:'CARD1'}),'another-user',deleted?new Date():null])).rows[0].id;
+ const selection={site:'Sasti OC',date:'2026-12-30',shift:'S1'},preview='/preview?'+new URLSearchParams(selection);
  assert.equal((await call('', 'GET',undefined,'')).status,401);
  assert.equal((await call('', 'GET',undefined,'denied')).status,403);
  assert.equal((await call(preview,'GET',undefined,'restricted')).status,403);
  const scanEntries=Array.from({length:4},()=>randomUUID());const ids=[];for(let i=0;i<130;i++)ids.push(await add({site:i%2?'Sasti OB':'Sasti OC',scan:true,scanEntry:scanEntries[Math.floor(i/40)]}));await add();
- await add({kind:'equipment'});await add({site:'Jayant OC'});await add({date:'2026-10-29'});await add({deleted:true});const otherShift=await add({shift:'S2'});
- const before=await call(preview);assert.equal(before.status,200);assert.equal(before.data.records.length,131);assert.equal(before.data.name,'CMLL/SASTI OC/30TH -OCT-26/S1/B01');
+ await add({kind:'equipment'});await add({site:'Jayant OC'});await add({date:'2026-12-29'});await add({deleted:true});const otherShift=await add({shift:'S2'});
+ const before=await call(preview);assert.equal(before.status,200);assert.equal(before.data.records.length,131);assert.equal(before.data.name,'CMLL/SASTI OC/30TH -DEC-26/S1/B01');
  assert.deepEqual(scanEntries.map(id=>before.data.records.filter(r=>r.data.scanBatchId===id).length),[40,40,40,10]);
  assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
  const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,131);
- const otherScopePreview=await call('/preview?'+new URLSearchParams({...selection,date:'2026-10-29',shift:'S2'}));assert.equal(otherScopePreview.data.siteOpenBatch.id,created.data.id);
- assert.equal((await call('','POST',{...selection,date:'2026-10-29',shift:'S2',requestKey:randomUUID()},'bob')).status,409,'another user cannot create a different date or shift while this site is open');
+ const otherScopePreview=await call('/preview?'+new URLSearchParams({...selection,date:'2026-12-29',shift:'S2'}));assert.equal(otherScopePreview.data.siteOpenBatch.id,created.data.id);
+ assert.equal((await call('','POST',{...selection,date:'2026-12-29',shift:'S2',requestKey:randomUUID()},'bob')).status,409,'another user cannot create a different date or shift while this site is open');
  assert.equal((await call(preview)).data.records.length,0);
  assert.equal((await call('','POST',body)).data.id,created.data.id);
  assert.equal((await call('','POST',{...body,shift:'S2'})).status,409);
@@ -47,7 +47,7 @@ test('batch APIs include every matching saved source, remain open until closed, 
  await db.query("UPDATE mis_log_books SET data=data||'{\"door\":\"CHANGED\"}'::jsonb WHERE id=$1",[ids[0]]);
  assert.equal((await call('/'+created.data.id)).data.records[0].data.door,'V07');
  const closed=await call('/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200);assert.ok(closed.data.closed_at);assert.equal(closed.data.entry_count,131);
- assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-10-29',shift:'S2'}))).data.siteOpenBatch,null);
+ assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-12-29',shift:'S2'}))).data.siteOpenBatch,null);
  assert.equal((await call('/'+created.data.id+'/close','POST',{})).data.closed_at,closed.data.closed_at);
  assert.equal((await call('')).data.openBatch,null);
  assert.equal((await call('','POST',{...selection,requestKey:randomUUID()})).status,409);

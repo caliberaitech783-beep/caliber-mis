@@ -6,18 +6,18 @@ import {randomUUID} from 'node:crypto';
 import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate,scanContextSelectionChanged} from '../scan-batch-context.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
-const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'};
+const context={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('scan selection requires a real date, site and marked shift and never trusts confirmed flags',()=>{
  for(const value of [null,{}, {...context,bookDate:'2026-02-30'},{...context,bookDate:'today'},{...context,location:''},{...context,cardShift:'bad'}])assert.throws(()=>parseScanContext(value));
  for(const key of ['bookDate','location','cardShift'])assert.equal(scanContextReady({...context,[key]:''}),false);assert.equal(scanContextReady(context),true);
  assert.deepEqual(parseScanContext({...context,confirmed:true}),{...context,confirmed:false,cancelled:false});
  assert.deepEqual(scanContextIssues(context,{...context,location:'Sasti OB'}),[]);
  assert.equal(scanContextIssues(context,{}).length,3);
- for(const [key,value] of [['bookDate','2026-10-29'],['location','Other site'],['cardShift','Night']])assert.equal(scanContextIssues(context,{...context,[key]:value}).length,1);
+ for(const [key,value] of [['bookDate','2026-12-29'],['location','Other site'],['cardShift','Night']])assert.equal(scanContextIssues(context,{...context,[key]:value}).length,1);
  assert.equal(scanContextGate(null,[]),null);
  assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{}}).length,3,'manually filled values cannot substitute for an unreadable original header');
  assert.match(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:context,locationReadings:[]}}).join(' '),/Site: unreadable/,'a master-derived site is not proof of the site printed on the card');
- assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,bookDate:'2026-10-29'}}}).length,1,'editing a different card to match does not accept its original');
+ assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,bookDate:'2026-12-29'}}}).length,1,'editing a different card to match does not accept its original');
  assert.equal(scanContextGate({...context,confirmed:true},[{status:'reading'}]).blocked,true);
  assert.equal(scanContextGate({...context,confirmed:true,cancelled:true},[]).blocked,true);
 });
@@ -26,12 +26,12 @@ test('setup changes cannot silently reuse a different entry selection',()=>{
  const batch={id:'entry',kind:'vehicle',expected_context:context};
  assert.equal(scanContextSelectionChanged(batch,context),false);
  assert.equal(scanContextSelectionChanged({...batch,expected_context:null},context),true);
- for(const [key,value] of [['bookDate','2026-10-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanContextSelectionChanged(batch,{...context,[key]:value}),true);
+ for(const [key,value] of [['bookDate','2026-12-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanContextSelectionChanged(batch,{...context,[key]:value}),true);
  assert.equal(scanContextSelectionChanged({...batch,expected_context:{...context,location:'Jayant OC'}},{...context,location:'Jayant OB'}),false);
  const jayant={...context,location:'Jayant OC'},jayantCard={...context,location:'Jayant OB'};
  assert.deepEqual(scanCardContextIssues(jayant,{draft:jayantCard,raw_fields:{extractionDraft:jayantCard,locationReadings:['Jayant OC']}}),[],'Jayant OC and OB remain the same site');
  assert.equal(scanContextSelectionChanged(batch,{...context,bookDate:''}),true,'partially edited setup must pause saving too');
- for(const [key,value] of [['bookDate','2026-10-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,[key]:value}}}).length,1);
+ for(const [key,value] of [['bookDate','2026-12-29'],['location','Jayant OC'],['cardShift','II']])assert.equal(scanCardContextIssues(context,{draft:context,raw_fields:{extractionDraft:{...context,[key]:value}}}).length,1);
 });
 test('server blocks saving before batch check, checks exact removal revisions and retains original wrong scans',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
@@ -45,13 +45,13 @@ test('server blocks saving before batch check, checks exact removal revisions an
  assert.equal((await call('/api/scan-batches',{kind:'vehicle',expectedContext:{}})).status,400);
  const batch=(await call('/api/scan-batches',{kind:'vehicle',expectedContext:{...context,confirmed:true}})).data.id;
  const good=randomUUID(),bad=randomUUID(),image=Buffer.from('original-scan');
- for(const [id,ordinal,draft] of [[good,1,context],[bad,2,{...context,bookDate:'2026-10-29'}]])await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,batch,ordinal,'card '+ordinal,image,id,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);
+ for(const [id,ordinal,draft] of [[good,1,context],[bad,2,{...context,bookDate:'2026-12-29'}]])await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,batch,ordinal,'card '+ordinal,image,id,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);
  const url='/api/scan-batches/'+batch+'/validate-context';
  const visible=await (await fetch(root+'/api/scan-batches/'+batch)).json();assert.deepEqual(visible.cards.map(c=>c.id),[good,bad]);assert.equal(visible.contextGate.mismatches[0].id,bad);assert.match(visible.cards[1].context_mismatch.join(' '),/Date:/);
  const blockedReport=await fetch(root+'/api/scan-batches/'+batch+'/report');assert.equal(blockedReport.status,409);await blockedReport.body.cancel();
  assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409);
  assert.equal((await call(url,{action:'proceed'})).status,409);
- await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb,raw_fields=$3::jsonb WHERE id=$1',[bad,JSON.stringify(context),JSON.stringify({extractionDraft:{...context,bookDate:'2026-10-29'}})]);assert.equal((await call(url,{action:'proceed'})).status,409,'changing the wrong card header cannot pass the original-card check');
+ await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb,raw_fields=$3::jsonb WHERE id=$1',[bad,JSON.stringify(context),JSON.stringify({extractionDraft:{...context,bookDate:'2026-12-29'}})]);assert.equal((await call(url,{action:'proceed'})).status,409,'changing the wrong card header cannot pass the original-card check');
  await db.query("UPDATE mis_scan_cards SET status='reading' WHERE id=$1",[bad]);assert.equal((await call(url,{action:'discard',cards:[{id:bad,revision:1}]})).status,409);await db.query("UPDATE mis_scan_cards SET status='review' WHERE id=$1",[bad]);
  assert.equal((await call(url,{action:'discard',cards:[{id:bad,revision:99}]})).status,409);
  assert.equal((await call(url,{action:'discard',cards:[{id:good,revision:1}]})).status,409);
@@ -62,7 +62,7 @@ test('server blocks saving before batch check, checks exact removal revisions an
  await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[bad]);
  await call(url,{action:'proceed'});
  let stored=(await db.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].expected_context;assert.equal(scanContextGate(stored,[{id:good,status:'review',draft:context,raw_fields:{extractionDraft:context}}]).blocked,false);
- for(const [key,value] of [['bookDate','2026-10-29'],['location','Other site'],['cardShift','Night']]){await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify({...context,[key]:value})]);assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409,'wrong '+key+' cannot save after approval');}
+ for(const [key,value] of [['bookDate','2026-12-29'],['location','Other site'],['cardShift','Night']]){await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify({...context,[key]:value})]);assert.equal((await call('/api/scan-cards/'+good+'/auto-save',{revision:1})).status,409,'wrong '+key+' cannot save after approval');}
  await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify(context)]);assert.equal((await call(url,{action:'proceed'})).status,200);
  assert.equal((await call(url,{action:'cancel'})).status,200);
  assert.equal((await call(url,{action:'proceed'})).status,409);
@@ -71,7 +71,7 @@ test('server blocks saving before batch check, checks exact removal revisions an
  // Legacy entries used to skip context checks entirely, even after manual edits.
  const legacy=randomUUID(),legacyGood=randomUUID(),legacyWrong=randomUUID();
  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,'vehicle','Legacy entry','test-admin')",[legacy]);
- const wrongOriginal={...context,bookDate:'2026-10-29',location:'Jayant OC',cardShift:'II'};
+ const wrongOriginal={...context,bookDate:'2026-12-29',location:'Jayant OC',cardShift:'II'};
  for(const [id,ordinal,original] of [[legacyGood,1,context],[legacyWrong,2,wrongOriginal]])await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,legacy,ordinal,'legacy '+ordinal,image,id,JSON.stringify(context),JSON.stringify({extractionDraft:original})]);
  assert.equal((await call('/api/scan-cards/'+legacyGood+'/auto-save',{revision:1})).status,409);
  const legacyApproval=await fetch(root+'/api/scan-cards/'+legacyGood,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'approve',checked:true,draft:context})});assert.equal(legacyApproval.status,409);assert.match((await legacyApproval.json()).error,/Scan setup/);

@@ -1,3 +1,9 @@
+## Operational start: 1 November 2026
+
+MIS operational entry, card lookup, reports, scan queues, duplicate checks and previous-shift links exclude dates before 2026-11-01 for every role. Earlier dates are rejected by manual, scanner and batch APIs, and by the date controls. Historical rows, scans and batches remain stored; this change performs no data cleanup.
+
+VLB saves require an active batch for the same site/date/shift and attach the saved record in the same transaction. Saved VLB navigation opens Site batches. Historical open batches do not occupy current operational slots. New batches retain creator attribution in creator_login, using the serialized user/site checks rather than historical created_by slots. Archiving a batch preserves cards; record deletion remains a separate approval and WhatsApp OTP flow.
+
 # Caliber Pulse project workflow
 
 ## Saved VLB batches and card numbering

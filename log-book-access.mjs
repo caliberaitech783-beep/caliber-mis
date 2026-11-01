@@ -20,7 +20,7 @@ export function requireLogBookSite(scope,site){
 }
 export async function filterLogBookSites(client,scope){
   if(scope.sites===null)return null;
-  const {rows}=await client.query('SELECT DISTINCT site FROM mis_log_books');
+  const {rows}=await client.query('SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$');
   return rows.map(row=>row.site).filter(site=>siteAllowed(scope,site));
 }
 

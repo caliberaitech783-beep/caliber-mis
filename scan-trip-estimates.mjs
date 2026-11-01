@@ -1,3 +1,4 @@
+import {operationalDate} from './operational-start.mjs';
 import {validScannedTime,normalizeScannedTime} from './scan-clock.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 
@@ -55,8 +56,8 @@ export async function fillScanTripEstimates(client,input={},raw={}){
  let next=estimateMissingTripTimes(input,raw);
  const needsMachine=(next.trips||[]).some(row=>(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
  const previous=previousScanShift(next);
- if(!needsMachine||!previous||!next.assetId||!next.location)return next;
- const records=(await client.query(`SELECT id,book_no,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1 AND site=$2 AND book_date=$3 AND data->>'cardShift'=$4 ORDER BY id DESC`,[next.assetId,next.location,previous.bookDate,previous.cardShift])).rows;
+ if(!needsMachine||!previous||!operationalDate(previous.bookDate)||!next.assetId||!next.location)return next;
+ const records=(await client.query(`SELECT id,book_no,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND asset_id=$1 AND site=$2 AND book_date=$3 AND data->>'cardShift'=$4 ORDER BY id DESC`,[next.assetId,next.location,previous.bookDate,previous.cardShift])).rows;
  return completePreviousShiftMachines(next,records);
 }
 

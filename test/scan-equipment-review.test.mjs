@@ -1,3 +1,4 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
 test('equipment review blocks posting, preserves scans, reuses the existing transfer path and rejects only the selected whole card',async t=>{
@@ -6,8 +7,8 @@ test('equipment review blocks posting, preserves scans, reuses the existing tran
  let transferred=false,refreshes=0;const fleet=()=>[{id:1,door:'V1',currentLocation:'Sasti OC'},{id:2,door:'E5',currentLocation:transferred?'Sasti OC':'Majri OC'}];
  const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:'test-admin'};next()};
  const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,readPulseFleet:async()=>fleet(),refreshPulseFleet:async()=>refreshes++,ocr:{recognize:async()=>({text:''}),close(){}}});await service.start();await service.stop();app.use((e,req,res,next)=>res.status(e.status||500).json({error:e.message}));const server=app.listen(0);t.after(()=>new Promise(r=>server.close(r)));const root='http://127.0.0.1:'+server.address().port;
- const call=async(path,body)=>{const r=await fetch(root+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
- const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'};const batch=(await call('/api/scan-batches',{kind:'vehicle',expectedContext:context})).data.id;
+ const call=async(path,body)=>{if(body?.kind==='vehicle'&&body.expectedContext)await prepareVlbFixture(db,body.expectedContext);const r=await fetch(root+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+ const context={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};const batch=(await call('/api/scan-batches',{kind:'vehicle',expectedContext:context})).data.id;
  const first=randomUUID(),second=randomUUID(),image=Buffer.from('retained original');
  for(const [id,n,machine] of [[first,1,'E5'],[second,2,'E999']]){const draft={...context,doorText:'V1',trips:[{equipmentName:machine,tripCount:1}],scanMachineSummary:[{equipmentName:machine,tripCount:1}]};await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'review')",[id,batch,n,'Card '+n,image,id,JSON.stringify(draft),JSON.stringify({extractionDraft:draft,locationReadings:['Sasti OC']})]);}
  const action=(id,value,revision)=>call('/api/scan-cards/'+id+'/fleet-review',{action:value,revision});
@@ -23,5 +24,5 @@ test('equipment review blocks posting, preserves scans, reuses the existing tran
  assert.equal((await action(second,'delete',1)).status,409,'stale deletion cannot purge scans');
  const deleted=await action(second,'delete',2);assert.equal(deleted.status,200);assert.equal(deleted.data.deleted,true);
  const removed=(await db.query('SELECT image,draft,raw_fields FROM mis_scan_cards WHERE id=$1',[second])).rows[0];assert.equal(removed.image,null);assert.deepEqual(removed.draft,{});assert.ok(removed.raw_fields.fleetRejection);assert.deepEqual(Buffer.from((await db.query('SELECT image FROM mis_scan_cards WHERE id=$1',[first])).rows[0].image),image);
- const wrongDate={...rows[0].draft,bookDate:'2026-10-29'};await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[first,JSON.stringify(wrongDate)]);const mismatch=await action(first,'recheck',2);assert.equal(mismatch.status,409);assert.match(mismatch.data.error,/date, site and shift mismatch/);
+ const wrongDate={...rows[0].draft,bookDate:'2026-12-29'};await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[first,JSON.stringify(wrongDate)]);const mismatch=await action(first,'recheck',2);assert.equal(mismatch.status,409);assert.match(mismatch.data.error,/date, site and shift mismatch/);
 });
