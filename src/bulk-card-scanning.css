@@ -221,6 +221,22 @@
 .scan-extraction-status [role=timer]{font-variant-numeric:tabular-nums;font-size:17px;color:#522e90}
 .scan-review-compact .scan-extraction-status{margin:0;padding:5px 10px;font-size:12px}
 
+/* Emphasize the live upload/extraction status at 150% of its normal size. */
+:root .scan-page p.scan-batch-progress-active{font-size:1.5em!important;font-weight:800;line-height:1.45}
+.scan-page .scan-upload-status{gap:15px;margin-bottom:18px}
+.scan-page .scan-upload-timer,.scan-page .scan-upload-count{box-sizing:border-box;max-width:100%;min-width:0;padding:18px 27px;border:2px solid #047857;border-radius:14px;font-size:1.5em;font-weight:800;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;background:#047857;box-shadow:0 6px 20px #04785726}
+.scan-page .scan-extraction-status.scan-progress-active{gap:15px;margin:18px 0;padding:15px 21px;border:2px solid #b69bd5;border-radius:12px;background:#f5efff;font-size:19.5px;font-weight:800;line-height:1.5;overflow-wrap:anywhere}
+.scan-page .scan-extraction-status.scan-progress-active>strong{font-weight:800;min-width:0}
+:root .scan-page .scan-extraction-status.scan-progress-active>span{font-size:inherit!important;font-weight:800}
+.scan-page .scan-extraction-status.scan-progress-active [role=timer]{font-size:25.5px;font-weight:800;white-space:nowrap}
+/* Deliberate exception to no-motion.css, limited to running progress only. */
+:root .scan-page .scan-upload-status>:is(.scan-upload-timer,.scan-upload-count){animation:scan-upload-attention 1.8s ease-in-out infinite!important}
+:root .scan-page .scan-extraction-status.scan-progress-active{animation:scan-extraction-attention 1.8s ease-in-out infinite!important}
+@keyframes scan-upload-attention{0%,100%{background:#047857;box-shadow:0 0 0 0 #10b98100}50%{background:#065f46;box-shadow:0 0 0 5px #10b98133}}
+@keyframes scan-extraction-attention{0%,100%{background:#f5efff;border-color:#b69bd5;box-shadow:0 0 0 0 #8b5cf600}50%{background:#e9dcfa;border-color:#8053b1;box-shadow:0 0 0 4px #8b5cf622}}
+@media(max-width:650px){.scan-page .scan-upload-status>:is(.scan-upload-timer,.scan-upload-count){flex:1 1 280px;padding:18px}.scan-page .scan-extraction-status.scan-progress-active{padding:15px}}
+@media(prefers-reduced-motion:reduce){:root .scan-page .scan-upload-status>:is(.scan-upload-timer,.scan-upload-count),:root .scan-page .scan-extraction-status.scan-progress-active{animation:none!important}}
+
 /* Compact toolbars on the full-form card review; keep scrolling entry fields. */
 .scan-review-page>.scan-hero{display:none}
 .scan-review-page .scan-selected-card>.scan-source{top:16px}
@@ -298,3 +314,4 @@
 
 .scan-input-panels .scan-input-card>button.scan-help-trigger{grid-column:1/-1;grid-row:auto;justify-self:start;padding:0;border:0;border-radius:0;background:transparent;line-height:20px;text-decoration:underline;color:var(--scan-primary)}
 .scan-connection-help-dialog{width:min(480px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;box-sizing:border-box;padding:22px;border:1px solid #d8cce7;border-radius:12px;background:#fff;color:#251b30;box-shadow:0 18px 60px #251b3033}.scan-connection-help-dialog::backdrop{background:#20152f66}.scan-page .scan-connection-help-dialog h2{font-size:20px;line-height:1.3;margin:0 0 14px}.scan-help-languages{display:flex;gap:8px;margin-bottom:14px}.scan-page .scan-help-languages button{font-size:14px;padding:7px 16px}.scan-page .scan-help-languages button[aria-pressed=true],.scan-page .scan-connection-help-dialog .scan-help-ok{background:var(--scan-primary);border-color:var(--scan-primary);color:#fff}.scan-page .scan-connection-help-dialog ol{padding-left:22px;margin:0}.scan-page .scan-connection-help-dialog li,.scan-page .scan-connection-help-dialog p{font-size:14px;line-height:1.6}.scan-page .scan-connection-help-dialog li+li{margin-top:8px}.scan-page .scan-connection-help-dialog p{margin:14px 0}.scan-page .scan-connection-help-dialog p button{font-size:13px;padding:0;border:0;text-decoration:underline;background:transparent;color:var(--scan-primary)}.scan-connection-help-dialog footer{display:flex;justify-content:flex-end;margin-top:18px}.scan-page .scan-connection-help-dialog .scan-help-ok{min-width:80px;font-size:14px;padding:8px 20px}
+
