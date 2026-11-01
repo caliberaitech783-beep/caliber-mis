@@ -57,7 +57,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
   const call=async(path,method='GET',body,auth='site')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
   const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
-  for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,true);assert.deepEqual(scanOptions.data.sites,['Jayant OC','Sasti OC']);assert.equal(scanOptions.data.assets.length,3);}
+  for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,true);assert.deepEqual(scanOptions.data.sites,['Dhoptala OC (2nd)','Dudhichua East OC','Dudhichua OC','Gauri Pauni OC (2nd)','Jayant OC','Lalpeth OC','Majri OC','Sasti OC']);assert.equal(scanOptions.data.assets.length,3);}
   const options=await call('/api/log-books/options');assert.equal(options.data.canSelectSite,false);assert.deepEqual(options.data.sites,['Sasti OC']);
   for(const key of ['assets','employees','shifts','workOrders'])assert.ok(options.data[key].every(row=>row.site==='Sasti OC'),key);
   assert.equal(options.data.employees.length,1);
