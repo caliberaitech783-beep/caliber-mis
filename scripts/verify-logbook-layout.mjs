@@ -48,7 +48,7 @@ try{
   const page=await browser.newPage({viewport:{width,height:1000},locale:'en-IN'});
   const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(width,mode,error.message)});
   await page.goto('http://127.0.0.1:'+server.address().port+'/?mode='+mode);
-  await page.waitForSelector(mode.startsWith('manual')?'#logbook-entry-form':mode==='saved'?'.saved-logbook-values':'#scan-entry-fields');
+  await page.waitForSelector(mode.startsWith('manual')?'#logbook-entry-form':mode==='saved'?'.saved-logbook-values':'#scan-entry-fields',{state:'attached'});
   if(mode.startsWith('manual'))await page.waitForFunction(()=>document.querySelector('.logbook-book-number')?.textContent.includes('/030'));
   await page.evaluate(()=>document.fonts.ready);
   const result=await page.evaluate(({mode,width})=>{
@@ -57,6 +57,7 @@ try{
    const issues=[];
    if(document.documentElement.scrollWidth>width+2)issues.push('Page overflow '+document.documentElement.scrollWidth+' > '+width);
    const labels=[...document.querySelectorAll('#scan-entry-fields label > span,#logbook-entry-form .logbook-field > span,.saved-logbook-values dt')].filter(visible);
+   if(labels.length<5)issues.push('Expected visible form/detail labels, found '+labels.length);
    for(const e of labels){const s=getComputedStyle(e);if(parseFloat(s.fontSize)<16||Number(s.fontWeight)<700)issues.push('Small/nonbold label '+e.textContent+' '+s.fontSize+'/'+s.fontWeight);}
    for(const e of [...document.querySelectorAll('#scan-entry-fields input,#scan-entry-fields output,#logbook-entry-form .logbook-field input')].filter(visible)){
     const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<20)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
@@ -70,11 +71,14 @@ try{
      if(document.querySelector('.scan-draft-sheet').clientWidth>800){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
     }
    }
-   return {width,mode,issues,labelCount:labels.length};
+   const root=document.querySelector('#logbook-entry-form')||document.querySelector('#scan-entry-fields')||document.querySelector('.saved-logbook-values');
+   const layout=[];for(let e=root;e&&layout.length<5;e=e.parentElement){const r=e.getBoundingClientRect(),s=getComputedStyle(e);layout.push({tag:e.tagName,cls:e.className,display:s.display,visibility:s.visibility,width:r.width,height:r.height});}
+   return {width,mode,issues,labelCount:labels.length,layout};
   },{mode,width});
   result.issues.push(...errors);
   findings.push(result);
-  if([390,840,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
+  writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
+  if([320,390,840,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
   if(mode==='scan'){
    await page.getByRole('button',{name:'Remove trip 1',exact:true}).click();
    assert.equal(await page.locator('.scan-trip-entry').count(),1,'Delete removes only the selected row');
