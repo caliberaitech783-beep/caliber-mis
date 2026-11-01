@@ -21,8 +21,8 @@ async function component(file,name,scope={},initial=[]){
 test('all operational reports use shared controls with full filtered data, preserving zero and unavailable values',async()=>{
   const records=Array.from({length:137},(_,i)=>({id:i,book_no:'BOOK-'+i,book_type:i===136?'equipment':'vehicle',data:{bookDate:'2026-12-28',location:i===135?'Other':'Site A',door:'V'+i,assetId:i,shiftName:'Day',shiftHours:8,openingHmr:0,closingHmr:0,openingKmr:0,closingKmr:10,breakdownHours:null,trips:[{equipmentName:'L1',tripCount:1,loadingTime:'08:00',unloadingTime:'08:10'}]}}));
   const filters={from:'2026-12-01',to:'2026-12-31',site:'Site A',shift:'',asset:'',employee:'',workOrder:'',loading:''};
-  const data={records},render=await component('operations-reports.jsx','OperationsReports',operations,[filters,data,'',false,0,false]);
-  for(const {id} of operations.operationReports){
+  const data={records},render=await component('operations-reports.jsx','SavedOperationReports',operations,[filters,data,'',false,0,false]);
+  for(const {id} of operations.operationReports.filter(r=>!['manpower','employee','ot'].includes(r.id))){
     const tree=render({session:{token:'test'},reportId:id}),sections=nodes(tree,ReportSection);
     assert.equal(sections.length,1,id);
     const expected=operations.buildOperationReport(id,operations.filterRecords(operations.normalise(records),filters),{...data,filters,monthly:false});
@@ -105,4 +105,25 @@ test('coloured card links open the exact card and cannot discard unsaved work',a
  const batch={id:'batch',kind:'vehicle'},cards=[{id:'card7',batch_id:'batch',ordinal:7,status:'error',error:'Extraction failed'}];let selected='',prevented=false;
  let tree=render({batch,cards,onReviewCard:id=>selected=id});let link=nodes(tree,'a')[0];assert.match(link.props.className,/scan-report-error/);assert.match(link.props.href,/card=card7/);assert.match(link.props['aria-label'],/card 7/);link.props.onClick({preventDefault(){prevented=true}});assert.equal(selected,'card7');assert.equal(prevented,true);
  selected='';tree=render({batch,cards,reviewDisabled:true,onReviewCard:id=>selected=id});nodes(tree,'a')[0].props.onClick({preventDefault(){}});assert.equal(selected,'');
+});
+
+
+test('manpower views route to their dedicated report with shared export controls',async()=>{
+ const ManpowerReports=()=>null,render=await component('operations-reports.jsx','OperationsReports',{ManpowerReports});
+ for(const reportId of ['manpower','employee','ot']){const tree=render({session:{token:'test'},reportId});assert.equal(tree.type,ManpowerReports);assert.equal(tree.props.reportId,reportId);assert.equal(tree.props.ReportSection,ReportSection);}
+});
+
+test('manpower reports export complete selected data, separate shift hours, and retain OT colours and reasons',async()=>{
+ const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
+ const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15}));
+ const payload={summary:rows,details:rows,performance:rows,ot:rows,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
+ const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]);
+ for(const reportId of ['manpower','employee','ot']){
+  const tree=render({session:{token:'test'},reportId,onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,reportId==='manpower'?3:2);
+  for(const section of sections.filter(n=>n.props.category!=='manpower-review'))assert.equal(section.props.rows.length,137,'export receives every matching row');
+  if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
+  if(reportId==='ot'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(sections[0].props.rowClassName(rows[0]),'mp-ot-red');}
+ }
+ const tree=render({session:{token:'test'},reportId:'employee',onSelect:()=>{}});nodes(tree,'input').find(n=>n.props.type==='date').props.onChange({target:{value:'2026-11-09'}});
+ assert.equal(nodes(render({session:{token:'test'},reportId:'employee',onSelect:()=>{}}),ReportSection).length,0,'changed filters cannot export stale results');
 });
