@@ -9,13 +9,13 @@ import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed} from '../mis-application-access.mjs';
 
-test('Saved VLB/ELB deep links preserve separate types and inherit the existing log-book permission',()=>{
-  for(const [slug,page,permission] of [['vlb-saved','Saved VLB','Vehicle Log Book'],['elb-saved','Saved ELB','Equipment Log Book']]){
+test('Legacy Saved VLB links redirect to batches while ELB keeps its own permission',()=>{
+  for(const [slug,page,permission] of [['vlb-saved','Create VLB Batch','Vehicle Log Book'],['elb-saved','Saved ELB','Equipment Log Book']]){
     assert.equal(requestedMisPage('?page='+slug),page);
-    assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=trip-scan&batch=test&card=old',page),'/?page='+slug);
+    assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=trip-scan&batch=test&card=old',page),'/?page='+(slug==='vlb-saved'?'vlb-create-batch':slug));
     const session={permissions:{separateMisCredentials:true,misDesktopAccess:[permission]}};
     assert.equal(misPageAllowed(session,page,'desktop'),true);
-    assert.equal(misPageAllowed(session,page==='Saved VLB'?'Saved ELB':'Saved VLB','desktop'),false);
+    assert.equal(misPageAllowed(session,page==='Create VLB Batch'?'Saved ELB':'Create VLB Batch','desktop'),false);
   }
 });
 
