@@ -7,7 +7,6 @@ export default function MisDashboard({title='MIS dashboard'}) {
         <span className="erp-brand-icon"><img src="/pulse-ii-icon.png" alt="Caliber Pulse-II" /></span>
         <div>
           <h1>{title==='MIS dashboard'?'Caliber Pulse-II':title}</h1>
-          {title==='MIS dashboard'&&<p className="erp-nexus-tagline">All Departments Linked In One Place</p>}
         </div>
       </header>
       {title!=='MIS dashboard'&&<div className="erp-logbook-workspace" aria-label={`${title} workspace`} />}
