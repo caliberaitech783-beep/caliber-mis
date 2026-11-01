@@ -1,3 +1,4 @@
+import {validateTripEquipment} from './trip-equipment-validation.mjs';
 import {normalizeManualDetails} from './manual-log-book-details.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
@@ -11,7 +12,7 @@ import {savedLogBookFilters} from './saved-log-book-filters.mjs';
 import {scanImageMime} from './scan-image-format.mjs';
 import {employeeIdentity} from './employee-identity.mjs';
 import {logBookSiteScope,manualLogBookLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
-import {shiftMeterIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
+import {shiftMeterIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {summarizePulseHours} from './log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -59,17 +60,17 @@ export function normalizeLogBook(kind,input={}){
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');
  const trips=kind==='vehicle'?(input.trips||[]).map((row,index)=>{
    if(!row||typeof row!=='object'||Array.isArray(row))fail('Invalid trip row.');
-   const equipmentName=kind==='vehicle'?machineLabel(text(row.equipmentName)):text(row.equipmentName);if(!equipmentName)fail(`Enter the loading equipment for trip row ${index+1}.`);
+   const equipmentName=text(row.equipmentName);if(!equipmentName)fail(`Enter the loading equipment for trip row ${index+1}.`);
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
  return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
    openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
-   cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({equipmentName:machineLabel(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
+   cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,
    totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+(timeMode==='without'||row.loadingTime&&row.unloadingTime?row.tripCount:0),0),
    workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
@@ -79,6 +80,11 @@ const woNames=['Work Order master','Work order master','Work Order Master','WO m
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
 export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false}={}){
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
+ if(kind==='vehicle'){
+ const assets=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)}));
+ const validation=validateTripEquipment(input,assets);if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
+ const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
+ }
  const data=normalizeLogBook(kind,input);
      const masters=(await client.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[data.assetId,data.employeeId,data.shiftId,...(input.workOrderId?[number(input.workOrderId,'Work Order',{integer:true})]:[])]])).rows;
      const asset=masters.find(row=>String(row.id)===String(data.assetId)&&row.master_name==='Equipment master')?.record_data;

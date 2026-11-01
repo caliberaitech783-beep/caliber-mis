@@ -1,3 +1,4 @@
+import {resolveTripEquipment} from './trip-equipment-validation.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 
@@ -9,7 +10,7 @@ export const VEHICLE_MACHINE_RULES=[
 ];
 export const EQUIPMENT_MACHINE_RULES=[
  {code:'VPC',label:'VPC',aliases:['V','VPC','VOLVO']},
- {code:'TPC',label:'TPC',aliases:['T','TPC','EICHER']},
+ {code:'TPC',label:'TPC',aliases:['T','TA','TATA','TPC','EICHER']},
  {code:'SPC',label:'SPC',aliases:['S','SPC','SCANIA']},
  {code:'LPC',label:'LPC',aliases:['L','LPC','HAULPAK','HAULPAK DUMPER']},
  {code:'D',label:'Dozer',aliases:['D','DOZER']},
@@ -76,6 +77,8 @@ export function normalizeScanEquipmentRows(input={},assets=[]){
 }
 export function scannedTripEquipmentRow(row={},assets=[],site='',version=2){
  const value=text(row.equipmentName),prior=row.equipmentNotation;
+ const locationMatch=resolveTripEquipment(row,assets,site);
+ if(!locationMatch.error&&/^(?:U|TA|TATA)[ ._/-]*[0-9]+$/i.test(value)){const record=assets.find(r=>String(r.id)===locationMatch.equipmentId);const resolved=record?resolvedMachineName(record):locationMatch.equipmentName;return {...row,...locationMatch,equipmentName:resolved,equipmentNotation:{original:row.originalEquipmentName||prior?.original||value,resolved}};}
  // A resolved master H door is Hydra, not fresh handwritten H shorthand.
  if(prior&&value===prior.resolved)return {...row,equipmentName:scannedEquipmentName(value,assets,site)};
  const lookup=tripBodyEquipmentReference(value,version);
