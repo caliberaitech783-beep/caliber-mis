@@ -22,7 +22,9 @@ export function resolveTripEquipment(row={},assets=[],location=''){
  if(parsed?.prefix==='U'&&equipment.some(r=>labels(r).some(v=>parse(v)?.prefix==='U')))return {error:'U cannot be interpreted as V: a U-type machine code exists in the master. Check the card.'};
  const family=parsed&&(parsed.prefix==='U'?'Vpc':families[parsed.prefix]);
  const matches=equipment.filter(r=>!r.sourceMissing&&canonicalSiteName(r.currentLocation||r.site||r.location)===site&&labels(r).some(v=>{const p=parse(v);if(parsed&&p)return parsed.number===p.number&&(!parsed.prefix||parsed.prefix===p.prefix||family&&families[p.prefix]===family);return key(v)===key(original);}));
- const unique=[...new Map(matches.map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
+ const selected=clean(row.equipmentId),selectedMatches=selected?matches.filter(r=>String(r.id)===selected):[];
+ // Retain a valid equipment identity independently of the vehicle door number.
+ const unique=[...new Map((selectedMatches.length?selectedMatches:matches).map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
  if(unique.length!==1)return {error:unique.length?'Multiple equipment records match '+original+' at '+location+'. Select the correct equipment.':original+' is not assigned to '+location+'. Check the machine and number.'};
  const record=unique[0],label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
  return {equipmentName:label?families[label.prefix]+' '+label.number:clean(labels(record)[0]),equipmentId:String(record.id),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original)};

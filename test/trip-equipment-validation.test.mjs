@@ -69,3 +69,24 @@ test('scan normalization and review accept U49 with real-style UP registrations'
  assert.deepEqual(result.issues,{});assert.equal(result.draft.trips[0].equipmentName,'Vpc 49');assert.equal(result.draft.scanMachineSummary[0].equipmentName,'Vpc 49');assert.equal(result.draft.trips[0].originalEquipmentName,'U49');
  const issues=scanFieldIssues(scan,'vehicle',{}, {assets:upRegistrationAssets});assert.deepEqual(Object.keys(issues).filter(k=>k.startsWith('trips.')||k.startsWith('scanMachineSummary')),[]);
 });
+
+test('same selected equipment supplies multiple vehicle door numbers despite matching master labels',()=>{
+ const master=[...assets,{id:6,kind:'equipment',door:'Vpc150',site:'Jayant'}];
+ for(const doorNo of ['V132','V133','V134']){
+  const result=validateTripEquipment({doorNo,location:'Jayant',trips:[{equipmentId:'1',equipmentName:'Vpc 150',tripCount:2},{equipmentId:'1',equipmentName:'V150',tripCount:1}],scanMachineSummary:[{equipmentId:'1',equipmentName:'Vpc 150',tripCount:3}]},master);
+  assert.deepEqual(result.issues,{});
+  assert.equal(result.draft.doorNo,doorNo);
+  assert.deepEqual(result.draft.trips.map(r=>r.equipmentId),['1','1']);
+  assert.equal(result.draft.scanMachineSummary[0].equipmentId,'1');
+  assert.deepEqual(validateTripEquipment(result.draft,master).issues,{});
+ }
+ assert.match(resolveTripEquipment({equipmentName:'Vpc150'},master,'Jayant').error,/Multiple equipment/);
+});
+
+test('selected equipment cannot bypass a changed label, location or missing master record',()=>{
+ const master=[...assets,{id:6,kind:'equipment',door:'Vpc150',site:'Jayant'}];
+ assert.equal(resolveTripEquipment({equipmentId:'1',equipmentName:'T20'},master,'Jayant').equipmentId,'2');
+ assert.ok(resolveTripEquipment({equipmentId:'1',equipmentName:'Vpc150'},master,'Other').error);
+ assert.ok(resolveTripEquipment({equipmentId:'999',equipmentName:'Vpc150'},master,'Jayant').error);
+ assert.ok(resolveTripEquipment({equipmentId:'1',equipmentName:'Vpc150'},master.map(r=>({...r,sourceMissing:true})),'Jayant').error);
+});
