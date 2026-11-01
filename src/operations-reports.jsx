@@ -1,9 +1,14 @@
 import SmartSelect from './smart-select.jsx';
+import ManpowerReports from './manpower-reports.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-export default function OperationsReports({session,reportId='daily',onSelect=()=>{},ReportSection}){
+export default function OperationsReports(props){
+ if(['manpower','employee','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
+ return <SavedOperationReports {...props}/>;
+}
+function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportSection}){
  const [filters,setFilters]=useState(()=>({from:today().slice(0,7)+'-01',to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),[monthly,setMonthly]=useState(false);
  const id=operationReports.some(r=>r.id===reportId)?reportId:'daily',definition=operationReports.find(r=>r.id===id);
@@ -26,3 +31,4 @@ export default function OperationsReports({session,reportId='daily',onSelect=()=
   {canExport&&<><p className="op-filter-summary">Filters: {Object.entries(effective).filter(([k,v])=>v&&!['from','to'].includes(k)).map(([k,v])=>k+': '+v).join(' · ')||'All sites, assets, shifts and employees'}</p><div className="op-totals"><span><b>{selected.length}</b> logbooks</span><span><b>{new Set(selected.map(r=>r.assetId)).size}</b> assets</span><span><b>{selected.reduce((s,r)=>s+r.tripsTotal,0)}</b> trips</span><span><b>{report.rows.length}</b> report rows</span></div>{requirements[id]&&<p className="op-notice"><b>Additional data required:</b> {requirements[id]}.</p>}{report.note&&<p className="op-notice">{report.note}</p>}{id==='scans'&&!data.scanConnected&&<p role="status">Scan data source is not available.</p>}<ReportSection key={id} title={definition.title+' · '+filters.from+' to '+filters.to} category={'operations-'+id} description={'Filters: '+(Object.entries(effective).filter(([key,value])=>value&&!['from','to'].includes(key)).map(([key,value])=>key+': '+value).join(' · ')||'All assigned records')} columns={report.columns.map((label,index)=>({key:id+'-'+index,label,value:row=>row[index]}))} rows={report.rows} emptyMessage="No matching records or exceptions found."/></>}
  </section>;
 }
+
