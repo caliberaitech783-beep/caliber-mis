@@ -38,7 +38,7 @@ function Field({label,children,hint,wide=false,skipEnter=false,enterOrder,issue}
 
 
 
-export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
+export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,initialRecord,onSaved}){
 
  const vehicle=kind==='vehicle',title=vehicle?'Vehicle Log Book':'Equipment Log Book';
 
@@ -62,9 +62,9 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
 
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Could not reach the log book service.');return body;};
 
- const loadRegister=async(before)=>{const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
+ const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords(batch.records||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
 
  useEffect(()=>{void load()},[kind,session.token]);
 
@@ -113,7 +113,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
 
  const openEntry=async row=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setEditing(false);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
- const save=async event=>{event.preventDefault();if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(Object.keys(meterIssues).length){setError(Object.values(meterIssues).join(' '));return;}setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();}catch(e){setError(e.message)}finally{setWorking(false)}};
+ useEffect(()=>{if(initialRecord)void openEntry(initialRecord)},[initialRecord?.id]);
+ const save=async event=>{event.preventDefault();if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(Object.keys(meterIssues).length){setError(Object.values(meterIssues).join(' '));return;}setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();onSaved?.(result);}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
 
