@@ -29,7 +29,7 @@ test('saved log books retain estimated time and previous-shift provenance',()=>{
 test('database-backed log books enforce access, persist both forms, generate numbers, deduplicate retries and reject stale edits',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
  const masters=[['Equipment master',{category:'Vehicle',door:'V-TEST',currentLocation:'Sasti OC',equipmentName:'Tipper'}],['Users & employees',{employee:'Local form test',employeeId:'CM-TEST',phone:'private-not-exposed',passwordHash:'private-not-exposed'}],['Shift Master',{site:'Sasti OC',shiftName:'Shift A',startTime:'05:00:00',endTime:'13:00:00'}],['Equipment master',{category:'Equipment',door:'EQ-TEST',currentLocation:'Sasti OC',equipmentName:'Excavator'}],['Shift Master',{site:'Jayant OC',shiftName:'Shift A'}],['Work Order master',{woNo:'WO-TEST',site:'Sasti OC'}],['C-Dir Employee master',{name:'Driver test',empId:'EMP-123',site:'Sasti OC'}]];
- masters.push(['Equipment master',{category:'Equipment',door:'Vpc 60',currentLocation:'Sasti OC',equipmentName:'Volvo60'}],...['L1','L2'].map(door=>['Equipment master',{category:'Equipment',door,currentLocation:'Sasti OC'}]));
+ masters.push(['Equipment master',{category:'Equipment',door:'Vpc 60',currentLocation:'Sasti OC',equipmentName:'Volvo60'}],['Equipment master',{category:'Equipment',door:'TPC35 - 01150',equipmentName:'TPC35 - 01150',currentLocation:'Sasti OC'}],...['L1','L2'].map(door=>['Equipment master',{category:'Equipment',door,currentLocation:'Sasti OC'}]));
  for(const [name,data] of masters)await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(data)]);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
@@ -43,7 +43,8 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call('/api/log-books/vehicle','GET',undefined,'')).status,401);assert.equal((await call('/api/log-books/vehicle','GET',undefined,'normal')).status,403);
  for(const name of ['Dudhicua East OC','Dudhichua East OC','Dudhichua East OB'])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Site master',JSON.stringify({name})]);
  const options=await call('/api/log-books/options');assert.deepEqual(options.data.sites.filter(site=>/east/i.test(site)),['Dudhichua East OC']);assert.equal(options.status,200);assert.equal(options.data.employees[0].caliberId,'EMP-123');assert.ok(!JSON.stringify(options.data).includes('private-not-exposed'));
- assert.equal(options.data.workOrders[0].number,'WO-TEST');const body={...input(),employeeId:7,workOrderId:6,requestKey:randomUUID()};const first=await call('/api/log-books/vehicle','POST',body);assert.equal(first.status,201);assert.match(first.data.book_no,/^VLB_M\/18TH-OCT26\/S1\/001$/);assert.equal(first.data.data.totalRunningKmr,50);assert.equal(first.data.data.caliberId,'EMP-123');assert.equal(first.data.data.workOrderContract,'WO-TEST');
+ assert.equal(options.data.workOrders[0].number,'WO-TEST');const body={...input(),employeeId:7,workOrderId:6,trips:[{...input().trips[0],equipmentName:'TA35'}],scanMachineSummary:[{equipmentName:'T35',tripCount:1}],requestKey:randomUUID()};const first=await call('/api/log-books/vehicle','POST',body);assert.equal(first.status,201);assert.match(first.data.book_no,/^VLB_M\/18TH-OCT26\/S1\/001$/);assert.equal(first.data.data.totalRunningKmr,50);assert.equal(first.data.data.caliberId,'EMP-123');assert.equal(first.data.data.workOrderContract,'WO-TEST');
+ assert.equal(first.data.data.trips[0].equipmentName,'Tpc 35');assert.equal(first.data.data.trips[0].originalEquipmentName,'TA35');assert.equal(first.data.data.scanMachineSummary[0].equipmentName,'Tpc 35');
  const repeat=await call('/api/log-books/vehicle','POST',body);assert.equal(repeat.status,200);assert.equal(repeat.data.book_no,first.data.book_no);
  assert.equal((await call('/api/log-books/vehicle')).data.records.length,1);
  const edited=await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,closingKmr:170,revision:1});assert.equal(edited.status,200);assert.equal(edited.data.revision,2);assert.equal(edited.data.data.totalRunningKmr,70);
@@ -59,9 +60,9 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.ok((await call('/api/log-books/vehicle')).data.records.some(r=>r.id===first.data.id));
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...body,revision:3})).status,409);
  // Complementary driver cards link even when they arrive in reverse order.
- const closingBody={...body,requestKey:randomUUID(),bookDate:'2026-10-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
+ const closingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-10-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
  const closing=await call('/api/log-books/vehicle','POST',closingBody);assert.equal(closing.status,201);assert.equal(closing.data.data.totalTrips,0);
- const openingBody={...body,requestKey:randomUUID(),bookDate:'2026-10-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
+ const openingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-10-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
  const opening=await call('/api/log-books/vehicle','POST',openingBody);assert.equal(opening.status,201);assert.equal(opening.data.data.openingTrips,1);
  const linked=(await call('/api/log-books/vehicle')).data.records;
  const end=linked.find(r=>r.id===closing.data.id),start=linked.find(r=>r.id===opening.data.id);

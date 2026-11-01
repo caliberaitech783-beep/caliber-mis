@@ -1,7 +1,8 @@
 import {canonicalSiteName} from './site-location.mjs';
 const clean=v=>String(v??'').trim(),key=v=>clean(v).toUpperCase().replace(/[ ._-]/g,'');
 const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc'};
-const parse=v=>{const m=key(v).match(/^([A-Z]*)([0-9]+)$/);return m?{prefix:m[1],number:String(Number(m[2]))}:null;};
+// Parse before removing separators: the trailing serial is not part of the door number.
+const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:key(m[1]||''),number:String(Number(m[2]))}:null;};
 const labels=r=>[r.door,r.doorNo,r.equipmentName,r.equipment,r.name].filter(Boolean);
 export function resolveTripEquipment(row={},assets=[],location=''){
  const original=clean(row.equipmentName||[row.machine||row.m,row.equipmentNo||row.no].filter(v=>v!=null).join(' ')),parsed=parse(original),site=canonicalSiteName(location);
@@ -9,7 +10,7 @@ export function resolveTripEquipment(row={},assets=[],location=''){
  if(!original)return {error:'Enter the loading equipment.'};
  if(parsed?.prefix==='U'&&assets.some(r=>labels(r).some(v=>/^U/i.test(clean(v)))))return {error:'U cannot be interpreted as V: equipment beginning with U exists in the master. Check the card.'};
  const family=parsed&&(parsed.prefix==='U'?'Vpc':families[parsed.prefix]);
- const matches=assets.filter(r=>!r.sourceMissing&&canonicalSiteName(r.currentLocation||r.site||r.location)===site&&labels(r).some(v=>{if(key(v)===key(original))return true;const p=parse(v);return parsed&&p&&parsed.number===p.number&&(!parsed.prefix||family&&families[p.prefix]===family);}));
+ const matches=assets.filter(r=>!r.sourceMissing&&canonicalSiteName(r.currentLocation||r.site||r.location)===site&&labels(r).some(v=>{const p=parse(v);if(parsed&&p)return parsed.number===p.number&&(!parsed.prefix||parsed.prefix===p.prefix||family&&families[p.prefix]===family);return key(v)===key(original);}));
  const unique=[...new Map(matches.map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
  if(unique.length!==1)return {error:unique.length?'Multiple equipment records match '+original+' at '+location+'. Select the correct equipment.':original+' is not assigned to '+location+'. Check the machine and number.'};
  const record=unique[0],label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
