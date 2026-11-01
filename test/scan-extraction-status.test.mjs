@@ -36,7 +36,17 @@ test('batch switching and invalid stored timestamps cannot show another batch el
  assert.equal(app.formatExtractionTime(125),'2 min 05 sec');assert.equal(app.formatExtractionTime(-1),'0 sec');
  const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.equal((page.match(/<ScanExtractionStatus /g)||[]).length,1);
+ assert.match(page,/Uploading PDFs · Time taken: \{formatExtractionTime\(uploadElapsed\)\}/);
+ assert.match(page,/Time taken: '\+formatExtractionTime\(\(performance\.now\(\)-uploadStarted\.current\)\/1000\)/);
  assert.ok(!page.includes('You can review completed cards while'));
+});
+
+test('scan review uses searchable site doors and the paper summary heading',()=>{
+ const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
+ assert.match(page,/\['doorText','Door number','door'\]/);
+ assert.match(page,/type==='door'\?\(options\?\.assets\|\|\[\]\)\.filter/);
+ assert.match(page,/<h4>Machine-wise summary<\/h4>/);
+ assert.ok(!page.includes("?'Calculated summary':'Printed summary'"));
 });
 
 const textContent=node=>Array.isArray(node)?node.map(textContent).join(''):React.isValidElement(node)?textContent(node.props.children):node??'';
