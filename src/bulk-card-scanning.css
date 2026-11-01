@@ -222,7 +222,7 @@
 .scan-review-compact .scan-extraction-status{margin:0;padding:5px 10px;font-size:12px}
 
 /* Emphasize the live upload/extraction status at 150% of its normal size. */
-:root .scan-page p.scan-batch-progress-active{font-size:1.5em!important;font-weight:800;line-height:1.45}
+:root .scan-page p.scan-batch-progress-active[aria-label="Batch name"]{font-size:1.5em!important;font-weight:800;line-height:1.45}
 .scan-page .scan-upload-status{gap:15px;margin-bottom:18px}
 .scan-page .scan-upload-timer,.scan-page .scan-upload-count{box-sizing:border-box;max-width:100%;min-width:0;padding:18px 27px;border:2px solid #047857;border-radius:14px;font-size:1.5em;font-weight:800;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;background:#047857;box-shadow:0 6px 20px #04785726}
 .scan-page .scan-extraction-status.scan-progress-active{gap:15px;margin:18px 0;padding:15px 21px;border:2px solid #b69bd5;border-radius:12px;background:#f5efff;font-size:19.5px;font-weight:800;line-height:1.5;overflow-wrap:anywhere}
