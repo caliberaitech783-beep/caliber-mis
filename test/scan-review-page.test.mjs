@@ -171,3 +171,10 @@ test('all-site administrators can select any authorized scan site while keeping 
  nodes(tree,n=>n.props['aria-label']==='Site')[0].props.onChange({target:{value:'Not authorized'}});tree=app.render();
  nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true);
 });
+
+test('opening a site batch keeps its own site ahead of the account default',()=>{
+ const app=harness(),vlbBatch={id:'selected',site:'Jayant OC',report_date:'2026-11-01',shift:'S1'};app.render({vlbBatch});
+ app.testCapture.setOptions({canSelectSite:true,accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});const tree=app.render({vlbBatch});
+ const site=nodes(tree,n=>n.props['aria-label']==='Site')[0];assert.equal(site.props.value,'Jayant OC');assert.equal(site.props.readOnly,true);
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
+});

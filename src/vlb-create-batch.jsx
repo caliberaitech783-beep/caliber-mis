@@ -29,6 +29,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const lockedSite=!entryMode&&!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
  useEffect(()=>{if(lockedSite)setSelection(current=>({...current,site:options?.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(lockedSite))||displaySiteName(lockedSite)}));},[lockedSite,options]);
  const read=async(url,{signal,method='GET',body}={})=>{
+  if(entryMode==='scan')url+=(url.includes('?')?'&':'?')+'scan=1';
   const response=await fetch(url,{method,signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
   const data=await response.json();if(!response.ok)throw Error(data.error||'Could not read VLB batches.');return data;
  };

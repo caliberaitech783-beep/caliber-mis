@@ -87,7 +87,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
   if(next)setFleetOpenId(next.id);
  },[cards,fleetDismissed,fleetOpenId,busy,dirty,uploading,scannerBusy]);
  const awaitingContext=Boolean(contextGate?.blocked&&!contextGate.context.cancelled);
- const accountSite=options?.accountLocation||vlbBatch?.site||'';
+ const accountSite=vlbBatch?.site||options?.accountLocation||'';
  const canSelectSite=Boolean(options?.canSelectSite&&!vlbBatch);
  useEffect(()=>{if(accountSite)setExpectedContext(current=>canSelectSite&&current.location||current.location===accountSite?current:{...current,location:accountSite})},[accountSite,canSelectSite]);
  useEffect(()=>{if(vlbBatch){setExpectedContext(vlbEntryContext(vlbBatch));return;}if(batch?.expected_context)setExpectedContext({...batch.expected_context,location:canSelectSite?batch.expected_context.location:accountSite||batch.expected_context.location});else if(batch?.id&&kind==='vehicle')setExpectedContext({bookDate:'',location:accountSite,cardShift:''})},[batch?.id]);
