@@ -2,7 +2,7 @@
    These scoped !important rules override the legacy workspace font-size reset. */
 @media screen {
   .scan-draft-sheet { container: scan-review / inline-size; --logbook-label-size: 16px; }
-  .logbook-page { container: logbook-entry / inline-size; --logbook-label-size: 16px; }
+  .logbook-page { container: logbook-entry / inline-size; --logbook-label-size: 16px; width: 100%; min-width: 0; box-sizing: border-box; align-self: stretch; }
   #scan-entry-fields, #logbook-entry-form { min-width: 0; }
   #scan-entry-fields label, #logbook-entry-form .logbook-field {
     container-type: inline-size;
