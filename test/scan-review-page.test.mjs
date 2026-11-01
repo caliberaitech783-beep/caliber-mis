@@ -20,7 +20,7 @@ function harness(search='',kind='vehicle'){
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const useRef=initial=>{const i=refCursor++;return refs[i]||(refs[i]={current:initial})};
  const Component=new Function(...Object.keys({...scope,testCapture,window,useState,useRef,useEffect:()=>{}}),code+';return BulkCardScanning')(...Object.values({...scope,testCapture,window,useState,useRef,useEffect:fn=>effects.push(fn)}));
- const render=()=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
+ const render=(props={})=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
  return {render,window,listeners,effects,slots,testCapture};
 }
 test('VLB overview keeps compact input panels separate from corrections; attention opens a separate URL and Back restores overview',()=>{
@@ -118,4 +118,31 @@ test('highlighted equipment review returns to the same choices using page Back, 
   if(!refreshed){target.effects[0]();target.window.location.href='https://example.com/?page=vlb-scan'+origin;target.listeners.get('popstate')();}
   assert.equal(nodes(target.render(),n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.card.id,card.id);
  }
+});
+
+
+test('Scan and Upload require complete setup and activate only the selected input card',()=>{
+ const complete={site:'Test site',report_date:'2026-11-01',shift:'S1'};
+ const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&n.props.children===label)[0];
+ const scanner=tree=>nodes(tree,n=>n.props.className==='scan-scanner-card')[0];
+ const uploader=tree=>nodes(tree,n=>n.props.className==='scan-upload-panel scan-input-card')[0];
+ for(const missing of ['site','report_date','shift']){
+  const app=harness(),tree=app.render({vlbBatch:{...complete,[missing]:''}});
+  assert.equal(button(tree,'Scan').props.disabled,true,missing);
+  assert.equal(button(tree,'Upload files').props.disabled,true,missing);
+  assert.equal(scanner(tree).props.inert,true,missing);
+  assert.equal(uploader(tree).props.inert,true,missing);
+ }
+ const app=harness(),props={vlbBatch:complete};let tree=app.render(props);
+ assert.equal(button(tree,'Scan').props.disabled,false);
+ assert.equal(button(tree,'Upload files').props.disabled,false);
+ assert.equal(scanner(tree).props.inert,true);assert.equal(uploader(tree).props.inert,true);
+ button(tree,'Scan').props.onClick();tree=app.render(props);
+ assert.equal(scanner(tree).props.inert,false);assert.equal(uploader(tree).props.inert,true);
+ assert.equal(nodes(tree,n=>n.type===scope.LocalScannerPanel)[0].props.disabled,false);
+ assert.equal(button(tree,'Choose scan files').props.disabled,true);
+ button(tree,'Upload files').props.onClick();tree=app.render(props);
+ assert.equal(scanner(tree).props.inert,true);assert.equal(uploader(tree).props.inert,false);
+ assert.equal(nodes(tree,n=>n.type===scope.LocalScannerPanel)[0].props.disabled,true);
+ assert.equal(button(tree,'Choose scan files').props.disabled,false);
 });

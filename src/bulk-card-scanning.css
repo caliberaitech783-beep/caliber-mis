@@ -293,3 +293,5 @@
 
 /* Larger scanner text within the existing compact card. */
 .scan-input-panels .local-scanner-panel .scan-input-card h2{font-size:18px;line-height:22px}.scan-input-panels .local-scanner-panel .scan-input-card p{font-size:15px}.scan-input-panels .local-scanner-panel .scan-input-card button,.scan-input-panels .local-scanner-panel .scan-input-card .scan-device-help{font-size:14px}.scan-input-panels .local-scanner-panel .scan-input-card>.scan-device-help{line-height:20px}
+
+.scan-input-panels .scan-scanner-card>.local-scanner-panel{height:100%}.scan-input-panels>.scan-scanner-card[aria-disabled="true"],.scan-input-panels>.scan-upload-panel[aria-disabled="true"]{opacity:.5}
