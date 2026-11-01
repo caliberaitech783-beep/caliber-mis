@@ -1,6 +1,11 @@
-// Keep the existing scan resolution. High-quality JPEG avoids transferring
-// multi-megabyte PNGs for every rendered PDF page.
-export const SCAN_UPLOAD_JPEG_QUALITY=0.97;
+// Card readers downscale images well below this size, so larger uploads only
+// cost transfer time. 2000 px across an A4 page is still about 240 dpi.
+export const SCAN_UPLOAD_MAX_WIDTH=2000,SCAN_UPLOAD_MAX_HEIGHT=2667;
+// Quality 0.9 is visually indistinguishable from 0.97 for handwriting but
+// roughly halves the JPEG bytes.
+export const SCAN_UPLOAD_JPEG_QUALITY=0.9;
+// Requests in flight at once. Order is preserved by client-assigned ordinals.
+export const SCAN_UPLOAD_CONCURRENCY=3;
 export function encodeScanCanvas(canvas){
  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Could not prepare scan image.')),'image/jpeg',SCAN_UPLOAD_JPEG_QUALITY));
 }
@@ -10,7 +15,7 @@ export async function prepareScanImages(images){
  let canvas;
  try{
   for(const blob of images){
-   const bitmap=await createImageBitmap(blob),scale=Math.min(1,2400/bitmap.width,3200/bitmap.height);
+   const bitmap=await createImageBitmap(blob),scale=Math.min(1,SCAN_UPLOAD_MAX_WIDTH/bitmap.width,SCAN_UPLOAD_MAX_HEIGHT/bitmap.height);
    loaded.push({blob,bitmap,width:Math.round(bitmap.width*scale),height:Math.round(bitmap.height*scale),scale});
   }
   const single=loaded.length===1&&loaded[0].scale===1?loaded[0]:null;

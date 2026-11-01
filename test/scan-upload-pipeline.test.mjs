@@ -63,3 +63,19 @@ test('overlapping background batch polls coalesce; an explicit refresh reads aft
  const first=load('batch',false),same=load('batch',false),fresh=load('batch');
  assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,2);assert.equal(rows[0].revision,2);
 });
+
+test('concurrent uploads start in page order, overlap, and stop launching after a failure',{timeout:2000},async()=>{
+ const started=[],finished=[];let active=0,peak=0;const release=new Map();
+ async function* groups(){for(const n of [1,2,3,4,5])yield [n];}
+ const run=transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0],send:async(group,n)=>{started.push(n);peak=Math.max(peak,++active);await new Promise(resolve=>release.set(n,resolve));active--;finished.push(n);}});
+ await new Promise(resolve=>setTimeout(resolve,20));
+ assert.deepEqual(started,[1,2,3]);assert.equal(peak,3);
+ release.get(2)();await new Promise(resolve=>setTimeout(resolve,10));
+ assert.deepEqual(started,[1,2,3,4],'a freed slot starts the next card even while earlier cards are still uploading');
+ for(const n of [1,3,4])release.get(n)();await new Promise(resolve=>setTimeout(resolve,10));
+ release.get(5)();await run;
+ assert.deepEqual(finished,[2,1,3,4,5]);
+ const sent=[];
+ await assert.rejects(transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0],send:async(group,n)=>{sent.push(n);if(n===2)throw Error('offline');await new Promise(resolve=>setTimeout(resolve,5));}}),/offline/);
+ assert.ok(sent.length<=4&&!sent.includes(5),`no card starts after the failure settles: ${sent}`);
+});
