@@ -1,0 +1,19 @@
+# Capacity and processed-batch production reports
+
+Open **Masters → Capacity master** as an authorized administrator with Equipment master access. Select a make and model, enter the approved capacity in CUM/trip, its effective date and an approval reference. No sample workbook capacities are seeded. A pair must exist with a resolved make/model in Equipment master. Missing or numeric make codes need a master correction first.
+
+Approvals are immutable versions. An initial approval may cover the operational start, 1 November 2026. Subsequent versions must be later than today, the previous version and every processed batch date. This prevents a routine edit from changing earlier quantities. Historical approval errors require a separately reviewed data correction; the screen does not overwrite history. There is no automatic body-variant assumption: if a make/model has different approved body capacities, resolve that distinction in the master before using a common capacity.
+
+1. Create the site/date/shift VLB batch and save the actual scanned or manual cards.
+2. Check doors, driver IDs, trip counts and linked loading machine numbers. Save each machine's ELB for its shift, including zero work where applicable.
+3. Use **Save & lock batch**. A closed active batch is the processed checkpoint. Open, reopened, empty, stale or duplicate batch membership blocks the new reports.
+4. Open **Reports → Trips & Productivity → Day-wise Door Number Report** or **Day-wise Machine Number Report**. Select Site, Date and Shift-wise or Day-wise; select a shift for Shift-wise. If both three-shift and Day/Night schedules exist, choose the applicable daily schedule.
+5. Select **Show report**. A day report requires a processed, nonempty VLB batch for every active shift in that schedule. Missing capacities, unresolved loading machines, missing ELBs for productive machines, duplicate asset/shift cards and unresolved trip handovers produce correction messages without report rows or exports.
+
+Quantity is approved tipper capacity × completed trips. Machine quantity is the sum of those tipper loads; the excavator's capacity is never multiplied by tipper trips. Door and machine trip/quantity totals must reconcile. Cross-shift trips count once in the completion shift; their loading cards must also belong to a processed batch. Machine hours are ELB closing minus opening HMR, once per machine/shift, independent of trip row count. Source BD/idle inconsistencies remain visible for review. Employee combined-duty hours remain in the existing OT report.
+
+The report includes current site fleet rows. A dash and a coverage message mean a saved card is absent; zero means a card explicitly records zero completed trips. Locking a batch certifies processing of its saved cards, not attendance or fleet completeness. Fleet assignment history is not invented. Prior saved cards without make/model snapshots use the current equipment master mapping; newly saved cards capture that mapping. Review old cards if master identity changed.
+
+Print/Excel/PDF use the shared ReportSection controls only after generation checks pass. Generation timestamp and batch closure revisions identify the snapshot. Reopening blocks subsequent generation. Previously downloaded files remain historical copies and do not update automatically. No cards, capacity approvals, payroll rates or OT amounts are fabricated by deployment.
+
+Implementation: `production-report.mjs` (calculation/gates), `production-report-api.mjs` (scoped repeatable-read query and append-only capacity approvals), and the two React views. Only additive capacity schema is introduced. Existing VLB/ELB registers and manpower/OT reports keep their behavior. Automated tests cover mixed capacities, separate shifts, handovers, duplicate/stale/open batches, missing ELB/capacities, schedule ambiguity, authorization, PostgreSQL queries and concurrent capacity approvals.

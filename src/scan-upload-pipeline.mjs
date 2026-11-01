@@ -19,19 +19,27 @@ export function createPdfUploadSession(open){
  };
 }
 
-// Prepare one card ahead while one ordered request is uploading.
-// A failed upload cannot send later cards or change page order.
-export async function transferScanGroups(groups,{prepare,send,signal}){
+// Prepare one card ahead while up to `concurrency` requests are uploading.
+// Sends start in page order; the caller assigns ordinals in that order so
+// responses may finish in any order. After a failure no further card starts,
+// but requests already in flight are awaited so their results are known.
+export async function transferScanGroups(groups,{prepare,send,signal,concurrency=1}){
  const iterator=groups[Symbol.asyncIterator]();
  const check=()=>{if(signal?.aborted)throw abortError();};
  const next=async()=>{try{check();const item=await iterator.next();if(item.done)return {done:true};check();return {group:item.value,body:await prepare(item.value)};}catch(error){return {error};}};
+ const inflight=new Set();let failure;
  let pending=next();
  try{
   for(;;){
-   const item=await pending;if(item.error)throw item.error;if(item.done)break;
-   pending=next();check();await send(item.group,item.body);
+   while(inflight.size>=concurrency&&!failure)await Promise.race(inflight);
+   if(failure)break;
+   const item=await pending;if(item.error){failure=item.error;break;}if(item.done)break;
+   pending=next();check();
+   const task=send(item.group,item.body).then(()=>inflight.delete(task),error=>{inflight.delete(task);failure??=error;});
+   inflight.add(task);
   }
+  await Promise.all(inflight);if(failure)throw failure;
  }finally{
-  await pending;await iterator.return?.();
+  await Promise.all(inflight);await pending;await iterator.return?.();
  }
 }

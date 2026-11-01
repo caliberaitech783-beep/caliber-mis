@@ -1,0 +1,21 @@
+import React,{useEffect,useState} from 'react';
+import {OPERATIONAL_START} from '../operational-start.mjs';
+import './production-reports.css';
+export default function CapacityMaster({session,ReportSection}){
+ const [data,setData]=useState({pairs:[],versions:[]}),[form,setForm]=useState({make:'',model:'',capacity:'',effectiveFrom:OPERATIONAL_START,reason:''}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0);
+ useEffect(()=>{const c=new AbortController();setBusy(true);fetch('/api/capacity-master',{headers:{Authorization:`Bearer ${session.token}`},signal:c.signal}).then(async r=>{const p=await r.json();if(!r.ok)throw Error(p.error||'Unable to load capacities.');return p;}).then(p=>{if(!c.signal.aborted)setData(p);}).catch(e=>{if(!c.signal.aborted)setError(e.message);}).finally(()=>{if(!c.signal.aborted)setBusy(false);});return()=>c.abort();},[refresh,session.token]);
+ const set=(key,value)=>setForm(f=>({...f,[key]:value,...(key==='make'?{model:''}:{})}));
+ const save=async e=>{e.preventDefault();setBusy(true);setError('');setNotice('');try{const r=await fetch('/api/capacity-master',{method:'POST',headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'},body:JSON.stringify(form)});const p=await r.json();if(!r.ok)throw Error(p.error||'Unable to save capacity.');setNotice(`Approved ${p.make} / ${p.model}: ${p.capacity} CUM/trip from ${p.effectiveFrom}.`);setForm(f=>({...f,capacity:'',reason:''}));setRefresh(v=>v+1);}catch(e){setError(e.message);}finally{setBusy(false);}};
+ const cols=[['make','Make'],['model','Model'],['capacity','Capacity (CUM/trip)'],['effectiveFrom','Effective from'],['reason','Approval reference / reason'],['createdBy','Approved by']].map(([key,label])=>({key,label,value:r=>r[key]}));
+ return <section className="production-reports"><header><small>MASTERS</small><h1>Capacity master</h1><p>Approve cubic metres per completed trip for each tipper make and model.</p></header><p>Use the approved fleet capacity. The sample workbook supplies the report layout only. An initial approval can start on 1 November 2026; subsequent versions must take effect after today and all processed batch dates. Saved approvals cannot be overwritten here.</p>
+  <form className="production-filters" onSubmit={save}>
+   <label>Make<select required value={form.make} onChange={e=>set('make',e.target.value)}><option value="">Select make</option>{[...new Set(data.pairs.map(p=>p.make))].map(m=><option key={m}>{m}</option>)}</select></label>
+   <label>Model<select required value={form.model} onChange={e=>set('model',e.target.value)}><option value="">Select model</option>{data.pairs.filter(p=>p.make===form.make).map(p=><option key={p.model}>{p.model}</option>)}</select></label>
+   <label>Capacity (CUM/trip)<input required type="number" min="0.001" max="1000" step="0.001" value={form.capacity} onChange={e=>set('capacity',e.target.value)}/></label>
+   <label>Effective from<input required type="date" min={OPERATIONAL_START} value={form.effectiveFrom} onChange={e=>set('effectiveFrom',e.target.value)}/></label>
+   <label className="production-reason">Approval reference / reason<input required minLength={5} maxLength={1000} value={form.reason} onChange={e=>set('reason',e.target.value)} placeholder="Approved capacity reference"/></label>
+   <button type="submit" disabled={busy}>{busy?'Please wait…':'Save approved capacity'}</button>
+  </form>{error&&<p className="production-error" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+  <ReportSection title="Approved capacity history" category="capacity-master" description="Effective-dated approvals · CUM per completed trip · Earlier versions are retained" columns={cols} rows={data.versions} rowKey={r=>r.id} emptyMessage="No capacities have been approved yet. Add the make/model approvals before generating production reports."/>
+ </section>;
+}
