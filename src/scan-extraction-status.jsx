@@ -20,7 +20,7 @@ export default function ScanExtractionStatus({batchId,pending,total,uploading,fa
  useEffect(()=>{if(remaining<=0)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[remaining>0]);
  if(!batchId||!count)return null;
  const current=timing.batchId===batchId?timing:{started:0,ended:0},finished=remaining===0&&!uploading;
- return <div className="scan-extraction-status"><strong role="status">{finished?'Extraction finished':active>0?'Extracting':'Waiting for extraction'} · {completed}/{count} cards processed{remaining>0?' · '+active+' reading · '+(remaining-active)+' waiting':''}{failed>0?' · '+failed+' failed':''}</strong>{current.started>0&&<span>Elapsed: <strong role="timer" aria-label="Extraction elapsed time" aria-live="off">{formatExtractionTime(((current.ended||now)-current.started)/1000)}</strong></span>}</div>;
+ return <div className={'scan-extraction-status'+(finished?'':' scan-progress-active')}><strong role="status">{finished?'Extraction finished':active>0?'Extracting':'Waiting for extraction'} · {completed}/{count} cards processed{remaining>0?' · '+active+' reading · '+(remaining-active)+' waiting':''}{failed>0?' · '+failed+' failed':''}</strong>{current.started>0&&<span>Elapsed: <strong role="timer" aria-label="Extraction elapsed time" aria-live="off">{formatExtractionTime(((current.ended||now)-current.started)/1000)}</strong></span>}</div>;
 }
 export function ScanExtractionLine({batchId,pending,total}){
  const [now,setNow]=useState(()=>Date.now());
@@ -28,3 +28,4 @@ export function ScanExtractionLine({batchId,pending,total}){
  const started=readTime(startKey(batchId));
  return <p>{pending}/{total} extracting… · {total-pending}/{total} extracted · Time taken: {formatExtractionTime(started?(now-started)/1000:0)}</p>;
 }
+
