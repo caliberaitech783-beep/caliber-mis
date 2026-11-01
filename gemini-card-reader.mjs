@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {cardDetailViews,summaryDetailViews} from './gemini-card-images.mjs';
+import {allCardDetailViews} from './gemini-card-images.mjs';
+import {scanImageMime} from './scan-image-format.mjs';
 import {normalizeCardShift} from './trip-card-rules.mjs';
 import {formatScannedDoor} from './scan-door-text.mjs';
 import {MODEL,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
@@ -45,7 +46,10 @@ export function parseCardResponse(raw,kind){
  validateA(recovered.fields,kind);validateB(recovered.trips,kind);
  return recovered;
 }
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareViews=async image=>{const [columns,summary]=await Promise.all([cardDetailViews(image),summaryDetailViews(image)]);return [...columns,...summary];},cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=2000,maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
+// Limit native decoding/encoding across readers; API calls remain concurrent.
+// Five cards each preparing six canvases at once can otherwise crowd uploads.
+let imagePreparation=Promise.resolve();
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=2000,maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
  let pending=0,active=0,last=0,gate=Promise.resolve();const queue=[],inFlight=new Map();
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>5)throw Error('Gemini concurrency must be between 1 and 5.');
  // Share a start gate across all workers, including retries. Faster starts are
@@ -57,7 +61,12 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   let record;try{const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey();await onProgress?.('extracting');
-   const views=await prepareViews(image),parts=[{text:cardPrompt(kind)},{inlineData:{mimeType:'image/png',data:image.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+   const preparation=imagePreparation.then(async()=>{
+    const source=await prepareImage(image),views=await prepareViews(source);
+    return [{text:cardPrompt(kind)},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+   });
+   imagePreparation=preparation.then(()=>{},()=>{});
+   const parts=await preparation;
    const totalStarted=Date.now();
    let retryInstruction='';
    for(let attempt=0;attempt<2;attempt++){

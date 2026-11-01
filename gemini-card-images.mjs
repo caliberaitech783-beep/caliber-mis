@@ -5,23 +5,42 @@ import {createCanvas,loadImage} from '@napi-rs/canvas';
 // a header at the bottom. Original bytes are retained separately in the request.
 // The machine-wise summary sits under the trip grid. These bands show it larger,
 // upright for either capture orientation, beside the complete column views.
-export async function summaryDetailViews(bytes){
+async function checkedImage(bytes){
  const image=await loadImage(bytes),{width,height}=image;
  if(!width||!height||width*height>20000000)throw Error('Scan dimensions exceed the 20 megapixel limit.');
- return Promise.all([['Bottom band containing the machine-wise summary',.62,0],['Top band containing the machine-wise summary',0,180]].map(async([label,y,degrees])=>{
-  const sy=Math.floor(y*height),sh=Math.min(height-sy,Math.ceil(.38*height)),canvas=createCanvas(width,sh),ctx=canvas.getContext('2d');
-  ctx.fillStyle='white';ctx.fillRect(0,0,width,sh);if(degrees===180){ctx.translate(width,sh);ctx.rotate(Math.PI);}ctx.drawImage(image,0,sy,width,sh,0,0,width,sh);
+ return image;
+}
+async function encodeView(image,{label,sx=0,sy=0,width,height,degrees}){
+ const canvas=createCanvas(width,height),ctx=canvas.getContext('2d');
+ try{
+  ctx.fillStyle='white';ctx.fillRect(0,0,width,height);if(degrees===180){ctx.translate(width,height);ctx.rotate(Math.PI);}ctx.drawImage(image,sx,sy,width,height,0,0,width,height);
   return {label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:await canvas.encode('jpeg',95)};
+ }finally{
+  // Release native pixel buffers after encoding, rather than waiting for GC
+  // while the provider request retains its much smaller encoded views.
+  canvas.width=canvas.height=1;
+ }
+}
+function summaryViews(image){
+ const {width,height}=image;
+ return Promise.all([['Bottom band containing the machine-wise summary',.62,0],['Top band containing the machine-wise summary',0,180]].map(async([label,y,degrees])=>{
+  const sy=Math.floor(y*height),sh=Math.min(height-sy,Math.ceil(.38*height));
+  return encodeView(image,{label,sy,width,height:sh,degrees});
  }));
 }
-export async function cardDetailViews(bytes){
- const image=await loadImage(bytes),{width,height}=image;
- if(!width||!height||width*height>20000000)throw Error('Scan dimensions exceed the 20 megapixel limit.');
+function columnViews(image){
+ const {width,height}=image;
  const views=[];for(const degrees of [0,180])for(const [label,x,w] of [['Left overlapping full-height column',0,.54],['Right overlapping full-height column',.46,.54]]){
-  const sx=Math.floor(x*width),sw=Math.min(width-sx,Math.ceil(w*width)),canvas=createCanvas(sw,height),ctx=canvas.getContext('2d');
-  ctx.fillStyle='white';ctx.fillRect(0,0,sw,height);if(degrees===180){ctx.translate(sw,height);ctx.rotate(Math.PI);}ctx.drawImage(image,sx,0,sw,height,0,0,sw,height);
-  views.push({label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:canvas.encode('jpeg',95)});
+  const sx=Math.floor(x*width),sw=Math.min(width-sx,Math.ceil(w*width));
+  views.push(encodeView(image,{label,sx,width:sw,height,degrees}));
  }
  // Native encoders run together; retain the same pixels, dimensions and quality.
- return Promise.all(views.map(async view=>({...view,image:await view.image})));
+ return Promise.all(views);
+}
+export async function summaryDetailViews(bytes){return summaryViews(await checkedImage(bytes));}
+export async function cardDetailViews(bytes){return columnViews(await checkedImage(bytes));}
+export async function allCardDetailViews(bytes){
+ // The six views share one decode of the original card.
+ const image=await checkedImage(bytes),[columns,summary]=await Promise.all([columnViews(image),summaryViews(image)]);
+ return [...columns,...summary];
 }
