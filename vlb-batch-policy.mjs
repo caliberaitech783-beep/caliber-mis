@@ -1,3 +1,4 @@
+import {VLB_BATCH_RETENTION_SCHEMA} from './vlb-batch-retention-schema.mjs';
 import {requireOperationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
@@ -13,6 +14,7 @@ export const VLB_BATCH_SCHEMA=`
  -- for attribution and a NULL legacy slot so different authorized sites can stay open.
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS creator_login TEXT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ ${VLB_BATCH_RETENTION_SCHEMA}
  ALTER TABLE mis_vlb_batches ALTER COLUMN created_by DROP NOT NULL;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_batch_per_user ON mis_vlb_batches(created_by) WHERE closed_at IS NULL;
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_entries(
@@ -21,20 +23,17 @@ export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_scopes(
  site TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,batch_id UUID UNIQUE NOT NULL REFERENCES mis_vlb_batches(id),PRIMARY KEY(site,book_date,shift));
  INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id)
- SELECT site,book_date,shift,(array_agg(id))[1] FROM mis_vlb_batches WHERE book_date>=$$2026-11-01$$ GROUP BY site,book_date,shift HAVING count(*)=1 ON CONFLICT DO NOTHING;
+ SELECT site,book_date,shift,(array_agg(id))[1] FROM mis_vlb_batches WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ GROUP BY site,book_date,shift HAVING count(*)=1 ON CONFLICT DO NOTHING;
  CREATE OR REPLACE FUNCTION mis_vlb_prevent_duplicate_scope() RETURNS trigger LANGUAGE plpgsql AS $guard$
  BEGIN
   LOCK TABLE mis_vlb_batch_scopes IN EXCLUSIVE MODE;
-  IF EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.site=NEW.site AND b.book_date=NEW.book_date AND b.shift=NEW.shift AND b.id<>NEW.id) THEN
+  IF NEW.deleted_at IS NULL AND EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.deleted_at IS NULL AND b.site=NEW.site AND b.book_date=NEW.book_date AND b.shift=NEW.shift AND b.id<>NEW.id) THEN
    RAISE EXCEPTION 'A batch already exists for this site, date and shift' USING ERRCODE='23505';
   END IF;
   RETURN NEW;
  END $guard$;
- DO $install$ BEGIN
-  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='mis_vlb_unique_scope_guard' AND tgrelid='mis_vlb_batches'::regclass) THEN
-   CREATE TRIGGER mis_vlb_unique_scope_guard BEFORE INSERT OR UPDATE OF site,book_date,shift ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_duplicate_scope();
-  END IF;
- END $install$;
+ DROP TRIGGER IF EXISTS mis_vlb_unique_scope_guard ON mis_vlb_batches;
+ CREATE TRIGGER mis_vlb_unique_scope_guard BEFORE INSERT OR UPDATE OF site,book_date,shift,deleted_at ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_duplicate_scope();
  CREATE OR REPLACE FUNCTION mis_vlb_prevent_multiple_open_site_batches() RETURNS trigger LANGUAGE plpgsql AS $open_site_guard$
  BEGIN
   IF NEW.closed_at IS NULL AND NEW.archived_at IS NULL AND NEW.book_date>=$$2026-11-01$$ THEN

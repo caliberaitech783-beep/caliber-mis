@@ -40,6 +40,7 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
       const current=(await c.query('SELECT pending_scan_blobs FROM mis_log_book_deletions WHERE id=$1 FOR UPDATE',[row.id])).rows[0];
       if(!current?.pending_scan_blobs.some(p=>stableJson(p)===stableJson(item)))return;
       if((await c.query('SELECT id FROM mis_scan_cards WHERE image_blob_key=$1 LIMIT 1',[key])).rows.length)throw Object.assign(Error('A source image is referenced by a new scan.'),{code:'IMAGE_REFERENCED'});
+      if((await c.query("SELECT to_regclass('mis_vlb_batch_recovery_items') AS present")).rows[0]?.present&&(await c.query("SELECT 1 FROM mis_vlb_batch_recovery_items WHERE kind IN('scan','backup') AND COALESCE(payload->>'image_blob_key',payload->>'blob_key')=$1 LIMIT 1",[key])).rows.length)throw Object.assign(Error('Image retained for batch restoration.'),{code:'IMAGE_REFERENCED'});
       await imageStorage.remove(key,typeof item==='string'?{}:{etag:item.etag});
       await c.query("UPDATE mis_log_book_deletions SET pending_scan_blobs=COALESCE((SELECT jsonb_agg(item) FROM jsonb_array_elements(pending_scan_blobs) item WHERE item<>$2::jsonb),'[]'::jsonb),cleanup_error='' WHERE id=$1",[row.id,JSON.stringify(item)]);
      });

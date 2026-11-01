@@ -1,3 +1,5 @@
+import {registerVlbBatchDeletions} from './vlb-batch-deletions.mjs';
+import {withVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {operationalDate} from './operational-start.mjs';
 import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from './vlb-pm-trial.mjs';
 import {randomUUID} from 'node:crypto';
@@ -28,7 +30,8 @@ async function visible(client,id,req){
  return batch;
 }
 async function details(client,batch,req){
- const records=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE batch_id=$1 ORDER BY logbook_id',[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
+ let records=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE batch_id=$1 ORDER BY logbook_id',[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
+ records=await withVlbTripHandovers(client,records);
  const requests=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND withdrawn_at IS NULL ORDER BY requested_at DESC',[batch.id])).rows.filter(r=>r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,batch.site));
  const audit=(await client.query('SELECT * FROM mis_vlb_batch_audit WHERE batch_id=$1 ORDER BY id DESC LIMIT 200',[batch.id])).rows;
  const pmApprovalTrial=await vlbPmTrial(client);
@@ -37,7 +40,7 @@ async function details(client,batch,req){
  const grantValid=grant?batchPmAtSite(await req.batchGetActor({login:grant.decided_by},client),batch.site):false;
  return {...batch,created_by:creator(batch),pmApprovalTrial,trialExpired,records,entry_count:records.length,requests,audit,canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||isOwner(batch,req.batchActor)),canClose:!batch.closed_at&&isOwner(batch,req.batchActor),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
 }
-export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(session,client)=>vlbBatchActor(client,session)}){
+export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ensureBooks,sendOtp,imageStorage,getActor=(session,client)=>vlbBatchActor(client,session)}){
  let ready;
  const ensure=async()=>{await ensureBooks();await(ready??=(async()=>{await pool.query(VLB_BATCH_SCHEMA);if(process.env.VLB_PM_APPROVAL_TRIAL===VLB_PM_TRIAL_ID)await activateVlbPmTrial(pool)})().catch(e=>{ready=null;throw e}))};
  const handle=fn=>async(req,res,next)=>{try{
@@ -48,6 +51,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   res.set('Cache-Control','no-store');await fn(req,res);
  }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);const result=await fn(client);await client.query('COMMIT');return result}catch(e){await client.query('ROLLBACK').catch(()=>{});throw e}finally{client.release()}};
+ const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
   const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b)}));
@@ -56,7 +60,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   res.json({pmApprovalTrial:await vlbPmTrial(pool),batches,openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
  app.get('/api/vlb-batches/approvals',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
+  const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
   res.json({requests:rows.filter(r=>siteAllowed(req.logBookScope,r.site)&&(r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,r.site))).map(r=>({...r,canDecide:r.status==='pending'&&r.closure_revision===r.current_revision&&Boolean(r.closed_at)&&batchPmAtSite(req.batchActor,r.site)&&r.requested_by!==req.batchActor.login}))});
  }));
  app.get('/api/vlb-batches/preview',...protect,handle(async(req,res)=>{
@@ -64,18 +68,11 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   const existingBatch=await matchingVlbBatch(pool,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
   const siteOpenBatch=await openSiteBatch(pool,selection.site);
   const records=await eligible(pool,selection);
-  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,1),existingBatch,siteOpenBatch});
+  const sequence=Number((await pool.query('SELECT COALESCE(MAX(sequence),0)+1 AS n FROM mis_vlb_batches WHERE site=$1 AND book_date=$2 AND shift=$3',[selection.site,selection.date,selection.shift])).rows[0].n);
+  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,sequence),existingBatch,siteOpenBatch});
  }));
  app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>res.json(await details(pool,await visible(pool,req.params.id,req),req))));
- app.post('/api/vlb-batches/:id/archive',...protect,handle(async(req,res)=>{
-  if(!req.batchActor.canCreate)fail('Only an authorized MIS user can remove a batch.',403);
-  res.json(await transaction(async client=>{
-   const batch=await visible(client,req.params.id,req);
-   await auditVlbBatch(client,batch,req.batchActor.login,'removed_from_batch_list',{cardsPreserved:true});
-   await client.query('UPDATE mis_vlb_batches SET archived_at=NOW() WHERE id=$1',[batch.id]);
-   return {removed:true,id:batch.id,name:batch.name};
-  }));
- }));
+ app.post('/api/vlb-batches/:id/archive',...protect,handle(async()=>fail('Removing only the batch is discontinued. Use Delete batch with a 10-day restore window.',410)));
  app.post('/api/vlb-batches',...protect,handle(async(req,res)=>{
   if(!req.batchActor.canCreate)fail('Only an authorized MIS user can create a batch.',403);
   const user=req.batchActor.login,selection=vlbBatchSelection(req.body);requireLogBookSite(req.logBookScope,selection.site);
@@ -90,7 +87,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(siteOpen)fail('Close the open batch '+siteOpen.name+' before creating another batch for this site, regardless of date or shift.');
    if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND book_date>=$$2026-11-01$$ AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const records=await eligible(client,selection);
-   const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL FOR UPDATE',[selection.date,selection.shift])).rows;
+   const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL AND deleted_at IS NULL FOR UPDATE',[selection.date,selection.shift])).rows;
    const archived=archivedRows.find(batch=>canonicalSiteName(batch.site)===selection.site);
    if(archived){
     const restored=(await client.query('UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3 WHERE id=$4 RETURNING *,book_date::text AS report_date',[req.body.requestKey,user,null,archived.id])).rows[0];
@@ -98,7 +95,8 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
     await auditVlbBatch(client,restored,user,'restored_to_batch_list',{logbookIdsAdded:records.map(r=>r.id)});
     return details(client,restored,req);
    }
-   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy,continuous_entry,creator_login) VALUES($1,$2,$3,$4,$5,1,$6,$7,NULL,0,TRUE,TRUE,$8) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,1),selection.site,selection.date,selection.shift,null,req.body.requestKey,user])).rows[0];
+   const sequence=Number((await client.query('SELECT COALESCE(MAX(sequence),0)+1 AS n FROM mis_vlb_batches WHERE site=$1 AND book_date=$2 AND shift=$3',[selection.site,selection.date,selection.shift])).rows[0].n);
+   const batch=(await client.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,sequence,created_by,request_key,closed_at,closure_revision,saved_lock_policy,continuous_entry,creator_login) VALUES($1,$2,$3,$4,$5,$9,$6,$7,NULL,0,TRUE,TRUE,$8) RETURNING *,book_date::text AS report_date',[randomUUID(),vlbBatchName(selection,sequence),selection.site,selection.date,selection.shift,null,req.body.requestKey,user,sequence])).rows[0];
    await client.query('INSERT INTO mis_vlb_batch_scopes(site,book_date,shift,batch_id) VALUES($1,$2,$3,$4)',[selection.site,selection.date,selection.shift,batch.id]);
    await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r',[batch.id,JSON.stringify(records)]);
    await auditVlbBatch(client,batch,user,'created',{logbookIds:records.map(r=>r.id)});
@@ -160,4 +158,5 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    return details(client,opened,req);
   }));
  }));
+ return recovery;
 }

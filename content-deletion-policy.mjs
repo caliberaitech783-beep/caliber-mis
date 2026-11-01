@@ -5,6 +5,7 @@ export function contentDeletionBlocked(method,path){
  const verb=String(method).toUpperCase();let url=String(path).split('?')[0];
  try{url=decodeURIComponent(url).toLowerCase().replace(/\/+$/,'');}catch{return true;}
  if(!url.startsWith('/api/'))return false;
+ if(verb==='POST'&&/^\/api\/vlb-batch-deletions\/(?:preview|[a-f0-9-]+\/(?:otp|confirm))$/.test(url))return false;
  if(verb==='DELETE')return true;
  if(!['POST','PUT','PATCH'].includes(verb))return false;
  // This existing workflow verifies request ownership, exact approval, expiry,
