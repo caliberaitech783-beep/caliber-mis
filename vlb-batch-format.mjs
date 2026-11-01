@@ -22,4 +22,4 @@ export function vlbBatchPrefix(input){
 }
 export const vlbBatchName=(selection,sequence)=>`${vlbBatchPrefix(selection)}/B${String(sequence).padStart(2,'0')}`;
 export const vlbRecordShift=data=>bookShiftCode(data.bookShiftCode)||bookShiftCode(data.cardShift)||bookShiftCode(data.shiftName);
-export const vlbRecordSource=record=>record.data?.scanCardId?'VBL Scan':'VLB Manual';
+export const vlbRecordSource=record=>record.data?.scanCardId?'VLB Scan':'VLB Manual';
