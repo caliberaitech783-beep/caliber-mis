@@ -1,3 +1,4 @@
+import {meterCorrectionReport} from './scan-meter-history.mjs';
 import {scanCardContextIssues} from './scan-batch-context.mjs';
 import {machineLabel} from './trip-card-rules.mjs';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
@@ -24,7 +25,7 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
    employeeCode:data.caliberId||employee?.caliberId||employee?.employeeCode||raw.employeeCode||'',employeeName:data.employeeName||employee?.name||raw.employeeName||'',shift:data.shiftName||data.cardShift||'',shiftHours:number(data.shiftHours),workOrder:data.workOrderContract||'',
    openingKmr:number(data.openingKmr),closingKmr:number(data.closingKmr),kilometres:vehicle?(number(data.totalRunningKmr)??difference(data.openingKmr,data.closingKmr)):null,
    openingHmr:number(data.openingHmr),closingHmr:number(data.closingHmr),hours:number(data.totalWorkingHmr)??difference(data.openingHmr,data.closingHmr),trips:totalTrips,openingTrips:number(data.openingTrips),endingTrips:number(data.endingTrips),
-   filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};
+   ...meterCorrectionReport(data,data.meterCorrectionHistory||raw.meterCorrectionHistory),filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};
  });
  const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:i+1,equipment:machineLabel(t.equipmentName||''),loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount)})));
  const machines=new Map();for(const trip of tripRows){if(!trip.equipment||trip.trips===null)continue;const group=machines.get(trip.equipment)||{equipment:trip.equipment,trips:0,cards:new Set(),vehicles:new Set()};group.trips+=trip.trips;group.cards.add(trip.card);group.vehicles.add(trip.door);machines.set(trip.equipment,group);}
@@ -41,17 +42,17 @@ export function scanBatchReportTables(report){
  const common=[column('ordinal','Card'),column('status','Status'),column('cardNo','Card number'),column('bookNo','Book number'),column('bookDate','Date'),column('location','Location'),column('door','Door / Equipment'),column('employeeCode','Employee ID'),column('employeeName',report.vehicle?'Driver':'Operator'),column('shift','Shift'),column('shiftHours','Shift hours'),column('workOrder','Work order')];
  const meters=[...(report.vehicle?[column('openingKmr','Opening KMR'),column('closingKmr','Closing KMR'),column('kilometres','Kilometres')]:[]),column('openingHmr','Opening HMR'),column('closingHmr','Closing HMR'),column('hours','Working hours'),...(report.vehicle?[column('openingTrips','Opening trips'),column('endingTrips','Ending trips'),column('trips','Completed trips')]:[])];
  return [{name:'Batch summary',title:report.title+' · Summary',columns:[column('metric','Metric'),column('value','Value')],rows:report.summaryRows},
-  {name:'Cards',title:report.title+' · Cards',columns:[...common,...meters,column('filename','Source file'),column('remark','Remarks')],rows:report.contextChecked?report.rows.filter(row=>row.saved):report.rows},
+  {name:'Cards',title:report.title+' · Cards',columns:[...common,...meters,column('filename','Source file'),column('remark','Remarks'),...(report.rows.some(row=>row.original)?[{...column('original','Original HMR / KMR errors'),tone:'error'},{...column('corrected','Corrected HMR / KMR readings'),tone:'corrected'}]:[])],rows:report.contextChecked?report.rows.filter(row=>row.saved):report.rows},
   ...(report.vehicle?[{name:'Individual trips',title:report.title+' · Saved trip details',columns:[column('card','Card'),column('cardNo','Card number'),column('bookNo','Book number'),column('door','Vehicle door'),column('trip','Trip row'),column('equipment','Loading equipment'),column('loading','Loading time'),column('unloading','Unloading time'),column('trips','Trips')],rows:report.tripRows},
    {name:'Loading equipment',title:report.title+' · Saved loading equipment summary',columns:[column('equipment','Loading equipment'),column('cards','Cards'),column('vehicles','Vehicles'),column('trips','Trips')],rows:report.machineRows}]:[])];
 }
 
 export function scanBatchExportTables(report,{pdf=false}={}){
  return scanBatchReportTables(report).map((table,i)=>{
-  const compact=['ordinal','status','cardNo','bookNo','bookDate','location','door','employeeName','shift','trips','kilometres','hours'];
+  const compact=['ordinal','status','cardNo','bookNo','bookDate','location','door','employeeName','shift','trips','kilometres','hours','original','corrected'];
   if(report.contextChecked&&table.name==='Cards')table={...table,rows:table.rows.filter(row=>row.saved)};
   const columns=pdf&&i===1?table.columns.filter(c=>compact.includes(c.key)):table.columns;
-  return {...table,columns:columns.map(c=>({key:c.key,label:c.label})),rows:table.rows.map(row=>columns.map(c=>c.value(row)??''))};
+  return {...table,columns:columns.map(c=>({key:c.key,label:c.label,...(c.tone?{tone:c.tone}:{})})),rows:table.rows.map(row=>columns.map(c=>c.value(row)??''))};
  });
 }
 

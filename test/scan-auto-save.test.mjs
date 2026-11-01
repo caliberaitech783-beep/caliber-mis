@@ -45,6 +45,12 @@ test('complete cards post independently without approval; retries, validation an
  const concurrent=await Promise.all([call(second,2),call(second,2)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
  const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
  const warning=await add(4,{...valid,aFormNo:'77',closingHmr:9});assert.equal((await call(warning)).status,409);
+ const corrected=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+warning,{method:'PUT',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'save',draft:{...valid,aFormNo:'77',meterCorrectionHistory:[]}})});assert.equal(corrected.status,200,await corrected.text());
+ const fixed=await call(warning,2);assert.equal(fixed.status,200,JSON.stringify(fixed));
+ const audit=fixed.data.record.data.meterCorrectionHistory;assert.equal(audit.length,1);assert.equal(audit[0].before.closingHmr,9);assert.equal(audit[0].after.closingHmr,6);assert.match(audit[0].issues.closingHmr,/maximum.*8/);assert.equal(audit[0].by,'test-admin');
+ const persisted=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[fixed.data.record.id])).rows[0].data;assert.deepEqual(persisted.meterCorrectionHistory,audit);
+ const correctedReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const cardsTable=correctedReport.tables.find(table=>table.name==='Cards');const errorIndex=cardsTable.columns.findIndex(column=>column.tone==='error'),fixedIndex=cardsTable.columns.findIndex(column=>column.tone==='corrected');assert.ok(errorIndex>0);assert.ok(cardsTable.rows.some(row=>/9 hours/.test(row[errorIndex])&&/6 hours/.test(row[fixedIndex])));
+
  const rejected=await add(5,{...valid,aFormNo:'78'});await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[rejected]);assert.equal((await call(rejected)).status,409);
  pulseAvailable=false;
  const fallback=await add(6,{...valid,aFormNo:'79'});const missing=await call(fallback);assert.equal(missing.status,409);assert.match(missing.data.error,/Enter BD hours manually/);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[fallback])).rows[0].status,'review');

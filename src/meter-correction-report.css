@@ -1,0 +1,4 @@
+.meter-report-error{color:#b91c1c!important;white-space:pre-wrap}.meter-report-corrected{color:#15803d!important;white-space:pre-wrap}
+[data-theme="dark"] .meter-report-error{color:#fca5a5!important}[data-theme="dark"] .meter-report-corrected{color:#86efac!important}
+
+.scan-batch-report td.meter-report-error,.scan-batch-report td.meter-report-corrected{white-space:pre-wrap;min-width:280px;max-width:420px}

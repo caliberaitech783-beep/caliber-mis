@@ -309,7 +309,7 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
       ...options.filter(option=>!jobReferenceOption(option)),
     ];
     const previewColumns=compactSmartPrintColumns(previewOptions.map(option=>option.column));
-    const serial=withSerialColumn(previewColumns.map(column=>({key:column.key,label:String(column.label||'')})),previewRows.map(row=>previewColumns.map(column=>formatCell(column.value?.(row)))));
+    const serial=withSerialColumn(previewColumns.map(column=>({key:column.key,label:String(column.label||''),tone:column.tone})),previewRows.map(row=>previewColumns.map(column=>formatCell(column.value?.(row)))));
     const sheet=make('div',undefined,'smart-print-sheet');
     sheet.append(make('h4',currentReport().reportTitle),make('p',`${rows.length.toLocaleString('en-IN')} record${rows.length===1?'':'s'} · complete update history prints in the Daily Updates section and exports to its Excel sheet`));
     const table=make('table'),thead=make('thead'),tr=make('tr');
@@ -325,7 +325,7 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
     const tbody=make('tbody');serial.rows.forEach((cells,index)=>{
       const line=make('tr',undefined,highlightRow?.(previewRows[index])?'highlight-row':'');
       cells.forEach((cell,cellIndex)=>{
-        const td=make('td',cell);
+        const td=make('td',cell);if(serial.columns[cellIndex]?.tone)td.style.color=serial.columns[cellIndex].tone==='error'?'#b91c1c':'#15803d';
         const optionIndex=serialAlreadyPresent?cellIndex:cellIndex-1;
         if(optionIndex>=0&&!selected.includes(previewOptions[optionIndex]?.id))td.className='smart-print-column-off';
         line.append(td);

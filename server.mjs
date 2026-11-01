@@ -1970,7 +1970,7 @@ app.post('/api/exports/pdf',requireSession,async(req,res,next)=>{
       if(dataColumnCount<1||dataColumnCount>48){const error=new Error('Select between 1 and 48 report columns.');error.status=400;throw error;}
       reportRows+=requestedRows.length;
       if(reportRows>5000){const error=new Error('This report has too many rows to export at once. Apply a filter and try again.');error.status=413;throw error;}
-      const columns=requestedColumns.map((column,columnIndex)=>({label:String(column?.label||`Column ${columnIndex+1}`).replace(/\s+/g,' ').trim().slice(0,100)||`Column ${columnIndex+1}`}));
+      const columns=requestedColumns.map((column,columnIndex)=>({...(['error','corrected'].includes(column?.tone)?{tone:column.tone}:{}),label:String(column?.label||`Column ${columnIndex+1}`).replace(/\s+/g,' ').trim().slice(0,100)||`Column ${columnIndex+1}`}));
       const rows=[];
       for(const row of requestedRows){
         const cells=columns.map((_,columnIndex)=>Array.isArray(row)?String(row[columnIndex]??'').replace(/\s+/g,' ').trim():'—');

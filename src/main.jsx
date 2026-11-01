@@ -3726,7 +3726,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     const sheetData = worksheetRows.map((row, rowIndex) => {
       const style = rowIndex === 0 ? 3 : rowIndex === 1 ? 4 : rowIndex === 2 ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
       const height = rowIndex === 0 ? ' ht="24" customHeight="1"' : rowIndex === 2 ? ' ht="30" customHeight="1"' : "";
-      return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => `<c r="${excelCellReference(columnIndex, rowIndex)}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`).join("")}</row>`;
+      return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => `<c r="${excelCellReference(columnIndex, rowIndex)}" s="${rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`).join("")}</row>`;
     }).join("");
     const widths = labels.map((label, index) => {
       const maxLength = Math.max(String(label || "").length, ...serial.rows.map((row) => Math.max(...String(row[index] || "").split(/\r?\n/).map((line) => line.length))));
@@ -3746,7 +3746,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     { name: "docProps/core.xml", content: `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${workbookTitle}</dc:title><dc:creator>Caliber Pulse-II</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>` },
     { name: "docProps/app.xml", content: `<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse-II</Application></Properties>` },
     { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${worksheets.map((sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}<Relationship Id="rId${worksheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
-    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF000000"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
+    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="6"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF000000"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFB91C1C"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
     { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${worksheets.map((sheet, index) => `<sheet name="${escapeXlsxText(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets><definedNames>${worksheets.map((sheet,index)=>{const name="'"+sheet.name.replaceAll("'","''")+"'";const cell=sheet.printLastCell.replace(/^([A-Z]+)([0-9]+)$/,(match,col,row)=>String.fromCharCode(36)+col+String.fromCharCode(36)+row);return `<definedName name="_xlnm.Print_Area" localSheetId="${index}">${escapeXlsxText(name+'!$A$1:'+cell)}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeXlsxText(name+'!$1:$3')}</definedName>`;}).join('')}</definedNames></workbook>` },
     ...worksheets.flatMap((sheet, index) => [
       {name: `xl/worksheets/_rels/sheet${index + 1}.xml.rels`, content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index + 1}.xml"/></Relationships>`},
@@ -3788,7 +3788,7 @@ async function printReportDirect({ title, columns = [], rows = [], highlightRow,
       const highlights = rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []);
       const appendixTables = appendices.map((appendix) => ({
         title: appendix.title,
-        columns: appendix.columns.map((column) => ({ label: column.label })),
+        columns: appendix.columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })),
         rows: appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row)))),
       }));
       const response = await fetchPdfExport("/api/exports/pdf", {
@@ -3796,9 +3796,9 @@ async function printReportDirect({ title, columns = [], rows = [], highlightRow,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify(appendixTables.length ? {
           title: reportPdfHeading(title, rows, columns),
-          tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights }, ...appendixTables],
+          tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights }, ...appendixTables],
           pageSize: page.name,
-        } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights, pageSize: page.name }),
+        } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights, pageSize: page.name }),
       });
       if (!response.ok) {
         const details = await response.json().catch(() => ({}));
@@ -3841,7 +3841,7 @@ function printTableReportInBrowser({ title, columns = [], rows = [], highlightRo
   const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
   const serial = withSerialColumn(columns, exportRows);
   const headings = serial.columns.map((column) => `<th>${escapeExportHtml(column.label)}</th>`).join("");
-  const body = serial.rows.length ? serial.rows.map((row, index) => `<tr${highlightRow?.(rows[index]) ? ' class="highlight-row"' : ""}>${row.map((cell) => `<td>${escapeExportHtml(cell)}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${serial.columns.length}">No records available</td></tr>`;
+  const body = serial.rows.length ? serial.rows.map((row, index) => `<tr${highlightRow?.(rows[index]) ? ' class="highlight-row"' : ""}>${row.map((cell, cellIndex) => `<td${serial.columns[cellIndex]?.tone ? ` style="color:${serial.columns[cellIndex].tone==='error'?'#b91c1c':'#15803d'}"` : ""}>${escapeExportHtml(cell)}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${serial.columns.length}">No records available</td></tr>`;
   const groupedReport = reportGrouping ? siteReportHtml({ rows, columns: serial.columns, cells: serial.rows, grouping: reportGrouping, escape: escapeExportHtml }) : "";
   const appendixHtml = appendices.map((appendix) => {
     const appendixRows = appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row))));
@@ -3899,7 +3899,7 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
   recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
   const appendixTables = appendices.map((appendix) => ({
     title: appendix.title,
-    columns: appendix.columns.map((column) => ({ label: column.label })),
+    columns: appendix.columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })),
     rows: appendix.rows.map((row) => appendix.columns.map((column) => exportCellText(column.value?.(row)))),
   }));
   if(pending.summary)appendixTables.unshift(pending.summary);
@@ -3908,8 +3908,8 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
     body: JSON.stringify(appendixTables.length ? {
       title: reportPdfHeading(title, rows, columns),
-      tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }, ...appendixTables],
-    } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }),
+      tables: [{ title: "Report", columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights: [...highlightedRows] }, ...appendixTables],
+    } : { title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights: [...highlightedRows] }),
   });
   if (!response.ok) {
     const details = await response.json().catch(() => ({}));
@@ -4011,7 +4011,7 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
       const response = await fetchPdfExport("/api/exports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label })), rows: exportRows, highlights: [...highlightedRows] }),
+        body: JSON.stringify({ title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights: [...highlightedRows] }),
       });
       if (!response.ok) {
         const details = await response.json().catch(() => ({}));
@@ -7861,7 +7861,7 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
         const pdfResponse = await fetchPdfExport("/api/exports/pdf", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.token || authToken}` },
-          body: JSON.stringify({ title: reportPdfHeading(report.title, filteredRows), columns: report.columns.map((column) => ({ label: column.label })), rows: exportRows }),
+          body: JSON.stringify({ title: reportPdfHeading(report.title, filteredRows), columns: report.columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows }),
         });
         if (!pdfResponse.ok) {
           const details = await pdfResponse.json().catch(() => ({}));

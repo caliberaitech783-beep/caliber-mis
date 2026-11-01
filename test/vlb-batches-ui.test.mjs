@@ -1,3 +1,4 @@
+import {meterCorrectionReport} from '../scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -108,7 +109,7 @@ test('opened batch search and shared export controls use only its saved snapshot
  const slots=[];let cursor=0;
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const ReportSection=()=>null;
- const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordSource,displaySiteName},['VlbBatchReport','vlbBatchColumns']);
+ const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordSource,displaySiteName,meterCorrectionReport},['VlbBatchReport','vlbBatchColumns']);
  const records=[{id:1,book_no:'VLB_M/29TH-OCT26/S1/001',data:{door:'V07',totalTrips:0,totalWorkingHmr:0}},{id:2,book_no:'VLB_S/29TH-OCT26/S1/001',data:{door:'V12',scanCardId:'scan'}}];
  const batch={id:'saved',name:'CMLL/SASTI OC/29TH -OCT-26/S1/B01',site:'Sasti OC',report_date:'2026-10-29',shift:'S1',records};
  const render=()=>{cursor=0;return VlbBatchReport({batch,ReportSection})};

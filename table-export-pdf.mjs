@@ -95,7 +95,7 @@ function drawTable(doc,{title,columns=[],rows=[],highlights=[]},drawHeading=()=>
       let x=doc.page.margins.left;
       columns.forEach((_,columnIndex)=>{
         doc.rect(x,y,widths[columnIndex],height).fill(highlighted.has(rowIndex)?COLORS.highlight:rowIndex%2===0?COLORS.white:COLORS.soft);
-        doc.fillColor(COLORS.navy).font(fontFor(values[columnIndex])).fontSize(fontSize).text(values[columnIndex],x+4,y+4,{width:widths[columnIndex]-8,height:height-8,lineGap:1});
+        doc.fillColor(columns[columnIndex].tone==='error'?'#b91c1c':columns[columnIndex].tone==='corrected'?'#15803d':COLORS.navy).font(fontFor(values[columnIndex])).fontSize(fontSize).text(values[columnIndex],x+4,y+4,{width:widths[columnIndex]-8,height:height-8,lineGap:1});
         doc.strokeColor(COLORS.line).lineWidth(.45).rect(x,y,widths[columnIndex],height).stroke();
         x+=widths[columnIndex];
       });
