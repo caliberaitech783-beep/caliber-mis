@@ -9,6 +9,17 @@ import { buildSite, resolveAppVersion } from "../build-site.mjs";
 const currentSha = "a".repeat(40);
 const previousSha = "b".repeat(40);
 
+test('Azure rebuilds without Git retain the validated deployment commit',async t=>{
+  const cwd=await mkdtemp(path.join(os.tmpdir(),'azure-release-identity-'));
+  t.after(()=>rm(cwd,{recursive:true,force:true}));
+  await writeFile(path.join(cwd,'DEPLOYMENT_SHA'),currentSha+'\n');
+  assert.equal(await resolveAppVersion({env:{},cwd,gitHead:''}),currentSha);
+  assert.equal(await resolveAppVersion({env:{GITHUB_SHA:previousSha},cwd,gitHead:''}),previousSha);
+  assert.equal(await resolveAppVersion({env:{},cwd,gitHead:previousSha}),previousSha);
+  await writeFile(path.join(cwd,'DEPLOYMENT_SHA'),'invalid');
+  assert.notEqual(await resolveAppVersion({env:{},cwd,gitHead:''}),'invalid');
+});
+
 test("application versions are stable for the same deployment source", async () => {
   assert.equal(await resolveAppVersion({ env: { GITHUB_SHA: currentSha } }), currentSha);
   assert.equal(await resolveAppVersion({ env: { GITHUB_SHA: currentSha } }), currentSha);

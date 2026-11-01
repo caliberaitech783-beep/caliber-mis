@@ -51,7 +51,12 @@ export async function resolveAppVersion({ env = process.env, cwd = process.cwd()
       repositoryHead = "";
     }
   }
-  return normalizedBuildIdentity(repositoryHead) || sourceTreeVersion(cwd);
+  if(normalizedBuildIdentity(repositoryHead))return normalizedBuildIdentity(repositoryHead);
+  // Azure can rebuild the deployed workspace without .git or GitHub's env.
+  // Keep the identity already stamped by the validated deployment workflow.
+  const deployedCommit=(await readFile(path.join(cwd,'DEPLOYMENT_SHA'),'utf8').catch(()=>'' )).trim();
+  if(/^[0-9a-f]{40}$/i.test(deployedCommit))return deployedCommit.toLowerCase();
+  return sourceTreeVersion(cwd);
 }
 
 export async function buildSite({ cwd = process.cwd(), env = process.env, buildClient = build, verifyOutput = buildClient === build } = {}) {
