@@ -4,7 +4,7 @@ import {displaySiteName} from '../region-scope.mjs';
 
 export const vlbBatchColumns=[
  {key:'book',label:'Card ID',value:r=>r.book_no},
- {key:'card',label:'Trip card',value:r=>r.data.aFormNo||'—'},
+ {key:'card',label:'A-Form No.',value:r=>r.data.aFormNo||'—'},
  {key:'source',label:'Source',value:vlbRecordSource},
  {key:'date',label:'Date',value:r=>r.data.bookDate},
  {key:'site',label:'Site',value:r=>displaySiteName(r.data.location)},
