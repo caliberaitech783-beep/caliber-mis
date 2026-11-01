@@ -40,3 +40,9 @@ export function manualLogBookLocation(session={},scope=logBookSiteScope(session)
  const sites=assigned.length?assigned:scope.sites||[];
  return sites.length===1&&siteAllowed(scope,sites[0])?displaySiteSelection(sites[0])[0]||'':'';
 }
+
+export function logBookAccountLocation(session={},scope=logBookSiteScope(session),users=[]){
+ const login=String(session.login||'').trim().toLowerCase(),name=String(session.name||'').trim().toLowerCase();
+ const user=users.find(row=>login&&String(row.login||'').trim().toLowerCase()===login)||users.find(row=>name&&String(row.employee||row.name||'').trim().toLowerCase()===name);
+ return manualLogBookLocation(user||session,scope);
+}

@@ -11,7 +11,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
 for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -145,4 +145,15 @@ test('Scan and Upload require complete setup and activate only the selected inpu
  assert.equal(scanner(tree).props.inert,true);assert.equal(uploader(tree).props.inert,false);
  assert.equal(nodes(tree,n=>n.type===scope.LocalScannerPanel)[0].props.disabled,true);
  assert.equal(button(tree,'Choose scan files').props.disabled,false);
+});
+
+test('scan setup fills its single read-only Site from the Pulse account options',()=>{
+ const app=harness();app.render();app.testCapture.setOptions({accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});let tree=app.render();
+ const site=nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Site')[0];
+ assert.equal(site.props.readOnly,true);assert.equal(site.props.value,'Sasti OC');assert.equal(site.props.onChange,undefined);
+ const sync=app.effects.find(fn=>/accountSite/.test(String(fn))&&/current.location/.test(String(fn)));assert.ok(sync);sync();tree=app.render();
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true,'date and shift are still required');
+ const date=nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Card date')[0];date.props.onInput({target:{value:'2026-11-01'}});
+ nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});tree=app.render();
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
 });
