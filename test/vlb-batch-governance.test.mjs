@@ -21,7 +21,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  [13,'Users & employees',{login:'production',userType:'Super User',adminLevel:'Manager',managerRole:'Production Manager',managerSites:'Sasti OC'}],
  [14,'Users & employees',{login:'wrongpm',userType:'Super User',adminLevel:'Manager',managerRole:'Project Manager',managerSites:'Jayant OC'}],
  [15,'Users & employees',{login:'dual',userType:'Super User',adminLevel:'Manager',managerRole:'Project Manager',userRoles:['MIS User'],managerSites:'Sasti OC'}],
- ];for(const [id,name,row] of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(row)]);
+ ];masters.push([30,'Equipment master',{category:'Equipment',door:'VPC28',currentLocation:'Sasti OC'}]);for(const [id,name,row] of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(row)]);
  const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());

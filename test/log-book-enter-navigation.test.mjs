@@ -164,7 +164,8 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
     const app=harness();let tree=app.render();
     all(tree,node=>node.props['data-enter-action']==='add-trip')[0].props.onClick();
     while(frames.length)frames.shift()();assert.equal(app.slots[0].trips.length,6);assert.match(focused[0],/="5"/);
-    app.slots[0]={...app.slots[0],trips:[{equipmentName:'V12',loadingTime:'08:00',unloadingTime:'08:30',tripCount:1}]};
+    app.slots[2].assets=[{id:'12',door:'Vpc12',site:'Jayant',kind:'equipment'}];
+    app.slots[0]={...app.slots[0],location:'Jayant',trips:[{equipmentName:'V12',loadingTime:'08:00',unloadingTime:'08:30',tripCount:1}]};
     tree=app.render();
     const count=all(tree,node=>node.props['aria-label']==='Trip remark row 1')[0];
     const root={querySelector:selector=>({focus:()=>focused.push(selector),scrollIntoView(){}})};
@@ -176,7 +177,7 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
     const entry=all(tree,node=>node.type==='form')[0];
     await entry.props.onSubmit({preventDefault(){}});
     const payload=requests.find(r=>r.body)?.body;
-    assert.equal(payload.trips.length,1);assert.deepEqual(payload.trips[0],app.slots[0].trips[0]);
+    assert.equal(payload.trips.length,1);assert.deepEqual(payload.trips[0],{...app.slots[0].trips[0],equipmentName:'Vpc 12',equipmentId:'12',originalEquipmentName:'V12'});
     assert.equal(app.slots[0].trips.length,2,'draft is not erased');
   } finally {globalThis.requestAnimationFrame=priorFrame;globalThis.document=priorDocument;globalThis.fetch=priorFetch}
 });

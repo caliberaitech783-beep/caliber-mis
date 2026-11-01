@@ -45,7 +45,7 @@ test('literal blank handover times do not become red fields or block automatic s
 test('missing printed number and absent Work Order master stay All okay for VLB and ELB',async()=>{
  const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
  const {cardReviewGroup}=await import('../scan-card-groups.mjs');
- const options={assets:[{id:'1'}],employees:[{id:'2'}],shifts:[{id:'3'}],workOrders:[]};
+ const options={assets:[{id:'1',door:'Vpc12',site:'Jayant OC'}],employees:[{id:'2'}],shifts:[{id:'3'}],workOrders:[]};
  for(const kind of ['vehicle','equipment']){
   const draft={...valid,aFormNo:'',jobCardNo:'',workOrderId:'',extractionReviewFields:[],meterReviewFields:[]};
   const card={status:'review',draft,raw_fields:{},checks:{errors:[],warnings:[]}};
