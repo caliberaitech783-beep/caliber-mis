@@ -16,6 +16,10 @@ async function eligible(client,selection){
  AND NOT EXISTS(SELECT 1 FROM mis_vlb_batch_entries e WHERE e.logbook_id=l.id) ORDER BY l.id FOR UPDATE OF l`,[selection.date]);
  return rows.filter(r=>canonicalSiteName(r.site)===selection.site&&vlbRecordShift(r.data)===selection.shift);
 }
+async function openSiteBatch(client,site,excludeId){
+ const rows=(await client.query("SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE closed_at IS NULL AND archived_at IS NULL AND ($1::uuid IS NULL OR id<>$1) ORDER BY created_at,id",[excludeId||null])).rows;
+ return rows.find(batch=>canonicalSiteName(batch.site)===canonicalSiteName(site))||null;
+}
 async function visible(client,id,req){
  if(!uuid(id))fail('Invalid batch ID.',400);
  const batch=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
@@ -57,8 +61,9 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
  app.get('/api/vlb-batches/preview',...protect,handle(async(req,res)=>{
   const selection=vlbBatchSelection(req.query);requireLogBookSite(req.logBookScope,selection.site);
   const existingBatch=await matchingVlbBatch(pool,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
+  const siteOpenBatch=await openSiteBatch(pool,selection.site);
   const records=await eligible(pool,selection);
-  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,1),existingBatch});
+  res.json({selection,records,name:existingBatch?.name||vlbBatchName(selection,1),existingBatch,siteOpenBatch});
  }));
  app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>res.json(await details(pool,await visible(pool,req.params.id,req),req))));
  app.post('/api/vlb-batches/:id/archive',...protect,handle(async(req,res)=>{
@@ -80,6 +85,8 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
    if(prior){if(batchLogin(creator(prior))!==user||prior.site!==selection.site||prior.report_date!==selection.date||prior.shift!==selection.shift)fail('Batch save reference already used.');repeated=true;return details(client,await visible(client,prior.id,req),req)}
    const existing=await matchingVlbBatch(client,{location:selection.site,bookDate:selection.date,bookShiftCode:selection.shift});
    if(existing)fail('A batch already exists for this site, date and shift. Open that batch; closed batches require site PM approval to reopen.');
+   const siteOpen=await openSiteBatch(client,selection.site);
+   if(siteOpen)fail('Close the open batch '+siteOpen.name+' before creating another batch for this site, regardless of date or shift.');
    if(!req.batchActor.admin&&(await client.query('SELECT id FROM mis_vlb_batches WHERE (lower(COALESCE(creator_login,created_by))=$1 OR lower(amendment_by)=$1) AND closed_at IS NULL AND archived_at IS NULL',[user])).rows.length)fail('Close the previous batch before creating a new batch.');
    const records=await eligible(client,selection);
    const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL FOR UPDATE',[selection.date,selection.shift])).rows;
@@ -139,6 +146,7 @@ export function registerVlbBatches(app,{pool,protect,ensureBooks,getActor=(sessi
   res.json(await transaction(async client=>{
    const batch=await visible(client,req.params.id,req);if(!batch.closed_at)fail('This batch is already open.');
    await matchingVlbBatch(client,{location:batch.site,bookDate:batch.report_date,bookShiftCode:batch.shift});
+   const siteOpen=await openSiteBatch(client,batch.site,batch.id);if(siteOpen)fail('Close the open batch '+siteOpen.name+' before reopening another batch for this site.');
    const request=(await client.query("SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND requested_by=$2 AND closure_revision=$3 AND status='approved' ORDER BY decided_at DESC LIMIT 1 FOR UPDATE",[batch.id,req.batchActor.login,batch.closure_revision])).rows[0];
    const pmApprovalTrial=await vlbPmTrial(client);
    if(!pmApprovalTrial.active&&!request)fail('Site PM approval is required for this MIS user and the current batch closure.',403);

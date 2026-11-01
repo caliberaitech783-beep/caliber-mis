@@ -34,6 +34,21 @@ export const VLB_BATCH_SCHEMA=`
    CREATE TRIGGER mis_vlb_unique_scope_guard BEFORE INSERT OR UPDATE OF site,book_date,shift ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_duplicate_scope();
   END IF;
  END $install$;
+ CREATE OR REPLACE FUNCTION mis_vlb_prevent_multiple_open_site_batches() RETURNS trigger LANGUAGE plpgsql AS $open_site_guard$
+ BEGIN
+  IF NEW.closed_at IS NULL AND NEW.archived_at IS NULL THEN
+   LOCK TABLE mis_vlb_batches IN SHARE ROW EXCLUSIVE MODE;
+   IF EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.site=NEW.site AND b.closed_at IS NULL AND b.archived_at IS NULL AND b.id<>NEW.id) THEN
+    RAISE EXCEPTION 'Close the existing open batch before creating another batch for this site' USING ERRCODE='23505';
+   END IF;
+  END IF;
+  RETURN NEW;
+ END $open_site_guard$;
+ DO $install_open_site_guard$ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='mis_vlb_one_open_site_guard' AND tgrelid='mis_vlb_batches'::regclass) THEN
+   CREATE TRIGGER mis_vlb_one_open_site_guard BEFORE INSERT OR UPDATE OF site,closed_at,archived_at ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_multiple_open_site_batches();
+  END IF;
+ END $install_open_site_guard$;
  CREATE TABLE IF NOT EXISTS mis_vlb_reopen_requests(
  id UUID PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),closure_revision INTEGER NOT NULL,
  requested_by TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','used')),

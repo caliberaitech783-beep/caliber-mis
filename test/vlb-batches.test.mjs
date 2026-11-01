@@ -35,6 +35,8 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.deepEqual(scanEntries.map(id=>before.data.records.filter(r=>r.data.scanBatchId===id).length),[40,40,40,10]);
  assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
  const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,131);
+ const otherScopePreview=await call('/preview?'+new URLSearchParams({...selection,date:'2026-10-29',shift:'S2'}));assert.equal(otherScopePreview.data.siteOpenBatch.id,created.data.id);
+ assert.equal((await call('','POST',{...selection,date:'2026-10-29',shift:'S2',requestKey:randomUUID()},'bob')).status,409,'another user cannot create a different date or shift while this site is open');
  assert.equal((await call(preview)).data.records.length,0);
  assert.equal((await call('','POST',body)).data.id,created.data.id);
  assert.equal((await call('','POST',{...body,shift:'S2'})).status,409);
@@ -45,6 +47,7 @@ test('batch APIs include every matching saved source, remain open until closed, 
  await db.query("UPDATE mis_log_books SET data=data||'{\"door\":\"CHANGED\"}'::jsonb WHERE id=$1",[ids[0]]);
  assert.equal((await call('/'+created.data.id)).data.records[0].data.door,'V07');
  const closed=await call('/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200);assert.ok(closed.data.closed_at);assert.equal(closed.data.entry_count,131);
+ assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-10-29',shift:'S2'}))).data.siteOpenBatch,null);
  assert.equal((await call('/'+created.data.id+'/close','POST',{})).data.closed_at,closed.data.closed_at);
  assert.equal((await call('')).data.openBatch,null);
  assert.equal((await call('','POST',{...selection,requestKey:randomUUID()})).status,409);

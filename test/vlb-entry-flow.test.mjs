@@ -29,7 +29,7 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-notice\{[^}]*display:flex[^}]*align-items:center/);
 });
 
-test('empty batches accept repeated manual and scan cards; admin can use other authorized sites',async t=>{
+test('empty batches accept repeated manual and scan cards; every user gets one open batch per site',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
@@ -50,10 +50,11 @@ test('empty batches accept repeated manual and scan cards; admin can use other a
  }
  const found=await call('',undefined,'bob');assert.ok(found.data.batches.some(b=>b.id===batch.id&&!b.closed_at),'same batch discoverable by either entry mode');
  assert.equal((await create('Sasti OC')).status,409,'ordinary user must finish the open batch');
- const a=await create('Sasti OC','admin'),b=await create('Jayant OB','admin','S2');assert.equal(a.status,201,JSON.stringify(a.data));assert.equal(b.status,201,JSON.stringify(b.data));assert.equal(a.data.closed_at,null);assert.equal(b.data.closed_at,null);assert.equal(a.data.created_by,'admin');assert.equal(b.data.created_by,'admin');assert.ok(a.data.canClose&&b.data.canClose);assert.equal((await call('/'+a.data.id+'/close',{},'admin')).status,200);assert.equal((await call('/'+b.data.id,undefined,'admin')).data.closed_at,null);
+ const a=await create('Sasti OC','admin');assert.equal(a.status,201,JSON.stringify(a.data));assert.equal(a.data.closed_at,null);assert.equal(a.data.created_by,'admin');assert.ok(a.data.canClose);assert.equal((await create('Jayant OB','admin','S2')).status,409,'admin cannot create another open batch for the same site');assert.equal((await call('/'+a.data.id+'/close',{},'admin')).status,200);
  assert.equal((await create('Sasti OC','restricted','S2')).status,403,'admin flow does not bypass site authorization');
  assert.equal((await create('Jayant OB','bob')).status,409,'same scope cannot create a duplicate');
  assert.equal((await call('/'+batch.id+'/close',{})).status,200);
+ const b=await create('Jayant OB','admin','S2');assert.equal(b.status,201,JSON.stringify(b.data));assert.equal((await call('/'+b.data.id+'/close',{},'admin')).status,200,'a new date or shift is allowed after the site batch is closed');
  await assert.rejects(()=>syncVlbBatchRecord(pool,{id:8,book_no:'VLB-8',book_type:'vehicle',data:{location:'Jayant OB',bookDate:'2026-10-31',bookShiftCode:'S1'}},'alice'),/closed/);
 });
 
