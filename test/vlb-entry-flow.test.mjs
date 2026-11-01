@@ -7,6 +7,7 @@ import {registerVlbBatches} from '../vlb-batches.mjs';
 import {syncVlbBatchRecord} from '../vlb-batch-policy.mjs';
 import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext} from '../src/vlb-entry-context.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('selected batch fixes manual and scan context with the effective site shift',()=>{
  const batch={site:'Jayant OB',report_date:'2026-12-31',shift:'S1'};
  const options={shifts:[{id:1,site:'Sasti OC',shiftCode:'I'},{id:2,site:'Jayant OB',shiftCode:'I',effectiveTo:'2026-12-30'},{id:3,site:'Jayant OB',shiftCode:'I',effectiveFrom:'2026-12-31'}]};

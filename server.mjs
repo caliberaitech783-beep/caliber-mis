@@ -1,6 +1,9 @@
 import {operationalScanSql} from './operational-start.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
 import {registerMisTelegram} from './mis-telegram.mjs';
+import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
+import {registerEquipmentCreateExpress} from './equipment-create-express.mjs';
+import {createOtpDelivery,telegramOutboxSender} from './otp-delivery.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
 import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './content-deletion-policy.mjs';
@@ -7843,6 +7846,15 @@ registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAd
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
 const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request})});
+// PM approvals by OTP for express site transfers and new equipment raised from a VLB/ELB batch.
+// Telegram first, WhatsApp fallback. Pulse is the only Equipment master: until Pulse exposes write
+// endpoints the writer records local-only so the test platform can trial the flow end to end.
+const approvalOtpDelivery=createOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:{async send(to,otp){const result=await sendMetaWhatsAppTemplate({to,templateKey:'passwordResetOtp',purpose:'pmApprovalOtp',parameters:[otp]});return Boolean(result?.sent??result?.messageId??result);}}});
+const pulseMasterWriter={async completeTransfer(){return {mode:'local-only',note:'Pulse transfer endpoint not configured. The synced Equipment master copy in Pulse-II was updated; record the transfer in Pulse.'}},async createEquipment(){return {mode:'local-only',note:'Pulse equipment endpoint not configured. The asset exists in Pulse-II only until it is created in Pulse with the same chassis or registration.'}}};
+const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessContext,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),pulseWriter:pulseMasterWriter,ensureSchema:()=>logBooks.initialize()};
+registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
+  notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
+registerEquipmentCreateExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment',targetReference:reference,changedFields:[],details};}});
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});

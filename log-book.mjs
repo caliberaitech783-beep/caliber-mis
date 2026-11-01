@@ -9,6 +9,8 @@ import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {assetCapacityPair} from './production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
+import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
+import {syncElbBatchRecord} from './vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
 import {registerLogBookDeletion} from './log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
@@ -51,9 +53,10 @@ export function normalizeLogBook(kind,input={}){
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
  const shiftHours=number(input.shiftHours,'Shift hours');if(input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
- const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,kind==='vehicle'?'Driver':'Operator',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});
- if(!assetId||!employeeId||!shiftId)fail('Select an asset, employee and shift from their masters.');
- const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true}),closingHmr=number(input.closingHmr,'Closing HMR',{signed:true});
+ const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
+ const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,kind==='vehicle'?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true});
+ if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
+ const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
 const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR',{signed:true}):null;
 const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
@@ -64,14 +67,14 @@ const timeMode=input.timeMode==='without'?'without':'with';
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
  return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
    meterRuleErrors:meterRuleIssues(input,kind),openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
-   aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,
+   aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
    totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+(timeMode==='without'||row.loadingTime&&row.unloadingTime?row.tripCount:0),0),
    workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
 }
@@ -83,7 +86,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
  if(kind==='vehicle'){
  const assets=(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)}));
- const validation=validateTripEquipment(input,assets);if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
+ const validation=validateTripEquipment(input,assets,{anySite:twoStageEnabled()});if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
  const data=normalizeLogBook(kind,input);
@@ -92,14 +95,19 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      const employee=masters.find(row=>String(row.id)===String(data.employeeId)&&['Users & employees','C-Dir Employee master','ERP Employee master','Employee master'].includes(row.master_name))?.record_data;
      const shift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
-     if(!asset||!employee||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
+     if(!asset||!employee&&!employeeOptional||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(assetBookKind(asset)!==kind)fail('Select an asset from the correct log book category.');
      const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift.site||shift.siteName);
-     if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location))fail('The selected asset is assigned to a different location.');
+     const siteHolds=[];
+     if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location)){if(!twoStageEnabled())fail('The selected asset is assigned to a different location.');siteHolds.push({role:kind==='vehicle'?'vlb_door':'elb_door',assetId:String(data.assetId),assetSite,label:text(asset.door||asset.doorNo||equipmentDoorNumber(asset))});}
+     if(kind==='vehicle'&&twoStageEnabled())for(const row of data.trips)if(row.equipmentSite&&canonicalSiteName(row.equipmentSite)!==canonicalSiteName(data.location))siteHolds.push({role:'vlb_loader',assetId:String(row.equipmentId),assetSite:row.equipmentSite,label:row.equipmentName,trips:row.tripCount});
+     data.siteHolds=siteHolds;
      if(shiftSite&&canonicalSiteName(shiftSite)!==canonicalSiteName(data.location))fail('The selected shift is assigned to a different location.');
-     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:text(employee.employee||employee.name||employee.login),caliberId:employeeCode(employee),shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
+     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
  if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
+ else data.bookShiftCode=bookShiftCode(input.bookShiftCode)||bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName)||'';
  data.chassis=text(asset.chassis||asset.chassisNo);
  const capacityPair=assetCapacityPair(asset);data.assetMake=capacityPair.make;data.assetModel=capacityPair.model;
  return data;
@@ -112,6 +120,7 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
  await enqueueTripVerification(client,result.rows[0]);
  await syncVlbBatchRecord(client,result.rows[0],createdBy,batchOptions);
+ await syncElbBatchRecord(client,result.rows[0],createdBy);
  return result.rows[0];
 }
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,getSiteScope=async session=>logBookSiteScope(session)}){
@@ -121,7 +130,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const batchScope=(req,res,next)=>{if(req.query?.scan!=='1')return protect[2](req,res,next);return requireAdministrator(req,res,error=>{if(error)return next(error);req.logBookScope={sites:null,label:'All sites'};next()})};
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
- registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage});
+ registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})}});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
@@ -218,7 +227,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});const response=kind==='vehicle'?(await withVlbTripHandovers(client,[previous],await filterLogBookSites(client,req.logBookScope)))[0]:previous;await client.query('COMMIT');return res.json(response);}
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
-     if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}
+     if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);await syncElbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}
      const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];await client.query('COMMIT');res.status(updating?200:201).json(response);
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
  }

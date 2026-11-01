@@ -11,6 +11,7 @@ import {registerLocalDocumentScanning} from '../local-document-scanning.mjs';
 import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('entry limit allows partial entries and rejects a 41st card',()=>{
  assert.equal(MAX_SCAN_ENTRY_CARDS,40);
  assert.equal(scanEntryRemaining(10),30);

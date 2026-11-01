@@ -7,6 +7,7 @@ import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {SCAN_BACKUP_SCHEMA,registerScanBackup} from '../scan-backup.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('a concurrent backup cannot recreate a recovery snapshot during permanent cleanup',{skip:!connectionString},async t=>{
  const target=new URL(connectionString);assert.ok(['127.0.0.1','localhost'].includes(target.hostname)&&target.pathname==='/caliber_mis','Use only the isolated local test database.');

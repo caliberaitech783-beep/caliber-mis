@@ -7,6 +7,7 @@ import {registerLogBooks,insertLogBook,resolveLogBookData,LOG_BOOK_SCHEMA} from 
 import {vlbBatchActor,batchPmAtSite} from '../vlb-batch-access.mjs';
 import {VLB_BATCH_SCHEMA,matchingVlbBatch,lockSavedVlbBatches} from '../vlb-batch-policy.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('live saves auto-attach, closure blocks writes, and only the site-PM-approved MIS user can amend once',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB)');

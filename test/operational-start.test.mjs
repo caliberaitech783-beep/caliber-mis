@@ -13,6 +13,7 @@ import {parseScanContext} from '../scan-batch-context.mjs';
 import {savedLogBookFilters} from '../saved-log-book-filters.mjs';
 import {encodeScanJson} from '../scan-text-storage.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('cutoff is inclusive, validates real dates and applies to manual, scan and batch dates',()=>{
  for(const date of ['2026-10-31','2026-01-01','2026-02-30','2026-11-31','',undefined]){
   assert.equal(operationalDate(date),false);assert.throws(()=>requireOperationalDate(date));

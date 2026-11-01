@@ -6,6 +6,7 @@ import pg from 'pg';
 import {LOG_BOOK_SCHEMA,insertLogBook} from '../log-book.mjs';
 import {registerVlbBatches} from '../vlb-batches.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const connectionString=process.env.VLB_BATCH_TEST_DATABASE_URL;
 test('PostgreSQL serializes duplicate creation, save/close races and approval consumption',{skip:!connectionString},async t=>{
  const target=new URL(connectionString);assert.ok(['127.0.0.1','localhost'].includes(target.hostname)&&target.pathname==='/caliber_mis','Concurrency tests require the isolated local caliber_mis database.');

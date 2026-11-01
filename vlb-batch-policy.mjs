@@ -2,6 +2,7 @@ import {VLB_BATCH_RETENTION_SCHEMA} from './vlb-batch-retention-schema.mjs';
 import {requireOperationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
+import {VLB_TWO_STAGE_SCHEMA,twoStageEnabled} from './vlb-two-stage.mjs';
 
 export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batches(
@@ -67,7 +68,8 @@ export const VLB_BATCH_SCHEMA=`
    closure_revision=closure_revision+CASE WHEN closed_at IS NULL THEN 1 ELSE 0 END
   WHERE saved_lock_policy=FALSE AND book_date>=$$2026-11-01$$ RETURNING id,created_by
  ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
- SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;`;
+ SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;
+ ${VLB_TWO_STAGE_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
 export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");
@@ -90,6 +92,7 @@ export async function assertVlbBatchWrite(client,data,actor,recordId){
  requireOperationalDate(batch.report_date);
  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
  if(batch.closed_at)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before saving or changing cards.');
+ if(twoStageEnabled()&&batch.stage==='elb_open')batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
@@ -100,7 +103,7 @@ export async function lockSavedVlbBatches(client,actor,recordIds){
   WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL AND b.continuous_entry=FALSE`,[recordIds])).rows;
  for(const batch of batches){
   if(batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('Only the approved MIS user can save this reopened batch.',403);
-  await client.query('UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1 WHERE id=$1',[batch.id]);
+  await client.query("UPDATE mis_vlb_batches SET closed_at=NOW(),amendment_by=NULL,closure_revision=closure_revision+1,stage='closed' WHERE id=$1",[batch.id]);
   await auditVlbBatch(client,batch,actor,'saved_and_locked',{closureRevision:batch.closure_revision+1,logbookIds:recordIds});
  }
  return batches.map(batch=>batch.id);

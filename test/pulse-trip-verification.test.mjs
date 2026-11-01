@@ -10,6 +10,7 @@ import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {createPulseMasterSync} from '../pulse-master-sync.mjs';
 import {planTripVerification,sameTripVehicle,enqueueTripVerification,tripVerificationMarker,createTripVerification,registerTripVerification} from '../pulse-trip-verification.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const record=()=>({id:1,book_type:'vehicle',book_no:'CAL/VLB/281026/S1/0001',data:{scanCardId:randomUUID(),bookDate:'2026-12-28',location:'Sasti OC',door:'V101',chassis:'CH101',registration:'MH01AB101',masterShiftStart:'05:00:00',shiftHours:8,cardShift:'I',bookShiftCode:'S1',timeMode:'with',openingHmr:100,closingHmr:105,openingKmr:200,closingKmr:240,trips:[{equipmentName:'V2',tripCount:1,loadingTime:'10:35:00',unloadingTime:'10:55:00'}]}});
 const request=()=>({ref:'BD-TEST-101',site:'Sasti OC',door:'V101',chassis:'CH101',status:'Closed',start:'2026-12-28 08:00:00',closedAt:'2026-12-28 10:00:00',meterType:'KMR',openingMeterReadings:{HMR:'100',KMR:'200'}});
 const now=Date.parse('2026-12-28T15:00:00+05:30');

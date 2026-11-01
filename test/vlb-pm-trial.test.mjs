@@ -7,6 +7,7 @@ import {registerVlbBatches} from '../vlb-batches.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite} from '../vlb-batch-policy.mjs';
 import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from '../vlb-pm-trial.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('10-day trial withdraws only the approved pending request, is restart-safe, preserves access and expires on server writes',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER,created_by TEXT,created_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ)');

@@ -3,6 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import expr
 import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('blocked HTTP saves retain viewable images and correction data; rechecking a valid fleet clears the block',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);

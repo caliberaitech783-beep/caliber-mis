@@ -9,6 +9,7 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
 import {registerErpEmployees} from '../erp-employee-source.mjs';
 import {registerBulkCardScanning,SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('site and regional scopes use canonical site names and deny unassigned MIS identities',()=>{
   const mis={role:'super',permissions:{adminLevel:'Admin',separateMisCredentials:true}};
   assert.deepEqual(logBookSiteScope(mis).sites,[]);

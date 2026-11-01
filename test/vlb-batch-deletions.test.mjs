@@ -9,6 +9,7 @@ import {enforceContentDeletionPolicy} from '../content-deletion-policy.mjs';
 import {withVlbTripHandovers} from '../vlb-trip-handover.mjs';
 import {misRequestAllowed} from '../mis-application-access.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 async function setup(t){
  const connectionString=process.env.DELETION_TEST_DATABASE_URL;
  let db,pool;

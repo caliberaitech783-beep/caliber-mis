@@ -3,6 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const valid={doorText:'V321',bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
 test('automatic saving requires complete valid values while Work Order remains optional',()=>{
  const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};

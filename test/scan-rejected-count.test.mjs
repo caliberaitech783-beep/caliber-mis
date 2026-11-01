@@ -7,6 +7,7 @@ import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {scanBatchReport} from '../scan-batch-report.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('rejecting a blank card remains visible to its batch and increments the report count',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args),pool={query,connect:async()=>({query,release(){}})};

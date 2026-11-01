@@ -1,6 +1,7 @@
 import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('equipment review blocks posting, preserves scans, reuses the existing transfer path and rejects only the selected whole card',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);let tail=Promise.resolve();const pool={query,connect:async()=>{const old=tail;let done;tail=new Promise(r=>done=r);await old;return {query,release:done}}};

@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate,scanContextSelectionChanged} from '../scan-batch-context.mjs';
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const context={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('scan selection requires a real date, site and marked shift and never trusts confirmed flags',()=>{
  for(const value of [null,{}, {...context,bookDate:'2026-02-30'},{...context,bookDate:'today'},{...context,location:''},{...context,cardShift:'bad'}])assert.throws(()=>parseScanContext(value));

@@ -8,6 +8,7 @@ import {SCAN_SCHEMA,checkScanCard} from '../bulk-card-scanning.mjs';
 import {SCAN_BACKUP_SCHEMA} from '../scan-backup.mjs';
 import {VLB_BATCH_SCHEMA} from '../vlb-batches.mjs';
 import {registerLogBookDeletion} from '../log-book-deletion.mjs';
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
 test('exact manifest discovers duplicates across states and batches, binds SSD files and gates every cleanup step',async t=>{

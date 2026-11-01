@@ -9,6 +9,7 @@ import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed} from '../mis-application-access.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('Legacy Saved VLB links redirect to batches while ELB keeps its own permission',()=>{
   for(const [slug,page,permission] of [['vlb-saved','Create VLB Batch','Vehicle Log Book'],['elb-saved','Saved ELB','Equipment Log Book']]){
     assert.equal(requestedMisPage('?page='+slug),page);

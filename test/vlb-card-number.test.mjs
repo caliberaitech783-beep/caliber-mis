@@ -7,6 +7,7 @@ import {previewBookNumber,scanBookPreviewSequence} from '../book-number-preview.
 import {LOG_BOOK_SCHEMA,insertLogBook} from '../log-book.mjs';
 import {randomUUID} from 'node:crypto';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('source card formats preserve date ordinals and support sequences beyond 999',()=>{
  assert.equal(formatVlbCardNumber('2026-12-29','I',1,'M'),'VLB_M/29TH-DEC26/S1/001');
  assert.equal(formatVlbCardNumber('2026-12-29','I',1,'S'),'VLB_S/29TH-DEC26/S1/001');

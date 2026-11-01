@@ -6,6 +6,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../log-book.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:150,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
 test('template totals use the correct meter pairs, preserve zero and keep missing integration data unavailable',()=>{
  const row=normalizeLogBook('vehicle',{...input(),openingKmr:0,closingKmr:0,totalRunningKmr:999,breakdownHours:0});

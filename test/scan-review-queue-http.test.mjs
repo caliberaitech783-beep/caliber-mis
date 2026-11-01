@@ -3,6 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import expr
 import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
 import {remainingScanCards,scanReviewPosition} from '../src/scan-review-queue.mjs';
 
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('matching complete cards save automatically; explicit correction reduces ten uploaded cards from six remaining to five',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  for(const [id,name,data]of [[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E5',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]])await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
