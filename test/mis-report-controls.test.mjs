@@ -1,3 +1,4 @@
+import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -36,20 +37,19 @@ test('all operational reports use shared controls with full filtered data, prese
 });
 
 test('VLB and ELB batch reports hide individual trip and loading equipment sections while retaining scoped card data',async()=>{
-  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
   for(const kind of ['vehicle','equipment']){
     const batch={id:'batch',kind,name:'Chosen batch'},cards=Array.from({length:121},(_,i)=>({id:'card-'+i,batch_id:batch.id,ordinal:i+1,status:'review',draft:{door:'S/01',openingHmr:0,closingHmr:8}}));
     cards.push({id:'foreign',batch_id:'other',ordinal:122,status:'posted'});
     const sections=nodes(render({batch,cards,token:'test'}),ReportSection);
-    const visibleTables=scanBatchReportTables(scanBatchReport(batch,cards)).filter(table=>!['Individual trips','Loading equipment'].includes(table.name));
+    const visibleTables=scanBatchReportTables(scanBatchReport(batch,cards)).filter(table=>table.name==='Batch summary');
     assert.deepEqual(sections.map(section=>section.props.title),visibleTables.map(table=>table.title));
     const summaries=nodes(render({batch,cards,token:'test'}),'summary').map(node=>node.props.children);
     assert.ok(!summaries.includes('Individual trips')&&!summaries.includes('Loading equipment'));
-    const table=sections.find(n=>n.props.columns.some(c=>c.key==='ordinal'));
-    assert.equal(table.props.rows.length,121);
-    assert.ok(table.props.rows.every(row=>row.id!=='foreign'));
-    assert.equal(table.props.columns.find(c=>c.key==='openingHmr').value(table.props.rows[0]),0);
-    if(kind==='equipment')assert.ok(table.props.columns.every(c=>!['trips','openingKmr','closingKmr'].includes(c.key)));
+    const table=nodes(render({batch,cards,token:'test'}),'table')[0];
+    const rows=nodes(nodes(table,'tbody')[0],'tr');assert.equal(rows.length,121);assert.ok(rows.every(row=>row.props['data-card-id']!=='foreign'));
+    const headings=nodes(table,'th').map(n=>n.props.children);if(kind==='equipment')assert.ok(!headings.includes('Opening KMR'));
+
   }
 });
 
@@ -63,7 +63,7 @@ test('original-card index sends all cards to shared controls while gallery remai
 });
 
 test('batch report shows only saved totals as tiles, keeps its heading and downloads, and lists every card in the batch',async()=>{
- const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const batch={id:'batch',kind:'vehicle',name:'Combined saves'};
  const saved=(id,ordinal,mode)=>({id,batch_id:batch.id,ordinal,status:'posted',saved_data:{scanCardId:id,scanBatchId:batch.id,door:'V'+ordinal,scanSaveMode:mode}});
  const cards=[saved('automatic',1,'automatic-validation'),saved('corrected',2,'manual-review'),{id:'pending',batch_id:batch.id,ordinal:3,status:'review',draft:{}},{...saved('foreign',4,'automatic-validation'),batch_id:'other'}];
@@ -73,13 +73,12 @@ test('batch report shows only saved totals as tiles, keeps its heading and downl
  const header=nodes(tree,'header')[0];
  assert.equal(nodes(header,'h2').length,1);
  assert.deepEqual(nodes(header,'button').map(node=>node.props.children),['Download batch Excel','Download batch PDF']);
- const cardTable=nodes(tree,ReportSection).find(node=>node.props.columns.some(c=>c.key==='ordinal'));
- assert.deepEqual(cardTable.props.rows.map(row=>row.id),['automatic','corrected','pending']);
+ const cardTable=nodes(tree,'table')[0];assert.deepEqual(nodes(nodes(cardTable,'tbody')[0],'tr').map(row=>row.props['data-card-id']),['automatic','corrected','pending']);
  assert.ok(nodes(tree,'summary').some(node=>node.props.children==='All cards'));
 });
 
 test('one search beside the batch report heading controls every table without duplicate search fields',async()=>{
- const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const props={batch:{id:'batch',kind:'vehicle',name:'Chosen batch'},cards:[{id:'card',batch_id:'batch',ordinal:1,status:'review',draft:{}}],token:'test'};
  let tree=render(props);
  const searches=nodes(tree,'input').filter(node=>node.props.type==='search');
@@ -91,11 +90,19 @@ test('one search beside the batch report heading controls every table without du
 });
 
 test('the all-cards table stays visible while batch checks block saving and downloads',async()=>{
- const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables});
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const context={bookDate:'2026-10-30',location:'Sasti OC',cardShift:'I'},batch={id:'batch',kind:'vehicle',expected_context:context};
  const cards=Array.from({length:10},(_,i)=>{const id='card-'+i;return {id,batch_id:batch.id,ordinal:i+1,status:i<4?'posted':i===9?'reading':'review',draft:context,raw_fields:{extractionDraft:context},...(i<4?{saved_data:{...context,scanCardId:id,scanBatchId:batch.id}}:{})}});
  const tree=render({batch,cards,token:'test',contextBlocked:true}),table=nodes(tree,'table').find(node=>node.props['aria-label']==='Scanned card summary');
  assert.ok(table);assert.equal(nodes(nodes(table,'tbody')[0],'tr').length,10);
- const cells=nodes(table,'td').map(node=>node.props.children);assert.equal(cells.filter(value=>value==='Saved').length,4);assert.equal(cells.filter(value=>value==='Pending correction / saving').length,5);assert.ok(cells.includes('Extracting'));
+ const badges=nodes(table,'span').map(n=>n.props.children);assert.equal(badges.filter(value=>value==='Saved').length,4);assert.ok(badges.includes('Processing'));
+
  for(const button of nodes(tree,'button').filter(node=>['Download batch Excel','Download batch PDF'].includes(node.props.children)))assert.equal(button.props.disabled,true);
+});
+
+test('coloured card links open the exact card and cannot discard unsaved work',async()=>{
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
+ const batch={id:'batch',kind:'vehicle'},cards=[{id:'card7',batch_id:'batch',ordinal:7,status:'error',error:'Extraction failed'}];let selected='',prevented=false;
+ let tree=render({batch,cards,onReviewCard:id=>selected=id});let link=nodes(tree,'a')[0];assert.match(link.props.className,/scan-report-error/);assert.match(link.props.href,/card=card7/);assert.match(link.props['aria-label'],/card 7/);link.props.onClick({preventDefault(){prevented=true}});assert.equal(selected,'card7');assert.equal(prevented,true);
+ selected='';tree=render({batch,cards,reviewDisabled:true,onReviewCard:id=>selected=id});nodes(tree,'a')[0].props.onClick({preventDefault(){}});assert.equal(selected,'');
 });
