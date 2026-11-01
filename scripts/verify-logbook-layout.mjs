@@ -44,7 +44,7 @@ const browser=await chromium.launch({headless:true});
 mkdirSync('layout-checks',{recursive:true});
 const findings=[];
 try{
- for(const width of [320,390,640,840,1024])for(const mode of ['scan','recovery','correction','untimed','manual-vlb','manual-elb','saved']){
+ for(const width of [320,390,640,840,900,1024])for(const mode of ['scan','recovery','correction','untimed','manual-vlb','manual-elb','saved']){
   const page=await browser.newPage({viewport:{width,height:1000},locale:'en-IN'});
   const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(width,mode,error.message)});
   await page.goto('http://127.0.0.1:'+server.address().port+'/?mode='+mode);
@@ -62,13 +62,14 @@ try{
    for(const e of [...document.querySelectorAll('#scan-entry-fields input,#scan-entry-fields output,#logbook-entry-form .logbook-field input')].filter(visible)){
     const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<20)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
     if(box.right>width+2||box.left< -2)issues.push('Field outside viewport');
-    if(e.type==='time'&&box.width<148)issues.push('Native time too narrow: '+box.width);
+    if(e.type==='time'&&box.width<168)issues.push('Native time too narrow: '+box.width);
+    if(e.closest('.scan-trip-entry')&&e.tagName==='INPUT'&&parseFloat(s.fontSize)!==20)issues.push('Trip value must use its bounded 20px font: '+s.fontSize);
    }
    if(mode==='scan'||mode==='recovery'||mode==='correction'||mode==='untimed'){
     for(const row of document.querySelectorAll('.scan-trip-entry')){
      const fields=[...row.querySelectorAll('label')].filter(visible).map(e=>e.getBoundingClientRect());
      for(let i=0;i<fields.length;i++)for(let j=i+1;j<fields.length;j++){const a=fields[i],b=fields[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)issues.push('Trip fields overlap');}
-     if(document.querySelector('.scan-draft-sheet').clientWidth>830){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
+     if(document.querySelector('.scan-draft-sheet').clientWidth>880){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
     }
    }
    for(const e of document.querySelectorAll('#logbook-entry-form .searchable-select-full-value')){const control=e.parentElement.querySelector('.searchable-select-control');if(visible(e)&&e.getBoundingClientRect().top<control.getBoundingClientRect().bottom-1)issues.push('Full selected value must appear below its control');}
@@ -79,7 +80,7 @@ try{
   result.issues.push(...errors);
   findings.push(result);
   writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
-  if([320,390,840,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
+  if([320,390,840,900,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
   if(mode==='scan'){
    await page.getByRole('button',{name:'Remove trip 1',exact:true}).click();
    assert.equal(await page.locator('.scan-trip-entry').count(),1,'Delete removes only the selected row');
@@ -90,5 +91,5 @@ try{
  writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
  const failures=findings.filter(f=>f.issues.length);
  assert.deepEqual(failures,[],'Responsive layout regressions: '+JSON.stringify(failures));
- console.log('Verified 35 layouts: scan, serial correction, issue correction, no-time, VLB, ELB and saved records at 320–1024px; delete preserves serials.');
+ console.log('Verified 42 layouts: scan, serial correction, issue correction, no-time, VLB, ELB and saved records at 320–1024px; delete preserves serials.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
