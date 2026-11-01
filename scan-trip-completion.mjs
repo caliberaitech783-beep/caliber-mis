@@ -11,7 +11,7 @@ function completeMachinesFromSummary(trips,summary,evidence={},summarySource='')
   const candidate=candidates[0],expected=Number(candidate.row.tripCount);if(!Number.isSafeInteger(expected)||expected<1)continue;
   const matching=trips.map((row,index)=>({row,index,machine:identifyCardMachine(row.equipmentName,'trip-body',{allowSuffix:true})})).filter(item=>item.machine?.code===code&&(item.machine.hasNumber?item.machine.key===candidate.machine.key:true));
   const total=matching.reduce((sum,item)=>sum+(Number(item.row.tripCount)||1),0);if(total!==expected)continue;
-  for(const item of matching){item.row.equipmentName=candidate.machine.canonical;item.row.equipmentNotation={original:item.machine.original,resolved:candidate.machine.canonical};if(!item.machine.hasNumber)item.row.equipmentSource='machine-summary';}
+  for(const item of matching){if(item.row.equipmentSource==='master-selection')continue;item.row.equipmentName=candidate.machine.canonical;item.row.equipmentNotation={original:item.machine.original,resolved:candidate.machine.canonical};if(!item.machine.hasNumber)item.row.equipmentSource='machine-summary';}
  }
  return trips;
 }
@@ -29,7 +29,7 @@ export function completeScanTripDetails(input={},raw={}){
   const contiguous=i===0||number===previousNumber+1;
   if(!contiguous){previous='';previousNotation=null;}
   if(blank(row.equipmentName)){
-   if(previous&&populated&&source?.[1]!==null&&row.equipmentName!==null){
+   if(row.equipmentSource!=='master-selection'&&previous&&populated&&source?.[1]!==null&&row.equipmentName!==null){
     row.equipmentName=previous;row.equipmentSource='previous-trip-row';
     if(previousNotation)row.equipmentNotation={...previousNotation,resolved:previous};
    }else {previous='';previousNotation=null;}

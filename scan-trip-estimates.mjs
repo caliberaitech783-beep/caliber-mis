@@ -36,6 +36,7 @@ export function completePreviousShiftMachines(input={},records=[]){
  const candidates=sources.map(record=>({record,row:(record.data.trips||[]).filter(r=>r.loadingTime||r.unloadingTime).at(-1)})).filter(item=>item.row?.equipmentName&&!item.row.equipmentSource&&!item.row.equipmentProvenance);
  if(!candidates.length)return input;
  return {...input,trips:(input.trips||[]).map(row=>{
+  if(row.equipmentSource==='master-selection')return row;
   const machine=identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true});
   if(!empty(row.equipmentName)&&(!machine||machine.hasNumber)||!row.loadingTime&&!row.unloadingTime)return row;
   const matching=candidates.filter(item=>{

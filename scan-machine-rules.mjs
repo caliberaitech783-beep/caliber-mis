@@ -69,7 +69,22 @@ export const resolvedMachineName=row=>text(row.door||row.doorNo||equipmentDoorNu
 export function siteEquipmentOptions(assets=[],site=''){
  const selectedSite=canonicalSiteName(site);
  if(!selectedSite)return [];
- return assets.filter(row=>row.kind==='equipment'&&canonicalSiteName(row.currentLocation||row.site||row.location)===selectedSite);
+ return assets.filter(row=>!row.sourceMissing&&row.kind==='equipment'&&canonicalSiteName(row.currentLocation||row.site||row.location)===selectedSite);
+}
+// Keep manual selections separate from OCR-derived names and summary inference.
+export function selectTripEquipment(row={},equipmentId='',assets=[],site=''){
+ const asset=siteEquipmentOptions(assets,site).find(item=>String(item.id)===String(equipmentId));
+ const original=row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName||'';
+ const resolved=asset?resolvedMachineName(asset):'';
+ return {...row,equipmentId:asset?String(asset.id):'',equipmentName:resolved,equipmentSource:'master-selection',originalEquipmentName:original,equipmentNotation:{original,resolved}};
+}
+export function tripEquipmentSelectionValue(row={},assets=[],site='',version=2){
+ const available=siteEquipmentOptions(assets,site);
+ if(row.equipmentSource==='master-selection')return available.some(asset=>String(asset.id)===String(row.equipmentId))?String(row.equipmentId):'';
+ // Older saved/OCR rows may contain only the shortened equipment name.
+ const normalized=scannedTripEquipmentRow(row,assets,site,version);
+ const match=resolveTripEquipment(normalized,available,site);
+ return match.error?'':match.equipmentId;
 }
 export function scannedEquipmentName(value,assets=[],site=''){
  const result=matchCardMachine(assets,value,site,'equipment');
@@ -83,6 +98,11 @@ export function normalizeScanEquipmentRows(input={},assets=[]){
 export function scannedTripEquipmentRow(row={},assets=[],site='',version=2){
  const value=text(row.equipmentName),prior=row.equipmentNotation;
  const locationMatch=resolveTripEquipment(row,assets,site);
+ if(row.equipmentSource==='master-selection'){
+  if(locationMatch.error)return row;
+  const record=assets.find(asset=>String(asset.id)===locationMatch.equipmentId);
+  return {...row,...locationMatch,equipmentName:resolvedMachineName(record)};
+ }
  if(!locationMatch.error&&/^(?:U|TA|TATA)[ ._/-]*[0-9]+$/i.test(value)){const record=assets.find(r=>String(r.id)===locationMatch.equipmentId);const resolved=record?resolvedMachineName(record):locationMatch.equipmentName;return {...row,...locationMatch,equipmentName:resolved,equipmentNotation:{original:row.originalEquipmentName||prior?.original||value,resolved}};}
  // A resolved master H door is Hydra, not fresh handwritten H shorthand.
  if(prior&&value===prior.resolved)return {...row,equipmentName:scannedEquipmentName(value,assets,site)};
@@ -102,6 +122,11 @@ export function scanEquipmentMatchIssues(input={},assets=[]){
  const issues={};
  for(const [collection,rows]of [['trips',input.trips||[]],['scanMachineSummary',input.scanMachineSummary||[]]])for(const [index,row]of rows.entries()){
   if(!text(row.equipmentName))continue;
+  if(row.equipmentSource==='master-selection'){
+   const match=resolveTripEquipment(row,assets,input.location);
+   if(match.error)issues[collection==='trips'?`trips.${index}.equipmentName`:'scanMachineSummary']=match.error;
+   continue;
+  }
   const result=matchCardMachine(assets,row.equipmentName,input.location,'equipment');if(result.match)continue;
   const reason=result.status==='missing-number'?'machine number is missing':result.status==='missing-prefix'?'M/type prefix is missing':result.status==='ambiguous'?'multiple equipment master records match':'no equipment master record matches';
   issues[collection==='trips'?`trips.${index}.equipmentName`:'scanMachineSummary']=`Check ${text(row.equipmentName)}: ${reason} at the selected location.`;

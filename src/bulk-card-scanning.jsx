@@ -9,7 +9,7 @@ import {createPdfUploadSession,transferScanGroups} from './scan-upload-pipeline.
 import ScanBatchMismatchDialog from './scan-batch-mismatch-dialog.jsx';
 import {scanContextReady,scanContextSelectionChanged} from '../scan-batch-context.mjs';
 import {scanReviewHelp,scanReviewFieldSection} from './scan-review-layout.mjs';
-import {cardMachineHint,scannedTripEquipmentRow,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../scan-machine-rules.mjs';
+import {cardMachineHint,selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../scan-machine-rules.mjs';
 import {trimScanPreview} from './scan-preview-crop.mjs';
 import ScanCorrectionStatus from './scan-correction-status.jsx';
 import ScanExtractionStatus,{ScanExtractionLine} from './scan-extraction-status.jsx';
@@ -248,13 +248,13 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
           aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])}
           aria-label={l+' row '+(i+1)}
           data-trip-equipment={i}
-          value={r[k]??''}
-          onChange={e=>update('trips',draft.trips.map((row,n)=>n===i?scannedTripEquipmentRow({...row,equipmentName:e.target.value,equipmentNotation:undefined},options?.assets||[],draft.location,draft.tripBodyRuleVersion||1):row))}
+          value={tripEquipmentSelectionValue(r,options?.assets||[],draft.location,draft.tripBodyRuleVersion||1)}
+          onChange={e=>update('trips',draft.trips.map((row,n)=>n===i?selectTripEquipment(row,e.target.value,options?.assets||[],draft.location):row))}
          >
           <option value="">Select equipment registered at {draft.location||'this site'}</option>
           {tripEquipmentOptions.map(asset=>{
            const value=resolvedMachineName(asset);
-           return <option key={asset.id} value={value}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
+           return <option key={asset.id} value={String(asset.id)}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
           })}
          </SmartSelect>
         :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:e.currentTarget.value}:row))}/>}
