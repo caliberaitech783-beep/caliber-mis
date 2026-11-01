@@ -29,7 +29,7 @@ export const NAVIGATION_LABELS = {
   "Equipment Log Book Options":"Equipment Log Book (ELB)",
   "Vehicle Log Book":"VLB Manual",
   "Equipment Log Book":"ELB Manual",
-  "Trip Card Bulk Scan":"VBL Scan",
+  "Trip Card Bulk Scan":"VLB Scan",
   "Job Card Bulk Scan":"ELB Scan",
   "Pulse Master Sync":"Sync all masters",
   "Users & employees":"Login Details",

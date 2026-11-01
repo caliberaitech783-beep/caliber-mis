@@ -115,7 +115,7 @@ test('opened batch search and shared export controls use only its saved snapshot
  const render=()=>{cursor=0;return VlbBatchReport({batch,ReportSection})};
  let report=render();assert.equal(report.type,ReportSection);assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);
  assert.equal(vlbBatchColumns.find(c=>c.key==='hours').value(records[0]),0);
- assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VBL Scan');
+ assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VLB Scan');
  const search=nodes(report.props.controls,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});report=render();assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,2,'search must not alter batch membership');
  // Exercise the shared section: its Generate menu must receive the same
  // filtered rows and column choices that the report table supplies for print.
