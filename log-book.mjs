@@ -1,3 +1,5 @@
+import {assetBookKind} from './equipment-kind.mjs';
+export {assetBookKind} from './equipment-kind.mjs';
 import {validateTripEquipment} from './trip-equipment-validation.mjs';
 import {normalizeManualDetails} from './manual-log-book-details.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
@@ -33,11 +35,7 @@ const number=(value,label,{optional=false,integer=false}={})=>{
  const n=Number(value);if(!['string','number'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(n)||n<0||(integer&&!Number.isSafeInteger(n)))fail(`${label} must be a valid ${integer?'whole ':''}non-negative number.`);return n;
 };
 const rounded=value=>Math.round((value+Number.EPSILON)*1000)/1000;
-export function assetBookKind(asset={}){
- const category=text(asset.category||asset.equipmentCategory).toLowerCase();
- if(category==='equipment')return 'equipment';if(['vehicle','vehicles'].includes(category))return 'vehicle';
- return /excavator|dozer|grader|loader|drill|shovel|crane|equipment/i.test(text(asset.group||asset.equipmentGroup||asset.equipmentName))?'equipment':'vehicle';
-}
+
 export function employeeCode(record={}){return text(record.employeeId||record.empId||record.employeeCode||record.empCode||record.caliberId||record.code||record.idNo);}
 export function timeGapMinutes(start,end){
  const parse=value=>{const m=text(value).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);if(!m||Number(m[1])>23||Number(m[2])>59||Number(m[3]||0)>59)fail('Loading and unloading times must be valid clock times.');return Number(m[1])*3600+Number(m[2])*60+Number(m[3]||0)};

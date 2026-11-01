@@ -1,3 +1,4 @@
+import {assetBookKind} from './equipment-kind.mjs';
 import {resolveTripEquipment} from './trip-equipment-validation.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
@@ -52,7 +53,7 @@ function masterIndex(rows,site,kind){
  const cacheKey=kind+'\0'+canonicalSiteName(site);if(indexes.has(cacheKey))return indexes.get(cacheKey);
  const index=new Map();
  for(const row of rows){
-  if(row.kind&&row.kind!==kind||site&&canonicalSiteName(row.currentLocation||row.site||row.location)!==canonicalSiteName(site))continue;
+  if(kind==='equipment'&&assetBookKind(row)!=='equipment'||row.kind&&row.kind!==kind||site&&canonicalSiteName(row.currentLocation||row.site||row.location)!==canonicalSiteName(site))continue;
   for(const identifier of identifiers(row)){const key=cardMachineKey(identifier,kind);if(!key)continue;if(!index.has(key))index.set(key,new Set());index.get(key).add(row);}
  }
  indexes.set(cacheKey,index);return index;
@@ -69,7 +70,7 @@ export const resolvedMachineName=row=>text(row.door||row.doorNo||equipmentDoorNu
 export function siteEquipmentOptions(assets=[],site=''){
  const selectedSite=canonicalSiteName(site);
  if(!selectedSite)return [];
- return assets.filter(row=>!row.sourceMissing&&row.kind==='equipment'&&canonicalSiteName(row.currentLocation||row.site||row.location)===selectedSite);
+ return assets.filter(row=>!row.sourceMissing&&assetBookKind(row)==='equipment'&&canonicalSiteName(row.currentLocation||row.site||row.location)===selectedSite);
 }
 // Keep manual selections separate from OCR-derived names and summary inference.
 export function selectTripEquipment(row={},equipmentId='',assets=[],site=''){
