@@ -1,3 +1,4 @@
+import {registerLogBookDashboard} from './log-book-dashboard.mjs';
 import {recordMeterCorrection} from './scan-meter-history.mjs';
 import {requireOperationalDate} from './operational-start.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
@@ -127,6 +128,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
+ registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  const batchScope=(req,res,next)=>{if(req.query?.scan!=='1')return protect[2](req,res,next);return requireAdministrator(req,res,error=>{if(error)return next(error);req.logBookScope={sites:null,label:'All sites'};next()})};
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
