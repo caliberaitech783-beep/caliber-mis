@@ -1,5 +1,6 @@
 import {operationalDate} from '../operational-start.mjs';
 export const operationReports=[
+ ['door-production','Day-wise Door Number Report','Trips & Productivity'],['machine-production','Day-wise Machine Number Report','Trips & Productivity'],
  ['daily','Daily Operations Summary','Operations'],['vehicle','Vehicle Logbook Register','Operations'],['equipment','Equipment Logbook Register','Operations'],['vehicle-trips','Vehicle-wise Trip Report','Trips & Productivity'],['loading','Loading Equipment-wise Report','Trips & Productivity'],['manpower','Manpower by Category','Manpower & OT'],['employee','Shift Performance','Manpower & OT'],['ot','OT & Multiple Duties','Manpower & OT'],['shift','Shift Comparison','Trips & Productivity'],['timing','Trip Timing & Gap Report','Trips & Productivity'],['utilisation','Fleet Utilisation Report','Utilisation & Exceptions'],['breakdown','Breakdown & Idle Hours','Utilisation & Exceptions'],['meters','Meter Reading Exceptions','Utilisation & Exceptions'],['missing','Missing / Duplicate Logbooks','Utilisation & Exceptions'],['site','Site / Work Order Summary','Operations'],['trends','Daily / Monthly Trends','Operations'],['scans','Scan Review & Reconciliation','Utilisation & Exceptions'],['tonnage','Production Tonnage / Cubic Metres','Commercial'],['fuel','Fuel Consumption and Mileage','Commercial'],['cost','Cost per Trip / Tonne / Hour','Commercial'],['targets','Target versus Actual','Commercial'],['billing','Contractor Billing','Commercial']
 ].map(([id,title,group])=>({id,title,group}));
 export const requirements={tonnage:'Actual load weights or approved capacity and conversion factors',fuel:'Diesel issue quantities linked to vehicle and date',cost:'Fuel, labour, maintenance and other allocated costs',targets:'Approved targets for each shift, day or month',billing:'Contract rates, billable quantities and billing rules'};
@@ -34,5 +35,6 @@ export function buildOperationReport(id,rows,{assets=[],shifts=[],cards=[],filte
  return {columns:[...keys.map(k=>labels[k]),'Logbooks','Assets','Trips','KM','Running hours','Scheduled hours','Utilisation %'],rows:aggregate(source,keys),note:'Utilisation = recorded running hours ÷ scheduled hours of recorded logbooks. Duplicate entries can inflate totals; missing logbooks are not counted as zero.'};
 }
 export function reportCsv(columns,rows){const escape=v=>'"'+String(v??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';return '\uFEFF'+[columns,...rows].map(row=>row.map(escape).join(',')).join('\r\n');}
+
 
 

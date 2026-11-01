@@ -6,6 +6,7 @@ import LogBookDeletion from './log-book-deletion.jsx';
 import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import OperationsReports from './operations-reports.jsx';
+import CapacityMaster from './capacity-master.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import ScanBatchReports from './scan-batch-reports.jsx';
 import {misPageAllowed} from '../mis-application-access.mjs';
@@ -11624,6 +11625,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
+    if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
     if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
     if(name==='Scan Backup'||name==='Deletion')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
@@ -12011,6 +12013,8 @@ function App() {
     <BackupAdministration section={renderedActive} session={session} onNavigate={selectMenu} />
   ) : renderedActive === "Vehicle transfers" ? (
     <VehicleTransferWorkflow session={session} Dialog={Modal} />
+  ) : renderedActive === "Capacity master" ? (
+    <CapacityMaster session={session} ReportSection={ReportSection}/>
   ) : renderedActive === "Equipment master" ? (
     <Equipment initialFilter={renderedEquipmentFilter} initialLocation={renderedEquipmentLocation} initialCategory={renderedEquipmentCategory} allowedLocations={renderedEquipmentLocations} statusRequests={requests} />
   ) : renderedActive === "Breakdown master" ? (
@@ -12080,7 +12084,7 @@ function App() {
         hidden={sidebarHidden}
         onHide={()=>{changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
-          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
+          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},

@@ -3,6 +3,7 @@ import {isMisAdministrator,MIS_ADMIN_PAGES} from './mis-admin-access.mjs';
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
+ if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
  if(MIS_ADMIN_PAGES.includes(page))return isMisAdministrator(session);
@@ -14,6 +15,7 @@ export function misRequestAllowed(session,req){
  if(!session?.permissions?.separateMisCredentials)return true;
  const route=req.path||'',read=['GET','HEAD'].includes(req.method);
  const allowed=page=>misPageAllowed(session,page);
+ if(route==='/api/capacity-master')return allowed('Capacity master')&&(read||req.method==='POST');
  if(route==='/api/mis-ticket-sites')return read;
  if(route==='/api/mis-admin/backup')return isMisAdministrator(session)&&req.method==='POST';
  if(route==='/api/mis-admin/status')return isMisAdministrator(session)&&read;
@@ -63,3 +65,4 @@ export async function authorizeMisRequest(session,req,pool){
  }
  return misRequestAllowed(session,req);
 }
+

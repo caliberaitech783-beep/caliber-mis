@@ -6,6 +6,8 @@ import {validateTripEquipment} from './trip-equipment-validation.mjs';
 import {normalizeManualDetails} from './manual-log-book-details.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
+import {registerProductionReports} from './production-report-api.mjs';
+import {assetCapacityPair} from './production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
 import {registerLogBookDeletion} from './log-book-deletion.mjs';
@@ -99,6 +101,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:text(employee.employee||employee.name||employee.login),caliberId:employeeCode(employee),shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
  if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
  data.chassis=text(asset.chassis||asset.chassisNo);
+ const capacityPair=assetCapacityPair(asset);data.assetMake=capacityPair.make;data.assetModel=capacityPair.model;
  return data;
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
@@ -117,6 +120,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  const batchScope=(req,res,next)=>{if(req.query?.scan!=='1')return protect[2](req,res,next);return requireAdministrator(req,res,error=>{if(error)return next(error);req.logBookScope={sites:null,label:'All sites'};next()})};
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
+ registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
@@ -223,6 +227,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  app.delete('/api/log-books/:kind/:id',...protect,(_req,res)=>res.status(403).json({error:'Use Deletion to preview and approve exact records, then verify the WhatsApp OTP. Direct deletion is disabled.'}));
  return {initialize:ensure,readHours};
 }
+
 
 
 
