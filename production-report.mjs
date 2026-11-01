@@ -71,7 +71,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  if(issues.length)return blocked();
  const rowGroups=new Map(),machineGroups=new Map(),capacityUsed=new Map();
  const createRow=(map,a)=>{
-  const id=String(a.id);if(!map.has(id))map.set(id,{id,door:door(a),...assetCapacityPair(a),cells:Object.fromEntries(selected.map(s=>[s,{drivers:new Set(),trips:0,quantity:0,hours:null,cards:[]}]))});return map.get(id);
+  const id=String(a.id);if(!map.has(id)){const pair=assetCapacityPair(a),approved=map===rowGroups?applicableCapacity(capacities,pair,f.date):null;map.set(id,{id,door:door(a),...pair,capacity:approved?Number(approved.capacity):null,cells:Object.fromEntries(selected.map(s=>[s,{drivers:new Set(),trips:0,quantity:0,hours:null,cards:[]}]))});}return map.get(id);
  };
  const atSite=assets.filter(a=>sameSite(a.currentLocation||a.site||a.location,f.site)&&!a.sourceMissing&&text(a.status).toLowerCase()!=='inactive');
  // Include fleet rows, but distinguish an absent card from an explicit zero-trip card.

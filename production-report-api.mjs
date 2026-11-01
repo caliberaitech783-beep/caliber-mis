@@ -3,6 +3,7 @@ import {siteAllowed,requireLogBookSite} from './log-book-access.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {isMisAdministrator} from './mis-admin-access.mjs';
 import {linkVlbTripHandovers} from './vlb-trip-handover.mjs';
+import {assetBookKind} from './equipment-kind.mjs';
 
 export const PRODUCTION_REPORT_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_capacity_versions(
  id BIGSERIAL PRIMARY KEY,make TEXT NOT NULL,model TEXT NOT NULL,make_key TEXT NOT NULL,model_key TEXT NOT NULL,
@@ -13,11 +14,12 @@ const invalid=(message,status=400)=>Object.assign(new Error(message),{status});
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const masterRows=async client=>(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master']])).rows;
 const masterList=(rows,name)=>rows.filter(r=>r.master_name===name).map(r=>({...r.record_data,id:String(r.id)}));
+const capacityAssets=rows=>masterList(rows,'Equipment master').filter(a=>assetBookKind(a)==='vehicle'&&!a.sourceMissing);
 export function registerProductionReports(app,{pool,protect,ensureBooks}){
  let ready;const ensure=async()=>{await ensureBooks();await(ready??=(pool.query(PRODUCTION_REPORT_SCHEMA).catch(e=>{ready=null;throw e;})));};
  const admin=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Capacity approvals require an authorized administrator.'});
  app.get('/api/capacity-master',...protect,admin,async(req,res,next)=>{
-  try{await ensure();const rows=await masterRows(pool),pairs=new Map();for(const a of masterList(rows,'Equipment master')){const p=assetCapacityPair(a);if(p.make&&p.model&&!/^\d+$/.test(p.make)){const k=pairKey(p);if(!pairs.has(k))pairs.set(k,{...p,vehicles:0});pairs.get(k).vehicles++;}}
+  try{await ensure();const rows=await masterRows(pool),pairs=new Map();for(const a of capacityAssets(rows)){const p=assetCapacityPair(a);if(p.make&&p.model&&!/^\d+$/.test(p.make)){const k=pairKey(p);if(!pairs.has(k))pairs.set(k,{...p,vehicles:0});pairs.get(k).vehicles++;}}
    res.set('Cache-Control','private, no-store').json({pairs:[...pairs.values()].sort((a,b)=>(a.make+' '+a.model).localeCompare(b.make+' '+b.model)),versions:(await pool.query(`SELECT ${versionSelect} FROM mis_capacity_versions ORDER BY make_key,model_key,effective_from DESC`)).rows});
   }catch(e){next(e);}
  });
@@ -25,7 +27,7 @@ export function registerProductionReports(app,{pool,protect,ensureBooks}){
   let client;try{
    const v=validateCapacity(req.body||{});await ensure();client=await pool.connect();await client.query('BEGIN');
    await client.query("SELECT pg_advisory_xact_lock(hashtext('mis_capacity_versions'))");
-   const assets=masterList(await masterRows(client),'Equipment master');if(!assets.some(a=>pairKey(assetCapacityPair(a))===pairKey(v)))throw invalid('This make/model pair is not available in Equipment master. Sync or correct the equipment master first.');
+   const assets=capacityAssets(await masterRows(client));if(!assets.some(a=>pairKey(assetCapacityPair(a))===pairKey(v)))throw invalid('This vehicle make/model pair is not available in Equipment master. Sync or correct the equipment master first.');
    const prior=(await client.query('SELECT effective_from::text AS date FROM mis_capacity_versions WHERE make_key=$1 AND model_key=$2 ORDER BY effective_from DESC LIMIT 1',[v.makeKey,v.modelKey])).rows[0];
    if(prior){const latestClosed=(await client.query('SELECT max(book_date)::text AS date FROM mis_vlb_batches WHERE closed_at IS NOT NULL AND deleted_at IS NULL AND archived_at IS NULL')).rows[0]?.date;
     if(v.effectiveFrom<=prior.date||v.effectiveFrom<=today()||latestClosed&&v.effectiveFrom<=latestClosed)throw invalid('Existing approvals are immutable. Add a new version effective after today, the previous version and all processed batch dates. Historical corrections require a reviewed data correction.',409);
