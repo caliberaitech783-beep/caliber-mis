@@ -17,7 +17,7 @@ import {savedLogBookFilters} from './saved-log-book-filters.mjs';
 import {scanImageMime} from './scan-image-format.mjs';
 import {employeeIdentity} from './employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
-import {shiftMeterIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
+import {meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {summarizePulseHours} from './log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -33,9 +33,9 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
 const fail=message=>{throw Object.assign(new Error(message),{status:400})};
-const number=(value,label,{optional=false,integer=false}={})=>{
+const number=(value,label,{optional=false,integer=false,signed=false}={})=>{
  if(value===''||value===undefined||value===null){if(optional)return null;fail(`${label} is required.`)}
- const n=Number(value);if(!['string','number'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(n)||n<0||(integer&&!Number.isSafeInteger(n)))fail(`${label} must be a valid ${integer?'whole ':''}non-negative number.`);return n;
+ const n=Number(value);if(!['string','number'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(n)||(!signed&&n<0)||(integer&&!Number.isSafeInteger(n)))fail(`${label} must be a valid ${integer?'whole ':''}${signed?'':'non-negative '}number.`);return n;
 };
 const rounded=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 
@@ -51,12 +51,9 @@ export function normalizeLogBook(kind,input={}){
  const shiftHours=number(input.shiftHours,'Shift hours');if(input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
  const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,kind==='vehicle'?'Driver':'Operator',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});
  if(!assetId||!employeeId||!shiftId)fail('Select an asset, employee and shift from their masters.');
- const openingHmr=number(input.openingHmr,'Opening HMR'),closingHmr=number(input.closingHmr,'Closing HMR');
- if(closingHmr<openingHmr)fail('Closing HMR cannot be less than opening HMR.');
- const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR'):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR'):null;
- if(kind==='vehicle'&&closingKmr<openingKmr)fail('Closing KMR cannot be less than opening KMR.');
- const meterErrors=Object.values(shiftMeterIssues(input,kind));if(meterErrors.length)fail(meterErrors.join(' '));
- const timeMode=input.timeMode==='without'?'without':'with';
+ const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true}),closingHmr=number(input.closingHmr,'Closing HMR',{signed:true});
+const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR',{signed:true}):null;
+const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');
  const trips=kind==='vehicle'?(input.trips||[]).map((row,index)=>{
@@ -70,7 +67,7 @@ export function normalizeLogBook(kind,input={}){
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
  return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
-   openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
+   meterRuleErrors:meterRuleIssues(input,kind),openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,
    totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+(timeMode==='without'||row.loadingTime&&row.unloadingTime?row.tripCount:0),0),
@@ -207,7 +204,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind,req.session.login||req.session.name);data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind,req.session.login||req.session.name);
        if(kind==='vehicle')await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);
        const revision=number(req.body.revision,'Revision',{integer:true});
        result=await client.query('UPDATE mis_log_books SET book_date=$1,site=$2,asset_id=$3,data=$4::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$5 AND book_type=$6 AND revision=$7 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[data.bookDate,data.location,data.assetId,JSON.stringify(data),req.params.id,kind,revision]);

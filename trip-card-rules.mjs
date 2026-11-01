@@ -16,6 +16,20 @@ export function shiftMeterIssues(draft={},kind='vehicle'){
  }
  return issues;
 }
+// Meter rule breaches are reported after saving; missing/non-numeric inputs
+// still need a usable reading before a card can be saved.
+export function meterRuleIssues(draft={},kind='vehicle'){
+ const issues={...shiftMeterIssues(draft,kind)};
+ for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+  for(const prefix of ['opening','closing']){
+   const key=prefix+meter,value=draft[key];
+   if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
+  }
+  const a=draft['opening'+meter],b=draft['closing'+meter];
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+ }
+ return issues;
+}
 export const CARD_SHIFTS={I:{hours:8,start:'05:00',label:'I · 05:00–13:00'},II:{hours:8,start:'13:00',label:'II · 13:00–21:00'},III:{hours:8,start:'21:00',label:'III · 21:00–05:00'},Day:{hours:12,start:'',label:'Day · 12 hours'},Night:{hours:12,start:'',label:'Night · 12 hours'}};
 export const systemBookDate=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 export function machineLabel(value){const s=String(value||'').trim().toUpperCase();return /^\d+$/.test(s)?'V'+String(Number(s)):/^V\s*-?\s*\d+$/.test(s)?'V'+String(Number(s.match(/\d+/)[0])):s;}

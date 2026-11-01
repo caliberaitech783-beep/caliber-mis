@@ -18,7 +18,7 @@ export const vlbBatchColumns=[
  {key:'km',label:'Running KMR',value:r=>r.data.totalRunningKmr},
  {key:'hours',label:'Working HMR',value:r=>r.data.totalWorkingHmr},
  {key:'remark',label:'Remark',value:r=>r.data.remark},
- {key:'meterErrors',label:'Original HMR / KMR errors',tone:'error',value:r=>meterCorrectionReport(r.data).original,render:r=><span className="meter-report-error">{meterCorrectionReport(r.data).original||'—'}</span>},
+ {key:'meterErrors',label:'HMR / KMR errors',tone:'error',value:r=>meterCorrectionReport(r.data).original,render:r=><span className="meter-report-error">{meterCorrectionReport(r.data).original||'—'}</span>},
  {key:'meterCorrections',label:'Corrected HMR / KMR readings',tone:'corrected',value:r=>meterCorrectionReport(r.data).corrected,render:r=><span className="meter-report-corrected">{meterCorrectionReport(r.data).corrected||'—'}</span>},
 ];
 export default function VlbBatchReport({batch,ReportSection,onView}){

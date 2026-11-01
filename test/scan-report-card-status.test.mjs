@@ -12,8 +12,8 @@ test('complete, processing, saved, failed and rejected cards stay distinct',()=>
  assert.equal(scanReportCardStatus({...card,status:'rejected'},'vehicle',null,null,{}).label,'Rejected');
 });
 test('all issue categories are shown and incorrect cells carry reasons',()=>{
- const bad={...card,draft:{...draft,employeeId:'',closingHmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:2}]}};
- const result=scanReportCardStatus(bad,'vehicle',null,null,{employeeCode:'',closingHmr:-1,trips:1});
+ const bad={...card,draft:{...draft,employeeId:'',closingHmr:'bad',scanMachineSummary:[{equipmentName:'V12',tripCount:2}]}};
+ const result=scanReportCardStatus(bad,'vehicle',null,null,{employeeCode:'',closingHmr:'bad',trips:1});
  assert.equal(result.tone,'brown');assert.deepEqual(result.badges.map(b=>b.id),['wrong-caliber','wrong-hmr','mws-ted']);assert.equal(result.cells.employeeCode.tone,'red');assert.equal(result.cells.closingHmr.tone,'brown');assert.ok(result.cells.trips.message);
  assert.equal(scanReportCardStatus(card,'vehicle',null,null,{openingHmr:0}).cells.openingHmr,undefined);
 });

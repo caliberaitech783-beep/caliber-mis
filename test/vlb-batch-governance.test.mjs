@@ -70,7 +70,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  const reopened=await call(path+'/reopen','POST',{});assert.equal(reopened.status,200,JSON.stringify(reopened.data));assert.equal(reopened.data.name,created.data.name);assert.equal(reopened.data.amendment_by,'alice');
  assert.equal((await save({},'bob')).status,403);await assert.rejects(()=>scan('bob'),/another MIS user/);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,403);
- const failed=await save({closingHmr:90});assert.equal(failed.status,400);assert.equal((await call(path)).data.closed_at,null,'failed saves do not relock');
+ const failed=await save({closingHmr:'bad'});assert.equal(failed.status,400);assert.equal((await call(path)).data.closed_at,null,'failed saves do not relock');
  const retryKey=randomUUID();const added=await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey});assert.equal(added.status,201,JSON.stringify(added.data));
  let batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.amendment_by,null);assert.equal(batch.entry_count,4);assert.equal(batch.closure_revision,2);
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey})).status,200,'retry returns the already saved record without a second write');

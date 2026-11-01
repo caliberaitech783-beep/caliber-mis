@@ -35,7 +35,7 @@ test('a VLB with readable header and meters but a blank trip table is Blank / no
 });
 
 test('Needs attention contains only cards not already covered by a specific issue filter',()=>{
- const categorized=card('categorized',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
+ const categorized=card('categorized',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:'bad',closingKmr:'bad',scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
  const remaining=card('remaining',{draft:{...draft,shiftId:''}});
  const groups=['wrong-door','wrong-caliber','wrong-hmr','wrong-kmr','mws-ted'];
  assert.deepEqual(cardIssueGroups(categorized,'vehicle'),groups);
@@ -62,7 +62,7 @@ test('mixed 50-page batch separates five wrong-site cards without changing the o
 });
 
 test('a card with overlapping problems is counted in exactly one stable issue group',()=>{
- const bad=card('bad',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:-1,closingKmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
+ const bad=card('bad',{draft:{...draft,doorText:'',assetId:'',employeeId:'',closingHmr:'bad',closingKmr:'bad',scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}});
  const groups=['wrong-door','wrong-caliber','wrong-hmr','wrong-kmr','mws-ted'];
  assert.deepEqual(cardIssueGroups(bad,'vehicle'),groups);
  assert.equal(cardDisplayGroup(bad,'vehicle'),'wrong-door');
@@ -74,7 +74,7 @@ test('a card with overlapping problems is counted in exactly one stable issue gr
 
 test('all status counts equal the uploaded-card total for small and large batches',()=>{
  for(const size of [1,20,120]){
-  const rows=Array.from({length:size},(_,index)=>index%5===0?card(String(index),{draft:{...draft,doorText:'',assetId:'',closingHmr:-1,scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}}):index%5===1?card(String(index),{draft:{...draft,shiftId:''}}):index%5===2?card(String(index),{status:'error'}):index%5===3?card(String(index),{draft:{...draft,trips:[],scanMachineSummary:[]}}):card(String(index)));
+  const rows=Array.from({length:size},(_,index)=>index%5===0?card(String(index),{draft:{...draft,doorText:'',assetId:'',closingHmr:'bad',scanMachineSummary:[{equipmentName:'V12',tripCount:3}]}}):index%5===1?card(String(index),{draft:{...draft,shiftId:''}}):index%5===2?card(String(index),{status:'error'}):index%5===3?card(String(index),{draft:{...draft,trips:[],scanMachineSummary:[]}}):card(String(index)));
   const counts=reviewGroupSummary(rows,'vehicle');
   assert.equal(CARD_GROUPS.reduce((sum,group)=>sum+counts[group.id],0)+counts.pending,size);
  }

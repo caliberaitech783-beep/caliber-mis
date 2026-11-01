@@ -17,7 +17,7 @@ test('template totals use the correct meter pairs, preserve zero and keep missin
 test('trip modes, overnight times and invalid meter/date inputs are validated',()=>{
  assert.equal(timeGapMinutes('23:50:00','00:10:00'),20);
  assert.equal(normalizeLogBook('vehicle',{...input(),timeMode:'without',trips:[{equipmentName:'L1',tripCount:3}]}).totalTrips,3);
- for(const patch of [{bookDate:'2026-02-31'},{closingHmr:199},{openingKmr:''},{shiftHours:9},{assetId:true},{trips:[null]},{trips:[{equipmentName:'L1',tripCount:0}]},{trips:[{equipmentName:'L1',tripCount:1,loadingTime:'29:00',unloadingTime:'30:00'}]}])assert.throws(()=>normalizeLogBook('vehicle',{...input(),...patch}));
+ for(const patch of [{bookDate:'2026-02-31'},{closingHmr:'bad'},{openingKmr:''},{shiftHours:9},{assetId:true},{trips:[null]},{trips:[{equipmentName:'L1',tripCount:0}]},{trips:[{equipmentName:'L1',tripCount:1,loadingTime:'29:00',unloadingTime:'30:00'}]}])assert.throws(()=>normalizeLogBook('vehicle',{...input(),...patch}));
  assert.equal(assetBookKind({category:'Equipment'}),'equipment');assert.equal(assetBookKind({category:'Vehicle'}),'vehicle');
 });
 

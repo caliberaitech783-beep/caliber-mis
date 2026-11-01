@@ -5,7 +5,7 @@ test('clear extracted values including zero and literal short-hour times need no
  const before=JSON.stringify(valid);assert.deepEqual(manualScanIssues(valid),{});assert.equal(JSON.stringify(valid),before);
 });
 test('missing, invalid and conflicting values stay visible without exposing healthy fields',()=>{
- const issues=manualScanIssues({...valid,assetId:'',aFormNo:'',closingKmr:-1,trips:[{...valid.trips[0],loadingTime:'25:00'}]});
+ const issues=manualScanIssues({...valid,assetId:'',aFormNo:'',closingKmr:'bad',trips:[{...valid.trips[0],loadingTime:'25:00'}]});
  for(const key of ['assetId','closingKmr','trips.0.loadingTime'])assert.ok(issues[key]);
  for(const key of ['bookDate','doorText','employeeId','openingKmr','trips.0.unloadingTime'])assert.equal(issues[key],undefined);
  const conflict=manualScanIssues({...valid,scanMachineSummary:[{equipmentName:'V12',tripCount:2}]});assert.ok(conflict.scanMachineSummary);assert.ok(conflict['trips.0.equipmentName']);

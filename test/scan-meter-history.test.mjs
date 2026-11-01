@@ -7,6 +7,16 @@ import {buildTableExportPdf} from '../table-export-pdf.mjs';
 
 const bad={shiftHours:8,openingHmr:100,closingHmr:109,openingKmr:1000,closingKmr:1251};
 const fixed={...bad,closingHmr:107,closingKmr:1200};
+test('uncorrected rule breaches report the card driver and Caliber ID without a green correction',()=>{
+ const data={...bad,employeeName:'TEST DRIVER',caliberId:'CMPL123'};
+ const report=meterCorrectionReport(data);
+ assert.match(report.original,/TEST DRIVER/);assert.match(report.original,/CMPL123/);
+ assert.match(report.original,/9 hours/);assert.match(report.original,/251 km/);
+ assert.equal(report.corrected,'');
+ const tables=scanBatchExportTables(scanBatchReport({id:'b',kind:'vehicle'},[{id:'c',batch_id:'b',ordinal:1,status:'posted',saved_data:{...data,scanCardId:'c',scanBatchId:'b'}}]));
+ const cards=tables.find(table=>table.name==='Cards'),column=cards.columns.findIndex(column=>column.tone==='error');
+ assert.match(cards.rows[0][column],/TEST DRIVER.*CMPL123/);
+});
 test('meter errors survive partial corrections, repeated saves and later valid changes',()=>{
  const first=recordMeterCorrection([],bad,{...bad,closingHmr:107},'vehicle','reviewer','2026-11-01T10:00:00Z');
  assert.match(first[0].issues.closingHmr,/9 hours/);assert.match(first[0].issues.closingKmr,/251 km/);
