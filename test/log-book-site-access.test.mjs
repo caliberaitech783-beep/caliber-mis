@@ -17,6 +17,11 @@ test('site and regional scopes use canonical site names and deny unassigned MIS 
   assert.equal(siteAllowed(logBookSiteScope({...mis,managerRegion:'NCL'}),'Sasti OC'),false);
   assert.equal(logBookSiteScope({...mis,managerRegion:'All'}).sites,null);
   assert.equal(logBookSiteScope({role:'super',permissions:{adminLevel:'Admin'}}).sites,null);
+  for(const adminLevel of ['Admin','Super Admin']){
+   const admin={role:'super',site:'Sasti OC',permissions:{adminLevel}};
+   assert.equal(logBookSiteScope(admin,{site:'Jayant OC'}).sites,null,'full administrators retain all-site access even with a profile site');
+   assert.equal(siteAllowed(logBookSiteScope(admin),'Jayant OC'),true);
+  }
   assert.equal(siteAllowed(logBookSiteScope({role:'normal',site:'Sasti OC',managerRegion:'All'}),'Jayant OC'),false);
   assert.equal(employeeAtLocation({site:'Sasti OC | Majri OC'},'Sasti OB'),true);
   assert.equal(employeeAtLocation({site:''},'Sasti OC'),false);
@@ -40,9 +45,9 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   for(const site of ['Sasti OB','Jayant OC'])for(const kind of ['vehicle','equipment'])await db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,1,$5,$6,$7)',[site+kind,kind,'2026-10-28',site,JSON.stringify({location:site}),randomUUID(),'fixture']);
   const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
   const pool={query,connect:async()=>({query,release(){}})};
-  const profiles={site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
+  const profiles={admin:{},site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
   const app=express();app.use(express.json());
-  const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};next()};
+  const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};if(req.headers.authorization==='admin')req.session.permissions={adminLevel:'Admin'};next()};
   const requireAdministrator=(req,res,next)=>next();
   let oracleReads=0;
   registerErpEmployees(app,{pool,config:{},requireSession,requireAdministrator,readSource:async()=>{oracleReads++;return {employeeId:'CMPL3333',name:'Remote employee',site:'Jayant OC'}}});
@@ -51,7 +56,8 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   app.use((err,req,res,next)=>res.status(err.status||500).json({error:err.message}));
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
   const call=async(path,method='GET',body,auth='site')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
-  const options=await call('/api/log-books/options');assert.deepEqual(options.data.sites,['Sasti OC']);
+  const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
+  const options=await call('/api/log-books/options');assert.equal(options.data.canSelectSite,false);assert.deepEqual(options.data.sites,['Sasti OC']);
   for(const key of ['assets','employees','shifts','workOrders'])assert.ok(options.data[key].every(row=>row.site==='Sasti OC'),key);
   assert.equal(options.data.employees.length,1);
   assert.deepEqual((await call('/api/log-books/options','GET',null,'region')).data.sites,['Jayant OC']);

@@ -157,3 +157,17 @@ test('scan setup fills its single read-only Site from the Pulse account options'
  nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});tree=app.render();
  assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
 });
+
+test('all-site administrators can select any authorized scan site while keeping date and shift required',()=>{
+ const app=harness();app.render();app.testCapture.setOptions({canSelectSite:true,accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});let tree=app.render();
+ const sync=app.effects.find(fn=>/accountSite/.test(String(fn))&&/current.location/.test(String(fn)));sync();tree=app.render();
+ const site=nodes(tree,n=>n.props['aria-label']==='Site')[0];assert.equal(site.type,scope.SmartSelect);assert.equal(site.props.readOnly,undefined);
+ site.props.onChange({target:{value:'Jayant OC'}});tree=app.render();
+ nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Card date')[0].props.onInput({target:{value:'2026-11-01'}});
+ assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true);
+ nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});tree=app.render();
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Site')[0].props.value,'Jayant OC');
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
+ nodes(tree,n=>n.props['aria-label']==='Site')[0].props.onChange({target:{value:'Not authorized'}});tree=app.render();
+ nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true);
+});

@@ -2,15 +2,15 @@ import {canonicalSiteName} from './site-location.mjs';
 import {managerReportScope,userSiteScope,userSiteSelection,reportScopeIncludesSite,displaySiteSelection} from './region-scope.mjs';
 
 export function logBookSiteScope(session={},user={}) {
+  const administrator=session.role==='super'&&(!session.permissions||['admin','super admin'].includes(String(session.permissions?.adminLevel||'').toLowerCase()));
+  if(administrator&&!session.permissions?.separateMisCredentials)return {sites:null,label:'All sites'};
   const profile={...(session.permissions||{}),...session,...user};
   const hasSite=userSiteSelection(profile).length>0;
   const regional=Boolean(profile.managerSites||profile.managerRegion||profile.region);
   if(session.role==='normal'&&hasSite)return userSiteScope(profile);
   if(regional)return managerReportScope(profile);
   if(hasSite)return userSiteScope(profile);
-  const administrator=session.role==='super'&&(!session.permissions||['admin','super admin'].includes(String(session.permissions?.adminLevel||'').toLowerCase()));
-  // Separate MIS identities need an explicit assignment or explicit All region.
-  if(administrator&&!session.permissions?.separateMisCredentials)return {sites:null,label:'All sites'};
+  // Separate MIS identities still require an assigned site or region.
   return {sites:[],label:'Unassigned'};
 }
 export const siteAllowed=(scope,site)=>scope?.sites===null||reportScopeIncludesSite(scope,site);
