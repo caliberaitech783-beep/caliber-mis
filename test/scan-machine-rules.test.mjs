@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {identifyCardMachine,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,compactScanEquipmentReferences} from '../scan-machine-rules.mjs';
+import {identifyCardMachine,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,siteEquipmentOptions,compactScanEquipmentReferences} from '../scan-machine-rules.mjs';
 import {linkedScanEquipment} from '../scan-fleet-door.mjs';
 import {extractCard} from '../scan-extraction.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
@@ -47,6 +47,14 @@ test('aliases link only one master record of the correct type and site; never in
  assert.equal(cardMachineKey('VPC019-07181','equipment'),'VPC19');
  assert.equal(cardMachineKey('B075 - serial','equipment'),'B75');
  assert.equal(matchCardMachine([{...machine('7','D5'),name:'Hydra 12'}],'H12',site,'equipment').match,null);
+});
+
+test('trip equipment choices contain only Pulse equipment assigned to the selected location',()=>{
+ const sastiMachines=Array.from({length:10},(_,index)=>machine(String(index+1),'T'+(index+1),'equipment','Sasti OC'));
+ const assets=[...sastiMachines,machine('11','T11','equipment','Jayant OC'),machine('12','V12','vehicle','Sasti OC'),{...machine('13','T13'),'site':'Sasti OC','currentLocation':'Jayant OC'},machine('14','T14','equipment','')];
+ assert.deepEqual(siteEquipmentOptions(assets,'Sasti OC').map(row=>row.id),sastiMachines.map(row=>row.id));
+ assert.deepEqual(siteEquipmentOptions(assets,'sasti ob').map(row=>row.id),sastiMachines.map(row=>row.id));
+ assert.deepEqual(siteEquipmentOptions(assets,''),[]);
 });
 
 test('new scan trip and summary aliases resolve to the same master labels without changing original input or existing drafts',()=>{

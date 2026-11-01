@@ -66,6 +66,11 @@ export function matchCardMachine(rows=[],value,site='',kind='equipment'){
  return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':matches.length>1?'ambiguous':'not-found'};
 }
 export const resolvedMachineName=row=>text(row.door||row.doorNo||equipmentDoorNumber(row)||row.name||row.equipmentName);
+export function siteEquipmentOptions(assets=[],site=''){
+ const selectedSite=canonicalSiteName(site);
+ if(!selectedSite)return [];
+ return assets.filter(row=>row.kind==='equipment'&&canonicalSiteName(row.currentLocation||row.site||row.location)===selectedSite);
+}
 export function scannedEquipmentName(value,assets=[],site=''){
  const result=matchCardMachine(assets,value,site,'equipment');
  return result.match?resolvedMachineName(result.match):text(value);
