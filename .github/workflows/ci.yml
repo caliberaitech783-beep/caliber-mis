@@ -34,6 +34,20 @@ jobs:
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
       - run: npm run build
+      - name: Install browser for log-book layout checks
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Verify responsive VLB and ELB layouts
+        run: node scripts/verify-logbook-layout.mjs
+      - name: Keep log-book layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logbook-layout-checks
+          path: layout-checks/
+          if-no-files-found: ignore
       - run: node scripts/verify-server-start.mjs
         env:
           RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+

@@ -6,7 +6,7 @@ import {matchesSmartSearch} from '../smart-search.mjs';
 const normalize=(value)=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const normalizedOption=(option)=>typeof option==='string'
   ? {value:option,label:option,description:'',keywords:''}
-  : {value:String(option?.value??''),label:String(option?.label??option?.value??''),description:String(option?.description??''),keywords:String(option?.keywords??''),disabled:Boolean(option?.disabled)};
+  : {value:String(option?.value??''),label:String(option?.label??option?.value??''),displayLabel:option?.displayLabel,description:String(option?.description??''),keywords:String(option?.keywords??''),disabled:Boolean(option?.disabled)};
 
 export default function SearchableSelect({
   label,
@@ -26,6 +26,7 @@ export default function SearchableSelect({
   className='',
   style,
   inputProps={},
+  showOverflowValue=false,
 }){
   const id=useId();
   const input=useRef(null);
@@ -35,9 +36,11 @@ export default function SearchableSelect({
   const [query,setQuery]=useState(null);
   const [open,setOpen]=useState(false);
   const [active,setActive]=useState(-1);
+  const [valueOverflows,setValueOverflows]=useState(false);
   const allOptions=useMemo(()=>options.map(normalizedOption),[options]);
   const selectedValue=controlled?String(value??''):internalValue;
   const selected=allOptions.find((option)=>option.value===selectedValue);
+  const selectedText=selected?.displayLabel||selected?.label||'';
   const matching=useMemo(()=>{
     const needle=normalize(query??'');
     return needle?allOptions.filter((option)=>matchesSmartSearch(needle,option.label,option.value,option.description,option.keywords)):allOptions;
@@ -48,6 +51,13 @@ export default function SearchableSelect({
 
   useEffect(()=>{input.current?.setCustomValidity(required&&(!selected||!selectedValue)?'Select a value from the matching list.':'')},[required,selected,selectedValue]);
   useEffect(()=>{list.current?.querySelector('[data-active="true"]')?.scrollIntoView({block:'nearest'})},[active]);
+  useEffect(()=>{
+    if(!showOverflowValue||!input.current)return;
+    const element=input.current,canvas=document.createElement('canvas'),context=canvas.getContext('2d');
+    const measure=()=>{const style=getComputedStyle(element);context.font=style.fontWeight+' '+style.fontSize+' '+style.fontFamily;setValueOverflows(context.measureText(selectedText).width>element.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-4);};
+    measure();const observer=new ResizeObserver(measure);observer.observe(element);
+    return()=>observer.disconnect();
+  },[showOverflowValue,selectedText]);
 
   const commit=(next,option=null)=>{
     if(!controlled)setInternalValue(next);
@@ -81,14 +91,15 @@ export default function SearchableSelect({
       <input {...inputProps} id={inputProps.id||id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
-        aria-describedby={hint?`${id}-hint`:undefined} aria-busy={loading} disabled={disabled}
-        value={query??(selected?.label||'')} placeholder={loading?'Loading…':placeholder}
+        aria-describedby={[hint?`${id}-hint`:'',showOverflowValue&&valueOverflows?`${id}-value`:''].filter(Boolean).join(' ')||undefined} aria-busy={loading} disabled={disabled}
+        value={query??selectedText} placeholder={loading?'Loading…':placeholder}
         onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onClick={()=>setOpen(true)} onKeyDown={keyDown}
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
       <ChevronDown aria-hidden="true" />
     </div>
     {name&&<input type="hidden" form={inputProps.form} name={name} value={selectedValue} disabled={disabled} />}
     {hint&&<small id={`${id}-hint`} className="searchable-select-hint">{hint}</small>}
+    {showOverflowValue&&valueOverflows&&selectedText&&<small id={`${id}-value`} className="searchable-select-full-value">{selectedText}</small>}
     {expanded&&<div className="searchable-select-menu">
       <div className="searchable-select-count" role="status">{matching.length} {matching.length===1?'match':'matches'}{matching.length>visibleOptions.length?` · showing first ${visibleOptions.length}`:''}</div>
       <ul id={`${id}-list`} ref={list} role="listbox" aria-label={label?`Matching ${label}`:'Matching choices'}>
@@ -102,3 +113,4 @@ export default function SearchableSelect({
     </div>}
   </div>;
 }
+
