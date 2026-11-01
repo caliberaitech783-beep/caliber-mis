@@ -12,12 +12,15 @@ export async function requestScanBatch(pool,batchId){
  AND EXISTS(SELECT 1 FROM mis_scan_cards c WHERE c.batch_id=b.id AND c.status='queued')`,[batchId]);
 }
 export async function claimNextScanCard(pool){
- return pool.query(`WITH picked AS (
+ return pool.query(`WITH active_counts AS (
+  SELECT batch_id,count(*) AS n FROM mis_scan_cards WHERE status='reading' GROUP BY batch_id
+ ), picked AS (
   SELECT c.id,c.batch_id FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id
+  LEFT JOIN active_counts active ON active.batch_id=c.batch_id
   WHERE c.status='queued' AND ${operationalScanSql('c')}
   ORDER BY CASE WHEN b.extraction_requested_at>NOW()-INTERVAL '30 seconds' THEN 0 ELSE 1 END,
    CASE WHEN ${scanQueueBackground('c')} THEN 1 ELSE 0 END,
-   (SELECT count(*) FROM mis_scan_cards active WHERE active.batch_id=c.batch_id AND active.status='reading'),
+   COALESCE(active.n,0),
    b.extraction_last_started_at ASC NULLS FIRST,b.created_at DESC,c.created_at,c.ordinal,c.id
   LIMIT 1 FOR UPDATE OF c SKIP LOCKED
  ), touched AS (

@@ -1,3 +1,4 @@
+import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';
 import {meterCorrectionReport} from '../scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').repl
 function harness(){
   const slots=[];let cursor=0;
   const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
-  const scope={meterCorrectionReport,SmartSelect: "select",React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null,PulseTripVerification:()=>null};
+  const scope={compactLogBookLabel,tripSerialNumber,meterCorrectionReport,SmartSelect: "select",React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},LogBookSectionTabs:()=>null,PulseTripVerification:()=>null};
   const components=new Function(...Object.keys(scope),code+';return {SavedLogBooks,SavedLogBookDetails,savedLogBookQuery}')(...Object.values(scope));
   return {...components,slots,render(kind='vehicle'){cursor=0;return components.SavedLogBooks({kind,session:{token:'test'}})}};
 }
@@ -38,3 +39,4 @@ test('saved screen preserves filters in pagination queries, selects the clicked 
   const query=app.savedLogBookQuery({search:'EMP100',location:'Sasti OC',from:'2026-10-01',to:'2026-10-28'},'100');
   const parsed=new URLSearchParams(query);assert.equal(parsed.get('before'),'100');assert.equal(parsed.get('location'),'Sasti OC');assert.equal(parsed.get('search'),'EMP100');assert.equal(parsed.get('from'),'2026-10-01');
 });
+

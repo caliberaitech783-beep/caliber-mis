@@ -25,11 +25,14 @@ test('each file selection creates its own batch instead of appending to the prev
  fixtureCards=6;addonUploadRef.current=true;await upload({target:{files:[{name:'addon.pdf',size:1000}],value:''}});
  assert.equal(memberships.get('earlier-batch').length,40,'Addon fills the entry to 40');
  assert.equal(memberships.get('new-batch-5').length,4,'Excess continues in a new entry');
+ scope.cards.splice(0,scope.cards.length,{ordinal:1},{ordinal:4});memberships.set('earlier-batch',[{ordinal:1},{ordinal:4}]);
+ fixtureCards=2;addonUploadRef.current=true;await upload({target:{files:[{name:'addon-after-duplicate.pdf',size:1000}],value:''}});
+ assert.deepEqual(memberships.get('earlier-batch').map(card=>card.ordinal),[1,4,5,6],'Addon starts after the highest ordinal even when duplicates left gaps');
 
 });
 test('PDF uploads expose elapsed timing and a real abort controller',()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
- assert.match(src,/className="scan-upload-timer" role="timer"/);
+ assert.match(readFileSync(new URL('../src/scan-upload-timer.jsx',import.meta.url),'utf8'),/className="scan-upload-timer" role="timer"/);
  assert.match(src,/Trip cards uploaded: \{uploadedCount\}\/\{uploadTotal\|\|'…'\}/);
  assert.match(src,/setUploadTotal\(Math\.ceil\(totalPages\/pagesPerCard\)\)/);
  assert.match(src,/\(uploading\|\|pending\.length>0\).*className="scan-abort" onClick=\{abortUpload\}>Abort/);

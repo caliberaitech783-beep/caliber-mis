@@ -1,3 +1,4 @@
+import './log-book-readability.css';
 import SmartSelect from './smart-select.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import ProductionReports from './production-reports.jsx';

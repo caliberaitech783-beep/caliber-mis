@@ -1,10 +1,12 @@
+import './log-book-readability.css';
+import {compactLogBookLabel} from '../log-book-labels.mjs';
 import React,{useEffect,useMemo,useState} from 'react';
 import {OPERATIONAL_START} from '../operational-start.mjs';
 import './manpower-reports.css';
 
 const views=[['manpower','Manpower by Category'],['employee','Shift Performance'],['ot','OT & Multiple Duties']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const columns=entries=>entries.map(([key,label])=>({key,label,value:r=>r[key]??'—'}));
+const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
 const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employeeName','Driver / operator']];
 const classification=[['category','Category'],['group','Equipment group'],['make','Make'],['model','Model']];
@@ -53,3 +55,4 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
   </>}
  </section>;
 }
+

@@ -1,3 +1,4 @@
+import {compactLogBookLabel,tripSerialNumber} from './log-book-labels.mjs';
 import {meterCorrectionReport} from './scan-meter-history.mjs';
 import {scanCardContextIssues} from './scan-batch-context.mjs';
 import {machineLabel} from './trip-card-rules.mjs';
@@ -27,7 +28,7 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
    openingHmr:number(data.openingHmr),closingHmr:number(data.closingHmr),hours:number(data.totalWorkingHmr)??difference(data.openingHmr,data.closingHmr),trips:totalTrips,openingTrips:number(data.openingTrips),endingTrips:number(data.endingTrips),
    ...meterCorrectionReport(data,data.meterCorrectionHistory||raw.meterCorrectionHistory),filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};
  });
- const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:i+1,equipment:machineLabel(t.equipmentName||''),loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount)})));
+ const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:tripSerialNumber(t,i),equipment:machineLabel(t.equipmentName||''),loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount)})));
  const machines=new Map();for(const trip of tripRows){if(!trip.equipment||trip.trips===null)continue;const group=machines.get(trip.equipment)||{equipment:trip.equipment,trips:0,cards:new Set(),vehicles:new Set()};group.trips+=trip.trips;group.cards.add(trip.card);group.vehicles.add(trip.door);machines.set(trip.equipment,group);}
  const rejectedCards=batchMembers.filter(card=>card.status==='rejected'),visibleIds=new Set(members.map(card=>card.id));
  const counts={cards:rows.length+rejectedCards.filter(card=>!visibleIds.has(card.id)).length,saved:saved.length,rejected:rejectedCards.length,deleted:rows.filter(c=>c.deleted).length};counts.pending=counts.cards-counts.saved-counts.rejected-counts.deleted;
@@ -37,7 +38,7 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
  return {contextChecked:Boolean(batch.expected_context),title,batchId:batch.id,name:batch.name||'',vehicle,counts,totals,rows,tripRows,summaryRows,machineRows:[...machines.values()].map(r=>({equipment:r.equipment,trips:r.trips,cards:r.cards.size,vehicles:r.vehicles.size})).sort((a,b)=>a.equipment.localeCompare(b.equipment))};
 }
 
-const column=(key,label)=>({key,label,value:row=>row[key]});
+const column=(key,label)=>({key,label:compactLogBookLabel(label),value:row=>row[key]});
 export function scanBatchReportTables(report){
  const common=[column('ordinal','Card'),column('status','Status'),column('cardNo','Card number'),column('bookNo','Book number'),column('bookDate','Date'),column('location','Location'),column('door','Door / Equipment'),column('employeeCode','Employee ID'),column('employeeName',report.vehicle?'Driver':'Operator'),column('shift','Shift'),column('shiftHours','Shift hours'),column('workOrder','Work order')];
  const meters=[...(report.vehicle?[column('openingKmr','Opening KMR'),column('closingKmr','Closing KMR'),column('kilometres','Kilometres')]:[]),column('openingHmr','Opening HMR'),column('closingHmr','Closing HMR'),column('hours','Working hours'),...(report.vehicle?[column('openingTrips','Opening trips'),column('endingTrips','Ending trips'),column('trips','Completed trips')]:[])];
@@ -62,3 +63,4 @@ export function applySavedScanCard(card,record){
  if(!data||data.scanCardId!==card.id||data.scanBatchId!==card.batch_id)return card;
  return {...card,status:'posted',logbook_id:record.id,book_no:record.book_no,saved_data:data,logbook_deleted_at:null,checks:{errors:[],warnings:[]}};
 }
+

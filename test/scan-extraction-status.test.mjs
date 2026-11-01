@@ -36,7 +36,7 @@ test('batch switching and invalid stored timestamps cannot show another batch el
  assert.equal(app.formatExtractionTime(125),'2 min 05 sec');assert.equal(app.formatExtractionTime(-1),'0 sec');
  const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.equal((page.match(/<ScanExtractionStatus /g)||[]).length,1);
- assert.match(page,/Uploading PDFs · Time taken: \{formatExtractionTime\(uploadElapsed\)\}/);
+ assert.match(readFileSync(new URL('../src/scan-upload-timer.jsx',import.meta.url),'utf8'),/Uploading PDFs · Time taken: \{formatExtractionTime\(uploadElapsed\)\}/);
  assert.match(page,/Time taken: '\+formatExtractionTime\(\(performance\.now\(\)-uploadStarted\.current\)\/1000\)/);
  assert.ok(!page.includes('You can review completed cards while'));
 });
