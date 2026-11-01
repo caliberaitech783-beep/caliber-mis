@@ -36,7 +36,7 @@ jobs:
       - run: npm run build
       - name: Install browser for log-book layout checks
         run: |
-          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
           npx playwright install --with-deps chromium
       - name: Verify responsive VLB and ELB layouts
         run: node scripts/verify-logbook-layout.mjs

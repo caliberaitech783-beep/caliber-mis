@@ -193,7 +193,7 @@
     #scan-entry-fields .scan-trip-untimed { grid-template-columns: 82px minmax(0,1fr) 56px 44px; grid-template-areas: "serial equipment trips remove"; }
     #scan-entry-fields .scan-machine-summary .scan-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
   }
-  @container scan-review (max-width:560px) {
+  @container scan-review (max-width:640px) {
     #scan-entry-fields .scan-trip-entry,
     #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
       grid-template-columns: repeat(2,minmax(0,1fr));

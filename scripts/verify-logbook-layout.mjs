@@ -44,7 +44,7 @@ const findings=[];
 try{
  for(const width of [320,390,640,840,1024])for(const mode of ['scan','recovery','correction','untimed','manual-vlb','manual-elb','saved']){
   const page=await browser.newPage({viewport:{width,height:1000},locale:'en-IN'});
-  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(width,mode,error.message)});
   await page.goto('http://127.0.0.1:'+server.address().port+'/?mode='+mode);
   await page.waitForSelector(mode.startsWith('manual')?'#logbook-entry-form':mode==='saved'?'.saved-logbook-values':'#scan-entry-fields');
   if(mode.startsWith('manual'))await page.waitForFunction(()=>document.querySelector('.logbook-book-number')?.textContent.includes('/030'));
