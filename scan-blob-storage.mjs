@@ -35,11 +35,15 @@ export function createScanBlobStorage(config,{fetchImpl=fetch,env=process.env}={
    if(!response.ok)throw Error('The private Hot scan container is not accessible.');return true;
   },
   async put({id,batchId,kind,image}){
-   const hash=imageHash(image),key=`${kind}/${batchId}/${id}.${image[0]===255?'jpg':'png'}`.toLowerCase();
-   const response=await request(key,{method:'PUT',headers:{'x-ms-blob-type':'BlockBlob','x-ms-access-tier':'Hot','If-None-Match':'*','Content-Type':image[0]===255?'image/jpeg':'image/png','x-ms-meta-sha256':hash,'Content-MD5':createHash('md5').update(image).digest('base64')},body:image});
+   const hash=imageHash(image),md5=createHash('md5').update(image).digest('base64'),key=`${kind}/${batchId}/${id}.${image[0]===255?'jpg':'png'}`.toLowerCase();
+   const response=await request(key,{method:'PUT',headers:{'x-ms-blob-type':'BlockBlob','x-ms-access-tier':'Hot','If-None-Match':'*','Content-Type':image[0]===255?'image/jpeg':'image/png','x-ms-meta-sha256':hash,'Content-MD5':md5},body:image});
    if(!response.ok&&response.status!==412)throw Error('The scan was not saved to Hot storage. Retry the upload.');
-   // Verify successful writes and idempotent retries before persisting the reference.
-   await read(key,hash);return {key,bytes:image.length,uploadedAt:new Date()};
+   // Azure validates Content-MD5 during PUT and returns its computed hash.
+   // Avoid a full image download after an acknowledged, checksum-verified write.
+   // Existing objects (412) and responses without a checksum still get SHA-256 readback.
+   const received=response.headers.get('Content-MD5');
+   if(response.ok&&received&&received!==md5)throw Error('The uploaded scan checksum does not match.');
+   if(response.status===412||!received)await read(key,hash);return {key,bytes:image.length,uploadedAt:new Date()};
   },
   read,
   async stat(key){
