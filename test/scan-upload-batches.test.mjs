@@ -56,9 +56,12 @@ test('MIS sidebar uses larger navigation labels',()=>{
 });
 test('scan workflow uses the compact requested controls',()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8'),css=readFileSync(new URL('../src/bulk-card-scanning.css',import.meta.url),'utf8');
- assert.match(src,/className="scan-workflow-row"><GroqScanSettings[\s\S]*className="scan-workflow-actions"/);
+ assert.match(src,/className="scan-workflow-row"><div className="scan-review-tabs">[\s\S]*className="scan-workflow-actions"/);
+ assert.doesNotMatch(src,/GroqScanSettings/);
  assert.doesNotMatch(src,/Select PNG, JPG\/JPEG or PDF files/);
- assert.match(src,/className="scan-upload-panel"><h2>Upload existing scans<\/h2><button/);
+ assert.match(src,/className="scan-input-panels"><LocalScannerPanel[\s\S]*className="scan-upload-panel scan-input-card"/);
+ assert.match(src,/disabled=\{workflowTab!=='scan'\|\|busy\|\|dirty\|\|!contextReady\(\)/);
+ assert.match(src,/disabled=\{workflowTab!=='upload'\|\|busy\|\|dirty\|\|scannerBusy\|\|!contextReady\(\)/);
  assert.match(src,/kind==='vehicle'&&<button type="button"[\s\S]*?title="Add cards only when card date, site and shift match this batch"[\s\S]*?>Addon<\/button>/);
  assert.match(src,/let id=addon\?batch\.id:null/);
  assert.match(css,/\.scan-hero h1,\.scan-hero h1 \*\{color:#fff!important\}/);

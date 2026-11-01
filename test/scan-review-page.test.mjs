@@ -23,13 +23,13 @@ function harness(search='',kind='vehicle'){
  const render=()=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
  return {render,window,listeners,effects,slots,testCapture};
 }
-test('VLB scan and upload overview show status without correction or scan panels; attention opens a separate URL and Back restores overview',()=>{
+test('VLB overview keeps compact input panels separate from corrections; attention opens a separate URL and Back restores overview',()=>{
  const app=harness();let tree=app.render();
  assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,0);
  assert.equal(nodes(tree,n=>n.props.className==='scan-draft'||n.props.className==='scan-source').length,0);
  const uploadTab=nodes(tree,n=>n.type==='button'&&n.props.children==='Upload files')[0];uploadTab.props.onClick();tree=app.render();
- assert.equal(nodes(tree,n=>n.props.className==='scan-upload-panel').length,1);
+ assert.equal(nodes(tree,n=>n.props.className?.split(' ').includes('scan-upload-panel')).length,1);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Cards in batch').length,0);
  nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-brown')[0].props.onClick();tree=app.render();
  assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');
