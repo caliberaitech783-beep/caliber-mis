@@ -62,15 +62,16 @@ try{
    for(const e of [...document.querySelectorAll('#scan-entry-fields input,#scan-entry-fields output,#logbook-entry-form .logbook-field input')].filter(visible)){
     const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<20)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
     if(box.right>width+2||box.left< -2)issues.push('Field outside viewport');
-    if(e.type==='time'&&box.width<126)issues.push('Native time too narrow: '+box.width);
+    if(e.type==='time'&&box.width<148)issues.push('Native time too narrow: '+box.width);
    }
    if(mode==='scan'||mode==='recovery'||mode==='correction'||mode==='untimed'){
     for(const row of document.querySelectorAll('.scan-trip-entry')){
      const fields=[...row.querySelectorAll('label')].filter(visible).map(e=>e.getBoundingClientRect());
      for(let i=0;i<fields.length;i++)for(let j=i+1;j<fields.length;j++){const a=fields[i],b=fields[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)issues.push('Trip fields overlap');}
-     if(document.querySelector('.scan-draft-sheet').clientWidth>800){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
+     if(document.querySelector('.scan-draft-sheet').clientWidth>830){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
     }
    }
+   for(const e of document.querySelectorAll('#logbook-entry-form .searchable-select-full-value')){const control=e.parentElement.querySelector('.searchable-select-control');if(visible(e)&&e.getBoundingClientRect().top<control.getBoundingClientRect().bottom-1)issues.push('Full selected value must appear below its control');}
    const root=document.querySelector('#logbook-entry-form')||document.querySelector('#scan-entry-fields')||document.querySelector('.saved-logbook-values');
    const layout=[];for(let e=root;e&&layout.length<5;e=e.parentElement){const r=e.getBoundingClientRect(),s=getComputedStyle(e);layout.push({tag:e.tagName,cls:e.className,display:s.display,visibility:s.visibility,width:r.width,height:r.height});}
    return {width,mode,issues,labelCount:labels.length,layout};
