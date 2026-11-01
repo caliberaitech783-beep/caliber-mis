@@ -290,3 +290,6 @@
 .scan-input-panels .scan-upload-panel .scan-input-copy{grid-row:1}.scan-input-panels .scan-upload-panel:after{content:'';grid-column:1/-1;height:17px}
 .scan-input-panels .local-scanner-panel>p{font-size:12px;margin:4px 0}.scan-input-panels .scanner-options select{margin:4px 0}
 @media(max-width:850px){.scan-input-panels{grid-template-columns:1fr}}@media(max-width:480px){.scan-input-panels .scan-input-card{grid-template-columns:1fr}.scan-input-panels .scan-input-card>button{grid-column:1;grid-row:auto;justify-self:start}.scan-input-panels .scan-upload-panel:after{display:none}}
+
+/* Larger scanner text within the existing compact card. */
+.scan-input-panels .local-scanner-panel .scan-input-card h2{font-size:18px;line-height:22px}.scan-input-panels .local-scanner-panel .scan-input-card p{font-size:15px}.scan-input-panels .local-scanner-panel .scan-input-card button,.scan-input-panels .local-scanner-panel .scan-input-card .scan-device-help{font-size:14px}.scan-input-panels .local-scanner-panel .scan-input-card>.scan-device-help{line-height:20px}
