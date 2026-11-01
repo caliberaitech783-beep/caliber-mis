@@ -5,6 +5,7 @@ import pg from 'pg';
 import {randomUUID} from 'node:crypto';
 import {registerProductionReports} from '../production-report-api.mjs';
 import {misRequestAllowed} from '../mis-application-access.mjs';
+import {canonicalSiteName} from '../site-location.mjs';
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('production API gates batches and permissions, approves effective capacities, and guards concurrent revisions',{skip:!connectionString},async t=>{
  const url=new URL(connectionString);assert.ok(['localhost','127.0.0.1'].includes(url.hostname));assert.equal(url.pathname,'/caliber_mis');
@@ -16,13 +17,13 @@ test('production API gates batches and permissions, approves effective capacitie
  CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT,snapshot JSONB);`);
  for(const [id,name,data] of [[1,'Equipment master',{door:'T1',category:'Vehicle',site:'Sasti',make:'Volvo',model:'FM',password:'secret-field'}],[2,'Equipment master',{door:'PC1',category:'Equipment',site:'Sasti'}],[3,'Shift Master',{site:'Sasti',shiftCode:'A',startTime:'05:00',endTime:'13:00'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,data]);
  const admin={role:'super',login:'fixture-admin',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees','Equipment master','Reports']}},reader={role:'super',login:'fixture-reader',permissions:{separateMisCredentials:true,misDesktopAccess:['Reports']}};
- const app=express();app.use(express.json());const auth=(req,res,next)=>{const token=req.headers.authorization;if(!token)return res.status(401).json({error:'Sign in'});req.session=token==='admin'?admin:reader;req.logBookScope={sites:['Sasti']};if(!misRequestAllowed(req.session,req))return res.status(403).json({error:'Menu permission denied'});next();};
+ const app=express();app.use(express.json());const auth=(req,res,next)=>{const token=req.headers.authorization;if(!token)return res.status(401).json({error:'Sign in'});req.session=token==='admin'?admin:reader;req.logBookScope={sites:[canonicalSiteName('Sasti')]};if(!misRequestAllowed(req.session,req))return res.status(403).json({error:'Menu permission denied'});next();};
  registerProductionReports(app,{pool,protect:[auth],ensureBooks:async()=>{}});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));t.after(()=>{server.closeAllConnections();server.close();});const base=`http://127.0.0.1:${server.address().port}`;
  const call=(path,token='reader',body)=>fetch(base+path,{method:body?'POST':'GET',headers:{...(token?{Authorization:token}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  const report='/api/reports/production?site=Sasti&date=2026-11-01&mode=shift&shift=S1';
  assert.equal((await call(report,'')).status,401);assert.equal((await call(report.replace('site=Sasti','site=Jayant'))).status,403);assert.equal((await call('/api/reports/production?site=Sasti&date=2026-11-31&mode=day')).status,400);
- let response=await call(report),result=await response.json();assert.equal(result.ready,false);assert.deepEqual(result.doorRows,[]);assert.match(response.headers.get('cache-control'),/no-store/);
+ let response=await call(report),result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.ready,false);assert.deepEqual(result.doorRows,[]);assert.match(response.headers.get('cache-control'),/no-store/);
  assert.equal((await call('/api/capacity-master','reader')).status,403);
  const approval={make:'Volvo',model:'FM',capacity:20,effectiveFrom:'2026-11-01',reason:'Approved test reference'};
  assert.equal((await call('/api/capacity-master','reader',approval)).status,403);assert.equal((await call('/api/capacity-master','admin',{...approval,capacity:0})).status,400);assert.equal((await call('/api/capacity-master','admin',{...approval,model:'unknown'})).status,400);
