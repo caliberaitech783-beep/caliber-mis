@@ -1,6 +1,9 @@
 import {createHash} from 'node:crypto';
+import {scanImageExtension,scanImageMime} from './scan-image-format.mjs';
 
 export const imageHash=bytes=>createHash('sha256').update(bytes).digest('hex');
+// One key derivation for the Blob write and for the advisory lock taken before it.
+export const scanBlobKey=(kind,batchId,id,image)=>`${kind}/${batchId}/${id}${scanImageExtension(image)}`.toLowerCase();
 export function scanBlobConfig(env=process.env){
  if(env.MIS_LOCAL_SCANNER_DATABASE==='true'||env.MIS_SCAN_BLOB_ENABLED!=='true')return null;
  if(env.WEBSITE_SITE_NAME!=='caliber-mis-783')throw Error('Scan Blob storage is limited to Pulse-II.');
@@ -22,7 +25,7 @@ export function createScanBlobStorage(config,{fetchImpl=fetch,env=process.env}={
   const result=await response.json();cached={value:result.access_token,expires:Number(result.expires_on)*1000};return cached.value;
  }
  async function request(key,options={}){
-  if(!/^(vehicle|equipment)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png)$/.test(key))throw Error('Invalid scan image reference.');
+  if(!/^(vehicle|equipment)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(key))throw Error('Invalid scan image reference.');
   return fetchImpl(base+key,{...options,headers:{Authorization:`Bearer ${await token()}`,'x-ms-version':'2023-11-03',...options.headers},signal:AbortSignal.timeout(60000)});
  }
  async function read(key,expectedHash){
@@ -35,8 +38,8 @@ export function createScanBlobStorage(config,{fetchImpl=fetch,env=process.env}={
    if(!response.ok)throw Error('The private Hot scan container is not accessible.');return true;
   },
   async put({id,batchId,kind,image}){
-   const hash=imageHash(image),md5=createHash('md5').update(image).digest('base64'),key=`${kind}/${batchId}/${id}.${image[0]===255?'jpg':'png'}`.toLowerCase();
-   const response=await request(key,{method:'PUT',headers:{'x-ms-blob-type':'BlockBlob','x-ms-access-tier':'Hot','If-None-Match':'*','Content-Type':image[0]===255?'image/jpeg':'image/png','x-ms-meta-sha256':hash,'Content-MD5':md5},body:image});
+   const hash=imageHash(image),md5=createHash('md5').update(image).digest('base64'),key=scanBlobKey(kind,batchId,id,image);
+   const response=await request(key,{method:'PUT',headers:{'x-ms-blob-type':'BlockBlob','x-ms-access-tier':'Hot','If-None-Match':'*','Content-Type':scanImageMime(image),'x-ms-meta-sha256':hash,'Content-MD5':md5},body:image});
    if(!response.ok&&response.status!==412)throw Error('The scan was not saved to Hot storage. Retry the upload.');
    // Azure validates Content-MD5 during PUT and returns its computed hash.
    // Avoid a full image download after an acknowledged, checksum-verified write.

@@ -1,6 +1,7 @@
 import {MAX_SCAN_ENTRY_CARDS} from '../public/scan-entry-limit.mjs';
 import {parseScanContext} from '../scan-batch-context.mjs';
 import {parseCaptureTiming,scanTimingLabel} from '../public/scan-timing.mjs';
+import {sniffScanImageType} from '../public/scan-image-type.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {checkScannerAvailability} from './scanner-availability.mjs';
 const LOCAL='http://127.0.0.1:4174';
@@ -13,7 +14,7 @@ export default function CloudScannerPanel({kind,token,onBatch,onComplete,expecte
   if(d.type==='scanner-progress')setMessage(String(d.message).slice(0,300));
   if(d.type==='scanner-page'){
    if(c.pending)return;c.pending=true;
-   try{const binary=d.bytes instanceof ArrayBuffer,imageType=binary&&new Uint8Array(d.bytes)[0]===255?'image/jpeg':'image/png';if(!/^[a-f0-9-]{36}$/i.test(d.cardId)||(binary?d.bytes.byteLength>12000000:typeof d.base64!=='string'||d.base64.length>16000000))throw Error('Invalid scanner page.');
+   try{const binary=d.bytes instanceof ArrayBuffer,imageType=binary?sniffScanImageType(new Uint8Array(d.bytes)):'image/png';if(!/^[a-f0-9-]{36}$/i.test(d.cardId)||(binary?d.bytes.byteLength>12000000:typeof d.base64!=='string'||d.base64.length>16000000))throw Error('Invalid scanner page.');
     const api=async(path,body,image)=>{const r=await fetch(path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':image?imageType:'application/json',...(image?{'X-Scan-Metadata':encodeURIComponent(JSON.stringify(body))}:{})},body:image||JSON.stringify(body)});const v=await r.json();if(!r.ok)throw Error(v.error||'Upload failed.');return v;};
     c.entries??=new Map();c.sentCards??=new Map();const entryKey=d.entryId||'scanner';let entry=c.entries.get(entryKey);
     if(c.sentCards.has(d.cardId)){c.batch=c.sentCards.get(d.cardId);}else{if(!entry||entry.count>=MAX_SCAN_ENTRY_CARDS){entry={id:(await api('/api/scan-batches',{kind,expectedContext:c.expectedContext,name:'PC scanner · '+new Date().toLocaleString()})).id,count:0};c.entries.set(entryKey,entry);}c.batch=entry.id;}

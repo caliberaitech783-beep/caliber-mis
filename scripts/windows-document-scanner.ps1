@@ -27,6 +27,10 @@ try{
  $oldY=[double]$item.Properties.Item('6148').Value
  $physicalX=[double]$item.Properties.Item('6151').Value/$oldX
  $physicalY=[double]$item.Properties.Item('6152').Value/$oldY
+ # Cards are ink on paper: request grayscale (WIA_IPA_DATATYPE 2, else WIA_IPS_CUR_INTENT
+ # grayscale) so each page transfers in a third of the bytes. Drivers that refuse keep
+ # their current colour mode; the local service converts to grayscale afterwards.
+ try{$item.Properties.Item('4103').Value=2}catch{try{$item.Properties.Item('6146').Value=2}catch{}}
  # Prefer 300 DPI; drivers that do not support it retain their supported value.
  try{$item.Properties.Item('6147').Value=300}catch{}
  try{$item.Properties.Item('6148').Value=300}catch{}

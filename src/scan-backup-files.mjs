@@ -1,3 +1,4 @@
+import {scanImageExtension} from '../public/scan-image-type.mjs';
 export async function sha256(bytes){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');}
 // Existing SSD files are reused only after verification; mismatches are never overwritten.
 export async function verifiedFile(directory,name,bytes,expectedHash){
@@ -18,7 +19,7 @@ export async function copyBackup({job,directory,api,image,onProgress=()=>{}}){
    if(!/^[a-f0-9-]{36}$/i.test(item.card_id))throw Error('Invalid card in backup.');
    const content=await image(`/api/scan-backups/${job.id}/images/${item.card_id}`);
    if(content.byteLength!==Number(item.image_bytes)||await sha256(content)!==item.image_hash)throw Error('Downloaded image did not match its stored checksum.');
-   const ext=new Uint8Array(content)[0]===255?'.jpg':'.png';
+   const ext=scanImageExtension(new Uint8Array(content));
    await verifiedFile(folder,item.card_id+ext,content,item.image_hash);
    const metadata=new TextEncoder().encode(JSON.stringify({...item.metadata,imageFile:item.card_id+ext,imageSha256:item.image_hash},null,2)+'\n');
    await verifiedFile(folder,item.card_id+'.json',metadata,await sha256(metadata));
