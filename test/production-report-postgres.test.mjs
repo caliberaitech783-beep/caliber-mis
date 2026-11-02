@@ -31,7 +31,7 @@ test('production API gates batches and permissions, approves effective capacitie
  response=await call('/api/capacity-master','admin',approval);assert.equal(response.status,201,JSON.stringify(await response.json()));
  await pool.query("INSERT INTO mis_vlb_batches VALUES('batch','Batch S1','Sasti','2026-11-01','S1',NULL,0,NULL,NULL)");
  const common={bookDate:'2026-11-01',location:'Sasti',cardShift:'S1',employeeId:'EMP1',employeeName:'Fixture',shiftHours:8,openingHmr:10,closingHmr:16};
- await pool.query("INSERT INTO mis_log_books VALUES(1,'VLB1','vehicle','2026-11-01','Sasti',1,1,$1,NULL),(2,'ELB1','equipment','2026-11-01','Sasti',2,1,$2,NULL)",[{...common,assetId:1,door:'T1',timeMode:'without',trips:[{equipmentId:'2',equipmentName:'PC1',tripCount:3}]},{...common,assetId:2,door:'PC1',trips:[]}]);
+ await pool.query("INSERT INTO mis_log_books VALUES(1,'VLB1','vehicle','2026-11-01','Sasti',1,1,$1,NULL),(2,'ELB1','equipment','2026-11-01','Sasti',2,1,$2,NULL)",[{...common,assetId:1,door:'T1',timeMode:'without',trips:[{equipmentId:'2',equipmentName:'PC1',tripCount:3,jobType:'Coal haulage'}]},{...common,assetId:2,door:'PC1',trips:[]}]);
  await pool.query("INSERT INTO mis_vlb_batch_entries VALUES('batch',1,$1)",[{id:1,revision:1}]);
  assert.equal((await (await call(report)).json()).ready,false);
  await pool.query("UPDATE mis_vlb_batches SET closed_at=NOW(),closure_revision=1");
