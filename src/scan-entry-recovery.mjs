@@ -28,11 +28,18 @@ export function chooseScanEntry(entries,{remembered=''}={}){
  return open.find(entryHasUnsavedCards)||null;
 }
 
-export function describeScanEntry(entry){
- const cards=Number(entry?.cards||0),posted=Number(entry?.posted||0),duplicates=Number(entry?.duplicates||0);
+// The open entry describes itself from the same card summary as the Card status
+// tiles (saved, waiting for automatic save, needs attention, reading), so the two
+// never disagree. Other entries only have the server counts: cards, saved, unsaved.
+export function describeScanEntry(entry,live=null){
+ const cards=live?Number(live.total||0):Number(entry?.cards||0),posted=live?Number(live.saved||0):Number(entry?.posted||0),duplicates=Number(entry?.duplicates||0);
  const parts=[cards+' card'+(cards===1?'':'s')];
  if(posted)parts.push(posted+' saved');
- if(cards>posted)parts.push((cards-posted)+' unsaved');
+ if(live){
+  if(live.waiting>0)parts.push(live.waiting+' waiting to save');
+  if(live.attention>0)parts.push(live.attention+' need'+(live.attention===1?'s':'')+' attention');
+  if(live.pending>0)parts.push(live.pending+' reading');
+ }else if(cards>posted)parts.push((cards-posted)+' unsaved');
  if(duplicates)parts.push(duplicates+' duplicate'+(duplicates===1?'':'s')+' skipped');
  return parts.join(' · ');
 }
