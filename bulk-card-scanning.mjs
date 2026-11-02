@@ -206,6 +206,15 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  // equipment at the site that no card names, category by category. Pairing applies the choice to the
  // batch's unsaved cards at once as a card-only selection; permanence waits for the OTP.
  const batchAssets=async client=>withEquipmentAliases(client,(await client.query(MASTER_SQL,[['Equipment master']])).rows.map(r=>({...r.record_data,id:String(r.id),kind:assetBookKind(r.record_data),site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''})));
+ // The browser judges completeness with the master lists (/api/log-books/options). Automatic saving must
+ // judge with the same lists, or it refuses a card whose dropdown-selected loading equipment the browser
+ // already matched to the printed summary, and the operator finds nothing to correct.
+ const scanIssueOptions=async client=>{
+  const rows=(await client.query(MASTER_SQL,[['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees']])).rows,hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
+  return {assets:await withEquipmentAliases(client,rows.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id),kind:assetBookKind(r.record_data),site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}))),
+   employees:rows.filter(r=>['Employee master','ERP Employee master','C-Dir Employee master'].includes(r.master_name)||(!hasEmployees&&r.master_name==='Users & employees')).map(r=>({id:String(r.id)})),
+   shifts:rows.filter(r=>r.master_name==='Shift Master').map(r=>({id:String(r.id)}))};
+ };
  const liveCards=async(client,batchId)=>(await client.query("SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 AND status IN('review','approved','error') AND review_note NOT IN('Removed from batch: wrong date, site or shift','Exact duplicate upload skipped automatically') ORDER BY ordinal",[batchId])).rows.map(row=>{decodeScanRow(row);return row});
  app.get('/api/scan-batches/:id/mismatches',...protect,wrap(async(req,res)=>{
   const batch=await getBatch(pool,req.params.id),cards=await liveCards(pool,batch.id),site=batch.expected_context?.location||cards.find(c=>c.draft?.location)?.draft?.location||'';
@@ -295,7 +304,8 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
     card.draft=await applyBatchContext(c,batch.expected_context,card.draft);
     requireLogBookSite(req.logBookScope,card.draft.location);
     const check=await checkScanCard(c,batch.kind,card);
-    if(!canAutoSaveScanCard({...card,checks:check},batch.kind))fail('Correct the card before saving: '+[...check.errors,...check.warnings,...Object.values(manualScanIssues(card.draft,batch.kind,card.raw_fields))].join(' '),409);
+    const issueOptions=await scanIssueOptions(c);
+    if(!canAutoSaveScanCard({...card,checks:check},batch.kind,issueOptions))fail('Correct the card before saving: '+[...new Set([...check.errors,...check.warnings,...Object.values(manualScanIssues(card.draft,batch.kind,card.raw_fields,issueOptions))])].join(' '),409);
     const actor=req.session.login||req.session.name;
     if(req.logBookScope.sites!==null)await resolveLogBookData(c,batch.kind,card.draft,{enforceEmployeeSite:true});const data={...check.data,meterCorrectionHistory:card.raw_fields?.meterCorrectionHistory||[],scanCardNumber:check.number||null,scanCardId:card.id,scanBatchId:batch.id,scanSaveMode:'automatic-validation',autoSavedBy:actor,autoSavedAt:new Date().toISOString()};
     await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
