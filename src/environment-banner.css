@@ -1,0 +1,21 @@
+/* Platform banner: rendered only when the server reports an environment label (the test platform sets
+   MIS_ENVIRONMENT_LABEL=TEST). On live the bar is absent and html[data-mis-environment] is never set, so
+   nothing in this file applies there. */
+.mis-environment-banner{position:fixed;top:0;left:0;right:0;z-index:2147483646;box-sizing:border-box;margin:0;padding:7px 12px;padding-top:max(7px,env(safe-area-inset-top));background:#ffd60a;color:#111;border-bottom:2px solid #111;font-family:inherit;font-size:13px;font-weight:700;line-height:1.35;text-align:center;overflow-wrap:anywhere}
+.mis-environment-banner strong{font-weight:900;letter-spacing:.06em}
+/* The page and its pinned navigation move down by the measured bar height instead of sliding under it. */
+html[data-mis-environment]{--mis-environment-banner-height:34px;scroll-padding-top:var(--mis-environment-banner-height)}
+html[data-mis-environment] body{padding-top:var(--mis-environment-banner-height)}
+html[data-mis-environment] .app>aside{top:var(--mis-environment-banner-height)}
+html[data-mis-environment] .app.erp-shell>aside.erp-sidebar{top:var(--mis-environment-banner-height)!important;height:calc(100dvh - var(--mis-environment-banner-height))!important}
+html[data-mis-environment] .top{top:calc(var(--navigation-header-height,76px) + var(--mis-environment-banner-height))}
+html[data-mis-environment] .app.erp-shell .top{top:var(--mis-environment-banner-height)!important}
+html[data-mis-environment] .normal>header{top:var(--mis-environment-banner-height)}
+html[data-mis-environment] .scan-review-compact{top:var(--mis-environment-banner-height)}
+html[data-mis-environment] .app,html[data-mis-environment] .normal,html[data-mis-environment] .login{min-height:calc(100vh - var(--mis-environment-banner-height))}
+@media (max-width:900px){html[data-mis-environment] .normal:not(.embedded-workspace):has(.mobile-workspace){height:calc(100dvh - var(--mis-environment-banner-height))}}
+/* Toasts pinned near the top edge keep clear of the bar. */
+html[data-mis-environment] .load-time-toast{top:calc(18px + var(--mis-environment-banner-height))}
+html[data-mis-environment] .incoming-notification-stack{top:calc(20px + var(--mis-environment-banner-height))}
+html[data-mis-environment] .workflow-success-popup{top:calc(24px + var(--mis-environment-banner-height))}
+@media print{.mis-environment-banner{display:none}html[data-mis-environment] body{padding-top:0}}

@@ -2,6 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import MisWorkspace from './mis-workspace.jsx';
+import EnvironmentBanner from './environment-banner.jsx';
 import './mis-workspace.css';
 
 const sessionKey='nerveCenterSession';
@@ -40,4 +41,4 @@ function MisApp(){
   return <MisWorkspace onSignOut={signOut}/>;
 }
 
-createRoot(document.getElementById('root')).render(<MisApp/>);
+createRoot(document.getElementById('root')).render(<><EnvironmentBanner/><MisApp/></>);
