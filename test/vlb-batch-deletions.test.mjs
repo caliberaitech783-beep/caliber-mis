@@ -161,6 +161,20 @@ test('all deleted batches can be permanently deleted with one approval',async t=
  assert.equal((await h.preview({id:'all'},'purge-all')).status,409,'nothing left to erase');
 });
 
+test('an active batch and its cards can be permanently deleted in one approved step',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b);
+ const p=await h.preview(b,'erase');assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.manifest.target.records.length,1);assert.match(p.data.impact,/no 10-day restore window/);
+ assert.equal((await h.send(p.data)).status,200);assert.equal((await h.confirm(p.data)).status,200);
+ assert.equal((await h.call('vlb-batches/'+b.id)).status,404);
+ assert.ok((await h.db.query('SELECT purged_at FROM mis_vlb_batches WHERE id=$1',[b.id])).rows[0].purged_at);
+ assert.equal((await h.db.query('SELECT * FROM mis_vlb_batch_recovery_items WHERE batch_id=$1',[b.id])).rows.length,0);
+ assert.deepEqual((await h.db.query('SELECT data FROM mis_log_books WHERE id=$1',[card.id])).rows[0].data,{permanentlyDeleted:true});
+ assert.equal((await h.db.query('SELECT * FROM mis_scan_cards')).rows.length,0);
+ assert.equal((await h.preview(b,'restore')).status,409);
+ await h.recovery.cleanupExpired();assert.deepEqual(h.removed,['vehicle/'+card.scanId]);
+ const fresh=await h.create();assert.equal((await h.call('vlb-batches/'+fresh.id)).status,200,'the same site, date and shift can be batched again');
+});
+
 test('new recovery endpoints require VLB application access',()=>{
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misRequestAllowed(session,{path:'/api/vlb-batch-deletions/preview',method:'POST'}));
