@@ -11,17 +11,24 @@ const round=n=>Math.round((n+Number.EPSILON)*1000)/1000;
 const num=v=>v!==null&&v!==undefined&&text(v)!==''&&Number.isFinite(Number(v))?Number(v):null;
 const fail=message=>{throw Object.assign(new Error(message),{status:400});};
 export const capacityKey=v=>text(v).normalize('NFKC').toUpperCase().replace(/\s+/g,' ');
-export const assetCapacityPair=a=>({make:text(a.assetMake||a.makeName||a.make),model:text(a.assetModel||a.modelName||a.model||a.modelNo)});
+export const assetCapacityPair=a=>{
+ const explicitMake=text(a.assetMake||a.makeName||a.manufacturerName||a.manufactureMakeName||a.makeDescription||a.equipmentMake||a.make);
+ const makeSource=[explicitMake,a.group,a.equipmentGroup,a.equipmentName,a.itemName].map(text).join(' '),recognizedMake=makeSource.match(/\b(SCANIA|SANY)\b/i)?.[1]||'';
+ const make=/^\d+$/.test(explicitMake)?recognizedMake:explicitMake||recognizedMake;
+ const model=text(a.assetModel||a.modelName||a.manufacturerModelNo||a.manufactureModelName||a.modelDescription||a.equipmentModel||a.model||a.modelNo||a.itemSpecification);
+ return {make:make===recognizedMake&&make?make[0].toUpperCase()+make.slice(1).toLowerCase():make,model};
+};
 export const pairKey=p=>JSON.stringify([capacityKey(p.make),capacityKey(p.model)]);
 export function validateCapacity(input){
- const location=text(input.location),jobType=text(input.jobType),make=text(input.make),model=text(input.model),capacity=num(input.capacity),effectiveFrom=input.effectiveFrom,reason=text(input.reason);
+ const location=text(input.location),jobType=text(input.jobType),make=text(input.make),model=text(input.model),capacity=num(input.capacity),averageDalaFactor=num(input.averageDalaFactor??input.capacity),effectiveFrom=input.effectiveFrom,reason=text(input.reason);
  if(!location||location.length>200)fail('Select a location from Region master.');
  if(!jobType||jobType.length>200)fail('Enter a job type.');
  if(!make||!model||make.length>200||model.length>200||/^\d+$/.test(make))fail('Select a resolved make and model from Equipment master.');
  if(capacity===null||capacity<=0||capacity>1000||round(capacity)!==capacity)fail('Capacity must be greater than zero, at most 1,000 CUM/trip, with up to three decimals.');
+ if(averageDalaFactor===null||averageDalaFactor<=0||averageDalaFactor>1000||round(averageDalaFactor)!==averageDalaFactor)fail('Average Dala Factor must be greater than zero, at most 1,000, with up to three decimals.');
  if(!operationalDate(effectiveFrom))fail('Choose an effective date on or after 1 November 2026.');
  if(reason.length<5||reason.length>1000)fail('Enter an approval reference or reason (5–1,000 characters).');
- return {location,locationKey:canonicalSiteName(location),jobType,jobTypeKey:capacityKey(jobType),make,model,makeKey:capacityKey(make),modelKey:capacityKey(model),capacity,effectiveFrom,reason};
+ return {location,locationKey:canonicalSiteName(location),jobType,jobTypeKey:capacityKey(jobType),make,model,makeKey:capacityKey(make),modelKey:capacityKey(model),capacity,averageDalaFactor,effectiveFrom,reason};
 }
 export function applicableCapacity(versions,pair,date,scope={}){
  const matches=versions.filter(v=>pairKey(v)===pairKey(pair)&&v.effectiveFrom<=date),location=canonicalSiteName(scope.location),jobType=capacityKey(scope.jobType);

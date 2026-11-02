@@ -8,13 +8,17 @@ const source=readFileSync(new URL('../src/capacity-master.jsx',import.meta.url),
 test('capacity master adds Region Master location and job type in the requested positions and history',()=>{
  const location=source.indexOf('<label>Location<select');
  const make=source.indexOf('<label>Make<select');
- const capacity=source.indexOf('<label>Capacity (CUM/trip)');
+ const actual=source.indexOf('<label>Actual Dala Factor');
+ const average=source.indexOf('<label>Average Dala Factor');
  const jobType=source.indexOf('<label>Job type<input');
  assert.ok(location>=0&&location<make,'location is before make');
- assert.ok(capacity>=0&&capacity<jobType,'job type is after capacity');
+ assert.ok(actual>=0&&actual<average&&average<jobType,'actual and average Dala Factors are before job type');
  assert.match(source,/data\.locations\.map\(location=>/);
  assert.match(source,/Make<select required disabled=\{!form\.location\}/);
  assert.match(source,/Model<select required disabled=\{!form\.make\}/);
+ assert.match(source,/>Import Excel<\/button>/);
+ assert.match(source,/accept="\.xlsx,/);
+ assert.match(source,/headingControl=\{<button[\s\S]+?>Import Excel<\/button>\}/);
  assert.match(source,/\['location','Location'\].*\['jobType','Job type'\]/s);
 });
 
