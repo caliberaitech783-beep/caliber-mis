@@ -41,9 +41,11 @@ export function cardMachineKey(value,kind='equipment',{allowSuffix=true}={}){
  const legacy=text(value).toUpperCase().match(/^([A-Z]{1,5})\s*[-/]?\s*(\d+)(?=$|[\s(·–—-])/);
  return legacy?legacy[1]+legacy[2].replace(/^0+(?=\d)/,''):text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
 }
+// Approved card aliases (for example written "L21" for door DEMO21-00179) index beside the real door.
 const identifiers=row=>{
  const doors=[row.door,row.doorNo,equipmentDoorNumber(row)].filter(value=>value&&/\d/.test(value));
- return doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean);
+ const aliases=Array.isArray(row.cardAliases)?row.cardAliases.filter(Boolean):[];
+ return [...(doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean)),...aliases];
 };
 // Options/master arrays are replaced on refresh. Index each stable array once,
 // rather than rescanning the entire fleet for every trip on each keystroke.
@@ -65,6 +67,14 @@ export function matchCardMachine(rows=[],value,site='',kind='equipment'){
  const target=cardMachineKey(value,kind);
  const matches=target?[...(masterIndex(rows,site,kind).get(target)||[])]:[];
  return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':matches.length>1?'ambiguous':'not-found'};
+}
+// True when only an approved card alias on the record answers the written key (no real door does).
+export function resolvedByAlias(row,value,kind='equipment'){
+ const aliases=Array.isArray(row?.cardAliases)?row.cardAliases.filter(Boolean):[];if(!aliases.length)return false;
+ const target=cardMachineKey(value,kind);if(!target)return false;
+ const doors=[row.door,row.doorNo,equipmentDoorNumber(row)].filter(v=>v&&/\d/.test(v));
+ const real=doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean);
+ return !real.some(label=>cardMachineKey(label,kind)===target)&&aliases.some(label=>cardMachineKey(label,kind)===target);
 }
 export const resolvedMachineName=row=>text(row.door||row.doorNo||equipmentDoorNumber(row)||row.name||row.equipmentName);
 export function siteEquipmentOptions(assets=[],site=''){
@@ -110,7 +120,8 @@ export function scannedTripEquipmentRow(row={},assets=[],site='',version=2){
  const lookup=tripBodyEquipmentReference(value,version);
  const result=site?matchCardMachine(assets,lookup,site,'equipment'):{match:null};
  const resolved=result.match?resolvedMachineName(result.match):lookup;
- return {...row,equipmentName:resolved,equipmentNotation:{original:value,resolved}};
+ const alias=Boolean(result.match)&&resolvedByAlias(result.match,lookup);
+ return {...row,equipmentName:resolved,equipmentNotation:alias?{original:value,resolved,alias:true}:{original:value,resolved}};
 }
 export function tripBodyEquipmentReference(value,version=2){
  if(value==null)return value;
@@ -136,6 +147,12 @@ export function scanEquipmentMatchIssues(input={},assets=[]){
 }
 export function cardMachineHint(value,kind){
  const result=identifyCardMachine(value,kind,{allowSuffix:true});return result?`Identified: ${result.label}${result.number?' · No. '+result.number:' · enter the machine number'}`:'';
+}
+// Review line for a loading row that resolved through an approved alias instead of a real door.
+export function aliasMachineHint(row={}){
+ const notation=row.equipmentNotation;if(!notation?.alias||!notation.original)return '';
+ const machine=identifyCardMachine(notation.original,'trip-body',{allowSuffix:true});
+ return `Written: ${notation.original}${machine?' · Identified: '+machine.label+(machine.number?' · No. '+machine.number:''):''} · mapped by saved alias`;
 }
 // A derived parsing aid only. The original OCR text and field values stay intact.
 export function compactScanEquipmentReferences(line){

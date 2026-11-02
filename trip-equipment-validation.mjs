@@ -5,6 +5,8 @@ const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'T
 // Parse before removing separators: the trailing serial is not part of the door number.
 const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:key(m[1]||''),number:String(Number(m[2]))}:null;};
 const labels=r=>[r.door,r.doorNo,r.equipmentName,r.equipment,r.name].filter(Boolean);
+// Matching also accepts approved card aliases; display labels stay the real master label.
+const matchLabels=r=>[...labels(r),...(Array.isArray(r.cardAliases)?r.cardAliases.filter(Boolean):[])];
 export function resolveTripEquipment(row={},assets=[],location='',{anySite=false}={}){
  const original=clean(row.equipmentName||[row.machine||row.m,row.equipmentNo||row.no].filter(v=>v!=null).join(' ')),parsed=parse(original),site=canonicalSiteName(location);
  if(!site)return {error:'Select a location before matching trip equipment.'};
@@ -21,7 +23,7 @@ export function resolveTripEquipment(row={},assets=[],location='',{anySite=false
  // UP registrations are vehicle identifiers, not a U-type machine code.
  if(parsed?.prefix==='U'&&equipment.some(r=>labels(r).some(v=>parse(v)?.prefix==='U')))return {error:'U cannot be interpreted as V: a U-type machine code exists in the master. Check the card.'};
  const family=parsed&&(parsed.prefix==='U'?'Vpc':families[parsed.prefix]);
- const matches=equipment.filter(r=>!r.sourceMissing&&(anySite||canonicalSiteName(r.currentLocation||r.site||r.location)===site)&&labels(r).some(v=>{const p=parse(v);if(parsed&&p)return parsed.number===p.number&&(!parsed.prefix||parsed.prefix===p.prefix||family&&families[p.prefix]===family);return key(v)===key(original);}));
+ const matches=equipment.filter(r=>!r.sourceMissing&&(anySite||canonicalSiteName(r.currentLocation||r.site||r.location)===site)&&matchLabels(r).some(v=>{const p=parse(v);if(parsed&&p)return parsed.number===p.number&&(!parsed.prefix||parsed.prefix===p.prefix||family&&families[p.prefix]===family);return key(v)===key(original);}));
  const selected=clean(row.equipmentId),selectedMatches=selected?matches.filter(r=>String(r.id)===selected):[];
  // Retain a valid equipment identity independently of the vehicle door number.
  const unique=[...new Map((selectedMatches.length?selectedMatches:matches).map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
