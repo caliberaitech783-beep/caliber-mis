@@ -1,4 +1,6 @@
 import {operationalScanSql} from './operational-start.mjs';
+import {registerClientErrorReports} from './client-error-report.mjs';
+import {scanDuplicateFlags} from './scan-duplicates.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
@@ -3533,6 +3535,7 @@ app.get('/api/health',async(_req,res)=>{
     databaseError='';
     res.json({
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,
+      scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
@@ -7878,6 +7881,7 @@ const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
+registerClientErrorReports(app,{pool,requireSession,requireAdministrator,serverCommit:()=>deploymentSha});
 const bulkScanning=registerBulkCardScanning(app,{refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:async()=>({sites:null,label:'All sites'}),pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{

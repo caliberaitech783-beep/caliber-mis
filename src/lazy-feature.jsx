@@ -1,5 +1,6 @@
 import React, { Component, Suspense, lazy } from "react";
 import "./lazy-feature.css";
+import { reportClientError } from "./client-error-report.mjs";
 
 const CHUNK_RECOVERY_KEY = "bdms:lazy-chunk-recovery-at";
 const CHUNK_RECOVERY_WINDOW_MS = 60_000;
@@ -36,16 +37,26 @@ export class ApplicationErrorBoundary extends Component {
     return { error };
   }
 
-  componentDidCatch(error) {
+  componentDidCatch(error, info) {
     const recovering = recoverStaleChunk(error);
     if (recovering) this.setState({ recovering: true });
     console.error("Caliber Pulse screen rendering failed.", error);
+    // The server keeps the report, so the cause can be found after the fact.
+    void reportClientError(error, { kind: isLazyChunkFailure(error) ? "chunk" : "render", componentStack: info?.componentStack || "" });
+    this.props.onError?.(error);
+  }
+
+  componentDidUpdate(previousProps) {
+    // A panel boundary recovers on its own when the content it guards changes
+    // (another card, another entry), without a page refresh.
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) this.setState({ error: null, recovering: false });
   }
 
   reload = () => {
     try {
       window.sessionStorage.removeItem(CHUNK_RECOVERY_KEY);
     } catch {}
+    // The address keeps the batch, entry and card, so the same work reopens.
     window.location.reload();
   };
 
@@ -53,7 +64,8 @@ export class ApplicationErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
     if (this.props.compact) {
       return <span className="lazy-feature-error compact" role="alert">
-        {this.state.recovering ? "Loading the updated screen…" : "Screen unavailable."}
+        {this.state.recovering ? "Loading the updated screen…" : (this.props.label || "This panel could not be displayed. Your cards are saved.")}
+        {!this.state.recovering && this.props.onDismiss && <button type="button" onClick={() => { this.setState({ error: null }); this.props.onDismiss(); }}>Close</button>}
         {!this.state.recovering && <button type="button" onClick={this.reload}>Refresh</button>}
       </span>;
     }

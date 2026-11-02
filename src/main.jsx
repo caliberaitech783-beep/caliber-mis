@@ -57,6 +57,7 @@ import { createNotificationTracker } from "./notification-alerts.mjs";
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from "react";
 import TelegramSiteGroups from './telegram-site-groups.jsx';
 import { ApplicationErrorBoundary, createLazyFeature } from "./lazy-feature.jsx";
+import { configureClientErrorReporting, installGlobalErrorReporting } from "./client-error-report.mjs";
 import ReportPeriodFilter from "./report-period-filter.jsx";
 import MaintenanceEtcInput from "./maintenance-etc-input.jsx";
 import { TwelveHourDateTimeInput, TwelveHourTimeInput } from "./twelve-hour-input.jsx";
@@ -392,6 +393,9 @@ const storedSession = (() => {
 })();
 let authToken = storedSession?.token || "";
 let currentEmployeeName = storedSession?.name || "";
+// Browser failures reach the server log; see client-error-report.mjs.
+configureClientErrorReporting({ getToken: () => authToken });
+installGlobalErrorReporting(typeof window !== "undefined" ? window : null);
 // Two languages chosen at sign-in. Language 1 is the reading and default speech
 // language; Language 2 is also understood. Complaint text in either language is
 // shown as written, anything else is translated into Language 1. Audio never changes.
