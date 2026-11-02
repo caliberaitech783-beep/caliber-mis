@@ -24,11 +24,13 @@ export function aliasForSelection(written,asset,kind='equipment'){
  return {equipmentId:String(asset.id),kind,writtenText,writtenKey:key};
 }
 
-export function attachEquipmentAliases(assets=[],aliases=[],{by='local'}={}){
+// Active aliases resolve a written label. A suspended alias (its key now names a real door of
+// another asset at the site) still indexes so the matcher reports the key as ambiguous.
+export function attachEquipmentAliases(assets=[],aliases=[],{by='local',statuses=['active','suspended']}={}){
  if(!aliases.length)return assets;
  const index=new Map();
  for(const alias of aliases){
-  if(alias.status&&alias.status!=='active')continue;
+  if(alias.status&&!statuses.includes(alias.status))continue;
   const id=by==='source'?alias.source_id:alias.equipment_id;if(id==null)continue;
   const key=String(id);if(!index.has(key))index.set(key,[]);
   if(!index.get(key).includes(alias.written_text))index.get(key).push(alias.written_text);

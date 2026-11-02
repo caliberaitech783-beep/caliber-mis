@@ -138,6 +138,23 @@ test('a deleted batch can be permanently deleted at once and never restored',asy
  assert.equal((await h.call('vlb-batch-deletions')).data.batches.find(b=>b.id===old.id).can_restore,false);
 });
 
+test('all deleted batches can be permanently deleted with one approval',async t=>{
+ const h=await setup(t);
+ assert.equal((await h.preview({id:'all'},'purge-all')).status,409,'nothing to erase yet');
+ const first=await h.create('S1'),a=await h.add(first);await h.execute(first);
+ const second=await h.create('S2'),b=await h.add(second,{hash:'other'});await h.execute(second);
+ const kept=await h.create('S1'),live=await h.add(kept,{hash:'live'});
+ const p=await h.preview({id:'all'},'purge-all');assert.equal(p.status,200,JSON.stringify(p.data));
+ assert.deepEqual(p.data.manifest.counts,{batches:2,cards:2,scans:2});
+ assert.equal((await h.send(p.data)).status,200);
+ const r=await h.confirm(p.data);assert.equal(r.status,200,JSON.stringify(r.data));
+ for(const id of [first.id,second.id])assert.ok((await h.db.query('SELECT purged_at FROM mis_vlb_batches WHERE id=$1',[id])).rows[0].purged_at);
+ for(const id of [a.id,b.id])assert.deepEqual((await h.db.query('SELECT data FROM mis_log_books WHERE id=$1',[id])).rows[0].data,{permanentlyDeleted:true});
+ assert.equal((await h.db.query('SELECT deleted_at FROM mis_log_books WHERE id=$1',[live.id])).rows[0].deleted_at,null);
+ assert.equal((await h.db.query('SELECT deleted_at FROM mis_vlb_batches WHERE id=$1',[kept.id])).rows[0].deleted_at,null);
+ assert.equal((await h.preview({id:'all'},'purge-all')).status,409,'nothing left to erase');
+});
+
 test('an active batch and its cards can be permanently deleted in one approved step',async t=>{
  const h=await setup(t),b=await h.create(),card=await h.add(b);
  const p=await h.preview(b,'erase');assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.manifest.target.records.length,1);assert.match(p.data.impact,/no 10-day restore window/);

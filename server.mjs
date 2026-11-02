@@ -3,7 +3,7 @@ import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
 import {registerEquipmentCreateExpress} from './equipment-create-express.mjs';
-import {registerEquipmentAliases} from './equipment-aliases.mjs';
+import {registerEquipmentAliases,reconcileEquipmentAliases,readAliasApprover,misManagerLogins,sendAliasWeeklySummary,demoteUnapprovedAliases,aliasOtpEnabled} from './equipment-aliases.mjs';
 import {createOtpDelivery,telegramOutboxSender} from './otp-delivery.mjs';
 import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings} from './vlb-batch-alerts.mjs';
 import {createPulseWriter} from './pulse-writer.mjs';
@@ -7844,7 +7844,9 @@ app.post('/api/mis-admin/backup',requireSession,requireMisAdministrator,async(re
 });
 const groqScanSettings=registerGroqScanSettings(app,{store:integrationSecrets,requireSession,requireAdministrator});
 const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator});
+// After every Pulse snapshot: retire aliases Pulse now carries as real doors, suspend aliases a real door now shadows (Telegram to the approver and the MIS managers).
+const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
@@ -7859,7 +7861,7 @@ const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessCon
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
 // Written-machine aliases (card "L21" = Pulse DEMO21-00179) learned once in scan review and applied to every later card.
-registerEquipmentAliases(app,{pool,protect:requireSession,requireAdministrator,audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment alias',targetReference:reference,changedFields:[],details};}});
+registerEquipmentAliases(app,{pool,protect:requireSession,requireAdministrator,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment alias',targetReference:reference,changedFields:[],details};}});
 registerEquipmentCreateExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment',targetReference:reference,changedFields:[],details};}});
 // Late VLB batch alerts: Telegram to the site Project Managers and the production head when a
 // shift's batch is not created, or still open, hours after the shift ended (MIS admin settings).
@@ -7868,6 +7870,9 @@ registerVlbBatchAlertSettings(app,{pool,requireSession,requireAdministrator:requ
 // Express changes approved by OTP that still have to be applied in Pulse by hand (Pulse Master Sync page).
 registerPulsePending(app,{pool,requireSession,requireAdministrator,writer:pulseMasterWriter});
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>vlbBatchAlerts.start(),90000);
+// Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
+if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
+if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
