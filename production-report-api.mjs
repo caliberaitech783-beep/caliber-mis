@@ -15,9 +15,10 @@ export const PRODUCTION_REPORT_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_capacity_v
  ALTER TABLE mis_capacity_versions ADD COLUMN IF NOT EXISTS location_key TEXT;
  ALTER TABLE mis_capacity_versions ADD COLUMN IF NOT EXISTS job_type TEXT;
  ALTER TABLE mis_capacity_versions ADD COLUMN IF NOT EXISTS job_type_key TEXT;
+ ALTER TABLE mis_capacity_versions ADD COLUMN IF NOT EXISTS average_dala_factor NUMERIC(10,3);
  ALTER TABLE mis_capacity_versions DROP CONSTRAINT IF EXISTS mis_capacity_versions_make_key_model_key_effective_from_key;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_capacity_versions_scope_effective_key ON mis_capacity_versions(location_key,job_type_key,make_key,model_key,effective_from);`;
-const versionSelect='id,location,job_type AS "jobType",make,model,capacity,effective_from::text AS "effectiveFrom",reason,created_by AS "createdBy",created_at AS "createdAt"';
+const versionSelect='id,location,job_type AS "jobType",make,model,capacity,average_dala_factor AS "averageDalaFactor",effective_from::text AS "effectiveFrom",reason,created_by AS "createdBy",created_at AS "createdAt"';
 const invalid=(message,status=400)=>Object.assign(new Error(message),{status});
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const masterRows=async client=>(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Region master']])).rows;
@@ -43,7 +44,7 @@ export function registerProductionReports(app,{pool,protect,ensureBooks}){
    if(prior){const latestClosed=(await client.query('SELECT max(book_date)::text AS date FROM mis_vlb_batches WHERE closed_at IS NOT NULL AND deleted_at IS NULL AND archived_at IS NULL')).rows[0]?.date;
     if(v.effectiveFrom<=prior.date||v.effectiveFrom<=today()||latestClosed&&v.effectiveFrom<=latestClosed)throw invalid('Existing approvals are immutable. Add a new version effective after today, the previous version and all processed batch dates. Historical corrections require a reviewed data correction.',409);
    }
-   const saved=(await client.query(`INSERT INTO mis_capacity_versions(location,location_key,job_type,job_type_key,make,model,make_key,model_key,capacity,effective_from,reason,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${versionSelect}`,[v.location,v.locationKey,v.jobType,v.jobTypeKey,v.make,v.model,v.makeKey,v.modelKey,v.capacity,v.effectiveFrom,v.reason,String(req.session.login||req.session.username||req.session.user?.login||'administrator')])).rows[0];
+   const saved=(await client.query(`INSERT INTO mis_capacity_versions(location,location_key,job_type,job_type_key,make,model,make_key,model_key,capacity,average_dala_factor,effective_from,reason,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${versionSelect}`,[v.location,v.locationKey,v.jobType,v.jobTypeKey,v.make,v.model,v.makeKey,v.modelKey,v.capacity,v.averageDalaFactor,v.effectiveFrom,v.reason,String(req.session.login||req.session.username||req.session.user?.login||'administrator')])).rows[0];
    await client.query('COMMIT');res.status(201).set('Cache-Control','private, no-store').json(saved);
   }catch(e){if(client)await client.query('ROLLBACK').catch(()=>{});if(e.status||e.code==='23505')return res.status(e.status||409).json({error:e.status?e.message:'An approved version already exists for that make, model and effective date.'});next(e);}finally{client?.release();}
  });
