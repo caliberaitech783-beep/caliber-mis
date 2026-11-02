@@ -36,17 +36,17 @@ test('linked handover legs retain driver credits and count one completed trip in
  assert.equal(scanBatchReport(batch,[loading]).totals.trips,0);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,1);
 });
 
-test('selected scan context keeps wrong, removed and unresolved cards out of Excel, including edited wrong originals',async()=>{
+test('selected scan context keeps wrong-saved, removed and unresolved cards out of Excel; a corrected handwritten header is exported',async()=>{
  const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:{...expected,confirmed:true}};
  const good=card('matching',1,{draft:{...data,...expected},saved_data:{...data,...expected,scanCardId:'matching',scanBatchId:batch.id},raw_fields:{extractionDraft:expected}});
  const wrongDate=card('wrong-date',2,{draft:{...expected,bookDate:'2026-10-27'},saved_data:{...data,...expected,bookDate:'2026-10-27',scanCardId:'wrong-date',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,bookDate:'2026-10-27'}}});
  const editedWrong=card('edited-wrong',3,{draft:expected,saved_data:{...data,...expected,scanCardId:'edited-wrong',scanBatchId:batch.id},raw_fields:{extractionDraft:{...expected,cardShift:'II'}}});
  const pending=card('pending-correct',4,{status:'review',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
  const removed=card('removed',5,{status:'rejected',draft:expected,saved_data:null,review_note:'Removed from batch: wrong date, site or shift'});
- const report=scanBatchReport(scoped,[good,wrongDate,editedWrong,pending,removed]);assert.deepEqual(report.rows.map(r=>r.id),['matching','pending-correct']);
- assert.equal(scanBatchReportTables(report).find(t=>t.name==='Cards').rows.length,1,'on-screen table exports also contain saved matching cards only');
- const exported=scanBatchExportTables(report).find(t=>t.name==='Cards');assert.equal(exported.rows.length,1);assert.equal(exported.rows[0][0],1);assert.doesNotMatch(JSON.stringify(scanBatchExportTables(report)),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
- const bytes=Buffer.from(await buildXlsxSheetsWorkbook(report.title,scanBatchExportTables(report)).arrayBuffer());assert.match(bytes.toString('utf8'),/BOOK-matching/);assert.doesNotMatch(bytes.toString('utf8'),/BOOK-wrong-date|BOOK-edited-wrong|BOOK-removed|BOOK-pending-correct/);
+ const report=scanBatchReport(scoped,[good,wrongDate,editedWrong,pending,removed]);assert.deepEqual(report.rows.map(r=>r.id),['matching','edited-wrong','pending-correct']);
+ assert.equal(scanBatchReportTables(report).find(t=>t.name==='Cards').rows.length,2,'on-screen table exports contain saved cards whose saved values carry the batch header');
+ const exported=scanBatchExportTables(report).find(t=>t.name==='Cards');assert.equal(exported.rows.length,2);assert.equal(exported.rows[0][0],1);assert.match(JSON.stringify(scanBatchExportTables(report)),/BOOK-edited-wrong/);assert.doesNotMatch(JSON.stringify(scanBatchExportTables(report)),/BOOK-wrong-date|BOOK-removed|BOOK-pending-correct/);
+ const bytes=Buffer.from(await buildXlsxSheetsWorkbook(report.title,scanBatchExportTables(report)).arrayBuffer());assert.match(bytes.toString('utf8'),/BOOK-matching/);assert.match(bytes.toString('utf8'),/BOOK-edited-wrong/);assert.doesNotMatch(bytes.toString('utf8'),/BOOK-wrong-date|BOOK-removed|BOOK-pending-correct/);
 });
 test('a rejected matching card remains visible and is counted in a context-checked batch',()=>{
  const expected={bookDate:'2026-10-28',location:'Sasti OC',cardShift:'I'},scoped={...batch,expected_context:{...expected,confirmed:true}};
@@ -78,7 +78,7 @@ test('all-card preview includes saved, pending, extracting and mismatched rows w
  const saved=card('saved',1,{draft:expected,raw_fields:{extractionDraft:expected},saved_data:{...data,...expected,scanCardId:'saved',scanBatchId:batch.id}});
  const pending=card('pending',2,{status:'review',draft:expected,saved_data:null,raw_fields:{extractionDraft:expected}});
  const reading=card('reading',3,{status:'reading',draft:{},saved_data:null}),queued=card('queued',4,{status:'queued',draft:{},saved_data:null});
- const wrong=card('wrong',5,{draft:{...expected,cardShift:'II'},raw_fields:{extractionDraft:{...expected,cardShift:'II'}},saved_data:{...data,...expected,scanCardId:'wrong',scanBatchId:batch.id}});
+ const wrong=card('wrong',5,{draft:{...expected,cardShift:'II'},raw_fields:{extractionDraft:{...expected,cardShift:'II'}},saved_data:{...data,...expected,cardShift:'II',scanCardId:'wrong',scanBatchId:batch.id}});
  const preview=scanBatchReport(scoped,[saved,pending,reading,queued,wrong],null,{includeAllCards:true});
  assert.deepEqual(preview.rows.map(row=>row.id),['saved','pending','reading','queued','wrong']);
  assert.equal(preview.counts.cards,5);assert.equal(preview.counts.saved,1);assert.equal(preview.counts.pending,4);

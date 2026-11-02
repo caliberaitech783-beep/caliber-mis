@@ -1,5 +1,4 @@
 import {machineDiscrepancies} from './trip-card-rules.mjs';
-import {scanCardContextIssues} from './scan-batch-context.mjs';
 import {manualScanIssues} from './src/scan-manual-fields.mjs';
 
 export const ISSUE_CARD_GROUPS=[
@@ -29,7 +28,7 @@ export function hasCardData(card,kind){
 export function cardReviewGroup(card,kind,options=null,context=null){
  if(['queued','reading'].includes(card.status))return 'pending';
  if(card.status==='posted')return 'orange';
- if(card.status!=='rejected'&&(card.context_mismatch?.length||(context&&scanCardContextIssues(context,card).length)))return 'error';
+ if(card.status!=='rejected'&&card.context_mismatch?.length)return 'error';
  if(card.status==='error')return 'error';
  if(card.status==='rejected'||!hasCardData(card,kind))return 'red';
  if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options)).length||(card.checks?.errors||[]).length)return 'brown';
