@@ -112,9 +112,12 @@
   }
   #scan-entry-fields .scan-machine-summary .scan-trip-row {
     display: grid;
-    grid-template-columns: minmax(0,1fr) 90px;
+    grid-template-columns: minmax(0,1fr) 90px 44px;
     gap: 10px;
+    align-items: end;
   }
+  #scan-entry-fields .scan-machine-summary .scan-trip-remove { margin: 0; align-self: end; }
+  #scan-entry-fields .scan-machine-summary .scan-add-machine { margin: 8px 0 4px; }
   #scan-entry-fields .scan-machine-summary .scan-fields {
     display: grid;
     grid-template-columns: repeat(3,minmax(0,1fr));
