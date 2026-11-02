@@ -54,6 +54,7 @@ export function registerVehicleTransferExpress(app,{pool,requireSession,accessCo
  app.post('/api/vehicle-transfers/express',requireSession,wrap(async(req,res)=>{
   const context=await accessContext(req.session,pool);
   if(!context.canSubmit)otpFail('Only an MIS User or MIS Manager can request an express transfer.',403);
+  if(pulseWriter?.assertAvailable)await pulseWriter.assertAvailable('transfer');
   const assetId=Number(req.body?.assetId);if(!Number.isInteger(assetId)||assetId<=0)otpFail('Select the asset to transfer.');
   const batchId=text(req.body?.batchId)||null;if(batchId&&!uuid(batchId))otpFail('Invalid batch reference.');
   const result=await transaction(async client=>{

@@ -50,6 +50,7 @@ export function registerEquipmentCreateExpress(app,{pool,requireSession,accessCo
  app.post('/api/equipment/express',requireSession,wrap(async(req,res)=>{
   const context=await accessContext(req.session,pool);
   if(!context.canSubmit)otpFail('Only an MIS User or MIS Manager can create equipment from an entry screen.',403);
+  if(pulseWriter?.assertAvailable)await pulseWriter.assertAvailable('equipment');
   const batchId=text(req.body?.batchId)||null;if(!batchId||!uuid(batchId))otpFail('New equipment can be created only from an open VLB/ELB batch.');
   const result=await transaction(async client=>{
    const batch=(await client.query('SELECT id,name,site,closed_at FROM mis_vlb_batches WHERE id=$1 AND archived_at IS NULL',[batchId])).rows[0];

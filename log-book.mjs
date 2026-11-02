@@ -8,8 +8,10 @@ import {normalizeManualDetails} from './manual-log-book-details.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
+import {registerMeterContinuityReport} from './meter-continuity-report.mjs';
 import {assetCapacityPair} from './production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
+import {assertSingleVlbCardPerShift} from './vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {assertElbBatchWrite,syncElbBatchRecord} from './vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
@@ -115,7 +117,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
  requireOperationalDate(data.bookDate);
-       if(kind==='vehicle')await assertVlbBatchWrite(client,data,createdBy);else await assertElbBatchWrite(client,data);
+       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy);await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}else await assertElbBatchWrite(client,data);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
@@ -132,6 +134,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const batchScope=(req,res,next)=>{if(req.query?.scan!=='1')return protect[2](req,res,next);return requireAdministrator(req,res,error=>{if(error)return next(error);req.logBookScope={sites:null,label:'All sites'};next()})};
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
+ registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
@@ -220,18 +223,20 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      let result;
      if(updating){
        const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind,req.session.login||req.session.name);
-       if(kind==='vehicle')await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);
+       if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
+       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        const revision=number(req.body.revision,'Revision',{integer:true});
        result=await client.query('UPDATE mis_log_books SET book_date=$1,site=$2,asset_id=$3,data=$4::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$5 AND book_type=$6 AND revision=$7 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[data.bookDate,data.location,data.assetId,JSON.stringify(data),req.params.id,kind,revision]);
        if(!result.rowCount)throw Object.assign(new Error('This log book changed or is unavailable. Reload it before saving.'),{status:409});
      }else{
        const previous=(await client.query('SELECT id,book_no,book_type,data,revision,created_at,updated_at,created_by FROM mis_log_books WHERE request_key=$1 AND book_date>=$$2026-11-01$$',[requestKey])).rows[0];
        if(previous){requireLogBookSite(req.logBookScope,previous.data.location);if(previous.created_by!==(req.session.login||req.session.name)||previous.book_type!==kind)throw Object.assign(new Error('Save reference already used.'),{status:409});const response=kind==='vehicle'?(await withVlbTripHandovers(client,[previous],await filterLogBookSites(client,req.logBookScope)))[0]:previous;await client.query('COMMIT');return res.json(response);}
+       if(kind==='vehicle')data.duplicateReason=text(req.body.duplicateReason);
        result={rows:[await insertLogBook(client,kind,data,requestKey,req.session.login||req.session.name)]};
      }
      if(updating){await enqueueTripVerification(client,result.rows[0]);await syncVlbBatchRecord(client,result.rows[0],req.session.login||req.session.name);await syncElbBatchRecord(client,result.rows[0],req.session.login||req.session.name);}
      const response=kind==='vehicle'?(await withVlbTripHandovers(client,result.rows,await filterLogBookSites(client,req.logBookScope)))[0]:result.rows[0];await client.query('COMMIT');res.status(updating?200:201).json(response);
-   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message,...(error.details||{})});next(error)}finally{client?.release();}
  }
  app.post('/api/log-books/:kind',...protect,save);
  app.put('/api/log-books/:kind/:id',...protect,save);

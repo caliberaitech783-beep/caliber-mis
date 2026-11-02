@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PGlite} from '@electric-sql/pglite';
+import {createPulseWriter,pulseWriteMode,PULSE_UNAVAILABLE_MESSAGES} from '../pulse-writer.mjs';
+import {listPendingPulseWrites,markPulseWriteApplied,remindPendingPulse,pendingPulseMessage} from '../pulse-pending.mjs';
+
+test('the Pulse writer refuses in off mode and needs a URL and token in live mode',async()=>{
+ assert.equal(pulseWriteMode({}),'off');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'LIVE'}),'live');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'dry-run'}),'off');
+ const off=createPulseWriter({env:{}});
+ await assert.rejects(off.assertAvailable('transfer'),e=>e.status===409&&e.message===PULSE_UNAVAILABLE_MESSAGES.transfer&&e.extra.code==='pulse_write_unavailable');
+ await assert.rejects(off.completeTransfer({transfer:{transferNo:'VT-1'},equipment:{id:1},approvedBy:['pm'],requester:'mis'}),/Pulse cannot be updated from Pulse-II yet/);
+ await assert.rejects(off.createEquipment({equipment:{site:'Sasti OC',door:'V99'}}),/create this asset in Pulse/);
+ const unconfigured=createPulseWriter({env:{PULSE_WRITE_MODE:'live'}});
+ await assert.rejects(unconfigured.assertAvailable('equipment'),e=>e.status===503&&/PULSE_INTEGRATION_URL/.test(e.message));
+ const calls=[];
+ const live=createPulseWriter({env:{PULSE_WRITE_MODE:'live',PULSE_INTEGRATION_URL:'https://pulse.example/',PULSE_INTEGRATION_TOKEN:'t'},fetchImpl:async(url,init)=>{calls.push({url,init});return {ok:true,status:200,json:async()=>({pulseId:'77'})};}});
+ const result=await live.completeTransfer({transfer:{transferNo:'VT-1'},equipment:{id:1},approvedBy:['pm'],requester:'mis',idempotencyKey:'otp-1'});
+ assert.equal(result.mode,'pulse');assert.equal(result.pulseId,'77');assert.equal(calls[0].url,'https://pulse.example/api/integrations/vehicle-transfers/VT-1/complete');assert.equal(calls[0].init.headers['Idempotency-Key'],'otp-1');assert.equal(calls[0].init.headers.Authorization,'Bearer t');
+ const refused=createPulseWriter({env:{PULSE_WRITE_MODE:'live',PULSE_INTEGRATION_URL:'https://pulse.example',PULSE_INTEGRATION_TOKEN:'t'},fetchImpl:async()=>({ok:false,status:409,json:async()=>({error:'Already transferred in Pulse.'})})});
+ await assert.rejects(refused.createEquipment({equipment:{site:'Sasti OC',door:'V99'}}),e=>e.status===409&&e.message==='Already transferred in Pulse.');
+});
+
+test('pending Pulse writes are listed, reminded once a day after 09:00 and can be marked applied',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ await db.exec(`CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);
+ CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value JSONB NOT NULL DEFAULT '{}'::jsonb,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+ const insert=(name,data)=>db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(data)]);
+ await insert('Vehicle transfers',{transferNo:'VT-1',door:'V07',source:'Jayant OC',destination:'Sasti OC',sourceApprovedBy:'pm.jayant',destinationMisVerifiedLogin:'mis.sasti',sourceApprovedAt:'2026-11-01T05:00:00Z',pulseWrite:{mode:'local-only',note:'n'}});
+ await insert('Vehicle transfers',{transferNo:'VT-2',door:'V08',source:'Jayant OC',destination:'Sasti OC',pulseWrite:{mode:'pulse'}});
+ await insert('Equipment master',{door:'V99',currentLocation:'Sasti OC',createdVia:'express-otp',createdBy:'mis.sasti',approvedBy:'pm.sasti',approvedAt:'2026-11-02T03:00:00Z',chassis:'CH1',make:'Tata',pulseWrite:{mode:'local-only'}});
+ await insert('Equipment master',{door:'V10',currentLocation:'Sasti OC'});
+ const pool={query:(sql,args)=>db.query(sql,args)};
+ const items=await listPendingPulseWrites(pool);
+ assert.deepEqual(items.map(i=>[i.kind,i.reference,i.to]),[['transfer','VT-1','Sasti OC'],['equipment','V99','Sasti OC']]);
+ assert.match(pendingPulseMessage(items),/2 changes approved by OTP still need to be applied in Pulse/);
+ const sent=[];const telegram={async send(to,message,eventKey){sent.push({to,eventKey});return to!=='unlinked';}};
+ const at=(date,hour)=>Date.parse(`${date}T${String(hour).padStart(2,'0')}:00:00+05:30`);
+ assert.deepEqual(await remindPendingPulse({pool,telegram,logins:['pulse.admin'],nowMs:at('2026-11-02',8)}),{sent:0,skipped:'before 09:00'});
+ assert.deepEqual(await remindPendingPulse({pool,telegram,logins:['pulse.admin','unlinked'],nowMs:at('2026-11-02',9)}),{sent:1,items:2});
+ assert.deepEqual(await remindPendingPulse({pool,telegram,logins:['pulse.admin'],nowMs:at('2026-11-02',15)}),{sent:0,skipped:'already sent today'});
+ assert.equal(sent.filter(s=>s.eventKey==='pulse-pending:2026-11-02:pulse.admin').length,1);
+ await markPulseWriteApplied(pool,{kind:'transfer',id:items[0].id,by:'Admin',note:'done in Pulse'});
+ await assert.rejects(markPulseWriteApplied(pool,{kind:'transfer',id:items[0].id,by:'Admin'}),/no longer pending/);
+ await assert.rejects(markPulseWriteApplied(pool,{kind:'shift',id:'1',by:'Admin'}),/Invalid/);
+ const remaining=await listPendingPulseWrites(pool);assert.deepEqual(remaining.map(i=>i.reference),['V99']);
+ const applied=(await db.query("SELECT record_data->'pulseWrite' AS w FROM master_records WHERE record_data->>'transferNo'='VT-1'")).rows[0].w;
+ assert.equal(applied.mode,'applied-manually');assert.equal(applied.by,'admin');assert.equal(applied.note,'done in Pulse');
+ await markPulseWriteApplied(pool,{kind:'equipment',id:remaining[0].id,by:'admin'});
+ assert.deepEqual(await remindPendingPulse({pool,telegram,logins:['pulse.admin'],nowMs:at('2026-11-03',10)}),{sent:0,skipped:'nothing pending'});
+});
