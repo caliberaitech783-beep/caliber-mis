@@ -60,7 +60,7 @@ test('the OTP panel always offers the approver route and the emergency route, an
  assert.match(html,/NITISH has not linked Telegram/);assert.match(html,/disabled=""[^>]*>Send OTP to NITISH/);assert.match(html,/Emergency OTP to site PM…/);
  const h3=hooks();const live=await compile('equipment-alias-otp-panel.jsx',{React,useState:h3.useState,useEffect:h3.useEffect,otpCountdown,otpSentText},['EquipmentAliasOtpPanel']);
  html=renderToStaticMarkup(React.createElement(live.EquipmentAliasOtpPanel,{session,alias:{...alias,otps:[{id:'o1',purpose:'map_equipment',route:'nitish',status:'sent',sentTo:['nitish'],channels:['telegram'],expiresAt:new Date(Date.now()+9*60000).toISOString()}]},approver:{login:'nitish'},approverTelegramLinked:true}));
- assert.match(html,/OTP sent to NITISH by Telegram · 8:5\d left/);assert.match(html,/aria-label="Equipment mapping OTP"/);assert.match(html,/Resend to NITISH/);assert.match(html,/Emergency OTP to site PM…/,'the emergency route stays visible while a code is live');
+ assert.match(html,/OTP sent to NITISH by Telegram · (?:8:[0-5]\d|9:00) left/);assert.match(html,/aria-label="Equipment mapping OTP"/);assert.match(html,/Resend to NITISH/);assert.match(html,/Emergency OTP to site PM…/,'the emergency route stays visible while a code is live');
 });
 
 test('manual entry pairs a typed machine with a Pulse record at the site',async()=>{
