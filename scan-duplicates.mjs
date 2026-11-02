@@ -16,6 +16,12 @@ export const SCAN_DUPLICATE_SCHEMA=`
  ALTER TABLE mis_scan_cards ADD COLUMN IF NOT EXISTS duplicate_of UUID;
  CREATE INDEX IF NOT EXISTS mis_scan_cards_duplicate_of ON mis_scan_cards(duplicate_of) WHERE duplicate_of IS NOT NULL;
  CREATE INDEX IF NOT EXISTS mis_scan_cards_fingerprint_batch ON mis_scan_cards(batch_id) WHERE fingerprint IS NOT NULL;`;
+// Automatic rejection of a read card as a content duplicate (same date, door
+// and card number in another entry) is off until it has been watched on real
+// batches: an operator must never see cards vanish from an entry. While off,
+// checkScanCard still names the possible duplicate on the card for review.
+export const contentRejectEnabled=(env=process.env)=>env.SCAN_DUPLICATE_CONTENT_REJECT==='true';
+export const scanDuplicateFlags=(env=process.env)=>({fingerprint:scanFingerprintSettings(env).enabled,contentReject:contentRejectEnabled(env)});
 export const EXACT_DUPLICATE_NOTE='Exact duplicate upload skipped automatically';
 export const REMOVED_FROM_BATCH_NOTE='Removed from batch: wrong date, site or shift';
 
