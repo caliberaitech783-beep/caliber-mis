@@ -13,6 +13,7 @@ const exists=async(c,name)=>Boolean((await c.query('SELECT to_regclass($1) AS na
 const sameScope=(b,d)=>canonicalSiteName(b.site)===canonicalSiteName(d?.location)&&b.report_date===d?.bookDate&&b.shift===vlbRecordShift(d||{});
 const approval=row=>`Approve ${row.operation} ${row.id} ${scopeHash(row.manifest).slice(0,12)}`;
 const purgeImpact='The deleted batch is erased now instead of at the end of its 10-day restore window. Its retained VLB entries, scans and source images are removed permanently and it can no longer be restored, so the same cards can be scanned fresh. Existing downloaded exports, SSD copies and platform backups are outside this application action.';
+const eraseImpact='Every VLB batch at every site you can access is erased now, open or closed: its VLB entries, machine (ELB) entries, scans and source images are removed permanently and none of it can be restored. Existing downloaded exports, SSD copies and platform backups are outside this application action.';
 const impact='The selected batch and its saved VLB entries, unsaved scans and source images leave active use. They can be restored for 240 hours after deletion. After that, application recovery expires and retained application data is purged. Other shifts keep their entered values; trip links and totals recalculate. Existing downloaded exports, SSD copies and platform backups are outside this application action.';
 
 export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOtp,imageStorage}){
@@ -50,7 +51,36 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   const backups=await exists(c,'mis_scan_backup_items')?(await c.query("SELECT backup_id,card_id,md5(to_jsonb(i)::text) AS fingerprint FROM mis_scan_backup_items i WHERE card_id=ANY($1::uuid[]) OR metadata->>'logbookId'=ANY($2::text[]) ORDER BY backup_id,card_id FOR UPDATE",[scans.map(s=>s.id),ids])).rows:[];
   return {batch:{id:b.id,name:b.name,site:b.site,date:b.report_date,shift:b.shift,closedAt:b.closed_at,revision:b.closure_revision},records:records.map(r=>({id:r.id,bookNo:r.book_no,revision:r.revision,fingerprint:r.fingerprint})),scans:scans.map(({draft,...s})=>({...s,door:decodeScanRow({draft}).draft?.door||''})),scanBatches:scanBatches.map(s=>({id:s.id,context:s.expected_context})),backups};
  }
+ // Machine (ELB) entries saved against a batch; erased together with it by erase-all.
+ async function machineScope(c,id){
+  if(!await exists(c,'mis_elb_batch_entries'))return [];
+  return (await c.query('SELECT l.id,l.revision FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=$1 ORDER BY l.id FOR UPDATE OF l',[id])).rows.map(r=>({id:String(r.id),revision:r.revision}));
+ }
+ async function eraseMachines(c,id,ids){
+  if(!await exists(c,'mis_elb_batch_entries'))return;
+  await c.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1',[id]);
+  await c.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[id]);
+  await c.query('DELETE FROM mis_elb_batch_entries WHERE batch_id=$1',[id]);
+  if(ids.length)await c.query("UPDATE mis_log_books SET deleted_at=COALESCE(deleted_at,clock_timestamp()),data=jsonb_build_object('permanentlyDeleted',true),revision=revision+1 WHERE id=ANY($1::bigint[])",[ids]);
+ }
  async function plan(c,req,operation,id){
+  if(operation==='erase-all'){
+   // Administrator wipe: every batch not yet erased, active or deleted, at every site in scope.
+   if(!req.batchActor.admin)fail('Only an MIS administrator can erase every batch.',403);
+   const rows=(await c.query("SELECT id,name,site,deleted_at FROM mis_vlb_batches WHERE purged_at IS NULL AND book_date>='2026-11-01' ORDER BY book_date,created_at,id")).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+   if(!rows.length)fail('There are no batches to erase.');
+   const batches=[];
+   for(const r of rows){
+    let entry;
+    try{
+     if(r.deleted_at)entry=await plan(c,req,'purge',r.id);
+     else{const b=(await c.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 FOR UPDATE',[r.id])).rows[0];entry={original:{id:b.id,name:b.name},target:await scope(c,b)};}
+    }catch(e){if(e.status)fail(r.name+': '+e.message,e.status);throw e}
+    batches.push({...entry,machines:await machineScope(c,r.id)});
+   }
+   const sum=fn=>batches.reduce((n,b)=>n+fn(b),0);
+   return {batches,counts:{batches:batches.length,cards:sum(b=>b.target?b.target.records.length:b.original.counts?.cards||0),scans:sum(b=>b.target?b.target.scans.length:b.original.counts?.scans||0),machines:sum(b=>b.machines.length)},target:null};
+  }
   if(operation==='purge-all'){
    // Every deleted, not yet erased batch this user can see; one approval covers the whole list.
    const ids=(await c.query("SELECT id,site FROM mis_vlb_batches WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND book_date>='2026-11-01' ORDER BY deleted_at,id")).rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>b.id);
@@ -120,15 +150,15 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   await c.query('UPDATE mis_vlb_batches SET purged_at=clock_timestamp() WHERE id=$1',[b.id]);
   await auditVlbBatch(c,b,actor,event,expired?{retentionHours:240}:{permanent:true});
  }
- function publicRequest(row){return {id:row.id,operation:row.operation,manifest:row.manifest,approval:approval(row),impact:row.operation.startsWith('purge')?purgeImpact:impact,expiresAt:row.expires_at,recipient:'+91 9925565281',requiresReplacementDeletion:Boolean(row.operation==='restore'&&row.manifest.target)}}
+ function publicRequest(row,otpRequired){return {id:row.id,operation:row.operation,manifest:row.manifest,approval:approval(row),otpRequired,impact:row.operation==='erase-all'?eraseImpact:row.operation.startsWith('purge')?purgeImpact:impact,expiresAt:row.expires_at,recipient:'+91 9925565281',requiresReplacementDeletion:Boolean(row.operation==='restore'&&row.manifest.target)}}
  app.get('/api/vlb-batch-deletions',...protect,handle(async(req,res)=>{
   const rows=(await pool.query('SELECT id,name,site,book_date::text AS report_date,shift,deleted_at,deleted_by,restore_until,purged_at,deleted_counts,restore_until>clock_timestamp() AND purged_at IS NULL AS can_restore FROM mis_vlb_batches WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC')).rows;
   res.json({batches:rows.filter(b=>siteAllowed(req.logBookScope,b.site))});
  }));
  app.post('/api/vlb-batch-deletions/preview',...protect,handle(async(req,res)=>{
   authorize(req);const {operation,batchId}=req.body,reason=String(req.body.reason||'').trim();
-  if(!['delete','restore','purge','purge-all'].includes(operation)||reason.length<5||reason.length>2000)fail('Choose delete, restore or permanent deletion and enter a reason of 5 to 2000 characters.',400);
-  const row=await transaction(async c=>{const manifest=await plan(c,req,operation,batchId);return(await c.query('INSERT INTO mis_vlb_batch_deletions(id,actor,reason,operation,batch_id,replacement_id,manifest) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *',[randomUUID(),req.batchActor.login,reason,operation,operation==='purge-all'?manifest.batches[0].original.id:batchId,operation==='restore'?manifest.target?.batch.id||null:null,JSON.stringify(manifest)])).rows[0]});res.json(publicRequest(row));
+  if(!['delete','restore','purge','purge-all','erase-all'].includes(operation)||reason.length<5||reason.length>2000)fail('Choose delete, restore or permanent deletion and enter a reason of 5 to 2000 characters.',400);
+  const row=await transaction(async c=>{const manifest=await plan(c,req,operation,batchId);return(await c.query('INSERT INTO mis_vlb_batch_deletions(id,actor,reason,operation,batch_id,replacement_id,manifest) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *',[randomUUID(),req.batchActor.login,reason,operation,['purge-all','erase-all'].includes(operation)?manifest.batches[0].original.id:batchId,operation==='restore'?manifest.target?.batch.id||null:null,JSON.stringify(manifest)])).rows[0]});res.json(publicRequest(row,!req.batchActor.admin));
  }));
  async function owned(c,req){
   authorize(req);if(!uuid(req.params.id))fail('Invalid request.',400);
@@ -152,9 +182,13 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
  }));
  app.post('/api/vlb-batch-deletions/:id/confirm',...protect,handle(async(req,res)=>{
   const result=await transaction(async c=>{
-   const row=await owned(c,req);if(!row.delivered_at||!row.otp_hash||row.attempts>=5)fail('A delivered OTP is required. After five attempts, prepare a new request.',403);
-   const otp=String(req.body.otp||'');
-   if(!/^\d{6}$/.test(otp)||!timingSafeEqual(Buffer.from(row.otp_hash,'hex'),Buffer.from(digest(row.id,otp),'hex'))){await c.query('UPDATE mis_vlb_batch_deletions SET attempts=attempts+1 WHERE id=$1',[row.id]);return {invalidOtp:true};}
+   const row=await owned(c,req);
+   // MIS administrators approve with the exact phrase alone; everyone else needs the WhatsApp OTP.
+   if(!req.batchActor.admin){
+    if(!row.delivered_at||!row.otp_hash||row.attempts>=5)fail('A delivered OTP is required. After five attempts, prepare a new request.',403);
+    const otp=String(req.body.otp||'');
+    if(!/^\d{6}$/.test(otp)||!timingSafeEqual(Buffer.from(row.otp_hash,'hex'),Buffer.from(digest(row.id,otp),'hex'))){await c.query('UPDATE mis_vlb_batch_deletions SET attempts=attempts+1 WHERE id=$1',[row.id]);return {invalidOtp:true};}
+   }
    // Freeze extraction, upload and backup rows while the approved manifest is rechecked and moved.
    if(await exists(c,'mis_scan_cards'))await c.query('LOCK TABLE mis_scan_batches,mis_scan_cards IN SHARE ROW EXCLUSIVE MODE');
    if(await exists(c,'mis_scan_backup_items'))await c.query('LOCK TABLE mis_scan_backup_items IN SHARE ROW EXCLUSIVE MODE');
@@ -163,11 +197,16 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
    if(row.operation==='restore')await restore(c,await batch(c,row.batch_id,req,true),req.batchActor.login);
    if(row.operation==='purge')await purge(c,await batch(c,row.batch_id,req,false,true),req.batchActor.login,'batch_permanently_deleted');
    if(row.operation==='purge-all')for(const b of row.manifest.batches)await purge(c,await batch(c,b.original.id,req,false,true),req.batchActor.login,'batch_permanently_deleted');
+   if(row.operation==='erase-all')for(const b of row.manifest.batches){
+    if(b.target)await retain(c,(await c.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE id=$1 FOR UPDATE',[b.original.id])).rows[0],b.target,req.batchActor.login);
+    await purge(c,await batch(c,b.original.id,req,false,true),req.batchActor.login,'batch_permanently_deleted');
+    await eraseMachines(c,b.original.id,b.machines.map(m=>m.id));
+   }
    await c.query("UPDATE mis_vlb_batch_deletions SET completed_at=clock_timestamp(),otp_hash=NULL,manifest=jsonb_build_object('batchId',batch_id,'replacementId',replacement_id,'operation',operation) WHERE id=$1",[row.id]);
    return {complete:true,operation:row.operation,id:row.batch_id};
   });if(result.invalidOtp)return res.status(400).json({error:'Incorrect OTP.'});
   // Remove the erased batch's source images now instead of on the next sweep.
-  if(result.operation?.startsWith('purge'))void cleanupExpired().catch(e=>console.error('VLB permanent deletion cleanup:',e.code||e.name));
+  if(result.operation?.startsWith('purge')||result.operation==='erase-all')void cleanupExpired().catch(e=>console.error('VLB permanent deletion cleanup:',e.code||e.name));
   res.json(result);
  }));
  let cleaning=false;
