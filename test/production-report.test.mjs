@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildProductionReport,validateCapacity,applicableCapacity,productionFilters} from '../production-report.mjs';
+import {buildProductionReport,validateCapacity,applicableCapacity,productionFilters,assetCapacityPair} from '../production-report.mjs';
 import {linkVlbTripHandovers} from '../vlb-trip-handover.mjs';
 const date='2026-11-01',site='Sasti';
+test('capacity drill-down resolves Scania and Sany make/model fields from Equipment master records',()=>{
+ assert.deepEqual(assetCapacityPair({group:'SCANIA TIPPERS',itemSpecification:'P410'}),{make:'Scania',model:'P410'});
+ assert.deepEqual(assetCapacityPair({make:'29',equipmentGroup:'SANY TIPPERS',itemSpecification:'SKT90S'}),{make:'Sany',model:'SKT90S'});
+ assert.deepEqual(assetCapacityPair({make:'LIUGONG',model:'DW90A'}),{make:'LIUGONG',model:'DW90A'});
+});
 function fixture(){
  const assets=[{id:'1',door:'T1',site,category:'Vehicle',make:'Volvo',model:'FM'},{id:'2',door:'T2',site,category:'Vehicle',make:'Scania',model:'G500'},{id:'3',door:'PC1',site,category:'Equipment'}];
  const shifts=['A','B','C'].map((s,i)=>({id:String(i+10),site,shiftCode:s,startTime:['05:00','13:00','21:00'][i],endTime:['13:00','21:00','05:00'][i]}));
