@@ -1,0 +1,174 @@
+name: Build, test and deploy to the Pulse-II test platform
+
+# Every merge to main is released to the TEST platform only. Production
+# (caliber-mis-783, pulse-ll.cmll.in) is released by main_caliber-mis-783.yml
+# from a release-* tag, after approval in the GitHub "production" environment.
+# Provisioning the test platform: docs/test-platform-setup.md.
+# Release procedure: docs/release-safety-plan-2026-11-02.md, section 6.
+on:
+  push:
+    branches: [main]
+    # A release restarts the test app for about four minutes. Documentation
+    # changes do not need one; a merge that also touches code still releases.
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  workflow_dispatch:
+
+# Separate from the production group (caliber-mis-783-release): a test release
+# never cancels or blocks a production release. GitHub replaces superseded
+# pending test runs; an active one finishes.
+concurrency:
+  group: caliber-mis-test-release
+  cancel-in-progress: false
+
+env:
+  # Repository variables override these defaults once the test platform exists
+  # (docs/test-platform-setup.md, section 6). None of them may name production.
+  TEST_WEBAPP_NAME: ${{ vars.PULSE_TEST_WEBAPP_NAME || 'caliber-mis-test-783' }}
+  TEST_RESOURCE_GROUP: ${{ vars.PULSE_TEST_RESOURCE_GROUP || 'caliber-mis-test-rg' }}
+  # The custom test address (for example https://pulse-test.cmll.in). Without it
+  # the address Azure reports after the deployment is verified.
+  TEST_PUBLIC_URL: ${{ vars.PULSE_TEST_URL }}
+
+jobs:
+  test-release:
+    runs-on: ubuntu-latest
+    environment:
+      name: test
+      url: ${{ steps.test-address.outputs.url }}
+    services:
+      startup-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: release_check
+          POSTGRES_PASSWORD: release_check
+          POSTGRES_DB: caliber_mis
+        ports: ['54320:5432']
+        options: >-
+          --health-cmd "pg_isready -U release_check -d caliber_mis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # A Gemini key for the test app is optional. Without the secret the test
+      # platform runs without central Gemini extraction; nothing else changes.
+      TEST_GEMINI_CONFIGURED: ${{ secrets.MIS_TEST_GEMINI_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to touch the production app
+        run: |
+          case "$TEST_WEBAPP_NAME" in
+            ''|caliber-mis-783)
+              echo "::error::This workflow deploys only to the test platform. PULSE_TEST_WEBAPP_NAME must not be empty or name the live app."
+              exit 1;;
+          esac
+          case "$TEST_PUBLIC_URL" in
+            *pulse-ll.cmll.in*|*pulseii.cmll.in*|*caliber-mis-783*)
+              echo "::error::PULSE_TEST_URL names the live site. The test workflow never verifies production."
+              exit 1;;
+          esac
+          echo "Test platform app: $TEST_WEBAPP_NAME (resource group $TEST_RESOURCE_GROUP)"
+
+      - name: Set up Node.js and npm download cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Restore pinned handwriting model cache
+        uses: actions/cache@v4
+        with:
+          path: ocr-model-cache
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+
+      - name: Install exact locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify pinned handwriting model
+        run: npm run ocr:prepare
+
+      - name: Build complete UI
+        run: npm run build
+
+      - name: Run full test suite
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+        run: npm test
+
+      - name: Verify built release identity
+        run: |
+          EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
+          printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
+
+      - name: Verify complete deployment runtime
+        env:
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+        run: |
+          node --check server.mjs
+          node scripts/verify-server-start.mjs
+          node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
+          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
+
+      # The test identity holds Website Contributor on the test resource group
+      # only (docs/test-platform-setup.md, section 6); it cannot reach production.
+      - name: Login to Azure with the test platform identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_TEST_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TEST_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_TEST_SUBSCRIPTION_ID }}
+
+      - name: Configure Gemini extraction on the test app (only with a test key)
+        if: env.TEST_GEMINI_CONFIGURED == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.MIS_TEST_GEMINI_API_KEY }}
+          AZURE_WEBAPP_NAME: ${{ env.TEST_WEBAPP_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ env.TEST_RESOURCE_GROUP }}
+        run: python3 scripts/configure-gemini-azure.py
+
+      - name: Deploy to the test Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.TEST_WEBAPP_NAME }}
+          # The complete validated workspace, exactly as production receives it.
+          package: .
+
+      - name: Resolve the test platform address
+        id: test-address
+        env:
+          DEPLOYED_URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+        run: |
+          url="${TEST_PUBLIC_URL:-$DEPLOYED_URL}"
+          url="${url%/}"
+          case "$url" in
+            *pulse-ll.cmll.in*|*pulseii.cmll.in*|*caliber-mis-783*)
+              echo "::error::Refusing to verify the live site from the test workflow."
+              exit 1;;
+            https://[A-Za-z0-9]*) ;;
+            *)
+              echo "::error::No https address for the test platform. Set the repository variable PULSE_TEST_URL."
+              exit 1;;
+          esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Verifying $url"
+
+      - name: Verify test platform release health
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          RELEASE_CHECK_BASE_URL: ${{ steps.test-address.outputs.url }}
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --max-time 20 "${RELEASE_CHECK_BASE_URL}/api/health?test-release=${EXPECTED_COMMIT}" -o health.json \
+              && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT||h.scheduledJobsEnabled!==false)process.exit(1)" \
+              && node scripts/verify-ui-release.mjs --live; then
+              echo "The test platform is serving commit ${EXPECTED_COMMIT} with scheduled jobs switched off."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Test platform release health could not be verified."
+          exit 1
