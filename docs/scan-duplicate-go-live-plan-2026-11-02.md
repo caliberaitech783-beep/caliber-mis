@@ -113,3 +113,16 @@ Rollback: turn the flag off. Cards already marked duplicate stay visible in the 
 
 - A second card written out by hand for the same tipper and shift is not a rescan. It is caught only by the content check (same date, door and card number) or by the one-manual-card-per-tipper-per-shift rule at save.
 - Cards for a different date, site or shift than the entry are Mismatch cards, handled by the existing header check, not by this plan.
+
+## 6. Build status (2 November 2026, branch feature/scan-duplicates)
+
+| Item | Status | Where |
+|---|---|---|
+| A. Date filter uses the scan-entry date | Done, committed on fix/vlb-entry-r4 | operational-start.mjs |
+| B. Visual fingerprint | Done. Method changed from the planned difference hash to ink-overlap on a 64-column grid with coarse-to-fine alignment, because the hash flipped on mostly-white paper. Synthetic rescans score 8 or less, different cards 33 or more (skip 15, suspect 30). Backfill runs on server start. | scan-fingerprint.mjs, scan-duplicates.mjs |
+| C. Duplicate decision at upload | Done. Exact bytes always; fingerprint only with SCAN_DUPLICATE_FINGERPRINT=true. Duplicates stored as rejected rows with duplicate_of, never queued, not counted for entry space. | bulk-card-scanning.mjs POST cards |
+| D. Content check across entries | Done. Certain identity auto-rejected after reading; uncertain held with "Possible duplicate of card N in entry …". | scan-duplicates.mjs, checkScanCard |
+| E. Duplicates tile, restore, notice | Done. Tile on the card status board, side-by-side scans, "Not a duplicate, read this card", POST /api/scan-cards/:id/restore-duplicate. | src/scan-duplicate-list.jsx, src/bulk-card-scanning.jsx |
+| F. Reports | Done for the batch report footer and batch list counts. Telegram alerts count VLB batch records, not scan rows, so no change was needed. | src/scan-batch-report.jsx |
+| G. Tests | 7 new tests across scan-fingerprint.test.mjs and scan-duplicates.test.mjs; the concurrency case (8) could not be written because the test database stubs advisory locks. Covered by the same date/site/shift advisory lock in code; verify on the test platform. | test/ |
+| Measurement | scripts/scan-fingerprint-report.mjs prints same-card versus different-card distances per context. Run before step 4 of the rollout. | scripts/ |
