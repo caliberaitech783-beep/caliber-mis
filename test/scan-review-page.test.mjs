@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setBatch=setBatch; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -217,4 +217,13 @@ test('declining the confirmation leaves every card as it was',async()=>{
  app.window.confirm=()=>false;let fetched=0;globalThis.fetch=async()=>{fetched++;throw Error('must not be called')};
  try{await nodes(tree,n=>n.props.className==='scan-group-menu-reject')[0].props.onClick();}finally{delete globalThis.fetch;}
  assert.equal(fetched,0);
+});
+test('Back to card status stays usable while a draft is dirty, so a rejected autosave cannot trap the reviewer',()=>{
+ const app=harness('&scanView=review&scanGroup=brown');app.render();
+ app.testCapture.setDirty(true);let tree=app.render();
+ const back=nodes(tree,n=>n.type==='button'&&n.props.children==='Back to card status')[0];
+ assert.equal(back.props.disabled,false);
+ back.props.onClick();tree=app.render();
+ assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
+ assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);
 });
