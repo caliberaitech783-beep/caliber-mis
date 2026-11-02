@@ -74,3 +74,25 @@ test('the page still renders after mismatch cards are deleted from the batch',()
   assert.equal(nodes(tree,n=>n.props.className==='scan-mismatch-dialog').length,0,'no mismatch cards remain to delete for '+search);
  }
 });
+
+// Regression: on 29 October 2026 the Scania door-number fix rewrote the review
+// page line that held the "Extraction needs checking" section, dropping the
+// checkbox that sets draft.responseRecoveryConfirmed. The server refuses to save
+// any card with responseRecoveryIssues until that flag is true, so every such
+// card was stuck with "Card still needs attention" and automatic saving stopped.
+test('cards with response recovery issues list them and offer the confirmation checkbox',()=>{
+ const issues=['Trip row 2: loading time unreadable or invalid; check the original scan.'];
+ const app=harness('&batch=b1&scanView=review&scanGroup=all');
+ const tree=loaded(app,[card(1,{raw_fields:{extractionDraft:draftFor(1),responseRecoveryIssues:issues}}),card(2)]);
+ const section=nodes(tree,n=>n.props['data-testid']==='scan-response-recovery');
+ assert.equal(section.length,1,'the Extraction needs checking section renders');
+ assert.deepEqual(nodes(section[0],n=>n.type==='li').map(n=>n.props.children),issues);
+ const box=nodes(section[0],n=>n.type==='input'&&n.props.type==='checkbox');
+ assert.equal(box.length,1,'the confirmation checkbox renders');
+ assert.equal(box[0].props.checked,false);
+ box[0].props.onChange({target:{checked:true}});
+ const after=app.render();
+ const checked=nodes(after,n=>n.props['data-testid']==='scan-response-recovery');
+ assert.equal(nodes(checked[0],n=>n.type==='input'&&n.props.type==='checkbox')[0].props.checked,true,'ticking the box sets responseRecoveryConfirmed on the draft');
+ assert.equal(nodes(loaded(harness('&batch=b1&scanView=review&scanGroup=all'),[card(1),card(2)]),n=>n.props['data-testid']==='scan-response-recovery').length,0,'cards without issues show no section');
+});
