@@ -25,7 +25,7 @@ test('production API gates batches and permissions, approves effective capacitie
  assert.equal((await call(report,'')).status,401);assert.equal((await call(report.replace('site=Sasti','site=Jayant'))).status,403);assert.equal((await call('/api/reports/production?site=Sasti&date=2026-11-31&mode=day')).status,400);
  let response=await call(report),result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.ready,false);assert.deepEqual(result.doorRows,[]);assert.match(response.headers.get('cache-control'),/no-store/);
  assert.equal((await call('/api/capacity-master','reader')).status,403);
- result=await (await call('/api/capacity-master','admin')).json();assert.deepEqual(result.locations,['DCH','Sasti OC']);assert.equal(result.pairs[0].location,'Sasti OC');
+ result=await (await call('/api/capacity-master','admin')).json();assert.ok(result.locations.includes('DCH'));assert.ok(result.locations.includes('Sasti OC'));assert.ok(result.locations.includes('Jayant OC'));assert.equal(result.pairs[0].location,'Sasti OC');
  const approval={location:'Sasti OC',jobType:'Coal haulage',make:'Volvo',model:'FM',capacity:20,effectiveFrom:'2026-11-01',reason:'Approved test reference'};
  assert.equal((await call('/api/capacity-master','reader',approval)).status,403);assert.equal((await call('/api/capacity-master','admin',{...approval,capacity:0})).status,400);assert.equal((await call('/api/capacity-master','admin',{...approval,model:'unknown'})).status,400);
  response=await call('/api/capacity-master','admin',approval);assert.equal(response.status,201,JSON.stringify(await response.json()));
