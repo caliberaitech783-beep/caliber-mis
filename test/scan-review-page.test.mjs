@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -88,10 +88,41 @@ test('the purple extraction strip stays on the overview and is omitted from card
  assert.equal(nodes(harness('&scanView=review&scanGroup=brown').render(),node=>node.type===scope.ScanExtractionStatus).length,0);
 });
 
-test('fleet upload details start collapsed and automatic-save alert hides repeated validation text',()=>{
+test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
- assert.match(source,/autoSaveError&&<div role="alert" className="scan-error">Automatic Saving Stopped <button/);
- assert.doesNotMatch(source,/Automatic saving stopped: \{autoSaveError\}/);
+ assert.match(source,/autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card \{autoSaveError\.ordinal\}\.<\/strong> \{autoSaveError\.message\}/);
+ assert.match(source,/autoSaveFailures\.current\.set\(key,e\.message\)/);
+ assert.match(source,/autoSaveFailures\.current\.clear\(\);setFailureTick/);
+});
+
+test('a refused automatic save moves the card from All okay to Needs attention and the entry chip follows the tiles',()=>{
+ const app=harness('&batch=batch-1');app.render();
+ const okay=n=>({id:'card-'+n,batch_id:'batch-1',ordinal:n,filename:'ok'+n+'.png',status:'review',revision:3,checks:{errors:[],warnings:[]},draft:{bookDate:'2026-11-01',doorText:'V'+n,assetId:String(n),employeeId:'1',shiftId:'1',cardShift:'I',shiftHours:8,openingHmr:1,closingHmr:2,openingKmr:1,closingKmr:2,location:'Sasti OC',timeMode:'without',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]},raw_fields:{}});
+ const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
+ app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
+ app.testCapture.setCards([okay(1),okay(2),saved]);
+ app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1},{id:'batch-2',name:'B2',cards:4,posted:1}]);
+ let tree=app.render({vlbBatch:{id:'vlb-1'}});
+ const tile=id=>nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+id)[0];
+ const count=id=>nodes(tile(id),n=>n.type==='strong')[0].props.children.join('');
+ const chip=name=>nodes(tree,n=>n.type==='button'&&nodes(n,m=>m.type==='strong'&&m.props.children===name).length)[0];
+ assert.equal(count('orange'),'3/3');
+ assert.deepEqual(nodes(tile('orange'),n=>n.type==='small')[0].props.children,'1 saved · 2 waiting to save');
+ assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 2 waiting to save');
+ assert.equal(nodes(chip('B2'),n=>n.type==='span')[0].props.children[0],'4 cards · 1 saved · 3 unsaved','other entries keep the server counts');
+ app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
+ app.testCapture.setFailureTick(n=>n+1);
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
+ assert.equal(count('orange'),'2/3');
+ assert.equal(count('brown'),'1/3');
+ assert.deepEqual(nodes(tile('orange'),n=>n.type==='small')[0].props.children,'1 saved · 1 waiting to save');
+ assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 1 waiting to save · 1 needs attention');
+ const refused=nodes(tree,n=>n.props?.['aria-label']==='Cards in batch');
+ assert.equal(refused.length,0,'overview keeps the tiles; the refused card opens from Needs attention');
+ app.testCapture.autoSaveFailures.current.set('card-9:3','stale');
+ app.testCapture.setFailureTick(n=>n+1);
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
+ assert.equal(count('orange'),'2/3','a saved card is never marked refused');
 });
 
 

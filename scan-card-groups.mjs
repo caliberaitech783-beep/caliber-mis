@@ -39,7 +39,21 @@ export function reviewGroupSummary(cards,kind,options=null,context=null){
  for(const card of cards)counts[cardDisplayGroup(card,kind,options,context)]++;
  const ready=cards.length>0&&counts.orange===cards.length;
  const approved=ready&&cards.every(c=>c.status==='posted'||(c.status==='approved'&&c.checked_by));
- return {...counts,total:cards.length,ready,canSaveAll:Boolean(approved&&cards.some(c=>c.status!=='posted'))};
+ const saved=cards.filter(c=>c.status==='posted').length;
+ return {...counts,total:cards.length,saved,waiting:counts.orange-saved,attention:cards.length-counts.orange-counts.pending,ready,canSaveAll:Boolean(approved&&cards.some(c=>c.status!=='posted'))};
+}
+// A card the server refused to save automatically is not "All okay": the refusal
+// becomes a check error on that card, so the status tiles, the card list and the
+// batch report all show it under Needs attention with the server's reason, until
+// the card changes (new revision) or the operator retries automatic saving.
+export const AUTO_SAVE_REFUSED='Automatic save refused: ';
+export function withAutoSaveFailures(cards,failures){
+ if(!failures||!failures.size)return cards;
+ return cards.map(card=>{
+  const message=failures.get(card.id+':'+card.revision);
+  if(!message||card.status==='posted')return card;
+  return {...card,autoSaveError:message,checks:{...(card.checks||{}),errors:[...(card.checks?.errors||[]),AUTO_SAVE_REFUSED+message],warnings:card.checks?.warnings||[]}};
+ });
 }
 
 export function cardIssueGroups(card,kind,options=null){
