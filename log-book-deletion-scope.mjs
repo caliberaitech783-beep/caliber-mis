@@ -83,7 +83,7 @@ export async function discoverDeletionScope(c,records,{skipRequestId=null,assert
   return {backup_id:b.backup_id,card_id:b.card_id,blob_key:b.blob_key,image_hash:b.image_hash,image_bytes:b.image_bytes,destination:b.destination||'',fingerprint:b.fingerprint};
  });
  const files=publicBackups.flatMap(b=>{
-  const ext=/\.jpg$/i.test(b.blob_key)?'.jpg':'.png',folderName='Pulse-II-'+b.backup_id;
+  const ext=b.blob_key.match(/\.(jpg|webp)$/i)?.[0].toLowerCase()||'.png',folderName='Pulse-II-'+b.backup_id;
   return [ext,'.json'].map(suffix=>({key:b.backup_id+'/'+b.card_id+suffix,backup_id:b.backup_id,card_id:b.card_id,folderName,filename:b.card_id+suffix,
    destination:b.destination,kind:suffix==='.json'?'metadata':'image',imageFilename:b.card_id+ext,imageHash:b.image_hash,expectedBytes:suffix==='.json'?null:String(b.image_bytes)}));
  });

@@ -1,4 +1,7 @@
 import {createCanvas,loadImage} from '@napi-rs/canvas';
+// WebP at this quality keeps the handwriting pixels the model reads while the
+// request body shrinks to roughly a third of the earlier quality-95 JPEG views.
+export const DETAIL_VIEW_WEBP_QUALITY=82;
 
 // Complete overlapping columns retain header, meters and every trip row whether
 // the capture is upright or upside down. No orientation-dependent crop can hide
@@ -14,7 +17,7 @@ async function encodeView(image,{label,sx=0,sy=0,width,height,degrees}){
  const canvas=createCanvas(width,height),ctx=canvas.getContext('2d');
  try{
   ctx.fillStyle='white';ctx.fillRect(0,0,width,height);if(degrees===180){ctx.translate(width,height);ctx.rotate(Math.PI);}ctx.drawImage(image,sx,sy,width,height,0,0,width,height);
-  return {label:label+` (${degrees} degree view)`,mimeType:'image/jpeg',image:await canvas.encode('jpeg',95)};
+  return {label:label+` (${degrees} degree view)`,mimeType:'image/webp',image:await canvas.encode('webp',DETAIL_VIEW_WEBP_QUALITY)};
  }finally{
   // Release native pixel buffers after encoding, rather than waiting for GC
   // while the provider request retains its much smaller encoded views.

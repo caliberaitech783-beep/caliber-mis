@@ -45,3 +45,35 @@ A synthetic local two-card image-preparation check retained byte-identical JPEG
 detail images. Preparation took 361 ms before and 216 ms after, and the largest
 observed event-loop gap fell from 170 ms to 14 ms. These are local preparation
 measurements, not an end-to-end production latency guarantee.
+
+## Grayscale WebP scan storage (2 November 2026)
+
+Every new card image is stored as grayscale WebP. The byte sniffing shared by the
+browser, the PC connector and the server (`public/scan-image-type.mjs`) recognises
+PNG, JPEG and WebP; the upload endpoint, Blob keys (`.webp`), archive and SSD
+backup filenames, deletion manifests and the original-scan download follow the
+detected type. Existing PNG and JPEG cards are unchanged and still open.
+
+Browser PDF and image uploads render at most 1700 x 2267 px (about 200 dpi on A4)
+and encode a grayscale WebP at quality 0.8, falling back to grayscale JPEG where
+the browser has no WebP encoder. A WebP that is already within size is uploaded
+byte for byte; JPEG inputs are re-encoded. On the synthetic sample page the
+rendered output fell from 873 KB (colour JPEG q0.9) to 217 KB.
+
+The local Windows scanner service encodes each WIA page or rendered PDF page once,
+natively, as grayscale WebP with a 2400 px long edge (quality 80, stepping down
+to stay under 500 KB) before it is retained and queued. The WIA script requests
+grayscale from the driver; drivers that refuse keep colour and the service converts.
+The connector sends an already-prepared page without decoding it again and only
+compresses legacy PNG pages, using the canvas grayscale filter instead of a
+per-pixel loop. Full-resolution scanner originals and the per-job PDF are
+unchanged on the PC. The published connector package still carries the older
+compression code until a new version is packaged.
+
+Gemini receives the stored image in its own format plus six detail views encoded
+as WebP (quality 82) instead of JPEG quality 95, which cuts the request body to
+roughly a third. Token usage depends on image dimensions, not bytes, so this
+reduces upload time rather than model latency. The synthetic 300 dpi page
+measured 7.75 MB as colour PNG and 174 KB as grayscale WebP; real paper has less
+noise and compresses further. These are local measurements, not production
+accuracy results; human review remains required.

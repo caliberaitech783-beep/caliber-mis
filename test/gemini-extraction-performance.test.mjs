@@ -30,7 +30,7 @@ test('upload-ready JPEG stays byte-identical, with all six existing detail views
 });
 
 test('Gemini image preparation rejects invalid JPEGs and retains PNG white-background normalization',async()=>{
- await assert.rejects(prepareGeminiScanImage(Buffer.from([255,216,255,217])),/Invalid PNG or JPEG/);
+ await assert.rejects(prepareGeminiScanImage(Buffer.from([255,216,255,217])),/Invalid PNG, JPEG or WebP/);
  const canvas=createCanvas(20,30),png=canvas.toBuffer('image/png'),prepared=await prepareGeminiScanImage(png);
  assert.deepEqual(prepared,await normalizeScanImage(png));
  const oversized=Buffer.from(png);oversized.writeUInt32BE(20000001,16);oversized.writeUInt32BE(1,20);

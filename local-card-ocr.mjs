@@ -13,9 +13,9 @@ import {createCanvas,loadImage} from '@napi-rs/canvas';
 import {scanImageDimensions,scanImageMime} from './scan-image-format.mjs';
 export async function normalizeScanImage(bytes){const image=await loadImage(bytes);if(!image.width||!image.height||image.width*image.height>20000000)throw new Error('Scan dimensions exceed the 20 megapixel limit.');const canvas=createCanvas(image.width,image.height),ctx=canvas.getContext('2d');try{ctx.fillStyle='white';ctx.fillRect(0,0,image.width,image.height);ctx.drawImage(image,0,0);return await canvas.encode('png');}finally{canvas.width=canvas.height=1;}}
 export async function prepareGeminiScanImage(bytes){
- // JPEG has no alpha channel and Gemini accepts its original format. Avoid
+ // JPEG and WebP scans go to Gemini in their original format. Avoid
  // expanding upload-ready JPEGs to PNG before sending the same pixels again.
- if(scanImageMime(bytes)==='image/jpeg'){scanImageDimensions(bytes);return bytes;}
+ if(['image/jpeg','image/webp'].includes(scanImageMime(bytes))){scanImageDimensions(bytes);return bytes;}
  return normalizeScanImage(bytes);
 }
 const require=createRequire(import.meta.url);
