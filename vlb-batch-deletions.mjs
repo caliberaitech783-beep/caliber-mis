@@ -144,11 +144,17 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   if(!sendOtp)fail('Deletion WhatsApp OTP is unavailable.',503);const otp=String(randomInt(100000,1000000));
   const row=await transaction(async c=>{
    const r=await owned(c,req);await fresh(c,req,r);
-   const recent=(await c.query("SELECT count(*)::int AS n FROM mis_vlb_batch_deletions WHERE actor=$1 AND otp_requested_at>NOW()-INTERVAL '1 hour'",[req.batchActor.login])).rows[0].n;
-   if(recent>=10||r.otp_requested_at&&Date.now()-new Date(r.otp_requested_at).getTime()<60000)fail('Wait before requesting another OTP.',429);
+   // A repeat click within the minute (double click, retry after a slow response) reuses the OTP that already reached WhatsApp.
+   const age=(await c.query('SELECT EXTRACT(EPOCH FROM clock_timestamp()-$1::timestamptz)::int AS seconds',[r.otp_requested_at||null])).rows[0].seconds;
+   if(r.otp_requested_at&&age<60){if(r.delivered_at&&r.otp_hash&&r.attempts<5)return {...r,alreadySent:true};fail(`An OTP was sent ${age} seconds ago. Wait ${60-age} more seconds, then request again.`,429);}
+   const hour=(await c.query("SELECT count(*)::int AS n,EXTRACT(EPOCH FROM clock_timestamp()-min(otp_requested_at))::int AS oldest FROM mis_vlb_batch_deletions WHERE actor=$1 AND otp_requested_at>clock_timestamp()-INTERVAL '1 hour'",[req.batchActor.login])).rows[0];
+   if(hour.n>=10)fail(`Ten deletion OTPs were requested in the last hour. Try again in ${Math.max(1,Math.ceil((3600-hour.oldest)/60))} minutes.`,429);
    await c.query('UPDATE mis_vlb_batch_deletions SET otp_hash=$2,otp_requested_at=clock_timestamp(),delivered_at=NULL WHERE id=$1',[r.id,digest(r.id,otp)]);return r;
   });
-  try{const delivery=await sendOtp({to:DELETION_PHONE,otp,requestId:row.id,count:Math.max(1,row.manifest.target?.records.length||row.manifest.original?.counts?.cards||row.manifest.counts?.cards||0)});if(!delivery?.sent||!delivery.messageId)throw Error('delivery');await pool.query('UPDATE mis_vlb_batch_deletions SET delivered_at=clock_timestamp() WHERE id=$1 AND otp_hash=$2',[row.id,digest(row.id,otp)]);}catch{fail('WhatsApp OTP delivery failed. Nothing was changed.',503)}
+  if(row.alreadySent)return res.json({sent:true,alreadySent:true});
+  try{const delivery=await sendOtp({to:DELETION_PHONE,otp,requestId:row.id,count:Math.max(1,row.manifest.target?.records.length||row.manifest.original?.counts?.cards||row.manifest.counts?.cards||0)});if(!delivery?.sent||!delivery.messageId)throw Error('delivery');await pool.query('UPDATE mis_vlb_batch_deletions SET delivered_at=clock_timestamp() WHERE id=$1 AND otp_hash=$2',[row.id,digest(row.id,otp)]);}
+  // A failed delivery releases the cooldown so the next attempt is not blocked, and does not count toward the hourly limit.
+  catch{await pool.query('UPDATE mis_vlb_batch_deletions SET otp_hash=NULL,otp_requested_at=NULL,delivered_at=NULL WHERE id=$1 AND otp_hash=$2 AND completed_at IS NULL',[row.id,digest(row.id,otp)]).catch(()=>{});fail('WhatsApp OTP delivery failed. Nothing was changed. You can request the OTP again now.',503)}
   res.json({sent:true});
  }));
  app.post('/api/vlb-batch-deletions/:id/confirm',...protect,handle(async(req,res)=>{
