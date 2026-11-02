@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setBatch=setBatch; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -178,4 +178,43 @@ test('opening a site batch keeps its own site ahead of the account default',()=>
  app.testCapture.setOptions({canSelectSite:true,accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});const tree=app.render({vlbBatch});
  const site=nodes(tree,n=>n.props['aria-label']==='Site')[0];assert.equal(site.props.value,'Jayant OC');assert.equal(site.props.readOnly,true);
  assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
+});
+test('right-click on a status tile offers to reject every unsaved card in that group and sends them for manual entry',async()=>{
+ const app=harness('&batch=batch-1');app.render();
+ const mismatch=i=>({id:'card-'+i,batch_id:'batch-1',ordinal:i,filename:'trip'+i+'.png',status:'review',revision:3,draft:{bookDate:'2026-11-01',doorText:'V1',assetId:'1',trips:[{equipmentName:'L01',tripCount:1}],scanMachineSummary:[{equipmentName:'L01',tripCount:9}]},raw_fields:{}});
+ const saved={id:'card-9',batch_id:'batch-1',ordinal:9,filename:'ok.png',status:'posted',revision:1,draft:{bookDate:'2026-11-01',doorText:'V1',assetId:'1'},raw_fields:{}};
+ app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
+ app.testCapture.setCards([mismatch(1),mismatch(2),saved]);
+ let tree=app.render();
+ const tile=id=>nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+id)[0];
+ assert.equal(tile('orange').props.onContextMenu,undefined,'All okay cards save on their own; no bulk reject there');
+ assert.equal(nodes(tree,n=>n.props.role==='menu').length,0);
+ let prevented=0;tile('wrong-caliber').props.onContextMenu({preventDefault:()=>prevented++,clientX:40,clientY:50});tree=app.render();
+ assert.equal(prevented,1);
+ const menu=nodes(tree,n=>n.props.role==='menu')[0];assert.equal(menu.props['aria-label'],'Actions for Wrong Caliber ID');
+ const reject=nodes(menu,n=>n.props.className==='scan-group-menu-reject')[0];
+ assert.deepEqual(reject.props.children,['Reject all ',2,' card(s) in "','Wrong Caliber ID','"']);
+ assert.equal(reject.props.disabled,false);
+ const calls=[];app.window.confirm=message=>{calls.push(message);return true};
+ const requests=[];globalThis.fetch=async(path,config)=>{requests.push({path,body:config?.body?JSON.parse(config.body):null});
+  if(path.endsWith('/reject-group'))return {ok:true,status:200,text:async()=>JSON.stringify({rejected:2,remaining:0})};
+  if(path.startsWith('/api/scan-batches/batch-1'))return {ok:true,status:200,text:async()=>JSON.stringify({batch:{id:'batch-1',kind:'vehicle'},cards:[],duplicates:[]})};
+  return {ok:true,status:200,text:async()=>JSON.stringify({batches:[]})}};
+ try{await reject.props.onClick();}finally{delete globalThis.fetch;}
+ assert.match(calls[0],/Reject all 2 card\(s\) in "Wrong Caliber ID"/);
+ const sent=requests.find(r=>r.path==='/api/scan-batches/batch-1/reject-group');
+ assert.deepEqual(sent.body,{group:'Wrong Caliber ID',cards:[{id:'card-1',revision:3},{id:'card-2',revision:3}]},'only the unsaved cards of that group are sent, never the saved card');
+ tree=app.render();
+ assert.equal(nodes(tree,n=>n.props.role==='menu').length,0,'the menu closes after the action');
+ assert.equal(nodes(tree,n=>n.props.role==='status'&&String(n.props.children).includes('rejected for manual entry')).length>0||app.slots.some(v=>typeof v==='string'&&v.includes('2 card(s) in "Wrong Caliber ID" rejected for manual entry')),true);
+});
+test('declining the confirmation leaves every card as it was',async()=>{
+ const app=harness('&batch=batch-1');app.render();
+ app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
+ app.testCapture.setCards([{id:'card-1',batch_id:'batch-1',ordinal:1,filename:'a.png',status:'review',revision:1,draft:{},raw_fields:{}}]);
+ let tree=app.render();
+ nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-red')[0].props.onContextMenu({preventDefault(){},clientX:1,clientY:1});tree=app.render();
+ app.window.confirm=()=>false;let fetched=0;globalThis.fetch=async()=>{fetched++;throw Error('must not be called')};
+ try{await nodes(tree,n=>n.props.className==='scan-group-menu-reject')[0].props.onClick();}finally{delete globalThis.fetch;}
+ assert.equal(fetched,0);
 });
