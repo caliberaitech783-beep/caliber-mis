@@ -78,7 +78,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  for(const a of atSite)if(assetBookKind(a)==='vehicle')createRow(rowGroups,a);else createRow(machineGroups,a);
  const duplicates=new Set(),machineIndex=new Map();
  for(const a of assets.filter(a=>assetBookKind(a)==='equipment'&&(atSite.includes(a)||equipment.some(r=>String(r.asset_id||r.data.assetId)===String(a.id))))){
-  for(const alias of unique([door(a),a.equipmentName].map(fleetDoorKey))){if(!machineIndex.has(alias))machineIndex.set(alias,[]);machineIndex.get(alias).push(a);}
+  for(const alias of unique([door(a),a.equipmentName,...(Array.isArray(a.cardAliases)?a.cardAliases:[])].map(fleetDoorKey))){if(!machineIndex.has(alias))machineIndex.set(alias,[]);machineIndex.get(alias).push(a);}
  }
  const machineFor=t=>{
   if(t.equipmentId){const a=assetMap.get(String(t.equipmentId));if(a&&assetBookKind(a)==='equipment'&&(atSite.includes(a)||equipment.some(r=>String(r.asset_id||r.data.assetId)===String(a.id))))return a;return null;}

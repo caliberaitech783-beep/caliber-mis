@@ -1,4 +1,5 @@
 import {buildProductionReport,productionFilters,productionShifts,validateCapacity,assetCapacityPair,pairKey} from './production-report.mjs';
+import {withEquipmentAliases} from './equipment-aliases.mjs';
 import {siteAllowed,requireLogBookSite} from './log-book-access.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {isMisAdministrator} from './mis-admin-access.mjs';
@@ -55,7 +56,7 @@ export function registerProductionReports(app,{pool,protect,ensureBooks}){
    const masters=await masterRows(client),batches=(await client.query('SELECT id,name,site,book_date::text AS report_date,shift,closed_at,closure_revision FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL AND site=ANY($1::text[]) AND book_date=$2',[sites,filters.date])).rows;
    const capacities=(await client.query(`SELECT ${versionSelect} FROM mis_capacity_versions WHERE effective_from<=$1`,[filters.date])).rows;
    const linked=linkVlbTripHandovers(records.filter(r=>r.book_type==='vehicle'));
-   const report=buildProductionReport({filters,records:[...linked,...records.filter(r=>r.book_type==='equipment')],assets:masterList(masters,'Equipment master'),shifts:masterList(masters,'Shift Master'),batches,capacities});
+   const report=buildProductionReport({filters,records:[...linked,...records.filter(r=>r.book_type==='equipment')],assets:await withEquipmentAliases(client,masterList(masters,'Equipment master')),shifts:masterList(masters,'Shift Master'),batches,capacities});
    await client.query('COMMIT');res.set('Cache-Control','private, no-store').json({...report,generatedAt:new Date().toISOString()});
   }catch(e){if(client)await client.query('ROLLBACK').catch(()=>{});if(e.status)return res.status(e.status).json({error:e.message});next(e);}finally{client?.release();}
  });

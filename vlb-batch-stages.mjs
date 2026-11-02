@@ -1,4 +1,5 @@
 import {canonicalSiteName} from './site-location.mjs';
+import {withEquipmentAliases} from './equipment-aliases.mjs';
 import {displaySiteName} from './region-scope.mjs';
 import {bookShiftCode} from './trip-card-rules.mjs';
 import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch} from './vlb-batch-policy.mjs';
@@ -11,7 +12,7 @@ const num=value=>{if(value===''||value===undefined||value===null)return null;con
 
 export async function equipmentAssets(client){
  const {rows}=await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'");
- return rows.map(r=>({...r.record_data,id:String(r.id)}));
+ return withEquipmentAliases(client,rows.map(r=>({...r.record_data,id:String(r.id)})));
 }
 async function shiftMasterFor(client,site,shiftCode){
  const {rows}=await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'");
