@@ -1,4 +1,4 @@
-CALIBER LOCAL SCANNER CONNECTOR 1.0.6
+CALIBER LOCAL SCANNER CONNECTOR 1.0.7
 Windows 10/11, 64-bit (x64). Includes Node.js 22.23.4; see Node-LICENSE.txt.
 
 1. Extract the entire ZIP into a folder on your PC.
@@ -25,7 +25,7 @@ Gemini extraction and normal validation/saving happen in your existing online MI
 
 Scan images are retained under %LOCALAPPDATA%\CaliberScanner\scans. No automatic deletion is performed.
 Retry sending works while the connector and authorized scanner window remain open. After restarting,
-retained PNG images can be uploaded using online MIS Upload files.
+retained PNG originals and -upload.webp copies can be uploaded using online MIS Upload files.
 
 No MIS passwords, API keys, database copies, scanner drivers or private company data are included.
 Driver installation may need Windows administrator approval. The connector itself installs per-user.
@@ -34,11 +34,31 @@ The scanner helper does not depend on PowerShell script execution being enabled.
 This package is not digitally code-signed. Follow your organization's software approval process;
 the installer does not change execution policy or Windows security settings.
 
+VERSION 1.0.7 — GRAYSCALE WEBP PAGES, ENCODED ONCE ON THE PC
+Each scanned page is now encoded once on this PC as a grayscale WebP image (2400-pixel long edge,
+quality 80, stepping down to stay under the 500 KB ceiling). Typical cards are 100–250 KB, about a
+third of the earlier JPEG size, so pages reach online MIS faster. The scanner window sends the prepared
+page as it is instead of decoding and compressing it again in the browser.
+The scanner is asked for grayscale (WIA data type or intent). Drivers that refuse keep colour and the
+connector converts the page to grayscale itself. Full-resolution originals (page-001.png and so on) stay
+unchanged in %LOCALAPPDATA%\CaliberScanner\scans; the -upload.webp copy is stored alongside them.
+If the bundled native encoder cannot load on a PC, pages stay PNG and the scanner window compresses them
+to grayscale WebP (or JPEG where the browser has no WebP encoder) exactly as version 1.0.6 did.
+Online MIS must be running a release that stores WebP scans (2 November 2026 or later).
+Updating from 1.0.0 to 1.0.6: finish scanning, install this version, restart Windows once, then sign in.
+The updated connector starts automatically. Installation does not replace a running old process.
+
+VERSION 1.0.6 — 40-CARD SCAN ENTRIES
+Each feeder scan stops at 40 cards. Scan the remaining cards in another entry.
+Create Batch in MIS combines all saved entries for the same date, location and shift.
+The final shift batch can contain more than 40 cards.
+Finish scanning and restart Windows after installation to activate this update.
+
 VERSION 1.0.5 — SMALL SCAN UPLOADS
-Pages are converted to grayscale JPEG before upload, targeting 200–500 KB, with a 500 KB ceiling.
+Pages were converted to grayscale JPEG before upload, targeting 200–500 KB, with a 500 KB ceiling.
 Simple pages may be smaller than 200 KB. The connector keeps the highest quality that fits and does
 not reduce the longest edge below 1600 pixels. If a complex page cannot fit, it retains the original
-and asks you to use Upload files. Originals are retained unchanged; compressed -upload.jpg copies
+and asks you to use Upload files. Originals are retained unchanged; compressed upload copies
 are stored alongside them. The scanner window displays the upload size in KB.
 When upgrading: finish scanning, install this version, restart Windows once, then sign in.
 The updated connector starts automatically. Installation does not replace a running old process.
@@ -74,9 +94,3 @@ connector health verification, and completion. MIS verifies the connector and sh
 Scanner names are sent only through the MIS-authorized status bridge using a one-time connection ticket.
 If the browser blocks local-network access, allow it and retry. An unreachable connector does not
 necessarily mean it is uninstalled. Driver or USB problems are shown separately from installation.
-
-VERSION 1.0.6 — 40-CARD SCAN ENTRIES
-Each feeder scan stops at 40 cards. Scan the remaining cards in another entry.
-Create Batch in MIS combines all saved entries for the same date, location and shift.
-The final shift batch can contain more than 40 cards.
-Finish scanning and restart Windows after installation to activate this update.
