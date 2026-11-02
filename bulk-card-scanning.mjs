@@ -187,17 +187,17 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  // equipment at the site that no card names, category by category. Pairing applies the choice to the
  // batch's unsaved cards at once as a card-only selection; permanence waits for the OTP.
  const batchAssets=async client=>withEquipmentAliases(client,(await client.query(MASTER_SQL,[['Equipment master']])).rows.map(r=>({...r.record_data,id:String(r.id),kind:assetBookKind(r.record_data),site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''})));
- const liveCards=async(client,batchId)=>(await client.query("SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id= AND status IN('review','approved','error') AND review_note NOT IN('Removed from batch: wrong date, site or shift','Exact duplicate upload skipped automatically') ORDER BY ordinal",[batchId])).rows.map(row=>{decodeScanRow(row);return row});
+ const liveCards=async(client,batchId)=>(await client.query("SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 AND status IN('review','approved','error') AND review_note NOT IN('Removed from batch: wrong date, site or shift','Exact duplicate upload skipped automatically') ORDER BY ordinal",[batchId])).rows.map(row=>{decodeScanRow(row);return row});
  app.get('/api/scan-batches/:id/mismatches',...protect,wrap(async(req,res)=>{
   const batch=await getBatch(pool,req.params.id),cards=await liveCards(pool,batch.id),site=batch.expected_context?.location||cards.find(c=>c.draft?.location)?.draft?.location||'';
   const assets=await batchAssets(pool),aliases=await loadEquipmentAliases(pool,{statuses:['pending','suspended']});
   const result=scanBatchMismatches({cards,assets,site,kind:batch.kind,aliases});
-  res.set('Cache-Control','no-store').json({...result,otpEnabled:aliasOtpEnabled(),extracting:(await pool.query("SELECT count(*)::int AS n FROM mis_scan_cards WHERE batch_id= AND status IN('queued','reading')",[batch.id])).rows[0].n>0,batchName:batch.name||'',context:batch.expected_context||null});
+  res.set('Cache-Control','no-store').json({...result,otpEnabled:aliasOtpEnabled(),extracting:(await pool.query("SELECT count(*)::int AS n FROM mis_scan_cards WHERE batch_id=$1 AND status IN('queued','reading')",[batch.id])).rows[0].n>0,batchName:batch.name||'',context:batch.expected_context||null});
  }));
  app.post('/api/scan-batches/:id/apply-pair',...protect,wrap(async(req,res)=>{
   const batch=await getBatch(pool,req.params.id);const kind=req.body?.kind==='vehicle'?'vehicle':'equipment';
   const writtenKey=String(req.body?.writtenKey||'').trim(),equipmentId=String(req.body?.equipmentId||'').trim();
-  if(!writtenKey||!/^d+$/.test(equipmentId))fail('Choose one written machine and one Pulse record to pair.');
+  if(!writtenKey||!/^\d+$/.test(equipmentId))fail('Choose one written machine and one Pulse record to pair.');
   const site=batch.expected_context?.location||'';const assets=await batchAssets(pool);const asset=assets.find(a=>a.id===equipmentId&&a.kind===kind);
   if(!asset)fail('The Pulse record is not available for this pair.',404);
   const c=await pool.connect();let rows=0,touched=new Set();
@@ -207,7 +207,7 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
     if(kind==='vehicle'||batch.kind==='equipment'){if(cardMachineKey(draft.doorText||card.raw_fields?.door||'',kind)===writtenKey){draft.doorText=resolvedMachineName(asset);draft.assetId=asset.id;draft.doorTextWritten=card.raw_fields?.door||card.draft?.doorText||'';changed=true;rows++;}}
     else{for(const field of ['trips','scanMachineSummary'])draft[field]=(draft[field]||[]).map(row=>{const written=row.equipmentSource==='master-selection'?'':row.equipmentNotation?.original||row.equipmentName||'';if(!written||cardMachineKey(written,'equipment')!==writtenKey)return row;changed=true;rows++;return field==='trips'?selectTripEquipment({...row,originalEquipmentName:row.originalEquipmentName||written},asset.id,assets,site||draft.location):{...row,equipmentName:resolvedMachineName(asset),equipmentNotation:{original:written,resolved:resolvedMachineName(asset)}};});}
     if(!changed)continue;
-    const updated=await c.query("UPDATE mis_scan_cards SET draft=::jsonb,revision=revision+1,status=CASE WHEN status='approved' THEN 'review' ELSE status END WHERE id= AND revision= RETURNING id",[JSON.stringify(encodeScanJson(draft)),card.id,card.revision]);
+    const updated=await c.query("UPDATE mis_scan_cards SET draft=$1::jsonb,revision=revision+1,status=CASE WHEN status='approved' THEN 'review' ELSE status END WHERE id=$2 AND revision=$3 RETURNING id",[JSON.stringify(encodeScanJson(draft)),card.id,card.revision]);
     if(updated.rows.length)touched.add(card.id);
    }
    await c.query('COMMIT');
