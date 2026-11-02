@@ -47,7 +47,7 @@ import SmartSelect from './smart-select.jsx';
 import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
 import {saveDraftRecovery,loadDraftRecovery} from '../scan-draft-cache.mjs';
 import {previewBookNumber,scanBookPreviewSequence} from '../book-number-preview.mjs';
-import {manualTripShiftPatch,CARD_SHIFTS,cardShiftLabel,machineLabel,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,selectedMasterShift,systemBookDate,latestWorkOrder,interTripGap,tripClockForShift} from '../trip-card-rules.mjs';
+import {shiftMeterIssues,manualTripShiftPatch,CARD_SHIFTS,cardShiftLabel,machineLabel,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,selectedMasterShift,systemBookDate,latestWorkOrder,interTripGap,tripClockForShift} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import {scanFieldIssues,scanFieldState} from './scan-field-review.mjs';
 import LocalScannerPanel from './local-scanner-panel.jsx';
@@ -184,6 +184,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const visibleField=key=>['doorText','assetId'].includes(key)||/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
  const visibleTrip=i=>!correctionView||['equipmentName','loadingTime','unloadingTime','tripCount'].some(k=>visibleField(`trips.${i}.${k}`));
  const fieldIssues=correctionView?manualIssues:{...allFieldIssues,...fleetFields};
+ // Meter totals over the shift limit stay highlighted in red; since 1 November they no longer block saving (see scan-field-review.mjs).
+ const meterLimitIssues=shiftMeterIssues(draft,kind);
  const fieldClass=key=>{const state=scanFieldState(draft,key,fieldIssues);return (state?`scan-field-invalid scan-field-${state}`:'')+(fleetFields[key]?' scan-field-fleet':'');};
  const reviewWarnings=card?.checks?.warnings||[],blockingReviewWarnings=blockingScanWarnings(reviewWarnings);
  const bdFallbackMissing=Boolean(pulseHoursError&&(draft.manualBreakdownHours===undefined||draft.manualBreakdownHours===null||draft.manualBreakdownHours===''));
