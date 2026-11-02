@@ -123,16 +123,24 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  return record;
 }
 
-// An equipment log book saved through the normal form, scan or upload joins the open ELB stage
-// of its site/date/shift batch. While VLB is still open the ELB must wait; a closed batch rejects.
-export async function syncElbBatchRecord(client,record,actor){
- if(!twoStageEnabled()||record.book_type!=='equipment')return null;
- const data=record.data||{};
+// ELB cards exist only inside the site/date/shift batch, and only after its VLB is locked.
+// No batch, VLB still open and a closed batch all refuse the save; standalone ELB saving is discontinued.
+export async function assertElbBatchWrite(client,data){
+ if(!twoStageEnabled())return null;
  const batch=await matchingVlbBatch(client,{location:data.location,bookDate:data.bookDate,bookShiftCode:data.bookShiftCode,cardShift:data.cardShift,shiftName:data.shiftName});
- if(!batch)return null;
+ if(!batch)fail('Create the VLB batch for this site, date and shift and lock VLB before saving ELB cards. Standalone ELB saving is discontinued.',409);
  const stage=batchStage(batch);
  if(stage==='vlb_open')fail('Lock VLB for batch '+batch.name+' before saving ELB cards for this site, date and shift.',409);
  if(stage==='closed')fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before saving or changing ELB cards.',409);
+ return batch;
+}
+
+// An equipment log book saved through the normal form, scan, upload or the fleet stepper joins the
+// open ELB stage of its batch and marks that machine's fleet row as saved.
+export async function syncElbBatchRecord(client,record,actor){
+ if(!twoStageEnabled()||record.book_type!=='equipment')return null;
+ const data=record.data||{};
+ const batch=await assertElbBatchWrite(client,data);
  await client.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  const status=FLEET_STATUSES[data.shiftStatus]?data.shiftStatus:'working';
  const updated=await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$3,logbook_id=$4,saved_at=NOW(),saved_by=$5,draft=NULL,skipped=FALSE WHERE batch_id=$1 AND asset_id=$2 RETURNING asset_id',[batch.id,record.asset_id||data.assetId,status,record.id,batchLogin(actor)]);

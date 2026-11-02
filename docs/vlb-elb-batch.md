@@ -20,6 +20,7 @@ One batch per site, date and shift carries both the tipper cards (Vehicle Log Bo
 | Machine-wise report | Build it. After closure, the batch report shows per machine: trips loaded (VLB), hours worked (ELB HMR), trips per hour. |
 | ELB stage covers the whole fleet | Every machine booked at the site in Pulse appears, not only the loaders. Trips are filled automatically from VLB. Each machine gets a shift status: working, breakdown, maintenance, no operator, not in use. |
 | ELB entry style | One small dialog per machine with Next, Previous, Skip and auto-save. Only hours, status and breakdown details are typed. |
+| ELB outside a batch | Not allowed (2 November 2026). ELB Manual and ELB Scan open from the same site batch picker as VLB and show the editor only when the selected batch is at the ELB stage. The server refuses an ELB whose site, date and shift have no batch, or whose batch still has VLB open, with the same 409 as a standalone VLB. Standalone ELB saving is discontinued; with the flag off the old behaviour returns. |
 | Go-live | Test platform first with a feature flag; live on Pulse-II only after team sign-off. |
 | Reopen and Unlock VLB by OTP (added 2 November 2026) | The site PM may approve a batch reopening, or an Unlock VLB, by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
 
@@ -293,6 +294,7 @@ A footer row totals trips and hours. Machines with zero trips appear below the l
 
 - The batch card shows a two-step indicator: **1 VLB** and **2 ELB**, with the current stage highlighted and counts (cards saved, machines expected, machines with ELB).
 - Stage `vlb_open`: buttons Manual, Scan, Upload (VLB) and **Lock VLB**. ELB buttons are visible but disabled with the hint "Lock VLB first".
+- ELB menu: **ELB Manual** and **ELB Scan** show the site batch picker first. Until the selected batch is at the ELB stage the editor stays closed with the message "Lock VLB in batch … before entering ELB cards".
 - Stage `elb_open`: VLB buttons become view-only. The fleet list is shown with trips and progress, **Start / Continue machines** opens the stepper dialog at the first unsaved machine, Scan and Upload remain for ELB cards, and **Close batch** replaces today's **Save & lock batch**.
 - The stepper dialog: machine header with trips and source cards, shift status buttons, HMR and hours fields, Pulse breakdown hours shown beside the field, Previous / Skip / Next, and an auto-save indicator.
 - Door and machine fields that match no master record show **Create new equipment**, which runs the new-equipment OTP flow in place.

@@ -92,6 +92,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(first.status,201,JSON.stringify(first.data));assert.deepEqual(first.data.data.siteHolds,[]);
  const elbEarly=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids.D1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:1,closingHmr:3,requestKey:randomUUID()});
  assert.equal(elbEarly.status,409);assert.match(elbEarly.data.error,/Lock VLB/);
+ const elbNoBatch=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-19',location:'Sasti OC',assetId:ids.D1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:1,closingHmr:3,requestKey:randomUUID()});
+ assert.equal(elbNoBatch.status,409,'ELB without any batch for its site, date and shift is refused');assert.match(elbNoBatch.data.error,/Standalone ELB saving is discontinued/);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM mis_log_books WHERE book_type='equipment'")).rows[0].n,0,'no ELB record or book number is left behind');
  const held=await call('/api/log-books/vehicle','POST',card('V2',[{equipmentName:'VPC 77',tripCount:4}]));
  assert.equal(held.status,201,JSON.stringify(held.data));assert.equal(held.data.data.siteHolds.length,1);assert.equal(held.data.data.siteHolds[0].role,'vlb_loader');assert.equal(held.data.data.siteHolds[0].assetSite,'Jayant OC');
  let view=await call(batch);assert.equal(view.data.holds.length,1);assert.equal(view.data.holds[0].cardCount,1);assert.equal(view.data.holds[0].trips,4);

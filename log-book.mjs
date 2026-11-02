@@ -11,7 +11,7 @@ import {registerProductionReports} from './production-report-api.mjs';
 import {assetCapacityPair} from './production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
-import {syncElbBatchRecord} from './vlb-batch-stages.mjs';
+import {assertElbBatchWrite,syncElbBatchRecord} from './vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from './vlb-card-number.mjs';
 import {registerLogBookDeletion} from './log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours} from './breakdown-hours-source.mjs';
@@ -115,7 +115,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
  requireOperationalDate(data.bookDate);
-       if(kind==='vehicle')await assertVlbBatchWrite(client,data,createdBy);
+       if(kind==='vehicle')await assertVlbBatchWrite(client,data,createdBy);else await assertElbBatchWrite(client,data);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
