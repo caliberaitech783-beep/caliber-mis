@@ -1,5 +1,5 @@
 import './log-book-readability.css';
-import {ApplicationErrorBoundary} from './lazy-feature.jsx';
+import ApplicationErrorBoundary from './lazy-feature.jsx';
 import {chooseScanEntry,rememberScanEntry,recallScanEntry,describeScanEntry,entryCancelled} from './scan-entry-recovery.mjs';
 import {uploadWithRetry} from './scan-upload-retry.mjs';
 import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';

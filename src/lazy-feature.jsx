@@ -104,3 +104,5 @@ export function createLazyFeature(importer, select = (module) => module.default,
   LazyFeature.preload = load;
   return LazyFeature;
 }
+
+export default ApplicationErrorBoundary;
