@@ -10,9 +10,9 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  const module=await import(new URL('../src/'+match[2],import.meta.url));
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
-for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
+for(const name of ['ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -126,7 +126,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
 });
 
 
-test('highlighted equipment review returns to the same choices using page Back, browser Back and refresh',()=>{
+test('highlighted equipment review returns without reprompting and permits manual reopening',()=>{
  const app=harness('&batch=batch-1');app.render();
  const card={id:'card-1',batch_id:'batch-1',ordinal:1,filename:'trip.png',status:'review',draft:{},raw_fields:{fleetReview:{issues:[{key:'trip',door:'E1',selectedSite:'Sasti',pulseSite:'Majri',fields:['trips.0.equipmentName']}]}}};
  app.testCapture.setCards([card]);
@@ -141,14 +141,17 @@ test('highlighted equipment review returns to the same choices using page Back, 
  const backApp=app;
  nodes(tree,n=>n.type==='button'&&n.props.children==='Back to equipment review')[0].props.onClick();
  tree=backApp.render();
+ assert.equal(nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog).length,0);
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Equipment review')[0].props.onClick();
+ tree=backApp.render();
  assert.equal(nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.card.id,card.id);
  assert.equal(new URL(backApp.window.location.href).searchParams.has('scanView'),false);
  assert.equal(new URL(backApp.window.location.href).searchParams.get('batch'),'batch-1');
- const origin='&batch=batch-1&scanEquipment=card-1';
+ const origin='&batch=batch-1';
  for(const refreshed of [false,true]){
   const target=harness(refreshed?origin:'&batch=batch-1&scanView=review&scanReviewReturn=card-1');target.render();target.testCapture.setCards([card]);
   if(!refreshed){target.effects[0]();target.window.location.href='https://example.com/?page=vlb-scan'+origin;target.listeners.get('popstate')();}
-  assert.equal(nodes(target.render(),n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.card.id,card.id);
+  assert.equal(nodes(target.render(),n=>n.type===scope.ScanEquipmentReviewDialog).length,0);
  }
 });
 
@@ -257,4 +260,56 @@ test('Back to card status stays usable while a draft is dirty, so a rejected aut
  back.props.onClick();tree=app.render();
  assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
  assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);
+});
+
+test('automatic equipment prompts stay closed during corrections and open only once on overview',()=>{
+ const app=harness('&scanView=review');app.render();
+ const draft={doorText:'V99',location:'Sasti OC'};
+ const card={id:'once-card',status:'review',draft,raw_fields:{fleetReview:{signature:scope.scanFleetSignature(draft),issues:[{door:'V99',fields:['assetId']}]}}};
+ app.testCapture.setCards([card]);app.render();
+ const prompt=()=>app.effects.find(fn=>String(fn).includes('nextFleetReviewPrompt'))();
+ prompt();
+ assert.equal(nodes(app.render(),n=>n.type===scope.ScanEquipmentReviewDialog).length,0);
+ nodes(app.render(),n=>n.type==='button'&&n.props.children==='Back to card status')[0].props.onClick();
+ app.render();prompt();
+ let tree=app.render();
+ assert.equal(nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog).length,1);
+ nodes(tree,n=>n.type===scope.ScanEquipmentReviewDialog)[0].props.onReview();
+ app.testCapture.setSelected('');tree=app.render();
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Back to equipment review')[0].props.onClick();
+ app.render();prompt();
+ assert.equal(nodes(app.render(),n=>n.type===scope.ScanEquipmentReviewDialog).length,0);
+});
+
+
+test('mismatch panel prompts once per card despite changing errors and preserves manual opening',()=>{
+ const app=harness();app.render();app.testCapture.setBatch({id:'batch-errors'});
+ const gate=rows=>({context:{},mismatches:rows});
+ const row={id:'error-1',issues:['Date mismatch','Shift mismatch']};
+ app.testCapture.setContextGate(gate([row]));app.render();
+ const prompt=()=>app.effects.find(fn=>String(fn).includes('mismatchPromptedCards'))();
+ const toggle=tree=>nodes(tree,n=>n.type==='button'&&n.props['aria-controls']==='scan-mismatch-list')[0];
+ const opened=tree=>toggle(tree).props['aria-expanded'];
+ prompt();let tree=app.render();assert.equal(opened(tree),true);
+ toggle(tree).props.onClick();app.render();
+ app.testCapture.setContextGate(gate([{...row,issues:['Shift mismatch']}]));app.render();prompt();
+ assert.equal(opened(app.render()),false);
+ app.testCapture.setContextGate(gate([]));app.render();prompt();
+ app.testCapture.setContextGate(gate([{...row,issues:['Location mismatch']}]));app.render();prompt();
+ assert.equal(opened(app.render()),false);
+ app.testCapture.setContextGate(gate([row,{id:'error-2',issues:['Date mismatch']}]));app.render();prompt();
+ tree=app.render();assert.equal(opened(tree),true);
+ toggle(tree).props.onClick();tree=app.render();toggle(tree).props.onClick();assert.equal(opened(app.render()),true);
+});
+
+test('date/site/shift prompts do not interrupt correction of an error card',()=>{
+ const app=harness('&scanView=review');app.render();
+ app.testCapture.setBatch({id:'batch-errors'});app.testCapture.setSelected('error-1');
+ app.testCapture.setContextGate({context:{},mismatches:[{id:'error-1',issues:['Date mismatch','Shift mismatch']}]});
+ app.render();app.effects.find(fn=>String(fn).includes('mismatchPromptedCards'))();
+ app.testCapture.setSelected('');let tree=app.render();
+ nodes(tree,n=>n.type==='button'&&n.props.children==='Back to card status')[0].props.onClick();
+ app.render();app.effects.find(fn=>String(fn).includes('mismatchPromptedCards'))();
+ tree=app.render();
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-controls']==='scan-mismatch-list')[0].props['aria-expanded'],false);
 });

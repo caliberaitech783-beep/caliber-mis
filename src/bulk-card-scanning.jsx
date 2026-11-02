@@ -101,14 +101,15 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
  // A dropdown choice for a written machine that no Pulse door matches (L21 → DEMO21-00179) is saved once as an alias on that asset and applied to every later card and batch.
  const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;if(result.otpRequired){setNotice('Pair applied to this card. Approve the alias '+result.alias.writtenText+' by OTP in Equipment mapping to make it permanent.');if(batch?.id){await refreshAliasMismatches(batch.id);setAliasOpen(true);}return;}setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
  const resolveFleet=async(card,action)=>{if(action==='delete'&&!window.confirm('Delete only card '+card.ordinal+' and its original scan?'))return;setBusy(true);setError('');try{const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',body:JSON.stringify({action,revision:card.revision})});for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);if(action==='recheck'&&result.ready)setOptions(await api('/api/log-books/options?scan=1'));await load(card.batch_id);setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setNotice(result.deleted?'Selected card deleted manually. Other cards are unchanged.':result.rejected?'Card '+card.ordinal+' rejected. Other cards are unchanged.':action==='transfer-pending'?'Card held: complete the existing transfer in Pulse, then recheck.':result.ready?'Pulse confirms the equipment site. This card can continue.':'Transfer is still incomplete or equipment is not registered. Card remains blocked.');}catch(error){setError(error.message)}finally{setBusy(false)}};
- const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,...fleetCards.map(fleetReviewKey)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle'){const origin=new URL(window.location.href);origin.searchParams.set('scanEquipment',card.id);window.history.replaceState(null,'',origin.pathname+origin.search+origin.hash);navigateReview(true,'all');const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.set('scanReviewReturn',card.id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}};
- const backFromReview=()=>{const params=new URLSearchParams(window.location.search),returnCard=params.get('scanReviewReturn');navigateReview(false);const url=new URL(window.location.href);url.searchParams.delete('scanReviewReturn');if(returnCard&&fleetCards.some(card=>card.id===returnCard)){url.searchParams.set('scanEquipment',returnCard);setFleetOpenId(returnCard);}else url.searchParams.delete('scanEquipment');window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
+ const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle'){const origin=new URL(window.location.href);origin.searchParams.delete('scanEquipment');window.history.replaceState(null,'',origin.pathname+origin.search+origin.hash);navigateReview(true,'all');const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.set('scanReviewReturn',card.id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}};
+ const backFromReview=()=>{navigateReview(false);const url=new URL(window.location.href);url.searchParams.delete('scanReviewReturn');url.searchParams.delete('scanEquipment');setFleetOpenId('');window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
  const [expectedContext,setExpectedContext]=useState(()=>vlbBatch?vlbEntryContext(vlbBatch):{bookDate:'',location:'',cardShift:''}),[scannerBusy,setScannerBusy]=useState(false),[contextGate,setContextGate]=useState(null);const addonUploadRef=useRef(false);
  useEffect(()=>{
+  if(reviewPage){if(selected&&!fleetDismissed.has(selected))setFleetDismissed(keys=>new Set([...keys,selected]));return;}
   if(fleetOpenId||busy||dirty||uploading||scannerBusy)return;
   const next=nextFleetReviewPrompt(cards,fleetDismissed);
-  if(next)setFleetOpenId(next.id);
- },[cards,fleetDismissed,fleetOpenId,busy,dirty,uploading,scannerBusy]);
+  if(next){setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(next)]));setFleetOpenId(next.id);}
+ },[cards,fleetDismissed,fleetOpenId,busy,dirty,uploading,scannerBusy,reviewPage,selected]);
  const awaitingContext=Boolean(contextGate?.blocked&&!contextGate.context.cancelled);
  const accountSite=vlbBatch?.site||options?.accountLocation||'';
  const canSelectSite=Boolean(options?.canSelectSite&&!vlbBatch);
@@ -125,12 +126,15 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
   const timer=setTimeout(()=>{setContextSaving(true);void api('/api/scan-batches/'+batch.id+'/context',{method:'POST',signal:controller.signal,body:JSON.stringify({expectedContext})}).then(()=>load(batch.id)).catch(error=>{if(!controller.signal.aborted)setError(error.message)}).finally(()=>setContextSaving(false));},600);
   return()=>{clearTimeout(timer);controller.abort()};
  },[batch?.id,contextMissing,expectedContext.bookDate,expectedContext.location,expectedContext.cardShift,busy,dirty,uploading,scannerBusy]);
- const mismatchPromptKey=useRef('');
+ const mismatchPromptedCards=useRef(new Set());
  useEffect(()=>{
-  if(!batch?.id||!contextGate?.mismatches.length||contextGate.context.cancelled||uploading||scannerBusy||busy||dirty)return;
-  const key=batch.id+':'+contextGate.mismatches.map(card=>card.id+':'+card.issues.join('|')).join(',');
-  if(mismatchPromptKey.current!==key){mismatchPromptKey.current=key;setMismatchListOpen(true)}
- },[batch?.id,contextGate,uploading,scannerBusy,busy,dirty]);
+  if(!batch?.id||!contextGate?.mismatches.length||contextGate.context.cancelled)return;
+  const key=card=>batch.id+':'+card.id;
+  if(reviewPage){if(selected)mismatchPromptedCards.current.add(key({id:selected}));return;}
+  if(uploading||scannerBusy||busy||dirty)return;
+  const unseen=contextGate.mismatches.filter(card=>!mismatchPromptedCards.current.has(key(card)));
+  if(unseen.length){for(const card of unseen)mismatchPromptedCards.current.add(key(card));setMismatchListOpen(true)}
+ },[batch?.id,contextGate,uploading,scannerBusy,busy,dirty,reviewPage,selected]);
  const resolveContext=async action=>{setBusy(true);setError('');try{const result=await api('/api/scan-batches/'+batch.id+'/validate-context',{method:'POST',body:JSON.stringify({action,cards:contextGate.mismatches.map(c=>({id:c.id,revision:c.revision}))})});await load(batch.id);setNotice(result.cancelled?'Batch cancelled. No further cards will be saved.':result.removed?result.remaining===0?'Wrong cards removed. No matching cards remain; upload the correct cards.':result.removed+' wrong card(s) removed. Processing matching cards only.':'Date, site and shift matched. Processing matching cards.');}catch(e){setError(e.message)}finally{setBusy(false)}};
  const contextProceedAttempt=useRef('');
  useEffect(()=>{
