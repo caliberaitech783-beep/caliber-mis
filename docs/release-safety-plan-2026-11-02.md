@@ -49,3 +49,35 @@ Existing protections that stay: the "Update available, refresh when ready" banne
 - **A real test platform.** A second Azure web app and PostgreSQL database restored from backup, with `main` deploying there and production deploying from a tag after sign-off. This needs Azure subscription access that the build machine does not have. Until it exists, rules 1 to 3 are the only gate.
 - ~~**Direct pushes to `main`.**~~ Closed 2 November 18:40: branch protection now requires a pull request with passing checks (see rule 1). The 17:57 and 18:21 releases were direct pushes; the next attempt is refused by GitHub.
 - **The 17:29 error itself** is not identified. If it recurs, protection 1 names it within minutes.
+
+## 6. Release procedure with the test platform (added 2 November 2026, evening)
+
+This section closes the first open item of section 5. `docs/test-platform-setup.md` is the runbook that creates the test platform (a second Azure web app and PostgreSQL server restored from a live backup, with every notification path switched off). Once it has been executed, the workflows in `.github/workflows/` give this release path, and rule 1 of section 4 changes to: **`main` is the test platform; a `release-*` tag plus the owner's approval is live.** Branch protection on `main` stays as it is.
+
+| Step | Who | What happens |
+|---|---|---|
+| 1. Merge to `main` | Developer, through a pull request with green `build` and `logbook-layout` checks | `Build, test and deploy to the Pulse-II test platform` runs: build, full test suite, release identity and runtime checks, deployment to the test app, health check of the test address for the merged commit with `scheduledJobsEnabled: false`. About 13 minutes. Documentation-only merges do not release. |
+| 2. Smoke test on the test site | Operator or developer, ten minutes | The checklist of section 4 rule 3, on the test address: upload one real PDF, open the equipment review dialog, press F5, confirm the same entry, cards and card reopen, open `/api/health` and confirm `commit` and the flags, open `GET /api/client-errors` and confirm nothing new. Note the `commit` value. |
+| 3. Tag the tested commit | Owner | The tag names the exact commit the test site served (step 2), never a branch name. |
+| 4. Approve the production run | Owner, in GitHub | The production workflow starts from the tag and waits in the `production` environment. GitHub shows **Review deployments** on the run; approve it. The workflow first confirms the environment still requires a reviewer and that the commit is on `main`, then builds, tests and deploys to `caliber-mis-783`. About 13 minutes, with the 4-minute restart of rule 4: tell the WhatsApp group before and after. |
+| 5. Health check | Owner | The workflow verifies `https://pulse-ll.cmll.in/api/health` reports the tagged commit and that the served JavaScript matches. Then the smoke test of step 2 on the live site, and `GET /api/client-errors`. |
+
+Tag names are `release-YYYY-MM-DD-N`, N counting from 1 within the day. The exact commands, run from a checkout of the repository (the commit is the forty-character value that `/api/health` on the test site shows):
+
+```bash
+git fetch origin main --tags
+```
+
+```bash
+git tag release-2026-11-03-1 <commit from the test site's /api/health>
+```
+
+```bash
+git push origin release-2026-11-03-1
+```
+
+A plain (lightweight) tag is enough; an annotated tag also works because the workflow reads the commit from the checkout. If `git push` is refused because the tag exists, the day's counter is already used: pick the next N.
+
+Rollback: tag the previous good commit as the next `release-…-N` and approve it; the test platform is not involved, because that commit has already been live. Emergency release without the test platform: **Actions → Release Pulse-II to production → Run workflow**, choose the `main` branch, give the reason; the same approval is required and the reason is kept with the run. Both are exceptions to be written into this document's history, not routine.
+
+What the gate guarantees: production cannot change through a merge, a direct push (refused by branch protection) or a tag alone. A production run that was not approved by the owner stops at its first step, and a tag that points at a commit outside `main` is refused. The test app and the live app have different Azure identities, different GitHub secrets and different concurrency groups, so a test release can neither reach the live app nor delay a live release.
