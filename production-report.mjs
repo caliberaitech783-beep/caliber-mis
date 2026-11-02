@@ -21,12 +21,12 @@ export function validateCapacity(input){
  if(capacity===null||capacity<=0||capacity>1000||round(capacity)!==capacity)fail('Capacity must be greater than zero, at most 1,000 CUM/trip, with up to three decimals.');
  if(!operationalDate(effectiveFrom))fail('Choose an effective date on or after 1 November 2026.');
  if(reason.length<5||reason.length>1000)fail('Enter an approval reference or reason (5–1,000 characters).');
- return {location,locationKey:capacityKey(location),jobType,jobTypeKey:capacityKey(jobType),make,model,makeKey:capacityKey(make),modelKey:capacityKey(model),capacity,effectiveFrom,reason};
+ return {location,locationKey:canonicalSiteName(location),jobType,jobTypeKey:capacityKey(jobType),make,model,makeKey:capacityKey(make),modelKey:capacityKey(model),capacity,effectiveFrom,reason};
 }
 export function applicableCapacity(versions,pair,date,scope={}){
- const matches=versions.filter(v=>pairKey(v)===pairKey(pair)&&v.effectiveFrom<=date),location=capacityKey(scope.location),jobType=capacityKey(scope.jobType);
+ const matches=versions.filter(v=>pairKey(v)===pairKey(pair)&&v.effectiveFrom<=date),location=canonicalSiteName(scope.location),jobType=capacityKey(scope.jobType);
  if(!location&&!jobType)return matches.sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom))[0]||null;
- const scoped=location&&jobType?matches.filter(v=>capacityKey(v.location)===location&&capacityKey(v.jobType)===jobType):[];
+ const scoped=location&&jobType?matches.filter(v=>canonicalSiteName(v.location)===location&&capacityKey(v.jobType)===jobType):[];
  const legacy=matches.filter(v=>!text(v.location)&&!text(v.jobType));
  return [...(scoped.length?scoped:legacy)].sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom))[0]||null;
 }

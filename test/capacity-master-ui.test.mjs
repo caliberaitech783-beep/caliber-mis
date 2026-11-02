@@ -12,5 +12,7 @@ test('capacity master adds Region Master location and job type in the requested 
  assert.ok(location>=0&&location<make,'location is before make');
  assert.ok(capacity>=0&&capacity<jobType,'job type is after capacity');
  assert.match(source,/data\.locations\.map\(location=>/);
+ assert.match(source,/Make<select required disabled=\{!form\.location\}/);
+ assert.match(source,/Model<select required disabled=\{!form\.make\}/);
  assert.match(source,/\['location','Location'\].*\['jobType','Job type'\]/s);
 });

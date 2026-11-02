@@ -5,6 +5,7 @@ import {canonicalSiteName} from './site-location.mjs';
 import {isMisAdministrator} from './mis-admin-access.mjs';
 import {linkVlbTripHandovers} from './vlb-trip-handover.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
+import {displaySiteSelection} from './region-scope.mjs';
 
 export const PRODUCTION_REPORT_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_capacity_versions(
  id BIGSERIAL PRIMARY KEY,make TEXT NOT NULL,model TEXT NOT NULL,make_key TEXT NOT NULL,model_key TEXT NOT NULL,
@@ -22,12 +23,12 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'n
 const masterRows=async client=>(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Region master']])).rows;
 const masterList=(rows,name)=>rows.filter(r=>r.master_name===name).map(r=>({...r.record_data,id:String(r.id)}));
 const capacityAssets=rows=>masterList(rows,'Equipment master').filter(a=>assetBookKind(a)==='vehicle'&&!a.sourceMissing);
+const regionLocations=rows=>[...new Map(masterList(rows,'Region master').flatMap(region=>displaySiteSelection(region.sites)).map(location=>[canonicalSiteName(location),location])).values()].sort((a,b)=>a.localeCompare(b));
 export function registerProductionReports(app,{pool,protect,ensureBooks}){
  let ready;const ensure=async()=>{await ensureBooks();await(ready??=(pool.query(PRODUCTION_REPORT_SCHEMA).catch(e=>{ready=null;throw e;})));};
  const admin=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Capacity approvals require an authorized administrator.'});
  app.get('/api/capacity-master',...protect,admin,async(req,res,next)=>{
-  try{await ensure();const rows=await masterRows(pool),pairs=new Map();for(const a of capacityAssets(rows)){const p=assetCapacityPair(a),location=String(a.currentLocation||a.site||a.siteName||a.location||'').trim();if(location&&p.make&&p.model&&!/^\d+$/.test(p.make)){const k=canonicalSiteName(location)+'|'+pairKey(p);if(!pairs.has(k))pairs.set(k,{...p,location,vehicles:0});pairs.get(k).vehicles++;}}
-   const locations=[...new Set(masterList(rows,'Region master').flatMap(region=>String(region.sites||'').split(/\s*\|\s*/).map(site=>site.trim()).filter(Boolean)))].sort((a,b)=>a.localeCompare(b));
+  try{await ensure();const rows=await masterRows(pool),locations=regionLocations(rows),pairs=new Map();for(const a of capacityAssets(rows)){const p=assetCapacityPair(a),assetLocation=String(a.currentLocation||a.site||a.siteName||a.location||'').trim(),location=locations.find(site=>canonicalSiteName(site)===canonicalSiteName(assetLocation));if(location&&p.make&&p.model&&!/^\d+$/.test(p.make)){const k=canonicalSiteName(location)+'|'+pairKey(p);if(!pairs.has(k))pairs.set(k,{...p,location,vehicles:0});pairs.get(k).vehicles++;}}
    res.set('Cache-Control','private, no-store').json({locations,pairs:[...pairs.values()].sort((a,b)=>(a.location+' '+a.make+' '+a.model).localeCompare(b.location+' '+b.make+' '+b.model)),versions:(await pool.query(`SELECT ${versionSelect} FROM mis_capacity_versions ORDER BY location_key,job_type_key,make_key,model_key,effective_from DESC`)).rows});
   }catch(e){next(e);}
  });
@@ -35,10 +36,10 @@ export function registerProductionReports(app,{pool,protect,ensureBooks}){
   let client;try{
    const v=validateCapacity(req.body||{});await ensure();client=await pool.connect();await client.query('BEGIN');
    await client.query("SELECT pg_advisory_xact_lock(hashtext('mis_capacity_versions'))");
-   const rows=await masterRows(client),locations=masterList(rows,'Region master').flatMap(region=>String(region.sites||'').split(/\s*\|\s*/).map(site=>site.trim()).filter(Boolean));
+   const rows=await masterRows(client),locations=regionLocations(rows);
    if(!locations.some(location=>canonicalSiteName(location)===canonicalSiteName(v.location)))throw invalid('Select a location from Region master.');
    const assets=capacityAssets(rows);if(!assets.some(a=>canonicalSiteName(a.currentLocation||a.site||a.siteName||a.location)===canonicalSiteName(v.location)&&pairKey(assetCapacityPair(a))===pairKey(v)))throw invalid('This vehicle make/model pair is not available at the selected location in Equipment master. Sync or correct the equipment master first.');
-   const prior=(await client.query('SELECT effective_from::text AS date FROM mis_capacity_versions WHERE location_key=$1 AND job_type_key=$2 AND make_key=$3 AND model_key=$4 ORDER BY effective_from DESC LIMIT 1',[v.locationKey,v.jobTypeKey,v.makeKey,v.modelKey])).rows[0];
+   const prior=(await client.query('SELECT location,effective_from::text AS date FROM mis_capacity_versions WHERE job_type_key=$1 AND make_key=$2 AND model_key=$3 ORDER BY effective_from DESC',[v.jobTypeKey,v.makeKey,v.modelKey])).rows.find(row=>canonicalSiteName(row.location)===v.locationKey);
    if(prior){const latestClosed=(await client.query('SELECT max(book_date)::text AS date FROM mis_vlb_batches WHERE closed_at IS NOT NULL AND deleted_at IS NULL AND archived_at IS NULL')).rows[0]?.date;
     if(v.effectiveFrom<=prior.date||v.effectiveFrom<=today()||latestClosed&&v.effectiveFrom<=latestClosed)throw invalid('Existing approvals are immutable. Add a new version effective after today, the previous version and all processed batch dates. Historical corrections require a reviewed data correction.',409);
    }
