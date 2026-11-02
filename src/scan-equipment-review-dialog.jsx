@@ -1,8 +1,9 @@
 import React,{useEffect,useRef} from 'react';
-export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDelete,onTransfer,onRecheck,onReview}){
+export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDelete,onTransfer,onRecheck,onReview,onClose}){
  const dialog=useRef(null),review=card.raw_fields.fleetReview;
  useEffect(()=>{const node=dialog.current;node.showModal();return()=>node.close()},[]);
- return <dialog ref={dialog} className="scan-equipment-dialog" aria-labelledby="scan-equipment-title" onCancel={event=>{event.preventDefault();onReview()}}>
+ return <dialog ref={dialog} className="scan-equipment-dialog" aria-labelledby="scan-equipment-title" onCancel={event=>{event.preventDefault();onClose()}}>
+ <button type="button" className="scan-equipment-close" aria-label="Close" title="Close. The card stays on hold; the Equipment review button reopens this." onClick={onClose}>×</button>
  <h2 id="scan-equipment-title">Equipment missing or not at this site</h2><p>Card {card.ordinal} · {card.filename}</p>
  {review.error&&<p role="alert">{review.error}</p>}<ul>{review.issues.map(issue=><li key={issue.key}><strong>{issue.door}</strong><span>Selected site: {issue.selectedSite}</span><span>Pulse location: {issue.pulseSite}</span><small>{issue.fields.filter(field=>field.startsWith('trips.')).length} trip row(s) flagged</small></li>)}</ul>
  {error&&<p role="alert">{error}</p>}
@@ -10,5 +11,5 @@ export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDe
  <section><h3>1. Delete this card</h3><p>Delete this card and its original scan after confirmation.</p><button type="button" disabled={busy} onClick={onDelete}>Delete this card</button></section>
  <section><h3>2. Pending transfer in Pulse</h3><p>Complete the existing transfer in Pulse, then recheck this card.</p><a href="https://pulse.cmll.in/" target="_blank" rel="noreferrer" aria-disabled={busy} onClick={event=>{if(busy)event.preventDefault();else onTransfer()}}>Process transfer in Pulse</a></section>
  </div>
- <footer><button type="button" disabled={busy} onClick={onReject} title="Reject the card and retain its original scan in the audit history">Reject whole card</button><button type="button" disabled={busy} onClick={onRecheck}>Recheck Pulse assignment</button><button type="button" disabled={busy} onClick={onReview}>Review highlighted card</button></footer></dialog>;
+ <footer><button type="button" disabled={busy} onClick={onReject} title="Reject the card and retain its original scan in the audit history">Reject whole card</button><button type="button" disabled={busy} onClick={onRecheck}>Recheck Pulse assignment</button><button type="button" onClick={onReview}>Review highlighted card</button></footer></dialog>;
 }
