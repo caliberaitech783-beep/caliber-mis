@@ -121,6 +121,23 @@ test('expired batches cannot restore and purge only their retained data and unre
  assert.deepEqual(h.removed,['vehicle/'+card.scanId]);
 });
 
+test('a deleted batch can be permanently deleted at once and never restored',async t=>{
+ const h=await setup(t),old=await h.create(),card=await h.add(old);
+ assert.equal((await h.preview(old,'purge')).status,409,'an active batch must be deleted first');
+ await h.execute(old);
+ await h.execute(old,'purge');
+ const row=(await h.db.query('SELECT purged_at,restore_until>NOW() AS in_window FROM mis_vlb_batches WHERE id=$1',[old.id])).rows[0];
+ assert.ok(row.purged_at);assert.equal(row.in_window,true);
+ assert.equal((await h.db.query('SELECT * FROM mis_vlb_batch_recovery_items WHERE batch_id=$1',[old.id])).rows.length,0);
+ assert.deepEqual((await h.db.query('SELECT data FROM mis_log_books WHERE id=$1',[card.id])).rows[0].data,{permanentlyDeleted:true});
+ assert.equal((await h.db.query('SELECT * FROM mis_scan_cards WHERE image_hash=$1',['hash'])).rows.length,0);
+ assert.equal((await h.preview(old,'restore')).status,409);
+ assert.equal((await h.preview(old,'purge')).status,409);
+ await h.recovery.cleanupExpired();
+ assert.deepEqual(h.removed,['vehicle/'+card.scanId]);
+ assert.equal((await h.call('vlb-batch-deletions')).data.batches.find(b=>b.id===old.id).can_restore,false);
+});
+
 test('new recovery endpoints require VLB application access',()=>{
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misRequestAllowed(session,{path:'/api/vlb-batch-deletions/preview',method:'POST'}));
