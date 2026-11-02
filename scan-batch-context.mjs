@@ -20,19 +20,35 @@ export function scanContextIssues(context,draft={}){
 export function scanContextSelectionChanged(batch,selection){
  return Boolean(batch?.id&&batch.kind==='vehicle'&&(!batch.expected_context?scanContextReady(selection):scanContextIssues(batch.expected_context,selection||{}).length));
 }
-// Compare the original extraction as well as the editable entry. Editing a
-// header must never turn a different physical card into a matching one.
+// Differences between the original extraction (or the edited entry) and the
+// batch selection. Since 2 November 2026 these are notes for the reviewer, not
+// blocks: the date, site and shift chosen for the batch are the final values on
+// every card in it, whatever the driver wrote or the reader extracted.
 export function scanCardContextIssues(context,card,input=card.draft){
  const evidence=card.raw_fields,source=evidence?.extractionDraft||{};
  const original=source&&Array.isArray(evidence.locationReadings)&&!evidence.locationReadings.some(value=>String(value||'').trim())?{...source,location:''}:source;
  return [...new Set([...(original?scanContextIssues(context,original):[]),...scanContextIssues(context,input)])];
 }
+export const CONTEXT_NOTE_PREFIX='Batch values applied. Card shows ';
+export function scanContextNotes(context,card,input=card.draft){
+ return scanCardContextIssues(context,card,input).map(issue=>CONTEXT_NOTE_PREFIX+issue.replace('; expected ','; batch ')+'.');
+}
+// The batch selection is the final header of every card in it: the operator
+// fixed the date, site and shift before scanning, so a wrong or unreadable
+// handwritten header takes the batch values instead of blocking the card.
+export function applyScanContext(context,draft){
+ if(!context||!draft||typeof draft!=='object')return draft;
+ const next={...draft};
+ if(next.bookDate!==context.bookDate||['system-fallback','scan-unreadable'].includes(next.bookDateSource)){next.bookDate=context.bookDate;next.bookDateSource='batch';}
+ if(canonicalSiteName(tripCardLocation(next.location))!==canonicalSiteName(tripCardLocation(context.location)))next.location=context.location;
+ if(next.cardShift!==context.cardShift){next.cardShift=context.cardShift;next.shiftHours=CARD_SHIFTS[context.cardShift]?.hours||next.shiftHours||'';next.shiftId='';}
+ return next;
+}
 export function scanContextGate(context,cards=[]){
  if(!context)return null;
  const active=cards.filter(c=>c.status!=='rejected');
  const waiting=active.some(c=>['queued','reading'].includes(c.status));
- const mismatches=active.filter(c=>!['queued','reading','posted'].includes(c.status)).map(c=>({id:c.id,revision:c.revision,ordinal:c.ordinal,filename:c.filename,issues:scanCardContextIssues(context,c)})).filter(c=>c.issues.length);
- return {context,waiting,mismatches,blocked:Boolean(context.cancelled||!context.confirmed||waiting||mismatches.length)};
+ return {context,waiting,mismatches:[],blocked:Boolean(context.cancelled||!context.confirmed||waiting)};
 }
 export function requireScanUploadContext(kind,value){
  if(kind==='vehicle'||value!==undefined)return parseScanContext(value);

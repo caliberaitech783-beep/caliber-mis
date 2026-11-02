@@ -25,5 +25,5 @@ test('equipment review blocks posting, preserves scans, reuses the existing tran
  assert.equal((await action(second,'delete',1)).status,409,'stale deletion cannot purge scans');
  const deleted=await action(second,'delete',2);assert.equal(deleted.status,200);assert.equal(deleted.data.deleted,true);
  const removed=(await db.query('SELECT image,draft,raw_fields FROM mis_scan_cards WHERE id=$1',[second])).rows[0];assert.equal(removed.image,null);assert.deepEqual(removed.draft,{});assert.ok(removed.raw_fields.fleetRejection);assert.deepEqual(Buffer.from((await db.query('SELECT image FROM mis_scan_cards WHERE id=$1',[first])).rows[0].image),image);
- const wrongDate={...rows[0].draft,bookDate:'2026-12-29'};await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[first,JSON.stringify(wrongDate)]);const mismatch=await action(first,'recheck',2);assert.equal(mismatch.status,409);assert.match(mismatch.data.error,/date, site and shift mismatch/);
+ const wrongDate={...rows[0].draft,bookDate:'2026-12-29'};await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[first,JSON.stringify(wrongDate)]);const mismatch=await action(first,'recheck',2);assert.equal(mismatch.status,200,'a handwritten date that differs from the batch is corrected to the batch date, never a mismatch: '+JSON.stringify(mismatch.data));
 });

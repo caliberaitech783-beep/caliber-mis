@@ -1,7 +1,7 @@
 import {scanFleetBlockingMessage} from './scan-fleet-assignment.mjs';
 import {manualScanIssues} from './src/scan-manual-fields.mjs';
 
-const OPTIONAL_WARNINGS=[/^No Work Order selected\./];
+const OPTIONAL_WARNINGS=[/^No Work Order selected\./,/^Batch values applied\./];
 export const blockingScanWarnings=warnings=>(warnings||[]).filter(message=>!OPTIONAL_WARNINGS.some(pattern=>pattern.test(String(message))));
 
 export function canAutoSaveScanCard(card,kind,options=null){
