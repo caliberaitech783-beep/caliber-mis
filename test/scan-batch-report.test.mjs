@@ -9,7 +9,7 @@ test('a report includes exactly its batch cards and totals only active saved log
  const input=[...members,card('other-batch',1,{batch_id:'other'})],before=JSON.stringify(input),r=scanBatchReport(batch,input);
  assert.equal(r.counts.cards,5);assert.equal(r.counts.saved,2);assert.equal(r.counts.pending,1);assert.equal(r.counts.rejected,1);assert.equal(r.counts.deleted,1);
  assert.deepEqual(r.totals,{trips:5,kilometres:100,hours:10});assert.deepEqual(r.rows.map(c=>c.id),['one','two','pending','rejected','deleted']);assert.equal(r.rows[0].employeeName,'Driver One');assert.equal(r.rows[0].kilometres,40);
- assert.equal(r.tripRows.length,2);assert.deepEqual(r.machineRows,[{equipment:'D19',trips:5,cards:2,vehicles:2}]);assert.equal(JSON.stringify(input),before);
+ assert.equal(r.tripRows.length,2);assert.deepEqual(r.machineRows,[{equipment:'D19',equipmentId:'',written:'',unresolved:true,trips:5,cards:2,vehicles:2}]);assert.equal(JSON.stringify(input),before);
 });
 test('another batch with the same day and door stays separate, and mismatched saved links do not enter totals',()=>{
  const r=scanBatchReport({...batch,id:'other'},[card('one',1),card('two',1,{batch_id:'other',saved_data:{...data,scanCardId:'two',scanBatchId:'other'}})]);assert.equal(r.counts.cards,1);assert.equal(r.totals.trips,2);

@@ -9,6 +9,7 @@ import OperationsReports from './operations-reports.jsx';
 import CapacityMaster from './capacity-master.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import ScanBatchReports from './scan-batch-reports.jsx';
+import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
@@ -5171,6 +5172,8 @@ function Equipment({
     [editing, setEditing] = useState(null),
     [savingEdit, setSavingEdit] = useState(false),
     [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
+  // ALIAS column: written card labels mapped to this record (Pulse-II overlay keyed by equipment id), with revoke by the same OTP routes.
+  const aliasSession = { token: authToken }, aliasData = useEquipmentAliases(authToken), [aliasRevoke, setAliasRevoke] = useState(null), aliasAdmin = isMisAdministrator(storedSession) || (storedSession?.role === 'super' && storedSession?.permissions?.adminLevel !== 'Manager');
   const equipmentColumns = [
       ["currentLocation", "Current location"], ["equipmentName", "Equipment name"],
       ["category", "Equipment category"], ["group", "Equipment group"],
@@ -5330,6 +5333,7 @@ function Equipment({
                   onFilterChange={(value) => updateColumnFilter(key, value)}
                 />
               ))}
+              <th>Alias</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -5370,6 +5374,7 @@ function Equipment({
                   <td>{v.chassisNo}</td>
                   <td>{v.documentStatus}</td>
                   <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>
+                  <EquipmentAliasCell aliases={aliasData.aliases} record={v} canRevoke={aliasAdmin} onRevoke={setAliasRevoke} />
                   <td className="row-actions" onClick={(event) => event.stopPropagation()}>
                     {v.id ? (
                       <>
@@ -5386,7 +5391,7 @@ function Equipment({
               ))
             ) : (
               <tr>
-                <td colSpan="15" className="empty-state">
+                <td colSpan="16" className="empty-state">
                   No equipment or vehicle records for this selection
                 </td>
               </tr>
@@ -5394,6 +5399,8 @@ function Equipment({
           </tbody>
         </ActionsTable>
       </div>
+      {aliasRevoke && <EquipmentAliasRevokeDialog session={aliasSession} alias={aliasRevoke} otpEnabled={aliasData.otpEnabled} approver={aliasData.approver} approverTelegramLinked={aliasData.approverTelegramLinked} onDone={aliasData.refresh} onDismiss={() => setAliasRevoke(null)} />}
+      {pageTitle === 'Equipment master' && <EquipmentAliasAdminPanel session={aliasSession} isAdmin={aliasAdmin} />}
       {detail && (
         <Modal title="Equipment details" close={() => setDetail(null)}>
           <div className="detailhead">

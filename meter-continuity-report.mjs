@@ -2,6 +2,8 @@ import {canonicalSiteName} from './site-location.mjs';
 import {displaySiteName} from './region-scope.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
+import {matchCardMachine} from './scan-machine-rules.mjs';
+import {withEquipmentAliases} from './equipment-aliases.mjs';
 import {requireLogBookSite} from './log-book-access.mjs';
 import {OPERATIONAL_START} from './operational-start.mjs';
 
@@ -34,10 +36,12 @@ export function meterCards(records){
   openingKmr:num(d.openingKmr),closingKmr:num(d.closingKmr),openingHmr:num(d.openingHmr),closingHmr:num(d.closingHmr),source:d.scanCardId?'Scan':'Manual'};});
 }
 
-export function buildMeterContinuityReport({records=[],from='',to='',kmTolerance=DEFAULT_TOLERANCE.kmTolerance,hourTolerance=DEFAULT_TOLERANCE.hourTolerance}={}){
+export function buildMeterContinuityReport({records=[],from='',to='',kmTolerance=DEFAULT_TOLERANCE.kmTolerance,hourTolerance=DEFAULT_TOLERANCE.hourTolerance,assets=[]}={}){
+ // Group by Equipment master id. Text-only cards resolve through the matcher and saved aliases at read time; stored rows are not changed.
+ const resolveAsset=card=>card.assetId||(assets.length?String(matchCardMachine(assets,card.door,card.site,'vehicle').match?.id||''):'');
  const groups=new Map();
  for(const card of meterCards(records)){
-  const key=card.canonicalSite+'|'+(card.assetId||fleetDoorKey(card.door));
+  const key=card.canonicalSite+'|'+(resolveAsset(card)||fleetDoorKey(card.door));
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(card);
  }
  const rows=[];
@@ -94,7 +98,8 @@ export function registerMeterContinuityReport(app,{pool,protect,ensureBooks}){
    // Reach back a week so the first cards in the range still find their previous card.
    const records=sites.length?(await pool.query(`SELECT id,book_no,asset_id,data-'manualAttachments' AS data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND site=ANY($1::text[]) AND book_date BETWEEN $2 AND $3 ORDER BY book_date,id LIMIT 60001`,[sites,shiftDate(from,-7)<OPERATIONAL_START?OPERATIONAL_START:shiftDate(from,-7),to])).rows:[];
    if(records.length>60000)throw invalid('Too many cards for one report. Choose a shorter range.');
-   const report=buildMeterContinuityReport({records,from,to,...tolerance});
+   const assets=await withEquipmentAliases(pool,(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})));
+   const report=buildMeterContinuityReport({records,from,to,...tolerance,assets});
    res.set('Cache-Control','private, no-store').json({...report,site:displaySiteName(site),from,to,generatedAt:new Date().toISOString()});
   }catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e);}
  });

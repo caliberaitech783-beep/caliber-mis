@@ -215,3 +215,12 @@ Verify each against a month of real data on the test platform before production.
 8. Admin list, weekly summary, rules document.
 
 Feature flag `EQUIPMENT_ALIAS_OTP`, off in production until the test platform run passes.
+
+## 13. Build notes (2 November 2026)
+
+Built on branch `feature/equipment-alias-otp`. Deviations from the data section:
+the alias OTPs live in their own table `mis_equipment_alias_otps` (purpose,
+route, reference to the alias) instead of `mis_vlb_approval_otps`, because that
+table requires a batch id and manual-entry mappings have none. Alias history is
+`mis_equipment_alias_history`. The approver setting is `app_settings` key
+`equipment_alias_approver`. Phase 2 (Pulse card-label field) is unchanged.
