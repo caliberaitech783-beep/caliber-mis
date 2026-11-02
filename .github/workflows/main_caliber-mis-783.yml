@@ -3,6 +3,11 @@ name: Build and deploy Node.js app to Azure Web App - caliber-mis-783
 on:
   push:
     branches: [main]
+    # A release restarts the live app for about four minutes. Documentation
+    # changes do not need one; a merge that also touches code still releases.
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch:
 
 # Finish an active release safely; GitHub replaces superseded pending runs.
