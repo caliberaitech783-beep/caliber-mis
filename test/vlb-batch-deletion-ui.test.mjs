@@ -25,3 +25,17 @@ test('restoring over a replacement requires preview, explicit replacement consen
  nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='one-time-code')[0].props.onChange({target:{value:'123456'}});
  await button(render(),'Delete replacement and restore original').props.onClick();assert.equal(calls[2].body.otp,'123456');assert.equal(calls[2].body.approval,preview.approval);assert.equal(changed,1);assert.equal(dismissed,1);
 });
+test('an administrator erases every batch with the exact phrase and no OTP step',async()=>{
+ const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=v]};
+ const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
+ const {code}=await transformWithOxc(source,'vlb-batch-deletion.jsx',{jsx:{runtime:'classic'}});
+ const Component=new Function('React','useState','useEffect',code+';return VlbBatchDeletion')(React,useState,()=>{});
+ let changed=0;const calls=[],preview={id:'request',operation:'erase-all',approval:'Approve erase-all request hash',otpRequired:false,expiresAt:'2026-11-01T10:00:00Z',manifest:{counts:{batches:1,cards:2,scans:1,machines:1},batches:[{original:{id:'b1',name:'B01'},target:{records:[{},{}],scans:[{}]},machines:[{id:'9'}]}],target:null}};
+ const read=async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/preview')?preview:{complete:true}};
+ const render=()=>{cursor=0;return Component({batch:{id:'all',name:'Every batch at every site'},operation:'erase-all',read,onChanged:()=>changed++,onDismiss:()=>{}})};
+ const button=(tree,text)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(text))[0];
+ nodes(render(),n=>n.type==='textarea')[0].props.onChange({target:{value:'Clear trial data'}});await button(render(),'Preview exact items').props.onClick();
+ let tree=render();assert.match(renderToStaticMarkup(tree),/1 machine entries/);assert.equal(button(tree,'Approve and send'),undefined);assert.equal(button(tree,'Erase every batch now').props.disabled,true);
+ nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='off')[0].props.onChange({target:{value:preview.approval}});
+ await button(render(),'Erase every batch now').props.onClick();assert.equal(calls[1].path,'/api/vlb-batch-deletions/request/confirm');assert.equal(calls[1].body.otp,undefined);assert.equal(changed,1);
+});

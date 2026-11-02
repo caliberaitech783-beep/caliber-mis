@@ -27,7 +27,7 @@ async function setup(t){
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  pool??={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());app.use(enforceContentDeletionPolicy);
- const session=(req,res,next)=>{req.session={login:req.headers.authorization||'alice'};req.logBookScope={sites:req.session.login==='other-site'?['jayant ob']:['sasti ob']};next()};
+ const session=(req,res,next)=>{const login=req.headers.authorization||'alice';req.session=login==='admin'?{login,role:'super',permissions:{adminLevel:'Admin'}}:{login};req.logBookScope={sites:login==='admin'?null:login==='other-site'?['jayant ob']:['sasti ob']};next()};
  let otp,sendFail=false,removed=[];
  const recovery=registerVlbBatches(app,{pool,protect:[session],ensureBooks:async()=>{},getActor:async session=>({login:session.login,mis:session.login!=='viewer',pm:session.login==='viewer',pmScope:{sites:[]}}),sendOtp:async input=>{otp=input.otp;return sendFail?{sent:false}:{sent:true,messageId:'test'}},imageStorage:{stat:async()=>({exists:true,etag:'v1',sha256:'hash'}),remove:async key=>removed.push(key)}});
  t.after(recovery.stop);
@@ -153,6 +153,30 @@ test('all deleted batches can be permanently deleted with one approval',async t=
  assert.equal((await h.db.query('SELECT deleted_at FROM mis_log_books WHERE id=$1',[live.id])).rows[0].deleted_at,null);
  assert.equal((await h.db.query('SELECT deleted_at FROM mis_vlb_batches WHERE id=$1',[kept.id])).rows[0].deleted_at,null);
  assert.equal((await h.preview({id:'all'},'purge-all')).status,409,'nothing left to erase');
+});
+
+test('an MIS administrator deletes without an OTP and can erase every batch at every site',async t=>{
+ const h=await setup(t),one=await h.create('S1'),a=await h.add(one);
+ const p=await h.preview(one,'delete','admin');assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.otpRequired,false);
+ assert.equal((await h.preview(one,'delete')).data.otpRequired,true,'non-admins still need the OTP');
+ const done=await h.call('vlb-batch-deletions/'+p.data.id+'/confirm','POST',{approval:p.data.approval},'admin');assert.equal(done.status,200,JSON.stringify(done.data));
+ assert.ok((await h.db.query('SELECT deleted_at FROM mis_vlb_batches WHERE id=$1',[one.id])).rows[0].deleted_at);
+ const closed=await h.create('S2'),b=await h.add(closed,{hash:'other'});await h.call('vlb-batches/'+closed.id+'/close','POST');
+ const open=await h.create('S1'),c=await h.add(open,{hash:'third'});
+ const machine=(await h.db.query("INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,created_by) VALUES('ELB/1','equipment',$1,$2,'{}','alice') RETURNING id",[open.site,open.report_date])).rows[0];
+ await h.db.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3)',[open.id,machine.id,'{}']);
+ await h.db.query("INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,logbook_id) VALUES($1,7,'D7',$2)",[open.id,machine.id]);
+ assert.equal((await h.preview({id:'all'},'erase-all')).status,403,'only administrators can erase every batch');
+ const all=await h.preview({id:'all'},'erase-all','admin');assert.equal(all.status,200,JSON.stringify(all.data));
+ assert.deepEqual(all.data.manifest.counts,{batches:3,cards:3,scans:3,machines:1});
+ assert.equal((await h.call('vlb-batch-deletions/'+all.data.id+'/confirm','POST',{approval:'wrong'},'admin')).status,400,'the exact phrase is still required');
+ const r=await h.call('vlb-batch-deletions/'+all.data.id+'/confirm','POST',{approval:all.data.approval},'admin');assert.equal(r.status,200,JSON.stringify(r.data));
+ assert.equal((await h.db.query('SELECT count(*)::int AS n FROM mis_vlb_batches WHERE purged_at IS NULL')).rows[0].n,0);
+ for(const id of [a.id,b.id,c.id,machine.id])assert.deepEqual((await h.db.query('SELECT data FROM mis_log_books WHERE id=$1',[id])).rows[0].data,{permanentlyDeleted:true});
+ assert.equal((await h.db.query('SELECT count(*)::int AS n FROM mis_scan_cards')).rows[0].n,0);
+ assert.equal((await h.db.query('SELECT count(*)::int AS n FROM mis_vlb_batch_fleet')).rows[0].n+(await h.db.query('SELECT count(*)::int AS n FROM mis_elb_batch_entries')).rows[0].n,0);
+ assert.equal((await h.preview({id:'all'},'erase-all','admin')).status,409,'nothing left to erase');
+ const fresh=await h.call('vlb-batches','POST',{site:'Sasti OC',date:'2026-12-30',shift:'S1',requestKey:randomUUID()},'admin');assert.equal(fresh.status,201,JSON.stringify(fresh.data));
 });
 
 test('new recovery endpoints require VLB application access',()=>{
