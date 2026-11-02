@@ -2,3 +2,4 @@
 90f90efcb85e0b6448a0a079074d5c4ee747d6c4d5e2848ebabb843bad50f89a  Caliber-Scanner-Connector-1.0.1-Windows-x64.zip
 77d33059d01c66ec1f809c10ea02e1007bd04ed3048ac66584dc3dbcafe0a3a2  Caliber-Scanner-Connector-1.0.2-Windows-x64.zip
 8b9342ee01e5c6f8f7ef1f839b9211f790aa593ca55ab1db4a6e9ff3913fde2f  Caliber-Scanner-Connector-1.0.6-Windows-x64.zip
+7961af43237830339531365da46b092545810ea8853a56dd154c3ab2cf29cd46  Caliber-Scanner-Connector-1.0.7-Windows-x64.zip
