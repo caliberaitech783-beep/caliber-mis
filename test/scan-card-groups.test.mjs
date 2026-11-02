@@ -49,16 +49,17 @@ test('Needs attention contains only cards not already covered by a specific issu
  for(const group of groups.slice(1))assert.equal(matchesCardGroup(categorized,group,'vehicle'),false);
 });
 
-test('mixed 50-page batch separates five wrong-site cards without changing the other 45',()=>{
+test('mixed 50-page batch keeps five wrong-site cards in the batch: the batch site is final, not an error',()=>{
  const context={bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'};
  const rows=Array.from({length:50},(_,i)=>{const d={...draft,...context,location:i<45?'Jayant OC':'Majri OC'};return card(String(i),{draft:d,raw_fields:{extractionDraft:d}})});
  const summary=reviewGroupSummary(rows,'vehicle',null,context);
- assert.equal(summary.total,50);assert.equal(summary.error,5);
- assert.equal(rows.filter(c=>cardReviewGroup(c,'vehicle',null,context)!=='error').length,45);
+ assert.equal(summary.total,50);assert.equal(summary.error,0);
+ assert.equal(rows.filter(c=>cardReviewGroup(c,'vehicle',null,context)!=='error').length,50);
+ assert.equal(cardReviewGroup({...rows[49],context_mismatch:['Choose the card date, site and shift in Scan setup.']},'vehicle',null,context),'error','an entry without Scan setup still reports the card');
  assert.equal(cardReviewGroup({...rows[49],status:'reading'},'vehicle',null,context),'pending');
  assert.equal(cardReviewGroup({...rows[49],status:'rejected'},'vehicle',null,context),'red');
  const changed={...rows[49],draft:{...rows[49].draft,location:'Jayant OC'}};
- assert.equal(cardReviewGroup(changed,'vehicle',null,context),'error');
+ assert.equal(cardReviewGroup(changed,'vehicle',null,context),'orange','a corrected header is an ordinary card');
 });
 
 test('a card with overlapping problems is counted in exactly one stable issue group',()=>{

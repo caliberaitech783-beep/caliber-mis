@@ -90,8 +90,10 @@ test('real PostgreSQL queries exclude history and batch-only posting is atomic',
  await db.query('INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,4,$3,$4,$5,$6,$7)',[misreadId,newScan,'misread.png',misreadImage,misreadHash,JSON.stringify({bookDate:'2026-01-11',location:'Sasti OC',cardShift:'I'}),'review']);
  const entry=await call('/api/scan-batches/'+newScan);assert.equal(entry.status,200,JSON.stringify(entry));
  const misread=entry.data.cards.find(c=>c.id===misreadId);assert(misread,'misread-date card stays listed in its scan entry');assert.equal(misread.status,'review');
- assert(misread.context_mismatch.some(issue=>/^Date: 2026-01-11; expected 2026-11-01/.test(issue)),JSON.stringify(misread.context_mismatch));
- assert(entry.data.contextGate.mismatches.some(c=>c.id===misreadId),'misread-date card is reported as a mismatch card');
+ assert.equal(misread.context_mismatch,undefined,'the batch date is final, so a misread header is not a mismatch');
+ assert.equal(misread.draft.bookDate,'2026-11-01');assert.equal(misread.draft.bookDateSource,'batch');
+ assert(misread.checks.warnings.some(issue=>/^Batch values applied\. Card shows Date: 2026-01-11; batch 2026-11-01\./.test(issue)),JSON.stringify(misread.checks));
+ assert.deepEqual(entry.data.contextGate.mismatches,[],'no card is held back for its handwritten header');
  const listed=await call('/api/scan-batches');assert.equal(listed.data.batches.find(b=>b.id===newScan).cards,3);
  const rescan=await call('/api/scan-batches/'+newScan+'/cards','POST',{uploadKey:randomUUID(),filename:'misread-again.png',base64:misreadImage.toString('base64')});assert.equal(rescan.status,200,JSON.stringify(rescan));assert.equal(rescan.data.duplicateSkipped,true);assert.equal(rescan.data.original.cardId,misreadId);
  const report=await call('/api/reports/operations?from=2026-11-01&to=2026-11-01');assert.equal(report.status,200,JSON.stringify(report));assert(report.data.records.every(r=>r.data.bookDate>='2026-11-01'));assert(report.data.cards.every(r=>r.draft?.bookDate!=='2026-10-31'));

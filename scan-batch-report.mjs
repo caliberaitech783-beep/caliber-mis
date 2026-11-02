@@ -1,6 +1,6 @@
 import {compactLogBookLabel,tripSerialNumber} from './log-book-labels.mjs';
 import {meterCorrectionReport} from './scan-meter-history.mjs';
-import {scanCardContextIssues} from './scan-batch-context.mjs';
+import {scanContextIssues} from './scan-batch-context.mjs';
 import {machineLabel} from './trip-card-rules.mjs';
 import {matchCardMachine} from './scan-machine-rules.mjs';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
@@ -14,9 +14,9 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 // this report. Saved totals use the current log book values, never OCR drafts.
 export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=false}={}){
  if(!batch?.id)return null;
- const vehicle=batch.kind==='vehicle',batchMembers=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'),members=batchMembers.filter(c=>(includeAllCards||!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,{...c,raw_fields:c.raw_fields||{}},{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
+ const vehicle=batch.kind==='vehicle',batchMembers=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'),members=batchMembers.filter(c=>(includeAllCards||!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanContextIssues(batch.expected_context,{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
-  const processing=['queued','reading'].includes(card.status),contextIssues=batch.expected_context&&!processing?scanCardContextIssues(batch.expected_context,{...card,raw_fields:card.raw_fields||{}},{...card.draft,...(card.status==='posted'?card.saved_data:{})}):[];
+  const processing=['queued','reading'].includes(card.status),contextIssues=batch.expected_context&&!processing?scanContextIssues(batch.expected_context,{...card.draft,...(card.status==='posted'?card.saved_data:{})}):[];
   const saved=!contextIssues.length&&card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);
   const data=saved?card.saved_data:card.draft||{},raw=card.raw_fields||{};
