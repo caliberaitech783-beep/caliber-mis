@@ -13,9 +13,10 @@ function fixture(){
  return {assets,shifts,batches,records,capacities,filters:{site,date,mode:'day'}};
 }
 test('capacity validation rejects zero, unresolved make codes, invalid dates and excess precision',()=>{
- const v={make:' Volvo ',model:'FM',capacity:'20',effectiveFrom:date,reason:'Approved fleet reference'};assert.equal(validateCapacity(v).capacity,20);
- for(const change of [{capacity:0},{capacity:-1},{capacity:' '},{capacity:20.0001},{make:'64'},{effectiveFrom:'2026-11-31'},{reason:''}])assert.throws(()=>validateCapacity({...v,...change}));
+ const v={location:'Sasti',jobType:'Coal haulage',make:' Volvo ',model:'FM',capacity:'20',effectiveFrom:date,reason:'Approved fleet reference'};assert.equal(validateCapacity(v).capacity,20);
+ for(const change of [{location:''},{jobType:''},{capacity:0},{capacity:-1},{capacity:' '},{capacity:20.0001},{make:'64'},{effectiveFrom:'2026-11-31'},{reason:''}])assert.throws(()=>validateCapacity({...v,...change}));
  const versions=[{...v,id:1,effectiveFrom:date},{...v,id:2,capacity:25,effectiveFrom:'2026-12-01'}];assert.equal(applicableCapacity(versions,v,date).id,1);assert.equal(applicableCapacity(versions,v,'2026-12-05').id,2);
+ const scoped=[{...v,id:3,location:'DCH',capacity:30},{...v,id:4,location:'Sasti',jobType:'Coal haulage',capacity:22}];assert.equal(applicableCapacity(scoped,v,date,{location:'Sasti',jobType:'Coal haulage'}).id,4);assert.equal(applicableCapacity(scoped,v,date,{location:'DCH',jobType:'Coal haulage'}).id,3);
  assert.throws(()=>productionFilters({site,date:'2026-02-31',mode:'day'}));
 });
 test('day and shift volumes reconcile mixed tipper capacities; machine HMR counts once',()=>{

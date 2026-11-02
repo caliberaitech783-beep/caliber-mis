@@ -15,7 +15,7 @@ test('production API gates batches and permissions, approves effective capacitie
  CREATE TABLE mis_log_books(id BIGINT PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,asset_id BIGINT,revision INTEGER,data JSONB,deleted_at TIMESTAMPTZ);
  CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,closed_at TIMESTAMPTZ,closure_revision INTEGER,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ);
  CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT,snapshot JSONB);`);
- for(const [id,name,data] of [[1,'Equipment master',{door:'T1',category:'Vehicle',site:'Sasti',make:'Volvo',model:'FM',password:'secret-field'}],[2,'Equipment master',{door:'PC1',category:'Equipment',site:'Sasti'}],[3,'Shift Master',{site:'Sasti',shiftCode:'A',startTime:'05:00',endTime:'13:00'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,data]);
+ for(const [id,name,data] of [[1,'Equipment master',{door:'T1',category:'Vehicle',site:'Sasti',make:'Volvo',model:'FM',password:'secret-field'}],[2,'Equipment master',{door:'PC1',category:'Equipment',site:'Sasti'}],[3,'Shift Master',{site:'Sasti',shiftCode:'A',startTime:'05:00',endTime:'13:00'}],[4,'Region master',{name:'WCL',sites:'Sasti | DCH'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,data]);
  const admin={role:'super',login:'fixture-admin',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees','Equipment master','Reports']}},reader={role:'super',login:'fixture-reader',permissions:{separateMisCredentials:true,misDesktopAccess:['Reports']}};
  const app=express();app.use(express.json());const auth=(req,res,next)=>{const token=req.headers.authorization;if(!token)return res.status(401).json({error:'Sign in'});req.session=token==='admin'?admin:reader;req.logBookScope={sites:[canonicalSiteName('Sasti')]};if(!misRequestAllowed(req.session,req))return res.status(403).json({error:'Menu permission denied'});next();};
  registerProductionReports(app,{pool,protect:[auth],ensureBooks:async()=>{}});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
@@ -25,7 +25,8 @@ test('production API gates batches and permissions, approves effective capacitie
  assert.equal((await call(report,'')).status,401);assert.equal((await call(report.replace('site=Sasti','site=Jayant'))).status,403);assert.equal((await call('/api/reports/production?site=Sasti&date=2026-11-31&mode=day')).status,400);
  let response=await call(report),result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.ready,false);assert.deepEqual(result.doorRows,[]);assert.match(response.headers.get('cache-control'),/no-store/);
  assert.equal((await call('/api/capacity-master','reader')).status,403);
- const approval={make:'Volvo',model:'FM',capacity:20,effectiveFrom:'2026-11-01',reason:'Approved test reference'};
+ result=await (await call('/api/capacity-master','admin')).json();assert.deepEqual(result.locations,['DCH','Sasti']);assert.equal(result.pairs[0].location,'Sasti');
+ const approval={location:'Sasti',jobType:'Coal haulage',make:'Volvo',model:'FM',capacity:20,effectiveFrom:'2026-11-01',reason:'Approved test reference'};
  assert.equal((await call('/api/capacity-master','reader',approval)).status,403);assert.equal((await call('/api/capacity-master','admin',{...approval,capacity:0})).status,400);assert.equal((await call('/api/capacity-master','admin',{...approval,model:'unknown'})).status,400);
  response=await call('/api/capacity-master','admin',approval);assert.equal(response.status,201,JSON.stringify(await response.json()));
  await pool.query("INSERT INTO mis_vlb_batches VALUES('batch','Batch S1','Sasti','2026-11-01','S1',NULL,0,NULL,NULL)");
@@ -39,5 +40,5 @@ test('production API gates batches and permissions, approves effective capacitie
  await pool.query('UPDATE mis_vlb_batches SET closed_at=NULL');result=await (await call(report)).json();assert.equal(result.ready,false);assert.deepEqual(result.machineRows,[]);
  assert.equal((await call('/api/capacity-master','admin',approval)).status,409);
  const results=await Promise.all([25,30].map(capacity=>call('/api/capacity-master','admin',{...approval,capacity,effectiveFrom:'2100-01-01'})));assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
- assert.equal(Number((await pool.query('SELECT capacity FROM mis_capacity_versions WHERE effective_from=$1',['2026-11-01'])).rows[0].capacity),20);
+ const stored=(await pool.query('SELECT location,job_type,capacity FROM mis_capacity_versions WHERE effective_from=$1',['2026-11-01'])).rows[0];assert.equal(stored.location,'Sasti');assert.equal(stored.job_type,'Coal haulage');assert.equal(Number(stored.capacity),20);
 });
