@@ -9,6 +9,7 @@ import {employeeAtLocation} from '../log-book-access.mjs';
 import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
 import SmartSelect from './smart-select.jsx';
 import DoorCombobox from './door-combobox.jsx';
+import ManualAliasDialog from './manual-alias-dialog.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
 import {matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
@@ -49,6 +50,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
  const initialLocationFocused=useRef(false);
  const [registerOpen,setRegisterOpen]=useState(false);
+ // Manual entry: a machine written on the card that no Pulse door matches is paired to a Pulse record here (same alias rules and OTP as scanning).
+ const [aliasWritten,setAliasWritten]=useState('');
 
  useEffect(()=>{
    const saveShortcut=event=>{
@@ -160,7 +163,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 <Field label="Book date">{vlbBatch?<input aria-label="Book date" readOnly value={form.bookDate}/>:<ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/>}</Field>
 <Field label="Book no." hint={vehicle?'VLB_M/DDTH-MMMYY/{S1|S2|S3|D|N}/001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><output className="logbook-book-number">{saved?.book_no||'AUTO'}</output></Field>
 <Field label="Project name"><input maxLength={500} value={form.projectName||form.location} onChange={e=>update('projectName',e.target.value)}/></Field>
-<Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading}/></Field>
+<Field label={vehicle?'Door no.':'Equipment'} hint={asset?`${asset.name}${asset.registration?' · '+asset.registration:''}`:assetMessage||'Select from Equipment Master'}><DoorCombobox key={kind+':'+form.location} records={options?.assets||[]} kind={kind} location={form.location} value={form.assetId} onSelect={selectAsset} disabled={!editing||working} loading={loading} onUnmatched={written=>setAliasWritten(written)}/>{aliasWritten&&<ManualAliasDialog session={session} kind={kind} written={aliasWritten} site={form.location} assets={options?.assets||[]} otpEnabled={Boolean(options?.equipmentAliasOtp)} onPaired={async asset=>{selectAsset(String(asset.id));setAliasWritten('');try{setOptions(await api('/api/log-books/options'));}catch{}}} onDismiss={()=>setAliasWritten('')}/>}</Field>
 <Field label="Wo.Cont." hint={eligibleWorkOrders.length===1?'Latest work order for this location/date':eligibleWorkOrders.length>1?'Latest eligible work order selected; equal-date ties require selection':'No matching Work Order available'}><SmartSelect showOverflowValue disabled={!editing||working} value={form.workOrderId||''} onChange={e=>update('workOrderId',e.target.value)}><option value="">Select Work Order / Contract</option>{eligibleWorkOrders.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></Field>
 <Field label="Employee ID / Caliber ID" hint="Enter either ID to fetch the employee name"><SmartSelect searchable showOverflowValue name="employeeId" aria-label="Employee ID / Caliber ID" disabled={!editing||working||!form.location} required value={form.employeeId} onChange={e=>{update('employeeId',e.target.value);const row=options?.employees.find(r=>r.id===e.target.value);if(row)setSuccess((vehicle?'Driver':'Operator')+' found: '+row.name+' · '+row.caliberId);}}><option value="">Select employee at this location</option>{(options?.employees||[]).filter(row=>employeeAtLocation(row,form.location)).map(row=><option key={row.id} value={row.id}>{row.caliberId||row.employeeCode}{row.caliberCode?' / '+row.caliberCode:''} · {row.name}</option>)}</SmartSelect></Field>
 <Field label="Shift" hint={form.cardShift?'Marked on card: '+(CARD_SHIFTS[form.cardShift]?.label||form.cardShift):'Location-specific Shift Master'}><SmartSelect showOverflowValue name="shiftId" searchable disabled={Boolean(vlbBatch)||!editing||working} required value={form.shiftId} onChange={e=>{update('shiftId',e.target.value);}}><option value="">Select shift</option>{shifts.map(shift=><option key={shift.id} value={shift.id}>{shift.name} · {shift.startTime}–{shift.endTime}</option>)}</SmartSelect></Field>

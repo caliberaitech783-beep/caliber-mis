@@ -72,7 +72,9 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
 }
 
-export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,fetchImpl=fetch}){
+export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,fetchImpl=fetch,onSnapshot=null}){
+ // Real-time checks that run after every applied snapshot (equipment alias redundancy and shadowing).
+ const afterSnapshot=async()=>{if(!onSnapshot)return;try{await onSnapshot();}catch(e){console.error("Pulse snapshot follow-up failed:",e?.message||e);}};
  let breakdownCache=null;
  const fleetReadsInFlight=new Map();
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
@@ -102,7 +104,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    if(busy)throw new Error('A master sync is already running.');
    if(!token&&!sharedSignIn?.status().connected)throw new Error('Sign in to Pulse II to connect Pulse automatically.');
    busy=true;lastAttempt=new Date().toISOString();
-   try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
+   try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};await afterSnapshot();lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
  };
  return {
@@ -137,7 +139,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
        const snapshot=await fetchMasters(login.token);
        // Credentials are persisted only through the encrypted integration store.
        await save(login.token,String(credentials.username));if(credentialStore)await credentialStore.write('pulse',{username:String(credentials.username),password:String(credentials.password)});token=login.token;username=String(credentials.username);
-       lastAttempt=new Date().toISOString();counts=await applyPulseSnapshot(pool,snapshot);lastSuccess=new Date().toISOString();error='';
+       lastAttempt=new Date().toISOString();counts=await applyPulseSnapshot(pool,snapshot);await afterSnapshot();lastSuccess=new Date().toISOString();error='';
        return {...status(),busy:false};
      }catch(cause){error=cause.message;throw cause;}finally{busy=false;}
    },
@@ -156,8 +158,8 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  };
 }
 
-export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,sharedSignIn,requireSession,requireAdministrator}){
- const service=createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn});
+export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,sharedSignIn,requireSession,requireAdministrator,onSnapshot=null}){
+ const service=createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,onSnapshot});
  app.get('/api/pulse-master-sync',requireSession,requireAdministrator,(_req,res)=>res.json(service.status()));
  for(const action of ['connect','sync','disconnect'])app.post(`/api/pulse-master-sync/${action}`,requireSession,requireAdministrator,async(req,res)=>{
    try{res.json(await service[action](action==='connect'?req.body:undefined));}catch(e){res.status(400).json({error:e.message});}
