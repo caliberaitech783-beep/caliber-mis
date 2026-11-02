@@ -64,12 +64,12 @@ test('real PostgreSQL queries exclude history and batch-only posting is atomic',
  assert.equal(created.data.records.length,1);assert.equal(created.data.records[0].book_no,'CURRENT');
  assert.equal((await assertVlbBatchWrite(pool,data,'alice')).id,created.data.id);
  for(const [name,record] of [['Equipment master',{category:'Vehicle',door:'V1',currentLocation:'Sasti OC',equipmentName:'Tipper'}],['C-Dir Employee master',{name:'Driver',employeeId:'E1',site:'Sasti OC'}],['Shift Master',{site:'Sasti OC',shiftName:'I',shiftCode:'I',startTime:'05:00:00',endTime:'13:00:00'}]])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[name,JSON.stringify(record)]);
- const manual={...data,assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:101,openingHmr:20,closingHmr:21,timeMode:'without',requestKey:randomUUID()};
+ const manual={...data,assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:101,openingHmr:20,closingHmr:21,timeMode:'without',requestKey:randomUUID(),duplicateReason:'Test fixture: second card beside the seeded CURRENT card'};
  const manualSaved=await call('/api/log-books/vehicle','POST',manual);assert.equal(manualSaved.status,201,JSON.stringify(manualSaved));
  const retried=await call('/api/log-books/vehicle','POST',manual);assert.equal(retried.status,200,JSON.stringify(retried));assert.equal(String(retried.data.id),String(manualSaved.data.id));
  const relabel=await call('/api/log-books/vehicle/'+oldId,'PUT',{...manual,revision:1});assert.equal(relabel.status,409,JSON.stringify(relabel));
  assert.equal((await db.query('SELECT book_date::text FROM mis_log_books WHERE id=$1',[oldId])).rows[0].book_date,'2026-10-31');
- await db.query('BEGIN');const saved=await insertLogBook(pool,'vehicle',data,randomUUID(),'alice');await db.query('COMMIT');
+ await db.query('BEGIN');const saved=await insertLogBook(pool,'vehicle',{...data,duplicateReason:'Test fixture: repeated card for the same tipper'},randomUUID(),'alice');await db.query('COMMIT');
  assert.equal(Number((await db.query('SELECT count(*) n FROM mis_vlb_batch_entries WHERE logbook_id=$1',[saved.id])).rows[0].n),1);
  const closed=await call('/api/vlb-batches/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed));
  await assert.rejects(()=>assertVlbBatchWrite(pool,data,'alice'),/closed/);

@@ -7,7 +7,7 @@ import {transformWithOxc} from 'vite';
 const nodes=(tree,predicate)=>{const out=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))out.push(n);visit(n.props.children)};visit(tree);return out};
 test('restoring over a replacement requires preview, explicit replacement consent, exact approval and delivered OTP',async()=>{
  const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=v]};
- const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
+ const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
  const {code}=await transformWithOxc(source,'vlb-batch-deletion.jsx',{jsx:{runtime:'classic'}});
  const Component=new Function('React','useState','useEffect',code+';return VlbBatchDeletion')(React,useState,()=>{});
  let changed=0,dismissed=0;const calls=[],preview={id:'request',operation:'restore',approval:'Approve restore request hash',requiresReplacementDeletion:true,recipient:'OTP recipient',expiresAt:'2026-11-01T10:00:00Z',manifest:{original:{name:'B01',counts:{cards:1},restoreUntil:'2026-11-10T10:00:00Z'},target:{batch:{id:'new',name:'B02'},records:[{id:1,bookNo:'VLB1'}],scans:[],backups:[]}}};

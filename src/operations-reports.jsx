@@ -2,12 +2,14 @@ import './log-book-readability.css';
 import SmartSelect from './smart-select.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import ProductionReports from './production-reports.jsx';
+import MeterContinuityReport from './meter-continuity-report.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
+ if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
  if(['manpower','employee','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
  return <SavedOperationReports {...props}/>;
 }
