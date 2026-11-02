@@ -80,3 +80,19 @@ test('all status counts equal the uploaded-card total for small and large batche
   assert.equal(CARD_GROUPS.reduce((sum,group)=>sum+counts[group.id],0)+counts.pending,size);
  }
 });
+
+test('a refused automatic save turns an All okay card into Needs attention with the server reason, until its revision changes',async()=>{
+ const {withAutoSaveFailures,AUTO_SAVE_REFUSED}=await import('../scan-card-groups.mjs');
+ const okay={id:'c1',revision:2,status:'review',draft:{doorText:'V1',assetId:'1',openingHmr:1},raw_fields:{},checks:{errors:[],warnings:['Batch values applied.']}};
+ const saved={id:'c2',revision:1,status:'posted',draft:{},raw_fields:{}};
+ const failures=new Map([['c1:2','VLB is locked for batch B5.'],['c2:1','ignored for saved cards']]);
+ const [card,posted]=withAutoSaveFailures([okay,saved],failures);
+ assert.equal(card.autoSaveError,'VLB is locked for batch B5.');
+ assert.deepEqual(card.checks.errors,[AUTO_SAVE_REFUSED+'VLB is locked for batch B5.']);
+ assert.deepEqual(card.checks.warnings,['Batch values applied.']);
+ assert.equal(posted,saved);
+ assert.equal(withAutoSaveFailures([{...okay,revision:3}],failures)[0].autoSaveError,undefined,'an edited card gets a fresh attempt');
+ const same=[okay];assert.equal(withAutoSaveFailures(same,new Map()),same,'no failures: the same array comes back');
+ const summary=reviewGroupSummary([card,posted],'vehicle',null);
+ assert.equal(summary.orange,1);assert.equal(summary.saved,1);assert.equal(summary.waiting,0);assert.equal(summary.attention,1);
+});
