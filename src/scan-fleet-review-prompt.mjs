@@ -1,6 +1,7 @@
 import {scanFleetSignature} from '../scan-fleet-assignment.mjs';
 
-export const fleetReviewKey=card=>card.id+':'+card.raw_fields.fleetReview.signature;
+// Corrections change the signature; the prompt belongs to the whole card.
+export const fleetReviewKey=card=>card.id;
 
 export function nextFleetReviewPrompt(cards,dismissed){
  return cards.find(card=>['review','approved','error'].includes(card.status)

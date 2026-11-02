@@ -38,3 +38,10 @@ test('entry summary names cards, saved, unsaved and skipped duplicates',()=>{
  assert.equal(describeScanEntry({cards:1,posted:1}),'1 card · 1 saved');
  assert.equal(describeScanEntry({}),'0 cards');
 });
+
+test('the open entry describes itself from the card status summary so the chip and the tiles agree',()=>{
+ assert.equal(describeScanEntry({cards:37,posted:24},{total:37,saved:24,waiting:11,attention:2,pending:0}),'37 cards · 24 saved · 11 waiting to save · 2 need attention');
+ assert.equal(describeScanEntry({cards:3,posted:1,duplicates:1},{total:3,saved:1,waiting:1,attention:1,pending:0}),'3 cards · 1 saved · 1 waiting to save · 1 needs attention · 1 duplicate skipped');
+ assert.equal(describeScanEntry({cards:5,posted:5},{total:5,saved:5,waiting:0,attention:0,pending:0}),'5 cards · 5 saved');
+ assert.equal(describeScanEntry({cards:4,posted:0},{total:4,saved:0,waiting:0,attention:1,pending:3}),'4 cards · 1 needs attention · 3 reading');
+});
