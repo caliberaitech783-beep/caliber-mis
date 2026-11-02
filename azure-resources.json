@@ -18,5 +18,18 @@
       "name": "asuid.pulse-ll",
       "value": "A67E44683AB2657DF6192DFCDB480864D2EEE4A2E4317846393AAD55A266C60E"
     }
-  ]
+  ],
+  "testPlatform": {
+    "status": "planned; provision with docs/test-platform-setup.md and record the final names here",
+    "webApp": "caliber-mis-test-783",
+    "resourceGroup": "caliber-mis-test-rg",
+    "appServicePlan": "asp-caliber-mis-test",
+    "region": "centralindia",
+    "databaseServer": "caliber-mis-test-pg-783.postgres.database.azure.com",
+    "database": "caliber_mis",
+    "deploymentIdentity": "github-caliber-mis-test",
+    "githubEnvironment": "test",
+    "customDomain": "pulse-test.cmll.in (optional)",
+    "dnsStatus": "not configured"
+  }
 }
