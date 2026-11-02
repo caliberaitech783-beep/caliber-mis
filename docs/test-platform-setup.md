@@ -98,7 +98,7 @@ The production workflow re-checks on every run that the environment still has a 
 
 ### 1.2 A federated credential for approved production runs
 
-The live deployment identity today has one federated credential, for pushes to `main`. A job that references a GitHub environment presents a different subject, `repo:caliberaitech783-beep/caliber-mis:environment:production`, so the same identity needs one more credential. Cloud Shell:
+The live deployment identity today has one federated credential, for pushes to `main`. A job that references a GitHub environment presents a different subject, so the same identity needs one more credential. This repository has GitHub's *immutable subject* OIDC setting on (`gh api repos/caliberaitech783-beep/caliber-mis/actions/oidc/customization/sub` shows `use_immutable_subject: true`), so the subject carries the owner and repository IDs: `repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production`. The plain form without IDs does not match; the first production release on 2 November 2026 failed on exactly this (`AADSTS700213 ... subject 'repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production'`). When in doubt, copy the subject from the *Login to Azure* step of the failed run, which prints it under "Federated token details". Cloud Shell:
 
 ```bash
 az ad app list --all --query "[].{displayName:displayName,appId:appId,objectId:id}" -o table
@@ -112,14 +112,14 @@ LIVE_APP_OBJECT_ID=$(az ad app show --id "$LIVE_APP_ID" --query id -o tsv)
 az ad app federated-credential list --id "$LIVE_APP_OBJECT_ID" --query "[].{name:name,subject:subject}" -o table
 ```
 
-Expected: a credential with subject `repo:caliberaitech783-beep/caliber-mis:ref:refs/heads/main`. Keep it: the `Diagnose MIS deployment` and `Recover stalled MIS App Service` workflows still sign in with it. Add the second one:
+Expected: a credential for `main` pushes, with subject `repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:ref:refs/heads/main` (or the plain form without IDs if it was created before the immutable-subject setting). Keep it: the `Diagnose MIS deployment` and `Recover stalled MIS App Service` workflows still sign in with it. Add the second one:
 
 ```bash
 cat > production-environment-credential.json <<'EOF'
 {
   "name": "github-production-environment",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:caliberaitech783-beep/caliber-mis:environment:production",
+  "subject": "repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production",
   "description": "Pulse-II production releases approved in the GitHub production environment",
   "audiences": ["api://AzureADTokenExchange"]
 }
@@ -294,7 +294,7 @@ cat > test-environment-credential.json <<'EOF'
 {
   "name": "github-test-environment",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:caliberaitech783-beep/caliber-mis:environment:test",
+  "subject": "repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:test",
   "description": "Pulse-II test platform releases from main",
   "audiences": ["api://AzureADTokenExchange"]
 }
@@ -501,9 +501,9 @@ The GitHub secrets, variables, environment `test` and the identity `github-calib
 
 | Symptom | Cause and fix |
 |---|---|
-| Test workflow fails at *Login to Azure* with `AADSTS70021: No matching federated identity record found` | The federated credential subject does not match. It must be exactly `repo:caliberaitech783-beep/caliber-mis:environment:test` (section 6). |
+| Test workflow fails at *Login to Azure* with `AADSTS70021: No matching federated identity record found` | The federated credential subject does not match. It must be exactly `repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:test` (section 6; the IDs come from the immutable-subject setting, see section 1.2). |
 | Production workflow fails at *Confirm the production environment still requires a reviewer* | Section 1.1 was not done or the rule was removed. Add the required reviewer and start the release again. |
-| Production workflow fails at *Login to Azure* with `AADSTS70021` | Section 1.2 was not done: the live identity lacks the `environment:production` credential. |
+| Production workflow fails at *Login to Azure* with `AADSTS70021` | Section 1.2 was not done, or the credential was added with the plain subject without owner and repository IDs. The subject must be `repo:caliberaitech783-beep@313449839/caliber-mis@1425843232:environment:production`; the failed step prints the presented subject under "Federated token details". |
 | Production run is refused with *not allowed to deploy to production due to environment protection rules* | The ref is not a `release-*` tag or `main`. Tag the commit as in `docs/release-safety-plan-2026-11-02.md`, section 6. |
 | *Commit … is not on main* | The tag points at a commit that never reached `main` (so the test platform never served it). Tag the commit shown by `/api/health` on the test site instead. |
 | App log: `Shared MIS administration requires the approved Azure database server` | `MIS_DATABASE_CONNECTION_MODE` was copied. Delete that setting on the test app (rule 2). |
