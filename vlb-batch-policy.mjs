@@ -3,6 +3,7 @@ import {requireOperationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {vlbRecordShift} from './vlb-batch-format.mjs';
 import {VLB_TWO_STAGE_SCHEMA,twoStageEnabled} from './vlb-two-stage.mjs';
+import {VLB_APPROVAL_OTP_SCHEMA} from './vlb-approval-otp.mjs';
 
 export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batches(
@@ -69,7 +70,8 @@ export const VLB_BATCH_SCHEMA=`
   WHERE saved_lock_policy=FALSE AND book_date>=$$2026-11-01$$ RETURNING id,created_by
  ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
  SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;
- ${VLB_TWO_STAGE_SCHEMA}`;
+ ${VLB_TWO_STAGE_SCHEMA}
+ ${VLB_APPROVAL_OTP_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
 export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");

@@ -68,11 +68,11 @@ export async function lockVlb(client,batch,actor,{assets}={}){
  return locked;
 }
 
-export async function unlockVlb(client,batch,actor,{reason=''}={}){
+export async function unlockVlb(client,batch,actor,{reason='',approvedBy=null,via='screen'}={}){
  if(batchStage(batch)!=='elb_open')fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  const opened=(await client.query("UPDATE mis_vlb_batches SET stage='vlb_open',vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
- await auditVlbBatch(client,batch,actor,'vlb_unlocked',{reason});
+ await auditVlbBatch(client,batch,actor,'vlb_unlocked',{reason,via,...(approvedBy?{approvedBy}:{})});
  return opened;
 }
 

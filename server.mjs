@@ -7845,7 +7845,7 @@ const logBookScope=async session=>logBookSiteScope(session,await currentUserReco
 registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
-const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request})});
+const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});
 // PM approvals by OTP for express site transfers and new equipment raised from a VLB/ELB batch.
 // Telegram first, WhatsApp fallback. Pulse is the only Equipment master: until Pulse exposes write
 // endpoints the writer records local-only so the test platform can trial the flow end to end.

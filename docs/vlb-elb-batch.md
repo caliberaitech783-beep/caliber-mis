@@ -21,6 +21,7 @@ One batch per site, date and shift carries both the tipper cards (Vehicle Log Bo
 | ELB stage covers the whole fleet | Every machine booked at the site in Pulse appears, not only the loaders. Trips are filled automatically from VLB. Each machine gets a shift status: working, breakdown, maintenance, no operator, not in use. |
 | ELB entry style | One small dialog per machine with Next, Previous, Skip and auto-save. Only hours, status and breakdown details are typed. |
 | Go-live | Test platform first with a feature flag; live on Pulse-II only after team sign-off. |
+| Reopen and Unlock VLB by OTP (added 2 November 2026) | The site PM may approve a batch reopening, or an Unlock VLB, by reading out an OTP to the MIS user by phone instead of signing in. On-screen approval stays available. A PM who is also the MIS requester may approve their own reopening request on screen; the audit records both roles. |
 
 ## 3. Batch lifecycle
 
@@ -30,7 +31,7 @@ Today a batch has one lifecycle field, `closed_at`. Replace it with an explicit 
 |---|---|---|
 | `vlb_open` | Add, correct, delete VLB cards (manual, scan, PDF upload). ELB entry is disabled for this batch. | **Lock VLB** by the batch owner. Blocked while any VLB card is awaiting a transfer or has unresolved machine labels. |
 | `elb_open` | VLB cards are frozen. The full site fleet list opens, trips pre-filled from VLB. Work through machines one by one in the stepper dialog, or scan/upload ELB cards. | **Close batch** by the batch owner. Blocked by the checks in section 5. |
-| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** via the existing reopen request and PM approval. Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action from the PM returns it to `vlb_open` and clears the machine snapshot. |
+| `closed` | Everything frozen. Reports and exports run. `closed_at` set, `closure_revision + 1`. | **Reopen** via the existing reopen request and PM approval, given on screen or by the PM's OTP (section 6, last part). Reopen returns the batch to `elb_open`; a second explicit "Unlock VLB" action, by the PM on screen or by the MIS user with the PM's OTP, returns it to `vlb_open` and clears the machine snapshot. |
 
 Batch creation sets `stage='vlb_open'`. The "one open batch per site" guard treats `vlb_open` and `elb_open` both as open, which it already does because `closed_at IS NULL` in both.
 
@@ -260,6 +261,18 @@ Guard rails:
 - One pending new-equipment request per door per site at a time. Same OTP controls as transfers: ten minutes, five attempts, one request per minute. The draft form is kept so the operator does not retype.
 - Express creation is allowed only from a VLB or ELB entry screen with an open batch. It is not a general master-entry shortcut.
 
+### PM approval by OTP for reopen and Unlock VLB (added 2 November 2026)
+
+Both batch controls that need the site PM can now be approved by phone, with the same OTP engine and the same controls as the express transfer: six digits, hash only, ten minutes, five wrong attempts, one request per minute, single use. On-screen approval is unchanged and remains available; the OTP is a faster alternative, not a replacement.
+
+**Reopen a closed batch.** In the reopen dialog the MIS user types the reason and presses *Request reopen OTP*. The server creates (or reuses) the same reopening request the screen uses, then sends the code to every current Project Manager of the batch site on Telegram, or WhatsApp when Telegram is not linked. The message names the batch, the site, date and shift, the requester and the reason, and says that reading out the code is the approval. The MIS user phones the PM, enters the code, and the request is marked approved (`decided_by` = the first PM the code went to, `decision_note` = "Approved by OTP sent to pm1, pm2"). The server then reopens the batch at once for that MIS user, exactly as the Reopen button would. If the reopen itself is blocked, for example another batch is open at the site, the approval is kept and the Reopen button works once the blocker is cleared. The OTP button is hidden while the owner-authorized PM trial is active, because no approval is needed then.
+
+**Unlock VLB.** At the machine stage the batch owner or any MIS user sees *Unlock VLB (PM OTP)* next to the PM-only *Unlock VLB*. They type the reason, request the code, phone the PM and enter it. VLB unlocks with the usual effect (machine snapshot cleared, stage back to `vlb_open`); the audit entry `vlb_unlocked` carries `via: otp`, the PM logins the code went to, and the reason.
+
+**Self-approval.** A user who is both the site PM and the MIS requester may approve their own reopening request on screen. The earlier block was removed on the owner's instruction; the audit still shows the same login as requester and approver.
+
+**Storage and routes.** Table `mis_vlb_approval_otps` (purpose `reopen` or `unlock_vlb`, reopen request id, reason, requester, PM logins, hash, expiry, attempts, status). Routes: `POST /api/vlb-batches/:id/approval-otp {purpose, reason}`, `POST /api/vlb-batches/:id/approval-otp/:otpId/verify {otp}`, `GET /api/vlb-batches/:id/approval-otp`. The batch detail returns `approvalOtps` (the requester's live codes, so a reload resumes the entry) and `canRequestUnlockOtp`. Only the user who requested a code can enter it, and only against the batch it was issued for.
+
 ## 7. Machine-wise batch report
 
 Available on a closed batch from the existing **View report** button, as a second section after the card list, and as part of the batch PDF/Excel.
@@ -330,3 +343,5 @@ Built on branch `feature/vlb-elb-two-stage` (1 November 2026). Server modules: `
 The feature is on by default. Setting  on the App Service turns it off without a redeploy: the new tables stay but unused, the new routes answer 409, and the batch API returns to the single-step shape. That is the rollback.
 
 Open items before go-live: the two Pulse write endpoints (section 6), a per-site option for a destination-PM OTP, and the team's change list from the trial.
+
+2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.

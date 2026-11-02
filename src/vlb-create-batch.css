@@ -64,3 +64,4 @@
 .vlb-fleet-stepper-actions{align-items:center}.vlb-fleet-stepper-actions .vlb-draft-indicator{margin-left:auto}.vlb-fleet-stepper button{font:inherit;padding:9px 16px;border:1px solid var(--border,#cfbee0);border-radius:8px;background:var(--panel,#fff);color:var(--text,#251b30);cursor:pointer}.vlb-fleet-stepper button:disabled{opacity:.5;cursor:not-allowed}.vlb-fleet-stepper .vlb-approval-primary{background:var(--brand-purple,#6036a0);border-color:var(--brand-purple,#6036a0);color:#fff}
 .vlb-machine-report-group th{text-align:left;background:color-mix(in srgb,var(--brand-purple,#6036a0) 8%,var(--panel,#fff))}.vlb-machine-report-summary{font-size:14px;font-weight:650}
 @media(max-width:700px){.vlb-fleet-fields{grid-template-columns:1fr}.vlb-fleet-stepper{padding:16px}}
+.vlb-approval-otp{margin:10px 0;display:grid;gap:8px}.vlb-approval-otp .vlb-approval-help{margin:0}

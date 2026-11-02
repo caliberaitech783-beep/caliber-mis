@@ -80,7 +80,7 @@ test('approval popup requests a reason, shows pending state, and consumes only a
  const slots=[];let cursor=0;const calls=[];let changes=0,dismissed=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const fetch=async(url,request)=>{calls.push({url,body:JSON.parse(request.body)});return {ok:true,json:async()=>url.endsWith('/reopen-request')?{id:'request',requested_by:'alice',status:'pending',closure_revision:1}:{id:'batch',records:[]}}};
- const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime},['VlbReopenDialog']);
+ const {VlbReopenDialog}=await compile('vlb-reopen-dialog.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,displaySiteName,formatDisplayDateTime,ApprovalOtpPanel:()=>null},['VlbReopenDialog']);
  let batch={id:'batch',name:'B01',site:'Sasti OC',closed_at:'2026-10-30',closure_revision:1,canRequestReopen:true,requests:[]};const actor={login:'alice',mis:true};
  const render=()=>{cursor=0;return VlbReopenDialog({session:{token:'test'},batch,actor,onChanged:async()=>{changes++},onDismiss:()=>dismissed++})};
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];

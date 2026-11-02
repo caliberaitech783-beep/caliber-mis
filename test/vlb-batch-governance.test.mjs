@@ -55,7 +55,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  assert.equal((await call(path+'/reopen','POST',{})).status,403);
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'production')).status,403,'Production Manager is not PM');
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'approve'},'wrongpm')).status,404,'another site PM cannot even view this batch');
- const dualReq=await call(path+'/reopen-request','POST',{reason:'Dual-role correction needed'},'dual');assert.equal(dualReq.status,200);assert.equal((await call(path+'/reopen-decision','POST',{requestId:dualReq.data.id,decision:'approve'},'dual')).status,403,'no self approval');
+ const dualReq=await call(path+'/reopen-request','POST',{reason:'Dual-role correction needed'},'dual');assert.equal(dualReq.status,200);const dualDecision=await call(path+'/reopen-decision','POST',{requestId:dualReq.data.id,decision:'approve'},'dual');assert.equal(dualDecision.status,200,'a PM who is also the MIS requester may approve their own request');assert.equal(dualDecision.data.decided_by,'dual');
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject'},'pm')).status,400,'rejection requires a reason');
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:req.data.id,decision:'reject',note:'Please check the additional cards'},'pm')).status,200);
  assert.equal((await call(path+'/reopen','POST',{})).status,403);

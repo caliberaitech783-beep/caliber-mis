@@ -124,7 +124,7 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
  await syncElbBatchRecord(client,result.rows[0],createdBy);
  return result.rows[0];
 }
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,getSiteScope=async session=>logBookSiteScope(session)}){
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
@@ -132,7 +132,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  const batchScope=(req,res,next)=>{if(req.query?.scan!=='1')return protect[2](req,res,next);return requireAdministrator(req,res,error=>{if(error)return next(error);req.logBookScope={sites:null,label:'All sites'};next()})};
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
- registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})}});
+ registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
