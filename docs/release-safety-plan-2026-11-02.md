@@ -38,6 +38,7 @@ Existing protections that stay: the "Update available, refresh when ready" banne
 ## 4. Operating rules
 
 1. **`main` is live.** A merge is a production release, not a staging step. Nothing is merged that has not passed the full test suite and the release smoke test below.
+   Since 2 November 18:40 this is enforced by GitHub branch protection on `main`: changes arrive only through a pull request, the `build` and `logbook-layout` checks must pass on a branch that is up to date with `main`, administrators are not exempt, and force pushes and deletions are refused. A pull request that falls behind `main` is updated (`gh pr update-branch`) and re-checked before it can merge. Documentation-only merges (`docs/`, `*.md`) do not trigger a release, so they never restart the live app.
 2. **New behaviour ships off.** Anything that changes what an operator sees on the card board goes behind a flag that defaults off in production. The flag's state is visible on `/api/health`.
 3. **Release smoke test, every release, ten minutes:** upload one real PDF; open the equipment review dialog; press F5; confirm the same entry, cards and card reopen; open `/api/health` and confirm `commit` and the flags; open `GET /api/client-errors` and confirm nothing new.
 4. **Operators are told.** A release restarts the app for about 4 minutes. During that window uploads pause and resume on their own; the operator sees "Server busy or restarting · card N will be sent again". Nobody needs to stop work, but the WhatsApp group is told before and after.
@@ -46,5 +47,5 @@ Existing protections that stay: the "Update available, refresh when ready" banne
 ## 5. Still open
 
 - **A real test platform.** A second Azure web app and PostgreSQL database restored from backup, with `main` deploying there and production deploying from a tag after sign-off. This needs Azure subscription access that the build machine does not have. Until it exists, rules 1 to 3 are the only gate.
-- **Direct pushes to `main`.** The 17:57 release was a direct push, not a pull request. Branch protection requiring a pull request and the CI run would stop that.
+- ~~**Direct pushes to `main`.**~~ Closed 2 November 18:40: branch protection now requires a pull request with passing checks (see rule 1). The 17:57 and 18:21 releases were direct pushes; the next attempt is refused by GitHub.
 - **The 17:29 error itself** is not identified. If it recurs, protection 1 names it within minutes.
