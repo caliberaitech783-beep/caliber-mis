@@ -1,4 +1,5 @@
 import {fleetDoorKey} from './scan-fleet-door.mjs';
+import {cardMachineKey} from './scan-machine-rules.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripCardLocation} from './scan-site-match.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
@@ -8,7 +9,9 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor=''){
  const site=String(draft.location||'').trim();
  if(!door||!site||!/[0-9]/.test(door))throw Error('Enter a readable machine door number and site before Pulse fleet verification. The scan is retained.');
  const key=fleetDoorKey(door);
- const matches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row))===key);
+ // An approved card alias on the Pulse record answers for the written label in either notation.
+ const aliasKeys=row=>(Array.isArray(row.cardAliases)?row.cardAliases:[]).flatMap(alias=>[fleetDoorKey(alias),cardMachineKey(alias,'equipment')]).filter(Boolean);
+ const matches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row))===key||aliasKeys(row).includes(key));
  if(matches.length>1)throw Error('Pulse has duplicate machine identifiers for '+door+'. Resolve the Equipment Master duplicates before saving. The scan is retained.');
  const current=matches[0]?.currentLocation||matches[0]?.location||matches[0]?.site||'';
  if(matches.length&&canonicalSiteName(tripCardLocation(current))===canonicalSiteName(tripCardLocation(site)))return null;

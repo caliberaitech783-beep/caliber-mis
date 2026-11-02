@@ -12,7 +12,8 @@ import {createPdfUploadSession,transferScanGroups} from './scan-upload-pipeline.
 import ScanBatchMismatchDialog from './scan-batch-mismatch-dialog.jsx';
 import {scanContextReady,scanContextSelectionChanged} from '../scan-batch-context.mjs';
 import {scanReviewHelp,scanReviewFieldSection} from './scan-review-layout.mjs';
-import {cardMachineHint,selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../scan-machine-rules.mjs';
+import {cardMachineHint,aliasMachineHint,selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../scan-machine-rules.mjs';
+import {aliasForSelection,attachEquipmentAliases} from '../equipment-alias-rules.mjs';
 import {trimScanPreview} from './scan-preview-crop.mjs';
 import ScanCorrectionStatus from './scan-correction-status.jsx';
 import ScanExtractionStatus,{formatExtractionTime,ScanExtractionLine} from './scan-extraction-status.jsx';
@@ -79,6 +80,8 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
  const fleetCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.issues?.length>0);
  const fleetErrorCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.error);
  const fleetDialogCard=fleetCards.find(card=>card.id===fleetOpenId);
+ // A dropdown choice for a written machine that no Pulse door matches (L21 → DEMO21-00179) is saved once as an alias on that asset and applied to every later card and batch.
+ const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
  const resolveFleet=async(card,action)=>{if(action==='delete'&&!window.confirm('Delete only card '+card.ordinal+' and its original scan?'))return;setBusy(true);setError('');try{const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',body:JSON.stringify({action,revision:card.revision})});for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);if(action==='recheck'&&result.ready)setOptions(await api('/api/log-books/options?scan=1'));await load(card.batch_id);setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setNotice(result.deleted?'Selected card deleted manually. Other cards are unchanged.':result.rejected?'Card '+card.ordinal+' rejected. Other cards are unchanged.':action==='transfer-pending'?'Card held: complete the existing transfer in Pulse, then recheck.':result.ready?'Pulse confirms the equipment site. This card can continue.':'Transfer is still incomplete or equipment is not registered. Card remains blocked.');}catch(error){setError(error.message)}finally{setBusy(false)}};
  const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,...fleetCards.map(fleetReviewKey)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle'){const origin=new URL(window.location.href);origin.searchParams.set('scanEquipment',card.id);window.history.replaceState(null,'',origin.pathname+origin.search+origin.hash);navigateReview(true,'all');const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.set('scanReviewReturn',card.id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}};
  const backFromReview=()=>{const params=new URLSearchParams(window.location.search),returnCard=params.get('scanReviewReturn');navigateReview(false);const url=new URL(window.location.href);url.searchParams.delete('scanReviewReturn');if(returnCard&&fleetCards.some(card=>card.id===returnCard)){url.searchParams.set('scanEquipment',returnCard);setFleetOpenId(returnCard);}else url.searchParams.delete('scanEquipment');window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
@@ -251,7 +254,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
           aria-label={l+' row '+(i+1)}
           data-trip-equipment={i}
           value={tripEquipmentSelectionValue(r,options?.assets||[],draft.location,draft.tripBodyRuleVersion||1)}
-          onChange={e=>update('trips',draft.trips.map((row,n)=>n===i?selectTripEquipment(row,e.target.value,options?.assets||[],draft.location):row))}
+          onChange={e=>{const assets=options?.assets||[],chosen=selectTripEquipment(r,e.target.value,assets,draft.location);update('trips',draft.trips.map((row,n)=>n===i?chosen:row));void learnEquipmentAlias(chosen,assets);}}
          >
           <option value="">Select equipment registered at {draft.location||'this site'}</option>
           {tripEquipmentOptions.map(asset=>{
@@ -261,7 +264,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
          </SmartSelect>
         :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:e.currentTarget.value}:row))}/>}
        {tripEstimateNote(r,k)&&<small className="scan-field-message"><mark>{tripEstimateNote(r,k)}</mark></small>}
-       {k==='equipmentName'&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}
+       {k==='equipmentName'&&aliasMachineHint(r)?<small className="scan-alias-note">{aliasMachineHint(r)}</small>:k==='equipmentName'&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}
        {fieldIssues['trips.'+i+'.'+k]&&<small className="scan-field-message">{fieldIssues['trips.'+i+'.'+k]}</small>}
        {!fieldIssues['trips.'+i+'.'+k]&&draft.timeMode!=='without'&&handoverTimeNote(r,k)&&<small className="scan-handover-note">{handoverTimeNote(r,k)}</small>}
       </label>

@@ -3,6 +3,7 @@ import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
 import {registerEquipmentCreateExpress} from './equipment-create-express.mjs';
+import {registerEquipmentAliases} from './equipment-aliases.mjs';
 import {createOtpDelivery,telegramOutboxSender} from './otp-delivery.mjs';
 import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings} from './vlb-batch-alerts.mjs';
 import {createPulseWriter} from './pulse-writer.mjs';
@@ -7857,6 +7858,8 @@ const pulseMasterWriter=createPulseWriter({env:process.env});
 const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessContext,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),pulseWriter:pulseMasterWriter,ensureSchema:()=>logBooks.initialize()};
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
+// Written-machine aliases (card "L21" = Pulse DEMO21-00179) learned once in scan review and applied to every later card.
+registerEquipmentAliases(app,{pool,protect:requireSession,requireAdministrator,audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment alias',targetReference:reference,changedFields:[],details};}});
 registerEquipmentCreateExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment',targetReference:reference,changedFields:[],details};}});
 // Late VLB batch alerts: Telegram to the site Project Managers and the production head when a
 // shift's batch is not created, or still open, hours after the shift ended (MIS admin settings).
