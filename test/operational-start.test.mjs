@@ -84,7 +84,16 @@ test('real PostgreSQL queries exclude history and batch-only posting is atomic',
  const upload=await call('/api/scan-batches/'+newScan+'/cards','POST',{uploadKey:randomUUID(),filename:'same.png',base64:image.toString('base64')});assert.equal(upload.status,201,JSON.stringify(upload));assert.equal(upload.data.duplicateSkipped,undefined);
  const repeat=await call('/api/scan-batches/'+newScan+'/cards','POST',{uploadKey:randomUUID(),filename:'same.png',base64:image.toString('base64')});assert.equal(repeat.status,200,JSON.stringify(repeat));assert.equal(repeat.data.duplicateSkipped,true);
  const wrappedId=randomUUID();await db.query('INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image_hash,draft,status) VALUES($1,$2,2,$3,$4,$5,$6)',[wrappedId,newScan,'unicode.png','different',JSON.stringify(encodeScanJson({bookDate:'2026-10-31',location:'हिंदी'})),'review']);
- const eligible=(await db.query(`SELECT c.id FROM mis_scan_cards c WHERE ${operationalScanSql('c')}`)).rows.map(r=>r.id);assert(!eligible.includes(oldCard));assert(!eligible.includes(wrappedId));assert(eligible.includes(upload.data.id));
+ // A misread header date inside a 1 November scan entry keeps the card in its entry: the entry date decides, the reader's date only flags a mismatch.
+ const eligible=(await db.query(`SELECT c.id FROM mis_scan_cards c WHERE ${operationalScanSql('c')}`)).rows.map(r=>r.id);assert(!eligible.includes(oldCard));assert(eligible.includes(wrappedId));assert(eligible.includes(upload.data.id));
+ const misreadId=randomUUID(),misreadImage=createCanvas(21,21).toBuffer('image/png'),misreadHash=createHash('sha256').update(misreadImage).digest('hex');
+ await db.query('INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,3,$3,$4,$5,$6,$7)',[misreadId,newScan,'misread.png',misreadImage,misreadHash,JSON.stringify({bookDate:'2026-01-11',location:'Sasti OC',cardShift:'I'}),'review']);
+ const entry=await call('/api/scan-batches/'+newScan);assert.equal(entry.status,200,JSON.stringify(entry));
+ const misread=entry.data.cards.find(c=>c.id===misreadId);assert(misread,'misread-date card stays listed in its scan entry');assert.equal(misread.status,'review');
+ assert(misread.context_mismatch.some(issue=>/^Date: 2026-01-11; expected 2026-11-01/.test(issue)),JSON.stringify(misread.context_mismatch));
+ assert(entry.data.contextGate.mismatches.some(c=>c.id===misreadId),'misread-date card is reported as a mismatch card');
+ const listed=await call('/api/scan-batches');assert.equal(listed.data.batches.find(b=>b.id===newScan).cards,3);
+ const rescan=await call('/api/scan-batches/'+newScan+'/cards','POST',{uploadKey:randomUUID(),filename:'misread-again.png',base64:misreadImage.toString('base64')});assert.equal(rescan.status,200,JSON.stringify(rescan));assert.equal(rescan.data.duplicateSkipped,true);assert.equal(rescan.data.original.cardId,misreadId);
  const report=await call('/api/reports/operations?from=2026-11-01&to=2026-11-01');assert.equal(report.status,200,JSON.stringify(report));assert(report.data.records.every(r=>r.data.bookDate>='2026-11-01'));assert(report.data.cards.every(r=>r.draft?.bookDate!=='2026-10-31'));
  assert.equal((await db.query('SELECT count(*)::int n FROM mis_log_books WHERE id=$1',[oldId])).rows[0].n,1);
  assert.equal((await db.query('SELECT count(*)::int n FROM mis_scan_cards WHERE id=$1',[oldCard])).rows[0].n,1);
