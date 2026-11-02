@@ -58,7 +58,10 @@ test('whole batch deletion retains images for 240 hours, releases scope, and res
  const p=await h.preview(old);assert.equal(p.status,200,JSON.stringify(p.data));assert.equal(p.data.manifest.target.records.length,1);assert.equal(p.data.manifest.target.scans.length,2);
  assert.equal((await h.confirm(p.data)).status,403,'no OTP cannot delete');
  assert.equal((await h.send(p.data)).status,200);
- const first=h.otp(),again=await h.send(p.data);assert.equal(again.status,200);assert.equal(again.data.alreadySent,true,'a repeat click within the minute reuses the delivered OTP');assert.equal(h.otp(),first);
+ const first=h.otp(),again=await h.send(p.data);assert.equal(again.status,200);assert.equal(again.data.alreadySent,true,'a repeat click reuses the delivered OTP');assert.equal(h.otp(),first);
+ assert.equal(Math.round((new Date(again.data.validUntil)-new Date(again.data.sentAt))/60000),10,'one OTP is valid for 10 minutes from sending');
+ await h.db.query("UPDATE mis_vlb_batch_deletions SET otp_requested_at=otp_requested_at-INTERVAL '5 minutes',delivered_at=delivered_at-INTERVAL '5 minutes' WHERE id=$1",[p.data.id]);
+ const later=await h.send(p.data);assert.equal(later.data.alreadySent,true,'minutes later the same OTP is still the one to use');assert.equal(h.otp(),first);
  assert.equal((await h.confirm(p.data,{otp:'000000'})).status,400);
  assert.equal((await h.confirm(p.data)).status,200);
  assert.equal((await h.call('vlb-batches/'+old.id)).status,404);
