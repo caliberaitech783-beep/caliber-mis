@@ -11,13 +11,7 @@ const round=n=>Math.round((n+Number.EPSILON)*1000)/1000;
 const num=v=>v!==null&&v!==undefined&&text(v)!==''&&Number.isFinite(Number(v))?Number(v):null;
 const fail=message=>{throw Object.assign(new Error(message),{status:400});};
 export const capacityKey=v=>text(v).normalize('NFKC').toUpperCase().replace(/\s+/g,' ');
-export const assetCapacityPair=a=>{
- const explicitMake=text(a.assetMake||a.makeName||a.manufacturerName||a.manufactureMakeName||a.makeDescription||a.equipmentMake||a.make);
- const makeSource=[explicitMake,a.group,a.equipmentGroup,a.equipmentName,a.itemName].map(text).join(' '),recognizedMake=makeSource.match(/\b(SCANIA|SANY)\b/i)?.[1]||'';
- const make=/^\d+$/.test(explicitMake)?recognizedMake:explicitMake||recognizedMake;
- const model=text(a.assetModel||a.modelName||a.manufacturerModelNo||a.manufactureModelName||a.modelDescription||a.equipmentModel||a.model||a.modelNo||a.itemSpecification);
- return {make:make===recognizedMake&&make?make[0].toUpperCase()+make.slice(1).toLowerCase():make,model};
-};
+export const assetCapacityPair=a=>({make:text(a.assetMake||a.makeName||a.make),model:text(a.assetModel||a.modelName||a.model||a.modelNo)});
 export const pairKey=p=>JSON.stringify([capacityKey(p.make),capacityKey(p.model)]);
 export function validateCapacity(input){
  const location=text(input.location),jobType=text(input.jobType),make=text(input.make),model=text(input.model),capacity=num(input.capacity),averageDalaFactor=num(input.averageDalaFactor??input.capacity),effectiveFrom=input.effectiveFrom,reason=text(input.reason);
