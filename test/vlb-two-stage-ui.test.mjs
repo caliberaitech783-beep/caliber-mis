@@ -25,43 +25,42 @@ const fleet=[
  {assetId:'8',door:'G-08',equipmentName:'Grader',trips:0,sourceCards:0,saved_at:null,skipped:false,draft:null},
 ];
 
-test('fleet stepper renders status buttons, blocks non-working statuses for a loader and computes hours',async()=>{
- const h=hooks();const calls=[];
- const fetch=async(url,request)=>{calls.push({url,method:request.method,body:request.body?JSON.parse(request.body):null});return {ok:true,json:async()=>({assetId:'19',draft:{},fleet})}};
- const {VlbFleetStepper,fleetHours,firstUnsavedIndex,tripsHint,fleetDraftFields}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper','fleetHours','firstUnsavedIndex','tripsHint','fleetDraftFields']);
- assert.equal(fleetHours('100','106.5'),6.5);assert.equal(fleetHours('','5'),null);
- assert.equal(firstUnsavedIndex(fleet),0,'opens at the first machine without saved_at');
- assert.equal(firstUnsavedIndex([fleet[1],{...fleet[2],skipped:true},fleet[0]]),2,'prefers un-skipped machines');
- assert.equal(tripsHint(fleet[0],statuses),'VPC-019 loaded 42 trips on 5 tipper cards this shift. Only Working or Working, partial breakdown can be saved.');
- assert.equal(fleetDraftFields(fleet[2]).shiftStatus,'','incomplete forms are not restored from drafts');
- assert.equal(fleetDraftFields({...fleet[1],logbook:{shiftStatus:'maintenance',openingHmr:120,closingHmr:120}}).openingHmr,'120','saved log books prefill when no draft exists');
- const batch={id:'batch1',name:'B01',site:'Jayant OC',fleet,statuses,fleetProgress:{total:3,saved:1,remaining:2}};
- const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5'},{id:'6',name:'Arun'}]},onChanged(){},onDismiss(){}})};
- let tree=render();let html=renderToStaticMarkup(tree);
- assert.equal(nodes(tree,n=>n.props.role==='dialog').length,1);
- assert.match(html,/VPC-019 · Excavator/);assert.match(html,/42 trips loaded · 5 source cards/);assert.match(html,/1 of 3 saved/);
- assert.match(html,/VPC-019 loaded 42 trips on 5 tipper cards this shift/);
- const statusButtons=nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']!==undefined);
- assert.deepEqual(statusButtons.map(n=>n.props.children),Object.values(statuses).map(s=>s.label));
- assert.deepEqual(statusButtons.filter(n=>n.props.disabled).map(n=>n.props.children),['Breakdown','Maintenance','No operator','Not in use'],'only working statuses stay enabled when trips were loaded');
- assert.equal(button(tree,'Next').props.disabled,true,'Next waits for a status');assert.equal(button(tree,'Previous').props.disabled,true);
- statusButtons[0].props.onClick();tree=render();html=renderToStaticMarkup(tree);
- assert.equal(statusButtons.length,6);assert.match(html,/Operator \*/,'working machines need an operator');assert.match(html,/Ramesh · C5/);assert.match(html,/Not saved · select Next to save this ELB/);
- const inputs=nodes(tree,n=>n.type==='input');const opening=inputs.find(n=>n.props.step==='0.01');const closing=inputs.filter(n=>n.props.step==='0.01')[1];
- opening.props.onChange({target:{value:'1200'}});closing.props.onChange({target:{value:'1206.5'}});tree=render();assert.match(renderToStaticMarkup(tree),/Hours: 6.5/);
- nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});tree=render();
- await button(tree,'Next').props.onClick();
- const save=calls.find(c=>c.url==='/api/vlb-batches/batch1/fleet/19'&&c.method==='POST');assert.ok(save,'Next posts the machine entry');
- assert.equal(save.body.shiftStatus,'working');assert.equal(save.body.employeeId,'5');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.closingHmr,'1206.5');assert.equal(save.body.requestKey,'key');
- tree=render();assert.match(renderToStaticMarkup(tree),/G-08 · Grader/,'moves to the next unsaved machine, skipping the saved dozer');
- assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']!==undefined).filter(n=>n.props.disabled).length,0,'zero-trip machines may take any status');
- // Zero trips: Working is still offered, the hint explains the hours rule, and no unsaved draft is restored.
- assert.match(renderToStaticMarkup(tree),/Zero trips: Working needs closing HMR above opening HMR/);
- assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']===true).length,0);
- const failing=async()=>({ok:false,status:400,json:async()=>({error:'Select the operator for a working machine.'})});
- const {VlbFleetStepper:Failing}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:failing,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
- const renderFailing=()=>{h.reset();return Failing({session:{token:'t'},batch,options:{employees:[]},onChanged(){},onDismiss(){}})};
- tree=renderFailing();await button(tree,'Next').props.onClick();tree=renderFailing();assert.match(renderToStaticMarkup(tree),/Select the operator for a working machine\./,'server validation text shows under the buttons');
+test('ELB has Working and Breakdown details tabs and fetches Pulse for each machine before saving',async()=>{
+ const h=hooks(),calls=[];let lastDeps,cleanup;
+ const useEffect=(fn,deps)=>{if(!lastDeps||deps.some((v,i)=>v!==lastDeps[i])){cleanup?.();lastDeps=deps;cleanup=fn();}};
+ const pulse={breakdownHours:1.5,breakdowns:[{reference:'BD-1',description:'Hydraulic leak',start:'2026-11-02T03:30:00Z',end:'2026-11-02T05:00:00Z',status:'Restored',hours:1.5}],fetchedAt:'2026-11-02T08:00:00Z'};
+ const fetch=async(url,request)=>{calls.push({url,method:request.method,body:request.body?JSON.parse(request.body):null});return {ok:true,json:async()=>request.method==='GET'?(url.includes('/19/')?pulse:{...pulse,breakdownHours:0,breakdowns:[]}):{fleet:[{...fleet[0],saved_at:'now'},fleet[1],fleet[2]]}}};
+ const {VlbFleetStepper,fleetHours,firstUnsavedIndex,fleetDraftFields}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect,fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper','fleetHours','firstUnsavedIndex','fleetDraftFields']);
+ assert.equal(fleetHours('100','106.5'),6.5);assert.equal(firstUnsavedIndex(fleet),0);assert.equal(fleetDraftFields(fleet[2]).shiftStatus,'working');
+ assert.equal(fleetDraftFields({...fleet[1],logbook:{shiftStatus:'maintenance',openingHmr:120,closingHmr:120}}).openingHmr,'120');
+ const batch={id:'batch1',name:'B01',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh'}]},onChanged(){},onDismiss(){}})};
+ let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
+ await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
+ assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)']]);
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
+ assert.match(html,/1.500/);assert.match(html,/Hydraulic leak/);assert.match(html,/BD-1/);
+ assert.equal(nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Breakdown Hrs').length,0,'Pulse total is read only');
+ const tabs=nodes(tree,n=>n.props.role==='tab');tabs[1].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.id==='elb-breakdown-panel')[0].props.hidden,false);
+ tabs[0].props.onClick();tree=render();
+ const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});
+ tree=render();await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');
+ tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
+ await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url==='/api/vlb-batches/batch1/fleet/8/breakdowns'));
+ cleanup?.();
+});
+
+test('switching machines ignores late Pulse responses and failed lookups show retry instead of zero',async()=>{
+ const h=hooks(),pending=[];let lastDeps,cleanup;
+ const useEffect=(fn,deps)=>{if(!lastDeps||deps.some((v,i)=>v!==lastDeps[i])){cleanup?.();lastDeps=deps;cleanup=fn();}};
+ const fetch=(url,request)=>request.method==='GET'?new Promise(resolve=>pending.push({url,resolve})):Promise.resolve({ok:true,json:async()=>({})});
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect,fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
+ const batch={id:'batch1',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[]}})};
+ let tree=render();await button(tree,'Skip').props.onClick();tree=render();assert.equal(pending.length,2);
+ pending[0].resolve({ok:true,json:async()=>({breakdownHours:7,breakdowns:[],fetchedAt:'2026-11-02'})});await new Promise(setImmediate);tree=render();assert.doesNotMatch(renderToStaticMarkup(tree),/7\.000/);assert.equal(button(tree,'Next').props.disabled,true);
+ pending[1].resolve({ok:false,status:503,json:async()=>({error:'Pulse offline'})});await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/Pulse offline/);assert.equal(button(tree,'Next').props.disabled,true);
+ button(tree,'Retry Pulse').props.onClick();tree=render();pending[2].resolve({ok:true,json:async()=>({breakdownHours:0,breakdowns:[],fetchedAt:'2026-11-02'})});await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.equal(button(tree,'Next').props.disabled,false);cleanup?.();
 });
 
 test('holds panel lists held assets with the express transfer button and walks through OTP verification',async()=>{

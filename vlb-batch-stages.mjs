@@ -51,6 +51,16 @@ export async function stageDetails(client,batch,{assets}={}){
 }
 const duplicateElb=records=>{const seen=new Map();for(const r of records){const key=String(r.asset_id||r.data?.assetId);seen.set(key,(seen.get(key)||0)+1);}return [...seen].filter(([,n])=>n>1).map(([key])=>records.find(r=>String(r.asset_id||r.data?.assetId)===key)?.data?.door||key);};
 
+// Late cards update derived trip totals without reopening batches or editing saved cards.
+export async function refreshLateVlbTrips(client,batch){
+ const assets=await equipmentAssets(client),records=await batchVlbRecords(client,batch);
+ const {machines}=buildMachineSnapshot(records,assets,batch.site);
+ for(const m of machines){
+  await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
+ }
+ for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+}
+
 export async function lockVlb(client,batch,actor,{assets}={}){
  if(!twoStageEnabled())fail('Two-stage batches are not enabled on this platform.',409);
  assets??=await equipmentAssets(client);
@@ -90,6 +100,24 @@ export async function saveFleetDraft(client,batch,assetId,draft,actor){
  return row;
 }
 
+export function fleetShiftHours(shift){
+ const minutes=value=>{const m=text(value).match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null};
+ const a=minutes(shift.startTime||shift.start),b=minutes(shift.endTime||shift.end),hours=a!==null&&b!==null?((b-a+1440)%1440)/60:null;
+ if(![8,12].includes(hours))fail('The batch Shift Master must have a valid 8- or 12-hour start/end time.',409);
+ return hours;
+}
+export async function readFleetBreakdowns(client,batch,assetId,readHours,actor){
+ if(typeof readHours!=='function')fail('Pulse breakdown lookup is unavailable.',503);
+ const row=(await client.query('SELECT asset_id FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[batch.id,assetId])).rows[0];
+ if(!row)fail('This machine is not in the batch fleet list.',404);
+ const shift=await shiftMasterFor(client,batch.site,batch.shift);
+ if(!shift)fail('No active Shift Master entry matches this batch.',409);
+ const shiftHours=fleetShiftHours(shift);
+ const pulse=await readHours({bookDate:batch.report_date,location:displaySiteName(batch.site),assetId:String(assetId),shiftId:shift.id,shiftHours,actor});
+ if(pulse?.breakdownHours===null||pulse?.breakdownHours===undefined||!Number.isFinite(Number(pulse.breakdownHours))||Number(pulse.breakdownHours)<0||Number(pulse.breakdownHours)>shiftHours)fail('Pulse returned invalid breakdown hours for this shift.',502);
+ return {...pulse,assetId:String(assetId),bookDate:batch.report_date,location:displaySiteName(batch.site),shift:batch.shift,shiftHours};
+}
+
 // Save one machine from the stepper dialog as a real equipment log book, linked to the batch.
 export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(batchStage(batch)!=='elb_open')fail('Machine entry is available only while ELB is open for this batch.',409);
@@ -98,7 +126,15 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const shiftHours=[8,12].includes(Number(input.shiftHours))?Number(input.shiftHours):null;
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch shift at this site. Correct the Shift Master first.',409);
- const hours=shiftHours||(()=>{const start=text(shift.startTime||shift.start),end=text(shift.endTime||shift.end);const m=v=>{const p=v.match(/^(\d{1,2}):(\d{2})/);return p?Number(p[1])*60+Number(p[2]):null};const a=m(start),b=m(end);const span=a!==null&&b!==null?((b-a+1440)%1440)/60:8;return span===12?12:8;})();
+ const hours=input.entryMode==='working-only'?fleetShiftHours(shift):shiftHours||(()=>{const start=text(shift.startTime||shift.start),end=text(shift.endTime||shift.end);const m=v=>{const p=v.match(/^(\d{1,2}):(\d{2})/);return p?Number(p[1])*60+Number(p[2]):null};const a=m(start),b=m(end);const span=a!==null&&b!==null?((b-a+1440)%1440)/60:8;return span===12?12:8;})();
+ let pulse=null;
+ if(input.entryMode==='working-only'){
+  pulse=await readFleetBreakdowns(client,batch,assetId,ops.readHours,actor);
+  const actualHours=num(input.openingHmr)!==null&&num(input.closingHmr)!==null?num(input.closingHmr)-num(input.openingHmr):null;
+  const bd=Number(pulse.breakdownHours),zero=actualHours===0&&Number(row.trips)===0;
+  const shiftStatus=zero?(bd>=hours?'breakdown':'not_in_use'):bd>0&&bd<hours?'working_partial_breakdown':'working';
+  input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||(pulse.breakdowns||[]).map(item=>item.description).filter(Boolean).join('; ').slice(0,2000)};
+ }
  const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:row.trips,shiftHours:hours});
  if(Object.keys(errors).length)throw Object.assign(new Error(Object.values(errors).join(' ')),{status:400,fields:errors});
  const nonWorking=NON_WORKING_STATUSES.includes(status);
@@ -110,7 +146,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const data=await ops.resolve(client,'equipment',body);
  Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:row.trips,batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
- if(ops.applyHours)await ops.applyHours(data);
+ if(pulse){Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
  if(nonWorking){data.breakdownHours=status==='breakdown'?hours:data.breakdownHours;data.availabilityHours=0;data.runningHours=0;data.idleHours=status==='breakdown'?0:hours-(Number(data.breakdownHours)||0);}
  let record;
  if(row.logbook_id){
@@ -125,23 +161,25 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
 }
 
 // ELB cards exist only inside the site/date/shift batch, and only after its VLB is locked.
-// No batch, VLB still open and a closed batch all refuse the save; standalone ELB saving is discontinued.
-export async function assertElbBatchWrite(client,data){
+// Closed batches accept new cards while existing cards still require reopening.
+export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(!twoStageEnabled())return null;
  const batch=await matchingVlbBatch(client,{location:data.location,bookDate:data.bookDate,bookShiftCode:data.bookShiftCode,cardShift:data.cardShift,shiftName:data.shiftName});
  if(!batch)fail('Create the VLB batch for this site, date and shift and lock VLB before saving ELB cards. Standalone ELB saving is discontinued.',409);
+ if(batch.archived_at||batch.deleted_at)fail('This batch is unavailable. Open an active site/date/shift batch before saving.',409);
  const stage=batchStage(batch);
  if(stage==='vlb_open')fail('Lock VLB for batch '+batch.name+' before saving ELB cards for this site, date and shift.',409);
- if(stage==='closed')fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before saving or changing ELB cards.',409);
+ if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before changing existing ELB cards.',409);
  return batch;
 }
 
 // An equipment log book saved through the normal form, scan, upload or the fleet stepper joins the
-// open ELB stage of its batch and marks that machine's fleet row as saved.
+// ELB stage or closed batch and marks that machine's fleet row as saved.
 export async function syncElbBatchRecord(client,record,actor){
  if(!twoStageEnabled()||record.book_type!=='equipment')return null;
  const data=record.data||{};
- const batch=await assertElbBatchWrite(client,data);
+ const linked=(await client.query('SELECT logbook_id FROM mis_elb_batch_entries WHERE logbook_id=$1',[record.id])).rows[0];
+ const batch=await assertElbBatchWrite(client,data,{adding:!linked});
  await client.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  const status=FLEET_STATUSES[data.shiftStatus]?data.shiftStatus:'working';
  const updated=await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$3,logbook_id=$4,saved_at=NOW(),saved_by=$5,draft=NULL,skipped=FALSE WHERE batch_id=$1 AND asset_id=$2 RETURNING asset_id',[batch.id,record.asset_id||data.assetId,status,record.id,batchLogin(actor)]);

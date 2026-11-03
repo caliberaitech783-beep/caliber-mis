@@ -8,7 +8,7 @@ import {vlbBatchActor,batchPmAtSite} from '../vlb-batch-access.mjs';
 import {VLB_BATCH_SCHEMA,matchingVlbBatch,lockSavedVlbBatches} from '../vlb-batch-policy.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('live saves auto-attach, closure blocks writes, and only the site-PM-approved MIS user can amend once',async t=>{
+test('live saves auto-attach, closure blocks existing-card edits, and only the site-PM-approved MIS user can amend once',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB)');
  const masters=[
@@ -47,7 +47,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  assert.equal((await call(path+'/close','POST',{})).status,200);
  assert.ok(created.data.records.some(r=>r.id===scanned.id&&r.data.scanCardId));assert.ok(created.data.records.some(r=>r.id===manual.data.id&&!r.data.scanCardId));
  const countBefore=Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n);
- assert.equal((await save()).status,409);await assert.rejects(()=>scan(),/closed/);assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n),countBefore);
+ assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1})).status,409);assert.equal(Number((await db.query('SELECT count(*) AS n FROM mis_log_books')).rows[0].n),countBefore);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,409);
  assert.equal((await call('/api/vlb-batches','POST',{...createBody,requestKey:randomUUID()})).status,409,'closed scopes cannot get B02');
  const s2=await save({shiftId:4,cardShift:'II'});assert.equal(s2.status,409);assert.equal((await call(path)).data.entry_count,3,'next shift requires its own batch');
@@ -75,7 +75,7 @@ test('live saves auto-attach, closure blocks writes, and only the site-PM-approv
  const retryKey=randomUUID();const added=await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey});assert.equal(added.status,201,JSON.stringify(added.data));
  let batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.amendment_by,null);assert.equal(batch.entry_count,4);assert.equal(batch.closure_revision,2);
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey})).status,200,'retry returns the already saved record without a second write');
- assert.equal((await call(path+'/reopen','POST',{})).status,403,'used grant cannot reopen after a save');assert.equal((await save()).status,409);
+ assert.equal((await call(path+'/reopen','POST',{})).status,403,'used grant cannot reopen after a save');assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1})).status,409);
  const grant=async()=>{const r=await call(path+'/reopen-request','POST',{reason:'Another checked amendment'});assert.equal(r.status,200,JSON.stringify(r.data));assert.equal((await call(path+'/reopen-decision','POST',{requestId:r.data.id,decision:'approve'},'pm')).status,200);const opened=await call(path+'/reopen','POST',{});assert.equal(opened.status,200,JSON.stringify(opened.data));return opened.data;};
  await grant();
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,bookDate:'2026-12-29',revision:1})).status,409,'batched cards cannot move to another scope');
