@@ -350,3 +350,5 @@
 .scan-status-overview>.scan-card-groups .scan-group-menu button.scan-group-menu-reject{background:#fde8e8;border-color:#c23a3a;color:#8a1c1c}
 .scan-status-overview>.scan-card-groups .scan-group-menu button:disabled{opacity:.55}
 .scan-status-overview>.scan-card-groups .scan-group-menu small{font-size:12px;font-weight:600;color:#5b4632;padding:0 2px}
+
+.scan-actions button.scan-delete-card { color: #b42318; border-color: #d92d20; background: #fff1f0; }
