@@ -69,8 +69,9 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const view=async(batch,open=false)=>{const id=++detailRequest.current;setDetailLoading(true);setError('');try{const result=await read('/api/vlb-batches/'+batch.id);if(id===detailRequest.current){setViewed(result);setShowApproval(Boolean(open&&!entryMode&&result.closed_at&&actor?.mis));if(open&&(entryMode||!result.closed_at))onSelected?.(result)}}catch(e){if(id===detailRequest.current){if(entryMode&&autoOpenedEntryBatch.current===batch.id)autoOpenedEntryBatch.current='';setError(e.message)}}finally{if(id===detailRequest.current)setDetailLoading(false)}};
  const entryMatching=entryMode?openVlbEntryBatches(batches,selection.site):[];
  useEffect(()=>{
-  if(!entryMode||!selection.site||!batchStatusReady||entryMatching.length!==1){if(entryMatching.length!==1)autoOpenedEntryBatch.current='';return}
-  const batch=entryMatching[0];if(autoOpenedEntryBatch.current===batch.id)return;
+  if(!entryMode||!selection.site||!batchStatusReady)return;
+  let remembered='';try{remembered=sessionStorage.getItem('vlb-entry-batch:'+String(session.login||session.name||''))||''}catch{}
+  const batch=preferredVlbEntryBatch(entryMatching,remembered);if(!batch){autoOpenedEntryBatch.current='';return}if(autoOpenedEntryBatch.current===batch.id)return;
   autoOpenedEntryBatch.current=batch.id;view(batch,true);
  },[entryMode,selection.site,batchStatusReady,batches]);
  const create=async()=>{setBusy(true);setError('');try{
@@ -159,4 +160,10 @@ export function fleetFrontEntry(row={},batch={}){
 export function openVlbEntryBatches(batches,site){
  if(!site)return [];
  return batches.filter(batch=>!batch.archived_at&&!batch.deleted_at&&canonicalSiteName(batch.site)===canonicalSiteName(site));
+}
+
+export function preferredVlbEntryBatch(batches,remembered){
+ const saved=batches.find(batch=>batch.id===remembered);if(saved)return saved;
+ const open=batches.filter(batch=>!batch.closed_at);
+ return open.length===1?open[0]:batches.length===1?batches[0]:null;
 }

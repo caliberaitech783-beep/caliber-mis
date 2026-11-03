@@ -23,7 +23,9 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  const openVlbEntryBatches=new Function('React','canonicalSiteName',code+';return openVlbEntryBatches')(React,(await import('../site-location.mjs')).canonicalSiteName);
  const open={id:'open',site:'Jayant OB',closed_at:null},closed={id:'closed',site:'Jayant OC',closed_at:'2026-12-31T10:00:00Z'},other={id:'other',site:'Sasti OC',closed_at:null};
  assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['closed','open']);
- assert.match(source,/entryMatching\.length!==1/,'auto-fetch waits for exactly one open batch');
+ assert.match(source,/preferredVlbEntryBatch\(entryMatching,remembered\)/,'auto-fetch restores the selected batch or the sole open batch');
+ const preferred=new Function('React','canonicalSiteName',code+';return preferredVlbEntryBatch')(React,(await import('../site-location.mjs')).canonicalSiteName);
+ assert.equal(preferred([closed,open],closed.id),closed);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
  assert.match(source,/\[entryMode,selection\.site,batchStatusReady,batches\]/,'auto-fetch reruns when the asynchronous batch list arrives');
  const css=fs.readFileSync(new URL('../src/vlb-create-batch.css',import.meta.url),'utf8');
  assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-setup\{[^}]*justify-content:flex-start[^}]*flex-wrap:nowrap/);
