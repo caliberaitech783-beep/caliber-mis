@@ -38,7 +38,7 @@ export function VlbUnlockOtpDialog({session,batch,onChanged,onDismiss}){
  useEffect(()=>{const element=dialog.current,previous=document.activeElement;element.showModal();return()=>{element.close();previous?.focus?.()}},[]);
  const live=liveOtpFor(batch,'unlock_vlb');
  const approved=async data=>{setError('');if(data?.batch)await onChanged?.(data.batch);onDismiss?.()};
- return <dialog className="vlb-reopen-dialog" ref={dialog} aria-modal="true" aria-labelledby="vlb-unlock-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}>
+ return <dialog className="vlb-reopen-dialog" ref={dialog} aria-modal="true" aria-labelledby="vlb-unlock-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={onDismiss}  aria-label="Close window">× Close</button></div>
   <span className="vlb-permission-status">VLB locked</span>
   <h2 id="vlb-unlock-title">Unlock VLB with PM approval</h2>
   <p>VLB is locked for <strong>{batch.name}</strong>. Unlocking clears the machine list built at lock time; machine entries already saved stay in the Equipment Log Book. The site Project Manager must approve.</p>

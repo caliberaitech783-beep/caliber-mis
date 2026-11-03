@@ -39,7 +39,7 @@ export function ReportPeriodDialog({from,to,onApply,onClose}) {
   const monthLabel=new Intl.DateTimeFormat('en-GB',{month:'long',year:'2-digit',timeZone:'UTC'}).format(new Date(`${month}-01T00:00:00Z`));
   return createPortal(<dialog ref={dialog} className="report-period-dialog" aria-labelledby={`${id}-title`} onCancel={e=>{e.preventDefault();onClose();}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <form onSubmit={e=>{e.preventDefault();if(bounds)onApply(bounds.from,bounds.to);}}>
-      <header><h2 id={`${id}-title`}>Filter</h2><button type="button" className="period-icon" aria-label="Close filter" onClick={onClose}><X size={20}/></button></header>
+      <header className="mis-popup-close-header"><h2 id={`${id}-title`}>Filter</h2><button type="button" className="period-icon mis-popup-close" aria-label="Close filter" onClick={onClose}>× Close</button></header>
       <div className="report-period-body">
         <div className="report-period-summary"><span>Time Period · IST</span><strong>{displayDate(start)} – {displayDate(end)}<CalendarDays size={17}/></strong></div>
         <div className="report-period-presets" aria-label="Quick time periods">{PERIOD_PRESETS.map(([key,label])=><button type="button" key={key} aria-pressed={preset===key} onClick={()=>choosePreset(key)}>{label}</button>)}</div>

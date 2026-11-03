@@ -36,7 +36,7 @@ export default function BdmsAssistant({session,token}){
  if(!permitted)return null;
  const hi=language==='hi',buttons=reply?.keyboard?.keyboard?.flat()||['English','हिंदी'];
  return <><button type="button" className="header-nav-item bdms-assistant-launch" onClick={start}><MessageCircle/><span>BDMS Assistant</span></button>{open&&createPortal(<dialog ref={dialog} className="bdms-assistant" aria-labelledby={titleId} onCancel={close}>
-  <header><div><small>Caliber Pulse · BDMS</small><h2 id={titleId}>BDMS Assistant</h2><p>{session?.name||session?.login} · {hi?'आपकी भूमिका और साइट के अनुसार':'Your role and permitted sites'}</p></div><button type="button" onClick={close} aria-label="Close assistant"><X/></button></header>
+  <header className="mis-popup-close-header"><div><small>Caliber Pulse · BDMS</small><h2 id={titleId}>BDMS Assistant</h2><p>{session?.name||session?.login} · {hi?'आपकी भूमिका और साइट के अनुसार':'Your role and permitted sites'}</p></div><button type="button" onClick={close} aria-label="Close assistant" className="mis-popup-close">× Close</button></header>
   <div className="bdms-assistant-content">
    <div className="bdms-assistant-sound"><Volume2 size={18}/><span>{hi?'स्वागत संदेश':'Welcome greeting'}</span><button type="button" onClick={play}>{soundBlocked?(hi?'आवाज़ चालू करें':'Enable sound'):(hi?'फिर सुनें':'Replay')}</button></div>
    {soundBlocked&&<p role="status">{hi?'आपके ब्राउज़र को आवाज़ के लिए एक टैप चाहिए।':'Your browser requires a tap to enable sound.'}</p>}

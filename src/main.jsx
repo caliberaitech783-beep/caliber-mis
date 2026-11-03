@@ -1,3 +1,4 @@
+import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
 import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
 import MisAdministration from './mis-admin.jsx';
@@ -3463,7 +3464,7 @@ function FilterableHeader({
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
       {open && createPortal(
-        <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+        <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
             <strong>{label}</strong>
             <button type="button" className="column-filter-close" onClick={() => onToggle(sortKey)} aria-label={`Close ${label} filter`} title="Close">
@@ -3569,7 +3570,7 @@ function TableParameterFilter({ columns = [], rows = [], filters = {}, onFilterC
     };
   }, [open, dialogMode]);
   const filterDialog = (
-    <div className={`table-parameter-filter-popover ${dialogMode ? "dialog-mode" : ""}`} style={dialogMode ? undefined : popoverPosition} role="dialog" aria-modal={dialogMode || undefined} aria-label="Filter report parameters" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+    <div className={`table-parameter-filter-popover ${dialogMode ? "dialog-mode" : ""}`} style={dialogMode ? undefined : popoverPosition} role="dialog" aria-modal={dialogMode || undefined} aria-label="Filter report parameters" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => setOpen(false)}  aria-label="Close window">× Close</button></div>
       <div className="table-parameter-filter-head"><div><strong>Filter report</strong><span>Choose values to compare report records.</span></div><button type="button" onClick={() => setOpen(false)} aria-label="Close report filters" title="Close"><X /></button></div>
       <div className="table-parameter-filter-fields">
         {columns.map((column) => (
@@ -4078,7 +4079,7 @@ function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStor
   return createPortal(
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-columns-dialog" role="dialog" aria-modal="true" aria-labelledby="report-columns-title" onPointerDown={(event) => event.stopPropagation()}>
-        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-columns-title">Select Columns</h2><button type="button" onClick={onClose} aria-label="Close column selector" title="Close"><X /></button></header>
+        <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-columns-title">Select Columns</h2><button type="button" onClick={onClose} aria-label="Close column selector" title="Close" className="mis-popup-close">× Close</button></header>
         {layoutStore && <TableLayoutControls store={layoutStore} draftKeys={draftKeys} defaultKeys={columns.map(column => column.key)} onSelect={keys => { setDraftKeys(keys); setSelectedHidden(""); setSelectedVisible(""); }} />}
         <div className="report-columns-body">
           <div className="report-column-list-panel">
@@ -4118,7 +4119,7 @@ function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
   return createPortal(
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-sort-dialog" role="dialog" aria-modal="true" aria-labelledby="report-sort-title" onPointerDown={(event) => event.stopPropagation()}>
-        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close"><X /></button></header>
+        <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close" className="mis-popup-close">× Close</button></header>
         <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></SmartSelect></label></div>
         <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!columnKey} onClick={() => onApply(columnKey, direction)}>Apply</button></footer>
       </section>
@@ -7106,7 +7107,7 @@ function SessionMessageInbox({session}) {
     finally{setClosingId("");}
   };
   return createPortal(<div className="session-message-inbox-overlay">
-    <section className={`session-message-inbox${isAnnouncement?' announcement':''}`} role="alertdialog" aria-modal="true" aria-labelledby="session-message-title" aria-describedby="session-message-body">
+    <section className={`session-message-inbox${isAnnouncement?' announcement':''}`} role="alertdialog" aria-modal="true" aria-labelledby="session-message-title" aria-describedby="session-message-body"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={closingId===String(current.id)} aria-label="Close window">× Close</button></div>
       <header><span><MessageCircle /></span><div><small>{isAnnouncement?'Announcement to all users':'Direct message'}</small><h2 id="session-message-title">{isAnnouncement?'Announcement':'Message'} from {current.senderName||current.senderLogin||'Administrator'}</h2></div>{messages.length>1&&<b>{messages.length} messages</b>}</header>
       <div className="session-message-inbox-body" id="session-message-body">{current.message&&<p>{current.message}</p>}{isAnnouncement&&current.hasImage&&<AnnouncementImage id={current.id} token={session.token} />}{current.audioData&&<audio controls preload="metadata" src={current.audioData}>Voice message from the administrator</audio>}<small>Sent {formatTwelveHourDateTime(current.createdAt)}</small></div>
       {error&&<div className="session-message-inbox-error" role="alert"><AlertTriangle />{error}</div>}
@@ -7919,9 +7920,9 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
       {directorTimingOpen && createPortal(
         <div className="overlay" onPointerDown={(event) => event.target === event.currentTarget && setDirectorTimingOpen(false)}>
           <div className="modal director-timing-modal" role="dialog" aria-modal="true" aria-label={reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}>
-            <header>
+            <header className="mis-popup-close-header">
               <button type="button" className="modal-back-button" onClick={() => setDirectorTimingOpen(false)} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-schedule-title"><span><CalendarDays /></span><div><h3>{reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}</h3><p>{reportAccess.canManageAll ? "Set shared report defaults for each role; saved personal schedules take priority" : "Choose your report days, times and reports on WhatsApp"}</p></div></div>
-              <button type="button" onClick={() => setDirectorTimingOpen(false)} aria-label="Close report schedules"><X aria-hidden="true" /></button>
+              <button type="button" onClick={() => setDirectorTimingOpen(false)} aria-label="Close report schedules" className="mis-popup-close">× Close</button>
             </header>
             {reportScheduleLoading ? <div className="report-schedule-loading">Loading saved schedules…</div> : reportScheduleError ? <div className="wrs-feedback wrs-error" role="alert">{reportScheduleError}<button type="button" onClick={() => openReportSchedules(reportScheduleScope)}>Reload schedules</button></div> : <>
               <details className="wrs-schedule-context"><summary>Timing defaults, report windows and site access</summary>
@@ -7977,9 +7978,9 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
       {reportZipOpen && createPortal(
         <div className="overlay report-zip-overlay" onPointerDown={(event) => event.target === event.currentTarget && !reportZipDownloading && setReportZipOpen(false)}>
           <div className="modal report-zip-modal" role="dialog" aria-modal="true" aria-label="Download reports as ZIP">
-            <header>
+            <header className="mis-popup-close-header">
               <button type="button" className="modal-back-button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-zip-title"><span><Download /></span><div><h3>Download reports as ZIP</h3><p>Choose reports and receive organised PDF and Excel files in one archive</p></div></div>
-              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Close ZIP report selection"><X aria-hidden="true" /></button>
+              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Close ZIP report selection" className="mis-popup-close">× Close</button>
             </header>
             <div className="report-zip-range">
               <div><CalendarDays /><span><b>Report period</b><small>Only records within this IST date and time range are included.</small></span></div>
@@ -9757,7 +9758,7 @@ function Modal({ title, close, children, className = "", overlayClassName = "", 
     >
       <div ref={dialogRef} tabIndex={-1} className={`modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : "Dialog"}>
         {topBar}
-        <header>
+        <header className="mis-popup-close-header">
           <button type="button" className="modal-back-button" onClick={close} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h3>{title}</h3>
           {className.split(" ").includes("request-timeline-modal") && <button type="button" className="request-timeline-print" onClick={() => {
             const content = dialogRef.current?.querySelector(".request-timeline-content");
@@ -9765,9 +9766,7 @@ function Modal({ title, close, children, className = "", overlayClassName = "", 
             printRequestTimeline(content, typeof title === "string" ? title : "Time breakdown", `${requestTimelinePrintCss}\n${dailyUpdatesPrintCss}`);
           }}><Printer aria-hidden="true" /><span>Smart Print</span></button>}
           {headerActions}
-          <button type="button" onClick={close} aria-label="Close dialog">
-            <X aria-hidden="true" />
-          </button>
+          <button type="button" onClick={close} aria-label="Close dialog" className="mis-popup-close">× Close</button>
         </header>
         {children}
       </div>
@@ -10752,11 +10751,11 @@ function AiFeederPanel({ breakdowns = [], firstTripPending = [], session = null,
   }, []);
   return createPortal(<div className="ai-feeder-overlay pulse-overlay">
     <div className="ai-feeder-panel pulse-panel" role="dialog" aria-modal="true" aria-labelledby="ai-feeder-title" tabIndex={-1} ref={panelRef}>
-      <header>
+      <header className="mis-popup-close-header">
         <div className="pulse-title"><div className="ai-feeder-heading-line"><span className="ai-feeder-kicker"><PulseIcon /> INFO PULSE</span><span className="pulse-scope"><MapPin aria-hidden="true" /> Scope: {scope?.label || "Assigned location"}</span></div><div className="pulse-birthday-heading"><h2 id="ai-feeder-title">Open breakdowns</h2><InfoPulseBirthday token={session?.token} now={now} /></div></div>
         <div className="ai-feeder-actions">
           {closeAvailableAt > 0 && <span className="ai-feeder-countdown" role="timer" aria-live="off" aria-label={remainingSeconds > 0 ? "Time until Info Pulse can be closed" : "Info Pulse can now be closed"}><small>{remainingSeconds > 0 ? "Close available in" : "You can close"}</small><b>{String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:{String(remainingSeconds % 60).padStart(2, "0")}</b></span>}
-          {remainingSeconds === 0 && <button type="button" onClick={() => closeRef.current()} aria-label="Close Info Pulse"><X /></button>}
+          {remainingSeconds === 0 && <button type="button" onClick={() => closeRef.current()} aria-label="Close Info Pulse" className="mis-popup-close">× Close</button>}
         </div>
       </header>
       <InfoPulseContent breakdowns={breakdowns} firstTripPending={firstTripPending} session={session} scope={scope} now={now} updatedAt={updatedAt} ready={ready} error={error} refreshing={refreshing} onRefresh={onRefresh} ExportMenu={ExportMenu} renderRequestReference={(reference) => <RequestTimelineButton reference={reference} token={session?.token} Dialog={InfoPulseTimelineModal} />} />
@@ -11205,7 +11204,7 @@ function NotificationBell({ session, onOpenEntry }) {
     entryControllerRef.current?.abort();
   }, []);
   const notificationPanel = <div ref={panelRef} className={`notification-popover${notificationOverlayMode ? " notification-popover-mobile" : ""}`} role="dialog" aria-modal={notificationOverlayMode ? "true" : undefined} aria-label="Notifications">
-    <header><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications"><X /></button></div></header>
+    <header className="mis-popup-close-header"><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications" className="mis-popup-close">× Close</button></div></header>
     <div className="notification-filters">
       <label className="notification-site-filter">Filter by site<SmartSelect value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">All sites</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>
       <label className="notification-site-filter notification-category-filter">Filter by category<SmartSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories ({siteItems.length})</option>{categoryOptions.map(category => <option key={category.key} value={category.key}>{category.label} ({category.count})</option>)}</SmartSelect></label>

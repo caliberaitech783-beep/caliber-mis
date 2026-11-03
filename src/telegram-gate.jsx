@@ -58,7 +58,7 @@ export default function TelegramGate({ token, logout }) {
       ? [["Install Telegram (App Store)", TELEGRAM_INSTALL_LINKS.iphone, Smartphone]]
       : [["Download Telegram Desktop", TELEGRAM_INSTALL_LINKS.desktop, Download], ["Or use Telegram Web (no install)", TELEGRAM_INSTALL_LINKS.web, Globe]];
   return createPortal(<div className="telegram-gate-overlay">
-    <section className="telegram-gate" role="alertdialog" aria-modal="true" aria-labelledby="telegram-gate-title">
+    <section className="telegram-gate" role="alertdialog" aria-modal="true" aria-labelledby="telegram-gate-title"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close"  disabled aria-label="Close window" title="Complete the required action before closing this window">× Close</button></div>
       <header><span><Send /></span><div><small>Required by your administrator</small><h2 id="telegram-gate-title">Connect Telegram to continue</h2></div></header>
       <div className="telegram-gate-body">
         <p>Caliber Pulse alerts, reports and password OTPs are sent on Telegram. Connect once to keep using the app.</p>

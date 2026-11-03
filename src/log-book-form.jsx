@@ -150,7 +150,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
    {showStatus&&<div className="logbook-message" role="status">{saved?`${saved.book_no} · Saved · Revision ${saved.revision} · ${editing?'Editing':'View only'}`:'New entry · Not saved'} · {working?'Saving…':loading?'Loading masters…':'Ready'}</div>}
 
-   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
+   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setShowDelete(false)} disabled={working} aria-label="Close window">× Close</button></div><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
 
    <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
 
