@@ -32,7 +32,7 @@ import {geminiEnabled,MODEL} from './gemini-card-reader.mjs';
 import {encodeScanJson as encodeLocalScanJson,encodeScanText as encodeLocalScanText,decodeScanRow} from './scan-text-storage.mjs';
 import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from './paddle-evidence.mjs';
 import {mergeReextractedDraft} from './scan-reextract.mjs';
-import {CARD_SHIFTS,machineDiscrepancies,bookShiftCode} from './trip-card-rules.mjs';
+import {CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal} from './trip-card-rules.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {resolveLogBookData,insertLogBook} from './log-book.mjs';
@@ -107,7 +107,7 @@ export async function checkScanCard(client,kind,card,input=card.draft){
  if(!input.bookDate&&input.bookDateSource==='scan-unreadable')warnings.push('Book Date could not be read. Enter the date printed on the scanned card; today is not substituted.');
  if(input.bookDateSource==='system-fallback')warnings.push('Book date was not read from the scan; system date used. Confirm or enter the card date.');
  if(input.cardShift&&!input.shiftId)warnings.push('Marked shift '+input.cardShift+' does not match a unique Shift Master time. Check the marked shift and location.');
- if(kind==='vehicle'&&!input.scanMachineSummary?.length)warnings.push('Printed machine-wise summary was not read. Compare the calculated totals with the paper summary.');
+ if(kind==='vehicle'&&!input.scanMachineSummary?.length&&machineTripTotal(input.trips||[])>0)warnings.push('Printed machine-wise summary was not read. Compare the calculated totals with the paper summary.');
  if(kind==='vehicle'&&!(input.trips||[]).length)warnings.push('No trip rows extracted. Add all trip rows, or explicitly confirm the card has no trips.');
 
 

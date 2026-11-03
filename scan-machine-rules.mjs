@@ -2,6 +2,7 @@ import {assetBookKind} from './equipment-kind.mjs';
 import {resolveTripEquipment} from './trip-equipment-validation.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
+import {tripEquipmentRequired} from './trip-card-rules.mjs';
 
 export const VEHICLE_MACHINE_RULES=[
  {code:'V',label:'Volvo',aliases:['V','VOLVO']},
@@ -133,6 +134,7 @@ export function scanEquipmentMatchIssues(input={},assets=[]){
  input=normalizeScanEquipmentRows(input,assets);
  const issues={};
  for(const [collection,rows]of [['trips',input.trips||[]],['scanMachineSummary',input.scanMachineSummary||[]]])for(const [index,row]of rows.entries()){
+  if(collection==='trips'&&!tripEquipmentRequired(row,input.timeMode))continue;
   if(!text(row.equipmentName))continue;
   if(row.equipmentSource==='master-selection'){
    const match=resolveTripEquipment(row,assets,input.location);

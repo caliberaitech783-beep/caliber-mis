@@ -1,4 +1,5 @@
 import {identifyCardMachine} from './scan-machine-rules.mjs';
+import {tripEquipmentRequired} from './trip-card-rules.mjs';
 // Adapt model formatting failures without fabricating unreadable cell contents.
 export function recoverCardResponse(parsed,kind,fieldNames){
  const issues=[];
@@ -58,9 +59,18 @@ export function recoverCardResponse(parsed,kind,fieldNames){
  return {fields,trips,issues:[...new Set(issues)]};
 }
 
-export const responseReviewNeeded=(raw={},draft={})=>Boolean(raw.responseRecoveryIssues?.length&&draft.responseRecoveryConfirmed!==true);
+// Keep the literal OCR notes, but only surface equipment issues for loading rows.
+export function activeResponseRecoveryIssues(raw={},draft={}){
+ return (raw.responseRecoveryIssues||[]).filter(issue=>{
+  const match=String(issue).match(/^Trip row (\d+): equipment\b/i);if(!match)return true;
+  const index=Number(match[1])-1,source=(raw.gemini||raw.hybrid)?.trips?.r?.[index];
+  const row=source?(draft.trips||[]).find((row,i)=>Number(row.rowNumber||i+1)===Number(source[0])):draft.trips?.[index];
+  return !row||tripEquipmentRequired(row,draft.timeMode);
+ });
+}
+export const responseReviewNeeded=(raw={},draft={})=>Boolean(activeResponseRecoveryIssues(raw,draft).length&&draft.responseRecoveryConfirmed!==true);
 export function recoveredTripNumberIssues(raw={},draft={}){
- if(!raw.responseRecoveryIssues?.length)return {};
+ if(!activeResponseRecoveryIssues(raw,draft).length)return {};
  const counts=new Map();for(const row of draft.trips||[])counts.set(Number(row.rowNumber),(counts.get(Number(row.rowNumber))||0)+1);
  return Object.fromEntries((draft.trips||[]).flatMap((row,index)=>Number.isInteger(Number(row.rowNumber))&&Number(row.rowNumber)>=1&&Number(row.rowNumber)<=120&&counts.get(Number(row.rowNumber))===1?[]:[['trips.'+index+'.rowNumber','Enter the unique printed trip number (1–120) from the original scan.']]));
 }

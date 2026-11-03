@@ -41,6 +41,9 @@ export function isUnloadingOnlyTrip(row){
  const estimatedLoading=estimate&&loading===value(estimate.value)&&estimate.anchorField==='unloadingTime'&&unloading===value(estimate.anchorValue);
  return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
 }
+// A previous load can finish on this card without identifying a new loader.
+// Untimed aggregate rows and rows that record loading still require equipment.
+export const tripEquipmentRequired=(row={},timeMode='with')=>timeMode==='without'||!isUnloadingOnlyTrip(row);
 export function machineSummary(trips=[]){const map=new Map();for(const row of trips){if(isUnloadingOnlyTrip(row))continue;const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
 export function machineTripTotal(trips=[]){return trips.reduce((total,row)=>total+(isUnloadingOnlyTrip(row)?0:Number(row.tripCount)||0),0);}
 export function machineDiscrepancies(trips=[],printed=[]){
