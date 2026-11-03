@@ -1,0 +1,171 @@
+name: Deploy revise/vlb-elb to the owner's private test copy
+
+# A private Pulse-II copy for the VLB + ELB rebuild, used by the owner only.
+# It is separate from the shared test platform (main_caliber-mis-test.yml) and
+# from production (main_caliber-mis-783.yml): its own web app, resource group,
+# database, Azure identity and GitHub environment. Other teams building their
+# own copies use their own workflow; nothing here is shared with them.
+#
+# Every page is behind the private gate (private-test-gate.mjs): a password and
+# a code sent by Telegram to the owner. The deploy fails if the gate is open.
+# Setup: docs/private-test-copy.md.
+on:
+  push:
+    branches: [revise/vlb-elb]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: private-test-revise
+  cancel-in-progress: false
+
+env:
+  PRIVATE_WEBAPP_NAME: ${{ vars.PRIVATE_TEST_WEBAPP_NAME }}
+  PRIVATE_RESOURCE_GROUP: ${{ vars.PRIVATE_TEST_RESOURCE_GROUP }}
+  PRIVATE_PUBLIC_URL: ${{ vars.PRIVATE_TEST_URL }}
+
+jobs:
+  private-release:
+    # Skipped, not failed, until the private app exists (docs/private-test-copy.md, step 6).
+    if: vars.PRIVATE_TEST_WEBAPP_NAME != ''
+    runs-on: ubuntu-latest
+    # Give this environment the owner as the only required reviewer, so nobody
+    # else can push a release to the private copy.
+    environment:
+      name: private-test-owner
+      url: ${{ steps.address.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    services:
+      startup-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: release_check
+          POSTGRES_PASSWORD: release_check
+          POSTGRES_DB: caliber_mis
+        ports: ['54320:5432']
+        options: >-
+          --health-cmd "pg_isready -U release_check -d caliber_mis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse anything but the private copy
+        env:
+          GATE_HASH: ${{ secrets.PRIVATE_GATE_PASSWORD_HASH }}
+          GATE_SECRET: ${{ secrets.PRIVATE_GATE_SECRET }}
+          GATE_BOT: ${{ secrets.PRIVATE_GATE_TELEGRAM_BOT_TOKEN }}
+          GATE_CHAT: ${{ secrets.PRIVATE_GATE_TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/revise/vlb-elb" ]; then
+            echo "::error::The private copy is deployed only from revise/vlb-elb."; exit 1; fi
+          case "$PRIVATE_WEBAPP_NAME" in
+            ''|caliber-mis-783|caliber-mis-test-783)
+              echo "::error::PRIVATE_TEST_WEBAPP_NAME must name the private app, never production or the shared test platform."; exit 1;;
+          esac
+          case "$PRIVATE_PUBLIC_URL" in
+            *pulse-ll.cmll.in*|*pulseii.cmll.in*|*caliber-mis-783*|*caliber-mis-test-783*)
+              echo "::error::PRIVATE_TEST_URL names another environment."; exit 1;;
+          esac
+          for name in GATE_HASH GATE_SECRET GATE_BOT GATE_CHAT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Private gate secret missing ($name). The copy is never deployed without its gate."; exit 1; fi
+          done
+          echo "Private copy: $PRIVATE_WEBAPP_NAME ($PRIVATE_RESOURCE_GROUP)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Restore pinned handwriting model cache
+        uses: actions/cache@v4
+        with:
+          path: ocr-model-cache
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+
+      - name: Install, build and test
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+        run: |
+          npm ci --no-audit --no-fund
+          npm run ocr:prepare
+          npm run build
+          npm test
+          EXPECTED_COMMIT="$GITHUB_SHA" node scripts/verify-ui-release.mjs
+          printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
+
+      - name: Verify the server starts
+        env:
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+        run: |
+          node --check server.mjs
+          node scripts/verify-server-start.mjs
+
+      - name: Login to Azure with the private copy identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_PRIVATE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_PRIVATE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_PRIVATE_SUBSCRIPTION_ID }}
+
+      # The gate settings are written before every deploy, so the copy can never
+      # start without them. Scheduled jobs stay off: no reports, WhatsApp or
+      # Telegram group messages leave this copy. The live bot settings
+      # (TELEGRAM_BOT_TOKEN) are cleared so the copy cannot take the webhook.
+      - name: Apply private gate settings
+        env:
+          GATE_HASH: ${{ secrets.PRIVATE_GATE_PASSWORD_HASH }}
+          GATE_SECRET: ${{ secrets.PRIVATE_GATE_SECRET }}
+          GATE_BOT: ${{ secrets.PRIVATE_GATE_TELEGRAM_BOT_TOKEN }}
+          GATE_CHAT: ${{ secrets.PRIVATE_GATE_TELEGRAM_CHAT_ID }}
+        run: |
+          az webapp config appsettings set --name "$PRIVATE_WEBAPP_NAME" --resource-group "$PRIVATE_RESOURCE_GROUP" --output none --settings \
+            PRIVATE_GATE=on \
+            "PRIVATE_GATE_PASSWORD_HASH=$GATE_HASH" \
+            "PRIVATE_GATE_SECRET=$GATE_SECRET" \
+            "PRIVATE_GATE_TELEGRAM_BOT_TOKEN=$GATE_BOT" \
+            "PRIVATE_GATE_TELEGRAM_CHAT_ID=$GATE_CHAT" \
+            "PRIVATE_GATE_LABEL=Pulse-II private test (VLB revise)" \
+            DISABLE_SCHEDULED_JOBS=true \
+            VLB_V2=on
+          az webapp config appsettings delete --name "$PRIVATE_WEBAPP_NAME" --resource-group "$PRIVATE_RESOURCE_GROUP" --output none \
+            --setting-names TELEGRAM_BOT_TOKEN TELEGRAM_DEFAULT_CHAT_ID || true
+
+      - name: Deploy to the private web app
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.PRIVATE_WEBAPP_NAME }}
+          package: .
+
+      - name: Resolve the private address
+        id: address
+        env:
+          DEPLOYED_URL: ${{ steps.deploy.outputs.webapp-url }}
+        run: |
+          url="${PRIVATE_PUBLIC_URL:-$DEPLOYED_URL}"; url="${url%/}"
+          case "$url" in https://[A-Za-z0-9]*) ;; *) echo "::error::No https address for the private copy."; exit 1;; esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the commit is live and the gate is closed
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          BASE: ${{ steps.address.outputs.url }}
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --max-time 20 "$BASE/api/health" -o health.json \
+              && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT||h.scheduledJobsEnabled!==false)process.exit(1)"; then
+              page=$(curl --silent --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/")
+              api=$(curl --silent --max-time 20 -o /dev/null -w '%{http_code}' "$BASE/api/app-version")
+              case "$page" in 302*__private-gate*) ;; *) echo "::error::The home page is not behind the gate ($page)."; exit 1;; esac
+              [ "$api" = "401" ] || { echo "::error::The API answered $api without the gate."; exit 1; }
+              echo "Private copy serves $EXPECTED_COMMIT and every page is behind the gate."; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::The private copy did not come up on $EXPECTED_COMMIT."; exit 1

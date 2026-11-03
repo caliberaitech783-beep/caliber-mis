@@ -176,6 +176,8 @@ import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorre
 import {jsonEntityTag,requestEtagMatches} from './response-etag.mjs';
 import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './whatsapp-recipient-policy.mjs';
 
+import {createPrivateGate,privateGateEnabled} from './private-test-gate.mjs';
+
 const {Pool}=pg;
 const app=express();
 app.use(enforceContentDeletionPolicy);
@@ -183,6 +185,10 @@ app.use(enforceContentDeletionPolicy);
 // every visitor shares the proxy's address, so per-IP limits (password reset
 // OTP requests) fired for the whole site instead of one user.
 app.set('trust proxy',true);
+// PRIVATE_GATE=on locks this copy to one owner (password + Telegram code). Off on production.
+// The pool is read lazily: the gate only needs it at request time, after the pool exists.
+const privateGate=createPrivateGate({pool:{query:(...args)=>pool.query(...args)}});
+app.use(privateGate.middleware);
 registerMisDomainRedirect(app);
 app.use(compression({
   threshold:1024,
@@ -3666,7 +3672,7 @@ app.get('/api/telegram/status',requireSuper,requireWhatsAppAdministrator,async(_
     const group=await telegramGroupSettings();
     const status=await telegramStatus({env:{...process.env,TELEGRAM_DEFAULT_CHAT_ID:group.chatId}});
     const [webhook,{rows}]=await Promise.all([
-      ensureTelegramWebhook(publicBaseUrl()).catch(error=>({registered:false,lastError:error.message})),
+      (privateGateEnabled()?Promise.resolve({registered:false,lastError:'Private test copy: webhook left with production.'}):ensureTelegramWebhook(publicBaseUrl())).catch(error=>({registered:false,lastError:error.message})),
       pool.query('SELECT COUNT(*)::int AS count FROM telegram_user_links'),
     ]);
     res.json({...status,webhook,linkedUsers:rows[0].count});
@@ -4198,7 +4204,7 @@ function diagnosticChecks(){
       const group=await telegramGroupSettings();
       const status=await telegramStatus({env:{...process.env,TELEGRAM_DEFAULT_CHAT_ID:group.chatId}});
       const [webhook,deliveries,{rows}]=await Promise.all([
-        ensureTelegramWebhook(publicBaseUrl()).catch(error=>({lastError:error.message})),
+        (privateGateEnabled()?Promise.resolve({lastError:'Private test copy: webhook left with production.'}):ensureTelegramWebhook(publicBaseUrl())).catch(error=>({lastError:error.message})),
         messageDeliveryCounts('Telegram'),
         pool.query('SELECT COUNT(*)::int AS count FROM telegram_user_links'),
       ]);
@@ -8678,7 +8684,8 @@ async function initializeDatabase(){
         AND (m.record_data->>'telegramChatId') IS DISTINCT FROM l.chat_id`)
       .catch(error=>console.error('Could not copy Telegram connections to user records.',error.message));
     // Only the configured production slot registers, so staging never takes the webhook.
-    if(telegramConfiguration().configured)ensureTelegramWebhook(publicBaseUrl())
+    // A private test copy never registers, even if it was given the live bot settings.
+    if(telegramConfiguration().configured&&!privateGateEnabled())ensureTelegramWebhook(publicBaseUrl())
       .then(result=>result.registered&&console.log(`Telegram webhook ready at ${result.url}.`))
       .catch(error=>console.error('Telegram webhook registration failed.',error.message));
     const expiredSessions=await sessionStore.pruneExpired();
