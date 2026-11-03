@@ -103,20 +103,14 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch}){
  const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;if(result.otpRequired){setNotice('Pair applied to this card. Approve the alias '+result.alias.writtenText+' by OTP in Equipment mapping to make it permanent.');if(batch?.id){await refreshAliasMismatches(batch.id);setAliasOpen(true);}return;}setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
  const deleteReviewCard=async(target)=>{
   if(busy||savingRef.current||!target)return;
-  const reason=window.prompt('Reason for deleting card '+target.ordinal+' ('+target.id+')?');if(!reason?.trim())return;
-  const approval='Approve deletion of card '+target.id+' revision '+target.revision;
-  const details=['Delete only card '+target.ordinal,'Card ID: '+target.id,'Batch: '+target.batch_id,'File: '+target.filename,'Date: '+(target.draft?.bookDate||''),'Location: '+(target.draft?.location||''),'Door: '+(target.draft?.doorText||''),'Reason: '+reason.trim(),'Impact: removes this unsaved card, extracted values and original scan. Unsaved edits will be lost. Other cards stay unchanged.','Recovery: no application restore. Upload the original again if needed. External backups may retain copies.','Type exactly: '+approval].join('\n');
-  if(window.prompt(details)!==approval)return;
   setBusy(true);setError('');
   try{
-   const request=await api('/api/scan-cards/'+target.id+'/deletion-otp',{method:'POST',body:JSON.stringify({revision:target.revision,reason,approval})});
-   const otp=window.prompt('Enter the WhatsApp OTP sent to '+request.recipient+'. Valid for 10 minutes.');if(!otp)return;
-   await api('/api/scan-cards/'+target.id+'/delete',{method:'POST',body:JSON.stringify({requestId:request.requestId,otp:otp.trim(),approval})});
+   await api('/api/scan-cards/'+target.id+'/delete',{method:'POST',body:JSON.stringify({revision:target.revision})});
    const next=nextScanReviewCard(cards,target.id);
    dirtyRef.current=false;setDirty(false);selectedRevision.current=null;setFleetOpenId('');
    const remaining=await load(target.batch_id);const nextId=remaining?.find(c=>c.id===next?.id)?.id||remainingScanCards(remaining||[])[0]?.id||'';
    setSelected(nextId);const url=new URL(window.location.href);if(nextId)url.searchParams.set('card',nextId);else url.searchParams.delete('card');window.history.replaceState(null,'',url.pathname+url.search+url.hash);
-   await list();setNotice('Card '+target.ordinal+' deleted after WhatsApp OTP verification.');
+   await list();setNotice('Card '+target.ordinal+' deleted.');
   }catch(e){setError(e.message)}finally{setBusy(false)}
  };
  const resolveFleet=async(card,action)=>{if(fleetBusy)return;if(action==='delete'){await deleteReviewCard(card);return;}setFleetBusy(true);setError('');try{const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',body:JSON.stringify({action,revision:card.revision})});for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);if(action==='recheck'&&result.ready)setOptions(await api('/api/log-books/options?scan=1'));await load(card.batch_id);setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setNotice(result.deleted?'Selected card deleted manually. Other cards are unchanged.':result.rejected?'Card '+card.ordinal+' rejected. Other cards are unchanged.':action==='transfer-pending'?'Card held: complete the existing transfer in Pulse, then recheck.':result.ready?'Pulse confirms the equipment site. This card can continue.':'Transfer is still incomplete or equipment is not registered. Card remains blocked.');}catch(error){setError(error.message)}finally{setFleetBusy(false)}};
