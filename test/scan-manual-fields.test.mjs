@@ -21,7 +21,7 @@ test('visibility survives autosave but resets on another card; complete draft re
 });
 
 test('clear handover blanks need no invented time, but unreadable OCR time still needs review',()=>{
- const handover={...valid,trips:[{...valid.trips[0],loadingTime:''}]};
+ const handover={...valid,trips:[{...valid.trips[0],loadingTime:''}],scanMachineSummary:[]};
  assert.deepEqual(manualScanIssues(handover),{});
  assert.ok(manualScanIssues(handover,'vehicle',{tripGridIssues:['Trip 1: check loading time.']})['trips.0.loadingTime']);
 });
@@ -30,7 +30,7 @@ test('literal blank handover times do not become red fields or block automatic s
  const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
  const {cardReviewGroup}=await import('../scan-card-groups.mjs');
  for(const key of ['loadingTime','unloadingTime']){
-  const draft={...valid,trips:[{...valid.trips[0],[key]:''}]};
+  const draft={...valid,trips:[{...valid.trips[0],[key]:''}],scanMachineSummary:key==='loadingTime'?[]:valid.scanMachineSummary};
   const reason='Trip 1: check '+(key==='loadingTime'?'loading':'unloading')+' time.';
   const raw={gemini:{trips:{r:[[1,'V12',draft.trips[0].loadingTime,draft.trips[0].unloadingTime]]}},tripGridIssues:[reason]};
   assert.deepEqual(manualScanIssues(draft,'vehicle',raw),{});
@@ -55,3 +55,4 @@ test('missing printed number and absent Work Order master stay All okay for VLB 
   assert.equal(cardReviewGroup({...card,draft:{...draft,employeeId:''}},kind,options),'brown');
  }
 });
+

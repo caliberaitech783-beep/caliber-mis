@@ -1,5 +1,5 @@
 import {estimateMissingTripTimes} from './scan-trip-estimates.mjs';
-import {machineSummary,machineLabel} from './trip-card-rules.mjs';
+import {machineSummary,machineLabel,isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 const blank=value=>value==null||String(value).trim()==='';
 
@@ -9,7 +9,7 @@ function completeMachinesFromSummary(trips,summary,evidence={},summarySource='')
  for(const code of new Set(printed.map(item=>item.machine.code))){
   const candidates=printed.filter(item=>item.machine.code===code);if(candidates.length!==1)continue;
   const candidate=candidates[0],expected=Number(candidate.row.tripCount);if(!Number.isSafeInteger(expected)||expected<1)continue;
-  const matching=trips.map((row,index)=>({row,index,machine:identifyCardMachine(row.equipmentName,'trip-body',{allowSuffix:true})})).filter(item=>item.machine?.code===code&&(item.machine.hasNumber?item.machine.key===candidate.machine.key:true));
+  const matching=trips.map((row,index)=>({row,index,machine:identifyCardMachine(row.equipmentName,'trip-body',{allowSuffix:true})})).filter(item=>!isUnloadingOnlyTrip(item.row)&&item.machine?.code===code&&(item.machine.hasNumber?item.machine.key===candidate.machine.key:true));
   const total=matching.reduce((sum,item)=>sum+(Number(item.row.tripCount)||1),0);if(total!==expected)continue;
   for(const item of matching){if(item.row.equipmentSource==='master-selection')continue;item.row.equipmentName=candidate.machine.canonical;item.row.equipmentNotation={original:item.machine.original,resolved:candidate.machine.canonical};if(!item.machine.hasNumber)item.row.equipmentSource='machine-summary';}
  }
@@ -59,4 +59,5 @@ export function completeScanTripDetails(input={},raw={}){
  }
  return estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})},raw);
 }
+
 

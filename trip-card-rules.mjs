@@ -33,8 +33,16 @@ export function meterRuleIssues(draft={},kind='vehicle'){
 export const CARD_SHIFTS={I:{hours:8,start:'05:00',label:'I · 05:00–13:00'},II:{hours:8,start:'13:00',label:'II · 13:00–21:00'},III:{hours:8,start:'21:00',label:'III · 21:00–05:00'},Day:{hours:12,start:'',label:'Day · 12 hours'},Night:{hours:12,start:'',label:'Night · 12 hours'}};
 export const systemBookDate=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 export function machineLabel(value){const s=String(value||'').trim().toUpperCase();return /^\d+$/.test(s)?'V'+String(Number(s)):/^V\s*-?\s*\d+$/.test(s)?'V'+String(Number(s.match(/\d+/)[0])):s;}
-export function machineSummary(trips=[]){const map=new Map();for(const row of trips){const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
-export function machineTripTotal(trips=[]){return trips.reduce((total,row)=>total+(Number(row.tripCount)||0),0);}
+// An unloading-only row finishes a previous load; it is not a new
+// machine loading trip. An auto-estimated loading time is not loading evidence.
+export function isUnloadingOnlyTrip(row){
+ const value=v=>String(v??'').trim();
+ const loading=value(row.loadingTime),unloading=value(row.unloadingTime),estimate=row.timeEstimates?.loadingTime;
+ const estimatedLoading=estimate&&loading===value(estimate.value)&&estimate.anchorField==='unloadingTime'&&unloading===value(estimate.anchorValue);
+ return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
+}
+export function machineSummary(trips=[]){const map=new Map();for(const row of trips){if(isUnloadingOnlyTrip(row))continue;const equipmentName=machineLabel(row.equipmentName);if(!equipmentName)continue;map.set(equipmentName,(map.get(equipmentName)||0)+(Number(row.tripCount)||0))}return [...map].map(([equipmentName,tripCount])=>({equipmentName,tripCount}));}
+export function machineTripTotal(trips=[]){return trips.reduce((total,row)=>total+(isUnloadingOnlyTrip(row)?0:Number(row.tripCount)||0),0);}
 export function machineDiscrepancies(trips=[],printed=[]){
  if(!printed.length)return [];
  const actual=new Map(machineSummary(trips).map(r=>[r.equipmentName,r.tripCount])),expected=new Map(machineSummary(printed).map(r=>[r.equipmentName,r.tripCount]));
@@ -87,3 +95,4 @@ export function tripClockForShift(value,shift,master){const m=String(normalizeSc
 
 export function latestWorkOrder(rows,site,date){const eligible=matchingWorkOrders(rows,site,date).filter(r=>!r.workOrderDate||r.workOrderDate<=date);if(!eligible.length)return null;const stamp=r=>r.workOrderDate||r.begin||r.commencementDate||'';eligible.sort((a,b)=>stamp(b).localeCompare(stamp(a)));return eligible.length===1||stamp(eligible[0])!==stamp(eligible[1])?eligible[0]:null;}
 export function interTripGap(trips,index){if(index<1||!trips[index-1]?.unloadingTime||!trips[index]?.loadingTime)return null;const parse=t=>{const m=String(t).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);return m&&Number(m[1])<24&&Number(m[2])<60&&Number(m[3]||0)<60?Number(m[1])*3600+Number(m[2])*60+Number(m[3]||0):null};const a=parse(trips[index-1].unloadingTime),b=parse(trips[index].loadingTime);return a==null||b==null?null:Math.round(((b-a+86400)%86400)/60*1000)/1000;}
+

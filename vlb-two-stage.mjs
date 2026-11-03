@@ -2,6 +2,7 @@ import {canonicalSiteName,equipmentSiteName} from './site-location.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {resolveTripEquipment} from './trip-equipment-validation.mjs';
+import {isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 
 // Two-stage VLB + ELB batches. The switch is read per request so it can be turned off without a redeploy.
 // Live for all users. Set VLB_TWO_STAGE_BATCHES=0 (or off/false/no) to fall back to single-step batches.
@@ -92,6 +93,7 @@ export function buildMachineSnapshot(records,assets,site){
   if(activeSiteHolds(record,assets).length)continue;
   const seen=new Set();
   (data.trips||[]).forEach((row,i)=>{
+   if(isUnloadingOnlyTrip(row))return;
    let asset=row.equipmentId?index.get(String(row.equipmentId)):null;
    if(!asset){const match=resolveTripEquipment(row,equipment,data.location||site);if(match.error){unresolved.push({bookNo:record.book_no,row:i+1,label:text(row.equipmentName),error:match.error});return;}asset=index.get(String(match.equipmentId));}
    if(!asset){unresolved.push({bookNo:record.book_no,row:i+1,label:text(row.equipmentName),error:'Loading machine is missing from the Equipment master.'});return;}
@@ -182,3 +184,4 @@ export function machineReportRows(fleet=[],elbRecords=[]){
  const totals={machines:rows.length,trips:rows.reduce((s,r)=>s+r.trips,0),hours:round(rows.reduce((s,r)=>s+(r.hours||0),0)),working:rows.filter(r=>FLEET_STATUSES[r.status]?.allowsTrips).length,down:rows.filter(r=>['breakdown','maintenance'].includes(r.status)).length,idle:rows.filter(r=>['no_operator','not_in_use'].includes(r.status)).length};
  return {loaders,others,totals};
 }
+
