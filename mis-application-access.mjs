@@ -54,6 +54,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/tickets/resolve')return req.method==='PATCH'&&isMisAdministrator(session);
  if(route.startsWith('/api/tickets'))return allowed('Tickets');
  if(route.startsWith('/api/dashboard'))return allowed('Dashboard');
+ if(route.startsWith('/api/reports/fleet-reconciliation'))return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/report'))return allowed('Reports');
  if(route==='/api/requests'&&read)return req.query?.scope==='reports'?allowed('Reports'):allowed('Dashboard');
  if(route==='/api/fleet-equipment')return read&&['Dashboard','Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
