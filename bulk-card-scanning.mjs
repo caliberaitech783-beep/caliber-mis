@@ -34,7 +34,9 @@ import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '
 import {mergeReextractedDraft} from './scan-reextract.mjs';
 import {CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal} from './trip-card-rules.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
+import {sendDeletionOtp} from './deletion-whatsapp.mjs';
+import {DELETION_PHONE} from './log-book-deletion.mjs';
 import {resolveLogBookData,insertLogBook} from './log-book.mjs';
 import {responseReviewNeeded,recoveredTripNumberIssues} from './scan-response-recovery.mjs';
 import {extractCard,scanEquipmentMasters} from './scan-extraction.mjs';
@@ -113,7 +115,7 @@ export async function checkScanCard(client,kind,card,input=card.draft){
 
  return {errors,warnings,data,number};
 }
-export function registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT}){
+export function registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT}){
  if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>5)throw Error('Scan concurrency must be between 1 and 5.');
  // Pulse fleet rows carry the saved card aliases of their linked local record, so an aliased written label is not held as "not registered".
  if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async actor=>withEquipmentAliases(pool,await readSourceFleet(actor),{by:'source'});}
@@ -175,9 +177,36 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
   if(card.raw_fields?.fleetBlock&&review&&!review.error&&!review.issues.length)await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields-'fleetBlock' WHERE id=$1 AND revision=$2 AND status IN('review','approved','error')",[card.id,card.revision]);
  }
  const deletable=card=>{if(card.logbook_id||!['review','approved','error','rejected'].includes(card.status))fail('Only unsaved cards can be deleted here.',409);};
+ const deletionRequests=new Map(),deletionRates=new Map();
+ const deletionActor=req=>String(req.session.login||req.session.name||'');
+ const deletionPhrase=card=>`Approve deletion of card ${card.id} revision ${card.revision}`;
+ const deletionHash=(id,otp)=>createHash('sha256').update(id+':'+otp).digest();
+
+ app.post('/api/scan-cards/:id/deletion-otp',...protect,wrap(async(req,res)=>{
+  const card=await getCard(pool,req.params.id);deletable(card);
+  if(card.revision!==req.body.revision)fail('Card changed. Reload before deleting.',409);
+  if(req.body.approval!==deletionPhrase(card)||!String(req.body.reason||'').trim())fail('Enter the exact card approval and a deletion reason.',400);
+  const now=Date.now(),actor=deletionActor(req);
+  for(const [id,row] of deletionRequests)if(row.expires<=now)deletionRequests.delete(id);
+  for(const [key,times] of deletionRates){const recent=times.filter(t=>now-t<3600000);if(recent.length)deletionRates.set(key,recent);else deletionRates.delete(key);}
+  const times=deletionRates.get(actor)||[];
+  if(times.length>=10||times.some(t=>now-t<60000))fail('Wait one minute between OTP requests; maximum ten per hour.',429);
+  deletionRates.set(actor,[...times,now]);
+  for(const [id,row] of deletionRequests)if(row.actor===actor)deletionRequests.delete(id);
+  const id=randomUUID(),otp=String(randomInt(100000,1000000));
+  let delivery;try{delivery=await sendCardDeletionOtp({to:DELETION_PHONE,otp,requestId:id,count:1});}catch{fail('WhatsApp OTP delivery is unavailable. No card was deleted.',503);}
+  if(!delivery?.sent||!delivery.messageId)fail('WhatsApp OTP delivery failed. No card was deleted.',503);
+  deletionRequests.set(id,{actor,cardId:card.id,revision:card.revision,reason:String(req.body.reason).trim().slice(0,2000),hash:deletionHash(id,otp),expires:now+600000,attempts:0});
+  res.json({requestId:id,recipient:'+91 9925565281',expiresInMinutes:10});
+ }));
  app.post('/api/scan-cards/:id/delete',...protect,wrap(async(req,res)=>{
+  const row=deletionRequests.get(req.body.requestId);
+  if(!row||row.actor!==deletionActor(req)||row.cardId!==req.params.id||row.expires<=Date.now()||row.attempts>=5)fail('Deletion OTP expired or unavailable. Request a new code.',409);
+  row.attempts++;
+  if(!/^\d{6}$/.test(String(req.body.otp||''))||!timingSafeEqual(row.hash,deletionHash(req.body.requestId,req.body.otp)))fail('Incorrect WhatsApp OTP.',400);
+  deletionRequests.delete(req.body.requestId);
   const c=await pool.connect();try{await c.query('BEGIN');const card=await getCard(c,req.params.id,true);deletable(card);
-   if(card.revision!==req.body.revision)fail('Card changed. Reload before deleting.',409);
+   if(card.revision!==row.revision||req.body.approval!==deletionPhrase(card))fail('Card changed. Prepare a fresh deletion approval.',409);
    if(card.image_blob_key){
     if(!imageStorage?.remove)fail('Image deletion is unavailable.',503);
     await c.query('SELECT pg_advisory_xact_lock(709224103,hashtext($1))',[card.image_blob_key]);
@@ -185,7 +214,7 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
     await imageStorage.remove(card.image_blob_key);
    }
    const message='Card deleted manually by user. Upload again if needed.';
-   await c.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:String(req.session.login||req.session.name||''),deletedAt:new Date().toISOString(),reason:'Deleted directly from card review'}}),message]);
+   await c.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:row.actor,reason:row.reason,otpVerifiedAt:new Date().toISOString()}}),message]);
    await c.query('COMMIT');res.json({deleted:true});
   }catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}
  }));

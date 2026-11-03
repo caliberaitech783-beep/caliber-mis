@@ -23,3 +23,8 @@
 .scan-report-issues .scan-report-badge{margin:2px}.scan-report-issues ul{padding-left:18px}
 .scan-report-badge[aria-disabled=true]{opacity:.65;cursor:wait}
 .scan-report-badge:focus-visible{outline:3px solid #56308c;outline-offset:2px}
+
+.scan-batch-report-table .scan-report-card-actions{position:sticky;left:0;z-index:1;background:var(--panel,#fff);min-width:106px;box-shadow:2px 0 3px #00000012}
+.scan-batch-report-table th.scan-report-card-actions{z-index:3}
+.scan-report-card-actions button{min-height:36px;padding:6px 10px;white-space:nowrap}
+.scan-report-card-actions button:disabled{opacity:.5;cursor:not-allowed}
