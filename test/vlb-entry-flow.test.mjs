@@ -69,7 +69,7 @@ test('batch selection opens the requested editor directly without an intermediat
   const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v]};
   const Picker=()=>null,Editor=()=>null;const saved=[];
   const fetch=async()=>({ok:true,json:async()=>batch});
-  const workspace=new Function('React','useState','useEffect','VlbCreateBatch','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,fetch,{setItem:(...v)=>saved.push(v)},{location:{href:'https://example.test/?page=trip-scan&batch=old'},history:{replaceState(){}}});
+  const workspace=new Function('React','useState','useEffect','VlbCreateBatch','ElbBatchManual','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,()=>null,fetch,{setItem:(...v)=>saved.push(v)},{location:{href:'https://example.test/?page=trip-scan&batch=old'},history:{replaceState(){}}});
   const render=()=>{cursor=0;return workspace({kind:'vehicle',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   let tree=render();assert.equal(nodes(tree,n=>n.type===Picker).length,1);assert.equal(nodes(tree,n=>n.type===Editor).length,0,'entry requires an open site batch selection');nodes(tree,n=>n.type===Picker)[0].props.onSelected(batch);
   tree=render();assert.ok(saved.some(v=>v[1]===batch.id));assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,batch.id);assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
@@ -86,14 +86,15 @@ test('ELB manual and scan sit behind the site batch picker and open only once VL
  const singleStep={...vlbOpen,twoStage:undefined,stage:undefined};
  for(const mode of ['manual','scan']){
   const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v]};
-  const Picker=()=>null,Editor=()=>null;
-  const workspace=new Function('React','useState','useEffect','VlbCreateBatch','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,async()=>({ok:true,json:async()=>({})}),{setItem(){},removeItem(){}},{location:{href:'https://example.test/?page=elb'},history:{replaceState(){}}});
+  const Picker=()=>null,Editor=()=>null,ElbManual=()=>null;
+  const workspace=new Function('React','useState','useEffect','VlbCreateBatch','ElbBatchManual','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,ElbManual,async()=>({ok:true,json:async()=>({})}),{setItem(){},removeItem(){}},{location:{href:'https://example.test/?page=elb'},history:{replaceState(){}}});
   const render=()=>{cursor=0;return workspace({kind:'equipment',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   let tree=render();assert.equal(nodes(tree,n=>n.type===Picker).length,1,'ELB entry shows the site batch picker');assert.equal(nodes(tree,n=>n.type===Editor).length,0,'no ELB editor without a batch');assert.match(renderToStaticMarkup(tree),/ELB opens after VLB is locked/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(vlbOpen);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,0,'VLB still open keeps the ELB editor closed');assert.match(renderToStaticMarkup(tree),/Lock VLB in batch Sasti 18 Dec S1 before entering ELB cards/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(elbOpen);tree=render();
-  assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,elbOpen.id,'ELB stage opens the editor fixed to the batch');
+  if(mode==='manual'){assert.equal(nodes(tree,n=>n.type===ElbManual)[0].props.batch.id,elbOpen.id,'two-stage ELB manual opens the combined batch machine workflow');assert.equal(nodes(tree,n=>n.type===Editor).length,0)}
+  else assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,elbOpen.id,'ELB scan opens the editor fixed to the batch');
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(singleStep);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,1,'single-step batches (flag off) open the editor as before');
  }

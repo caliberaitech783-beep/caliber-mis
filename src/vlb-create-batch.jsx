@@ -10,7 +10,6 @@ import VlbBatchReport from './vlb-batch-report.jsx';
 import VlbBatchGovernance from './vlb-batch-governance.jsx';
 import VlbReopenDialog from './vlb-reopen-dialog.jsx';
 import {VlbUnlockOtpDialog} from './vlb-approval-otp.jsx';
-import VlbFleetStepper from './vlb-fleet-stepper.jsx';
 import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
@@ -32,7 +31,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
 
  const autoOpenedEntryBatch=useRef('');
  // Two-stage (VLB -> ELB) state. Declared after the existing hooks so hook order stays unchanged.
- const [twoStageList,setTwoStageList]=useState(false),[stepper,setStepper]=useState(false),[newEquipment,setNewEquipment]=useState(false),[unlockOtp,setUnlockOtp]=useState(false);
+ const [twoStageList,setTwoStageList]=useState(false),[newEquipment,setNewEquipment]=useState(false),[unlockOtp,setUnlockOtp]=useState(false);
  const twoStage=Boolean(viewed?.twoStage),stage=twoStage?viewed.stage||'vlb_open':'';
  const lockedSite=!entryMode&&!actor?.admin&&openBatch&&!openBatch.restricted?openBatch.site:'';
  useEffect(()=>{if(lockedSite)setSelection(current=>({...current,site:options?.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(lockedSite))||displaySiteName(lockedSite)}));},[lockedSite,options]);
@@ -83,13 +82,12 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
  const lockVlb=async()=>{if(!viewed)return;setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches/'+viewed.id+'/lock-vlb',{method:'POST'});
-  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(current=>current?.id===batch.id?{...current,...batch}:current);setStepper(Boolean(batch.fleet?.length));setRefresh(n=>n+1);
+  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(current=>current?.id===batch.id?{...current,...batch}:current);setRefresh(n=>n+1);
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
  const unlockVlb=async()=>{if(!viewed)return;const reason=window.prompt('Reason for unlocking VLB. The machine snapshot is cleared and recorded in the batch audit.','');if(reason==null||!reason.trim())return;setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches/'+viewed.id+'/unlock-vlb',{method:'POST',body:{reason:reason.trim()}});
-  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setStepper(false);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1);
+  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1);
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
- const mergeViewed=result=>{if(!result||typeof result!=='object')return;const {record,...rest}=result;setViewed(current=>current?{...current,...rest}:current)};
  const remove=batch=>setRecovery({batch,operation:'delete'});
  const erase=batch=>setRecovery({batch,operation:'erase'});
  const changed=async batch=>{if(batch){++detailRequest.current;setViewed(batch);setOpenBatch(batch.closed_at?null:batch);if(!batch.closed_at)onSelected?.(batch)}setRefresh(n=>n+1)};
@@ -115,7 +113,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   <section className="logbook-section"><h2>{viewed?viewed.name:'All matching saved entries'}</h2>{viewed&&twoStage&&<StageSteps stage={stage}/>}{viewed&&<p>{viewed.closed_at?'CLOSED':'OPEN'} · {displaySiteName(viewed.site)} · {viewed.report_date} · {viewed.shift} <button type="button" disabled={busy||detailLoading} onClick={clearView}>Show unbatched entries</button></p>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
     {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={lockVlb}>Lock VLB</button><button type="button" disabled title="Lock VLB first">ELB entry · Lock VLB first</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{viewed.lockBlockers?.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {viewed.lockBlockers.join(' ')}</p>}</>}
-    {stage==='elb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||viewed.canEnterFleet===false} onClick={()=>setStepper(true)}>{viewed.fleetProgress?.saved>0?'Continue ELB entries':'Start ELB entries'}</button>{onElbEntry&&<button type="button" disabled={busy} onClick={()=>onElbEntry(viewed)}>ELB manual / scan</button>}<button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}{viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button></div>
+    {stage==='elb_open'&&<><div className="vlb-batch-actions">{onElbEntry&&<button type="button" className="vlb-approval-primary" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onElbEntry(viewed)}>Open ELB manual / scan</button>}<button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}{viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button></div>
      {viewed.fleetProgress&&<p role="status">{viewed.fleetProgress.saved} of {viewed.fleetProgress.total} machines saved · {viewed.fleetProgress.remaining} remaining{viewed.fleetProgress.skipped?' · '+viewed.fleetProgress.skipped+' skipped':''}{viewed.fleetProgress.drafts?' · '+viewed.fleetProgress.drafts+' draft'+(viewed.fleetProgress.drafts===1?'':'s'):''}{viewed.fleetProgress.loaders?' · '+viewed.fleetProgress.loaders+' loading machine'+(viewed.fleetProgress.loaders===1?'':'s'):''}</p>}
      <div className="logbook-table-wrap"><table className="logbook-table vlb-fleet-table"><thead><tr><th>Door</th><th>Equipment</th><th>Trips</th><th>Status</th><th>Operator</th><th>Caliber ID</th><th>Opening HMR</th><th>Closing HMR</th><th>Working HMR</th><th>BD hours</th><th>Idle hours</th><th>Availability hours</th><th>Job card</th><th>Remarks</th><th>Date</th><th>Site</th><th>Shift</th><th>ELB entry</th></tr></thead><tbody>{(viewed.fleet||[]).map(row=>{const entry=fleetFrontEntry(row,viewed);return <tr key={row.assetId}><td>{row.door}</td><td>{row.equipmentName||'—'}</td><td>{row.trips}</td><td>{entry.status}</td><td>{entry.operator}</td><td>{entry.caliberId}</td><td>{entry.openingHmr}</td><td>{entry.closingHmr}</td><td>{entry.workingHmr}</td><td>{entry.breakdownHours}</td><td>{entry.idleHours}</td><td>{entry.availabilityHours}</td><td>{entry.jobCardNo}</td><td>{entry.remark}</td><td>{entry.bookDate}</td><td>{entry.location}</td><td>{entry.shift}</td><td>{entry.bookNo}</td></tr>})}{!(viewed.fleet||[]).length&&<tr><td colSpan={18}>No machines in the fleet list for this site.</td></tr>}</tbody></table></div>
      {viewed.closeBlockers?.length>0&&<p className="logbook-message" role="status">Close &amp; lock ELB is blocked: {viewed.closeBlockers.join(' ')}</p>}</>}
@@ -128,8 +126,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
 
   {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.id} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection} canEdit={batchTab==='edit'&&!viewed.closed_at&&(actor?.mis||actor?.admin)} onChanged={()=>setRefresh(n=>n+1)}/> }
   <VlbBatchGovernance session={session} batch={viewed} actor={actor} refresh={refresh} onChanged={changed} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)} onApprovals={onApprovals}/>
-  {stepper&&twoStage&&stage==='elb_open'&&<VlbFleetStepper key={viewed.id} session={session} batch={viewed} options={options} onChanged={mergeViewed} onDismiss={()=>{setStepper(false);setRefresh(n=>n+1)}}/>}
-  {unlockOtp&&viewed&&stage==='elb_open'&&<VlbUnlockOtpDialog key={viewed.id} session={session} batch={viewed} onChanged={async batch=>{++detailRequest.current;setDetailLoading(false);setViewed(batch);setStepper(false);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1)}} onDismiss={()=>setUnlockOtp(false)}/>}
+  {unlockOtp&&viewed&&stage==='elb_open'&&<VlbUnlockOtpDialog key={viewed.id} session={session} batch={viewed} onChanged={async batch=>{++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1)}} onDismiss={()=>setUnlockOtp(false)}/>}
   {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} actor={actor} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
  </section>;
 }
