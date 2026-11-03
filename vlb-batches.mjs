@@ -8,7 +8,7 @@ import {requireLogBookSite,siteAllowed} from './log-book-access.mjs';
 import {vlbBatchSelection,vlbBatchName,vlbRecordShift} from './vlb-batch-format.mjs';
 import {VLB_BATCH_SCHEMA,batchLogin,batchFail,lockVlbBatchWrites,auditVlbBatch,matchingVlbBatch,syncVlbBatchRecord} from './vlb-batch-policy.mjs';
 import {vlbBatchActor,batchPmAtSite} from './vlb-batch-access.mjs';
-import {stageDetails,lockVlb,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from './vlb-batch-stages.mjs';
+import {readFleetBreakdowns,stageDetails,lockVlb,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from './vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from './vlb-two-stage.mjs';
 import {APPROVAL_PURPOSES,issueApprovalOtp,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from './vlb-approval-otp.mjs';
 export {VLB_BATCH_SCHEMA} from './vlb-batch-policy.mjs';
@@ -135,6 +135,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const batch=await visible(pool,req.params.id,req);const info=await stageDetails(pool,batch);
   res.json({stage:info.stage,fleet:info.fleet||[],fleetProgress:info.fleetProgress||null,machines:info.machines||[],holds:info.holds||[],closeBlockers:info.closeBlockers||[],statuses:FLEET_STATUSES,machineReport:info.machineReport||null});
  }));
+ app.get('/api/vlb-batches/:id/fleet/:assetId/breakdowns',...protect,handle(async(req,res)=>{
+  if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
+  const batch=await visible(pool,req.params.id,req);
+  res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,logBookOps?.readHours,req.batchActor.login));
+ }));
  app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   res.json(await transaction(async client=>{const batch=await visible(client,req.params.id,req);if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);const row=await saveFleetDraft(client,batch,req.params.assetId,req.body?.draft||{},req.batchActor.login);return {assetId:String(row.asset_id),draft:row.draft,skipped:row.skipped};}));
@@ -144,7 +149,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   if(!logBookOps)fail('Machine entry is unavailable on this server.',503);
   res.json(await transaction(async client=>{
    const batch=await visible(client,req.params.id,req);if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);
-   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login)});
+   const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login),readHours:logBookOps.readHours});
    const info=await stageDetails(client,batch);
    return {record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport};
   }));

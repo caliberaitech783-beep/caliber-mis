@@ -136,7 +136,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
- registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
+ registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),resolve:(client,kind,input)=>resolveLogBookData(client,kind,input),insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
