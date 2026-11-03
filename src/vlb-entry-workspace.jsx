@@ -2,7 +2,7 @@ import React,{useState} from 'react';
 import VlbCreateBatch from './vlb-create-batch.jsx';
 import ElbBatchManual from './elb-batch-manual.jsx';
 
-export function rememberVlbEntryBatch(session,batch){if(batch?.id)try{sessionStorage.setItem('vlb-entry-batch:'+String(session.login||session.name||''),batch.id)}catch{}}
+export function rememberVlbEntryBatch(session,batch){if(batch?.id)try{const user=String(session.login||session.name||'');sessionStorage.setItem('vlb-entry-batch:'+user,batch.id);sessionStorage.setItem('vlb-entry-handoff:'+user,batch.id)}catch{}}
 
 // A batch belongs to its site/date/shift and can be continued from either entry mode.
 // ELB manual and scan use the same picker: with two-stage batches the editor opens only once VLB is locked.
