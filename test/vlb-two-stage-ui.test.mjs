@@ -164,3 +164,29 @@ test('batch report adds the machine-wise shift report with totals only when the 
  assert.match(html,/Other equipment/);assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td colSpan="5">Maintenance<\/td><td>0<\/td>/);assert.match(html,/Service due/);
  assert.match(html,/Totals · 2 machines<\/th><th>42<\/th>/);assert.match(html,/Fleet summary: 2 machines · 1 working · 1 down · 0 idle/);
 });
+
+test('View report exposes separate batch-bound Manual, Scan and Upload actions respecting VLB locks',async()=>{
+ const h=hooks(),calls=[];
+ const batch={id:'selected-batch',name:'Jayant batch',site:'Jayant OC',report_date:'2026-11-03',shift:'S1',records:[],twoStage:true,stage:'vlb_open',closed_at:null};
+ const browser={location:{href:'https://example.test/?page=vlb-create-batch'},history:{replaceState(_state,_unused,path){browser.location.href=new URL(path,browser.location.href).href}}};
+ const fetch=async url=>{calls.push(url);return {ok:true,json:async()=>batch}};
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbFleetStepper:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:browser},['VlbCreateBatch']);
+ const entered=[];
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'test'},onExit(){},onManual:value=>entered.push(['manual',value.id]),onScan:value=>{entered.push(['scan',value.id]);browser.location.href='https://example.test/?page=trip-scan'}})};
+ render();h.slots[0]={sites:['Jayant OC'],shifts:[]};h.slots[3]=[batch];h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};
+ let tree=render();assert.equal(nodes(tree,n=>n.props['aria-label']==='Batch entry options').length,0);
+ await button(tree,'View report').props.onClick();tree=render();
+ assert.deepEqual(calls,['/api/vlb-batches/selected-batch']);
+ const actions=nodes(tree,n=>n.props['aria-label']==='Batch entry options')[0];
+ assert.deepEqual(nodes(actions,n=>n.type==='button').map(n=>n.props.children),['Manual','Scan','Upload']);
+ for(const label of ['Manual','Scan','Upload'])assert.equal(button(actions,label).props.disabled,false);
+ button(actions,'Manual').props.onClick();button(actions,'Scan').props.onClick();
+ assert.equal(new URL(browser.location.href).searchParams.get('scanEntry'),'scan');
+ button(actions,'Upload').props.onClick();
+ assert.equal(new URL(browser.location.href).searchParams.get('scanEntry'),'upload');
+ assert.deepEqual(entered,[['manual',batch.id],['scan',batch.id],['scan',batch.id]]);
+ for(const locked of [{...batch,stage:'elb_open'},{...batch,stage:'closed',closed_at:'2026-11-03T12:00:00Z'}]){
+  h.slots[5]=locked;tree=render();const group=nodes(tree,n=>n.props['aria-label']==='Batch entry options')[0];
+  for(const label of ['Manual','Scan','Upload'])assert.equal(button(group,label).props.disabled,true);
+ }
+});
