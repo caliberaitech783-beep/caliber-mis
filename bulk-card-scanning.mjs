@@ -1,3 +1,4 @@
+import {SCAN_DELETION_OTP_SCHEMA,issueScanDeletionOtp,consumeScanDeletionOtp} from './scan-deletion-otp-store.mjs';
 import {registerSelectedScanAbort} from './scan-card-abort.mjs';
 import {registerScanCardGroupDeletion,SCAN_CARD_GROUP_DELETION_SCHEMA} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from './scan-meter-history.mjs';
@@ -46,7 +47,8 @@ import {tripCardLocation} from './scan-site-match.mjs';
 import {localCardOcr} from './local-card-ocr.mjs';
 const encodeScanJson=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanJson(value):value;
 const encodeScanText=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanText(value):value;
-export const SCAN_SCHEMA=`${SCAN_CARD_GROUP_DELETION_SCHEMA}
+export const SCAN_SCHEMA=`${SCAN_DELETION_OTP_SCHEMA}
+${SCAN_CARD_GROUP_DELETION_SCHEMA}
 CREATE TABLE IF NOT EXISTS mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('vehicle','equipment')),name TEXT NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  ALTER TABLE mis_scan_batches ADD COLUMN IF NOT EXISTS expected_context JSONB;
  ${SCAN_BATCH_NAMING_SCHEMA}
@@ -182,34 +184,17 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
  registerSelectedScanAbort(app,{pool,protect,wrap,getBatch,getCard});
  registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp:sendCardDeletionOtp});
  const deletable=card=>{if(card.logbook_id||!['review','approved','error','rejected'].includes(card.status))fail('Only unsaved cards can be deleted here.',409);};
- const deletionRequests=new Map(),deletionRates=new Map();
  const deletionActor=req=>String(req.session.login||req.session.name||'');
  const deletionPhrase=card=>`Approve deletion of card ${card.id} revision ${card.revision}`;
- const deletionHash=(id,otp)=>createHash('sha256').update(id+':'+otp).digest();
 
  app.post('/api/scan-cards/:id/deletion-otp',...protect,wrap(async(req,res)=>{
   const card=await getCard(pool,req.params.id);deletable(card);
   if(card.revision!==req.body.revision)fail('Card changed. Reload before deleting.',409);
   if(req.body.approval!==deletionPhrase(card)||!String(req.body.reason||'').trim())fail('Enter the exact card approval and a deletion reason.',400);
-  const now=Date.now(),actor=deletionActor(req);
-  for(const [id,row] of deletionRequests)if(row.expires<=now)deletionRequests.delete(id);
-  for(const [key,times] of deletionRates){const recent=times.filter(t=>now-t<3600000);if(recent.length)deletionRates.set(key,recent);else deletionRates.delete(key);}
-  const times=deletionRates.get(actor)||[];
-  if(times.length>=10||times.some(t=>now-t<60000))fail('Wait one minute between OTP requests; maximum ten per hour.',429);
-  deletionRates.set(actor,[...times,now]);
-  for(const [id,row] of deletionRequests)if(row.actor===actor)deletionRequests.delete(id);
-  const id=randomUUID(),otp=String(randomInt(100000,1000000));
-  let delivery;try{delivery=await sendCardDeletionOtp({to:DELETION_PHONE,otp,requestId:id,count:1});}catch{fail('WhatsApp OTP delivery is unavailable. No card was deleted.',503);}
-  if(!delivery?.sent||!delivery.messageId)fail('WhatsApp OTP delivery failed. No card was deleted.',503);
-  deletionRequests.set(id,{actor,cardId:card.id,revision:card.revision,reason:String(req.body.reason).trim().slice(0,2000),hash:deletionHash(id,otp),expires:now+600000,attempts:0});
-  res.json({requestId:id,recipient:'+91 9925565281',expiresInMinutes:10});
+  res.json(await issueScanDeletionOtp(pool,{actor:deletionActor(req),card,reason:req.body.reason,send:sendCardDeletionOtp,to:DELETION_PHONE}));
  }));
  app.post('/api/scan-cards/:id/delete',...protect,wrap(async(req,res)=>{
-  const row=deletionRequests.get(req.body.requestId);
-  if(!row||row.actor!==deletionActor(req)||row.cardId!==req.params.id||row.expires<=Date.now()||row.attempts>=5)fail('Deletion OTP expired or unavailable. Request a new code.',409);
-  row.attempts++;
-  if(!/^\d{6}$/.test(String(req.body.otp||''))||!timingSafeEqual(row.hash,deletionHash(req.body.requestId,req.body.otp)))fail('Incorrect WhatsApp OTP.',400);
-  deletionRequests.delete(req.body.requestId);
+  const row=await consumeScanDeletionOtp(pool,{actor:deletionActor(req),cardId:req.params.id,requestId:req.body.requestId,otp:req.body.otp});
   const c=await pool.connect();try{await c.query('BEGIN');const card=await getCard(c,req.params.id,true);deletable(card);
    if(card.revision!==row.revision||req.body.approval!==deletionPhrase(card))fail('Card changed. Prepare a fresh deletion approval.',409);
    if(card.image_blob_key){
