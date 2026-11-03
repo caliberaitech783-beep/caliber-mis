@@ -10,3 +10,11 @@ test('an actual legacy deletion handler never runs, even when approval-shaped he
  const app=express();let invoked=false;app.use(enforceContentDeletionPolicy);app.delete('/api/saved-reports/:id',(_req,res)=>{invoked=true;res.sendStatus(204)});
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));try{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/saved-reports/1',{method:'DELETE',headers:{'X-Deletion-Approved':'true','X-OTP':'123456'}});assert.equal(r.status,403);assert.equal(invoked,false);assert.equal((await r.json()).code,'DELETION_APPROVAL_REQUIRED');}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
+
+test('only the authorized single scan-card POST delete bypasses the global OTP rule',()=>{
+ const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',path='/api/scan-cards/'+id+'/delete';
+ assert.equal(contentDeletionBlocked('POST',path),false);
+ assert.equal(contentDeletionBlocked('POST',path+'?x=1'),false);
+ assert.equal(contentDeletionBlocked('POST',path.toUpperCase()+'/'),false);
+ for(const [method,url] of [['DELETE',path],['PUT',path],['PATCH',path],['POST','/api/scan-cards/bulk-delete'],['POST',path+'/all'],['POST','/api/scan-cards/not-an-id/delete'],['POST','/api/scan-batches/'+id+'/delete'],['POST','/api/log-books/'+id+'/delete']])assert.equal(contentDeletionBlocked(method,url),true,method+' '+url);
+});
