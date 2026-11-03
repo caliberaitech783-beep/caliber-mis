@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel from './equipment-alias-otp-panel.jsx';
 import {nextMismatchPair,mismatchPairCount} from './scan-alias-mismatch.mjs';
+import {matchesSmartSearch} from '../smart-search.mjs';
 
 // Equipment mismatch · cards vs Pulse. Opens by itself when extraction finishes, before
 // card 1. Works category by category (tipper headers, trip body equipment, ELB headers) and
@@ -13,6 +14,10 @@ export default function ScanAliasMismatchDialog({session,batchLabel,data,busy,er
  const current=useMemo(()=>nextMismatchPair(data,skippedPairs,skippedCategories),[data,skippedPairs,skippedCategories]);
  // Derived per pair so the first paint already shows the suggestion and resumes a pending pair at its OTP step.
  const pairKey=current?current.category.id+':'+current.pair.key:'';
+ const searchInput=useRef(null),[searchState,setSearchState]=useState(null);
+ const search=searchState?.pairKey===pairKey?searchState.value:'';
+ const setSearch=value=>setSearchState({pairKey,value});
+ const visibleAssets=(current?.category.left||[]).filter(asset=>matchesSmartSearch(search,asset.door,asset.name,asset.registration,asset.registrationNumber,asset.make,asset.model));
  const choice=choiceState?.pairKey===pairKey?choiceState.value:current?.pair?.suggestions?.[0]||'';
  const setChoice=value=>setChoiceState({pairKey,value});
  const alias=aliasOverride?.pairKey===pairKey?aliasOverride.alias:current?.pair?.alias||null;
@@ -23,15 +28,19 @@ export default function ScanAliasMismatchDialog({session,batchLabel,data,busy,er
  const chosen=current?.category.left.find(a=>a.id===choice);
  const counts=current?{rows:current.pair.rows,cards:current.pair.cards,batch:data?.batchName||'',context:data?.context?[data.context.bookDate,data.context.location,'Shift '+data.context.cardShift].filter(Boolean).join(', '):''}:null;
  return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="scan-alias-title" onCancel={event=>{event.preventDefault();onClose()}}>
-  <h2 id="scan-alias-title">Equipment mismatch · {data?.kind==='vehicle'?'trip cards':'job cards'} vs Pulse</h2>
+  <header className="scan-alias-sticky-header"><button type="button" className="scan-alias-top-close" onClick={onClose} aria-label="Close equipment mismatch window">× Close</button>
+  <h2 id="scan-alias-title">Equipment mismatch · {data?.kind==='vehicle'?'trip cards':'job cards'} vs Pulse</h2></header>
   <p className="scan-alias-context">{batchLabel}{data?.extracting?' · extraction still running':''}</p>
   {!current&&<p role="status">All written machines in this batch match Pulse. Card review can start.</p>}
   {current&&<>
    <p className="scan-alias-progress">Category {categoryIndex+1} of {data.categories.length} · {current.category.label} · {current.category.right.filter(p=>!skippedPairs.has(current.category.id+':'+p.key)).length} pair(s) pending · {total} in all</p>
    <div className="scan-alias-columns">
     <section><h3>Pulse {current.category.kind==='vehicle'?'tippers':'equipment'} at this site, not found on any card</h3>
+     <div className="scan-alias-search"><label htmlFor="scan-alias-search">Smart Search</label><div><input ref={searchInput} id="scan-alias-search" type="search" data-smart-search value={search} onChange={event=>setSearch(event.target.value)} placeholder="Door, registration, name, make or model"/><button type="button" onClick={()=>{setSearch('');searchInput.current?.focus();}} disabled={!search} aria-label="Clear equipment search">×</button></div></div>
+     <p className="scan-alias-search-count" role="status">{visibleAssets.length} of {current.category.left.length} equipment shown</p>
      {!current.category.left.length&&<p>None. Every Pulse record at this site is already named on a card.</p>}
-     <ul className="scan-alias-list">{current.category.left.map(asset=><li key={asset.id} className={current.pair.suggestions.includes(asset.id)?'scan-alias-suggested':''}>
+     {!!current.category.left.length&&!visibleAssets.length&&<p>No equipment matches this search. Clear or change your search.</p>}
+     <ul className="scan-alias-list">{visibleAssets.map(asset=><li key={asset.id} className={current.pair.suggestions.includes(asset.id)?'scan-alias-suggested':''}>
       <label><input type="radio" name="scan-alias-left" disabled={!pairing||busy} checked={choice===asset.id} onChange={()=>setChoice(asset.id)}/> <strong>{asset.door}</strong>{asset.name&&asset.name!==asset.door?' · '+asset.name:''}{current.category.id==='elb'&&(asset.make||asset.model)?' · '+[asset.make,asset.model].filter(Boolean).join(' '):''}{current.pair.suggestions[0]===asset.id?<em> suggested by number</em>:null}</label></li>)}</ul>
     </section>
     <section><h3>Card {current.category.kind==='vehicle'?'tippers':'machines'} not found in Pulse</h3>
