@@ -1,6 +1,7 @@
 import './log-book-readability.css';
 import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';
 import {meterCorrectionReport} from '../scan-meter-history.mjs';
+import {machineSummary} from '../trip-card-rules.mjs';
 import './meter-correction-report.css';
 import SmartSelect from './smart-select.jsx';
 import PulseTripVerification from './pulse-trip-verification.jsx';
@@ -31,7 +32,7 @@ export function printDocument(content,landscape=false){return '<!doctype html><h
 `+'</style></head><body>'+content+'</body></html>'}
 
 export function SavedLogBookDetails({record,kind,imageUrl='',imageError='',ReportSection}){
-  const data=record.data||{},vehicle=kind==='vehicle',correction=meterCorrectionReport(data);
+  const data=record.data||{},vehicle=kind==='vehicle',correction=meterCorrectionReport(data),machines=Array.isArray(data.trips)?machineSummary(data.trips):data.machineSummary||[];
   const fields=[['Book number',record.book_no],['Book date',bookDate(data.bookDate)],['Location',data.location],
     [vehicle?'Door number':'Equipment / Door number',data.door],['Equipment name',data.assetName],['Employee ID / Caliber ID',data.caliberId],
     [vehicle?'Driver':'Operator',data.employeeName],['Work order / Contract',data.workOrderContract],['Shift hours',data.shiftHours],['Shift',data.shiftName],
@@ -50,14 +51,14 @@ export function SavedLogBookDetails({record,kind,imageUrl='',imageError='',Repor
     <dl className="saved-logbook-values">{fields.map(([label,value])=><div key={label}><dt title={label}>{compactLogBookLabel(label)}</dt><dd>{display(value)}</dd></div>)}</dl>
     {correction?.original&&<dl className="saved-logbook-values"><div><dt>HMR / KMR errors</dt><dd className="meter-report-error">{correction.original}</dd></div><div><dt>Corrected HMR / KMR readings</dt><dd className="meter-report-corrected">{correction.corrected}</dd></div></dl>}
     {vehicle&&<><h3>Individual trips</h3><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Tr.Sr.No</th><th>Equipment</th>{data.timeMode!=='without'&&<><th>L. time</th><th>U. time</th></>}<th>Trips</th><th>Handover</th></tr></thead><tbody>{(data.trips||[]).map((trip,index)=><tr key={index}><td>{tripSerialNumber(trip,index)}</td><td>{display(trip.equipmentName)}</td>{data.timeMode!=='without'&&<><td>{display(trip.loadingTime)}</td><td>{display(trip.unloadingTime)}</td></>}<td>{display(trip.tripCount)}</td><td>{display(trip.tripStatus)}{trip.handoverLinks?.map((link,i)=><div key={i}>{link.role==='loading'?'Unloaded by':'Loaded by'} {link.counterpart.driverName} · {link.counterpart.bookNo} · {link.counterpart.date} · {link.loadingTime} → {link.unloadingTime}</div>)}</td></tr>)}</tbody></table></div>
-      {(data.machineSummary||[]).length>0&&<><h3>Machine-wise summary</h3><table className="logbook-table"><thead><tr><th>Equipment</th><th>Trips</th></tr></thead><tbody>{data.machineSummary.map((row,index)=><tr key={index}><td>{display(row.equipmentName)}</td><td>{display(row.tripCount)}</td></tr>)}</tbody></table></>}
+      {machines.length>0&&<><h3>Machine-wise summary</h3><table className="logbook-table"><thead><tr><th>Equipment</th><th>Trips</th></tr></thead><tbody>{machines.map((row,index)=><tr key={index}><td>{display(row.equipmentName)}</td><td>{display(row.tripCount)}</td></tr>)}</tbody></table></>}
     </>}
   </section><section className="logbook-section"><h2>Original scan</h2>{!data.scanCardId?<p>This entry was saved without a source scan.</p>:imageUrl?<><a href={imageUrl} target="_blank" rel="noreferrer">Open full-size scan</a><img className="saved-logbook-image" src={imageUrl} alt={'Original scan for '+record.book_no}/></>:imageError?<p role="alert">{imageError}</p>:<p role="status">Loading source scan…</p>}</section></div>
   {ReportSection&&<section className="saved-logbook-reports" aria-label={reportTitle}><h2>Report</h2>
     <ReportSection title={reportTitle} description={reportDescription} category="saved-logbook" smartPrintAction exportLabel="Print / Export" columns={[{key:'field',label:'Field',value:row=>row.field},{key:'value',label:'Saved value',value:row=>row.value}]} rows={reportRows}/>
     {correction?.original&&<ReportSection title={'Meter corrections · '+record.book_no} category="saved-logbook-corrections" smartPrintAction exportLabel="Print / Export" columns={[{key:'original',label:'HMR / KMR errors',tone:'error',value:row=>row.original,render:row=><span className="meter-report-error">{row.original}</span>},{key:'corrected',label:'Corrected HMR / KMR readings',tone:'corrected',value:row=>row.corrected,render:row=><span className="meter-report-corrected">{row.corrected}</span>}]} rows={[correction]}/>}
     {vehicle&&<ReportSection title={'Individual trips · '+record.book_no} description={reportDescription} category="saved-logbook-trips" smartPrintAction exportLabel="Print / Export" columns={tripColumns} rows={(data.trips||[]).map((trip,index)=>({...trip,row:tripSerialNumber(trip,index)}))} emptyMessage="No individual trips saved for this log book."/>}
-    {vehicle&&data.machineSummary?.length>0&&<ReportSection title={'Machine-wise summary · '+record.book_no} description={reportDescription} category="saved-logbook-machines" smartPrintAction exportLabel="Print / Export" columns={[{key:'equipmentName',label:'Equipment',value:row=>display(row.equipmentName)},{key:'tripCount',label:'Trips',value:row=>display(row.tripCount)}]} rows={data.machineSummary}/>}
+    {vehicle&&machines.length>0&&<ReportSection title={'Machine-wise summary · '+record.book_no} description={reportDescription} category="saved-logbook-machines" smartPrintAction exportLabel="Print / Export" columns={[{key:'equipmentName',label:'Equipment',value:row=>display(row.equipmentName)},{key:'tripCount',label:'Trips',value:row=>display(row.tripCount)}]} rows={machines}/>}
   </section>}</>;
 }
 
@@ -107,4 +108,5 @@ export default function SavedLogBooks({kind,session,onManual,onScan,onExit,canSc
     {selected&&<SavedLogBookDetails key={selected.id} record={selected} kind={kind} ReportSection={ReportSection} imageUrl={String(imageFor)===String(selected.id)?imageUrl:''} imageError={String(imageFor)===String(selected.id)?imageError:''}/>}
   </section>;
 }
+
 
