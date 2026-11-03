@@ -22,8 +22,10 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  const {code}=await transformWithOxc(compiled,'vlb-create-batch.jsx',{jsx:{runtime:'classic'}});
  const openVlbEntryBatches=new Function('React','canonicalSiteName',code+';return openVlbEntryBatches')(React,(await import('../site-location.mjs')).canonicalSiteName);
  const open={id:'open',site:'Jayant OB',closed_at:null},closed={id:'closed',site:'Jayant OC',closed_at:'2026-12-31T10:00:00Z'},other={id:'other',site:'Sasti OC',closed_at:null};
- assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['open']);
- assert.match(source,/entryMatching\.length!==1/,'auto-fetch waits for exactly one open batch');
+ assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['closed','open']);
+ assert.match(source,/preferredVlbEntryBatch\(entryMatching,remembered\)/,'auto-fetch restores the selected batch or the sole open batch');
+ const preferred=new Function('React','canonicalSiteName',code+';return preferredVlbEntryBatch')(React,(await import('../site-location.mjs')).canonicalSiteName);
+ assert.equal(preferred([closed,open],closed.id),closed);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
  assert.match(source,/\[entryMode,selection\.site,batchStatusReady,batches\]/,'auto-fetch reruns when the asynchronous batch list arrives');
  const css=fs.readFileSync(new URL('../src/vlb-create-batch.css',import.meta.url),'utf8');
  assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-setup\{[^}]*justify-content:flex-start[^}]*flex-wrap:nowrap/);
@@ -56,7 +58,7 @@ test('empty batches accept repeated manual and scan cards; every user gets one o
  assert.equal((await create('Jayant OB','bob')).status,409,'same scope cannot create a duplicate');
  assert.equal((await call('/'+batch.id+'/close',{})).status,200);
  const b=await create('Jayant OB','admin','S2');assert.equal(b.status,201,JSON.stringify(b.data));assert.equal((await call('/'+b.data.id+'/close',{},'admin')).status,200,'a new date or shift is allowed after the site batch is closed');
- await assert.rejects(()=>syncVlbBatchRecord(pool,{id:8,book_no:'VLB-8',book_type:'vehicle',data:{location:'Jayant OB',bookDate:'2026-12-31',bookShiftCode:'S1'}},'alice'),/closed/);
+ await assert.rejects(()=>syncVlbBatchRecord(pool,{id:1,book_no:'VLB-0',book_type:'vehicle',data:{location:'Jayant OB',bookDate:'2026-12-31',bookShiftCode:'S1'}},'alice'),/closed/);
 });
 
 test('batch selection opens the requested editor directly without an intermediate action screen',async()=>{
@@ -94,6 +96,8 @@ test('ELB manual and scan sit behind the site batch picker and open only once VL
   assert.equal(nodes(tree,n=>n.type===Editor).length,0,'VLB still open keeps the ELB editor closed');assert.match(renderToStaticMarkup(tree),/Lock VLB in batch Sasti 18 Dec S1 before entering ELB cards/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(elbOpen);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,elbOpen.id,'ELB stage opens the editor fixed to the batch');
+  nodes(tree,n=>n.type===Picker)[0].props.onSelected({...elbOpen,stage:'closed',closed_at:'2026-12-18T12:00:00Z'});tree=render();
+  assert.equal(nodes(tree,n=>n.type===Editor).length,1,'closed batches accept new ELB cards');
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(singleStep);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,1,'single-step batches (flag off) open the editor as before');
  }
