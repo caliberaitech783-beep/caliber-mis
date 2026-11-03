@@ -23,7 +23,7 @@ function DetailDialog({ detail, onClose, onPickSite }) {
   const pickable = detail.kind === "sites" && typeof onPickSite === "function";
   return createPortal(<div className="org-dialog-backdrop" onPointerDown={onClose}>
     <section className="org-dialog" role="dialog" aria-modal="true" aria-labelledby="org-detail-title" onPointerDown={(event) => event.stopPropagation()}>
-      <header><div><h2 id="org-detail-title">{detail.title}</h2><small>{countLabel(detail.rows.length, "record", "records")}{pickable ? " · click a site to open it" : ""}</small></div><button type="button" className="org-dialog-close" onClick={onClose} aria-label="Close"><X /></button></header>
+      <header className="mis-popup-close-header"><div><h2 id="org-detail-title">{detail.title}</h2><small>{countLabel(detail.rows.length, "record", "records")}{pickable ? " · click a site to open it" : ""}</small></div><button type="button" className="org-dialog-close mis-popup-close" onClick={onClose} aria-label="Close">× Close</button></header>
       <div className="org-dialog-body">
         {detail.rows.length ? <table className="org-detail-table"><thead><tr>{detail.columns.map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
           <tbody>{detail.rows.map((row, index) => <tr key={index} className={pickable ? "clickable" : ""} onClick={pickable ? () => onPickSite(row.site) : undefined}>{detail.columns.map(([key]) => <td key={key}>{String(row[key] ?? "")}</td>)}</tr>)}</tbody></table>

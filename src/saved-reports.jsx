@@ -49,7 +49,7 @@ function Dialog({ title, onClose, children, className = "", labelledBy }) {
   }, [onClose]);
   return createPortal(<div className="saved-report-backdrop" onPointerDown={onClose}>
     <section className={`saved-report-dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={labelledBy} onPointerDown={(event) => event.stopPropagation()}>
-      <header><h2 id={labelledBy}>{title}</h2><button type="button" className="saved-report-close" onClick={onClose} aria-label="Close"><X /></button></header>
+      <header className="mis-popup-close-header"><h2 id={labelledBy}>{title}</h2><button type="button" className="saved-report-close mis-popup-close" onClick={onClose} aria-label="Close">× Close</button></header>
       {children}
     </section>
   </div>, reportPortalTarget());

@@ -22,7 +22,7 @@ export default function CdirEmployeeEdit({person,token,onClose,onSaved}){
       else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
     }
   }}>
-    <header><div><h2>Edit employee details</h2><p>{person.name} · Employee ID: {data?.empId||person.empId||'Not recorded'}</p></div><button type="button" disabled={saving} onClick={onClose} aria-label="Close employee editor">×</button></header>
+    <header className="mis-popup-close-header"><div><h2>Edit employee details</h2><p>{person.name} · Employee ID: {data?.empId||person.empId||'Not recorded'}</p></div><button type="button" disabled={saving} onClick={onClose} aria-label="Close employee editor" className="mis-popup-close">× Close</button></header>
     {error&&<p role="alert">{error}</p>}
     {!data&&!error&&<p role="status">Loading employee details…</p>}
     {data&&<form className="form" onSubmit={async event=>{

@@ -21,7 +21,7 @@ export default function VlbReopenDialog({session,batch,actor,onChanged,onDismiss
   }catch(e){setError(e.message)}finally{setWorking(false)}
  };
  const otpApproved=async data=>{setError('');if(data?.batch)await onChanged(data.batch);if(data?.reopened)onDismiss();else if(data?.error)setError(data.error)};
- return <dialog className="vlb-reopen-dialog" ref={dialog} aria-modal="true" aria-labelledby="vlb-reopen-title" onCancel={event=>{event.preventDefault();if(!working)onDismiss()}}>
+ return <dialog className="vlb-reopen-dialog" ref={dialog} aria-modal="true" aria-labelledby="vlb-reopen-title" onCancel={event=>{event.preventDefault();if(!working)onDismiss()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={onDismiss} disabled={working} aria-label="Close window">× Close</button></div>
   <span className="vlb-permission-status">Saved batch · Locked</span>
   <h2 id="vlb-reopen-title">{trial?'Reopen during VLB trial':approved?'PM approval granted':'PM approval required'}</h2>
   <p>{trial?'PM approval is paused until '+batchDateTime(batch.pmApprovalTrial.endsAt)+' IST. You can reopen this batch directly.':'This batch has already been saved. Permission from the assigned Project Manager is required to reopen it.'}</p>

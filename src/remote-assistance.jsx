@@ -47,7 +47,7 @@ export function RemoteAssistanceRequestDialog({row,token,onClose,onRequested}){
   };
   return createPortal(<div className="remote-assistance-overlay" data-remote-assistance-ui>
     <section className="remote-assistance-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-request-title">
-      <header><button type="button" className="modal-back-button" onClick={onClose} disabled={sending} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><span><MonitorUp /></span><div><small>Secure in-app assistance</small><h2 id="remote-request-title">Request access to {row.name||row.login||"user"}&apos;s Caliber Pulse tab</h2></div><button type="button" onClick={onClose} aria-label="Close"><X /></button></header>
+      <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} disabled={sending} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><span><MonitorUp /></span><div><small>Secure in-app assistance</small><h2 id="remote-request-title">Request access to {row.name||row.login||"user"}&apos;s Caliber Pulse tab</h2></div><button type="button" onClick={onClose} aria-label="Close" disabled={sending} className="mis-popup-close">× Close</button></header>
       <form onSubmit={submit}>
         <div className="remote-assistance-recipient"><b>{row.name||"Unknown user"}</b><span>{row.login||"No login"} · {row.location||"Not assigned"}</span><i>Online</i></div>
         <div className="remote-assistance-fields">
@@ -173,7 +173,7 @@ export function RemoteAssistanceAgent({session}){
   };
   if(!assistance)return null;
   if(assistance.status==="Pending")return createPortal(<div className="remote-assistance-overlay" data-remote-assistance-ui>
-    <section className="remote-approval-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remote-approval-title">
+    <section className="remote-approval-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remote-approval-title"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>respond("decline")} disabled={Boolean(responding)} aria-label="Close window">× Close</button></div>
       <header><small>Caliber Pulse assistance request</small><h2 id="remote-approval-title">{assistance.requesterName||assistance.requesterLogin||"Administrator"} is requesting {assistance.accessLevel==="control"?"control":"a live view"}</h2></header>
       <div className="remote-approval-body">
         <dl><div><dt>Requested by</dt><dd>{assistance.requesterName||assistance.requesterLogin}</dd></div><div><dt>Access</dt><dd>{assistance.accessLevel==="control"?"Click, type, scroll and navigate":"View only"}</dd></div><div><dt>Duration</dt><dd>{assistance.durationMinutes} minutes maximum</dd></div><div><dt>Scope</dt><dd>This Caliber Pulse tab only</dd></div></dl>
@@ -270,7 +270,7 @@ export function RemoteAssistanceControlRoom({assistance,token,onClose,onEnded}){
   };
   return createPortal(<div className="remote-control-overlay" data-remote-assistance-ui>
     <section className="remote-control-room" role="dialog" aria-modal="true" aria-labelledby="remote-control-title">
-      <header><span><MousePointer2 /></span><div><h2 id="remote-control-title">Live Caliber Pulse Assistance · {assistance.targetName||assistance.targetLogin}</h2><p>{canControl?"Click, type and scroll inside the mirrored Caliber Pulse tab":"Secure view-only session"}</p></div><i className={connected?"connected":"waiting"}>{connected?"Live":"Waiting for screen"}</i><time>{remainingLabel(expiresAt)}</time><button type="button" onClick={onClose} title="Close viewer"><X /></button><button type="button" className="end" onClick={end}>End assistance</button></header>
+      <header className="mis-popup-close-header"><span><MousePointer2 /></span><div><h2 id="remote-control-title">Live Caliber Pulse Assistance · {assistance.targetName||assistance.targetLogin}</h2><p>{canControl?"Click, type and scroll inside the mirrored Caliber Pulse tab":"Secure view-only session"}</p></div><i className={connected?"connected":"waiting"}>{connected?"Live":"Waiting for screen"}</i><time>{remainingLabel(expiresAt)}</time><button type="button" onClick={onClose} title="Close viewer" className="mis-popup-close">× Close</button><button type="button" className="end" onClick={end}>End assistance</button></header>
       <div className="remote-control-stage"><div className="remote-control-canvas" ref={root}>{!connected&&<div className="remote-control-waiting"><MonitorUp /><b>{status==="Pending"?"Waiting for user approval":"Connecting to the user’s Caliber Pulse tab"}</b><span>The live view appears here after the user approves.</span></div>}</div></div>
       <footer><span><ShieldCheck /> Restricted to the approved Caliber Pulse tab</span><span>{canControl?<><Hand /> Control enabled</>:<><Eye /> View only</>}</span>{error&&<b role="alert"><AlertTriangle />{error}</b>}</footer>
     </section>

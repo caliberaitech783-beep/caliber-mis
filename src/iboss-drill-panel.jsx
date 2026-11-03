@@ -41,13 +41,13 @@ export default function DrillPanel({target,range:initialRange,token,close}){
  const LinkButton=({link,children})=><button type="button" className="merge-doc-link" onClick={()=>open({chain:link.chain,key:link.key,focus:{step:MERGE_CHAINS[link.chain].steps[0].key,docNo:String(children)}})} title={`Open ${targetLabel(link.chain)} trail`}>{children}<ExternalLink aria-hidden="true"/></button>;
  return <div className="merge-trail-backdrop" onClick={close}>
   <aside ref={panel} className="merge-trail" role="dialog" aria-modal="true" aria-labelledby="merge-trail-title" onClick={event=>event.stopPropagation()}>
-   <header>
+   <header className="mis-popup-close-header">
     <div>
      {stack.length>1&&<button type="button" className="merge-trail-back" onClick={()=>setStack(list=>list.slice(0,-1))}><CornerUpLeft aria-hidden="true"/>Back to {targetLabel(stack[stack.length-2].chain)}</button>}
      <small>{chain.title}</small>
      <h2 id="merge-trail-title">{chain.keyed?`${targetLabel(current.chain)[0].toUpperCase()+targetLabel(current.chain).slice(1)} ${current.key}`:`Document trail · ${focusDoc||current.key}`}</h2>
     </div>
-    <button type="button" className="merge-trail-close" onClick={close} aria-label="Close drill-down"><X/></button>
+    <button type="button" className="merge-trail-close mis-popup-close" onClick={close} aria-label="Close drill-down">× Close</button>
    </header>
    {chain.keyed?<form className="merge-trail-range" onSubmit={applyRange}>
     <label>From<DateInput value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})}/></label>
