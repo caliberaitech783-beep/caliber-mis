@@ -22,7 +22,7 @@ const statuses={working:{label:'Working',allowsTrips:true,needsOperator:true,nee
 const fleet=[
  {assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:42,sourceCards:5,saved_at:null,skipped:false,draft:null},
  {assetId:'7',door:'D-07',equipmentName:'Dozer',trips:0,sourceCards:0,saved_at:'2026-11-01T03:00:00Z',shift_status:'maintenance',book_no:'ELB-1',draft:null},
- {assetId:'8',door:'G-08',equipmentName:'Grader',trips:0,sourceCards:0,saved_at:null,skipped:false,draft:{shiftStatus:'no_operator',remark:'No shift operator'}},
+ {assetId:'8',door:'G-08',equipmentName:'Grader',trips:0,sourceCards:0,saved_at:null,skipped:false,draft:null},
 ];
 
 test('fleet stepper renders status buttons, blocks non-working statuses for a loader and computes hours',async()=>{
@@ -33,7 +33,7 @@ test('fleet stepper renders status buttons, blocks non-working statuses for a lo
  assert.equal(firstUnsavedIndex(fleet),0,'opens at the first machine without saved_at');
  assert.equal(firstUnsavedIndex([fleet[1],{...fleet[2],skipped:true},fleet[0]]),2,'prefers un-skipped machines');
  assert.equal(tripsHint(fleet[0],statuses),'VPC-019 loaded 42 trips on 5 tipper cards this shift. Only Working or Working, partial breakdown can be saved.');
- assert.equal(fleetDraftFields(fleet[2]).shiftStatus,'no_operator','drafts prefill the form');
+ assert.equal(fleetDraftFields(fleet[2]).shiftStatus,'','incomplete forms are not restored from drafts');
  assert.equal(fleetDraftFields({...fleet[1],logbook:{shiftStatus:'maintenance',openingHmr:120,closingHmr:120}}).openingHmr,'120','saved log books prefill when no draft exists');
  const batch={id:'batch1',name:'B01',site:'Jayant OC',fleet,statuses,fleetProgress:{total:3,saved:1,remaining:2}};
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5'},{id:'6',name:'Arun'}]},onChanged(){},onDismiss(){}})};
@@ -46,7 +46,7 @@ test('fleet stepper renders status buttons, blocks non-working statuses for a lo
  assert.deepEqual(statusButtons.filter(n=>n.props.disabled).map(n=>n.props.children),['Breakdown','Maintenance','No operator','Not in use'],'only working statuses stay enabled when trips were loaded');
  assert.equal(button(tree,'Next').props.disabled,true,'Next waits for a status');assert.equal(button(tree,'Previous').props.disabled,true);
  statusButtons[0].props.onClick();tree=render();html=renderToStaticMarkup(tree);
- assert.equal(statusButtons.length,6);assert.match(html,/Operator \*/,'working machines need an operator');assert.match(html,/Ramesh · C5/);assert.match(html,/Draft pending/);
+ assert.equal(statusButtons.length,6);assert.match(html,/Operator \*/,'working machines need an operator');assert.match(html,/Ramesh · C5/);assert.match(html,/Not saved · select Next to save this ELB/);
  const inputs=nodes(tree,n=>n.type==='input');const opening=inputs.find(n=>n.props.step==='0.01');const closing=inputs.filter(n=>n.props.step==='0.01')[1];
  opening.props.onChange({target:{value:'1200'}});closing.props.onChange({target:{value:'1206.5'}});tree=render();assert.match(renderToStaticMarkup(tree),/Hours: 6.5/);
  nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});tree=render();
@@ -55,9 +55,9 @@ test('fleet stepper renders status buttons, blocks non-working statuses for a lo
  assert.equal(save.body.shiftStatus,'working');assert.equal(save.body.employeeId,'5');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.closingHmr,'1206.5');assert.equal(save.body.requestKey,'key');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08 · Grader/,'moves to the next unsaved machine, skipping the saved dozer');
  assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']!==undefined).filter(n=>n.props.disabled).length,0,'zero-trip machines may take any status');
- // Zero trips: Working is still offered, the hint explains the hours rule, and the draft prefilled No operator.
+ // Zero trips: Working is still offered, the hint explains the hours rule, and no unsaved draft is restored.
  assert.match(renderToStaticMarkup(tree),/Zero trips: Working needs closing HMR above opening HMR/);
- assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']===true)[0].props.children,'No operator');
+ assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-pressed']===true).length,0);
  const failing=async()=>({ok:false,status:400,json:async()=>({error:'Select the operator for a working machine.'})});
  const {VlbFleetStepper:Failing}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch:failing,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
  const renderFailing=()=>{h.reset();return Failing({session:{token:'t'},batch,options:{employees:[]},onChanged(){},onDismiss(){}})};
@@ -130,14 +130,15 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  button(tree,'Hide new equipment form').props.onClick();
  h.slots[5]={...vlbStage,canLockVlb:true,lockBlockers:[]};tree=render();assert.equal(button(tree,'Lock VLB').props.disabled,false);await button(tree,'Lock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-vlb');assert.equal(calls.at(-1).method,'POST');
  // ELB stage: stage indicator moves, Start/Continue machines, fleet table, blockers, Close batch, Unlock VLB with reason.
- const elbStage={...base,twoStage:true,stage:'elb_open',canEnterFleet:true,canClose:false,canUnlockVlb:true,closeBlockers:['Machines without a saved ELB: VPC-019 loaded 42 trips, no ELB saved.'],holds:[],statuses,fleetProgress:{total:2,saved:1,remaining:1,skipped:0,drafts:1,loaders:1},fleet:[{assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:42,saved_at:null,draft:{shiftStatus:'working'}},{assetId:'7',door:'D-07',equipmentName:'Dozer',trips:0,saved_at:'2026-11-01T03:00:00Z',shift_status:'maintenance',book_no:'ELB-1'}]};
+ const elbStage={...base,twoStage:true,stage:'elb_open',canEnterFleet:true,canClose:false,canUnlockVlb:true,closeBlockers:['Machines without a saved ELB: VPC-019 loaded 42 trips, no ELB saved.'],holds:[],statuses,fleetProgress:{total:2,saved:1,remaining:1,skipped:0,drafts:0,loaders:1},fleet:[{assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:42,saved_at:null,draft:null},{assetId:'7',door:'D-07',equipmentName:'Dozer',trips:0,saved_at:'2026-11-01T03:00:00Z',shift_status:'maintenance',book_no:'ELB-1',logbook:{employeeName:'Ramesh',caliberId:'C5',openingHmr:120,closingHmr:124,totalWorkingHmr:4,breakdownHours:1,idleHours:3,availabilityHours:4,jobCardNo:'JC-9',remark:'Service',bookDate:'2026-11-01',location:'Jayant OC',shiftName:'Shift A'}}]};
  h.slots[3]=[{...base,stage:'elb_open',created_by:'bob'}];h.slots[4]={...base,stage:'elb_open',canClose:false};h.slots[5]=elbStage;
  tree=render();html=renderToStaticMarkup(tree);
  assert.match(html,/<li>1 VLB<\/li><li aria-current="step" class="current">2 ELB<\/li>/);
  const start=button(tree,'Continue machines');assert.ok(start,'saved machines mean Continue');assert.equal(start.props.disabled,false);
- assert.match(html,/1 of 2 machines saved · 1 remaining · 1 draft · 1 loading machine/);
- assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td><span class="vlb-draft-indicator">Draft<\/span><\/td>/);
- assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td><td>ELB-1<\/td>/);
+ assert.match(html,/1 of 2 machines saved · 1 remaining · 1 loading machine/);assert.doesNotMatch(html,/1 draft/);
+ assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
+ assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td>/);
+ assert.match(html,/<th>Operator<\/th><th>Caliber ID<\/th><th>Opening HMR<\/th><th>Closing HMR<\/th><th>Working HMR<\/th><th>BD hours<\/th><th>Idle hours<\/th><th>Availability hours<\/th><th>Job card<\/th><th>Remarks<\/th>/);
  assert.match(html,/Close batch is blocked: Machines without a saved ELB/);
  const closeButtons=nodes(tree,n=>n.type==='button'&&n.props.children==='Close batch');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close batch');assert.ok(closeButtons.every(n=>n.props.disabled));
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
