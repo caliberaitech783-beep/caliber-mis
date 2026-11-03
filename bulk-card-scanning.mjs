@@ -1,4 +1,4 @@
-import {registerScanCardGroupDeletion} from './scan-card-group-deletion.mjs';
+import {registerScanCardGroupDeletion,SCAN_CARD_GROUP_DELETION_SCHEMA} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from './scan-meter-history.mjs';
 import {requireOperationalDate,operationalScanSql} from './operational-start.mjs';
 import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from './scan-duplicates.mjs';
@@ -45,7 +45,8 @@ import {tripCardLocation} from './scan-site-match.mjs';
 import {localCardOcr} from './local-card-ocr.mjs';
 const encodeScanJson=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanJson(value):value;
 const encodeScanText=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanText(value):value;
-export const SCAN_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('vehicle','equipment')),name TEXT NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+export const SCAN_SCHEMA=`${SCAN_CARD_GROUP_DELETION_SCHEMA}
+CREATE TABLE IF NOT EXISTS mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('vehicle','equipment')),name TEXT NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  ALTER TABLE mis_scan_batches ADD COLUMN IF NOT EXISTS expected_context JSONB;
  ${SCAN_BATCH_NAMING_SCHEMA}
  ${SCAN_QUEUE_SCHEMA}
