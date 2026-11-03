@@ -119,15 +119,6 @@ export function buildFleetList(assets,site,machines=[]){
  return [...rows.values()].sort((a,b)=>b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
 }
 
-// Locking VLB prepares one ELB draft for each distinct loading machine. Batch,
-// site, date, shift, equipment and VLB trip totals are already known; operator
-// identity and HMR readings deliberately remain blank until the ELB is completed.
-export function linkedElbDraft(batch,row){
- if(!row||Number(row.trips)<=0)return null;
- return {generatedFromVlb:true,batchId:String(batch?.id||''),bookDate:text(batch?.report_date||batch?.book_date),location:text(batch?.site),bookShiftCode:text(batch?.shift),assetId:String(row.assetId||''),door:text(row.door),equipmentName:text(row.equipmentName),fleetTrips:Number(row.trips)||0,sourceCards:Number(row.sourceCards)||0,
-  shiftStatus:'working',employeeId:'',openingHmr:'',closingHmr:'',manualBreakdownHours:'',statusReason:'',jobCardNo:'',remark:'',idleHours:''};
-}
-
 // Shift status rules for the one-machine dialog. Trips loaded can only belong to a working
 // machine, and a working machine with zero trips must still show working hours.
 export function validateFleetEntry(input={},{trips=0,shiftHours=8}={}){
