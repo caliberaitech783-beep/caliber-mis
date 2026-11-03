@@ -29,3 +29,15 @@ test('stale checks, unavailable Pulse and saved or rejected cards do not trigger
   const row=card();patch(row);assert.equal(nextFleetReviewPrompt([row],new Set()),undefined);
  }
 });
+
+test('correcting equipment and changing remaining errors does not reprompt the same card',()=>{
+ const row=card(),other=card('V1');
+ const dismissed=new Set([fleetReviewKey(row)]);
+ row.draft={...row.draft,doorText:'V2',trips:[{equipmentName:'TPC50',tripCount:1}]};
+ row.raw_fields.fleetReview.signature=scanFleetSignature(row.draft);
+ row.raw_fields.fleetReview.issues=[{door:'TPC50',fields:['trips.0.equipmentName']}];
+ assert.equal(nextFleetReviewPrompt([row],dismissed),undefined);
+ assert.equal(nextFleetReviewPrompt([row,other],dismissed),other);
+ row.raw_fields.fleetReview.issues.push({door:'VPC54',fields:['trips.1.equipmentName']});
+ assert.equal(nextFleetReviewPrompt([row],dismissed),undefined);
+});

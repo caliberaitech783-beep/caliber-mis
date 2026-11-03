@@ -46,6 +46,9 @@ export async function verifyPublishedUiRelease({base='https://pulse-ll.cmll.in',
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  const result=process.argv.includes('--live')?await verifyPublishedUiRelease({expected:process.env.EXPECTED_COMMIT}):await verifyBuiltUiRelease({expected:process.env.EXPECTED_COMMIT});
+  // The live check reads production unless RELEASE_CHECK_BASE_URL names another
+  // deployment, for example the test platform (docs/test-platform-setup.md).
+  const base=process.env.RELEASE_CHECK_BASE_URL||'https://pulse-ll.cmll.in';
+  const result=process.argv.includes('--live')?await verifyPublishedUiRelease({base,expected:process.env.EXPECTED_COMMIT}):await verifyBuiltUiRelease({expected:process.env.EXPECTED_COMMIT});
   console.log('UI release versions agree: '+result.version);
 }

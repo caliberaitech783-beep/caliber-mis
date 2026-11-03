@@ -25,7 +25,7 @@ import {savedLogBookFilters} from './saved-log-book-filters.mjs';
 import {scanImageMime} from './scan-image-format.mjs';
 import {employeeIdentity} from './employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from './log-book-access.mjs';
-import {meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap} from './trip-card-rules.mjs';
+import {meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {summarizePulseHours} from './log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -67,7 +67,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');
  const trips=kind==='vehicle'?(input.trips||[]).map((row,index)=>{
    if(!row||typeof row!=='object'||Array.isArray(row))fail('Invalid trip row.');
-   const equipmentName=text(row.equipmentName);if(!equipmentName)fail(`Enter the loading equipment for trip row ${index+1}.`);
+   const equipmentName=text(row.equipmentName);if(tripEquipmentRequired(row,timeMode)&&!equipmentName)fail(`Enter the loading equipment for trip row ${index+1}.`);
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');

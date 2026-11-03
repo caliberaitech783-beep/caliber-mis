@@ -30,7 +30,7 @@ test('fleet detection retains the original scan and draft until the user chooses
  const create=reader=>new Function('readPulseFleet','pool','scanFleetIssues','scanFleetSignature','encodeScanJson','scanCardContextIssues',`return (${fn});`)(reader,pool,scanFleetIssues,scanFleetSignature,value=>value,scanCardContextIssues);
  const review=await create(async()=>fleet)(card);assert.equal(review.issues[0].reason,'transfer-required');assert.equal(updates.length,1);assert.doesNotMatch(updates[0].sql,/image=NULL|draft=|status='rejected'/);assert.equal(JSON.parse(updates[0].args[1]).issues[0].door,'V1');
  const offline=await create(async()=>{throw Error('Pulse offline')})(card);assert.equal(offline.error,'Pulse offline');assert.equal(card.image_blob_key,'selected-image');assert.equal(card.draft.doorText,'V1');
- pool.query=async()=>({rows:[{expected_context:{bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'}}]});let fleetRead=false;assert.equal(await create(async()=>{fleetRead=true;return fleet})(card),null);assert.equal(fleetRead,false,'metadata mismatches remain in the mismatch queue');
+ pool.query=async()=>({rows:[{expected_context:{bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'}}]});let fleetRead=false;const checked=await create(async()=>{fleetRead=true;return fleet})(card);assert.equal(fleetRead,true,'a card whose handwritten site differs is still checked against the batch site');assert.equal(checked.signature,scanFleetSignature({...card.draft,location:'Jayant OC'}));
 });
 
 test('all off-site trip and printed summary occurrences are highlighted once per equipment',()=>{

@@ -19,6 +19,8 @@ import SmartSelect from './src/smart-select.jsx';
 import LogBookForm from './src/log-book-form.jsx';
 import {SavedLogBookDetails} from './src/saved-log-books.jsx';
 import {compactLogBookLabel,tripSerialNumber} from './log-book-labels.mjs';
+import {tripEquipmentRequired} from './trip-card-rules.mjs';
+import {activeResponseRecoveryIssues} from './scan-response-recovery.mjs';
 const params=new URLSearchParams(location.search),mode=params.get('mode')||'scan';
 const fields=${fieldDefinition};
 const options={accountLocation:'Sasti OC',sites:['Sasti OC'],assets:[{id:'1',kind:'equipment',door:'TPC50',name:'TPC50-05008',site:'Sasti OC'},{id:'2',kind:'vehicle',door:'V/792',name:'Volvo',site:'Sasti OC'}],employees:[{id:'3',name:'Example driver',caliberId:'CMPL9143',site:'Sasti OC',location:'Sasti OC'}],shifts:[{id:'4',name:'Shift A',site:'Sasti OC',startTime:'05:00',endTime:'13:00'}],workOrders:[]};
@@ -27,6 +29,7 @@ window.fetch=async url=>new Response(JSON.stringify(String(url).includes('/optio
 function ScanFixture(){
  const [draft,setDraft]=useState({location:'Sasti OC',timeMode:mode==='untimed'?'without':'with',trips:[record.data.trips[0],{...record.data.trips[0],rowNumber:9}]});
  const i=0,correctionView=mode==='correction',card={raw_fields:{responseRecoveryIssues:mode==='recovery'?['Check printed serial']:[]}},fieldIssues={};
+ const recoveryIssues=activeResponseRecoveryIssues(card.raw_fields,draft);
  const visibleTrip=()=>true,visibleField=()=>true,fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
  const update=(key,value)=>setDraft(d=>({...d,[key]:value}));
  const tripEquipmentOptions=[{id:'TPC50-05008',name:'TPC50-05008'}],resolvedMachineName=a=>a.name,tripEquipmentSelectionValue=r=>r.equipmentName,selectTripEquipment=(r,value)=>({...r,equipmentName:value});

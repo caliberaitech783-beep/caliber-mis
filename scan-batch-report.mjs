@@ -1,7 +1,7 @@
 import {compactLogBookLabel,tripSerialNumber} from './log-book-labels.mjs';
 import {meterCorrectionReport} from './scan-meter-history.mjs';
-import {scanCardContextIssues} from './scan-batch-context.mjs';
-import {machineLabel} from './trip-card-rules.mjs';
+import {scanContextIssues} from './scan-batch-context.mjs';
+import {machineLabel,isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 import {matchCardMachine} from './scan-machine-rules.mjs';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
 const round=value=>Math.round(value*1000)/1000;
@@ -14,9 +14,9 @@ const states={queued:'Waiting for extraction',reading:'Extracting',review:'Pendi
 // this report. Saved totals use the current log book values, never OCR drafts.
 export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=false}={}){
  if(!batch?.id)return null;
- const vehicle=batch.kind==='vehicle',batchMembers=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'),members=batchMembers.filter(c=>(includeAllCards||!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanCardContextIssues(batch.expected_context,{...c,raw_fields:c.raw_fields||{}},{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
+ const vehicle=batch.kind==='vehicle',batchMembers=cards.filter(c=>c.batch_id===batch.id&&c.review_note!=='Removed from batch: wrong date, site or shift'),members=batchMembers.filter(c=>(includeAllCards||!batch.expected_context||(!['queued','reading'].includes(c.status)&&!scanContextIssues(batch.expected_context,{...c.draft,...(c.status==='posted'?c.saved_data:{})}).length))).slice().sort((a,b)=>a.ordinal-b.ordinal);
  const rows=members.map(card=>{
-  const processing=['queued','reading'].includes(card.status),contextIssues=batch.expected_context&&!processing?scanCardContextIssues(batch.expected_context,{...card,raw_fields:card.raw_fields||{}},{...card.draft,...(card.status==='posted'?card.saved_data:{})}):[];
+  const processing=['queued','reading'].includes(card.status),contextIssues=batch.expected_context&&!processing?scanContextIssues(batch.expected_context,{...card.draft,...(card.status==='posted'?card.saved_data:{})}):[];
   const saved=!contextIssues.length&&card.status==='posted'&&Boolean(card.saved_data)&&card.saved_data.scanCardId===card.id&&card.saved_data.scanBatchId===batch.id&&!card.logbook_deleted_at;
   const deleted=card.status==='posted'&&Boolean(card.logbook_deleted_at);
   const data=saved?card.saved_data:card.draft||{},raw=card.raw_fields||{};
@@ -29,10 +29,10 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
    openingHmr:number(data.openingHmr),closingHmr:number(data.closingHmr),hours:number(data.totalWorkingHmr)??difference(data.openingHmr,data.closingHmr),trips:totalTrips,openingTrips:number(data.openingTrips),endingTrips:number(data.endingTrips),
    ...meterCorrectionReport(data,data.meterCorrectionHistory||raw.meterCorrectionHistory),filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};
  });
- const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:tripSerialNumber(t,i),equipment:machineLabel(t.equipmentName||''),equipmentId:t.equipmentId?String(t.equipmentId):'',written:String(t.originalEquipmentName||t.equipmentNotation?.original||'').trim(),location:card.location,loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount)})));
+ const saved=rows.filter(r=>r.saved),tripRows=saved.flatMap(card=>card.details.map((t,i)=>({card:card.ordinal,cardNo:card.cardNo,bookNo:card.bookNo,door:card.door,trip:tripSerialNumber(t,i),equipment:machineLabel(t.equipmentName||''),equipmentId:t.equipmentId?String(t.equipmentId):'',written:String(t.originalEquipmentName||t.equipmentNotation?.original||'').trim(),location:card.location,loading:t.loadingTime||'',unloading:t.unloadingTime||'',trips:number(t.completedTrips??t.tripCount),machineTrips:isUnloadingOnlyTrip(t)?0:number(t.tripCount)})));
  // Group by Equipment master id (saved rows carry it); text-only rows resolve through the matcher and saved aliases at read time, never by rewriting stored rows. Rows that still cannot be resolved stay as their own flagged line.
  const assets=options?.assets||[],machines=new Map();
- for(const trip of tripRows){if(!trip.equipment||trip.trips===null)continue;const resolvedId=trip.equipmentId||(assets.length?String(matchCardMachine(assets,trip.written||trip.equipment,trip.location,'equipment').match?.id||''):'');const key=resolvedId?'id:'+resolvedId:'text:'+trip.equipment;const group=machines.get(key)||{equipment:trip.equipment,equipmentId:resolvedId||'',written:new Set(),unresolved:!resolvedId,trips:0,cards:new Set(),vehicles:new Set()};if(trip.written&&trip.written!==trip.equipment)group.written.add(trip.written);group.trips+=trip.trips;group.cards.add(trip.card);group.vehicles.add(trip.door);machines.set(key,group);}
+ for(const trip of tripRows){if(!trip.equipment||trip.machineTrips===null||trip.machineTrips===0)continue;const resolvedId=trip.equipmentId||(assets.length?String(matchCardMachine(assets,trip.written||trip.equipment,trip.location,'equipment').match?.id||''):'');const key=resolvedId?'id:'+resolvedId:'text:'+trip.equipment;const group=machines.get(key)||{equipment:trip.equipment,equipmentId:resolvedId||'',written:new Set(),unresolved:!resolvedId,trips:0,cards:new Set(),vehicles:new Set()};if(trip.written&&trip.written!==trip.equipment)group.written.add(trip.written);group.trips+=trip.machineTrips;group.cards.add(trip.card);group.vehicles.add(trip.door);machines.set(key,group);}
  const rejectedCards=batchMembers.filter(card=>card.status==='rejected'),visibleIds=new Set(members.map(card=>card.id));
  const counts={cards:rows.length+rejectedCards.filter(card=>!visibleIds.has(card.id)).length,saved:saved.length,rejected:rejectedCards.length,deleted:rows.filter(c=>c.deleted).length};counts.pending=counts.cards-counts.saved-counts.rejected-counts.deleted;
  const totals={trips:vehicle?sum(saved.map(r=>r.trips)):null,kilometres:vehicle?sum(saved.map(r=>r.kilometres)):null,hours:sum(saved.map(r=>r.hours))};
@@ -66,4 +66,5 @@ export function applySavedScanCard(card,record){
  if(!data||data.scanCardId!==card.id||data.scanBatchId!==card.batch_id)return card;
  return {...card,status:'posted',logbook_id:record.id,book_no:record.book_no,saved_data:data,logbook_deleted_at:null,checks:{errors:[],warnings:[]}};
 }
+
 

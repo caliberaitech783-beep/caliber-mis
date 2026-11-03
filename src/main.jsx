@@ -5,6 +5,7 @@ import MisTelegram from './mis-telegram.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
 import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
+import EnvironmentBanner from './environment-banner.jsx';
 import OperationsReports from './operations-reports.jsx';
 import CapacityMaster from './capacity-master.jsx';
 import {operationReports} from './operations-report-model.mjs';
@@ -12170,6 +12171,7 @@ document.documentElement.dataset.caliberUiVersion = APP_VERSION;
 
 createRoot(document.getElementById("root")).render(
   <ApplicationErrorBoundary>
+    <EnvironmentBanner />
     <SiteUpdateNotice currentVersion={APP_VERSION} />
     <App />
   </ApplicationErrorBoundary>,

@@ -248,10 +248,12 @@
 .scan-review-page .scan-draft-heading>:not(h2):not(.scan-review-heading-row){grid-column:1/-1;min-width:0}
 .scan-review-page .scan-draft-heading>.scan-review-heading-row h2{display:block;grid-column:2;grid-row:1;min-width:0;margin:0;font-size:14px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scan-review-page .scan-draft-heading>.scan-review-heading-row>button{grid-column:3;grid-row:1;margin:0;white-space:nowrap;padding:5px 7px;font-size:14px;line-height:1.25}
-.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning,.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning :is(summary,p){font-size:18px;line-height:1.25}
-.scan-review-page .scan-correction-status{height:auto;max-height:none;overflow:visible;overflow-wrap:anywhere}
-.scan-review-page .scan-correction-status.scan-warning{padding:10px 12px}
-.scan-review-page .scan-correction-status p{margin:10px 0}
+/* 1.5× the earlier 18px so the yellow checks read at arm's length; long lines wrap inside the entry column. */
+.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning,.scan-review-page .scan-draft-sheet .scan-correction-status.scan-warning :is(summary,p){font-size:27px;line-height:1.3}
+.scan-review-page .scan-correction-status{height:auto;max-height:none;overflow:visible;overflow-wrap:anywhere;white-space:normal;box-sizing:border-box;max-width:100%}
+.scan-review-page .scan-correction-status.scan-warning{padding:14px 16px}
+.scan-review-page .scan-correction-status p{margin:12px 0}
+.scan-review-page .scan-correction-status details>summary{cursor:pointer}
 /* Let long checks grow with the entry instead of scrolling inside the yellow box. */
 .scan-review-compact .scan-draft-sheet{overflow:auto}
 .scan-review-compact .scan-draft-sheet fieldset{flex:0 0 auto;overflow:visible}
@@ -266,6 +268,7 @@
 
 .scan-field-fleet{background:#fff1d8!important;border-radius:6px;outline:2px solid #d88516;padding:5px}.scan-field-fleet input,.scan-field-fleet select{border-color:#bf6e00!important}.scan-fleet-review-banner{padding:10px 12px;margin:8px 0;background:#fff1d8;border:1px solid #e0a650;border-radius:8px;font-size:13px}.scan-fleet-review-banner button{margin:3px}.scan-review-compact>.scan-fleet-review-banner{flex-shrink:0;max-height:12vh;overflow:auto}.scan-equipment-dialog{width:min(860px,calc(100vw - 40px));max-width:none;height:fit-content;max-height:calc(100dvh - 32px);box-sizing:border-box;overflow:auto;padding:24px;border:1px solid #e3c89e;border-radius:12px;background:var(--panel,#fff);color:var(--text,#30243f);box-shadow:0 20px 70px #24163840}
 .scan-equipment-dialog::backdrop{background:#24163870}
+.scan-equipment-dialog .scan-equipment-close{position:absolute;top:12px;right:12px;width:40px;height:40px;padding:0;font-size:28px;line-height:1;border-radius:50%}
 .scan-equipment-dialog h2{font-size:28px;line-height:1.2;margin:0 0 6px;color:#a7660c}
 .scan-equipment-dialog p{font-size:17px;line-height:1.3;margin:6px 0 12px}
 .scan-equipment-dialog ul{list-style:none;padding:0;margin:10px 0;max-height:none;overflow:visible}
@@ -340,3 +343,12 @@
 .scan-entry-list button:disabled{opacity:.6;cursor:default}
 .scan-entry-list button strong{font-size:13px}
 .scan-entry-list button span{font-size:12px;color:#5a4a6a}
+/* Right-click menu on a Card status tile: reject every unsaved card in that group for manual entry. */
+.scan-group-menu-backdrop{position:fixed;inset:0;z-index:49}
+.scan-status-overview>.scan-card-groups .scan-group-menu{position:fixed;z-index:50;display:flex;flex-direction:column;gap:6px;min-width:240px;max-width:min(92vw,360px);padding:8px;background:#fff;border:1px solid #b77638;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.2)}
+.scan-status-overview>.scan-card-groups .scan-group-menu button{display:block;width:100%;text-align:left;padding:9px 10px;font-size:14px;font-weight:700;border:1px solid #d8c4ad;border-radius:8px;background:#fff8f1;color:#4a2d10}
+.scan-status-overview>.scan-card-groups .scan-group-menu button.scan-group-menu-reject{background:#fde8e8;border-color:#c23a3a;color:#8a1c1c}
+.scan-status-overview>.scan-card-groups .scan-group-menu button:disabled{opacity:.55}
+.scan-status-overview>.scan-card-groups .scan-group-menu small{font-size:12px;font-weight:600;color:#5b4632;padding:0 2px}
+
+.scan-actions button.scan-delete-card { color: #b42318; border-color: #d92d20; background: #fff1f0; }

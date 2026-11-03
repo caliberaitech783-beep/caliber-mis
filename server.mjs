@@ -1,6 +1,7 @@
 import {operationalScanSql} from './operational-start.mjs';
 import {registerClientErrorReports} from './client-error-report.mjs';
 import {scanDuplicateFlags} from './scan-duplicates.mjs';
+import {environmentLabelFromEnv} from './environment-label.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
 import {registerMisTelegram} from './mis-telegram.mjs';
 import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
@@ -237,6 +238,9 @@ const deploymentShaCandidate=String(process.env.DEPLOYMENT_SHA||(
   existsSync(deploymentShaFile)?readFileSync(deploymentShaFile,'utf8'):''
 )).trim().toLowerCase();
 const deploymentSha=/^[0-9a-f]{40}$/.test(deploymentShaCandidate)?deploymentShaCandidate:'';
+// Platform banner label (the test platform sets MIS_ENVIRONMENT_LABEL=TEST). Empty on live, where the
+// setting is unset. Reported read-only on /api/health and /api/app-version; it changes nothing else.
+const environmentLabel=environmentLabelFromEnv(process.env);
 
 function setPrivateResponseHeaders(res,etag){
   res.set('Cache-Control','private, no-store');
@@ -1511,7 +1515,7 @@ const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSess
 
 app.get('/api/app-version',(_req,res)=>{
   res.set('Cache-Control','no-store, no-cache, must-revalidate');
-  res.json({version:currentAppVersion,commit:deploymentSha});
+  res.json({version:currentAppVersion,commit:deploymentSha,environmentLabel});
 });
 
 // Print helper (QZ Tray): Smart Print sends reports straight to the printer on
@@ -3534,7 +3538,7 @@ app.get('/api/health',async(_req,res)=>{
     databaseReady=true;
     databaseError='';
     res.json({
-      status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,
+      status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
@@ -3546,7 +3550,7 @@ app.get('/api/health',async(_req,res)=>{
   }catch(error){
     databaseReady=false;
     databaseError=error instanceof Error?error.message:'Database connection failed.';
-    res.status(503).json({status:'degraded',database:'disconnected',error:databaseError});
+    res.status(503).json({status:'degraded',database:'disconnected',error:databaseError,environmentLabel});
   }
 });
 

@@ -2,7 +2,7 @@ import {meterRuleIssues} from '../trip-card-rules.mjs';
 import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
-import {machineDiscrepancies} from '../trip-card-rules.mjs';
+import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired} from '../trip-card-rules.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
@@ -19,11 +19,11 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
  if(kind==='vehicle'){
   if(options)Object.assign(issues,scanEquipmentMatchIssues(draft,options.assets||[]));
   const summary=draft.scanMachineSummary||[];
-  if(!summary.length||summary.some(r=>!String(r.equipmentName||'').trim()||!Number.isSafeInteger(Number(r.tripCount))||Number(r.tripCount)<1))issues.scanMachineSummary='Check the printed machine summary.';
-  if(machineDiscrepancies(draft.trips||[],summary).length){issues.scanMachineSummary='Detail trips conflict with the printed summary.';for(const [i]of draft.trips.entries())issues[`trips.${i}.equipmentName`]='Check the machine assignment against the summary.';}
+  if(!summary.length&&machineTripTotal(draft.trips||[])>0||summary.some(r=>!String(r.equipmentName||'').trim()||!Number.isSafeInteger(Number(r.tripCount))||Number(r.tripCount)<1))issues.scanMachineSummary='Check the printed machine summary.';
+  if(machineDiscrepancies(draft.trips||[],summary).length){issues.scanMachineSummary='Detail trips conflict with the printed summary.';for(const [i,row]of draft.trips.entries())if(tripEquipmentRequired(row,draft.timeMode))issues[`trips.${i}.equipmentName`]='Check the machine assignment against the summary.';}
   if((draft.extractionReviewFields||[]).includes('trips'))for(const reason of raw.tripGridIssues||[]){
    const number=reason.match(/^Trip (\d+):/),i=number?draft.trips.findIndex((r,index)=>(r.rowNumber||index+1)===Number(number[1])):-1;
-   if(i>=0){if(draft.trips[i].equipmentSource==='previous-trip-row'&&/ambiguous or unreadable machine/.test(reason))continue;const key=/unloading/i.test(reason)?'unloadingTime':/loading/i.test(reason)?'loadingTime':'equipmentName';if(isBlankHandoverIssue(draft.trips[i],i,key,raw,reason))continue;issues[`trips.${i}.${key}`]=reason;}
+   if(i>=0){if(draft.trips[i].equipmentSource==='previous-trip-row'&&/ambiguous or unreadable machine/.test(reason))continue;const key=/unloading/i.test(reason)?'unloadingTime':/loading/i.test(reason)?'loadingTime':'equipmentName';if(key==='equipmentName'&&!tripEquipmentRequired(draft.trips[i],draft.timeMode)||isBlankHandoverIssue(draft.trips[i],i,key,raw,reason))continue;issues[`trips.${i}.${key}`]=reason;}
   }
  }
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
@@ -37,3 +37,4 @@ export function retainManualFields(previous,key,issues){
  for(const name of Object.keys(issues))fields.add(name);
  return {key,fields};
 }
+
