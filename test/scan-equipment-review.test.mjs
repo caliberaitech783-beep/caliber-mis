@@ -23,7 +23,7 @@ test('equipment review blocks posting, preserves scans, reuses the existing tran
  const rows=(await db.query('SELECT id,status,image,draft FROM mis_scan_cards ORDER BY ordinal')).rows;assert.equal(rows[0].status,'review');assert.equal(rows[1].status,'rejected');assert.deepEqual(Buffer.from(rows[1].image),image);assert.equal(rows[1].draft.trips[0].equipmentName,'E999');assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),0);
  await db.query("UPDATE mis_scan_cards SET status='review' WHERE id=$1",[second]);
  assert.equal((await action(second,'delete',1)).status,409,'stale deletion cannot purge scans');
- const blockedDelete=await action(second,'delete',2);assert.equal(blockedDelete.status,409);assert.match(blockedDelete.data.error,/WhatsApp OTP/);
+ const blockedDelete=await action(second,'delete',2);assert.equal(blockedDelete.status,409);assert.match(blockedDelete.data.error,/Delete card/);
  const retained=(await db.query('SELECT image,draft FROM mis_scan_cards WHERE id=$1',[second])).rows[0];assert.deepEqual(Buffer.from(retained.image),image);assert.equal(retained.draft.trips[0].equipmentName,'E999');
 
  const wrongDate={...rows[0].draft,bookDate:'2026-12-29'};await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[first,JSON.stringify(wrongDate)]);const mismatch=await action(first,'recheck',2);assert.equal(mismatch.status,200,'a handwritten date that differs from the batch is corrected to the batch date, never a mismatch: '+JSON.stringify(mismatch.data));
