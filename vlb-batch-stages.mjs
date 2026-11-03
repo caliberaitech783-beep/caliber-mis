@@ -43,8 +43,11 @@ export async function stageDetails(client,batch,{assets}={}){
  assets??=await equipmentAssets(client);
  const stage=batchStage(batch),vlb=await batchVlbRecords(client,batch),elb=await batchElbRecords(client,batch);
  const holds=[];for(const hold of holdSummary([...vlb,...elb],assets))holds.push({...hold,pendingTransfer:await pendingTransferFor(client,hold.assetId).catch(()=>null)});
- const fleet=stage==='vlb_open'?[]:await fleetRows(client,batch);
  const machines=stage==='vlb_open'?buildMachineSnapshot(vlb,assets,batch.site).machines:await machineRows(client,batch);
+ const machineIds=new Set(machines.map(row=>String(row.assetId)));
+ // Older ELB-open batches may still contain the former whole-site fleet snapshot.
+ // Present and validate only the unique machines captured from their locked VLB summaries.
+ const fleet=stage==='vlb_open'?[]:(await fleetRows(client,batch)).filter(row=>machineIds.has(String(row.assetId)));
  const progress=fleetProgress(fleet);
  const duplicates=duplicateElb(elb);
  return {twoStage:true,stage,holds,machines,fleet,fleetProgress:progress,elbRecords:elb,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:stage==='vlb_open'?null:machineReportRows(fleet,elb),statuses:FLEET_STATUSES};

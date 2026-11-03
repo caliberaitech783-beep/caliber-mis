@@ -106,15 +106,17 @@ export function buildMachineSnapshot(records,assets,site){
  return {machines:[...machines.values()].sort((a,b)=>b.trips-a.trips||a.label.localeCompare(b.label,undefined,{numeric:true})),unresolved};
 }
 
-// The whole site fleet at lock time: loaders first by trips, then everything else by door.
+// Manual ELB is generated only from the unique loading machines printed in the locked
+// VLB cards. The snapshot has already resolved every printed notation to one Equipment
+// Master id, so aliases across cards collapse to one row without pulling unrelated site
+// equipment into the batch.
 export function buildFleetList(assets,site,machines=[]){
- const canonical=canonicalSiteName(site),byId=new Map(machines.map(m=>[String(m.assetId),m]));
+ const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>assetBookKind(asset)==='equipment'&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
  const rows=new Map();
- for(const asset of assets){
-  if(assetBookKind(asset)!=='equipment'||asset.sourceMissing)continue;
-  const atSite=canonicalSiteName(assetSite(asset))===canonical,machine=byId.get(machineKey(asset));
-  if(!atSite&&!machine)continue;
-  rows.set(machineKey(asset),{assetId:machineKey(asset),door:assetDoor(asset)||assetLabel(asset),equipmentName:text(asset.equipmentName||asset.equipment||asset.name),equipmentGroup:text(asset.group||asset.equipmentGroup||asset.category),trips:machine?.trips||0,sourceCards:machine?.sourceCards||0,atSite});
+ for(const machine of machines){
+  const asset=byId.get(String(machine.assetId));if(!asset)continue;
+  const atSite=canonicalSiteName(assetSite(asset))===canonical;
+  rows.set(machineKey(asset),{assetId:machineKey(asset),door:assetDoor(asset)||assetLabel(asset)||machine.label,equipmentName:text(asset.equipmentName||asset.equipment||asset.name),equipmentGroup:text(asset.group||asset.equipmentGroup||asset.category),trips:Number(machine.trips)||0,sourceCards:Number(machine.sourceCards)||0,atSite});
  }
  return [...rows.values()].sort((a,b)=>b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
 }

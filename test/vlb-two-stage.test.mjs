@@ -28,7 +28,7 @@ test('machine snapshot reconciles labels to one master id and skips held cards',
  assert.deepEqual(machines.map(m=>[m.assetId,m.trips,m.sourceCards]),[['10',10,2]]);
  assert.equal(unresolved.length,1);assert.equal(unresolved[0].bookNo,'D');
  const fleet=buildFleetList(assets,'Sasti OC',machines);
- assert.deepEqual(fleet.map(r=>[r.door,r.trips]),[['VPC-019',10],['D1',0]]);
+ assert.deepEqual(fleet.map(r=>[r.door,r.trips]),[['VPC-019',10]],'manual ELB includes only unique machines printed in the VLB summaries');
  const transferred=assets.map(a=>a.id==='12'?{...a,currentLocation:'Sasti OC'}:a);
  assert.equal(activeSiteHolds(records[2],assets).length,1);assert.equal(activeSiteHolds(records[2],transferred).length,0);
  assert.equal(holdSummary(records,assets)[0].assetId,'12');
@@ -105,8 +105,10 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const locked=await call(batch+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));
  assert.equal(locked.data.stage,'elb_open');assert.ok(locked.data.vlb_locked_at);assert.equal(locked.data.canClose,true);assert.equal(locked.data.canContinue,false);
  assert.deepEqual(locked.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
- assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'grader at Jayant is not in the Sasti fleet');
- assert.equal(locked.data.fleetProgress.total,3);
+ assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4]],'manual ELB contains only the two unique machines printed in the VLB summaries');
+ assert.equal(locked.data.fleetProgress.total,2);
+ await db.query("INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,trips,source_cards) VALUES($1,$2,'D1','Dozer D1',0,0)",[created.data.id,ids.D1]);
+ assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077'],'legacy whole-site rows are hidden from an already locked batch');
  assert.equal((await call(batch+'/lock-vlb','POST',{})).status,409,'cannot lock twice');
  assert.equal((await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:1}]))).status,409,'VLB frozen after lock');
  const fleet=assetId=>batch+'/fleet/'+assetId;
@@ -122,18 +124,13 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const loader=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7'});
  assert.equal(loader.status,200,JSON.stringify(loader.data));assert.equal(loader.data.record.book_type,'equipment');assert.equal(loader.data.record.data.shiftStatus,'working');assert.equal(loader.data.record.data.fleetTrips,8);
  assert.equal(loader.data.fleetProgress.saved,1);assert.equal(loader.data.fleet[0].draft,null);
- let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved; D1 no ELB saved/);
- const dozerZero=await call(fleet(ids.D1),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:10,closingHmr:10});
- assert.equal(dozerZero.status,400);assert.match(dozerZero.data.error,/Zero trips and zero hours/);
- const dozer=await call(fleet(ids.D1),'POST',{shiftStatus:'no_operator'});
- assert.equal(dozer.status,200,JSON.stringify(dozer.data));assert.equal(dozer.data.record.data.employeeName,'');assert.equal(dozer.data.record.data.idleHours,8);
+ let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved/);
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
- view=await call(batch);assert.equal(view.data.fleetProgress.saved,3,'a normal ELB save joins the batch fleet');assert.deepEqual(view.data.closeBlockers,[]);
+ view=await call(batch);assert.equal(view.data.fleetProgress.saved,2,'a normal ELB save joins the summary-derived batch fleet');assert.deepEqual(view.data.closeBlockers,[]);
  assert.equal(view.data.machineReport.totals.trips,12);assert.equal(view.data.machineReport.totals.hours,9);assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1.6);
- const reSave=await call(fleet(ids.D1),'POST',{shiftStatus:'maintenance',jobCardNo:'JC-9'});assert.equal(reSave.status,200);assert.equal(reSave.data.record.id,dozer.data.record.id,'re-saving a machine updates its log book');
  const closed=await call(batch+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
- assert.equal((await call(fleet(ids.D1),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
+ assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
  const list=await call('/api/vlb-batches');assert.equal(list.data.twoStage,true);assert.equal(list.data.batches[0].stage,'closed');
  assert.ok(closed.data.audit.some(e=>e.action==='vlb_locked')&&closed.data.audit.some(e=>e.action==='machine_saved')&&closed.data.audit.some(e=>e.action==='elb_card_linked'));
  // Both manual and scanned inserts may append to locked batches; existing cards remain protected.
