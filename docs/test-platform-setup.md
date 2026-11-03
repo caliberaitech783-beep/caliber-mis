@@ -256,7 +256,8 @@ cat > test-app-settings.json <<EOF
   {"name":"SCAN_DUPLICATE_FINGERPRINT","value":"false","slotSetting":false},
   {"name":"SCAN_DUPLICATE_CONTENT_REJECT","value":"false","slotSetting":false},
   {"name":"SCAN_DUPLICATE_SKIP_PERCENT","value":"15","slotSetting":false},
-  {"name":"SCAN_DUPLICATE_SUSPECT_PERCENT","value":"30","slotSetting":false}
+  {"name":"SCAN_DUPLICATE_SUSPECT_PERCENT","value":"30","slotSetting":false},
+  {"name":"MIS_ENVIRONMENT_LABEL","value":"TEST","slotSetting":false}
 ]
 EOF
 az webapp config appsettings set --name "$APP" --resource-group "$RG" --settings @test-app-settings.json --query "[].name" -o tsv
@@ -278,6 +279,7 @@ What each value does on the test platform:
 | `PULSE_WRITE_MODE` | `off` | Express transfers and new assets are recorded locally; nothing is written to Pulse. (`off` is also the default.) |
 | `MIS_SCAN_BLOB_ENABLED` | `false` | Required (rule 3). New scan images are stored in the test database. Images that live keeps in Blob storage are not visible on the test platform. |
 | `SCAN_DUPLICATE_*` | live defaults | The scan-duplicate flags, visible on `/api/health`. Turn a flag on here first when a go-live plan says "test platform first". |
+| `MIS_ENVIRONMENT_LABEL` | `TEST` | Every page, including sign-in, carries the yellow bar "TEST PLATFORM: not the live site. Cards saved here do not reach the live log book." and the browser tab title starts with `[TEST]`, so an operator cannot mistake the test copy for live. Live leaves the setting unset: nothing is shown there and nothing else changes. Reported as `environmentLabel` on `/api/health` and `/api/app-version`. |
 
 **Mirror from live** (names from section 2, values from the Azure portal, none of them secrets): general runtime settings such as `SCM_DO_BUILD_DURING_DEPLOYMENT`, `WEBSITE_NODE_DEFAULT_VERSION` or `SLOW_REQUEST_THRESHOLD_MS` if live has them, and the feature flags `VLB_TWO_STAGE_BATCHES`, `EQUIPMENT_ALIAS_OTP`, `VLB_PM_APPROVAL_TRIAL`, `MIS_GEMINI_HYBRID` with the live values, so the test copy behaves like live until a trial turns one on.
 
@@ -459,11 +461,12 @@ Cost: the managed certificate and the DNS records are free.
 
 ## 10. Checks before the team uses it (15 minutes)
 
-1. `https://<test address>/api/health`: `commit` equals the commit of the latest run of the test workflow; `scheduledJobsEnabled: false`; `hotScanStorage.enabled: false`; `oemEmailSchedule.mailConfigured: false`.
+1. `https://<test address>/api/health`: `commit` equals the commit of the latest run of the test workflow; `scheduledJobsEnabled: false`; `hotScanStorage.enabled: false`; `oemEmailSchedule.mailConfigured: false`; `environmentLabel: "TEST"`.
 2. Telegram Integration page on the test site: not set up (no bot). Report settings: WhatsApp delivery off.
 3. The ten-minute release smoke test from `docs/release-safety-plan-2026-11-02.md`, section 4 rule 3, on the test site: upload one real PDF, open the equipment review dialog, press F5, confirm the same entry, cards and card reopen, check `/api/health` and `GET /api/client-errors`.
 4. Nothing arrived on live Telegram or WhatsApp while you did this. If anything did, stop the test app (`az webapp stop --name "$APP" --resource-group "$RG"`) and re-run section 8.3.
 5. Merge one small change to `main` and watch it reach the test site only: `/api/health` on pulse-ll.cmll.in keeps its previous `commit`.
+6. The yellow "TEST PLATFORM: not the live site" bar is visible on the sign-in page and on every page after sign-in, also on a phone, and the browser tab title starts with `[TEST]`. If it is missing, `MIS_ENVIRONMENT_LABEL` was not set in section 5. On pulse-ll.cmll.in there is no bar.
 
 ## 11. Costs and switching off
 
