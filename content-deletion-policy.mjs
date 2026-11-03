@@ -6,6 +6,9 @@ export function contentDeletionBlocked(method,path){
  try{url=decodeURIComponent(url).toLowerCase().replace(/\/+$/,'');}catch{return true;}
  if(!url.startsWith('/api/'))return false;
  if(verb==='POST'&&/^\/api\/vlb-batch-deletions\/(?:preview|[a-f0-9-]+\/(?:otp|confirm))$/.test(url))return false;
+ // The user authorized direct deletion of one unsaved scan card. The handler
+ // retains session/site permissions, current-revision and saved-card checks.
+ if(verb==='POST'&&/^\/api\/scan-cards\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/delete$/.test(url))return false;
  if(verb==='DELETE')return true;
  if(!['POST','PUT','PATCH'].includes(verb))return false;
  // This existing workflow verifies request ownership, exact approval, expiry,
