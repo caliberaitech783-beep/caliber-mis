@@ -19,7 +19,7 @@ async function compile(file,scope,names){
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
 }
 const nodes=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
-test('VLB and ELB show three entry options and standalone batch access inherits the VLB permission',async()=>{
+test('VLB and ELB show three entry options and both permissions can open the shared operational batch',async()=>{
  const icon=()=>null,{LogBookModeChoice}=await compile('log-book-mode-choice.jsx',{React,BookOpen:icon,Keyboard:icon,ScanLine:icon,Layers:icon},['LogBookModeChoice']);
  const cards=nodes(LogBookModeChoice({kind:'vehicle'}),n=>n.type==='button');assert.equal(cards.length,3);assert.doesNotMatch(renderToStaticMarkup(LogBookModeChoice({kind:'vehicle'})),/Create Batch/);
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)'"));assert.ok(main.includes("activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']"));
@@ -29,7 +29,12 @@ test('VLB and ELB show three entry options and standalone batch access inherits 
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misPageAllowed(session,'Create VLB Batch','desktop'));
  for(const [path,method] of [['/api/vlb-batches','GET'],['/api/vlb-batches/preview','GET'],['/api/vlb-batches','POST'],['/api/vlb-batches/id/close','POST']])assert.ok(misRequestAllowed(session,{path,method}));
- assert.equal(misPageAllowed({...session,permissions:{...session.permissions,misDesktopAccess:['Equipment Log Book']}},'Create VLB Batch','desktop'),false);
+ const elbSession={...session,permissions:{...session.permissions,misDesktopAccess:['Equipment Log Book']}};
+ assert.equal(misPageAllowed(elbSession,'Create VLB Batch','desktop'),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'GET'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/fleet/7',method:'POST'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/close',method:'POST'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'POST'}),false,'ELB-only access cannot create or lock the VLB stage');
 });
 
 test('dedicated PM navigation permits only review routes without granting VLB editing permissions',()=>{
