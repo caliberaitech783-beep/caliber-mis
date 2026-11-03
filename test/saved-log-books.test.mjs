@@ -10,13 +10,13 @@ import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed} from '../mis-application-access.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-test('Legacy Saved VLB links redirect to batches while ELB keeps its own permission',()=>{
-  for(const [slug,page,permission] of [['vlb-saved','Create VLB Batch','Vehicle Log Book'],['elb-saved','Saved ELB','Equipment Log Book']]){
+test('Legacy Saved VLB and Saved ELB links redirect to operational batches',()=>{
+  for(const [slug,permission] of [['vlb-saved','Vehicle Log Book'],['elb-saved','Equipment Log Book']]){
+    const page='Create VLB Batch';
     assert.equal(requestedMisPage('?page='+slug),page);
-    assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=trip-scan&batch=test&card=old',page),'/?page='+(slug==='vlb-saved'?'vlb-create-batch':slug));
+    assert.equal(misPageUrl('https://pulse-ll.cmll.in/?page=trip-scan&batch=test&card=old',page),'/?page=vlb-create-batch');
     const session={permissions:{separateMisCredentials:true,misDesktopAccess:[permission]}};
     assert.equal(misPageAllowed(session,page,'desktop'),true);
-    assert.equal(misPageAllowed(session,page==='Create VLB Batch'?'Saved ELB':'Create VLB Batch','desktop'),false);
   }
 });
 
