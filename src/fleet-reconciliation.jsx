@@ -1,10 +1,11 @@
 import React,{useEffect,useState,useRef} from 'react';
 import './fleet-reconciliation.css';
+import {canonicalSiteName} from '../site-location.mjs';
 
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 const headings=['Site','Date','Shift','Door no.','Type','Vehicle / equipment','Model','VLB / ELB','Breakdown','Idle reason','Remarks','Status'];
 const values=r=>[r.site,r.date,r.shift,r.door,r.kind,r.name,r.model,r.cards.map(c=>c.reference).join('; '),r.breakdowns.map(b=>`${b.reference}: ${b.start} → ${b.end||'Open'}`).join('; '),r.reason,r.remarks,r.status];
-export function fleetCsv(rows){const quote=v=>{const s=String(v??'');return '"'+(/^[\s]*[=+@-]/.test(s)?"'"+s:s).replaceAll('"','""')+'"'};return '\uFEFF'+[headings,...rows.map(values)].map(row=>row.map(quote).join(',')).join('\r\n');}
+export function fleetCsv(rows){const quote=v=>{const s=String(v??'');return '"'+(/^[\s]*[=+@-]/.test(s)?"'"+s:s).replaceAll('"','""')+'"'};return '\uFEFF'+[[...headings,'Population basis'],...rows.map(r=>[...values(r),'Current Pulse-synced master location; historical assignments unavailable'])].map(row=>row.map(quote).join(',')).join('\r\n');}
 export default function FleetReconciliation({session,context,kind='',fetcher=fetch}){
  const [options,setOptions]=useState(null),[filters,setFilters]=useState(()=>({date:context?.report_date||today(),site:context?.site||'',shift:context?.shift||'',kind})),[data,setData]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[view,setView]=useState('all'),[drafts,setDrafts]=useState({}),[saving,setSaving]=useState(''),[notice,setNotice]=useState('');
  const reportRequest=useRef(0);
@@ -14,7 +15,7 @@ export default function FleetReconciliation({session,context,kind='',fetcher=fet
  const load=async selection=>{const request=++reportRequest.current;setLoading(true);setData(null);setError('');setDrafts({});try{const d=await api('/api/reports/fleet-reconciliation?'+new URLSearchParams(selection));if(!['rows','warnings','unmatched'].every(k=>Array.isArray(d[k]))||!d.summary?.vehicle||!d.summary?.equipment)throw Error('The fleet report response is incomplete. Refresh after the application update.');if(request===reportRequest.current)setData(d)}catch(e){if(request===reportRequest.current)setError(e.message)}finally{if(request===reportRequest.current)setLoading(false)}};
  useEffect(()=>{if(context&&options)void load({date:context.report_date,site:context.site,shift:context.shift,kind})},[context?.report_date,context?.site,context?.shift,kind,options]);
  const update=(key,value)=>{reportRequest.current++;setLoading(false);setFilters(f=>({...f,[key]:value,...(key==='site'?{shift:''}:{})}));setData(null);setError('');setNotice('')};
- const sites=options?.sites||[],shifts=(options?.shifts||[]).filter(s=>s.site===filters.site||s.siteName===filters.site),codes=[...new Set(shifts.map(s=>s.code).filter(Boolean))];
+ const sites=[...new Set([...(context?.site?[context.site]:[]),...(options?.sites||[])])],shifts=(options?.shifts||[]).filter(s=>canonicalSiteName(s.site||s.siteName)===canonicalSiteName(filters.site)),codes=[...new Set(shifts.map(s=>s.code).filter(Boolean))];
  const rows=(data?.rows||[]).filter(r=>view==='all'||view==='balance'&&!r.operated||r.status===view);
  const save=async row=>{const draft=drafts[row.assetKey]||{reason:row.reason,remarks:row.remarks};setSaving(row.assetKey);setError('');try{await api('/api/reports/fleet-reconciliation/idle-reason',{method:'PUT',body:JSON.stringify({date:data.date,site:data.site,shift:data.shift,assetId:row.assetId,...draft})});await load({date:data.date,site:data.site,shift:data.shift,kind:filters.kind});setNotice('Idle reason saved.')}catch(e){setError(e.message)}finally{setSaving('')}};
  const edit=(row,key,value)=>setDrafts(d=>({...d,[row.assetKey]:{reason:row.reason,remarks:row.remarks,...d[row.assetKey],[key]:value}}));
