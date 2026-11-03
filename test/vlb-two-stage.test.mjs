@@ -114,6 +114,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(tripsAsBreakdown.status,400);assert.match(tripsAsBreakdown.data.error,/loaded 8 trips/);
  const zeroHours=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:500});
  assert.equal(zeroHours.status,400);assert.match(zeroHours.data.error,/greater than zero/);
+ const pulse=await call(fleet(ids['VPC-019'])+'/breakdowns');assert.equal(pulse.status,200,JSON.stringify(pulse.data));assert.equal(pulse.data.breakdownHours,0);assert.equal(pulse.data.assetId,ids['VPC-019']);assert.equal(pulse.data.bookDate,selection.date);assert.equal(pulse.data.shiftHours,8);assert.deepEqual(pulse.data.breakdowns,[]);
+ assert.equal((await call(fleet(ids.G9)+'/breakdowns')).status,404,'cannot read an equipment outside the batch fleet');
+ const denied=await call(fleet(ids['VPC-019'])+'/breakdowns','GET',undefined,'unassigned-user');assert.ok(denied.status>=400,'site scope is checked before the Pulse request');
  const draft=await call(fleet(ids['VPC-019'])+'/draft','PUT',{draft:{shiftStatus:'working',openingHmr:500}});assert.equal(draft.status,200);
  assert.equal((await call(batch+'/fleet')).data.fleet[0].draft,null,'incomplete ELB values are not persisted as drafts');
  const loader=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7'});
