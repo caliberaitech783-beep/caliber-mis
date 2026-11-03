@@ -54,7 +54,15 @@ All names are new; none is shared with production or the shared test platform. C
 
 ## 4. Set-up (about 1.5 hours, all by the owner)
 
-Run in Azure Cloud Shell. Each step is the shared runbook's step with the private names above.
+**Shortcut:** steps 1–8 below are automated by one script, run from the revise worktree on a PC where `az` and `gh` are signed in:
+
+```powershell
+pwsh scripts/setup-private-test-copy.ps1 -Subscription <subscription id> -BotToken <gate bot token> -ChatId <your chat id>
+```
+
+It refuses production and shared-test names, keeps existing resources on a re-run, writes the database address into `.env.private-test.local`, and sets `PRIVATE_TEST_WEBAPP_NAME` only when the bot token and chat id are given. Then do steps 9 and 10.
+
+Manual route: run in Azure Cloud Shell. Each step is the shared runbook's step with the private names above.
 
 1. **Variables:** `RG=pulse-private-mohit-rg`, `PLAN=pulse-private-mohit-plan`, `APP=pulse-mohit-revise-783`, `PG=pulse-mohit-revise-pg-783`, `PG_ADMIN=private_admin`, `LOC=centralindia`.
 2. **Resource group, plan, web app:** runbook section 3, with these names. Tag the group `purpose=pulse-private-owner-test`.
