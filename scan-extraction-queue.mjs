@@ -27,7 +27,7 @@ export async function claimNextScanCard(pool){
   UPDATE mis_scan_batches b SET extraction_last_started_at=clock_timestamp()
   FROM picked p WHERE b.id=p.batch_id RETURNING b.id
  )
- UPDATE mis_scan_cards c SET status='reading'
+ UPDATE mis_scan_cards c SET status='reading',raw_fields=COALESCE(c.raw_fields,'{}'::jsonb)||jsonb_build_object('scanReadToken',gen_random_uuid()::text)
  FROM picked p,touched b WHERE c.id=p.id AND c.batch_id=b.id AND c.status='queued'
  RETURNING c.*`);
 }
