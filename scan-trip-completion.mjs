@@ -1,5 +1,6 @@
 import {estimateMissingTripTimes} from './scan-trip-estimates.mjs';
-import {machineSummary,machineLabel,isUnloadingOnlyTrip} from './trip-card-rules.mjs';
+import {machineSummary,machineLabel,isUnloadingOnlyTrip,tripEquipmentRequired} from './trip-card-rules.mjs';
+import {activeResponseRecoveryIssues} from './scan-response-recovery.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 const blank=value=>value==null||String(value).trim()==='';
 
@@ -19,7 +20,7 @@ function completeMachinesFromSummary(trips,summary,evidence={},summarySource='')
 // Derived values are kept separate from the literal extraction in raw_fields.
 export function completeScanTripDetails(input={},raw={}){
  raw=raw||{};
- if(raw.responseRecoveryIssues?.length)return input; // Recovered cells require literal review, not derived assignments.
+ if(activeResponseRecoveryIssues(raw,input).length)return input; // Recovered loading cells still require literal review.
  const evidence=raw.gemini||raw.hybrid||{},originalRows=evidence.trips?.r||[],summaryEvidence=evidence.fields?.machineSummary||[];
  const trips=completeMachinesFromSummary((input.trips||[]).map(row=>({...row})),input.scanMachineSummary||[],summaryEvidence,input.scanMachineSummarySource);
  let previous='',previousNumber=0,previousNotation=null;
@@ -28,7 +29,8 @@ export function completeScanTripDetails(input={},raw={}){
   const populated=Boolean(row.loadingTime||row.unloadingTime||source);
   const contiguous=i===0||number===previousNumber+1;
   if(!contiguous){previous='';previousNotation=null;}
-  if(blank(row.equipmentName)){
+  if(!tripEquipmentRequired(row,input.timeMode)){previous='';previousNotation=null;}
+  else if(blank(row.equipmentName)){
    if(row.equipmentSource!=='master-selection'&&previous&&populated&&source?.[1]!==null&&row.equipmentName!==null){
     row.equipmentName=previous;row.equipmentSource='previous-trip-row';
     if(previousNotation)row.equipmentNotation={...previousNotation,resolved:previous};
@@ -37,7 +39,7 @@ export function completeScanTripDetails(input={},raw={}){
   if(blank(row.tripCount)&&populated){row.tripCount=1;row.tripCountSource='individual-trip-row';}
   previousNumber=number;
  }
- const complete=trips.length>0&&trips.every((r,i)=>!blank(r.equipmentName)&&Number.isSafeInteger(Number(r.tripCount))&&Number(r.tripCount)>0&&(i===0||(r.rowNumber||i+1)===(trips[i-1].rowNumber||i)+1));
+ const complete=trips.length>0&&trips.every((r,i)=>(!tripEquipmentRequired(r,input.timeMode)||!blank(r.equipmentName))&&Number.isSafeInteger(Number(r.tripCount))&&Number(r.tripCount)>0&&(i===0||(r.rowNumber||i+1)===(trips[i-1].rowNumber||i)+1));
  const calculated=complete?machineSummary(trips).map(row=>{
   const notation=trips.find(trip=>machineLabel(trip.equipmentName)===row.equipmentName)?.equipmentNotation;
   return notation?{...row,equipmentNotation:{...notation,resolved:row.equipmentName}}:row;

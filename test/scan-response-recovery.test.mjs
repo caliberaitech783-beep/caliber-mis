@@ -33,3 +33,11 @@ test('OC normalization after explicit re-extraction retains other manual correct
 });
 
 test('recovered responses never carry equipment into unreadable rows or synthesize a summary',()=>{const draft={trips:[{equipmentName:'VPC1',tripCount:1},{equipmentName:'',tripCount:1}],scanMachineSummary:[]};assert.equal(completeScanTripDetails(draft,{responseRecoveryIssues:['Trip row 2: equipment unreadable']}),draft);assert.equal(draft.trips[1].equipmentName,'');assert.deepEqual(draft.scanMachineSummary,[]);});
+
+test('server scan checks do not require a loader or MWS for an unloading-only card',async()=>{
+ const raw={responseRecoveryIssues:['Trip row 1: equipment number missing or unreadable; re-read the NO column.']};
+ const draft={bookDate:'2026-10-29',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:0,closingHmr:1,timeMode:'with',trips:[{rowNumber:1,equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1}],scanMachineSummary:[]};
+ const check=await checkScanCard({query:async()=>({rows:[]})},'vehicle',{raw_fields:raw,draft,page_count:1,expected_pages:1});
+ assert.equal(check.errors.some(message=>/flagged extraction|loading equipment|machine number/i.test(message)),false,JSON.stringify(check));
+ assert.equal(check.warnings.some(message=>/machine-wise summary/i.test(message)),false);
+});
