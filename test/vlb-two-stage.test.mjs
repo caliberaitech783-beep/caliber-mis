@@ -4,7 +4,7 @@ import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
-import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,activeSiteHolds,holdSummary,machineReportRows} from '../vlb-two-stage.mjs';
+import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,linkedElbDraft,closureBlockers,activeSiteHolds,holdSummary,machineReportRows} from '../vlb-two-stage.mjs';
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},
@@ -33,6 +33,14 @@ test('machine snapshot reconciles labels to one master id and skips held cards',
  assert.equal(activeSiteHolds(records[2],assets).length,1);assert.equal(activeSiteHolds(records[2],transferred).length,0);
  assert.equal(holdSummary(records,assets)[0].assetId,'12');
  assert.equal(buildMachineSnapshot(records,transferred,'Sasti OC').machines.find(m=>m.assetId==='12').trips,9);
+});
+
+test('locking VLB prepares one incomplete linked ELB draft per loading machine',()=>{
+ const batch={id:'batch-1',site:'Sasti OC',report_date:'2026-12-18',shift:'S1'};
+ const draft=linkedElbDraft(batch,{assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:12,sourceCards:5});
+ assert.deepEqual({batchId:draft.batchId,bookDate:draft.bookDate,location:draft.location,bookShiftCode:draft.bookShiftCode,assetId:draft.assetId,fleetTrips:draft.fleetTrips,sourceCards:draft.sourceCards}, {batchId:'batch-1',bookDate:'2026-12-18',location:'Sasti OC',bookShiftCode:'S1',assetId:'19',fleetTrips:12,sourceCards:5});
+ assert.equal(draft.generatedFromVlb,true);assert.equal(draft.shiftStatus,'working');assert.equal(draft.employeeId,'');assert.equal(draft.openingHmr,'');assert.equal(draft.closingHmr,'');
+ assert.equal(linkedElbDraft(batch,{assetId:'20',trips:0}),null,'site equipment without a VLB machine summary is not presented as a generated job card');
 });
 
 test('shift status rules tie trips and hours to a working machine',()=>{

@@ -83,7 +83,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
  const lockVlb=async()=>{if(!viewed)return;setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches/'+viewed.id+'/lock-vlb',{method:'POST'});
-  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(current=>current?.id===batch.id?{...current,...batch}:current);setRefresh(n=>n+1);
+  ++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(current=>current?.id===batch.id?{...current,...batch}:current);setStepper(Boolean(batch.fleet?.length));setRefresh(n=>n+1);
  }catch(e){setError(e.message);setRefresh(n=>n+1)}finally{setBusy(false)}};
  const unlockVlb=async()=>{if(!viewed)return;const reason=window.prompt('Reason for unlocking VLB. The machine snapshot is cleared and recorded in the batch audit.','');if(reason==null||!reason.trim())return;setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches/'+viewed.id+'/unlock-vlb',{method:'POST',body:{reason:reason.trim()}});

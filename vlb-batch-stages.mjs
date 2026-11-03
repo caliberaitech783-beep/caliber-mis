@@ -3,7 +3,7 @@ import {withEquipmentAliases} from './equipment-aliases.mjs';
 import {displaySiteName} from './region-scope.mjs';
 import {bookShiftCode} from './trip-card-rules.mjs';
 import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch} from './vlb-batch-policy.mjs';
-import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
+import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,linkedElbDraft,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from './vehicle-transfer-express.mjs';
 
 const fail=batchFail;
@@ -61,11 +61,11 @@ export async function lockVlb(client,batch,actor,{assets}={}){
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  for(const m of snapshot.machines)await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6)',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
  const fleet=buildFleetList(assets,batch.site,snapshot.machines);
- for(const row of fleet)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7)
-  ON CONFLICT(batch_id,asset_id) DO UPDATE SET door=EXCLUDED.door,equipment_name=EXCLUDED.equipment_name,equipment_group=EXCLUDED.equipment_group,trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards`,[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+ for(const row of fleet){const draft=linkedElbDraft(batch,row);await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards,draft) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+  ON CONFLICT(batch_id,asset_id) DO UPDATE SET door=EXCLUDED.door,equipment_name=EXCLUDED.equipment_name,equipment_group=EXCLUDED.equipment_group,trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards,draft=CASE WHEN mis_vlb_batch_fleet.logbook_id IS NULL AND mis_vlb_batch_fleet.draft IS NULL THEN EXCLUDED.draft ELSE mis_vlb_batch_fleet.draft END`,[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards,draft?JSON.stringify(draft):null]);}
  await client.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND logbook_id IS NULL AND NOT (asset_id=ANY($2::bigint[]))',[batch.id,fleet.map(r=>Number(r.assetId))]);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',vlb_locked_at=NOW(),vlb_locked_by=$2 WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id,batchLogin(actor)])).rows[0];
- await auditVlbBatch(client,batch,actor,'vlb_locked',{machines:snapshot.machines,fleetCount:fleet.length,cards:records.length});
+ await auditVlbBatch(client,batch,actor,'vlb_locked',{machines:snapshot.machines,fleetCount:fleet.length,linkedElbDrafts:fleet.filter(row=>Number(row.trips)>0).length,cards:records.length});
  return locked;
 }
 
