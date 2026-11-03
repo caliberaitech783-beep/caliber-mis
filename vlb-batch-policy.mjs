@@ -82,7 +82,7 @@ export async function matchingVlbBatch(client,data){
  if(matching.length>1)batchFail('Multiple historical batches exist for this site/date/shift. They require separate review; no batches or cards were changed.');
  return matching[0]||null;
 }
-export async function assertVlbBatchWrite(client,data,actor,recordId){
+export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=false}={}){
  requireOperationalDate(data.bookDate);
  await lockVlbBatchWrites(client);
  let linked;
@@ -92,9 +92,9 @@ export async function assertVlbBatchWrite(client,data,actor,recordId){
  const batch=linked||matching;if(!batch)batchFail('Create or open the site/date/shift batch before saving a VLB entry. Standalone VLB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)batchFail('This batch is unavailable. Open an active site/date/shift batch before saving.');
  requireOperationalDate(batch.report_date);
- if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
- if(batch.closed_at)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before saving or changing cards.');
- if(twoStageEnabled()&&batch.stage==='elb_open')batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before adding or changing tipper cards.');
+ if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
+ if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
+ if(twoStageEnabled()&&batch.stage==='elb_open'&&!adding)batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before changing existing tipper cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
@@ -112,9 +112,10 @@ export async function lockSavedVlbBatches(client,actor,recordIds){
 }
 export async function syncVlbBatchRecord(client,record,actor,{relock=true}={}){
  if(record.book_type!=='vehicle')return;
- const batch=await assertVlbBatchWrite(client,record.data,actor,record.id);if(!batch)return;
  const before=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE logbook_id=$1',[record.id])).rows[0]?.snapshot;
+ const batch=await assertVlbBatchWrite(client,record.data,actor,record.id,{adding:!before});if(!batch)return;
  await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  await auditVlbBatch(client,batch,actor,before?'card_updated':'card_added',{logbookId:record.id,before:before||null,after:record});
+ if(!before&&twoStageEnabled()&&(batch.closed_at||batch.stage==='elb_open')){const {refreshLateVlbTrips}=await import('./vlb-batch-stages.mjs');await refreshLateVlbTrips(client,batch);}
  if(relock)await lockSavedVlbBatches(client,actor,[record.id]);
 }

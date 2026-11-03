@@ -51,6 +51,16 @@ export async function stageDetails(client,batch,{assets}={}){
 }
 const duplicateElb=records=>{const seen=new Map();for(const r of records){const key=String(r.asset_id||r.data?.assetId);seen.set(key,(seen.get(key)||0)+1);}return [...seen].filter(([,n])=>n>1).map(([key])=>records.find(r=>String(r.asset_id||r.data?.assetId)===key)?.data?.door||key);};
 
+// Late cards update derived trip totals without reopening batches or editing saved cards.
+export async function refreshLateVlbTrips(client,batch){
+ const assets=await equipmentAssets(client),records=await batchVlbRecords(client,batch);
+ const {machines}=buildMachineSnapshot(records,assets,batch.site);
+ for(const m of machines){
+  await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
+ }
+ for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO UPDATE SET trips=EXCLUDED.trips,source_cards=EXCLUDED.source_cards',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
+}
+
 export async function lockVlb(client,batch,actor,{assets}={}){
  if(!twoStageEnabled())fail('Two-stage batches are not enabled on this platform.',409);
  assets??=await equipmentAssets(client);
@@ -151,23 +161,25 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
 }
 
 // ELB cards exist only inside the site/date/shift batch, and only after its VLB is locked.
-// No batch, VLB still open and a closed batch all refuse the save; standalone ELB saving is discontinued.
-export async function assertElbBatchWrite(client,data){
+// Closed batches accept new cards while existing cards still require reopening.
+export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(!twoStageEnabled())return null;
  const batch=await matchingVlbBatch(client,{location:data.location,bookDate:data.bookDate,bookShiftCode:data.bookShiftCode,cardShift:data.cardShift,shiftName:data.shiftName});
  if(!batch)fail('Create the VLB batch for this site, date and shift and lock VLB before saving ELB cards. Standalone ELB saving is discontinued.',409);
+ if(batch.archived_at||batch.deleted_at)fail('This batch is unavailable. Open an active site/date/shift batch before saving.',409);
  const stage=batchStage(batch);
  if(stage==='vlb_open')fail('Lock VLB for batch '+batch.name+' before saving ELB cards for this site, date and shift.',409);
- if(stage==='closed')fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before saving or changing ELB cards.',409);
+ if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before changing existing ELB cards.',409);
  return batch;
 }
 
 // An equipment log book saved through the normal form, scan, upload or the fleet stepper joins the
-// open ELB stage of its batch and marks that machine's fleet row as saved.
+// ELB stage or closed batch and marks that machine's fleet row as saved.
 export async function syncElbBatchRecord(client,record,actor){
  if(!twoStageEnabled()||record.book_type!=='equipment')return null;
  const data=record.data||{};
- const batch=await assertElbBatchWrite(client,data);
+ const linked=(await client.query('SELECT logbook_id FROM mis_elb_batch_entries WHERE logbook_id=$1',[record.id])).rows[0];
+ const batch=await assertElbBatchWrite(client,data,{adding:!linked});
  await client.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  const status=FLEET_STATUSES[data.shiftStatus]?data.shiftStatus:'working';
  const updated=await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$3,logbook_id=$4,saved_at=NOW(),saved_by=$5,draft=NULL,skipped=FALSE WHERE batch_id=$1 AND asset_id=$2 RETURNING asset_id',[batch.id,record.asset_id||data.assetId,status,record.id,batchLogin(actor)]);
