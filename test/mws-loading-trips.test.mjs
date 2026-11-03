@@ -68,7 +68,7 @@ test('ELB machine snapshot excludes carry-over rows separately for each card',()
  assert.deepEqual(result.unresolved,[]);
  const onlyCarry=buildMachineSnapshot([record('C',[carry])],assets,site);
  assert.deepEqual(onlyCarry.machines,[]);
- assert.equal(buildFleetList(assets,site,onlyCarry.machines)[0].trips,0,'site machine remains in the fleet with zero loads');
+ assert.deepEqual(buildFleetList(assets,site,onlyCarry.machines),[],'manual ELB does not add unrelated site machines when no loading machine is printed');
  const estimated=estimateMissingTripTimes({timeMode:'with',trips:[carry,loaded]});
  assert.equal(buildMachineSnapshot([record('E',estimated.trips)],assets,site).machines[0].trips,1);
 });
