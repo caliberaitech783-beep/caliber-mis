@@ -1,4 +1,4 @@
-import {isDeletableScanCard} from '../src/scan-card-deletion-selection.mjs';
+import {isDeletableScanCard,isAbortableScanCard} from '../src/scan-card-deletion-selection.mjs';
 import {compactLogBookLabel} from '../log-book-labels.mjs';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 import test from 'node:test';
@@ -15,7 +15,7 @@ async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={isDeletableScanCard,compactLogBookLabel,SmartSelect: "select",React,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,SmartSelect: "select",React,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
   return props=>{cursor=0;return render({...props,ReportSection})};
 }
