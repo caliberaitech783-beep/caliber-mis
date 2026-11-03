@@ -1,3 +1,4 @@
+import {registerScanCardGroupDeletion} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from './scan-meter-history.mjs';
 import {requireOperationalDate,operationalScanSql} from './operational-start.mjs';
 import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from './scan-duplicates.mjs';
@@ -176,6 +177,7 @@ export function registerBulkCardScanning(app,{pool,requireSession,requireAdminis
   if(review?.error||review?.issues.length)fail(review.error||'Equipment is not assigned to this site. Choose Reject card or complete the existing transfer in Pulse.',409);
   if(card.raw_fields?.fleetBlock&&review&&!review.error&&!review.issues.length)await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields-'fleetBlock' WHERE id=$1 AND revision=$2 AND status IN('review','approved','error')",[card.id,card.revision]);
  }
+ registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp:sendCardDeletionOtp});
  const deletable=card=>{if(card.logbook_id||!['review','approved','error','rejected'].includes(card.status))fail('Only unsaved cards can be deleted here.',409);};
  const deletionRequests=new Map(),deletionRates=new Map();
  const deletionActor=req=>String(req.session.login||req.session.name||'');

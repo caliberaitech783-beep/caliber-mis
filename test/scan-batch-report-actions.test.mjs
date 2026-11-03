@@ -1,3 +1,4 @@
+import {isDeletableScanCard} from '../src/scan-card-deletion-selection.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -8,7 +9,7 @@ import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 const source=readFileSync(new URL('../src/scan-batch-report.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'scan-batch-report.jsx',{jsx:{runtime:'classic'}});
-const Component=new Function('React','useState','scanBatchReport','scanBatchReportTables','scanReportCardStatus','CARD_STATUS_LEGEND',code+';return ScanBatchReport')(React,initial=>[initial,()=>{}],scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND);
+const Component=new Function('React','useState','scanBatchReport','scanBatchReportTables','scanReportCardStatus','CARD_STATUS_LEGEND','isDeletableScanCard',code+';return ScanBatchReport')(React,initial=>[initial,()=>{}],scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND,isDeletableScanCard);
 const nodes=(tree,type)=>{const result=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(node.type===type)result.push(node);visit(node.props.children)};visit(tree);return result};
 const batch={id:'11111111-1111-4111-a111-111111111111',name:'Scan entry',kind:'vehicle'};
 const cards=['review','approved','error','rejected','reading','queued','posted'].map((status,index)=>({id:'card-'+index,batch_id:batch.id,ordinal:index+1,revision:3,status,filename:'page.png',draft:{bookDate:'2026-11-01',location:'Dudhichua OB',cardShift:'I',doorText:'V/559'},...(status==='posted'?{logbook_id:9}:{}),checks:{errors:[]}}));
@@ -26,4 +27,18 @@ test('read-only reports have no mutation controls; busy or dirty state disables 
  let called=false;const blocked=Component({batch,cards,onAbort:()=>{},abortDisabled:true,onDeleteCard:()=>called=true,actionsDisabled:true});
  const buttons=nodes(blocked,'button');assert.equal(buttons.find(button=>button.props.children==='Abort scanning').props.disabled,true);
  for(const button of buttons.filter(button=>button.props.children==='Delete card')){assert.equal(button.props.disabled,true);button.props.onClick();}assert.equal(called,false);
+});
+for(const kind of ['vehicle','equipment'])test(kind+' multi-select tracks visible eligible cards, clears selection and drops stale revisions',()=>{
+ const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
+ const Stateful=new Function('React','useState','scanBatchReport','scanBatchReportTables','scanReportCardStatus','CARD_STATUS_LEGEND','isDeletableScanCard',code+';return ScanBatchReport')(React,useState,scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND,isDeletableScanCard);
+ const requests=[],members=cards.map((card,i)=>({...card,draft:{...card.draft,aFormNo:i===0?'FINDME':'OTHER'+i,jobCardNo:i===0?'FINDME':'OTHER'+i}}));const props={batch:{...batch,kind},cards:members,onDeleteCard:()=>{},onDeleteCards:items=>requests.push(items)};const render=()=>{cursor=0;return Stateful(props)};
+ const get=(tree,type,label)=>nodes(tree,type).find(node=>node.props['aria-label']===label);const selectedButton=tree=>nodes(tree,'button').find(button=>Array.isArray(button.props.children)&&button.props.children[0]==='Delete selected (');
+ let tree=render();assert.equal(selectedButton(tree).props.disabled,true);
+ const checks=nodes(tree,'input').filter(n=>String(n.props['aria-label']||'').startsWith('Select card '));assert.deepEqual(checks.map(n=>Boolean(n.props.disabled)),[false,false,false,false,true,true,true]);
+ checks[0].props.onChange({target:{checked:true}});tree=render();checks[2].props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests[0], [members[0],members[2]]);
+ get(tree,'input','Select all visible unsaved cards').props.onChange({target:{checked:true}});tree=render();assert.equal(selectedButton(tree).props.children[1],4);
+ nodes(tree,'button').find(n=>n.props.children==='Clear selection').props.onClick();tree=render();assert.equal(selectedButton(tree).props.disabled,true);
+ get(tree,'input','Search batch report').props.onChange({target:{value:'FINDME'}});tree=render();get(tree,'input','Select all visible unsaved cards').props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests.at(-1),[members[0]],'select all applies only to the filtered visible rows');
+ members[0]={...members[0],revision:99};tree=render();assert.equal(selectedButton(tree).props.disabled,true,'a changed card requires a fresh selection');
+ props.actionsDisabled=true;tree=render();assert.equal(get(tree,'input','Select all visible unsaved cards').props.disabled,true);
 });
