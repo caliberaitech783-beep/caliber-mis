@@ -24,7 +24,8 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
   const books=(await pool.query('SELECT id,book_no,book_type,asset_id,site,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date=$1::date AND book_type=ANY($2::text[])',[s.date,s.kinds])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
   const reasons=(await pool.query('SELECT asset_key,reason,remarks,updated_at,updated_by FROM mis_fleet_idle_reasons WHERE site_key=$1 AND book_date=$2::date AND shift=$3',[canonicalSiteName(s.site),s.date,s.shift])).rows;
   const result=reconcileFleet({...s,assets:s.assets.filter(a=>s.kinds.includes(assetBookKind(a))),books,breakdowns,reasons});
-  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),masterSync:pulseMasterSync.status?.(),populationNote:'Fleet population uses the current Pulse-synced Equipment Master location. Historical site assignments are not available; compare unmatched cards before relying on past-date totals.'});
+  const sync=pulseMasterSync.status?.();
+  res.json({...result,date:s.date,site:s.site,shift:s.shift,window:s.window,partialShift:Date.now()<s.window.end,updatedAt:new Date().toISOString(),masterSync:sync?{connected:sync.connected,lastSuccess:sync.lastSuccess}:null,populationNote:'Fleet population uses the current Pulse-synced Equipment Master location. Historical site assignments are not available; compare unmatched cards before relying on past-date totals.'});
  }));
  app.put('/api/reports/fleet-reconciliation/idle-reason',...protect,handle(async(req,res)=>{
   const s=await selection(req,req.body),asset=s.assets.find(a=>String(a.id)===String(req.body.assetId));
