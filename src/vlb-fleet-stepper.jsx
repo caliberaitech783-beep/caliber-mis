@@ -30,7 +30,7 @@ export const fleetDraftFields=(row={})=>{
 };
 // Walks the ELB fleet one machine at a time. Next saves through the fleet endpoint and moves on to
 // the next unsaved machine. Pulse breakdowns are fetched for each selected machine.
-export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss}){
+export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
@@ -83,14 +83,15 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  };
  const dismiss=()=>onDismiss?.();
  const saved=fleet.filter(item=>item.saved_at).length,skipped=fleet.filter(item=>item.skipped&&!item.saved_at);
- if(!row)return <div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-label="Machine entry" className="logbook-dialog vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p><div className="vlb-batch-actions"><button type="button" onClick={dismiss}>Close dialog</button></div></div></div>;
+ if(!row)return embedded?<section className="logbook-section vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p></section>:<div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-label="Machine entry" className="logbook-dialog vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p><div className="vlb-batch-actions"><button type="button" onClick={dismiss}>Close dialog</button></div></div></div>;
  const trips=Number(row.trips)||0;
  const workingStatus=true;
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const employees=(options?.employees||[]).slice().sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
- return <div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="vlb-fleet-stepper-title" className="logbook-dialog vlb-fleet-stepper">
-  <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div><button type="button" disabled={busy} onClick={dismiss}>Close dialog</button></header>
+ const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>
+  {embedded&&<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Batch machines</h2><span>{saved} of {fleet.length} saved · Select any machine to enter or review its ELB</span></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Door</th><th>Equipment</th><th>VLB trips</th><th>ELB status</th><th/></tr></thead><tbody>{fleet.map((item,itemIndex)=><tr key={item.assetId} aria-selected={itemIndex===index}><td>{item.door}</td><td>{item.equipmentName||'—'}</td><td>{Number(item.trips)||0}</td><td>{item.saved_at?'Saved'+(item.book_no?' · '+item.book_no:''):item.skipped?'Skipped':'Not saved'}</td><td><button type="button" disabled={busy||dirty||itemIndex===index} onClick={()=>goTo(itemIndex)}>{itemIndex===index?'Selected':'Enter ELB'}</button></td></tr>)}</tbody></table></div></section>}
+  <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
   {skipped.length>0&&<p className="vlb-fleet-skipped">Skipped: {skipped.map(item=>item.door).join(', ')}. Complete them before closing the batch.</p>}
   <nav className="vlb-status-buttons" role="tablist" aria-label="ELB entry tabs">
    <button type="button" id="elb-working-tab" role="tab" aria-selected={activeTab==='working'} aria-controls="elb-working-panel" onClick={()=>setActiveTab('working')}>Working</button>
@@ -120,5 +121,6 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse} onClick={next}>{busy?'Saving…':'Next'}</button>{dirty&&<span className="vlb-draft-indicator" role="status">Not saved · select Next to save this ELB</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
   {notice&&<p className="logbook-message success" role="status">{notice}</p>}
- </div></div>;
+ </div>;
+ return embedded?content:<div className="logbook-dialog-backdrop">{content}</div>;
 }
