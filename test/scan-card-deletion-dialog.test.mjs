@@ -1,3 +1,4 @@
+import {scanDeletionApproval} from '../src/scan-card-deletion-selection.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -12,7 +13,7 @@ const nodes=(tree,predicate)=>{const result=[];const visit=node=>{if(Array.isArr
 function harness(kind='vehicle',overrides={}){
  const slots=[];let cursor=0,closed=0;const requests=[],deletions=[];
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
- const Component=new Function('React','useState','useRef','useEffect',code+';return ScanCardDeletionDialog')(React,useState,value=>useState({current:value})[0],()=>{});
+ const Component=new Function('React','useState','useRef','useEffect','scanDeletionApproval',code+';return ScanCardDeletionDialog')(React,useState,value=>useState({current:value})[0],()=>{},scanDeletionApproval);
  const props={target,kind,batchName:'B06',onClose(){closed++},onRequest:async body=>{requests.push(body);return {requestId:'request-exact',recipient:'+91 9925565281',expiresInMinutes:10}},onDelete:async body=>deletions.push(body),...overrides};
  const render=()=>{cursor=0;return Component(props)},button=(tree,label)=>nodes(tree,n=>n.type==='button'&&n.props.children===label)[0];
  const prepare=()=>{let tree=render();nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Wrong scan'}});nodes(tree,n=>n.type==='input'&&n.props.type==='checkbox')[0].props.onChange({target:{checked:true}});return render()};
@@ -52,4 +53,8 @@ test('a refused OTP leaves the dialog open for correction',async()=>{
 test('single-card deletion uses the dialog instead of native prompts',()=>{
  const deletion=source.slice(source.indexOf(' const [deletionTarget'),source.indexOf(' const resolveFleet='));
  assert.doesNotMatch(deletion,/window\.(?:prompt|confirm)/);assert.match(deletion,/setBusy\(true\)/);assert.match(source,/<ScanCardDeletionDialog/);
+});
+for(const kind of ['vehicle','equipment'])test(kind+' group dialog previews every card and approves the exact list with one OTP',async()=>{
+ const targets=[target,{...target,id:'second-card',ordinal:8,revision:2,filename:'second.png'}],app=harness(kind,{targets});let tree=app.render();const html=renderToStaticMarkup(tree);assert.match(html,/Delete 2 selected cards/);assert.ok(html.includes('card-exact')&&html.includes('second-card')&&html.includes('second.png'));assert.match(html,/Storage\/backups may retain original scans/);
+ tree=app.prepare();await app.button(tree,'Approve and send WhatsApp OTP').props.onClick();assert.equal(app.requests.length,1);assert.equal(app.requests[0].approval,scanDeletionApproval(targets));tree=app.render();nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='one-time-code')[0].props.onChange({target:{value:'123456'}});tree=app.render();await app.button(tree,'Verify OTP and delete 2 cards').props.onClick();assert.equal(app.deletions.length,1);assert.equal(app.deletions[0].approval,scanDeletionApproval(targets));
 });
