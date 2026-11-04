@@ -11,7 +11,7 @@ export function fleetMachineSummary(rows = []) {
     current.scannedCards += Array.isArray(row.cards) ? row.cards.length : 0;
     machines.set(key, current);
   });
-  return [...machines.values()];
+  return [...machines.values()].filter(row => row.scannedCards > 0);
 }
 
 export const fleetScannedCardTotal = (rows = []) => fleetMachineSummary(rows).reduce((total, row) => total + row.scannedCards, 0);
