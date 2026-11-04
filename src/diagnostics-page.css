@@ -44,3 +44,18 @@
 [data-theme="dark"] .diagnostics-overall { background: #0f2a1c; color: #bbf7d0; }
 [data-theme="dark"] .diagnostics-overall.warn { background: #2e2310; color: #fde68a; }
 [data-theme="dark"] .diagnostics-overall.fail { background: #2e1414; color: #fecaca; }
+
+.diagnostics-performance { margin-top: 22px; }
+.diagnostics-performance h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; color: #172943; font-size: 17px; }
+.diagnostics-performance h2 svg { width: 20px; height: 20px; color: #7c3aed; }
+.diagnostics-performance h3 { margin: 16px 0 6px; color: #172943; font-size: 14px; }
+.diagnostics-performance p { margin: 0; color: #64748b; font-size: 13px; }
+.diagnostics-table { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.diagnostics-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.diagnostics-table th, .diagnostics-table td { padding: 7px 10px; border-bottom: 1px solid #eef2f7; text-align: left; vertical-align: top; }
+.diagnostics-table th { background: #f8fafc; color: #475569; font-weight: 700; white-space: nowrap; }
+.diagnostics-table td:first-child { overflow-wrap: anywhere; }
+[data-theme="dark"] .diagnostics-performance h2, [data-theme="dark"] .diagnostics-performance h3 { color: #f2f5fa; }
+[data-theme="dark"] .diagnostics-table { border-color: #36455d; background: #162239; color: #e2e8f0; }
+[data-theme="dark"] .diagnostics-table th { background: #1c2b45; color: #cbd5e1; }
+[data-theme="dark"] .diagnostics-table th, [data-theme="dark"] .diagnostics-table td { border-color: #2a3a52; }

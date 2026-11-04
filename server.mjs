@@ -118,6 +118,7 @@ import {registerOemEmailAdmin} from './server/routes/oem-email-admin.mjs';
 import {requireUserSessionView,isSessionViewOnlyUser} from './shared/user-session-access.mjs';
 import {bdAgeingReportHandler} from './shared/bd-ageing-report.mjs';
 import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
+import {createPerformanceMonitor,performanceDiagnostic} from './server/services/performance-monitor.mjs';
 import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './server/rules/data-housekeeping.mjs';
 import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './server/rules/storage-management.mjs';
 import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './server/services/text-translation.mjs';
@@ -200,6 +201,8 @@ app.use(compression({
 const slowRequestThresholdMs=Math.max(250,Number(process.env.SLOW_REQUEST_THRESHOLD_MS||1000));
 app.use((req,res,next)=>{
   const startedAt=process.hrtime.bigint();
+  // 'close' also fires for requests the browser abandoned, so none stay "running".
+  if(req.path.startsWith('/api/')){const finish=performanceMonitor.beginRequest(req.method,req.path);res.on('close',()=>finish(res.statusCode));}
   const originalEnd=res.end;
   res.end=function(...args){
     const durationMs=Number(process.hrtime.bigint()-startedAt)/1e6;
@@ -304,6 +307,9 @@ const pool=new Pool({
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 });
+// Admin > Diagnostics shows these numbers: server freezes, slow pages and database waits.
+const performanceMonitor=createPerformanceMonitor({pool});
+performanceMonitor.start();
 
 async function currentDataRevisions(keys,client=pool){
   const normalized=[...new Set(keys.map(value=>String(value||'').trim()).filter(Boolean))].sort();
@@ -4218,6 +4224,7 @@ function diagnosticChecks(){
       const deliveries=await messageDeliveryCounts('WhatsApp');
       return {...deliveryDiagnostic(deliveries,'WhatsApp'),facts:[['Provider',config.provider==='fast2sms'?'Fast2SMS':'Meta Cloud API'],['Sent in 24 h',String(deliveries.sent||0)],['Failed in 24 h',String(deliveries.failed||0)]]};
     }},
+    {key:'performance',label:'Speed and freezes',run:async()=>performanceDiagnostic(performanceMonitor.snapshot())},
     {key:'email',label:'Email',run:async()=>{
       const {config,transporter}=createTicketMailer();
       if(!transporter)diagnosticState('off','Email (SMTP) is not configured.');
@@ -4234,6 +4241,12 @@ app.get('/api/diagnostics',requireSuper,requireAdministrator,async(req,res,next)
     res.set('Cache-Control','no-store');
     res.json(await runDiagnostics(diagnosticChecks()));
   }catch(error){next(error)}
+});
+
+app.get('/api/diagnostics/performance',requireSuper,requireAdministrator,(req,res)=>{
+  req.audit=false;
+  res.set('Cache-Control','no-store');
+  res.json(performanceMonitor.snapshot());
 });
 
 app.get('/api/reports/iboss-accounts/:view/count',requireSession,async(req,res)=>{
@@ -7890,7 +7903,7 @@ if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;c
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
 registerClientErrorReports(app,{pool,requireSession,requireAdministrator,serverCommit:()=>deploymentSha});
-const bulkScanning=registerBulkCardScanning(app,{refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
+const bulkScanning=registerBulkCardScanning(app,{trackJob:performanceMonitor.trackJob,refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
@@ -8623,7 +8636,7 @@ async function appendBackendProcessAudit({module='Cloud runtime',action,targetRe
 async function runAuditedBackendProcess({module,action,targetReference=''},task){
   const startedAt=Date.now();
   try{
-    const result=await task();
+    const result=await performanceMonitor.trackJob(`${module}: ${action}`,task);
     if(!result?.skipped)await appendBackendProcessAudit({module,action,targetReference,outcome:'Success',reason:backendResultSummary(result),durationMs:Date.now()-startedAt});
     return result;
   }catch(error){

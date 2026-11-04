@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, CircleOff, Database, HardDrive, Mail, MessageCircle, RefreshCw, Send, Server, Stethoscope, XCircle, Cable } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleOff, Database, Gauge, HardDrive, Mail, MessageCircle, RefreshCw, Send, Server, Stethoscope, XCircle, Cable } from "lucide-react";
 import "./diagnostics-page.css";
 
-const CHECK_ICONS = { app: Server, database: Database, backups: HardDrive, oracle: Cable, telegram: Send, whatsapp: MessageCircle, email: Mail };
+const CHECK_ICONS = { app: Server, database: Database, backups: HardDrive, oracle: Cable, telegram: Send, whatsapp: MessageCircle, performance: Gauge, email: Mail };
+const istTime = (value) => new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: true });
 const STATE_LABELS = { ok: "Working", warn: "Needs attention", fail: "Not working", off: "Not set up" };
 const STATE_ICONS = { ok: CheckCircle2, warn: AlertTriangle, fail: XCircle, off: CircleOff };
 const OVERALL = {
@@ -17,14 +18,20 @@ export default function DiagnosticsPage({ token }) {
   const [report, setReport] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [performance, setPerformance] = useState(null);
   const run = async () => {
     setRunning(true);
     setError("");
     try {
-      const response = await fetch("/api/diagnostics", { cache: "no-store", headers: { Authorization: `Bearer ${token}` } });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [response, speed] = await Promise.all([
+        fetch("/api/diagnostics", { cache: "no-store", headers }),
+        fetch("/api/diagnostics/performance", { cache: "no-store", headers }).then((reply) => (reply.ok ? reply.json() : null)).catch(() => null),
+      ]);
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Diagnostics could not run.");
       setReport(result);
+      setPerformance(speed);
     } catch (runError) {
       setError(runError.message || "Diagnostics could not run.");
     } finally {
@@ -44,7 +51,7 @@ export default function DiagnosticsPage({ token }) {
       <div className={`diagnostics-overall ${report.overall}`} role="status">
         <strong>{OVERALL[report.overall]}</strong>
         <span>{report.summary.ok} working · {report.summary.warn} need attention · {report.summary.fail} not working · {report.summary.off} not set up</span>
-        <small>Checked {new Date(report.checkedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })}</small>
+        <small>Checked {istTime(report.checkedAt)}</small>
       </div>
       <div className="diagnostics-grid">
         {report.checks.map((check) => {
@@ -62,7 +69,38 @@ export default function DiagnosticsPage({ token }) {
           </article>;
         })}
       </div>
+      {performance && <PerformanceDetails performance={performance} />}
     </>}
     {!report && !error && <p className="diagnostics-loading"><RefreshCw className="spin" aria-hidden="true" /> Running checks…</p>}
   </section>;
+}
+
+// Freezes and slow pages measured since the server last started.
+function PerformanceDetails({ performance }) {
+  const { recentFreezes, slowestRoutes, busiestRoutes } = performance;
+  return <section className="diagnostics-performance">
+    <h2><Gauge aria-hidden="true" /> Speed details</h2>
+    <p>Measured since {istTime(performance.measuredSince)} (numbers reset when the server restarts). A freeze means the server could not answer anyone for that long.</p>
+    <h3>Recent server freezes</h3>
+    {recentFreezes.length ? <div className="diagnostics-table"><table>
+      <thead><tr><th>When</th><th>Frozen for at least</th><th>What was running</th></tr></thead>
+      <tbody>{recentFreezes.map((freeze) => <tr key={freeze.at + freeze.blockedMs}>
+        <td>{istTime(freeze.at)}</td><td>{freeze.blockedMs} ms</td><td>{[...freeze.jobs, ...freeze.requests].join("; ") || "Nothing recorded"}</td>
+      </tr>)}</tbody>
+    </table></div> : <p>No freezes recorded.</p>}
+    <h3>Slowest pages and actions</h3>
+    <RouteTable rows={slowestRoutes} />
+    <h3>Pages using the most server time</h3>
+    <RouteTable rows={busiestRoutes} />
+  </section>;
+}
+
+function RouteTable({ rows }) {
+  if (!rows.length) return <p>No requests recorded yet.</p>;
+  return <div className="diagnostics-table"><table>
+    <thead><tr><th>Request</th><th>Count</th><th>Average</th><th>95% within</th><th>Slowest</th><th>Over 1 s</th><th>Total time</th></tr></thead>
+    <tbody>{rows.map((row) => <tr key={row.route}>
+      <td>{row.route}</td><td>{row.count}</td><td>{row.averageMs} ms</td><td>{row.p95Ms} ms</td><td>{row.maxMs} ms</td><td>{row.slow}</td><td>{row.totalSeconds} s</td>
+    </tr>)}</tbody>
+  </table></div>;
 }
