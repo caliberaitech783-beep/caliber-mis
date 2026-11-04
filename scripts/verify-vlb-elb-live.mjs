@@ -67,14 +67,15 @@ if(process.argv.includes('--azure')){
  assert.equal(preferred([closed,open],closed.id),open,'A remembered closed batch must not override the open batch');
  assert.equal(preferred([closed],closed.id),null,'Closed batches must not auto-open for work');
  const pool=new pg.Pool({...misDatabaseConfig(),connectionTimeoutMillis:15000,max:2});
- let checked=0,restricted=0,admins=0,openSelections=0;
+ let checked=0,restricted=0,admins=0,openSelections=0,restrictedCandidates=0;
  try{
   const sessions=(await pool.query(`SELECT token,role,employee_name AS name,login_name AS login,assigned_role AS "assignedRole",permissions
-   FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days' ORDER BY last_seen_at DESC LIMIT 2000`)).rows;
+   FROM (SELECT *,row_number() OVER(PARTITION BY lower(login_name) ORDER BY last_seen_at DESC) AS session_rank FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days') AS recent WHERE session_rank<=2 ORDER BY last_seen_at DESC LIMIT 2000`)).rows;
   // Repeated administrator test logins must not hide older site-user sessions.
   const attempts=new Map();
   const candidates=sessions.filter(session=>{const n=attempts.get(session.login)||0;attempts.set(session.login,n+1);return n<2;})
    .sort((a,b)=>Number(isMisAdministrator(a))-Number(isMisAdministrator(b)));
+  restrictedCandidates=candidates.filter(session=>!isMisAdministrator(session)).length;
   const seen=new Set();
   for(const session of candidates){
    if(seen.has(session.login))continue;
@@ -116,7 +117,7 @@ if(process.argv.includes('--azure')){
    if(restricted>=2&&admins>=1&&openSelections>=1)break;
   }
  }finally{await pool.end();}
- const result={commit:health.commit,checkedAccounts:checked,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true};
+ const result={commit:health.commit,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true};
  console.log(JSON.stringify(result));
  assert.ok(restricted>0,'A current restricted MIS session is required for live access verification');
  assert.ok(admins>0,'A current administrator session is required for live all-site verification');
