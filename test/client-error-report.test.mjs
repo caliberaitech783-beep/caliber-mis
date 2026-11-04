@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerClientErrorReports,normalizeClientErrorReport,createReportLimiter,scrubReportUrl,formatClientErrorLog} from '../client-error-report.mjs';
+import {registerClientErrorReports,normalizeClientErrorReport,createReportLimiter,scrubReportUrl,formatClientErrorLog} from '../server/routes/client-error-report.mjs';
 
 test('browser error reports are normalised, scrubbed and bounded',()=>{
  assert.equal(normalizeClientErrorReport(null),null);

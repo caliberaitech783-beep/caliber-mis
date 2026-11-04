@@ -8,7 +8,7 @@ import {
   serverErrorHandler,
   TRANSIENT_DATABASE_MESSAGE,
   UNEXPECTED_ERROR_MESSAGE,
-} from '../server-error-response.mjs';
+} from '../server/middleware/server-error-response.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
 
@@ -93,7 +93,7 @@ test('the express handler writes Retry-After for transient failures and never do
 });
 
 test('server.mjs uses the shared handler and survives idle pool errors and stray rejections', () => {
-  assert.match(server, /import \{serverErrorHandler\} from '\.\/server-error-response\.mjs'/);
+  assert.match(server, /import \{serverErrorHandler\} from '\.\/server\/middleware\/server-error-response\.mjs'/);
   assert.match(server, /app\.use\(serverErrorHandler\(\)\)/);
   assert.doesNotMatch(server, /res\.status\(500\)\.json\(\{error:'Server error'\}\)/);
   assert.match(server, /pool\.on\('error'/);
