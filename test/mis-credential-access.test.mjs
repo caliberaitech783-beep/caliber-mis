@@ -37,7 +37,7 @@ test('card batch permissions resolve actual database kind instead of trusting th
 });
 test('MIS client forwards separate credentials only to the fixed HTTPS issuer and never exposes the grant',async()=>{
  const routes=new Map(),calls=[];
- const client=installMisCredentialClient({post:(p,h)=>routes.set(p,h)},{pool:{query:async(q,v)=>{calls.push({q,v});return {rows:[]}}},sessionStore:{create:async value=>calls.push(value)},fetcher:async(url,options)=>{
+ const client=installMisCredentialClient({post:(p,...handlers)=>routes.set(p,(req,res)=>{let index=0;const next=()=>handlers[index++]?.(req,res,next);return next();})},{pool:{query:async(q,v)=>{calls.push({q,v});return {rows:[]}}},sessionStore:{create:async value=>calls.push(value)},fetcher:async(url,options)=>{
  assert.equal(url,'https://pulse.cmll.in/api/integrations/mis/authenticate');assert.equal(options.redirect,'error');assert.equal(JSON.parse(options.body).username,'mis.one');return {status:200,json:async()=>({grant:'a'.repeat(43),profile:{role:'super',login:'person',permissions:{separateMisCredentials:true}}})};}});
  let body;await routes.get('/api/mis-credentials/login')({body:{username:'mis.one',password:'separate-secret'}},{set(){},status(){return this},json(value){body=value}});
  assert.ok(body.token);assert.equal(body.grant,undefined);assert.equal(calls[0].login,'person');assert.equal(calls[1].v[1],'a'.repeat(43));

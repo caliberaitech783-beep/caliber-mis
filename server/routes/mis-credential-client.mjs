@@ -1,11 +1,12 @@
 import {randomUUID} from 'node:crypto';
+import {createLoginLimiter} from '../middleware/http-security.mjs';
 const issuer='https://pulse.cmll.in';
 export function installMisCredentialClient(app,{pool,sessionStore,fetcher=fetch}){
  const request=async(action,body)=>{
   const response=await fetcher(`${issuer}/api/integrations/mis/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(15000)});
   return {status:response.status,data:await response.json()};
  };
- app.post('/api/mis-credentials/login',async(req,res,next)=>{
+ app.post('/api/mis-credentials/login',createLoginLimiter(),async(req,res,next)=>{
   res.set('Cache-Control','no-store');req.audit=false;
   try{
    const {username,password}=req.body||{};

@@ -54,6 +54,7 @@ import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from '
 import {assignedUserRoles,hasAccountRole,accountPrivileges} from './shared/account-role-access.mjs';
 import {dashboardMetric} from './server/rules/iboss-dashboard.mjs';
 import express from 'express';
+import {securityHeaders,protectStaticFiles,createLoginLimiter} from './server/middleware/http-security.mjs';
 import {requestHistorySnapshotSql,requestHistoryTimelineSql} from './server/rules/request-history-payload.mjs';
 import {retryDatabaseRead} from './server/rules/database-read-retry.mjs';
 import {measureRequestHistoryPayload} from './server/rules/request-history-diagnostics.mjs';
@@ -178,6 +179,8 @@ import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './shared/wha
 
 const {Pool}=pg;
 const app=express();
+app.disable('x-powered-by');
+app.use(securityHeaders);
 app.use(enforceContentDeletionPolicy);
 // Azure Front Door / App Service terminate TLS and proxy to Node. Without this
 // every visitor shares the proxy's address, so per-IP limits (password reset
@@ -1509,6 +1512,7 @@ app.use((req,res,next)=>{
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
+app.use('/api/login',createLoginLimiter());
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
 const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
 const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
@@ -8586,8 +8590,9 @@ app.use((req,res,next)=>{
   if(['/cd/directory-data.json','/cd/caliber-directory.html'].includes(directoryPath))return res.status(404).end();
   next();
 });
+app.use(protectStaticFiles);
 app.use('/app-assets',express.static(path.join(staticRoot,'app-assets'),{immutable:true,maxAge:'1y'}));
-app.use(express.static(staticRoot));
+app.use(express.static(staticRoot===root?path.join(root,'public'):staticRoot));
 app.get(/^(?!\/api).*/,(_req,res)=>res.sendFile(path.join(staticRoot,'index.html')));
 app.use((error,req,res,next)=>{
   const auditedError=auditSafeError(error);
