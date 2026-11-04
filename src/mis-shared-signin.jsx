@@ -21,21 +21,21 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
           window.location.replace('/api/mis-sso/authorize?'+new URLSearchParams({state,code_challenge:challenge}));
         }
       }
-      if(mode==='client'&&!session?.token){
+      if(mode==='client'&&(!session?.token||query.has('misCredentialReady')||query.get('misSsoReady')==='1')){
         const handoff=query.get('misCredentialReady');
         if(handoff==='1'||/^[A-Za-z0-9_-]{43}$/.test(handoff||'')){
-          const response=await fetch('/api/mis-credentials/session'+(handoff==='1'?'':'?handoff='+encodeURIComponent(handoff)),{cache:'no-store'});
+          const response=await fetch('/api/mis-credentials/session'+(handoff==='1'?'':'?handoff='+encodeURIComponent(handoff)),{cache:'no-store',headers:session?.token?{Authorization:`Bearer ${session.token}`}:{}});
           const result=await response.json();if(stopped)return;
           window.history.replaceState(null,'','/');
           if(!response.ok||!result.token)throw Error(result.error||'Pulse could not complete MIS sign-in. Please start again.');
           window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
         }else if(query.get('misSsoReady')==='1'){
-          const response=await fetch('/api/mis-sso/session',{cache:'no-store'});
+          const response=await fetch('/api/mis-sso/session',{cache:'no-store',headers:session?.token?{Authorization:`Bearer ${session.token}`}:{}});
           const result=await response.json();if(stopped)return;
           window.history.replaceState(null,'','/');
           if(!response.ok||!result.token)throw Error('Pulse sign-in could not be completed. Please retry.');
           window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
-        }else if(autoStart)window.location.replace('/api/mis-credentials/start');
+        }else if(autoStart&&!session?.token)window.location.replace('/api/mis-credentials/start');
       }
     };
     void start().catch(error=>{if(!stopped)setStatus(current=>({...current,error:error.message||'Shared sign-in is temporarily unavailable. Please retry.'}));});

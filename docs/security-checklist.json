@@ -2,32 +2,124 @@
   "application": "Caliber MIS",
   "reviewDate": "2026-11-05",
   "scope": "Current code and production configuration. This is not a guarantee against future vulnerabilities.",
-  "requiredProductionSettings": {"MIS_DATABASE_CONNECTION_MODE":"isolated","MIS_REQUIRE_MFA":"true","MIS_RLS_ENABLED":"true"},
+  "requiredProductionSettings": {
+    "MIS_DATABASE_CONNECTION_MODE": "isolated",
+    "MIS_REQUIRE_MFA": "false",
+    "MIS_RLS_ENABLED": "true"
+  },
   "controls": [
-    {"control":"SQL injection","status":"reviewed","evidence":"Parameterized PostgreSQL/Oracle values; fixed allowlists and quoted identifiers for dynamic catalog names."},
-    {"control":"XSS","status":"reviewed and hardened","evidence":"React escaping for application/print content, CSP, nosniff, and frame restrictions."},
-    {"control":"CSRF","status":"implemented","evidence":"HttpOnly Strict host cookie, session-bound CSRF proof, and first-party Origin checks; account-security-http.test.mjs."},
-    {"control":"File uploads","status":"implemented","evidence":"Scan signature/dimension/size checks; contract attachment type/content allowlist; attachment-security.test.mjs."},
-    {"control":"SSRF","status":"reviewed and hardened","evidence":"Fixed identity/sync destinations and refused credentialed redirects. Private ERP and managed-identity destinations remain intentional administrator-configured integrations."},
-    {"control":"Object authorization","status":"reviewed","evidence":"Existing owner, object, batch and site guards; scan-batch-owner-access.test.mjs and log-book-site-access.test.mjs."},
-    {"control":"Rate limits","status":"implemented","evidence":"Per-account and socket-peer login throttles, bounded login bodies, ten MFA attempts per account per five minutes."},
-    {"control":"Password hashing","status":"reviewed and hardened","evidence":"Salted scrypt retained with malformed-hash rejection. Pulse remains the production primary identity provider."},
-    {"control":"MFA","status":"implemented","evidence":"TOTP with recent primary sign-in for enrollment, replay prevention, one-use recovery, authenticator replacement and session revocation; verify-account-security-browser.mjs."},
-    {"control":"Server permissions","status":"reviewed","evidence":"Existing deny-by-default permissions remain; new security endpoints expose only self-service operations."},
-    {"control":"RLS","status":"implemented","evidence":"Forced restrictive site RLS for operational log books and their views; transaction-local HTTP scopes, explicit trusted-job separation, row-security.test.mjs. Scan objects retain existing server owner/site authorization."},
-    {"control":"JWT signing secrets","status":"not applicable","evidence":"MIS uses opaque server-side session IDs rather than browser JWT authentication."},
-    {"control":"API/database secrets","status":"implemented","evidence":"Server-side AES-GCM integration secrets and a separate Key Vault credential for the restricted MIS database role."},
-    {"control":"Browser token storage","status":"implemented","evidence":"HttpOnly credentials; only profile data and a non-secret marker remain in browser storage. Legacy sessions rotate and old credentials are invalidated. PC-scanner credentials remain scoped and expiring."},
-    {"control":"Default credentials","status":"reviewed and hardened","evidence":"Random dedicated database credential; no new default MIS password. Production trusts Pulse. Shared administrator and Pulse passwords are preserved."},
-    {"control":"CORS","status":"reviewed","evidence":"No wildcard application CORS. Cookie mutations require the MIS origin; PC connector access retains exact loopback/host/header checks."},
-    {"control":"Webhooks","status":"reviewed","evidence":"Telegram secret verification precedes message processing; authenticated machine integrations remain separate from browser MFA."},
-    {"control":"Source exposure","status":"implemented","evidence":"Private paths and source maps are blocked; static fallback serves only public assets; http-security.test.mjs."},
-    {"control":"Sensitive logs","status":"implemented","evidence":"Query sign-in codes, rejected parser bodies, credential URLs, MFA/recovery material and secret fields are excluded or redacted."},
-    {"control":"Dependencies","status":"implemented","evidence":"Patched sharp override; zero known dependency audit findings; real Transformers PNG/JPEG/WebP preprocessing compatibility test."},
-    {"control":"Database least privilege","status":"implemented","evidence":"MIS role cannot create databases/roles or bypass RLS. Real PostgreSQL test confirms it cannot read a separate application's tables."},
-    {"control":"Configuration fail-closed","status":"implemented","evidence":"Production requires isolated database mode, MFA and RLS. HTTP database access waits for successful RLS initialization."}
+    {
+      "control": "SQL injection",
+      "status": "reviewed",
+      "evidence": "Parameterized PostgreSQL/Oracle values; fixed allowlists and quoted identifiers for dynamic catalog names."
+    },
+    {
+      "control": "XSS",
+      "status": "reviewed and hardened",
+      "evidence": "React escaping for application/print content, CSP, nosniff, and frame restrictions."
+    },
+    {
+      "control": "CSRF",
+      "status": "implemented",
+      "evidence": "HttpOnly Strict host cookie, session-bound CSRF proof, and first-party Origin checks; account-security-http.test.mjs."
+    },
+    {
+      "control": "File uploads",
+      "status": "implemented",
+      "evidence": "Scan signature/dimension/size checks; contract attachment type/content allowlist; attachment-security.test.mjs."
+    },
+    {
+      "control": "SSRF",
+      "status": "reviewed and hardened",
+      "evidence": "Fixed identity/sync destinations and refused credentialed redirects. Private ERP and managed-identity destinations remain intentional administrator-configured integrations."
+    },
+    {
+      "control": "Object authorization",
+      "status": "reviewed",
+      "evidence": "Existing owner, object, batch and site guards; scan-batch-owner-access.test.mjs and log-book-site-access.test.mjs."
+    },
+    {
+      "control": "Rate limits",
+      "status": "implemented",
+      "evidence": "Per-account and socket-peer login throttles, bounded login bodies, ten MFA attempts per account per five minutes."
+    },
+    {
+      "control": "Password hashing",
+      "status": "reviewed and hardened",
+      "evidence": "Salted scrypt retained with malformed-hash rejection. Pulse remains the production primary identity provider."
+    },
+    {
+      "control": "MFA",
+      "status": "available-not-enforced",
+      "evidence": "TOTP with recent primary sign-in for enrollment, replay prevention, one-use recovery, authenticator replacement and session revocation; verify-account-security-browser.mjs. Mandatory enforcement was disabled by the newer sign-in compatibility release."
+    },
+    {
+      "control": "Server permissions",
+      "status": "reviewed",
+      "evidence": "Existing deny-by-default permissions remain; new security endpoints expose only self-service operations."
+    },
+    {
+      "control": "RLS",
+      "status": "implemented",
+      "evidence": "Forced restrictive site RLS for operational log books and their views; transaction-local HTTP scopes, explicit trusted-job separation, row-security.test.mjs. Scan objects retain existing server owner/site authorization."
+    },
+    {
+      "control": "JWT signing secrets",
+      "status": "not applicable",
+      "evidence": "MIS uses opaque server-side session IDs rather than browser JWT authentication."
+    },
+    {
+      "control": "API/database secrets",
+      "status": "implemented",
+      "evidence": "Server-side AES-GCM integration secrets and a separate Key Vault credential for the restricted MIS database role."
+    },
+    {
+      "control": "Browser token storage",
+      "status": "implemented",
+      "evidence": "Tab-isolated HttpOnly credentials; only profile data and a non-secret context marker remain in browser storage. Legacy sessions rotate and old credentials are invalidated. PC-scanner credentials remain scoped and expiring."
+    },
+    {
+      "control": "Default credentials",
+      "status": "reviewed and hardened",
+      "evidence": "Random dedicated database credential; no new default MIS password. Production trusts Pulse. Shared administrator and Pulse passwords are preserved."
+    },
+    {
+      "control": "CORS",
+      "status": "reviewed",
+      "evidence": "No wildcard application CORS. Cookie mutations require the MIS origin; PC connector access retains exact loopback/host/header checks."
+    },
+    {
+      "control": "Webhooks",
+      "status": "reviewed",
+      "evidence": "Telegram secret verification precedes message processing; authenticated machine integrations remain separate from browser MFA."
+    },
+    {
+      "control": "Source exposure",
+      "status": "implemented",
+      "evidence": "Private paths and source maps are blocked; static fallback serves only public assets; http-security.test.mjs."
+    },
+    {
+      "control": "Sensitive logs",
+      "status": "implemented",
+      "evidence": "Query sign-in codes, rejected parser bodies, credential URLs, MFA/recovery material and secret fields are excluded or redacted."
+    },
+    {
+      "control": "Dependencies",
+      "status": "implemented",
+      "evidence": "Patched sharp override; zero known dependency audit findings; real Transformers PNG/JPEG/WebP preprocessing compatibility test."
+    },
+    {
+      "control": "Database least privilege",
+      "status": "implemented",
+      "evidence": "MIS role cannot create databases/roles or bypass RLS. Real PostgreSQL test confirms it cannot read a separate application's tables."
+    },
+    {
+      "control": "Configuration fail-closed",
+      "status": "implemented",
+      "evidence": "Production requires isolated database mode and RLS. HTTP database access waits for successful RLS initialization."
+    }
   ],
-  "userAction": "At the next sign-in, enroll an authenticator and save the recovery codes. Old sessions may require a fresh Pulse sign-in before enrollment.",
+  "userAction": "Normal Pulse sign-in is preserved. Mandatory MFA is disabled by the later sign-in compatibility release; enable enforcement separately if required.",
   "references": [
     "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
     "https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html",

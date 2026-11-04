@@ -1,4 +1,4 @@
-import {assertProductionSecurityConfig} from './server/services/production-security-config.mjs';
+import {assertProductionSecurityConfig,legacyPasswordRouteGuard} from './server/services/production-security-config.mjs';
 import {operationalScanSql} from './shared/operational-start.mjs';
 import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
 import {scanDuplicateFlags} from './server/services/scan-duplicates.mjs';
@@ -1525,6 +1525,7 @@ app.use((req,res,next)=>{
 // bodies are also logged.
 const browserSecurityEnabled=!['off','issuer'].includes(process.env.MIS_SSO_MODE);
 app.use(browserSessionMiddleware({publicUrl:process.env.PUBLIC_APP_URL||'https://pulse-ll.cmll.in',enabled:browserSecurityEnabled}));
+app.use(['/api/login','/api/change-initial-password','/api/password-reset/request','/api/password-reset/confirm'],legacyPasswordRouteGuard());
 app.use(['/api/login','/api/mis-credentials/login'],createLoginLimiter({limit:2000,maxEntries:1024,key:req=>req.socket.remoteAddress||'unknown'}));
 app.use(['/api/login','/api/mis-credentials/login','/api/password-reset/request','/api/password-reset/confirm','/api/change-initial-password','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'],express.json({limit:'8kb',type:JSON_BODY_CONTENT_TYPES}));
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));

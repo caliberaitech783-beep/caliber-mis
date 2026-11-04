@@ -6,14 +6,14 @@ import {transformWithOxc} from 'vite';
 
 const hookSource=readFileSync(new URL('../src/mis-shared-signin.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function');
 const {code:hookCode}=await transformWithOxc(hookSource,'shared-signin.jsx',{jsx:{runtime:'classic'}});
-async function runHook(search){
+async function runHook(search,session=null){
   const requests=[],redirects=[],events=[],effects=[];
   const scope={React,useState:initial=>[initial,()=>{}],useEffect:effect=>effects.push(effect),
     fetch:async url=>{requests.push(url);return {ok:true,json:async()=>url.endsWith('/config')?{mode:'client'}:{token:'synthetic-mis-session'}};},
     window:{location:{search,replace:url=>redirects.push(url)},history:{replaceState:()=>{}},dispatchEvent:event=>events.push(event)},
     CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}}};
   const hook=new Function(...Object.keys(scope),`${hookCode};return useMisSharedSignIn;`)(...Object.values(scope));
-  hook(null,{autoStart:true});effects[0]();await new Promise(resolve=>setImmediate(resolve));
+  hook(session,{autoStart:true});effects[0]();await new Promise(resolve=>setImmediate(resolve));
   return {requests,redirects,events};
 }
 
@@ -50,3 +50,5 @@ test('a completed tab-scoped credential handoff requests only its own ready cook
  assert.equal(result.events[0].type,'mis-shared-signin');
  assert.deepEqual(result.redirects,[]);
 });
+
+test('an explicit MIS handoff completes even when a copied tab already has a session marker',async()=>{const result=await runHook('?misCredentialReady='+('a'.repeat(43)),{token:'browser-session.AAAAAAAAAAAAAAAA'});assert.ok(result.requests.some(url=>url.startsWith('/api/mis-credentials/session')));assert.equal(result.events[0]?.type,'mis-shared-signin');assert.deepEqual(result.redirects,[]);});

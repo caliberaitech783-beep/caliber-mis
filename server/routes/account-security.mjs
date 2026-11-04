@@ -33,7 +33,7 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
  };
  const safeCode=req=>typeof req.body?.code==='string'?req.body.code.trim():'';
  const canReplace=async token=>Boolean((await pool.query("SELECT session_token FROM mis_mfa_sessions WHERE session_token=$1 AND method='recovery' AND verified_at>NOW()-INTERVAL '5 minutes'",[token])).rows[0]);
- const profile=session=>{const {created_at,sessionId,...value}=session;return {...value,token:BROWSER_SESSION_MARKER,browserSession:true};};
+ const profile=(session,marker)=>{const {created_at,sessionId,...value}=session;return {...value,token:marker||BROWSER_SESSION_MARKER,browserSession:true};};
  // This guard also covers old bearer sessions, so changing the browser transport
  // cannot bypass MFA. The narrowly scoped PC-scanner credentials are separate.
  app.use(async(req,res,next)=>{try{
@@ -48,8 +48,8 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
  }catch(error){next(error);}});
  app.get('/api/security/account',requireSession,wrap(async(req,res)=>{
   const row=await account(identity(req)),passed=await verified(tokenOf(req));
-  if(enabled)req.establishBrowserSession(tokenOf(req));
-  res.json({enrolled:Boolean(row),required:enabled&&requireMfa,verified:passed,profile:profile(req.session)});
+  const marker=enabled?req.establishBrowserSession(tokenOf(req)):null;
+  res.json({enrolled:Boolean(row),required:enabled&&requireMfa,verified:passed,profile:profile(req.session,marker)});
  }));
  app.post('/api/security/session/migrate',requireSession,wrap(async(req,res)=>{
   // A first-party custom header prevents login CSRF through HTML forms, even
@@ -58,7 +58,7 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
   const client=await pool.connect();let token;
   try{await client.query('BEGIN');const proof=(await client.query('SELECT method FROM mis_mfa_sessions WHERE session_token=$1',[tokenOf(req)])).rows[0];token=await rotate(req,client,{verified:Boolean(proof),method:proof?.method||'totp'});await client.query('COMMIT');}
   catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
-  req.establishBrowserSession(token);res.json(profile(req.session));
+  const marker=req.establishBrowserSession(token);res.json(profile(req.session,marker));
  }));
  app.post('/api/security/mfa/enroll',requireSession,wrap(async(req,res)=>{
   const login=identity(req);if(!login)return res.status(403).json({error:'This account cannot enroll an authenticator.'});
@@ -70,7 +70,7 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
   const pending=existing?.login===login&&Boolean(existing.replace)===replace&&existing.expires>now()?existing:{login,secret:newTotpSecret(),replace,expires:now()+600000};
   await store().write(key,pending);
   const label=encodeURIComponent('Caliber MIS:'+login),query=new URLSearchParams({secret:pending.secret,issuer:'Caliber MIS',algorithm:'SHA1',digits:'6',period:'30'});
-  res.json({secret:pending.secret,uri:'otpauth://totp/'+label+'?'+query,expiresAt:pending.expires});
+  res.json({secret:pending.secret,uri:'otpauth://totp/'+label+'?'+query,expiresAt:pending.expires,replace:pending.replace});
  }));
  app.post('/api/security/mfa/confirm',requireSession,wrap(async(req,res)=>{
   const login=identity(req);await limit(login);
