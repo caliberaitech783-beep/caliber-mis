@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 50
 
       - name: Resolve the main commit
         run: |
@@ -57,6 +57,24 @@ jobs:
         env:
           BEFORE_COMMIT: ${{ github.event.before }}
         run: |
+          # Compare with the version actually serving users, including any
+          # commits left behind by failed or superseded releases.
+          HEALTH_FILE="$RUNNER_TEMP/ui-baseline-health.json"
+          LIVE_COMMIT=''
+          if curl --fail --silent --max-time 15 https://pulse-ll.cmll.in/api/health -o "$HEALTH_FILE"; then
+            LIVE_COMMIT="$(node -e "const h=require(process.argv[1]);if(h.status==='ok'&&h.database==='connected'&&h.scheduledJobsEnabled===false&&/^[0-9a-f]{40}$/.test(h.commit))process.stdout.write(h.commit)" "$HEALTH_FILE" 2>/dev/null || true)"
+            if [[ "$LIVE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+              if ! git cat-file -e "${LIVE_COMMIT}^{commit}" 2>/dev/null; then
+                git fetch --depth=50 origin "$LIVE_COMMIT" || true
+              fi
+              BEFORE_COMMIT="$LIVE_COMMIT"
+            fi
+          fi
+          node scripts/ui-delta-plan.mjs "$HEALTH_FILE" >> "$GITHUB_OUTPUT"
+          if [[ ! "$LIVE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$LIVE_COMMIT" "$RELEASE_COMMIT"; then
+            printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "$GITHUB_EVENT_NAME" != "push" || ! "$BEFORE_COMMIT" =~ ^[0-9a-f]{40}$ || "$BEFORE_COMMIT" =~ ^0+$ ]]; then
             printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
             exit 0
@@ -114,6 +132,8 @@ jobs:
 
       - name: Run focused tests for approved UI/report changes
         if: steps.test-plan.outputs.lane == 'fast'
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: node --test ${{ steps.test-plan.outputs.tests }}
 
       - name: Run full test suite for sensitive or unknown changes
@@ -147,13 +167,31 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
 
+      - name: Deploy eligible UI changes without deleting existing files
+        id: ui-delta
+        if: steps.test-plan.outputs.delta == 'true'
+        env:
+          UI_BASELINE_COMMIT: ${{ steps.test-plan.outputs.baseline }}
+        run: node scripts/deploy-ui-delta.mjs
+
+      - name: Preserve UI rollback evidence
+        if: always() && steps.test-plan.outputs.delta == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-delta-rollback-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-delta-*/previous-*
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Configure central Gemini extraction for VLB and ELB
+        if: steps.ui-delta.outputs.applied != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.MIS_GEMINI_API_KEY }}
         run: python3 scripts/configure-gemini-azure.py
 
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
+        if: steps.ui-delta.outputs.applied != 'true'
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'caliber-mis-783'
