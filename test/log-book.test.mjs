@@ -44,7 +44,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());
- const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal'};next()};
+ const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal',permissions:req.headers.authorization==='admin'?{adminLevel:'Admin'}:{}};next()};
  const requireAdministrator=(req,res,next)=>req.session.role==='super'?next():res.status(403).json({error:'Admin only'});
  let pulseAvailable=true;registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return[]}}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});

@@ -25,7 +25,8 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['closed','open']);
  assert.match(source,/preferredVlbEntryBatch\(entryMatching,remembered\)/,'auto-fetch restores the selected batch or the sole open batch');
  const preferred=new Function('React','canonicalSiteName',code+';return preferredVlbEntryBatch')(React,(await import('../shared/site-location.mjs')).canonicalSiteName);
- assert.equal(preferred([closed,open],closed.id),closed);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
+ assert.equal(preferred([closed,open],closed.id),open);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
+ assert.equal(preferred([closed],closed.id),null,'closed batches do not become the automatic working batch');
  assert.match(source,/\[entryMode,selection\.site,batchStatusReady,batches\]/,'auto-fetch reruns when the asynchronous batch list arrives');
  const css=fs.readFileSync(new URL('../src/vlb-create-batch.css',import.meta.url),'utf8');
  assert.match(css,/\.vlb-entry-batch-picker \.vlb-batch-setup\{[^}]*justify-content:flex-start[^}]*flex-wrap:nowrap/);

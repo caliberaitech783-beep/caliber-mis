@@ -1,3 +1,4 @@
+import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {registerVlbBatchDeletions} from './vlb-batch-deletions.mjs';
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {operationalDate} from '../../shared/operational-start.mjs';
@@ -54,7 +55,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  const ensure=async()=>{await ensureBooks();await(ready??=(async()=>{await pool.query(VLB_BATCH_SCHEMA);if(process.env.VLB_PM_APPROVAL_TRIAL===VLB_PM_TRIAL_ID)await activateVlbPmTrial(pool)})().catch(e=>{ready=null;throw e}))};
  const handle=fn=>async(req,res,next)=>{try{
   await ensure();req.batchGetActor=getActor;req.batchActor=await getActor(req.session,pool);
-  const admin=req.session.role==='super'&&['admin','super admin'].includes(String(req.session.permissions?.adminLevel||'').toLowerCase());
+  const admin=isMisAdministrator(req.session);
   req.batchActor.admin=admin;req.batchActor.canCreate=req.batchActor.mis||admin;
   if(!req.batchActor.login||!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
   res.set('Cache-Control','no-store');await fn(req,res);

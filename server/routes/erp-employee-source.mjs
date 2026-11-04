@@ -10,7 +10,7 @@ export async function readErpEmployee(config,id){
 export async function cacheErpEmployee(pool,row){const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['erp-employee:'+row.erpEmployeeCode]);let id=(await c.query("SELECT id FROM master_records WHERE master_name IN('Employee master','ERP Employee master') AND COALESCE(record_data->>'erpEmployeeCode',record_data->>'employeeCode')=$1",[row.erpEmployeeCode])).rows[0]?.id;if(id)await c.query('UPDATE master_records SET record_data=record_data||$1::jsonb WHERE id=$2',[JSON.stringify(row),id]);else id=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('ERP Employee master',$1::jsonb) RETURNING id",[JSON.stringify(row)])).rows[0].id;await c.query('COMMIT');return {id:String(id),name:row.name,caliberId:row.employeeId,site:row.site,source:'ERP'};}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
 export function registerErpEmployees(app,{pool,config,requireSession,requireAdministrator,readSource=readErpEmployee,getSiteScope=async session=>logBookSiteScope(session)}){
  app.post('/api/log-books/employee-lookup',requireSession,requireAdministrator,async(req,res)=>{try{
-  const scope=req.query?.scan==='1'?{sites:null}:await getSiteScope(req.session),location=String(req.body.location||'').trim();
+  const scope=await getSiteScope(req.session),location=String(req.body.location||'').trim();
   if(scope.sites!==null||location)requireLogBookSite(scope,location);
   const allowed=row=>(scope.sites===null||displaySiteSelection(row.site||row.location||row.currentLocation).some(site=>siteAllowed(scope,site)))&&(!location||employeeAtLocation(row,location));
   const id=String(req.body.caliberId||'').trim().toUpperCase();

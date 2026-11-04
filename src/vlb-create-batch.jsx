@@ -45,7 +45,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  };
  useEffect(()=>{const controller=new AbortController();
   read('/api/log-books/options',{signal:controller.signal}).then(data=>{
-   setOptions(data);const site=entryMode?'':data.accountLocation||(data.sites?.length===1?data.sites[0]:'');
+   setOptions(data);const site=data.accountLocation||(data.sites?.length===1?data.sites[0]:'');
    setSelection(current=>({...current,site,shift:''}));
   }).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false)}});
   return()=>controller.abort();
@@ -84,7 +84,12 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  useEffect(()=>{
   if(!entryMode||!selection.site||!batchStatusReady)return;
   let remembered='';try{remembered=sessionStorage.getItem('vlb-entry-batch:'+String(session.login||session.name||''))||''}catch{}
-  const batch=preferredVlbEntryBatch(entryMatching,remembered);if(!batch){autoOpenedEntryBatch.current='';return}if(autoOpenedEntryBatch.current===batch.id)return;
+  const batch=preferredVlbEntryBatch(entryMatching,remembered);
+  if(!batch){
+   if(autoOpenedEntryBatch.current){autoOpenedEntryBatch.current='';++detailRequest.current;setDetailLoading(false);setViewed(null);onSelected?.(null)}
+   return;
+  }
+  if(autoOpenedEntryBatch.current===batch.id)return;
   autoOpenedEntryBatch.current=batch.id;view(batch,true);
  },[entryMode,selection.site,batchStatusReady,batches]);
  const create=async()=>{setBusy(true);setError('');try{
@@ -181,7 +186,7 @@ export function openVlbEntryBatches(batches,site){
 }
 
 export function preferredVlbEntryBatch(batches,remembered){
- const saved=batches.find(batch=>batch.id===remembered);if(saved)return saved;
  const open=batches.filter(batch=>!batch.closed_at);
- return open.length===1?open[0]:batches.length===1?batches[0]:null;
+ if(open.length===1)return open[0];
+ return open.find(batch=>batch.id===remembered)||null;
 }
