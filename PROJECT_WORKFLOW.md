@@ -439,7 +439,7 @@ Check `/api/health`, Azure App Service Log Stream, and the GitHub Actions build 
 
 Since the transient-failure hardening the app no longer answers a bare `Server error`:
 
-- `server-error-response.mjs` turns database connection drops (PostgreSQL restarts, slot swaps, `ECONNRESET`, SQLSTATE classes 08/57/53/40) into HTTP 503 with `Retry-After: 5` and the message "The server is reconnecting to the database. Please retry in a moment." Route errors that carry a status keep that status and message; anything else is a 500 whose message tells the user to retry or contact the administrator. Every 500 is logged with its method and URL, so search the Log Stream for `[500]`.
+- `server/middleware/server-error-response.mjs` turns database connection drops (PostgreSQL restarts, slot swaps, `ECONNRESET`, SQLSTATE classes 08/57/53/40) into HTTP 503 with `Retry-After: 5` and the message "The server is reconnecting to the database. Please retry in a moment." Route errors that carry a status keep that status and message; anything else is a 500 whose message tells the user to retry or contact the administrator. Every 500 is logged with its method and URL, so search the Log Stream for `[500]`.
 - `pool.on('error')` and `process.on('unhandledRejection')` keep the process alive when an idle database connection breaks; before this a single dropped idle connection exited Node and every user saw errors until App Service restarted the container.
 - `src/api-transient-retry.mjs` makes the browser wait and retry read-only `/api/` requests that receive 408/425/429/502/503/504 or a dropped connection (about 19 seconds across five attempts, honouring `Retry-After`). Writes are never replayed. A message still reaches the user only when the outage outlasts the retry window.
 

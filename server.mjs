@@ -1,5 +1,5 @@
 import {operationalScanSql} from './operational-start.mjs';
-import {registerClientErrorReports} from './client-error-report.mjs';
+import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
 import {scanDuplicateFlags} from './scan-duplicates.mjs';
 import {environmentLabelFromEnv} from './environment-label.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
@@ -116,7 +116,7 @@ import {sendScheduledOemEmails} from './oem-breakdown-email.mjs';
 import {registerOemEmailAdmin} from './oem-email-admin.mjs';
 import {requireUserSessionView,isSessionViewOnlyUser} from './user-session-access.mjs';
 import {bdAgeingReportHandler} from './bd-ageing-report.mjs';
-import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './system-diagnostics.mjs';
+import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
 import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './data-housekeeping.mjs';
 import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './storage-management.mjs';
 import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './text-translation.mjs';
@@ -167,7 +167,7 @@ import {BREAKDOWN_SUB_CATEGORY_DEFAULTS} from './breakdown-sub-category.mjs';
 // Keep globally excluded request owners out of every server-backed view and report.
 import {requestsVisibleGlobally,requestsVisibleToSession} from './mis-request-visibility.mjs';
 import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArchive} from './request-archive.mjs';
-import {serverErrorHandler} from './server-error-response.mjs';
+import {serverErrorHandler} from './server/middleware/server-error-response.mjs';
 import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './vehicle-transfer-workflow.mjs';
 import {legacyEtcRepairPlan,legacyEtcRepairReason} from './legacy-etc-repair.mjs';
 import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shift-master.mjs';
