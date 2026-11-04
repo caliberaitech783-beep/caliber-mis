@@ -4251,7 +4251,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const [columnDialogOpen, setColumnDialogOpen] = useState(false);
   const [sortDialogOpen, setSortDialogOpen] = useState(false);
   const dateColumn = primaryRecordDateColumn(columns);
-  const dateControl = recordDateFilter || (dateColumn ? {label:dateColumn.label,value:columnFilters[dateColumn.key] || "",onChange:value=>setColumnFilters(current=>({...current,[dateColumn.key]:value}))} : null);
+  const dateControl = recordDateFilter === false ? null : recordDateFilter || (dateColumn ? {label:dateColumn.label,value:columnFilters[dateColumn.key] || "",onChange:value=>setColumnFilters(current=>({...current,[dateColumn.key]:value}))} : null);
   const [pageSize, setPageSize] = useState(() => mobileTablePageSize() || 50);
   const [page, setPage] = useState(0);
   const deferredQuery = useDeferredValue(query);
@@ -4309,7 +4309,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize, dateRange: dateControl?.value || "" });
   const applySavedView = (view) => {
     onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(view.visible.length ? view.visible : allColumnKeys, columns));
-    setColumnFilters({...view.filters, ...(!recordDateFilter && dateColumn && view.dateRange ? {[dateColumn.key]: view.dateRange} : {})});
+    setColumnFilters({...view.filters, ...(recordDateFilter !== false && !recordDateFilter && dateColumn && view.dateRange ? {[dateColumn.key]: view.dateRange} : {})});
     if (recordDateFilter) recordDateFilter.onChange(view.dateRange || "");
     changeSort(view.sort.key, view.sort.direction);
     if (view.pageSize) setPageSize(view.pageSize);
@@ -4322,7 +4322,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
         <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {rows.length.toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
         <SavedReportsPanel title={reportTitle} tableKey={layoutKey} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint={dataReady} onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
