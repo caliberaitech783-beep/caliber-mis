@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
+import {gzipSync} from 'node:zlib';
 
 // Tokens stay in process memory. Verification issues reads only and never
 // creates/closes batches, changes profiles, or writes production test cards.
@@ -8,13 +9,32 @@ if(process.argv.includes('--azure')){
  const expected=process.env.EXPECTED_COMMIT;
  assert.match(expected||'',/^[a-f0-9]{40}$/);
  const token=JSON.parse(execFileSync('az',['account','get-access-token','--resource','https://management.azure.com/','-o','json'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).accessToken;
- const response=await fetch('https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net/api/command',{
-  method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(180000),
-  body:JSON.stringify({command:`EXPECTED_COMMIT=${expected} node scripts/verify-vlb-elb-live.mjs`,dir:'/home/site/wwwroot'})
- });
- assert.ok(response.ok,'Live verification command must be accepted');
- const result=await response.json();
+ const host='https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net';
+ const remote=async command=>{
+  const response=await fetch(host+'/api/command',{
+   method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(180000),
+   body:JSON.stringify({command:'/bin/bash -c "printf %s '+Buffer.from(command).toString('base64')+' | base64 -d | bash"',dir:'/home/site/wwwroot'})
+  });
+  assert.ok(response.ok,'Live verification command HTTP '+response.status);
+  return response.json();
+ };
+ const discovery=await remote(`command -v node || for candidate in /opt/nodejs/*/bin/node /usr/local/bin/node /usr/bin/node /home/data/vlb-elb-check-node-${process.versions.node}; do if test -x "$candidate"; then echo "$candidate"; break; fi; done`);
+ let node=String(discovery.Output||'').trim().split('\n').find(line=>/^\/[A-Za-z0-9_./-]+$/.test(line));
+ if(!node){
+  // Kudu may have no Node runtime even though the application container does.
+  // Reuse the official setup-node binary already validated on this Linux runner.
+  node='/home/data/vlb-elb-check-node-'+process.versions.node;
+  const upload=await fetch(host+'/api/vfs/data/'+node.split('/').at(-1)+'.gz',{
+   method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/octet-stream','If-Match':'*'},
+   body:gzipSync(await readFile(process.execPath)),signal:AbortSignal.timeout(180000)
+  });
+  assert.ok(upload.ok,'Verification runtime upload HTTP '+upload.status);
+  const unpacked=await remote(`gzip -dc ${node}.gz > ${node} && chmod 700 ${node}`);
+  assert.equal(unpacked.ExitCode,0,'Verification runtime must unpack successfully');
+ }
+ const result=await remote(`EXPECTED_COMMIT=${expected} ${node} scripts/verify-vlb-elb-live.mjs`);
  console.log(result.Output||'');
+ if(result.ExitCode!==0)console.error(result.Error||'Live checker returned '+result.ExitCode);
  assert.equal(result.ExitCode,0,'Live VLB/ELB verification failed; no production records were changed');
 }else{
  const {default:pg}=await import('pg');
