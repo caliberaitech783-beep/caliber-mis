@@ -56,7 +56,10 @@ try{
   await page.goto('http://127.0.0.1:'+server.httpServer.address().port+'/layout-checks/batch-entry.html?order='+order);
   const row=page.locator('tr').filter({hasText:'Dudhichua test batch'});
   await row.getByRole('button',{name:'View report',exact:true}).click();
-  await page.getByRole('group',{name:'Batch entry options'}).getByRole('button',{name:action,exact:true}).click();
+  // The simplified toolbar keeps entry navigation under Batch permissions.
+  // Exercise those real controls, then choose Scan/Upload in the scanner itself.
+  await page.locator('.vlb-batch-governance').getByRole('button',{name:action==='Manual'?'Manual entry':'Scan / Upload files',exact:true}).click();
+  if(action!=='Manual')await page.locator('.scan-workflow-tabs').getByRole('button',{name:action==='Scan'?'Scan':'Upload files',exact:true}).click();
   const site=page.locator('.vlb-entry-batch-picker select');
   await page.waitForFunction(()=>document.querySelector('.vlb-entry-batch-picker select')?.value==='Dudhichua OC');
   assert.equal(await site.inputValue(),'Dudhichua OC');
