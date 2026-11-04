@@ -39,6 +39,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Resolve the main commit
         run: |
@@ -49,6 +51,23 @@ jobs:
           fi
           echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
           echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
+
+      - name: Select safe release test lane
+        id: test-plan
+        env:
+          BEFORE_COMMIT: ${{ github.event.before }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "push" || ! "$BEFORE_COMMIT" =~ ^[0-9a-f]{40}$ || "$BEFORE_COMMIT" =~ ^0+$ ]]; then
+            printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${BEFORE_COMMIT}^{commit}" 2>/dev/null; then
+            printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BEFORE_COMMIT" "$RELEASE_COMMIT" > changed-release-files.txt
+          node scripts/release-test-plan.mjs changed-release-files.txt >> "$GITHUB_OUTPUT"
+          echo "Release test lane: $(tail -n 2 "$GITHUB_OUTPUT" | head -n 1 | cut -d= -f2)"
 
       - name: Set up Node.js and npm download cache
         uses: actions/setup-node@v4
@@ -74,7 +93,12 @@ jobs:
           APP_VERSION_SOURCE: ${{ env.RELEASE_COMMIT }}
         run: npm run build
 
-      - name: Run full test suite
+      - name: Run focused tests for approved UI/report changes
+        if: steps.test-plan.outputs.lane == 'fast'
+        run: node --test ${{ steps.test-plan.outputs.tests }}
+
+      - name: Run full test suite for sensitive or unknown changes
+        if: steps.test-plan.outputs.lane != 'fast'
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: npm test
