@@ -244,3 +244,8 @@
     .app :is(.saved-logbooks,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) :is(input,select):not(:where(#logbook-entry-form *,#scan-entry-fields *)) { font-size: 18px !important; }
   }
 }
+.vlb-fleet-table{counter-reset:vlb-fleet-row}
+.vlb-fleet-table thead tr::before{content:"Sr. No."}
+.vlb-fleet-table tbody tr{counter-increment:vlb-fleet-row}
+.vlb-fleet-table tbody tr::before{content:counter(vlb-fleet-row)}
+.vlb-fleet-table tr::before{display:table-cell;padding:8px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line,#e4ddec)}

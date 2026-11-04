@@ -150,6 +150,12 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry choices from the batch');assert.ok(source.includes("onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}}"),'main.jsx routes equipment processing directly to the contextual ELB report');
 });
 
+test('ELB fleet table shows a serial number column before Door',()=>{
+ const css=readFileSync(new URL('../src/log-book-readability.css',import.meta.url),'utf8');
+ assert.match(css,/\.vlb-fleet-table thead tr::before\{content:"Sr\. No\."\}/);
+ assert.match(css,/\.vlb-fleet-table tbody tr::before\{content:counter\(vlb-fleet-row\)\}/);
+});
+
 test('batch report adds the machine-wise shift report with totals only when the server supplies it',async()=>{
  const h=hooks();const ReportSection=()=>null;
  const {VlbBatchReport,MachineReport}=await compile('vlb-batch-report.jsx',{React,useState:h.useState,vlbRecordSource,displaySiteName,meterCorrectionReport},['VlbBatchReport','MachineReport']);

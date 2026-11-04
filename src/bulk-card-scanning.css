@@ -338,6 +338,7 @@
 /* Scan entries of the selected VLB batch: reopen the one you were working in after a refresh. */
 .scan-entry-list{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px;padding:10px;border:1px solid #ded3e8;border-radius:8px;background:var(--panel,#fff)}
 .scan-entry-list h2{flex:1 1 100%;margin:0 0 2px;font-size:14px}
+.scan-entry-total{margin:0 0 8px;padding:8px 10px;border:1px solid #ded3e8;border-radius:8px;background:var(--panel,#fff);font-size:13px;color:#4c3b5e}
 .scan-entry-list button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 12px;border:1px solid #cdbfdc;border-radius:8px;background:#fff;color:inherit;text-align:left;cursor:pointer}
 .scan-entry-list button[aria-pressed="true"]{border-color:#5b2d90;box-shadow:inset 0 0 0 1px #5b2d90;background:#f6f1fb}
 .scan-entry-list button:disabled{opacity:.6;cursor:default}

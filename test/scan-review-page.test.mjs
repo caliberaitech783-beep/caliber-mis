@@ -110,6 +110,10 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.deepEqual(nodes(tile('orange'),n=>n.type==='small')[0].props.children,'1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B2'),n=>n.type==='span')[0].props.children[0],'4 cards · 1 saved · 3 unsaved','other entries keep the server counts');
+ const total=React.Children.toArray(nodes(tree,n=>n.props.className==='scan-entry-total')[0].props.children);
+ assert.equal(total[0].props.children,'Total Count of Batches:');
+ assert.equal(total.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
+ assert.deepEqual(total[4].props.children,[7,' card','s']);
  app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  app.testCapture.setFailureTick(n=>n+1);
  tree=app.render({vlbBatch:{id:'vlb-1'}});
