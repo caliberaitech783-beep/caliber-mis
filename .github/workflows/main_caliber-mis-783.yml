@@ -1,167 +1,24 @@
-name: Build and deploy main to production - caliber-mis-783
-
-# Small changes use the direct deployment path: validate the exact commit
-# pushed to main, deploy it once to production, and verify the live release.
-on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-  workflow_dispatch:
-
-# Finish an active release safely; GitHub replaces superseded pending runs.
-# The test platform uses its own group (caliber-mis-test-release), so a test
-# release never cancels or blocks a production release.
-concurrency:
-  group: caliber-mis-783-release
-  cancel-in-progress: false
-
+name: Verify existing VLB and ELB production access
+on: workflow_dispatch
+permissions:
+  contents: read
+  id-token: write
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://pulse-ll.cmll.in
-    services:
-      startup-postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: release_check
-          POSTGRES_PASSWORD: release_check
-          POSTGRES_DB: caliber_mis
-        ports: ['54320:5432']
-        options: >-
-          --health-cmd "pg_isready -U release_check -d caliber_mis"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    permissions:
-      contents: read
-      id-token: write
+    environment: production
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Resolve the main commit
-        run: |
-          RELEASE_COMMIT="$(git rev-parse 'HEAD^{commit}')"
-          if ! [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::The checked-out release commit could not be resolved."
-            exit 1
-          fi
-          echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
-          echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
-
-      - name: Select safe release test lane
-        id: test-plan
-        env:
-          BEFORE_COMMIT: ${{ github.event.before }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" != "push" || ! "$BEFORE_COMMIT" =~ ^[0-9a-f]{40}$ || "$BEFORE_COMMIT" =~ ^0+$ ]]; then
-            printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git cat-file -e "${BEFORE_COMMIT}^{commit}" 2>/dev/null; then
-            printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git diff --name-only "$BEFORE_COMMIT" "$RELEASE_COMMIT" > changed-release-files.txt
-          node scripts/release-test-plan.mjs changed-release-files.txt >> "$GITHUB_OUTPUT"
-          echo "Release test lane: $(tail -n 2 "$GITHUB_OUTPUT" | head -n 1 | cut -d= -f2)"
-
-      - name: Set up Node.js and npm download cache
-        id: node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-          cache: npm
-
-      - name: Restore pinned handwriting model cache
-        uses: actions/cache@v4
-        with:
-          path: ocr-model-cache
-          key: trocr-${{ runner.os }}-node22-${{ hashFiles('server/services/handwritten-card-ocr.mjs') }}
-
-      # An exact cache hit preserves native Linux dependencies and file timestamps.
-      # Never restore a partial cache across lockfile or Node changes.
-      - name: Restore installed dependencies
-        id: dependencies
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
-
-      - name: Install exact locked dependencies
-        if: steps.dependencies.outputs.cache-hit != 'true'
-        run: npm ci --no-audit --no-fund
-
-      - name: Verify pinned handwriting model
-        run: npm run ocr:prepare
-
-      - name: Build complete UI
-        env:
-          # The UI version is the released commit even when the tag is annotated.
-          APP_VERSION_SOURCE: ${{ env.RELEASE_COMMIT }}
-        run: npm run build
-
-      - name: Run focused tests for approved UI/report changes
-        if: steps.test-plan.outputs.lane == 'fast'
-        run: node --test ${{ steps.test-plan.outputs.tests }}
-
-      - name: Run full test suite for sensitive or unknown changes
-        if: steps.test-plan.outputs.lane != 'fast'
-        env:
-          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
-        run: npm test
-
-      - name: Verify built release identity
-        run: |
-          EXPECTED_COMMIT="$RELEASE_COMMIT" node scripts/verify-ui-release.mjs
-          printf '%s\n' "$RELEASE_COMMIT" > DEPLOYMENT_SHA
-
-      - name: Verify complete deployment runtime
-        env:
-          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
-        run: |
-          node --check server.mjs
-          node scripts/verify-server-start.mjs
-          node --input-type=module -e "await import('./server/services/local-card-ocr.mjs'); await import('./shared/report-xlsx.mjs')"
-          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./server/services/handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
-
-      # Keep the complete workspace format that Azure already runs.
-      # Build and deployment share one runner, avoiding the large artifact transfer.
-      - name: Login to Azure
-        uses: azure/login@v2
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
-
-      - name: Configure central Gemini extraction for VLB and ELB
-        env:
-          GEMINI_API_KEY: ${{ secrets.MIS_GEMINI_API_KEY }}
-        run: python3 scripts/configure-gemini-azure.py
-
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'caliber-mis-783'
-          slot-name: 'Production'
-          # Preserve the complete runtime package used by the verified release path.
-          package: .
-
-      - name: Verify Pulse-II release health
-        env:
-          EXPECTED_COMMIT: ${{ env.RELEASE_COMMIT }}
-          RELEASE_CHECK_BASE_URL: https://pulse-ll.cmll.in
+      - name: Verify current production VLB and ELB access
         run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent --max-time 20 "https://pulse-ll.cmll.in/api/health?gemini-release=${EXPECTED_COMMIT}" -o health.json && node -e "const h=require('./health.json');if(h.commit!==process.env.EXPECTED_COMMIT)process.exit(1)" && node scripts/verify-ui-release.mjs --live; then
-              echo "Pulse-II is serving the Gemini release."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "Pulse-II release health could not be verified."
-          exit 1
+          EXPECTED_COMMIT=$(curl --fail --silent https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit')
+          export EXPECTED_COMMIT
+          node scripts/verify-vlb-elb-live.mjs --azure
