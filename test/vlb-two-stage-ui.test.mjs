@@ -8,9 +8,11 @@ import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
 
 async function compile(file,scope,names){
+ scope={employeeAtLocation,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -37,11 +39,12 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  focusNextElbField({key:'Enter',shiftKey:false,isComposing:false,target:fields[2],currentTarget:{querySelectorAll:()=>fields},preventDefault:()=>{prevented=true}});assert.equal(prevented,true);assert.deepEqual(focusCalls,['remark']);
  assert.equal(fleetDraftFields({...fleet[1],logbook:{shiftStatus:'maintenance',openingHmr:120,closingHmr:120}}).openingHmr,'120');
  const batch={id:'batch1',name:'B01',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
- const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh'}]},onChanged(){},onDismiss(){}})};
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5',site:'Jayant OC'},{id:'6',name:'Other site employee',caliberId:'C6',site:'Sasti OC'}]},onChanged(){},onDismiss(){}})};
  let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
  await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
  assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)']]);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
+ assert.match(html,/Caliber ID/);assert.match(html,/Select Caliber ID/);assert.match(html,/C5 · Ramesh/);assert.doesNotMatch(html,/C6|Other site employee/);
  assert.match(html,/1.500/);assert.match(html,/Hydraulic leak/);assert.match(html,/BD-1/);
  assert.equal(nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Breakdown Hrs').length,0,'Pulse total is read only');
  const tabs=nodes(tree,n=>n.props.role==='tab');tabs[1].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.id==='elb-breakdown-panel')[0].props.hidden,false);
