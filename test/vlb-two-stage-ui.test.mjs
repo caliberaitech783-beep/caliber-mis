@@ -28,10 +28,13 @@ const fleet=[
 test('ELB has Working and Breakdown details tabs and fetches Pulse for each machine before saving',async()=>{
  const h=hooks(),calls=[];let lastDeps,cleanup;
  const useEffect=(fn,deps)=>{if(!lastDeps||deps.some((v,i)=>v!==lastDeps[i])){cleanup?.();lastDeps=deps;cleanup=fn();}};
- const pulse={breakdownHours:1.5,breakdowns:[{reference:'BD-1',description:'Hydraulic leak',start:'2026-11-02T03:30:00Z',end:'2026-11-02T05:00:00Z',status:'Restored',hours:1.5}],fetchedAt:'2026-11-02T08:00:00Z'};
+ const pulse={shiftHours:8,breakdownHours:1.5,breakdowns:[{reference:'BD-1',description:'Hydraulic leak',start:'2026-11-02T03:30:00Z',end:'2026-11-02T05:00:00Z',status:'Restored',hours:1.5}],fetchedAt:'2026-11-02T08:00:00Z'};
  const fetch=async(url,request)=>{calls.push({url,method:request.method,body:request.body?JSON.parse(request.body):null});return {ok:true,json:async()=>request.method==='GET'?(url.includes('/19/')?pulse:{...pulse,breakdownHours:0,breakdowns:[]}):{fleet:[{...fleet[0],saved_at:'now'},fleet[1],fleet[2]]}}};
- const {VlbFleetStepper,fleetHours,firstUnsavedIndex,fleetDraftFields}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect,fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper','fleetHours','firstUnsavedIndex','fleetDraftFields']);
+ const {VlbFleetStepper,fleetHours,fleetIdleHours,focusNextElbField,firstUnsavedIndex,fleetDraftFields}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect,fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper','fleetHours','fleetIdleHours','focusNextElbField','firstUnsavedIndex','fleetDraftFields']);
  assert.equal(fleetHours('100','106.5'),6.5);assert.equal(firstUnsavedIndex(fleet),0);assert.equal(fleetDraftFields(fleet[2]).shiftStatus,'working');
+ assert.equal(fleetIdleHours(8,1),7);assert.equal(fleetIdleHours(8,null),null);
+ const focusCalls=[];const fields=[{focus:()=>focusCalls.push('operator')},{focus:()=>focusCalls.push('opening')},{focus:()=>focusCalls.push('closing')},{focus:()=>focusCalls.push('remark')}];let prevented=false;
+ focusNextElbField({key:'Enter',shiftKey:false,isComposing:false,target:fields[2],currentTarget:{querySelectorAll:()=>fields},preventDefault:()=>{prevented=true}});assert.equal(prevented,true);assert.deepEqual(focusCalls,['remark']);
  assert.equal(fleetDraftFields({...fleet[1],logbook:{shiftStatus:'maintenance',openingHmr:120,closingHmr:120}}).openingHmr,'120');
  const batch={id:'batch1',name:'B01',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh'}]},onChanged(){},onDismiss(){}})};
@@ -44,7 +47,8 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  const tabs=nodes(tree,n=>n.props.role==='tab');tabs[1].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.id==='elb-breakdown-panel')[0].props.hidden,false);
  tabs[0].props.onClick();tree=render();
  const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});
- tree=render();await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');
+ tree=render();let htmlAfterHours=renderToStaticMarkup(tree);assert.match(htmlAfterHours,/Idle hours<\/span><input[^>]*readOnly=""[^>]*value="1\.5"/);assert.doesNotMatch(htmlAfterHours,/Status reason/);assert.equal((htmlAfterHours.match(/<span>Remark/g)||[]).length,1);
+ await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'1.5');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
  await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url==='/api/vlb-batches/batch1/fleet/8/breakdowns'));
  cleanup?.();

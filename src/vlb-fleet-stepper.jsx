@@ -7,6 +7,17 @@ export const fleetHours=(opening,closing)=>{
  const a=Number(opening),b=Number(closing);if(!Number.isFinite(a)||!Number.isFinite(b))return null;
  return Math.round((b-a)*100)/100;
 };
+export const fleetIdleHours=(shiftHours,workingHours)=>{
+ const shift=Number(shiftHours),working=Number(workingHours);
+ if(!Number.isFinite(shift)||workingHours===null||!Number.isFinite(working))return null;
+ return Math.round((shift-working)*100)/100;
+};
+export const focusNextElbField=event=>{
+ if(event.key!=='Enter'||event.shiftKey||event.isComposing)return;
+ const fields=[...event.currentTarget.querySelectorAll('[data-elb-entry]:not([disabled])')],index=fields.indexOf(event.target);
+ if(index<0||index===fields.length-1)return;
+ event.preventDefault();fields[index+1].focus();
+};
 export const firstUnsavedIndex=(fleet=[])=>{
  let index=fleet.findIndex(row=>!row.saved_at&&!row.skipped);
  if(index<0)index=fleet.findIndex(row=>!row.saved_at);
@@ -65,7 +76,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const next=async()=>{
   if(!row||busy||pulseLoading||!pulse)return;setBusy(true);setError('');setNotice('');
   try{
-   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,shiftStatus:'working',entryMode:'working-only',requestKey:crypto.randomUUID()});
+   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:crypto.randomUUID()});
    const list=result.fleet||fleet.map(item=>item.assetId===row.assetId?{...item,saved_at:new Date().toISOString(),shift_status:form.shiftStatus,draft:null,skipped:false}:item);
    setFleet(list);setDirty(false);onChanged?.(result);
    const target=nextUnsaved(list,list.findIndex(item=>item.assetId===row.assetId));
@@ -88,6 +99,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const workingStatus=true;
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
+ const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
  const employees=(options?.employees||[]).slice().sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
  const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   {embedded&&<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Machines from VLB summaries</h2><span>{saved} of {fleet.length} saved · Unique machines matched with Equipment Master</span></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Machine no.</th><th>Equipment Master match</th><th>VLB trips</th><th>ELB status</th><th/></tr></thead><tbody>{fleet.map((item,itemIndex)=><tr key={item.assetId} aria-selected={itemIndex===index}><td>{item.door}</td><td>{item.equipmentName||'—'}</td><td>{Number(item.trips)||0}</td><td>{item.saved_at?'Saved'+(item.book_no?' · '+item.book_no:''):item.skipped?'Skipped':'Not saved'}</td><td><button type="button" disabled={busy||dirty||itemIndex===index} onClick={()=>goTo(itemIndex)}>{itemIndex===index?'Selected':'Enter ELB'}</button></td></tr>)}</tbody></table></div></section>}
@@ -101,16 +113,15 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   {pulseLoading&&<p role="status">Fetching breakdown hours from Pulse…</p>}
   {pulseError&&<p className="logbook-message error" role="alert">Pulse breakdown lookup failed: {pulseError} <button type="button" onClick={()=>setPulseTick(n=>n+1)}>Retry Pulse</button></p>}
   <div id="elb-working-panel" role="tabpanel" aria-labelledby="elb-working-tab" hidden={activeTab!=='working'}>
-  <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields">
-   {workingStatus&&<label className="logbook-field"><span>Operator{operatorRequired?' *':''}</span><SmartSelect value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select operator</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.name||e.employee||'')+(e.caliberId?' · '+e.caliberId:'')}</option>)}</SmartSelect></label>}
-   <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
-   <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
+  <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
+   {workingStatus&&<label className="logbook-field"><span>Operator{operatorRequired?' *':''}</span><SmartSelect data-elb-entry="operator" value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select operator</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.name||e.employee||'')+(e.caliberId?' · '+e.caliberId:'')}</option>)}</SmartSelect></label>}
+   <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input data-elb-entry="opening-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
+   <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input data-elb-entry="closing-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
    <label className="logbook-field"><span>HMR Difference</span><input type="text" aria-label="HMR Difference" readOnly value={hours===null?'':String(hours)}/><small>Closing HMR − Opening HMR</small></label>
    <label className="logbook-field"><span>Breakdown Hrs · from Pulse</span><output aria-label="Breakdown Hrs">{pulse?Number(pulse.breakdownHours).toFixed(3):'—'}</output><small>{pulse?'Same equipment, site, date and shift':pulseLoading?'Fetching from Pulse…':'Pulse unavailable'}</small></label>
-   <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" step="0.25" min="0" value={form.idleHours} disabled={busy} onChange={e=>update('idleHours',e.target.value)}/></label>
-   <label className="logbook-field"><span>Status reason{['breakdown','working_partial_breakdown'].includes(form.shiftStatus)?' *':''}</span><input type="text" value={form.statusReason} disabled={busy} onChange={e=>update('statusReason',e.target.value)}/></label>
-   <label className="logbook-field"><span>Job card no.</span><input type="text" value={form.jobCardNo} disabled={busy} onChange={e=>update('jobCardNo',e.target.value)}/></label>
-   <label className="logbook-field wide"><span>Remark</span><input type="text" value={form.remark} disabled={busy} onChange={e=>update('remark',e.target.value)}/></label>
+   <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" readOnly value={idleHours===null?'':String(idleHours)}/></label>
+   <label className="logbook-field"><span>Remark{['breakdown','working_partial_breakdown'].includes(form.shiftStatus)?' *':''}</span><input data-elb-entry="remark" type="text" value={form.statusReason} disabled={busy} onChange={e=>update('statusReason',e.target.value)}/></label>
+   <label className="logbook-field"><span>Job card no.</span><input data-elb-entry="job-card" type="text" value={form.jobCardNo} disabled={busy} onChange={e=>update('jobCardNo',e.target.value)}/></label>
   </div></section>
   </div>
   <section id="elb-breakdown-panel" role="tabpanel" aria-labelledby="elb-breakdown-tab" hidden={activeTab!=='breakdowns'} className="logbook-section">
