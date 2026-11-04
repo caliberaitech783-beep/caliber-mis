@@ -67,7 +67,7 @@ if(process.argv.includes('--azure')){
  assert.equal(preferred([closed,open],closed.id),open,'A remembered closed batch must not override the open batch');
  assert.equal(preferred([closed],closed.id),null,'Closed batches must not auto-open for work');
  const pool=new pg.Pool({...misDatabaseConfig(),connectionTimeoutMillis:15000,max:2});
- let checked=0,restricted=0,admins=0,openSelections=0,restrictedCandidates=0;
+ let checked=0,restricted=0,admins=0,openSelections=0,restrictedCandidates=0;const liveScanChecks=[];
  try{
   const sessions=(await pool.query(`SELECT token,role,employee_name AS name,login_name AS login,assigned_role AS "assignedRole",permissions
    FROM (SELECT *,row_number() OVER(PARTITION BY lower(login_name) ORDER BY last_seen_at DESC) AS session_rank FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days') AS recent WHERE session_rank<=2 ORDER BY last_seen_at DESC LIMIT 2000`)).rows;
@@ -113,11 +113,29 @@ if(process.argv.includes('--azure')){
      if(active.length===1){assert.equal(preferred(matching,matching.find(batch=>batch.closed_at)?.id),active[0]);openSelections++;}
     }
    }
+   // Read existing entries and their retained images; never upload production test cards.
+   if(liveScanChecks.length<2){
+    const scans=await liveJson(base+'/api/scan-batches',{headers,allowDenied:true});
+    for(const kind of ['vehicle','equipment']){
+     if(liveScanChecks.some(check=>check.kind===kind))continue;
+     const batch=(scans?.batches||[]).find(row=>row.kind===kind&&Number(row.cards)>0);
+     if(!batch)continue;
+     const detail=await liveJson(base+'/api/scan-batches/'+batch.id,{headers});
+     assert.equal(detail.batch.kind,kind,'Live scan entry retains its VLB/ELB type');
+     assert.ok(Array.isArray(detail.cards),'Live scan entry returns cards');
+     const statuses={},ocrSamples=[];
+     for(const card of detail.cards){statuses[card.status]=(statuses[card.status]||0)+1;const extraction=card.raw_fields?.gemini;if(extraction)ocrSamples.push({elapsedMs:extraction.totalElapsedMs??extraction.elapsedMs,attempts:extraction.attempts??1});}
+     const sample=detail.cards.find(card=>!card.raw_fields?.fleetRejection);
+     let imageAvailable=false;
+     if(sample){const image=await fetch(base+'/api/scan-cards/'+sample.id+'/image',{headers,signal:AbortSignal.timeout(30000)});assert.equal(image.status,200,'Existing live scan image must open');assert.match(image.headers.get('content-type')||'',/^image\//);await image.body?.cancel();imageAvailable=true;}
+     liveScanChecks.push({kind,cards:detail.cards.length,statuses,imageAvailable,ocrSamples:ocrSamples.slice(0,5)});
+    }
+   }
    checked++;
    if(restricted>=2&&admins>=1&&openSelections>=1)break;
   }
  }finally{await pool.end();}
- const result={commit:health.commit,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true};
+ const result={commit:health.commit,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true,liveScanChecks};
  console.log(JSON.stringify(result));
  assert.ok(restricted>0,'A current restricted MIS session is required for live access verification');
  assert.ok(admins>0,'A current administrator session is required for live all-site verification');

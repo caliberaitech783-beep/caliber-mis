@@ -20,7 +20,8 @@ export default function CloudScannerPanel({kind,token,onBatch,onComplete,expecte
     if(c.sentCards.has(d.cardId)){c.batch=c.sentCards.get(d.cardId);}else{if(!entry||entry.count>=MAX_SCAN_ENTRY_CARDS){entry={id:(await api('/api/scan-batches',{kind,expectedContext:c.expectedContext,name:'PC scanner · '+new Date().toLocaleString()})).id,count:0};c.entries.set(entryKey,entry);}c.batch=entry.id;}
     await api('/api/scan-batches/'+c.batch+'/cards',{...(binary?{}:{base64:d.base64}),filename:String(d.filename||'Scanner page').slice(0,200),uploadKey:d.cardId,pageCount:1,expectedPages:1,...(d.paddleEvidence?{paddleEvidence:d.paddleEvidence}:{}),...(parseCaptureTiming(d.captureTiming)?{captureTiming:parseCaptureTiming(d.captureTiming)}:{})},binary?d.bytes:undefined);
     if(!c.sentCards.has(d.cardId)){entry.count++;c.sentCards.set(d.cardId,c.batch);}
-    c.popup.postMessage({type:'scanner-ack',nonce:c.nonce,cardId:d.cardId},LOCAL);setMessage('Scan and extracted information uploaded as a draft. Check and correct it in online MIS.');
+    c.popup.postMessage({type:'scanner-ack',nonce:c.nonce,cardId:d.cardId},LOCAL);setMessage('Page uploaded. OCR runs in the background while the remaining pages transfer.');
+    if(c.visibleBatch!==c.batch){c.visibleBatch=c.batch;callbacks.current.onBatch(c.batch);}
    }catch(err){setError(err.message);c.popup.postMessage({type:'scanner-ack',nonce:c.nonce,cardId:d.cardId,error:err.message},LOCAL)}finally{c.pending=false;}
   }
   if(d.type==='scanner-complete'&&c.batch){onBusyChange?.(false);c.popup.close();connection.current=null;callbacks.current.onBatch(c.batch);callbacks.current.onComplete?.();setMessage((scanTimingLabel(d.captureTiming)||'Scanned cards uploaded')+'. Complete, valid cards save automatically. Correct any flagged values.');}
