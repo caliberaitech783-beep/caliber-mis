@@ -73,4 +73,11 @@ test('generated reports keep full filtered sorted exports and all print columns 
  assert.deepEqual(exported.columns.map(c=>c.key),['date','hours']);assert.deepEqual(exported.allColumns.map(c=>c.key),['date','site','hours']);
  const saved=nodes(tree,SavedReportsPanel)[0].props;assert.equal(saved.currentView().dateRange,encodeDateRange('2026-11-03','2026-11-03'));
  saved.onPrint();assert.equal(printed[0].rows.length,120);assert.equal(printed[0].columns.length,3);
+ let restoredRange;
+ tree=h.render(Table,{...props,recordDateFilter:{value:encodeDateRange('2026-11-01','2026-11-04'),onChange:value=>{restoredRange=value;}},dataReady:false});
+ const external=nodes(tree,SavedReportsPanel)[0].props;
+ assert.equal(external.canPrint,false);
+ assert.equal(external.currentView().dateRange,encodeDateRange('2026-11-01','2026-11-04'));
+ external.onApply({visible:['date','hours'],filters:{},sort:{key:'hours',direction:'asc'},dateRange:encodeDateRange('2026-11-02','2026-11-03')});
+ assert.equal(restoredRange,encodeDateRange('2026-11-02','2026-11-03'));
 });

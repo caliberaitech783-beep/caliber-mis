@@ -8079,6 +8079,14 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
         <ReportSection
           key={`${selectedReport.category}-${selectedReport.title}`}
           title={selectedReport.title}
+          recordDateFilter={selectedReport.dateValue || selectedReport.title === "Availability Report" ? {
+            value: selectedReport.title === "Availability Report" ? encodeDateRange(availabilityFrom, availabilityTo) : encodeDateRange(reportFrom, reportTo),
+            onChange: value => {
+              const range = parseDateRange(value);
+              if (selectedReport.title === "Availability Report") { setAvailabilityFrom(range?.from || ""); setAvailabilityTo(range?.to || ""); }
+              else { setReportFrom(range?.from || ""); setReportTo(range?.to || ""); }
+            },
+          } : null}
           description={selectedReport.description}
           category={selectedReport.category}
           icon={activeCategory.icon}
