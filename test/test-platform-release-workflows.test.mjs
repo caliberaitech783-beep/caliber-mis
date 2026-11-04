@@ -154,3 +154,17 @@ test('the branch protection checks on main still come from the validation workfl
   assert.match(jobs,/^  logbook-layout:/m);
   assert.doesNotMatch(validation,/webapps-deploy/,'validation never deploys');
 });
+
+test('release optimization retains every full-suite test before deployment and caches installs before failures',()=>{
+ const full=step(productionWorkflow,'Run full test suite for sensitive or unknown changes');
+ assert.match(full,/npm test -- --test-concurrency=4/);
+ assert.ok(productionWorkflow.indexOf(full)<productionWorkflow.indexOf("- name: 'Deploy to Azure Web App'"));
+ const restore=step(productionWorkflow,'Restore installed dependencies');
+ const save=step(productionWorkflow,'Save installed dependencies before validation');
+ assert.match(restore,/actions\/cache\/restore@v4/);
+ assert.match(save,/actions\/cache\/save@v4/);
+ assert.equal(/key: (.+)/.exec(restore)[1],/key: (.+)/.exec(save)[1]);
+ assert.ok(productionWorkflow.indexOf(save)<productionWorkflow.indexOf(full));
+ assert.match(validation,/build:\n\s+#.*\n\s+if: github.event_name != 'push'/);
+ assert.doesNotMatch(validation.slice(validation.indexOf('  logbook-layout:')),/if: github.event_name != 'push'/);
+});

@@ -86,7 +86,7 @@ jobs:
       # Never restore a partial cache across lockfile or Node changes.
       - name: Restore installed dependencies
         id: dependencies
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: node_modules
           key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
@@ -94,6 +94,14 @@ jobs:
       - name: Install exact locked dependencies
         if: steps.dependencies.outputs.cache-hit != 'true'
         run: npm ci --no-audit --no-fund
+
+      # Retain a valid install even if a later validation step fails.
+      - name: Save installed dependencies before validation
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
 
       - name: Verify pinned handwriting model
         run: npm run ocr:prepare
@@ -112,7 +120,9 @@ jobs:
         if: steps.test-plan.outputs.lane != 'fast'
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
-        run: npm test
+        # Bound parallelism explicitly; Node defaults to one worker on two cores.
+        # Every test still runs before deployment.
+        run: npm test -- --test-concurrency=4
 
       - name: Verify built release identity
         run: |
