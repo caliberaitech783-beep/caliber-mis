@@ -10,9 +10,9 @@
 // "same card" pairs (same date, door and card number read) and "different card"
 // pairs. A clear gap between the two groups is what the thresholds rely on.
 import pg from 'pg';
-import {fingerprintScanImage,fingerprintDistance,scanFingerprintSettings} from '../scan-fingerprint.mjs';
-import {cardNumberKey} from '../scan-duplicates.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {fingerprintScanImage,fingerprintDistance,scanFingerprintSettings} from '../server/services/scan-fingerprint.mjs';
+import {cardNumberKey} from '../server/services/scan-duplicates.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:undefined};
 const since=option('--since')||'2026-11-01',compute=args.includes('--compute');

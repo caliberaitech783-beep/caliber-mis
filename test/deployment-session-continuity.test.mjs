@@ -45,6 +45,10 @@ test("source fallback is deterministic and ignores the generated version module"
 
   await writeFile(path.join(cwd, "src", "main.jsx"), "export default 'second';");
   assert.notEqual(await resolveAppVersion({ env: {}, cwd, gitHead: "" }), first);
+  const second = await resolveAppVersion({ env: {}, cwd, gitHead: "" });
+  await mkdir(path.join(cwd, "shared"));
+  await writeFile(path.join(cwd, "shared", "rule.mjs"), "export const rule = 1;");
+  assert.notEqual(await resolveAppVersion({ env: {}, cwd, gitHead: "" }), second);
 });
 
 test("building injects the stable version directly without rewriting the source module", async (t) => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {remainingScanCards,scanReviewPosition} from '../src/scan-review-queue.mjs';
-import {applySavedScanCard} from '../scan-batch-report.mjs';
+import {applySavedScanCard} from '../shared/scan-batch-report.mjs';
 
 test('10 uploaded cards become six review cards after four saves, then five after an explicit save',()=>{
  let cards=Array.from({length:10},(_,i)=>({id:String(i+1),batch_id:'batch',ordinal:i+1,status:i<4?'posted':'review'}));

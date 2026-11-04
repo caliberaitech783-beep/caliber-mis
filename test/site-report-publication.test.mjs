@@ -1,13 +1,13 @@
-import {siteReportMessageContext} from '../whatsapp-message-format.mjs';
+import {siteReportMessageContext} from '../server/rules/whatsapp-message-format.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {buildSiteFleetReportTables,buildSiteReportMessage,siteReportFilename} from '../site-consolidated-report.mjs';
-import {buildTableBundlePdf} from '../table-export-pdf.mjs';
-import {buildXlsxReportBundleBuffer,DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {displaySiteName} from '../region-scope.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {buildSiteFleetReportTables,buildSiteReportMessage,siteReportFilename} from '../server/rules/site-consolidated-report.mjs';
+import {buildTableBundlePdf} from '../server/services/table-export-pdf.mjs';
+import {buildXlsxReportBundleBuffer,DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 test('site publication stores a real combined PDF and workbook with direct links to the same site files',async()=>{

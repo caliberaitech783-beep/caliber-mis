@@ -1,4 +1,4 @@
-import {formatScannedDoor} from '../scan-door-text.mjs';
+import {formatScannedDoor} from '../shared/scan-door-text.mjs';
 // Older drafts have only a linked master ID. Recover the literal scan text
 // without replacing an existing correction, including an intentionally blank one.
 export function withScannedDoor(draft={},raw={},kind=draft.docType==='ELB'?'equipment':'vehicle'){

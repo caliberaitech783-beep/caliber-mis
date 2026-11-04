@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {nextScanReviewCard,scanReviewNeighbours} from '../src/scan-next-card.mjs';
 import {remainingScanCards} from '../src/scan-review-queue.mjs';
-import {applySavedScanCard} from '../scan-batch-report.mjs';
+import {applySavedScanCard} from '../shared/scan-batch-report.mjs';
 const card=(id,status='review')=>({id,status,ordinal:Number(id)});
 test('next correction follows the visible queue and skips completed or processing cards',()=>{
  const rows=[card('1'),card('2','posted'),card('3','reading'),card('4','rejected'),card('5','approved'),card('6','error')];

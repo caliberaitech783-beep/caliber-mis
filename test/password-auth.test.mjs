@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hashPassword, initializeUserCredentials, publicUserRecord, verifyPassword } from "../password-auth.mjs";
+import { hashPassword, initializeUserCredentials, publicUserRecord, verifyPassword } from "../server/services/password-auth.mjs";
 
 test("hashes and verifies an initial phone-number password", () => {
   const hash = hashPassword("9925565281");

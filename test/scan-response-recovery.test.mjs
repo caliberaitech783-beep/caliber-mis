@@ -1,13 +1,13 @@
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCardResponse} from '../gemini-card-reader.mjs';
-import {aFields} from '../gemini-hybrid.mjs';
-import {responseReviewNeeded} from '../scan-response-recovery.mjs';
+import {parseCardResponse} from '../server/services/gemini-card-reader.mjs';
+import {aFields} from '../server/services/gemini-hybrid.mjs';
+import {responseReviewNeeded} from '../shared/scan-response-recovery.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
-import {checkScanCard} from '../bulk-card-scanning.mjs';
-import {mergeReextractedDraft} from '../scan-reextract.mjs';
-import {normalizeScanEquipmentRows} from '../scan-machine-rules.mjs';
+import {checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
+import {mergeReextractedDraft} from '../server/rules/scan-reextract.mjs';
+import {normalizeScanEquipmentRows} from '../shared/scan-machine-rules.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=()=>({documentType:'VLB',fields:{...Object.fromEntries(aFields('vehicle').map(k=>[k,field(null)])),door:field('V/19'),bookDate:field('2026-10-29'),machineSummary:[]},trips:{p:true,r:[[1,'V19','08:30','09:00']]}});
 test('one malformed row retains readable headers and rows, flags each invalid cell, and keeps literal times',()=>{

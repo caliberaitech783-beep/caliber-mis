@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {generateKeyPairSync,createVerify} from 'node:crypto';
 import {X509Certificate} from 'node:crypto';
-import {normalizePem,printHelperSigning,signPrintRequest,PRINT_HELPER_MAX_REQUEST_LENGTH,resolvePrintHelperSigning,certificateSummary,generatePrintHelperSigning} from '../print-helper-signing.mjs';
+import {normalizePem,printHelperSigning,signPrintRequest,PRINT_HELPER_MAX_REQUEST_LENGTH,resolvePrintHelperSigning,certificateSummary,generatePrintHelperSigning} from '../server/services/print-helper-signing.mjs';
 import {directPrintPaper,directPrintOptions,directPrintData,blobToBase64,rememberedPrinter,rememberPrinter,printHelperAvailable,printHelperExpected,printHelperLastFailure,launchPrintHelper,probePrintHelper} from '../src/direct-print.mjs';
 import {PRINT_PAGE_SIZES} from '../src/smart-print.mjs';
 

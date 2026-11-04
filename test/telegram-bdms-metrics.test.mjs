@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bdmsChatDateRange,bdmsChatMetricsReply} from '../telegram-bdms-metrics.mjs';
-import {bdmsChatConversation} from '../telegram-bdms-conversation.mjs';
+import {bdmsChatDateRange,bdmsChatMetricsReply} from '../server/rules/telegram-bdms-metrics.mjs';
+import {bdmsChatConversation} from '../server/rules/telegram-bdms-conversation.mjs';
 test('inclusive calendar periods reject invalid, reversed and future dates',()=>{
  assert.deepEqual(bdmsChatDateRange('Last 7 days','2026-10-08'),{from:'2026-10-02',to:'2026-10-08'});
  for(const text of ['/bd 2026-02-30 2026-10-08','/bd 2026-10-08 2026-10-01','/bd 2026-10-01 2026-10-09'])assert.equal(bdmsChatDateRange(text,'2026-10-08'),null);

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArchive} from '../request-archive.mjs';
-import {requestsVisibleToSession} from '../mis-request-visibility.mjs';
+import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArchive} from '../server/services/request-archive.mjs';
+import {requestsVisibleToSession} from '../shared/mis-request-visibility.mjs';
 import {readFileSync} from 'node:fs';
 
 test('archive endpoints require administrator access and explicit actions',()=>{

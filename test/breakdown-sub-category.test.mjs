@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {BREAKDOWN_SUB_CATEGORY_DEFAULTS,BREAKDOWN_SUB_CATEGORY_FIELD,BREAKDOWN_SUB_CATEGORY_MASTER,BREAKDOWN_SUB_CATEGORY_OTHERS,breakdownSubCategoryNames} from '../breakdown-sub-category.mjs';
-import {ADMIN_MASTER_OPTIONS,masterAccessAllows} from '../admin-access.mjs';
+import {BREAKDOWN_SUB_CATEGORY_DEFAULTS,BREAKDOWN_SUB_CATEGORY_FIELD,BREAKDOWN_SUB_CATEGORY_MASTER,BREAKDOWN_SUB_CATEGORY_OTHERS,breakdownSubCategoryNames} from '../server/rules/breakdown-sub-category.mjs';
+import {ADMIN_MASTER_OPTIONS,masterAccessAllows} from '../shared/admin-access.mjs';
 
 const read=(path)=>readFileSync(new URL(path,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const server=read('../server.mjs'),client=read('../src/main.jsx');
@@ -49,7 +49,7 @@ test('it is a Masters sub menu that administrators can add to, edit and delete, 
 });
 
 test('the create request form no longer loads, shows, prefills, or submits a breakdown sub-category',()=>{
-  assert.doesNotMatch(client,/import \{ breakdownSubCategoryNames \} from "\.\.\/breakdown-sub-category\.mjs";/);
+  assert.doesNotMatch(client,/import \{ breakdownSubCategoryNames \} from "\.\.\/server\/rules\/breakdown-sub-category\.mjs";/);
   assert.doesNotMatch(client,/useMasterRecords\("Breakdown Sub-Category"/,'the request page does not load this master');
   const form=client.slice(client.indexOf('function MaintenanceForm('),client.indexOf('function Subsidiaries('));
   assert.doesNotMatch(form,/subCategory|sub-category/i);
@@ -68,7 +68,7 @@ test('request creation no longer grants implicit access to the Breakdown Sub-Cat
 });
 
 test('the server seeds the list once and never re-creates rows an administrator removed',()=>{
-  assert.match(server,/import \{BREAKDOWN_SUB_CATEGORY_DEFAULTS\} from '\.\/breakdown-sub-category\.mjs';/);
+  assert.match(server,/import \{BREAKDOWN_SUB_CATEGORY_DEFAULTS\} from '\.\/server\/rules\/breakdown-sub-category\.mjs';/);
   assert.match(server,/key='breakdown_sub_category_defaults_seeded_v1' FOR UPDATE/);
   assert.match(server,/if\(!subCategorySeed\.length\)\{\n\s+for\(const subCategory of BREAKDOWN_SUB_CATEGORY_DEFAULTS\)\{/);
   assert.match(server,/lower\(trim\(record_data->>'subCategory'\)\)=lower\(trim\(\$3\)\)/,'an existing row with the same name is not duplicated');

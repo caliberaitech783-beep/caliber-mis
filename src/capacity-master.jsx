@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {OPERATIONAL_START} from '../operational-start.mjs';
+import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import './production-reports.css';
 export default function CapacityMaster({session,ReportSection}){
  const [data,setData]=useState({locations:[],pairs:[],versions:[]}),[form,setForm]=useState({location:'',make:'',model:'',capacity:'',averageDalaFactor:'',jobType:'',effectiveFrom:OPERATIONAL_START,reason:''}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),file=useRef(null);

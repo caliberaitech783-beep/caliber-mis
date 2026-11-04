@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { auditDeviceDetails } from "../device-details.mjs";
+import { auditDeviceDetails } from "../shared/device-details.mjs";
 
 test("classifies computer platforms and browsers", () => {
   assert.deepEqual(auditDeviceDetails("Mozilla/5.0 (Windows NT 10.0) Chrome/140.0"), {

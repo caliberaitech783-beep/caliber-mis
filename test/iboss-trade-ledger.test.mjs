@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {TRADE_REPORTS,tradeCard} from '../iboss-trade-ledger.mjs';
-import {buildDashboard,dashboardMetric,DASHBOARD_QUERIES} from '../iboss-dashboard.mjs';
-import {companyScopedSql} from '../iboss-company-scope.mjs';
-import {accountDrill} from '../iboss-drill.mjs';
+import {TRADE_REPORTS,tradeCard} from '../shared/iboss-trade-ledger.mjs';
+import {buildDashboard,dashboardMetric,DASHBOARD_QUERIES} from '../server/rules/iboss-dashboard.mjs';
+import {companyScopedSql} from '../server/rules/iboss-company-scope.mjs';
+import {accountDrill} from '../src/lib/iboss-drill.mjs';
 test('trade cards follow reconciliation, retain opposing balances and show ledger side',()=>{
  const result=buildDashboard({'trade-payable':[{BALANCEAMOUNT:120},{BALANCEAMOUNT:-20}],'trade-receivable':[{BALANCEAMOUNT:-200},{BALANCEAMOUNT:30}]},{from:'2026-04-01',to:'2026-09-30'});
  assert.deepEqual(result.cards.slice(0,4).map(c=>c.key),['bank','bank-reconciliation','trade-payable','trade-receivable']);

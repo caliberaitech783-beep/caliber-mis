@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 // Equipment master overlay: the ALIAS column, the revoke dialog (same two OTP routes as
 // approval) and the administrator list per site with full history and the approver setting.

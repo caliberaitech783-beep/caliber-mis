@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {manualBackupWindow,registerScanBackup,DAY} from '../scan-backup.mjs';
-import {scanBlobConfig,createScanBlobStorage,imageHash} from '../scan-blob-storage.mjs';
+import {manualBackupWindow,registerScanBackup,DAY} from '../server/routes/scan-backup.mjs';
+import {scanBlobConfig,createScanBlobStorage,imageHash} from '../server/services/scan-blob-storage.mjs';
 import {copyBackup,verifiedFile,sha256} from '../src/scan-backup-files.mjs';
-import {misPageAllowed,misRequestAllowed} from '../mis-application-access.mjs';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
+import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
 
 test('manual backup includes recent scans without a scheduled waiting period',()=>{
  const first='2026-01-01T00:00:00Z',now=new Date(Date.parse(first)+DAY);

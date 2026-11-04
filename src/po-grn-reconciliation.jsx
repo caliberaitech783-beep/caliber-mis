@@ -2,10 +2,10 @@ import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {FileBarChart,RefreshCw} from 'lucide-react';
 import DateInput from './date-input.mjs';
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
-import {purchaseOrderRange} from '../purchase-order-report.mjs';
-import {reconciliationMatches} from '../po-grn-reconciliation.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
+import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
+import {reconciliationMatches} from '../shared/po-grn-reconciliation.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import './stock-statement.css';
 import './po-grn-reconciliation.css';
 

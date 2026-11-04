@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {META_WORKFLOW_TEMPLATES,LEGACY_WORKFLOW_TEMPLATES,V2_WORKFLOW_TEMPLATES,reportTemplateChoices,validateCustomTemplate,baseTemplateKey,templateScopeHeader} from '../whatsapp-template-catalog.mjs';
-import {whatsAppMessageParameters,renderWhatsAppTemplate,siteReportMessageContext,recipientReportMessage} from '../whatsapp-message-format.mjs';
-import {sendMetaWhatsAppTemplate,setWhatsAppDeliveryPolicyReader} from '../meta-whatsapp.mjs';
-import {defaultWhatsAppReportSettings} from '../whatsapp-report-settings.mjs';
-import {reportTemplateFallback,candidateReportTemplate} from '../whatsapp-template-runtime.mjs';
+import {META_WORKFLOW_TEMPLATES,LEGACY_WORKFLOW_TEMPLATES,V2_WORKFLOW_TEMPLATES,reportTemplateChoices,validateCustomTemplate,baseTemplateKey,templateScopeHeader} from '../shared/whatsapp-template-catalog.mjs';
+import {whatsAppMessageParameters,renderWhatsAppTemplate,siteReportMessageContext,recipientReportMessage} from '../server/rules/whatsapp-message-format.mjs';
+import {sendMetaWhatsAppTemplate,setWhatsAppDeliveryPolicyReader} from '../server/rules/meta-whatsapp.mjs';
+import {defaultWhatsAppReportSettings} from '../shared/whatsapp-report-settings.mjs';
+import {reportTemplateFallback,candidateReportTemplate} from '../server/services/whatsapp-template-runtime.mjs';
 
 const request={site:'Sasti OC',ref:'REQ_42',equipmentGroup:'TIPPERS',door:'V_12',reg:'MH12 AB1234',chassis:'CH_987',
   category:'Aggregate Repair',complaint:'Hydraulic pump leaking',maintenanceWork:'Pump replaced and tested',delayedReason:'Awaiting spare pump',

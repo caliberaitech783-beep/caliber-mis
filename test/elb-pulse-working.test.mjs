@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveFleetEntry,readFleetBreakdowns} from '../vlb-batch-stages.mjs';
+import {saveFleetEntry,readFleetBreakdowns} from '../server/rules/vlb-batch-stages.mjs';
 
 const batch={id:'batch',site:'Sasti OC',report_date:'2026-11-02',shift:'S1',stage:'elb_open'};
 function fixture({bd=0,trips=0,unavailable=false}={}){

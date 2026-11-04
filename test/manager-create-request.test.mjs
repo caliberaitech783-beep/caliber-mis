@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {navigationPermissionsForView, MANAGER_ROLE_OPTIONS} from '../admin-access.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {navigationPermissionsForView, MANAGER_ROLE_OPTIONS} from '../shared/admin-access.mjs';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
-import {recordsForSite} from '../site-location.mjs';
+import {recordsForSite} from '../shared/site-location.mjs';
 
 test('manager form forwards Jayant and multi-site assignments to the existing equipment filter',async()=>{
   const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildDepartmentReports } from "../department-reports.mjs";
+import { buildDepartmentReports } from "../shared/department-reports.mjs";
 
 const client = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");

@@ -5,8 +5,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import * as model from "../src/dashboard-drilldown-model.mjs";
-import { REGION_DATA } from "../region-scope.mjs";
-import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../breakdown-duration.mjs";
+import { REGION_DATA } from "../shared/region-scope.mjs";
+import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../src/lib/breakdown-duration.mjs";
 import { requestStatusSortRank } from "../src/request-status.mjs";
 import { filterRecordsByDate } from "../src/record-date-range.mjs";
 
@@ -95,4 +95,4 @@ test("category visibility keeps empty tables aligned and request lists unchanged
   assert.equal(render({ requestRecords: true, hideEquipmentCategory: true }), render({ requestRecords: true }));
   assert.equal(render({ requestRecords: true, lifecycleRecords: true, hideEquipmentCategory: true }), render({ requestRecords: true, lifecycleRecords: true }));
 });
-import {matchesSmartSearch} from '../smart-search.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';

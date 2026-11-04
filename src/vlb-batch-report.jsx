@@ -1,8 +1,8 @@
-import {meterCorrectionReport} from '../scan-meter-history.mjs';
+import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import './meter-correction-report.css';
 import React,{useState} from 'react';
-import {vlbRecordSource} from '../vlb-batch-format.mjs';
-import {displaySiteName} from '../region-scope.mjs';
+import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
 
 export const vlbBatchColumns=[
  {key:'book',label:'Card ID',value:r=>r.book_no},

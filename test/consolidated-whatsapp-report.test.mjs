@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {attachRequestOems,buildConsolidatedWhatsAppReport,consolidatedReportDue,consolidatedReportWindow,prepareConsolidatedRows} from '../consolidated-whatsapp-report.mjs';
-import {managerRegionSelection,managerReportScope,managerSiteSelection,reportScopeIncludesSite,sitesForManagerRegions} from '../region-scope.mjs';
+import {attachRequestOems,buildConsolidatedWhatsAppReport,consolidatedReportDue,consolidatedReportWindow,prepareConsolidatedRows} from '../server/rules/consolidated-whatsapp-report.mjs';
+import {managerRegionSelection,managerReportScope,managerSiteSelection,reportScopeIncludesSite,sitesForManagerRegions} from '../shared/region-scope.mjs';
 
 test('scheduled report windows follow 6, 10, 14, 18 and 22 India time',()=>{
   const six=consolidatedReportWindow(new Date('2026-08-27T00:31:00Z'));

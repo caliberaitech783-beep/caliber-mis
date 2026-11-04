@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const css=readFileSync(new URL('../src/brand-theme.css',import.meta.url),'utf8').replace(/\r\n/g,'\n');
-const mail=readFileSync(new URL('../audit-log-export.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+const mail=readFileSync(new URL('../server/rules/audit-log-export.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 
 test('the brand uses Caliber Pulse-II and the supplied logo everywhere the brand component is used',()=>{
   assert.match(source,/<span className="caliber-app-name">\s*<strong>Caliber Pulse-II<\/strong>/);

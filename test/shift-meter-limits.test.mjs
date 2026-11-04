@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shiftMeterIssues} from '../trip-card-rules.mjs';
-import {normalizeLogBook} from '../log-book.mjs';
+import {shiftMeterIssues} from '../shared/trip-card-rules.mjs';
+import {normalizeLogBook} from '../server/routes/log-book.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
 import {scanCardStatus} from '../src/scan-reader-status.mjs';
 const base={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingHmr:100.1,closingHmr:108.1,openingKmr:1000,closingKmr:1250,trips:[],aFormNo:'123'};

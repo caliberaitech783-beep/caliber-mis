@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {capacityRegionLocations} from '../production-report-api.mjs';
+import {capacityRegionLocations} from '../server/routes/production-report-api.mjs';
 
 const source=readFileSync(new URL('../src/capacity-master.jsx',import.meta.url),'utf8');
 

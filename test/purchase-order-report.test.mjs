@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {PURCHASE_ORDER_SQL,purchaseOrderRange,purchaseOrderRow} from '../purchase-order-report.mjs';
+import {PURCHASE_ORDER_SQL,purchaseOrderRange,purchaseOrderRow} from '../shared/purchase-order-report.mjs';
 
 test('purchase order dates reject invalid calendars and reversed ranges',()=>{
   assert.deepEqual(purchaseOrderRange('2024-02-29','2024-03-01'),{from_date:'2024-02-29',to_date:'2024-03-01'});
@@ -30,7 +30,7 @@ test('purchase order query binds dates, includes the full final day and joins ea
 test('purchase order retains authenticated Oracle data after its IBOSS link is removed',()=>{
   const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
   const main=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
-  const oracle=fs.readFileSync(new URL('../oracle-db.mjs',import.meta.url),'utf8');
+  const oracle=fs.readFileSync(new URL('../server/services/oracle-db.mjs',import.meta.url),'utf8');
   const ui=fs.readFileSync(new URL('../src/purchase-order-report.jsx',import.meta.url),'utf8');
   assert.match(server,/app\.get\('\/api\/reports\/purchase-order',requireSession/);
   assert.match(server,/accessAllows\(permissions\.reportAccess,'Purchase Order'\)/);

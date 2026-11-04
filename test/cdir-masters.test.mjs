@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CDIR_MASTERS, CDIR_MASTER_NAMES, CDIR_MASTER_FIELDS, CDIR_CASCADES, cdirCaps, cdirNormalizeRecord, cdirDate, cdirDirectoryFromMasters, cdirEmployeeError, cdirMastersFromDirectory, isCdirMaster } from "../cdir-masters.mjs";
-import { masterAccessAllows } from "../admin-access.mjs";
+import { CDIR_MASTERS, CDIR_MASTER_NAMES, CDIR_MASTER_FIELDS, CDIR_CASCADES, cdirCaps, cdirNormalizeRecord, cdirDate, cdirDirectoryFromMasters, cdirEmployeeError, cdirMastersFromDirectory, isCdirMaster } from "../shared/cdir-masters.mjs";
+import { masterAccessAllows } from "../shared/admin-access.mjs";
 
 const data = JSON.parse(readFileSync(new URL("../public/cd/directory-data.json", import.meta.url), "utf8"));
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");

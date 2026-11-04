@@ -1,6 +1,6 @@
-import { canonicalSiteName, equipmentSiteName, recordBelongsToSite } from "../site-location.mjs";
-import { equipmentGroupValue, normalizeEquipmentGroup } from "../equipment-group.mjs";
-import { equipmentDoorNumber } from "../equipment-door.mjs";
+import { canonicalSiteName, equipmentSiteName, recordBelongsToSite } from "../shared/site-location.mjs";
+import { equipmentGroupValue, normalizeEquipmentGroup } from "../shared/equipment-group.mjs";
+import { equipmentDoorNumber } from "../shared/equipment-door.mjs";
 
 export const equipmentGroupLabel = (record = {}) => equipmentGroupValue(record, normalizeEquipmentGroup(record.itemName || record.category) || "Unclassified");
 export const equipmentCategoryLabel = (record = {}) => ["vehicle", "vehicles"].includes(String(record.category || "").trim().toLowerCase())

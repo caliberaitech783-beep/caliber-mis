@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {blankJob,blankBreakdown,padManualRows,normalizeManualDetails,jobDurationHours} from '../manual-log-book-details.mjs';
+import {blankJob,blankBreakdown,padManualRows,normalizeManualDetails,jobDurationHours} from '../shared/manual-log-book-details.mjs';
 import {continueManualRemark,isEmptyTripPlaceholder} from '../src/log-book-enter-navigation.mjs';
-import {blankTrip} from '../trip-entry.mjs';
+import {blankTrip} from '../shared/trip-entry.mjs';
 test('manual forms start with five trip, two job and two breakdown placeholders without sharing row state',()=>{
  const trips=padManualRows([],5,blankTrip),jobs=padManualRows([],2,blankJob),bd=padManualRows([],2,blankBreakdown);
  assert.equal(trips.length,5);assert.equal(jobs.length,2);assert.equal(bd.length,2);jobs[0].jobType='Loading';assert.equal(jobs[1].jobType,'');assert.ok(trips.every(isEmptyTripPlaceholder));assert.equal(isEmptyTripPlaceholder({...trips[0],remark:'Keep me'}),false);

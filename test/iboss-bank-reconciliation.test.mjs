@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDashboard,dashboardMetric} from '../iboss-dashboard.mjs';
-import {BANK_RECONCILIATION_REPORT,BANK_RECONCILIATION_SUMMARY_SQL,reconciliationFilter} from '../iboss-bank-reconciliation.mjs';
-import {accountDrill} from '../iboss-drill.mjs';
+import {buildDashboard,dashboardMetric} from '../server/rules/iboss-dashboard.mjs';
+import {BANK_RECONCILIATION_REPORT,BANK_RECONCILIATION_SUMMARY_SQL,reconciliationFilter} from '../shared/iboss-bank-reconciliation.mjs';
+import {accountDrill} from '../src/lib/iboss-drill.mjs';
 test('reconciliation card follows bank ledger and preserves signed pass-book balances',()=>{
  const dashboard=buildDashboard({reconciliation:[{PASSBOOK_BALANCE:96609917.84,UNRECONCILED_COUNT:7255},{PASSBOOK_BALANCE:-100,UNRECONCILED_COUNT:2}]});
  assert.deepEqual(dashboard.cards.slice(0,2).map(c=>c.key),['bank','bank-reconciliation']);

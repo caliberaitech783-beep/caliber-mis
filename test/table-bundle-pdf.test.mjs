@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildTableBundlePdf,buildTableExportPdf} from '../table-export-pdf.mjs';
+import {buildTableBundlePdf,buildTableExportPdf} from '../server/services/table-export-pdf.mjs';
 
 const generatedAt=new Date('2026-09-15T13:30:00Z');
 const title='Sasti OB site report';

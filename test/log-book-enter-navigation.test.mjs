@@ -1,16 +1,16 @@
-import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';
-import {validateTripEquipment,resolveTripEquipment} from '../trip-equipment-validation.mjs';
-import {blankJob,blankBreakdown,padManualRows} from '../manual-log-book-details.mjs';
-import {employeeAtLocation} from '../log-book-access.mjs';
+import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
+import {validateTripEquipment,resolveTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {blankJob,blankBreakdown,padManualRows} from '../shared/manual-log-book-details.mjs';
+import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
-import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
-import * as rules from '../trip-card-rules.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
+import * as rules from '../shared/trip-card-rules.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {missingAssetMessage} from '../src/log-book-asset-options.mjs';
 
 function control(name, overrides={}) {

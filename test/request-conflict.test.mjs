@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from 'node:fs';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import {
   activeRequestConflictMessage,
   findActiveRequestConflict,
   isActiveMaintenanceRequest,
-} from "../request-conflict.mjs";
+} from "../shared/request-conflict.mjs";
 
 test('closed pending idle blocks by door or chassis and takes priority over active linked cases', () => {
   const idle={ref:'REQ-IDLE',door:'E94',chassis:'CH94',status:'Closed',closedAt:'2026-10-09',vehicleIdle:true};

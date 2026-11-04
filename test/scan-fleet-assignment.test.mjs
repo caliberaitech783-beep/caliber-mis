@@ -1,7 +1,7 @@
-import {scanCardContextIssues} from '../scan-batch-context.mjs';
+import {scanCardContextIssues} from '../shared/scan-batch-context.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {scanFleetAssignment,scanFleetIssues,scanFleetSignature} from '../scan-fleet-assignment.mjs';
+import {scanFleetAssignment,scanFleetIssues,scanFleetSignature} from '../shared/scan-fleet-assignment.mjs';
 import {readFileSync} from 'node:fs';
 const fleet=Array.from({length:10},(_,i)=>({id:i+1,door:'V'+(i+1),currentLocation:'Sasti OC'}));
 test('only machines currently assigned to the mine are accepted; fleet count is not a quota',()=>{
@@ -23,7 +23,7 @@ test('unavailable, unreadable and ambiguous fleet checks block without authorizi
  assert.throws(()=>scanFleetAssignment([...fleet,fleet[0]],{doorText:'V1',location:'Sasti OC'}),/duplicate/);
 });
 test('fleet detection retains the original scan and draft until the user chooses a disposition',async()=>{
- const source=readFileSync(new URL('../bulk-card-scanning.mjs',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  const fn=source.slice(source.indexOf('async function enforceFleet('),source.indexOf(' function queueFleetCheck('));
  const card={id:'selected',batch_id:'batch',status:'review',revision:3,raw_fields:{},image_blob_key:'selected-image',draft:{doorText:'V1',location:'Majri OC'}};
  const updates=[];const pool={query:async(sql,args)=>{if(sql.startsWith('UPDATE'))updates.push({sql,args});return {rows:[]}}};

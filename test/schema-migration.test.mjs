@@ -1,15 +1,15 @@
-import {CDIR_DELETION_SCHEMA} from '../cdir-deletion.mjs';
+import {CDIR_DELETION_SCHEMA} from '../server/routes/cdir-deletion.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {PGlite} from '@electric-sql/pglite';
-import {applySchemaMigration} from '../schema-migration.mjs';
+import {applySchemaMigration} from '../server/services/schema-migration.mjs';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
-import {archiveSchemaSql} from '../request-archive.mjs';
-import {repairLegacySessionDefaults} from '../auth-session-schema.mjs';
-import {initializeLoginHistory} from '../user-login-history.mjs';
-import {EMPLOYEE_TRANSFER_SCHEMA} from '../employee-transfer.mjs';
+import {archiveSchemaSql} from '../server/services/request-archive.mjs';
+import {repairLegacySessionDefaults} from '../server/rules/auth-session-schema.mjs';
+import {initializeLoginHistory} from '../server/routes/user-login-history.mjs';
+import {EMPLOYEE_TRANSFER_SCHEMA} from '../server/routes/employee-transfer.mjs';
 
 test('unchanged slot restarts skip DDL; schema changes apply once and failed migrations roll back',async()=>{
   const db=new PGlite();

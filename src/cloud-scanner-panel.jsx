@@ -1,5 +1,5 @@
 import {MAX_SCAN_ENTRY_CARDS} from '../public/scan-entry-limit.mjs';
-import {parseScanContext} from '../scan-batch-context.mjs';
+import {parseScanContext} from '../shared/scan-batch-context.mjs';
 import {parseCaptureTiming,scanTimingLabel} from '../public/scan-timing.mjs';
 import {sniffScanImageType} from '../public/scan-image-type.mjs';
 import React,{useEffect,useRef,useState} from 'react';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {PRODUCTION_FIRST_TRIP_ROLLOUT_IST, PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL, isProductionFirstTripPending, isProductionFirstTripRequired, productionFirstTripCutoffMs} from '../info-pulse-data.mjs';
+import {PRODUCTION_FIRST_TRIP_ROLLOUT_IST, PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL, isProductionFirstTripPending, isProductionFirstTripRequired, productionFirstTripCutoffMs} from '../shared/info-pulse-data.mjs';
 
 const istLabel = (ms) => new Date(ms + 330 * 60_000).toISOString().slice(0, 19);
 

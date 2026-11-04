@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';
-import {registerFleetReconciliation,FLEET_REASON_SCHEMA} from '../fleet-reconciliation-api.mjs';
-import {misRequestAllowed} from '../mis-application-access.mjs';
+import {registerFleetReconciliation,FLEET_REASON_SCHEMA} from '../server/routes/fleet-reconciliation-api.mjs';
+import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 test('API enforces site/type permissions, preserves history, and refuses missing breakdown data',async()=>{
  const pool=new PGlite();await pool.exec(`CREATE TABLE master_records(id BIGINT,master_name TEXT,record_data JSONB);CREATE TABLE mis_log_books(id BIGINT,book_no TEXT,book_type TEXT,asset_id BIGINT,site TEXT,data JSONB,book_date DATE,deleted_at TIMESTAMPTZ);`);
  const site='Sasti OC',date='2026-11-02';for(const [id,name,data]of [[1,'Equipment master',{category:'vehicle',door:'V1',chassis:'C1',currentLocation:'SASTI II'}],[2,'Equipment master',{category:'equipment',door:'E2',currentLocation:site}],[3,'Shift Master',{site,shiftName:'Shift A',startTime:'05:00:00',endTime:'13:00:00'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,data]);

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractCard} from '../scan-extraction.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
-import {readingCellImages} from '../trip-meter-ocr.mjs';
+import {readingCellImages} from '../server/rules/trip-meter-ocr.mjs';
 test('reading-table candidates override scrambled page text and require explicit review',()=>{
  const meterReadings=Object.fromEntries(Object.entries({openingKmr:'289417',closingKmr:'289465',openingHmr:'30511',closingHmr:'30518'}).map(([k,value])=>[k,{value,needsReview:true}]));
  const {draft,raw}=extractCard('KMR 999 1000\nHMR 50 60','vehicle',[],{meterReadings});

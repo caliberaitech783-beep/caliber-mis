@@ -1,5 +1,5 @@
-import { canonicalSiteName } from "../site-location.mjs";
-import { equipmentDoorNumber } from "../equipment-door.mjs";
+import { canonicalSiteName } from "../shared/site-location.mjs";
+import { equipmentDoorNumber } from "../shared/equipment-door.mjs";
 
 const clean = (value) => String(value ?? "").trim();
 const normalize = (value) => clean(value).toLowerCase().replace(/\s+/g, " ");

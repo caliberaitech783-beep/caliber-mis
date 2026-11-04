@@ -1,4 +1,4 @@
-import {metaWhatsAppTemplateStatuses,submitMetaWhatsAppTemplates} from '../meta-whatsapp.mjs';
+import {metaWhatsAppTemplateStatuses,submitMetaWhatsAppTemplates} from '../server/rules/meta-whatsapp.mjs';
 
 const command=process.argv[2]||'submit';
 try{

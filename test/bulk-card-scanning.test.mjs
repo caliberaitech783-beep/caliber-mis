@@ -1,7 +1,7 @@
 import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';import {extractCard} from '../scan-extraction.mjs';
-import {cardReviewGroup} from '../scan-card-groups.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {cardReviewGroup} from '../shared/scan-card-groups.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const masters=[{id:1,master_name:'Equipment master',record_data:{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}},{id:2,master_name:'C-Dir Employee master',record_data:{name:'TEST DRIVER',empId:'EMP100',site:'Sasti OC'}},{id:3,master_name:'Shift Master',record_data:{site:'Sasti OC',shiftName:'Shift A'}},{id:4,master_name:'Equipment master',record_data:{category:'Equipment',door:'EQ1',currentLocation:'Sasti OC'}},{id:5,master_name:'Equipment master',record_data:{category:'Equipment',door:'LPC01',currentLocation:'Sasti OC'}}];
 const text=(i=1,kind='vehicle')=>`Book date: 19-12-2026\nLocation: Sasti OC\nDoor No: ${kind==='vehicle'?'V321':'EQ1'}\nEmployee ID: EMP100\nShift: Shift A\nSHIFT [x] I\nShift hours: 8\nOpening KMR: 100\nClosing KMR: 140\nOpening HMR: 200\nClosing HMR: 206\n${kind==='vehicle'?'Trip Card':'Job Card'} No: CARD-${i}\nL01 08:20 08:40 2`;

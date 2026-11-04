@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import pg from 'pg';
 import {randomUUID} from 'node:crypto';
-import {registerProductionReports} from '../production-report-api.mjs';
-import {misRequestAllowed} from '../mis-application-access.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {registerProductionReports} from '../server/routes/production-report-api.mjs';
+import {misRequestAllowed} from '../shared/mis-application-access.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('production API gates batches and permissions, approves effective capacities, and guards concurrent revisions',{skip:!connectionString},async t=>{
  const url=new URL(connectionString);assert.ok(['localhost','127.0.0.1'].includes(url.hostname));assert.equal(url.pathname,'/caliber_mis');

@@ -1,5 +1,5 @@
 import React, {useState} from "react";
-import {displaySiteSelection, userSiteSelection} from "../region-scope.mjs";
+import {displaySiteSelection, userSiteSelection} from "../shared/region-scope.mjs";
 import "./user-site-fields.css";
 
 export default function UserSiteFields({record = {}, siteOptions = []}) {

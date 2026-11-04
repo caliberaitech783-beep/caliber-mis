@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {randomUUID} from 'node:crypto';
 import {createCanvas} from '@napi-rs/canvas';
-import {scanImageDimensions,scanImageMime} from '../scan-image-format.mjs';
-import {createLocalCardArchive} from '../scan-card-archive.mjs';
+import {scanImageDimensions,scanImageMime} from '../server/rules/scan-image-format.mjs';
+import {createLocalCardArchive} from '../server/services/scan-card-archive.mjs';
 test('validates JPEG and PNG dimensions and rejects truncated or oversized images',()=>{
  const canvas=createCanvas(640,480);for(const type of ['image/png','image/jpeg']){const bytes=canvas.toBuffer(type);assert.equal(scanImageMime(bytes),type);assert.deepEqual(scanImageDimensions(bytes),{width:640,height:480});}
  assert.throws(()=>scanImageDimensions(Buffer.from([255,216,255,217])),/Invalid/);

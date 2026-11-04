@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-const metrics = readFileSync(new URL("../dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
+const metrics = readFileSync(new URL("../shared/dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
 const lifecycle = main.slice(main.indexOf("  const requestLifecycleRows ="), main.indexOf("  // Keep all six compact series"));
 
 test("request lifecycle aggregates rows and daily counts without scanning every row per date", () => {

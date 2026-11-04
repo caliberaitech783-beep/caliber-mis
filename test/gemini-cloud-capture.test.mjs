@@ -2,7 +2,7 @@ import {createCanvas} from '@napi-rs/canvas';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const scanFixture=colour=>{const canvas=createCanvas(2,2),context=canvas.getContext('2d');context.fillStyle=colour;context.fillRect(0,0,2,2);return canvas.toBuffer('image/png').toString('base64')};
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 test('local connector retains VLB/ELB images for online extraction without a local model request or log-book posting',async t=>{
  const previous=process.env.MIS_LOCAL_SCANNER_DATABASE;process.env.MIS_LOCAL_SCANNER_DATABASE='true';t.after(()=>{if(previous===undefined)delete process.env.MIS_LOCAL_SCANNER_DATABASE;else process.env.MIS_LOCAL_SCANNER_DATABASE=previous});
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);

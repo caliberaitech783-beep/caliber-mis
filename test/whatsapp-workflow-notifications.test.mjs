@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {defaultWhatsAppReportSettings} from '../whatsapp-report-settings.mjs';
+import {defaultWhatsAppReportSettings} from '../shared/whatsapp-report-settings.mjs';
 
 const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 

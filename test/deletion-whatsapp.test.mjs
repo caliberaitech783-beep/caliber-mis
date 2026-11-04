@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sendDeletionOtp,DELETION_WHATSAPP_KEY} from '../deletion-whatsapp.mjs';
-import {DELETION_PHONE} from '../log-book-deletion.mjs';
+import {sendDeletionOtp,DELETION_WHATSAPP_KEY} from '../server/services/deletion-whatsapp.mjs';
+import {DELETION_PHONE} from '../server/rules/log-book-deletion.mjs';
 test('dedicated Pulse sender is restricted to deletion OTPs and the approved recipient, with no global setting changes',async()=>{
  const config={enabled:true,purpose:'logBookDeletionOtp',recipient:DELETION_PHONE,provider:'fast2sms',providerApiKey:'test-secret',phoneNumberId:'test-phone'};
  const calls=[];const pool={query:async(sql,args)=>{assert.deepEqual(args,[DELETION_WHATSAPP_KEY]);return {rows:[{setting_value:config}]};}};

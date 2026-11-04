@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {installMisLoginHandoff} from '../mis-login-handoff.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {installMisLoginHandoff} from '../server/routes/mis-login-handoff.mjs';
 test('MIS callback requires browser state and one-time proof; session is retrieved without URL tokens',async()=>{
  const db=new PGlite();try{
  await db.exec('CREATE TABLE mis_credential_sessions(session_token UUID,grant_token TEXT)');

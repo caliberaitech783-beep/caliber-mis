@@ -1,12 +1,12 @@
-import * as siteAccess from '../region-scope.mjs';
-import {requestShiftLabel} from '../request-shift.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {requestShiftLabel} from '../shared/request-shift.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { activeRequestConflictMessage, findActiveRequestConflict } from "../request-conflict.mjs";
-import {isIdleVehicleRequest} from '../request-idle.mjs';
-import { submitMaintenanceRequest } from "../request-submit.mjs";
-import { parseRequestTimelineTimestamp, validateRequestTimelineChange } from "../request-timeline.mjs";
+import { activeRequestConflictMessage, findActiveRequestConflict } from "../shared/request-conflict.mjs";
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
+import { submitMaintenanceRequest } from "../src/lib/request-submit.mjs";
+import { parseRequestTimelineTimestamp, validateRequestTimelineChange } from "../shared/request-timeline.mjs";
 
 const client = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");

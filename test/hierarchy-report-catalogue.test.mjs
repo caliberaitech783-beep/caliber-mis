@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {HIERARCHY_REPORT_GROUPS,HIERARCHY_REPORT_TITLES,HIERARCHY_REPORT_CODES,hierarchyReportEquivalent,normalizeHierarchyReportAccess,hierarchyAccessAllowsReport} from '../hierarchy-report-catalogue.mjs';
-import {DEPARTMENT_REPORT_TITLES} from '../department-reports.mjs';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {IN_OUT_REPORT_TITLE} from '../in-out-report.mjs';
-import {REMOVED_REPORT_TITLES} from '../report-pending-export.mjs';
+import {HIERARCHY_REPORT_GROUPS,HIERARCHY_REPORT_TITLES,HIERARCHY_REPORT_CODES,hierarchyReportEquivalent,normalizeHierarchyReportAccess,hierarchyAccessAllowsReport} from '../shared/hierarchy-report-catalogue.mjs';
+import {DEPARTMENT_REPORT_TITLES} from '../shared/department-reports.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {IN_OUT_REPORT_TITLE} from '../shared/in-out-report.mjs';
+import {REMOVED_REPORT_TITLES} from '../src/lib/report-pending-export.mjs';
 
 test('hierarchy report groups carry the Reports menu headings in menu order',()=>{
   assert.deepEqual(HIERARCHY_REPORT_GROUPS.map(group=>[group.group,group.viewKey]),[['General Report','C'],['Production Report','P'],['Maintenance Report','M'],['MIS Report','S']]);
@@ -40,7 +40,7 @@ test('older hierarchy ticks and scheduled titles map onto their catalogue equiva
 test('the hierarchy master and server use the shared catalogue',()=>{
   const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
-  assert.match(source,/from "\.\.\/hierarchy-report-catalogue\.mjs"/);
+  assert.match(source,/from "\.\.\/shared\/hierarchy-report-catalogue\.mjs"/);
   assert.match(source,/const hierarchyReportGroups = HIERARCHY_REPORT_GROUPS;/);
   assert.match(source,/const hierarchyReportCodes = HIERARCHY_REPORT_CODES;/);
   assert.match(server,/hierarchyAccessAllowsReport\(hierarchyRule\.reportAccess,title\)/);

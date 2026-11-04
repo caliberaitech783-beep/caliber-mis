@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { movementRequestRows } from "../src/dashboard-card-actions.mjs";
-import { BREAKDOWN_TYPE_LABELS, breakdownMovementForRange, breakdownTypeShare, dailyBreakdownMovement } from "../dashboard-breakdown-movement.mjs";
+import { BREAKDOWN_TYPE_LABELS, breakdownMovementForRange, breakdownTypeShare, dailyBreakdownMovement } from "../src/lib/dashboard-breakdown-movement.mjs";
 
 const records = [
   { start: "2026-09-01 08:00:00", status: "Open" },

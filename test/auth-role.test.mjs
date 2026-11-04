@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterRowsByRequestedRole, matchesRequestedRole} from '../auth-role.mjs';
+import {filterRowsByRequestedRole, matchesRequestedRole} from '../shared/auth-role.mjs';
 
 test('narrows duplicate login names to the selected access type', () => {
   const rows = [

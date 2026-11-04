@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import * as scope from '../region-scope.mjs';
-import {recordsForSite,canonicalSiteName} from '../site-location.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {createFeedCache} from '../request-feed-cache.mjs';
-import {dashboardEquipmentScope,scopeDashboardEquipmentRecords} from '../dashboard-equipment-access.mjs';
-import {hierarchyRecipientReportScope} from '../hierarchy-report-scope.mjs';
-import {infoPulseRequestScope,scopeInfoPulseRequests} from '../info-pulse-scope.mjs';
-import {isWorkflowWhatsAppRecipient} from '../whatsapp-workflow-policy.mjs';
+import * as scope from '../shared/region-scope.mjs';
+import {recordsForSite,canonicalSiteName} from '../shared/site-location.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {createFeedCache} from '../server/rules/request-feed-cache.mjs';
+import {dashboardEquipmentScope,scopeDashboardEquipmentRecords} from '../server/rules/dashboard-equipment-access.mjs';
+import {hierarchyRecipientReportScope} from '../server/rules/hierarchy-report-scope.mjs';
+import {infoPulseRequestScope,scopeInfoPulseRequests} from '../server/rules/info-pulse-scope.mjs';
+import {isWorkflowWhatsAppRecipient} from '../server/rules/whatsapp-workflow-policy.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const evaluate=(source,deps)=>new Function(...Object.keys(deps),source)(...Object.values(deps));

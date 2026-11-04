@@ -5,7 +5,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
-import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
+import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 const source=readFileSync(new URL('../src/scan-batch-report.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'scan-batch-report.jsx',{jsx:{runtime:'classic'}});

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import {cdirDirectoryForViewer,cdirViewerContext} from '../cdir-access.mjs';
+import {cdirDirectoryForViewer,cdirViewerContext} from '../server/rules/cdir-access.mjs';
 
 const html=fs.readFileSync(new URL('../public/cd/caliber-directory.html',import.meta.url),'utf8');
 const client=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

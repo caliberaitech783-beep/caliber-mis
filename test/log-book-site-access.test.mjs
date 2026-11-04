@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../log-book-access.mjs';
-import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
-import {registerErpEmployees} from '../erp-employee-source.mjs';
-import {registerBulkCardScanning,SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
+import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../shared/log-book-access.mjs';
+import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('site and regional scopes use canonical site names and deny unassigned MIS identities',()=>{

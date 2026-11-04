@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {TRADE_AGE_BANDS,tradeAgeBand,tradeAgeFilter} from '../trade-age-bands.mjs';
-import {dashboardMetric} from '../iboss-dashboard.mjs';
-import {TRADE_AGE_REPORTS} from '../iboss-trade-ageing.mjs';
+import {TRADE_AGE_BANDS,tradeAgeBand,tradeAgeFilter} from '../shared/trade-age-bands.mjs';
+import {dashboardMetric} from '../server/rules/iboss-dashboard.mjs';
+import {TRADE_AGE_REPORTS} from '../shared/iboss-trade-ageing.mjs';
 const range={from:'2026-04-01',to:'2026-09-30',company:'1'};
 test('every 30-day boundary is inclusive once, with older, future and missing dates retained',()=>{
  assert.equal(tradeAgeBand(0),'30');assert.equal(tradeAgeBand(-1),'future');assert.equal(tradeAgeBand(null),'unknown');

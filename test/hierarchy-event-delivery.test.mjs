@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {defaultHierarchyReportScheduleSettings,HIERARCHY_REPORT_DESIGNATIONS,reportsForHierarchyEvent} from '../hierarchy-report-flow.mjs';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
+import {defaultHierarchyReportScheduleSettings,HIERARCHY_REPORT_DESIGNATIONS,reportsForHierarchyEvent} from '../shared/hierarchy-report-flow.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const request={ref:'REQ/123',site:'Sasti OB',requesterLogin:'production',status:'Open'};

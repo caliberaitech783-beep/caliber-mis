@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {loginRecordCandidates, resolveMobileAccess, normalizeMobileUserRole} from "../mobile-access.mjs";
+import {loginRecordCandidates, resolveMobileAccess, normalizeMobileUserRole} from "../shared/mobile-access.mjs";
 
 test("login candidate filtering avoids scanning unrelated employee hashes", () => {
   const rows = [

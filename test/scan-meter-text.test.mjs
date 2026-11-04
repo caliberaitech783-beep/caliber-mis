@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeScannedMeter} from '../scan-meter-text.mjs';
-import {extractCard} from '../scan-extraction.mjs';
+import {normalizeScannedMeter} from '../server/rules/scan-meter-text.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
 
 test('user-confirmed meter decimal notation preserves every written digit',()=>{
  for(const [value,expected]of [['83995:6','83995.6'],['84050:2','84050.2'],[' 00012 : 050 ','00012.050'],['0:0','0.0'],['12：3','12.3'],['84050.2','84050.2'],['12:34:56','12:34:56']])assert.equal(normalizeScannedMeter(value),expected);

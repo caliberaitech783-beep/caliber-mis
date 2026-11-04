@@ -1,17 +1,17 @@
-import * as siteAccess from '../region-scope.mjs';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
-import {managerRoleSelection} from '../admin-access.mjs';
-import {flowDesignationForUser} from '../hierarchy-report-flow.mjs';
-import {managerReportScope,reportScopeIncludesSite} from '../region-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {arrivalRedFlagRequired} from '../request-acceptance.mjs';
-import {requestDateTimeValue,requestMayBeChanged,requestMayBeVerified,validMeterReading,validMeterReadings,validateClosingMeterReadings,validTripCardImageDataUrl} from '../request-workflow.mjs';
-import * as timeline from '../request-timeline.mjs';
-import {isProductionFirstTripRequired,PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL} from '../info-pulse-data.mjs';
+import {managerRoleSelection} from '../shared/admin-access.mjs';
+import {flowDesignationForUser} from '../shared/hierarchy-report-flow.mjs';
+import {managerReportScope,reportScopeIncludesSite} from '../shared/region-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {arrivalRedFlagRequired} from '../src/lib/request-acceptance.mjs';
+import {requestDateTimeValue,requestMayBeChanged,requestMayBeVerified,validMeterReading,validMeterReadings,validateClosingMeterReadings,validTripCardImageDataUrl} from '../shared/request-workflow.mjs';
+import * as timeline from '../shared/request-timeline.mjs';
+import {isProductionFirstTripRequired,PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL} from '../shared/info-pulse-data.mjs';
 
 const source=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const slice=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end));

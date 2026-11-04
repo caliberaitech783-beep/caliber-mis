@@ -1,4 +1,4 @@
-import { matchesBreakdownMovement, normalizedBreakdownType } from "../dashboard-breakdown-movement.mjs";
+import { matchesBreakdownMovement, normalizedBreakdownType } from "./lib/dashboard-breakdown-movement.mjs";
 
 const controls = 'button, a, input, select, textarea, label, summary, [role="button"], [role="tab"], [role="checkbox"], [role="switch"], [contenteditable="true"]';
 

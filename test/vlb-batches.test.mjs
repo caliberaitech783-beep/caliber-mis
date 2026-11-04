@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerVlbBatches} from '../vlb-batches.mjs';
-import {vlbBatchName,vlbBatchSelection} from '../vlb-batch-format.mjs';
+import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {vlbBatchName,vlbBatchSelection} from '../shared/vlb-batch-format.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('batch format uses site, ordinal date, shift and padded sequence',()=>{

@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {hierarchyRecipientReportScope} from '../hierarchy-report-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {displaySiteName,reportScopeIncludesSite} from '../region-scope.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {applyHierarchyDeliveryRule,defaultHierarchyReportScheduleSettings,flowDesignationForUser,reportsDueForDesignation,applyUserReportScheduleOverride} from '../hierarchy-report-flow.mjs';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {hierarchyAccessAllowsReport} from '../hierarchy-report-catalogue.mjs';
-import {reportSites} from '../site-consolidated-report.mjs';
-import {siteReportMessageContext,recipientReportMessage} from '../whatsapp-message-format.mjs';
+import {hierarchyRecipientReportScope} from '../server/rules/hierarchy-report-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {displaySiteName,reportScopeIncludesSite} from '../shared/region-scope.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {applyHierarchyDeliveryRule,defaultHierarchyReportScheduleSettings,flowDesignationForUser,reportsDueForDesignation,applyUserReportScheduleOverride} from '../shared/hierarchy-report-flow.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {hierarchyAccessAllowsReport} from '../shared/hierarchy-report-catalogue.mjs';
+import {reportSites} from '../server/rules/site-consolidated-report.mjs';
+import {siteReportMessageContext,recipientReportMessage} from '../server/rules/whatsapp-message-format.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const mobile=(fields={})=>({login:'mobile',userType:'Mobile User',userGroup:'Production User',site:'Sasti OB',...fields});

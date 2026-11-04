@@ -1,4 +1,4 @@
-import {parseRequestTimelineTimestamp} from "../request-timeline.mjs";
+import {parseRequestTimelineTimestamp} from "../shared/request-timeline.mjs";
 
 const INDIA_OFFSET_MS = 330 * 60_000;
 

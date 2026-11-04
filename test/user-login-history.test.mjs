@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import {randomUUID} from 'node:crypto';
-import {initializeLoginHistory,loginHistoryRange,registerLoginHistoryRoutes} from '../user-login-history.mjs';
+import {initializeLoginHistory,loginHistoryRange,registerLoginHistoryRoutes} from '../server/routes/user-login-history.mjs';
 
 test('history windows use rolling hours and inclusive India calendar dates',()=>{
   const now=new Date('2026-09-14T12:00:00Z');

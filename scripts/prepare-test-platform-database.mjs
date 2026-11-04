@@ -15,8 +15,8 @@
 // command line). See docs/test-platform-setup.md, section 4.
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createClient,parseCliArgs,quoteIdentifier,redactDatabaseUrl} from '../database-backup.mjs';
-import {hashPassword} from '../password-auth.mjs';
+import {createClient,parseCliArgs,quoteIdentifier,redactDatabaseUrl} from '../server/services/database-backup.mjs';
+import {hashPassword} from '../server/services/password-auth.mjs';
 
 export const PRODUCTION_DATABASE_HOST='coalmine-fleet-pg-783.postgres.database.azure.com';
 

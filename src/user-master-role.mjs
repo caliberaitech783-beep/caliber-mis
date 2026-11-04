@@ -1,4 +1,4 @@
-import {assignedUserRoles} from '../account-role-access.mjs';
+import {assignedUserRoles} from '../shared/account-role-access.mjs';
 const clean = (value) => String(value ?? "").trim();
 
 // Display the saved role without modifying account authority or permissions.

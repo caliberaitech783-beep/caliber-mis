@@ -1,7 +1,7 @@
 import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useState} from 'react';
 import {Trash2,RefreshCw,X} from 'lucide-react';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import './employee-transfer.css';
 export default function CdirDeletion({token,ReportSection}){
  const [data,setData]=useState({token,loading:true,records:[],targets:[]}),[view,setView]=useState('Pending'),[search,setSearch]=useState(''),[targetSearch,setTargetSearch]=useState(''),[form,setForm]=useState(false),[working,setWorking]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[selected,setSelected]=useState(null),[action,setAction]=useState(null);

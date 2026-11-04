@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {canEditCdirEmployee,registerCdirEmployeeEdit} from '../cdir-employee-edit.mjs';
-import {CDIR_MASTERS,cdirDirectoryFromMasters} from '../cdir-masters.mjs';
+import {canEditCdirEmployee,registerCdirEmployeeEdit} from '../server/routes/cdir-employee-edit.mjs';
+import {CDIR_MASTERS,cdirDirectoryFromMasters} from '../shared/cdir-masters.mjs';
 
 test('only HR users, directors and administrators can edit',()=>{
  for(const session of [{role:'super',permissions:{adminLevel:'Admin'}},{role:'super',permissions:{adminLevel:'Super Admin'}},{assignedRole:'HR User'}])assert.equal(canEditCdirEmployee(session),true);

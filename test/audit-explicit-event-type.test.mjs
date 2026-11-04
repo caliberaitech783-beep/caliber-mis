@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { AUDIT_HIDDEN_EVENT_TYPES, auditRouteDetails, auditShouldRecord } from "../audit-trail.mjs";
+import { AUDIT_HIDDEN_EVENT_TYPES, auditRouteDetails, auditShouldRecord } from "../server/rules/audit-trail.mjs";
 
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 

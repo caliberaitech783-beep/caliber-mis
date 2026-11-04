@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import {registerMisDomainRedirect} from '../mis-domain.mjs';
+import {registerMisDomainRedirect} from '../server/routes/mis-domain.mjs';
 
 test('the previous MIS domain redirects browser and authentication callbacks to pulse-ll',async()=>{
   const app=express();app.set('trust proxy',true);registerMisDomainRedirect(app);app.use((_req,res)=>res.sendStatus(204));

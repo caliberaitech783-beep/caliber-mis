@@ -12,7 +12,7 @@ import {
   vehicleTransferValidationError,
   vehicleTransferViewRecords,
   vehicleTransferWorkStatus,
-} from '../vehicle-transfer-workflow.mjs';
+} from '../shared/vehicle-transfer-workflow.mjs';
 
 test('vehicle transfer lifecycle exposes each accountable stage',()=>{
   const submitted={status:VEHICLE_TRANSFER_STATUS.SOURCE_APPROVAL,submittedBy:'MIS User'};

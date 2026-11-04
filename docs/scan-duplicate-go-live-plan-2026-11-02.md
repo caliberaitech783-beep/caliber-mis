@@ -17,23 +17,23 @@ Worked example: entry B01 holds 40 cards for Majri OB, 01-11-2026, shift I. The 
 
 | Check today | Compares | Scope | Gap |
 |---|---|---|---|
-| Upload (bulk-card-scanning.mjs, POST cards) | SHA-256 of image bytes | All entries | A rescan is never byte-identical, so it passes |
+| Upload (server/routes/bulk-card-scanning.mjs, POST cards) | SHA-256 of image bytes | All entries | A rescan is never byte-identical, so it passes |
 | After reading (checkScanCard) | date + door + card number | Same entry only | Repeats across entries B01 / B02 are invisible |
-| At save (log-book.mjs) | date + door + card number against saved records; one manual card per tipper per shift | Saved records only | Fires only once the original is saved, after the repeat was already read |
-| Operational date filter (operational-start.mjs) | reader's header date before the entry date | All queries | A misread date hid the card from every check; fixed in this branch, prerequisite for everything below |
+| At save (server/routes/log-book.mjs) | date + door + card number against saved records; one manual card per tipper per shift | Saved records only | Fires only once the original is saved, after the repeat was already read |
+| Operational date filter (shared/operational-start.mjs) | reader's header date before the entry date | All queries | A misread date hid the card from every check; fixed in this branch, prerequisite for everything below |
 
 ## 3. Work items
 
 ### Item A. Operational date filter uses the scan-entry date (done, uncommitted)
 
-File: `operational-start.mjs`, test `test/operational-start.test.mjs`.
+File: `shared/operational-start.mjs`, test `test/operational-start.test.mjs`.
 Order is now: saved log-book date, then scan-entry date, then reader date, then upload date. A misread header shows as a Mismatch card inside its entry instead of vanishing. Regression test covers listing, batch count, mismatch flag and duplicate detection of such a card.
 
 ### Item B. Visual fingerprint on every card
 
-New module `scan-fingerprint.mjs`.
+New module `server/services/scan-fingerprint.mjs`.
 
-1. Decode the uploaded PNG / JPEG / WebP with `@napi-rs/canvas` (already used by `gemini-card-images.mjs`), after the same orientation step the reader uses, so a card fed the other way still matches.
+1. Decode the uploaded PNG / JPEG / WebP with `@napi-rs/canvas` (already used by `server/services/gemini-card-images.mjs`), after the same orientation step the reader uses, so a card fed the other way still matches.
 2. Convert to grayscale and compute a difference hash for four fixed regions of the card layout, defined per card type (VLB trip card, ELB job card): header block (date, door, driver, card number), trip grid, machine-wise summary, meter block. Each region: 17 x 16 grid, 256 bits. Whole-page hash is also stored for diagnostics.
 3. Store on `mis_scan_cards` as `fingerprint JSONB` (region name to hex string) with a GIN-free plain column and an index on `(batch_id)`; comparison is done in Node over the candidate set, which is small (same date, site, shift).
 4. Backfill: a one-off job computes fingerprints for all cards created on or after 1 November 2026, so existing entries (B01) can be matched against. Runs on deploy, idempotent, logged.
@@ -41,11 +41,11 @@ New module `scan-fingerprint.mjs`.
 Accuracy work before any skipping is enabled:
 
 - Run the hash over every card already in the database. Record the distance between known rescans (same card number, door and date in two entries) and between genuinely different cards for the same shift.
-- Pick two thresholds with a clear margin: **skip** (every region within T1 bits) and **suspect** (any region within T2 bits). Starting values T1 = 8, T2 = 20 of 256, to be replaced by measured values. The thresholds live in one place (`scan-fingerprint.mjs`) and are reported in the health endpoint.
+- Pick two thresholds with a clear margin: **skip** (every region within T1 bits) and **suspect** (any region within T2 bits). Starting values T1 = 8, T2 = 20 of 256, to be replaced by measured values. The thresholds live in one place (`server/services/scan-fingerprint.mjs`) and are reported in the health endpoint.
 
 ### Item C. Duplicate decision at upload
 
-File: `bulk-card-scanning.mjs`, POST `/api/scan-batches/:id/cards`.
+File: `server/routes/bulk-card-scanning.mjs`, POST `/api/scan-batches/:id/cards`.
 
 Inside the existing transaction, after the byte-hash check:
 
@@ -59,7 +59,7 @@ Inside the existing transaction, after the byte-hash check:
 
 ### Item D. Content check after reading, across entries
 
-File: `bulk-card-scanning.mjs`, `checkScanCard`, and the extraction completion path in `scan-extraction-queue.mjs`.
+File: `server/routes/bulk-card-scanning.mjs`, `checkScanCard`, and the extraction completion path in `server/services/scan-extraction-queue.mjs`.
 
 1. When reading completes, compare date + door (asset id) + card number against non-rejected cards in **every entry** for the same date, site and shift, and against saved log books (existing query, scope widened).
 2. If a match is found **and** the card number and door were read with no review flag: auto-reject with `review_note='Duplicate of card <ordinal> in entry <name>'` and `duplicate_of`. Also covers a card that was only a fingerprint suspect.
@@ -68,7 +68,7 @@ File: `bulk-card-scanning.mjs`, `checkScanCard`, and the extraction completion p
 
 ### Item E. Duplicates tile and restore
 
-Files: `scan-card-groups.mjs`, `src/bulk-card-scanning.jsx`, GET `/api/scan-batches/:id`.
+Files: `shared/scan-card-groups.mjs`, `src/bulk-card-scanning.jsx`, GET `/api/scan-batches/:id`.
 
 1. GET returns duplicate cards (today they are filtered out by `review_note`) with `duplicate_of` resolved to `{entryName, ordinal, bookNo, cardId}` and a thumbnail URL for the original.
 2. New tile **Duplicates** on the Card status board: "Same card already in another entry · skipped". Count shown as `n/total`; duplicates are excluded from All cards, Review and the batch list counts so the operator's working numbers do not change.
@@ -78,7 +78,7 @@ Files: `scan-card-groups.mjs`, `src/bulk-card-scanning.jsx`, GET `/api/scan-batc
 
 ### Item F. Telegram late-batch and batch report
 
-Files: `vlb-batch-alerts.mjs`, `scan-batch-report` modules.
+Files: `server/routes/vlb-batch-alerts.mjs`, `scan-batch-report` modules.
 Duplicate cards are excluded from card totals in the batch report and in Telegram batch alerts. The report gains a one-line "Duplicates skipped: n (entries B01, B02)" footer so the count is auditable.
 
 ### Item G. Tests (all must pass before deploy)
@@ -118,10 +118,10 @@ Rollback: turn the flag off. Cards already marked duplicate stay visible in the 
 
 | Item | Status | Where |
 |---|---|---|
-| A. Date filter uses the scan-entry date | Done, committed on fix/vlb-entry-r4 | operational-start.mjs |
-| B. Visual fingerprint | Done. Method changed from the planned difference hash to ink-overlap on a 64-column grid with coarse-to-fine alignment, because the hash flipped on mostly-white paper. Synthetic rescans score 8 or less, different cards 33 or more (skip 15, suspect 30). Backfill runs on server start. | scan-fingerprint.mjs, scan-duplicates.mjs |
-| C. Duplicate decision at upload | Done. Exact bytes always; fingerprint only with SCAN_DUPLICATE_FINGERPRINT=true. Duplicates stored as rejected rows with duplicate_of, never queued, not counted for entry space. | bulk-card-scanning.mjs POST cards |
-| D. Content check across entries | Done. Certain identity auto-rejected after reading; uncertain held with "Possible duplicate of card N in entry …". | scan-duplicates.mjs, checkScanCard |
+| A. Date filter uses the scan-entry date | Done, committed on fix/vlb-entry-r4 | shared/operational-start.mjs |
+| B. Visual fingerprint | Done. Method changed from the planned difference hash to ink-overlap on a 64-column grid with coarse-to-fine alignment, because the hash flipped on mostly-white paper. Synthetic rescans score 8 or less, different cards 33 or more (skip 15, suspect 30). Backfill runs on server start. | server/services/scan-fingerprint.mjs, server/services/scan-duplicates.mjs |
+| C. Duplicate decision at upload | Done. Exact bytes always; fingerprint only with SCAN_DUPLICATE_FINGERPRINT=true. Duplicates stored as rejected rows with duplicate_of, never queued, not counted for entry space. | server/routes/bulk-card-scanning.mjs POST cards |
+| D. Content check across entries | Done. Certain identity auto-rejected after reading; uncertain held with "Possible duplicate of card N in entry …". | server/services/scan-duplicates.mjs, checkScanCard |
 | E. Duplicates tile, restore, notice | Done. Tile on the card status board, side-by-side scans, "Not a duplicate, read this card", POST /api/scan-cards/:id/restore-duplicate. | src/scan-duplicate-list.jsx, src/bulk-card-scanning.jsx |
 | F. Reports | Done for the batch report footer and batch list counts. Telegram alerts count VLB batch records, not scan rows, so no change was needed. | src/scan-batch-report.jsx |
 | G. Tests | 7 new tests across scan-fingerprint.test.mjs and scan-duplicates.test.mjs; the concurrency case (8) could not be written because the test database stubs advisory locks. Covered by the same date/site/shift advisory lock in code; verify on the test platform. | test/ |

@@ -3,7 +3,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {UsersRound,SlidersHorizontal,RotateCcw,FilterX} from 'lucide-react';
 import './employee-tenure-report.css';
 import DateInput from './date-input.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import {TENURE_MONTHS, buildEmployeeTenureReport} from './employee-tenure.mjs';
 
 const columns = [

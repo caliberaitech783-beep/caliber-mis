@@ -5,11 +5,11 @@ import React from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {transformWithOxc} from "vite";
 import * as model from "../src/dashboard-drilldown-model.mjs";
-import {REGION_DATA} from "../region-scope.mjs";
-import {calculateBreakdownMinutes, formatBreakdownDaysHours} from "../breakdown-duration.mjs";
+import {REGION_DATA} from "../shared/region-scope.mjs";
+import {calculateBreakdownMinutes, formatBreakdownDaysHours} from "../src/lib/breakdown-duration.mjs";
 import {requestStatusSortRank} from "../src/request-status.mjs";
 import {filterRecordsByDate} from "../src/record-date-range.mjs";
-import {formatDisplayDateTime} from "../date-time-format.mjs";
+import {formatDisplayDateTime} from "../shared/date-time-format.mjs";
 import {tableModel, dateColumnsFirst, tableExportModel} from "../src/table-actions-model.mjs";
 
 const source = readFileSync(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8")
@@ -138,4 +138,4 @@ test("BD Out closing times, table order, counts and exports stay consistent thro
   props.showBdClosingTime = false;
   assert.doesNotMatch(renderToStaticMarkup(render()), /<th>BD closing time<\/th>/);
 });
-import {matchesSmartSearch} from '../smart-search.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';

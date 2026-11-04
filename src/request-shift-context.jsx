@@ -1,5 +1,5 @@
 import React, {createContext, useContext, useEffect, useMemo, useState} from 'react';
-import {requestShiftLabel} from '../request-shift.mjs';
+import {requestShiftLabel} from '../shared/request-shift.mjs';
 import {tableElements, tableModel} from './table-actions-model.mjs';
 
 const Context = createContext({shifts:[],requests:new Map(),loading:true});

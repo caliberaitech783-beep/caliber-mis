@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {PGlite} from '@electric-sql/pglite';
-import {resolveRequestIssues,hasOutstandingRequestIssues} from '../request-workflow.mjs';
+import {resolveRequestIssues,hasOutstandingRequestIssues} from '../shared/request-workflow.mjs';
 
 // Execute the production statement in PostgreSQL, including its parameter type
 // inference. A mocked query cannot catch the timestamp CASE regression.

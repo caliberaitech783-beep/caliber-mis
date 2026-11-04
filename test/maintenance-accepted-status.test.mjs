@@ -1,17 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
-import { matchesSmartSearch } from '../smart-search.mjs';
-import * as acceptance from '../request-acceptance.mjs';
+import { matchesSmartSearch } from '../shared/smart-search.mjs';
+import * as acceptance from '../src/lib/request-acceptance.mjs';
 import {requestStatusLabel, requestStatusSortRank} from '../src/request-status.mjs';
-import {requestMeterReadings, requestMeterReadingLabel} from '../request-equipment.mjs';
-import {breakdownMeterValue} from '../breakdown-meter-columns.mjs';
+import {requestMeterReadings, requestMeterReadingLabel} from '../shared/request-equipment.mjs';
+import {breakdownMeterValue} from '../shared/breakdown-meter-columns.mjs';
 import {isDurationColumn, compareDurationValues, defaultDurationSort} from '../src/duration-sort.mjs';
-import {calculateBreakdownMinutes} from '../breakdown-duration.mjs';
+import {calculateBreakdownMinutes} from '../src/lib/breakdown-duration.mjs';
 import {dailyUpdatesExportText} from '../src/daily-updates-order.mjs';
 
 const source = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');

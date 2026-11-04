@@ -4,14 +4,14 @@ import {randomUUID,createHash} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {createCanvas} from '@napi-rs/canvas';
-import {operationalDate,requireOperationalDate,operationalScanSql} from '../operational-start.mjs';
-import {registerLogBooks,LOG_BOOK_SCHEMA,normalizeLogBook,insertLogBook} from '../log-book.mjs';
-import {registerBulkCardScanning,SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
-import {assertVlbBatchWrite} from '../vlb-batch-policy.mjs';
-import {vlbBatchSelection} from '../vlb-batch-format.mjs';
-import {parseScanContext} from '../scan-batch-context.mjs';
-import {savedLogBookFilters} from '../saved-log-book-filters.mjs';
-import {encodeScanJson} from '../scan-text-storage.mjs';
+import {operationalDate,requireOperationalDate,operationalScanSql} from '../shared/operational-start.mjs';
+import {registerLogBooks,LOG_BOOK_SCHEMA,normalizeLogBook,insertLogBook} from '../server/routes/log-book.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
+import {assertVlbBatchWrite} from '../server/rules/vlb-batch-policy.mjs';
+import {vlbBatchSelection} from '../shared/vlb-batch-format.mjs';
+import {parseScanContext} from '../shared/scan-batch-context.mjs';
+import {savedLogBookFilters} from '../server/rules/saved-log-book-filters.mjs';
+import {encodeScanJson} from '../server/rules/scan-text-storage.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('cutoff is inclusive, validates real dates and applies to manual, scan and batch dates',()=>{

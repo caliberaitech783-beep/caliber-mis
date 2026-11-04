@@ -1,8 +1,8 @@
-import {meterRuleIssues} from '../trip-card-rules.mjs';
-import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
+import {meterRuleIssues} from '../shared/trip-card-rules.mjs';
+import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
-import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired} from '../trip-card-rules.mjs';
+import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 

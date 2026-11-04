@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import {resolveMobileAccess} from "../mobile-access.mjs";
+import {resolveMobileAccess} from "../shared/mobile-access.mjs";
 import {profileHeaderDesignation, profileHeaderName} from "../src/profile-designation.mjs";
 
 test("user creation contains every existing privilege option", () => {

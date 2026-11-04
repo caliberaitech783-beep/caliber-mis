@@ -5,7 +5,7 @@ import {
   BookUser,Building2,Download,FilterX,LayoutDashboard,
   Network,Pencil,RefreshCw,Search,TableProperties,TriangleAlert,UsersRound,X,
 } from 'lucide-react';
-import {buildCdirOrganisation,cdirPersonId} from '../cdir-organisation.mjs';
+import {buildCdirOrganisation,cdirPersonId} from '../shared/cdir-organisation.mjs';
 import './caliber-directory-page.css';
 import {directoryLeadership} from './cdir-overview.mjs';
 import CdirEmployeeEdit from './cdir-employee-edit.jsx';

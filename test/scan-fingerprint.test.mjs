@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
 import {drawCard} from './scan-card-fixture.mjs';
-import {fingerprintScanImage,fingerprintDistance,classifyFingerprintMatch,closestFingerprint,scanFingerprintSettings,FINGERPRINT_MAX,FINGERPRINT_VERSION} from '../scan-fingerprint.mjs';
+import {fingerprintScanImage,fingerprintDistance,classifyFingerprintMatch,closestFingerprint,scanFingerprintSettings,FINGERPRINT_MAX,FINGERPRINT_VERSION} from '../server/services/scan-fingerprint.mjs';
 
 test('a rescan of the same paper lands within the skip threshold; a different card does not',async()=>{
  const settings=scanFingerprintSettings({SCAN_DUPLICATE_FINGERPRINT:'true'});

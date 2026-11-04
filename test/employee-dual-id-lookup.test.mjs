@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerErpEmployees} from '../erp-employee-source.mjs';
+import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
 
 test('VLB and ELB lookup accepts Employee ID and new Caliber ID, with no Oracle call for master matches',async()=>{
   const db=new PGlite();let server,oracleReads=0;

@@ -4,7 +4,7 @@ import test from "node:test";
 import React from "react";
 import { drilldownView } from "../src/dashboard-drilldown-model.mjs";
 import { tableModel, tableExportModel } from "../src/table-actions-model.mjs";
-import { REGION_DATA } from "../region-scope.mjs";
+import { REGION_DATA } from "../shared/region-scope.mjs";
 
 const h = React.createElement;
 

@@ -1,8 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
-import {aliasForSelection} from '../equipment-alias-rules.mjs';
+import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
 import {searchSiteDoors,doorLabel} from './door-search.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 // Manual VLB / ELB entry: the operator typed a machine the Pulse master does not list at this
 // site. Pair it with one Pulse record; the card continues with that record at once and the

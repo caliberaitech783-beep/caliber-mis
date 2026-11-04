@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildOemEmailWithAttachments} from '../oem-breakdown-email.mjs';
-import {oemExtraSendDue} from '../oem-breakdown-email.mjs';
+import {buildOemEmailWithAttachments} from '../server/services/oem-breakdown-email.mjs';
+import {oemExtraSendDue} from '../server/services/oem-breakdown-email.mjs';
 import {readFile} from 'node:fs/promises';
-import {oemEmailDue,oemEmailRecipients,oemEmailRows,buildOemEmail,sendScheduledOemEmails,OEM_TRIAL_CC} from '../oem-breakdown-email.mjs';
+import {oemEmailDue,oemEmailRecipients,oemEmailRows,buildOemEmail,sendScheduledOemEmails,OEM_TRIAL_CC} from '../server/services/oem-breakdown-email.mjs';
 const contact={email:'person@example.com',oem:'Scania',level:'Level 1',location:'Sasti 2',contact:'Engineer'};
 test('extra batch opens only on October 6 at 1 PM IST and expires at midnight',()=>{
   assert.equal(oemExtraSendDue(new Date('2026-10-06T05:30:00Z')),false);
@@ -72,7 +72,7 @@ test('PDF and real Excel attachments include every selected case and match websi
   assert.match(xml,/TableStyleLight15/);
   assert.match(xml,/FF000000/);
   const website=await readFile(new URL('../src/main.jsx',import.meta.url),'utf8');
-  const shared=await readFile(new URL('../report-xlsx.mjs',import.meta.url),'utf8');
+  const shared=await readFile(new URL('../shared/report-xlsx.mjs',import.meta.url),'utf8');
   const normalize=value=>value.replaceAll('\r\n','\n').trim();
   assert.equal(normalize(shared.slice(shared.indexOf('function escapeExportHtml'),shared.indexOf('\nexport {'))),normalize(website.slice(website.indexOf('function escapeExportHtml'),website.indexOf('function buildXlsxWorkbook('))));
 });

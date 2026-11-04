@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import {hashPassword} from '../password-auth.mjs';
+import {hashPassword} from '../server/services/password-auth.mjs';
 import {visibleInMisRequests,visibleInMisHistory} from '../src/mis-history.mjs';
 import {visibleInMaintenanceHistory} from '../src/maintenance-history.mjs';
 import {visibleInProductionHistory} from '../src/production-history.mjs';
-import {buildDepartmentReports,DEPARTMENT_REPORT_TITLES} from '../department-reports.mjs';
+import {buildDepartmentReports,DEPARTMENT_REPORT_TITLES} from '../shared/department-reports.mjs';
 
 // Opt-in real PostgreSQL + HTTP acceptance test. Never point this at production.
 // Start server.mjs with a fresh local DB and DISABLE_SCHEDULED_JOBS=true first.

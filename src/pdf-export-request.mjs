@@ -1,4 +1,4 @@
-import { LARGE_JSON_CONTENT_TYPE } from '../request-body-transport.mjs';
+import { LARGE_JSON_CONTENT_TYPE } from '../shared/request-body-transport.mjs';
 
 // Report cells contain arbitrary maintenance notes. Even small JSON exports can
 // trigger edge inspection false positives. Use the server's existing JSON text

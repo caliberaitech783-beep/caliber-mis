@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {applyHierarchyDeliveryRule,applyUserReportScheduleOverride,defaultHierarchyReportScheduleSettings,flowDesignationForUser,GENERAL_REPORT_TITLES,normalizeHierarchyReportScheduleSettings,normalizeUserReportSchedule,reportsAssignedToDesignation,reportsDueForDesignation,reportsForHierarchyEvent,userReportScheduleValidationError} from '../hierarchy-report-flow.mjs';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {hierarchyAccessAllowsReport} from '../hierarchy-report-catalogue.mjs';
-import {hierarchyRecipientReportScope} from '../hierarchy-report-scope.mjs';
-import {displaySiteName} from '../region-scope.mjs';
-import {reportSites,siteSourceData} from '../site-consolidated-report.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {siteReportMessageContext,recipientReportMessage} from '../whatsapp-message-format.mjs';
+import {applyHierarchyDeliveryRule,applyUserReportScheduleOverride,defaultHierarchyReportScheduleSettings,flowDesignationForUser,GENERAL_REPORT_TITLES,normalizeHierarchyReportScheduleSettings,normalizeUserReportSchedule,reportsAssignedToDesignation,reportsDueForDesignation,reportsForHierarchyEvent,userReportScheduleValidationError} from '../shared/hierarchy-report-flow.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {hierarchyAccessAllowsReport} from '../shared/hierarchy-report-catalogue.mjs';
+import {hierarchyRecipientReportScope} from '../server/rules/hierarchy-report-scope.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {reportSites,siteSourceData} from '../server/rules/site-consolidated-report.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {siteReportMessageContext,recipientReportMessage} from '../server/rules/whatsapp-message-format.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

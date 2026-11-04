@@ -4,12 +4,12 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {aliasForSelection} from '../equipment-alias-rules.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {searchSiteDoors,doorLabel} from '../src/door-search.mjs';
 import {nextMismatchPair,mismatchPairCount} from '../src/scan-alias-mismatch.mjs';
-import {matchesSmartSearch} from '../smart-search.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 
 test('equipment search filters normalized details, clears, preserves the chosen pair and closes',async()=>{
  const h=hooks();let closed=0;

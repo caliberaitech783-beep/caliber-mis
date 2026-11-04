@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildSiteFleetReportTables,buildSiteReportMessage,fleetActivityTable,requestsInReportWindow,reportSites,siteSourceData,timestampInReportWindow} from '../site-consolidated-report.mjs';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {TICKET_ACCEPTANCE_REPORT_TITLE} from '../department-reports.mjs';
+import {buildSiteFleetReportTables,buildSiteReportMessage,fleetActivityTable,requestsInReportWindow,reportSites,siteSourceData,timestampInReportWindow} from '../server/rules/site-consolidated-report.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {TICKET_ACCEPTANCE_REPORT_TITLE} from '../shared/department-reports.mjs';
 
 const window={start:new Date('2026-09-14T19:00:00+05:30'),end:new Date('2026-09-15T07:00:00+05:30')};
 const request=(ref,fields={})=>({ref,site:'Sasti OC',door:'D-1',equipment:'Tipper',status:'Open',start:'2026-09-14 20:00:00',...fields});

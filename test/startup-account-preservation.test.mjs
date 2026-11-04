@@ -1,16 +1,16 @@
-import {CDIR_DELETION_SCHEMA} from '../cdir-deletion.mjs';
+import {CDIR_DELETION_SCHEMA} from '../server/routes/cdir-deletion.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
-import {normalizeOperationalSiteFields,normalizeUserSiteFields} from '../region-scope.mjs';
-import {normalizeUserAccessLabels} from '../mobile-access.mjs';
-import {repairLegacySessionDefaults} from '../auth-session-schema.mjs';
-import {initializeLoginHistory} from '../user-login-history.mjs';
-import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from '../shift-master.mjs';
-import {archiveSchemaSql} from '../request-archive.mjs';
-import {applySchemaMigration} from '../schema-migration.mjs';
-import {EMPLOYEE_TRANSFER_SCHEMA} from '../employee-transfer.mjs';
+import {normalizeOperationalSiteFields,normalizeUserSiteFields} from '../shared/region-scope.mjs';
+import {normalizeUserAccessLabels} from '../shared/mobile-access.mjs';
+import {repairLegacySessionDefaults} from '../server/rules/auth-session-schema.mjs';
+import {initializeLoginHistory} from '../server/routes/user-login-history.mjs';
+import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from '../shared/shift-master.mjs';
+import {archiveSchemaSql} from '../server/services/request-archive.mjs';
+import {applySchemaMigration} from '../server/services/schema-migration.mjs';
+import {EMPLOYEE_TRANSFER_SCHEMA} from '../server/routes/employee-transfer.mjs';
 
 const source=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const migration=source.slice(source.indexOf('async function migrate(){'),source.indexOf('// Large JSON payloads arrive'));

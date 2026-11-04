@@ -1,6 +1,6 @@
-import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {registerLocalDocumentScanning} from '../local-document-scanning.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {registerLocalDocumentScanning} from '../server/routes/local-document-scanning.mjs';
 import React from 'react';import {transformWithOxc} from 'vite';import {readFileSync} from 'node:fs';
-import {parseScanContext} from '../scan-batch-context.mjs';
+import {parseScanContext} from '../shared/scan-batch-context.mjs';
 const expectedContext={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('scanner start routes reject missing selections before accessing scanner, folder, database or uploads',async t=>{
  const app=express();app.use(express.json());let queries=0;const auth=(req,res,next)=>{req.session={login:'test'};next()};

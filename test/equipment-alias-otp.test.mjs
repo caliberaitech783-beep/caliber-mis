@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {createEquipmentAlias,issueAliasOtp,verifyAliasOtp,loadEquipmentAliases,withEquipmentAliases,reconcileEquipmentAliases,scanBatchMismatches,aliasOtpMessage,aliasWeeklySummary,demoteUnapprovedAliases,registerEquipmentAliases,readAliasApprover,writeAliasApprover,aliasOtpEnabled} from '../equipment-aliases.mjs';
-import {matchCardMachine} from '../scan-machine-rules.mjs';
+import {createEquipmentAlias,issueAliasOtp,verifyAliasOtp,loadEquipmentAliases,withEquipmentAliases,reconcileEquipmentAliases,scanBatchMismatches,aliasOtpMessage,aliasWeeklySummary,demoteUnapprovedAliases,registerEquipmentAliases,readAliasApprover,writeAliasApprover,aliasOtpEnabled} from '../shared/equipment-aliases.mjs';
+import {matchCardMachine} from '../shared/scan-machine-rules.mjs';
 
 const site='Dudhichua East OB';
 async function database(){
@@ -124,7 +124,7 @@ test('the mismatch box lists Pulse records no card names beside written machines
 
 test('the weekly summary counts approvals by route and site and PM self-approvals',async t=>{
  const {db,pool}=await database();t.after(()=>db.close());
- await pool.query((await import('../equipment-aliases.mjs')).EQUIPMENT_ALIAS_SCHEMA);
+ await pool.query((await import('../shared/equipment-aliases.mjs')).EQUIPMENT_ALIAS_SCHEMA);
  await db.query("INSERT INTO mis_equipment_aliases(id,equipment_id,kind,written_key,written_text,status,site,requested_by,approval_route,approved_by,approved_at) VALUES(gen_random_uuid(),1,'equipment','LPC21','L21','active',$1,'mohit','nitish','nitish',NOW()-interval '2 days'),(gen_random_uuid(),2,'equipment','D7','D7','active',$1,'pm1','site_pm','pm1',NOW()-interval '1 day'),(gen_random_uuid(),3,'vehicle','V734','V 734','active','Jayant OC','mohit','site_pm','pm2',NOW()-interval '3 days') ON CONFLICT DO NOTHING",[site]);
  const summary=await aliasWeeklySummary(pool,{since:new Date(Date.now()-7*86400000).toISOString(),until:new Date().toISOString()});
  assert.equal(summary.total,3);assert.deepEqual(summary.byRoute,{nitish:1,site_pm:2});assert.equal(summary.selfApproved,1);

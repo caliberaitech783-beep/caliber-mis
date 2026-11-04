@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildDirectorReportTables,buildXlsxWorkbookBuffer} from '../director-report-bundle.mjs';
-import {buildTableExportPdf} from '../table-export-pdf.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildDirectorReportTables,buildXlsxWorkbookBuffer} from '../shared/director-report-bundle.mjs';
+import {buildTableExportPdf} from '../server/services/table-export-pdf.mjs';
 
 const now=new Date('2026-09-08T18:00:00+05:30');
 const base={equipment:'TEST-DOOR',door:'TEST-DOOR',chassis:'TEST-CHASSIS',site:'Sasti OB',start:'2026-09-01 08:00',category:'Breakdown',equipmentGroup:'EXCAVATOR',owner:'Stupal',requesterLogin:'stupal',complaint:'Synthetic workflow audit only'};

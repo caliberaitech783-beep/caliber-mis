@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {displaySiteName} from '../region-scope.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
 import {otpCountdown,otpSentText} from './vlb-batch-holds.jsx';
 
 // PM approval by OTP for batch controls (reopen a closed batch, unlock VLB). The MIS user asks

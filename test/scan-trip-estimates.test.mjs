@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {estimateMissingTripTimes,previousScanShift,completePreviousShiftMachines,fillScanTripEstimates,tripEstimateNote} from '../scan-trip-estimates.mjs';
+import {estimateMissingTripTimes,previousScanShift,completePreviousShiftMachines,fillScanTripEstimates,tripEstimateNote} from '../shared/scan-trip-estimates.mjs';
 const draft={bookDate:'2026-12-29',cardShift:'II',assetId:'645',location:'Sasti OC',timeMode:'with',trips:[{equipmentName:'',loadingTime:'',unloadingTime:'08:22'}]};
 const source=(name='VPC28',id=1)=>({id,book_no:'PREV/'+id,data:{bookDate:'2026-12-29',cardShift:'I',trips:[{equipmentName:name,loadingTime:'07:20',unloadingTime:'07:40'}]}});
 test('08:22 unloading fills 08:00 loading and visibly identifies the estimate',()=>{

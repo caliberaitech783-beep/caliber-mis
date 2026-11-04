@@ -2,7 +2,7 @@ import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {recoverMissingEquipmentNumbers} from '../scan-machine-number-recovery.mjs';
+import {recoverMissingEquipmentNumbers} from '../server/services/scan-machine-number-recovery.mjs';
 
 test('only untouched prefix-only trip extractions are requeued once, retaining header corrections',async t=>{
  const db=new PGlite();t.after(()=>db.close());

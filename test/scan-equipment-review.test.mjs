@@ -1,6 +1,6 @@
 import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('equipment review blocks posting, preserves scans, reuses the existing transfer path and rejects only the selected whole card',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);

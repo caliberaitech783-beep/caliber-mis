@@ -6,9 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "../src/duration-sort.mjs";
 import { tableModel, selectTableRows, tableExportModel } from "../src/table-actions-model.mjs";
-import { calculateBreakdownMinutes, durationLabelMinutes } from "../breakdown-duration.mjs";
+import { calculateBreakdownMinutes, durationLabelMinutes } from "../src/lib/breakdown-duration.mjs";
 import { formatSessionDuration } from "../src/login-session-duration.mjs";
-import { buildDepartmentReports } from "../department-reports.mjs";
+import { buildDepartmentReports } from "../shared/department-reports.mjs";
 import * as dateRanges from "../src/date-range-filter.mjs";
 import * as multiFilters from "../src/multi-value-filter.mjs";
 

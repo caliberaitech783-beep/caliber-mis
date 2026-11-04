@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { requestsWithDoorNumbers } from "../equipment-door.mjs";
+import { requestsWithDoorNumbers } from "../shared/equipment-door.mjs";
 import {
   latestCompletedVehicleRepair,
   vehicleBreakdownHistoryRows,

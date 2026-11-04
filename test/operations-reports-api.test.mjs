@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerLogBooks,LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {encodeScanJson} from '../scan-text-storage.mjs';
+import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {encodeScanJson} from '../server/rules/scan-text-storage.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('read-only operations endpoint enforces access, validates dates, returns beyond 100 rows and decodes scans',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA);await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB); CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,kind TEXT); CREATE TABLE mis_scan_cards(id TEXT,batch_id TEXT,filename TEXT,status TEXT,draft JSONB,error TEXT,logbook_id BIGINT,created_at TIMESTAMPTZ,ordinal INTEGER)');

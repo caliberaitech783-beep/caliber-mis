@@ -1,10 +1,10 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, RotateCcw } from "lucide-react";
 import { changeDrilldownFilter, drilldownView, equipmentCategoryLabel, equipmentGroupLabel, equipmentMachineLabel } from "./dashboard-drilldown-model.mjs";
-import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../breakdown-duration.mjs";
+import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "./lib/breakdown-duration.mjs";
 import { requestStatusSortRank } from "./request-status.mjs";
 import { filterRecordsByDate } from "./record-date-range.mjs";
-import { matchesSmartSearch } from "../smart-search.mjs";
+import { matchesSmartSearch } from "../shared/smart-search.mjs";
 import { dailyUpdatesExportText } from "./daily-updates-order.mjs";
 import BreakdownReasonHistory from "./breakdown-reason-history.jsx";
 

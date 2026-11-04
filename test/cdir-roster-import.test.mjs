@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {brotliCompressSync} from 'node:zlib';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
-import {CDIR_MASTERS as M,CDIR_MASTER_NAMES} from '../cdir-masters.mjs';
-import {decodeCdirRoster,replaceCdirRoster} from '../cdir-roster-import.mjs';
+import {CDIR_MASTERS as M,CDIR_MASTER_NAMES} from '../shared/cdir-masters.mjs';
+import {decodeCdirRoster,replaceCdirRoster} from '../server/services/cdir-roster-import.mjs';
 
 const payload=()=>({version:1,expectedRows:3,masters:{
   [M.region]:[{code:'CORP',name:'Corporate'}],

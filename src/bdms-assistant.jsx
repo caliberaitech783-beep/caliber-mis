@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState,useId} from 'react';
 import {createPortal} from 'react-dom';
 import {MessageCircle,X,Volume2,Send} from 'lucide-react';
-import {bdmsChatCanRead,BDMS_WELCOME} from '../telegram-bdms-chatbot.mjs';
+import {bdmsChatCanRead,BDMS_WELCOME} from '../shared/telegram-bdms-chatbot.mjs';
 import './bdms-assistant.css';
 
 export default function BdmsAssistant({session,token}){

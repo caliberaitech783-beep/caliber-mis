@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tripEquipmentRequired,machineSummary} from '../trip-card-rules.mjs';
-import {validateTripEquipment} from '../trip-equipment-validation.mjs';
-import {scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
+import {tripEquipmentRequired,machineSummary} from '../shared/trip-card-rules.mjs';
+import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
-import {activeResponseRecoveryIssues,responseReviewNeeded} from '../scan-response-recovery.mjs';
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
-import {scanFleetIssues,scanFleetSignature} from '../scan-fleet-assignment.mjs';
-import {canAutoSaveScanCard} from '../scan-auto-save.mjs';
-import {cardReviewGroup,reviewGroupSummary} from '../scan-card-groups.mjs';
-import {nextTripEntry} from '../trip-entry.mjs';
+import {activeResponseRecoveryIssues,responseReviewNeeded} from '../shared/scan-response-recovery.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
+import {scanFleetIssues,scanFleetSignature} from '../shared/scan-fleet-assignment.mjs';
+import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
+import {cardReviewGroup,reviewGroupSummary} from '../shared/scan-card-groups.mjs';
+import {nextTripEntry} from '../shared/trip-entry.mjs';
 
 const unload={rowNumber:1,equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1};
 const load={rowNumber:2,equipmentName:'V12',loadingTime:'08:30',unloadingTime:'',tripCount:1};

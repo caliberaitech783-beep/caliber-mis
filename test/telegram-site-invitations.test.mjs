@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {telegramInvitationBatch,telegramInvitationSummary} from '../telegram-site-invitations.mjs';
-import {telegramSiteName,telegramUserHasSite} from '../telegram-site-groups.mjs';
+import {telegramInvitationBatch,telegramInvitationSummary} from '../server/rules/telegram-site-invitations.mjs';
+import {telegramSiteName,telegramUserHasSite} from '../server/rules/telegram-site-groups.mjs';
 
 function harness(ids){
   const records=new Map(),sent=[];

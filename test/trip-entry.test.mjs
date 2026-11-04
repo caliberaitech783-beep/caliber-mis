@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
 const complete={equipmentName:'V19',loadingTime:'08:20',unloadingTime:'08:40',tripCount:1};
 test('Enter after a completed last trip adds exactly one blank row without changing previous rows',()=>{
  const rows=[complete],next=nextTripEntry(rows,0);assert.equal(next.trips.length,2);assert.equal(next.nextIndex,1);assert.equal(rows.length,1);assert.equal(next.trips[0],complete);assert.deepEqual(next.trips[1],blankTrip());

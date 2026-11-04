@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {recordsForSite} from '../site-location.mjs';
-import {isProductionFirstTripPending} from '../info-pulse-data.mjs';
-import {requestWithEquipmentMasterDetails} from '../request-equipment.mjs';
+import {recordsForSite} from '../shared/site-location.mjs';
+import {isProductionFirstTripPending} from '../shared/info-pulse-data.mjs';
+import {requestWithEquipmentMasterDetails} from '../shared/request-equipment.mjs';
 
 const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const normal=source.slice(source.indexOf('function Normal('),source.indexOf('function App('));

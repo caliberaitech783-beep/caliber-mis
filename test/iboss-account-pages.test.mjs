@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {accountPageQuery,accountPageResult,accountPageNumber,ACCOUNT_PAGE_SIZE} from '../iboss-account-pages.mjs';
-import {ACCOUNT_VIEWS} from '../iboss-accounts.mjs';
+import {accountPageQuery,accountPageResult,accountPageNumber,ACCOUNT_PAGE_SIZE} from '../server/rules/iboss-account-pages.mjs';
+import {ACCOUNT_VIEWS} from '../shared/iboss-accounts.mjs';
 import {createAccountPageLoader} from '../src/iboss-account-loader.mjs';
 test('every Accounts master, transaction and report uses bounded bound-variable pagination',()=>{
  for(const key of Object.keys(ACCOUNT_VIEWS)){

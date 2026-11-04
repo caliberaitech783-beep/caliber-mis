@@ -1,4 +1,4 @@
-import {effectiveInfoPulseEtcTimestamp, parseIstTimestamp} from '../ai-feeder.mjs';
+import {effectiveInfoPulseEtcTimestamp, parseIstTimestamp} from '../shared/ai-feeder.mjs';
 
 const SECOND_MS = 1000;
 // The countdown turns amber once the ETC is inside the last hour.

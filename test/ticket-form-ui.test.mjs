@@ -1,4 +1,4 @@
-import {userSiteSelection} from '../region-scope.mjs';
+import {userSiteSelection} from '../shared/region-scope.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

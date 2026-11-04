@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const generatedVersionModule = path.join("src", "app-version.js");
-const versionedSourcePaths = ["build-site.mjs", "index.html", "package.json", "package-lock.json", "public", "src"];
+const versionedSourcePaths = ["build-site.mjs", "index.html", "package.json", "package-lock.json", "public", "src", "shared"];
 
 function normalizedBuildIdentity(value) {
   const identity = String(value || "").trim();

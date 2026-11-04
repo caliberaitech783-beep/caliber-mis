@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { submitMaintenanceRequest } from "../request-submit.mjs";
+import { submitMaintenanceRequest } from "../src/lib/request-submit.mjs";
 
 test("request submission waits for the persistence handler", async () => {
   let completed = false;

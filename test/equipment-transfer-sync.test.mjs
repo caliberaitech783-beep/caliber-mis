@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {applyLatestTransfer,isAllowedOracleEquipment,latestTransferByEquipment,oracleEquipmentMasterRecord,transferMasterRecord} from "../equipment-transfer-sync.mjs";
+import {applyLatestTransfer,isAllowedOracleEquipment,latestTransferByEquipment,oracleEquipmentMasterRecord,transferMasterRecord} from "../server/rules/equipment-transfer-sync.mjs";
 
 test("maps Oracle equipment transfers to the Vehicle transfers master", () => {
   assert.deepEqual(transferMasterRecord({

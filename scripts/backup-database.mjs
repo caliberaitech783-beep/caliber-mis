@@ -8,7 +8,7 @@
 import {existsSync,mkdirSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {backupFileName,createClient,exportDatabase,parseCliArgs,redactDatabaseUrl,resolveDatabaseUrl} from '../database-backup.mjs';
+import {backupFileName,createClient,exportDatabase,parseCliArgs,redactDatabaseUrl,resolveDatabaseUrl} from '../server/services/database-backup.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const {options}=parseCliArgs(process.argv.slice(2));

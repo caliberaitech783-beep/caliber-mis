@@ -1,17 +1,17 @@
-import {maintenanceMetersRequired,requireMaintenanceMeters} from '../maintenance-meter-required.mjs';
-import * as siteAccess from '../region-scope.mjs';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {maintenanceMetersRequired,requireMaintenanceMeters} from '../shared/maintenance-meter-required.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import React from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {transformWithOxc} from "vite";
-import * as equipment from "../request-equipment.mjs";
-import * as workflow from "../request-workflow.mjs";
-import {approvedDelayedReason} from '../delayed-reason.mjs';
+import * as equipment from "../shared/request-equipment.mjs";
+import * as workflow from "../shared/request-workflow.mjs";
+import {approvedDelayedReason} from '../shared/delayed-reason.mjs';
 import DateInput from '../src/date-input.mjs';
-import {isProductionFirstTripRequired,PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL} from '../info-pulse-data.mjs';
+import {isProductionFirstTripRequired,PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL} from '../shared/info-pulse-data.mjs';
 
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");

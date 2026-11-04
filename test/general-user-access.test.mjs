@@ -1,15 +1,15 @@
-import * as siteAccess from '../region-scope.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import {createFeedCache} from '../request-feed-cache.mjs';
+import {createFeedCache} from '../server/rules/request-feed-cache.mjs';
 import {
   GENERAL_USER_ROLE, GENERAL_USER_MENU_OPTIONS, MOBILE_USER_ROLES,
   generalUserCanAccessMenu, generalUserMenuSelection, normalizeMobileUserRole, resolveMobileAccess,
-} from "../mobile-access.mjs";
-import {ADMIN_SUBMENU_OPTIONS} from "../admin-access.mjs";
-import {canReadDashboardEquipment,dashboardEquipmentScope,scopeDashboardEquipmentRecords} from "../dashboard-equipment-access.mjs";
+} from "../shared/mobile-access.mjs";
+import {ADMIN_SUBMENU_OPTIONS} from "../shared/admin-access.mjs";
+import {canReadDashboardEquipment,dashboardEquipmentScope,scopeDashboardEquipmentRecords} from "../server/rules/dashboard-equipment-access.mjs";
 
 const user = {userType:"Mobile User",userGroup:GENERAL_USER_ROLE,site:"Sasti OB"};
 const sessionFor = (overrides={}) => {

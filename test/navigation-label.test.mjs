@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import {MOBILE_NAVIGATION_ITEMS, navigationLabel} from "../navigation-visibility.mjs";
-import {ADMIN_SUBMENU_OPTIONS} from "../admin-access.mjs";
+import {MOBILE_NAVIGATION_ITEMS, navigationLabel} from "../shared/navigation-visibility.mjs";
+import {ADMIN_SUBMENU_OPTIONS} from "../shared/admin-access.mjs";
 
 test("the daily site-wise menu is displayed in plural", () => {
   assert.equal(navigationLabel("Daily site-wise report"), "Daily site-wise reports");
@@ -17,7 +17,7 @@ test("renaming the display label leaves the stored access key untouched", () => 
 
 test("navigation, breadcrumb, page title and access checkboxes render the label", () => {
   const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  assert.match(source, /import \{navigationLabel\} from "\.\.\/navigation-visibility\.mjs";/);
+  assert.match(source, /import \{navigationLabel\} from "\.\.\/shared\/navigation-visibility\.mjs";/);
   assert.match(source, /Operations <ChevronRight \/> <b>\{navigationLabel\(active\)\}<\/b>/);
   // WhatsApp menu icons carry the navigation label as their name and tooltip.
   assert.match(source, /labelFor=\{navigationLabel\}/);

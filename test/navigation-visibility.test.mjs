@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import {MOBILE_NAVIGATION_ITEMS, normalizeMobileNavigationVisibility} from "../navigation-visibility.mjs";
+import {MOBILE_NAVIGATION_ITEMS, normalizeMobileNavigationVisibility} from "../shared/navigation-visibility.mjs";
 
 test("all header menus and submenus default to visible on responsive mobile", () => {
   const settings = normalizeMobileNavigationVisibility();
@@ -18,7 +18,7 @@ test("only explicit mobile menu opt-outs are hidden", () => {
 
 test("user records independently control desktop and responsive mobile navigation", () => {
   const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  const access = fs.readFileSync(new URL("../admin-access.mjs", import.meta.url), "utf8");
+  const access = fs.readFileSync(new URL("../shared/admin-access.mjs", import.meta.url), "utf8");
   assert.match(source, /Selected menus for each view/);
   assert.match(source, /view="desktop"/);
   assert.match(source, /view="mobile"/);

@@ -1,4 +1,4 @@
-import {validTripTime} from '../vlb-trip-handover.mjs';
+import {validTripTime} from '../shared/vlb-trip-handover.mjs';
 import {scanTimeInput} from './scan-time-input.mjs';
 
 export function handoverTimeNote(row={},key){

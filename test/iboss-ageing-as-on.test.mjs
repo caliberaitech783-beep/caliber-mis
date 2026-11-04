@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {ageingAsOnRange} from '../src/iboss-ageing-as-on.mjs';
-import {dashboardMetric} from '../iboss-dashboard.mjs';import {tradeAgeBand} from '../trade-age-bands.mjs';
+import {dashboardMetric} from '../server/rules/iboss-dashboard.mjs';import {tradeAgeBand} from '../shared/trade-age-bands.mjs';
 const base={from:'2026-04-01',to:'2026-09-30',company:'1'};
 test('custom As on date preserves company and gives both query paths the selected cutoff',()=>{
  for(const metric of ['trade-payable','trade-receivable']){

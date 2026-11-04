@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
-import {misPageAllowed,misRequestAllowed} from '../mis-application-access.mjs';
-import {canViewUserSessions} from '../user-session-access.mjs';
-import {userSiteScope} from '../region-scope.mjs';
-import {siteAllowed} from '../log-book-access.mjs';
+import {isMisAdministrator,MIS_ADMIN_PAGES} from '../shared/mis-admin-access.mjs';
+import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
+import {canViewUserSessions} from '../shared/user-session-access.mjs';
+import {userSiteScope} from '../shared/region-scope.mjs';
+import {siteAllowed} from '../shared/log-book-access.mjs';
 const user={role:'super',login:'site-user',permissions:{separateMisCredentials:true,adminLevel:'Admin',misDesktopAccess:['Vehicle Log Book']}};
 const admin={...user,login:'admin',permissions:{...user.permissions,misDesktopAccess:['Users & employees']}};
 test('generic MIS Admin labels do not grant administrative authority',()=>{

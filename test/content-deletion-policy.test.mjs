@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import {contentDeletionBlocked,enforceContentDeletionPolicy} from '../content-deletion-policy.mjs';
+import {contentDeletionBlocked,enforceContentDeletionPolicy} from '../server/rules/content-deletion-policy.mjs';
 test('legacy content deletions, purges, destructive restores and alternate C-Dir approvals fail closed',()=>{
  for(const [method,url]of [['DELETE','/api/saved-reports/1'],['DELETE','/api/masters/Equipment/1'],['DELETE','/api/backups/1'],['POST','/api/requests/bulk-delete'],['POST','/api/data-housekeeping/purge'],['POST','/api/log-retention/run'],['PUT','/api/log-retention'],['POST','/api/backups/import/restore'],['PATCH','/API/CDIR/deletion-requests/1/APPROVE/']])assert.equal(contentDeletionBlocked(method,url),true,method+' '+url);
  for(const [method,url]of [['GET','/api/scan-backups'],['POST','/api/scan-backups'],['POST','/api/log-book-deletions'],['POST','/api/log-book-deletions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/otp'],['POST','/api/log-book-deletions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/confirm'],['PATCH','/api/cdir/deletion-requests/1/reject']])assert.equal(contentDeletionBlocked(method,url),false,method+' '+url);

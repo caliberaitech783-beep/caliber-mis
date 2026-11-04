@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../scan-site-match.mjs';
-import {extractCard} from '../scan-extraction.mjs';
-import {cardPrompt,MODEL} from '../gemini-card-reader.mjs';
+import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../shared/scan-site-match.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {cardPrompt,MODEL} from '../server/services/gemini-card-reader.mjs';
 const east='Dudhichua East OC',west='Dudhichua OC',sites=[east,west,'Jayant OC'];
 test('DCH direction aliases return the actual master label across spacing, case and punctuation',()=>{
  for(const reading of ['DCH (East)','dch EAST','D.C.H. (EAST)','D C H - East','Site: DCH(East)','DCH East O.C.'])assert.equal(matchScannedSite([reading],sites),east,reading);
