@@ -63,11 +63,15 @@ No workflow, dependency or deployment-setting change is required for this batch.
    Manual/Scan/Upload batch-handoff checks. Resolve new failures before release.
 6. Require the existing Linux CI checks on the PR. A passing local comparison
    does not replace CI, especially for Windows-specific test failures.
-7. Merge and verify on the test platform before a separately approved production
-   release, following [the release procedure](release-safety-plan-2026-11-02.md).
+7. Check the current workflows before merging: as of `d533796`, a code merge to
+   `main` automatically builds, tests and deploys production. Merge only with
+   deployment authorization and passing checks on an up-to-date branch. The
+   test-platform workflow is available manually for higher-risk migrations.
 8. Verify live health, login, batch selection, manual entry, scan/upload and
    saving after release. If the moved paths fail, roll back the complete
-   application release; this batch needs no database rollback.
+   application release through the approved release process; this batch needs
+   no database rollback. Do not assume historical tag-based rollout instructions
+   still match the active workflows.
 
 Continue with other backend-only leaf modules after this pilot is verified.
 Move shared modules only after checking both browser and server dependency
