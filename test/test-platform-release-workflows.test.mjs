@@ -126,6 +126,18 @@ test('the production release keeps its identity, app, verification steps and liv
   assert.match(productionWorkflow,/id-token: write/);
 });
 
+test('production uses focused tests only for an explicitly classified safe UI or report change',()=>{
+ const selector=step(productionWorkflow,'Select safe release test lane');
+ assert.match(selector,/git diff --name-only/);
+ assert.match(selector,/scripts\/release-test-plan\.mjs/);
+ const focused=step(productionWorkflow,'Run focused tests for approved UI/report changes');
+ assert.match(focused,/if: steps\.test-plan\.outputs\.lane == 'fast'/);
+ assert.match(focused,/node --test \$\{\{ steps\.test-plan\.outputs\.tests \}\}/);
+ const full=step(productionWorkflow,'Run full test suite for sensitive or unknown changes');
+ assert.match(full,/if: steps\.test-plan\.outputs\.lane != 'fast'/);
+ assert.match(full,/npm test/);
+});
+
 test('the Gemini configuration script targets production by default and the test app only when told',()=>{
   assert.match(geminiScript,/DEFAULT_WEBAPP_NAME = 'caliber-mis-783'/);
   assert.match(geminiScript,/DEFAULT_RESOURCE_GROUP = 'coalmine-fleet-maintenance-rg'/);
