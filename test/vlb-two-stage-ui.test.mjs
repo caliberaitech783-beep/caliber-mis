@@ -121,7 +121,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  // Legacy payload: no stage indicator, Save & lock batch everywhere, no two-stage components rendered.
  h.slots[3]=[{...base,created_by:'alice'}];h.slots[4]=base;h.slots[5]=base;
  let tree=render();let html=renderToStaticMarkup(tree);
- assert.doesNotMatch(html,/vlb-stage-steps/);assert.doesNotMatch(html,/Close batch/);assert.doesNotMatch(html,/Lock VLB/);assert.match(html,/OPEN · Jayant OC/);
+ assert.doesNotMatch(html,/vlb-stage-steps/);assert.doesNotMatch(html,/Close batch/);assert.doesNotMatch(html,/Lock VLB/);assert.doesNotMatch(html,/OPEN · Jayant OC/);
  assert.ok(button(tree,'Save &amp; lock batch'));assert.equal(nodes(tree,n=>[Stepper,Holds,Equipment].includes(n.type)).length,0);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>OPEN<\/td>/);
  // Two-stage VLB stage: Lock VLB with blockers, ELB disabled hint, list shows VLB open.
@@ -150,7 +150,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>ELB open<\/td>/);
  button(tree,'Process Equipment ELB').props.onClick();assert.equal(equipmentElb,elbStage);
- for(const label of ['Open ELB manual / scan','Create new equipment','Show unbatched entries','Manual','Scan','Upload'])assert.equal(button(tree,label),undefined,label+' is hidden during ELB');
+ for(const label of ['Open ELB manual / scan','Create new equipment','Manual','Scan','Upload'])assert.equal(button(tree,label),undefined,label+' is hidden during ELB');
  button(tree,'Hide Equipment ELB').props.onClick();tree=render();
  assert.equal(button(tree,'Process Equipment ELB'),undefined);
  assert.equal(nodes(tree,n=>n.props.id==='vlb-equipment-elb-details')[0].props.hidden,true);
@@ -186,7 +186,7 @@ test('batch report adds the machine-wise shift report with totals only when the 
  assert.match(html,/Totals · 2 machines<\/th><th>42<\/th>/);assert.match(html,/Fleet summary: 2 machines · 1 working · 1 down · 0 idle/);
 });
 
-test('View report exposes separate batch-bound Manual, Scan and Upload actions respecting VLB locks',async()=>{
+test('View report keeps the unbatched action beside stages and omits entry tabs',async()=>{
  const h=hooks(),calls=[];
  const batch={id:'selected-batch',name:'Jayant batch',site:'Jayant OC',report_date:'2026-11-03',shift:'S1',records:[],twoStage:true,stage:'vlb_open',closed_at:null};
  const browser={location:{href:'https://example.test/?page=vlb-create-batch'},history:{replaceState(_state,_unused,path){browser.location.href=new URL(path,browser.location.href).href}}};
@@ -198,18 +198,16 @@ test('View report exposes separate batch-bound Manual, Scan and Upload actions r
  let tree=render();assert.equal(nodes(tree,n=>n.props['aria-label']==='Batch entry options').length,0);
  await button(tree,'View report').props.onClick();tree=render();
  assert.deepEqual(calls,['/api/vlb-batches/selected-batch']);
- const actions=nodes(tree,n=>n.props['aria-label']==='Batch entry options')[0];
- assert.deepEqual(nodes(actions,n=>n.type==='button').map(n=>n.props.children),['Manual','Scan','Upload']);
- for(const label of ['Manual','Scan','Upload'])assert.equal(button(actions,label).props.disabled,false);
- button(actions,'Manual').props.onClick();button(actions,'Scan').props.onClick();
- assert.equal(new URL(browser.location.href).searchParams.get('scanEntry'),'scan');
- button(actions,'Upload').props.onClick();
- assert.equal(new URL(browser.location.href).searchParams.get('scanEntry'),'upload');
- assert.deepEqual(entered,[['manual',batch.id],['scan',batch.id],['scan',batch.id]]);
- for(const locked of [{...batch,stage:'elb_open'},{...batch,stage:'closed',closed_at:'2026-11-03T12:00:00Z'}]){
-  h.slots[5]=locked;tree=render();const group=nodes(tree,n=>n.props['aria-label']==='Batch entry options')[0];
-  if(locked.stage==='elb_open')assert.equal(group,undefined);else for(const label of ['Manual','Scan','Upload'])assert.equal(button(group,label).props.disabled,true);
+ for(const selected of [batch,{...batch,stage:'elb_open'},{...batch,stage:'closed',closed_at:'2026-11-03T12:00:00Z'}]){
+  h.slots[5]=selected;tree=render();
+  assert.equal(nodes(tree,n=>n.props['aria-label']==='Batch entry options').length,0);
+  for(const label of ['Manual','Scan','Upload'])assert.equal(button(tree,label),undefined);
+  const toolbar=nodes(tree,n=>n.props.className==='vlb-batch-stage-toolbar')[0];
+  assert.ok(toolbar);assert.ok(button(toolbar,'Show unbatched entries'));
+  assert.equal(React.Children.toArray(toolbar.props.children)[0].props.stage,selected.stage);
+  assert.doesNotMatch(renderToStaticMarkup(tree),/OPEN · Jayant OC · 2026-11-03 · S1/);
  }
+ assert.deepEqual(entered,[]);
 });
 
 test('saved ELB buttons stay disabled after saving and unsaved machines remain selectable',async()=>{
@@ -229,4 +227,5 @@ test('saved ELB buttons stay disabled after saving and unsaved machines remain s
  assert.ok(savedButtons.every(n=>n.props.disabled));
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr'&&n.props['aria-selected']===true)[0]),/G-08/,'save advances to the next unsaved machine');
 });
+
 
