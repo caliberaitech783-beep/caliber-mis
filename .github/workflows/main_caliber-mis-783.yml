@@ -1,21 +1,14 @@
-name: Release Pulse-II to production - caliber-mis-783
+name: Build and deploy main to production - caliber-mis-783
 
-# Production is released only from a release tag (release-YYYY-MM-DD-N) or a
-# manual run, and only after approval in the GitHub "production" environment
-# (required reviewer: the owner). Merges to main release the TEST platform
-# through main_caliber-mis-test.yml instead.
-# Procedure: docs/release-safety-plan-2026-11-02.md, section 6.
-# Environment and identity set-up: docs/test-platform-setup.md, section 1.
+# Small changes use the direct deployment path: validate the exact commit
+# pushed to main, deploy it once to production, and verify the live release.
 on:
   push:
-    tags:
-      - 'release-*'
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Why this release is started by hand instead of from a release tag (kept with the run)'
-        required: true
-        type: string
 
 # Finish an active release safely; GitHub replaces superseded pending runs.
 # The test platform uses its own group (caliber-mis-test-release), so a test
@@ -27,9 +20,6 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # The job waits here until the owner approves it in the production
-    # environment. GitHub also refuses refs outside the environment's
-    # deployment policy (release-* tags and main).
     environment:
       name: production
       url: https://pulse-ll.cmll.in
@@ -50,41 +40,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # If the environment lost its required-reviewer rule, this job started
-      # without anyone's approval. Stop before anything is built or deployed.
-      - name: Confirm the production environment still requires a reviewer
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          reviewers=$(gh api "repos/${GITHUB_REPOSITORY}/environments/production" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')
-          if [ "${reviewers:-0}" -lt 1 ]; then
-            echo "::error::The production environment has no required reviewer, so this run was not approved by anyone. Set the rule (docs/test-platform-setup.md, section 1) and start the release again."
-            exit 1
-          fi
-          echo "Production releases require approval by ${reviewers} reviewer rule(s)."
-
-      # A release tag may be annotated, so the commit is read from the checkout
-      # rather than from GITHUB_SHA. Only commits on main, which the test
-      # platform has already served, may go live.
-      - name: Resolve the release commit and confirm it is on main
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_REASON: ${{ inputs.reason }}
+      - name: Resolve the main commit
         run: |
           RELEASE_COMMIT="$(git rev-parse 'HEAD^{commit}')"
           if ! [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::The checked-out release commit could not be resolved."
             exit 1
           fi
-          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${RELEASE_COMMIT}" --jq .status)"
-          case "$status" in
-            identical|behind) ;;
-            *)
-              echo "::error::Commit ${RELEASE_COMMIT} is not on main (compare status: ${status:-unknown}). Only commits released to the test platform from main may go live."
-              exit 1;;
-          esac
           echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
-          echo "Releasing ${RELEASE_COMMIT} from ${GITHUB_REF_NAME} (${GITHUB_EVENT_NAME})${RELEASE_REASON:+: $RELEASE_REASON}"
+          echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
 
       - name: Set up Node.js and npm download cache
         uses: actions/setup-node@v4

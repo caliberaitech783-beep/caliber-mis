@@ -2,10 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-// The release path since the test platform (docs/test-platform-setup.md):
-// main -> test platform automatically; production only from a release tag or a
-// manual run, approved in the GitHub "production" environment. The yaml package
-// is not a dependency, so the workflow files are checked at source level.
+// Routine changes deploy main directly to production. The test platform remains
+// available by manual dispatch for large or risky changes. The yaml package is
+// not a dependency, so the workflow files are checked at source level.
 const read=relative=>readFileSync(new URL(relative,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const testWorkflow=read('../.github/workflows/main_caliber-mis-test.yml');
 const productionWorkflow=read('../.github/workflows/main_caliber-mis-783.yml');
@@ -32,11 +31,10 @@ const step=(text,name)=>{
 const deployStep=text=>{const match=/- name: '?Deploy to [^\n]*[\s\S]*?uses: azure\/webapps-deploy@v3[\s\S]*?(?=\n {6}- name:)/.exec(text);assert.ok(match,'deploy step exists');return match[0];};
 const verificationSteps=['npm run ocr:prepare','npm run build','npm test','node --check server.mjs','node scripts/verify-server-start.mjs','node scripts/verify-ui-release.mjs\n','node scripts/verify-ui-release.mjs --live',"await import('./local-card-ocr.mjs')","loadHandwritingModel","h.commit!==process.env.EXPECTED_COMMIT",'printf \'%s\\n\'','> DEPLOYMENT_SHA'];
 
-test('a merge to main releases the test platform, never production',()=>{
+test('the test platform is manual-only and never targets production',()=>{
   const triggers=topLevel(testWorkflow,'on');
-  assert.match(triggers,/push:\n\s+branches: \[main\]/);
-  assert.match(triggers,/paths-ignore:\n\s+- 'docs\/\*\*'\n\s+- '\*\.md'/,'documentation-only merges still skip the release');
   assert.match(triggers,/^\s+workflow_dispatch:/m);
+  assert.doesNotMatch(triggers,/push:/);
   assert.doesNotMatch(triggers,/tags:/);
 
   const deploy=deployStep(testWorkflow);
@@ -89,30 +87,24 @@ test('the test release keeps every verification step and checks the test address
   assert.match(uiReleaseScript,/verifyPublishedUiRelease\(\{base,expected:process\.env\.EXPECTED_COMMIT\}\)/);
 });
 
-test('production releases only from a release tag or a manual run, gated by the production environment',()=>{
+test('production deploys directly from main without a release tag or approval gate',()=>{
   const triggers=topLevel(productionWorkflow,'on');
-  assert.match(triggers,/push:\n\s+tags:\n\s+- 'release-\*'/);
+  assert.match(triggers,/push:\n\s+branches: \[main\]/);
+  assert.match(triggers,/paths-ignore:\n\s+- 'docs\/\*\*'\n\s+- '\*\.md'/,'documentation-only changes skip production deployment');
   assert.match(triggers,/^\s+workflow_dispatch:/m);
-  assert.match(triggers,/reason:[\s\S]*required: true/);
-  assert.doesNotMatch(triggers,/branches/,'a push to main no longer releases production');
-  assert.doesNotMatch(triggers,/paths-ignore/,'tags carry no path filter; the test workflow keeps the documentation filter');
+  assert.doesNotMatch(triggers,/tags:/);
+  assert.doesNotMatch(triggers,/reason:/);
 
   assert.match(productionWorkflow,/environment:\n\s+name: production\n\s+url: https:\/\/pulse-ll\.cmll\.in/);
   assert.match(topLevel(productionWorkflow,'concurrency'),/group: caliber-mis-783-release\n\s+cancel-in-progress: false/);
   assert.notEqual(/group: ([^\n]+)/.exec(topLevel(productionWorkflow,'concurrency'))[1],/group: ([^\n]+)/.exec(topLevel(testWorkflow,'concurrency'))[1]);
 
-  const reviewer=step(productionWorkflow,'Confirm the production environment still requires a reviewer');
-  assert.match(reviewer,/gh api "repos\/\$\{GITHUB_REPOSITORY\}\/environments\/production"/);
-  assert.match(reviewer,/select\(\.type == "required_reviewers"\)/);
-  assert.match(reviewer,/exit 1/);
-  const commit=step(productionWorkflow,'Resolve the release commit and confirm it is on main');
+  assert.doesNotMatch(productionWorkflow,/required_reviewers|Confirm the production environment still requires a reviewer/);
+  const commit=step(productionWorkflow,'Resolve the main commit');
   assert.match(commit,/git rev-parse 'HEAD\^\{commit\}'/);
-  assert.match(commit,/compare\/main\.\.\.\$\{RELEASE_COMMIT\}/);
-  assert.match(commit,/identical\|behind\) ;;/);
   assert.match(commit,/RELEASE_COMMIT=\$\{RELEASE_COMMIT\}" >> "\$GITHUB_ENV"/);
-  assert.match(commit,/RELEASE_REASON: \$\{\{ inputs\.reason \}\}/);
-  const stepOrder=['Confirm the production environment still requires a reviewer','Resolve the release commit and confirm it is on main','Set up Node.js and npm download cache','Deploy to Azure Web App'].map(name=>productionWorkflow.indexOf(name));
-  assert.deepEqual([...stepOrder].sort((a,b)=>a-b),stepOrder,'both gates run before anything is built or deployed');
+  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to Azure Web App'].map(name=>productionWorkflow.indexOf(name));
+  assert.deepEqual([...stepOrder].sort((a,b)=>a-b),stepOrder,'the pushed commit is resolved before it is built and deployed');
 });
 
 test('the production release keeps its identity, app, verification steps and live health check',()=>{

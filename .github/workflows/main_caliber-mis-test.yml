@@ -1,18 +1,11 @@
 name: Build, test and deploy to the Pulse-II test platform
 
-# Every merge to main is released to the TEST platform only. Production
-# (caliber-mis-783, pulse-ll.cmll.in) is released by main_caliber-mis-783.yml
-# from a release-* tag, after approval in the GitHub "production" environment.
+# The test platform is retained for optional manual validation of large or
+# risky changes. Routine pushes to main deploy directly to production through
+# main_caliber-mis-783.yml.
 # Provisioning the test platform: docs/test-platform-setup.md.
 # Release procedure: docs/release-safety-plan-2026-11-02.md, section 6.
 on:
-  push:
-    branches: [main]
-    # A release restarts the test app for about four minutes. Documentation
-    # changes do not need one; a merge that also touches code still releases.
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
   workflow_dispatch:
 
 # Separate from the production group (caliber-mis-783-release): a test release
