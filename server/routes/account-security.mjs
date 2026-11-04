@@ -43,13 +43,13 @@ export function registerAccountSecurity(app,{pool,requireSession,store,requireMf
   const {rows}=await pool.query(`SELECT a.login_name AS enrolled,v.session_token AS verified FROM auth_sessions s
    LEFT JOIN mis_mfa_accounts a ON a.login_name=lower(trim(s.login_name))
    LEFT JOIN mis_mfa_sessions v ON v.session_token=s.token WHERE s.token=$1`,[token]);
-  if(rows[0]&&(requireMfa||rows[0].enrolled)&&!rows[0].verified)return res.status(403).json({error:'Complete account verification to continue.',code:'MFA_REQUIRED'});
+  if(rows[0]&&requireMfa&&!rows[0].verified)return res.status(403).json({error:'Complete account verification to continue.',code:'MFA_REQUIRED'});
   next();
  }catch(error){next(error);}});
  app.get('/api/security/account',requireSession,wrap(async(req,res)=>{
   const row=await account(identity(req)),passed=await verified(tokenOf(req));
   if(enabled)req.establishBrowserSession(tokenOf(req));
-  res.json({enrolled:Boolean(row),required:enabled&&(requireMfa||Boolean(row)),verified:passed,profile:profile(req.session)});
+  res.json({enrolled:Boolean(row),required:enabled&&requireMfa,verified:passed,profile:profile(req.session)});
  }));
  app.post('/api/security/session/migrate',requireSession,wrap(async(req,res)=>{
   // A first-party custom header prevents login CSRF through HTML forms, even

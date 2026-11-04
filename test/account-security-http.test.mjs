@@ -32,3 +32,20 @@ test('real HTTP cookie, CSRF, MFA, recovery and session migration boundaries',as
  assert.equal((await call('/api/security/mfa/verify',{body:{code:'invalid'}})).response.status,429);
  const old=await login();jar=new Map();const migrated=await call('/api/security/session/migrate',{body:{},headers:{Authorization:'Bearer '+old,'X-MIS-Session-Migrate':'1'}});assert.equal(migrated.response.status,200);assert.equal(migrated.body.token,'browser-session');assert.equal((await pool.query('SELECT token FROM auth_sessions WHERE token=$1',[old])).rows.length,0);assert.equal((await call('/api/private')).body.code,'MFA_REQUIRED');
 });
+
+test('standard sign-in skips authenticator checks for new and enrolled users',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ await db.exec("CREATE TABLE auth_sessions(token UUID PRIMARY KEY,login_name TEXT);");
+ const token=randomUUID();await db.query("INSERT INTO auth_sessions VALUES($1,'user')",[token]);
+ const app=express();
+ const requireSession=(req,res,next)=>{req.session={login:'user'};req.establishBrowserSession=()=> 'browser-session';next();};
+ const security=registerAccountSecurity(app,{pool:db,requireSession,store:()=>({}),requireMfa:false});await security.initialize();
+ app.get('/api/private',requireSession,(_req,res)=>res.json({ok:true}));
+ const server=createServer(app);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+ const base='http://127.0.0.1:'+server.address().port,headers={Authorization:'Bearer '+token};
+ for(const enrolled of [false,true]){
+  if(enrolled)await db.query("INSERT INTO mis_mfa_accounts(login_name) VALUES('user')");
+  const status=await fetch(base+'/api/security/account',{headers});assert.equal(status.status,200);const body=await status.json();assert.equal(body.required,false);assert.equal(body.enrolled,enrolled);
+  const response=await fetch(base+'/api/private',{headers});assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});
+ }
+});
