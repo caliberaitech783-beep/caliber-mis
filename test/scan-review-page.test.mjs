@@ -109,7 +109,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
  app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
  app.testCapture.setCards([okay(1),okay(2),saved]);
- app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1},{id:'batch-2',name:'B2',cards:4,posted:1}]);
+ app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1,tripCount:11},{id:'batch-2',name:'B2',cards:4,posted:1,tripCount:13}]);
  let tree=app.render({vlbBatch:{id:'vlb-1'}});
  const tile=id=>nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+id)[0];
  const count=id=>nodes(tile(id),n=>n.type==='strong')[0].props.children.join('');
@@ -119,9 +119,10 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B2'),n=>n.type==='span')[0].props.children[0],'4 cards · 1 saved · 3 unsaved','other entries keep the server counts');
  const total=React.Children.toArray(nodes(tree,n=>n.props.className==='scan-entry-total')[0].props.children);
- assert.equal(total[0].props.children,'Total Count of Batches:');
- assert.equal(total.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
- assert.deepEqual(total[4].props.children,[7,' card','s']);
+ assert.equal(total[0].props.children[0].props.children,'Total Count of Batches:');
+ assert.equal(total[0].props.children.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
+ assert.deepEqual(total[0].props.children[4].props.children,[7,' card','s']);
+ assert.deepEqual(total[1].props.children,['Total Trips: ',24]);
  app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  app.testCapture.setFailureTick(n=>n+1);
  tree=app.render({vlbBatch:{id:'vlb-1'}});
