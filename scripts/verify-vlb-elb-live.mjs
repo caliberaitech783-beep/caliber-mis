@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
 
 // Tokens stay in process memory. Verification issues reads only and never
 // creates/closes batches, changes profiles, or writes production test cards.
@@ -8,16 +9,30 @@ if(process.argv.includes('--azure')){
  const expected=process.env.EXPECTED_COMMIT;
  assert.match(expected||'',/^[a-f0-9]{40}$/);
  const token=JSON.parse(execFileSync('az',['account','get-access-token','--resource','https://management.azure.com/','-o','json'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})).accessToken;
- const response=await fetch('https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net/api/command',{
-  method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(180000),
-  body:JSON.stringify({command:`EXPECTED_COMMIT=${expected} node scripts/verify-vlb-elb-live.mjs`,dir:'/home/site/wwwroot'})
+ const host='https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net';
+ const remote=async command=>{
+  const response=await fetch(host+'/api/command',{
+   method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},signal:AbortSignal.timeout(180000),
+   body:JSON.stringify({command:'/bin/bash -c "printf %s '+Buffer.from(command).toString('base64')+' | base64 -d | bash"',dir:'/home/site/wwwroot'})
+  });
+  assert.ok(response.ok,'Live verification command HTTP '+response.status);
+  return response.json();
+ };
+ // Kudu shares /home with the app, but not its container's /node_modules.
+ // Reuse the existing verification dependency cache and run a small private
+ // checker whose imports still point at the actual deployed application.
+ const payload=(await readFile(new URL(import.meta.url),'utf8')).replaceAll("'../","'file:///home/site/wwwroot/");
+ const upload=await fetch(host+'/api/vfs/data/vlb-elb-access-check.mjs',{
+  method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/octet-stream','If-Match':'*'},
+  body:payload,signal:AbortSignal.timeout(30000)
  });
- assert.ok(response.ok,'Live verification command must be accepted');
- const result=await response.json();
+ assert.ok(upload.ok,'Verification checker upload HTTP '+upload.status);
+ const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs`);
  console.log(result.Output||'');
+ if(result.ExitCode!==0)console.error(result.Error||'Live checker returned '+result.ExitCode);
  assert.equal(result.ExitCode,0,'Live VLB/ELB verification failed; no production records were changed');
 }else{
- const {default:pg}=await import('pg');
+ const pg=createRequire(import.meta.url)('pg');
  const {misDatabaseConfig}=await import('../server/rules/mis-database-config.mjs');
  const {logBookSiteScope,siteAllowed}=await import('../shared/log-book-access.mjs');
  const {isMisAdministrator}=await import('../shared/mis-admin-access.mjs');
