@@ -150,7 +150,14 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>ELB open<\/td>/);
  button(tree,'Process Equipment ELB').props.onClick();assert.equal(equipmentElb,elbStage);
- button(tree,'Open ELB manual / scan').props.onClick();assert.equal(elbEntry,elbStage);
+ for(const label of ['Open ELB manual / scan','Create new equipment','Show unbatched entries','Manual','Scan','Upload'])assert.equal(button(tree,label),undefined,label+' is hidden during ELB');
+ button(tree,'Hide Equipment ELB').props.onClick();tree=render();
+ assert.equal(button(tree,'Process Equipment ELB'),undefined);
+ assert.equal(nodes(tree,n=>n.props.id==='vlb-equipment-elb-details')[0].props.hidden,true);
+ assert.equal(button(tree,'Show Equipment ELB').props['aria-expanded'],false);
+ assert.ok(button(tree,'Unlock VLB'));assert.ok(button(tree,'Close &amp; lock ELB'));
+ button(tree,'Show Equipment ELB').props.onClick();tree=render();
+ assert.ok(button(tree,'Process Equipment ELB'));assert.equal(nodes(tree,n=>n.props.id==='vlb-equipment-elb-details')[0].props.hidden,false);
  assert.equal(nodes(tree,n=>n.type===Stepper).length,0,'the separate batch-page entry flow is removed');
  await button(tree,'Unlock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/unlock-vlb');assert.deepEqual(calls.at(-1).body,{reason:'Correct VLB card V07'});
  h.slots[5]={...elbStage,canClose:true,closeBlockers:[]};tree=render();await nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB'&&!n.props.disabled)[0].props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/close');
@@ -201,7 +208,7 @@ test('View report exposes separate batch-bound Manual, Scan and Upload actions r
  assert.deepEqual(entered,[['manual',batch.id],['scan',batch.id],['scan',batch.id]]);
  for(const locked of [{...batch,stage:'elb_open'},{...batch,stage:'closed',closed_at:'2026-11-03T12:00:00Z'}]){
   h.slots[5]=locked;tree=render();const group=nodes(tree,n=>n.props['aria-label']==='Batch entry options')[0];
-  for(const label of ['Manual','Scan','Upload'])assert.equal(button(group,label).props.disabled,true);
+  if(locked.stage==='elb_open')assert.equal(group,undefined);else for(const label of ['Manual','Scan','Upload'])assert.equal(button(group,label).props.disabled,true);
  }
 });
 
