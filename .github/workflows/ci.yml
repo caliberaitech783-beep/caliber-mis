@@ -1,0 +1,80 @@
+name: MIS validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: mis-validation-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      startup-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: release_check
+          POSTGRES_PASSWORD: release_check
+          POSTGRES_DB: caliber_mis
+        ports: ['54320:5432']
+        options: >-
+          --health-cmd "pg_isready -U release_check -d caliber_mis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        id: node
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
+      - run: npm test
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+      - run: npm run build
+      - run: node scripts/verify-server-start.mjs
+        env:
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+
+
+  logbook-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        id: node
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-layout-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install browser for log-book layout checks
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
+          npx playwright install --with-deps chromium
+      - name: Verify responsive VLB and ELB layouts
+        run: node scripts/verify-logbook-layout.mjs
+      - name: Verify report to Manual, Scan and Upload batch handoff
+        run: node scripts/verify-batch-entry-handoff.mjs
+      - name: Keep log-book layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logbook-layout-checks
+          path: layout-checks/
+          if-no-files-found: ignore

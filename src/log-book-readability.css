@@ -1,0 +1,251 @@
+/* Shared screen typography for VLB / ELB. Keep print/export sizing independent.
+   These scoped !important rules override the legacy workspace font-size reset. */
+@media screen {
+  .scan-draft-sheet { container: scan-review / inline-size; --logbook-label-size: 16px; }
+  .logbook-page { container: logbook-entry / inline-size; --logbook-label-size: 16px; width: 100%; min-width: 0; box-sizing: border-box; align-self: stretch; }
+  #scan-entry-fields, #logbook-entry-form { min-width: 0; }
+  #scan-entry-fields label, #logbook-entry-form .logbook-field {
+    container-type: inline-size;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  #scan-entry-fields label, #scan-entry-fields label > span,
+  #logbook-entry-form .logbook-field > span {
+    font-size: var(--logbook-label-size) !important;
+    line-height: 1.3;
+    font-weight: 800;
+    text-align: left;
+  }
+  #scan-entry-fields :is(input:not([type=checkbox]):not([type=radio]), select, textarea, output),
+  #logbook-entry-form .logbook-field :is(input:not([type=checkbox]):not([type=radio]), select, textarea, output) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 48px;
+    height: auto;
+    padding: 8px;
+    font-size: clamp(20px, calc(18px + 2cqi), 24px) !important;
+    font-weight: 600;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+  #scan-entry-fields :is(output, textarea), #logbook-entry-form :is(output, textarea) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  #scan-entry-fields small, #logbook-entry-form small {
+    font-size: 14px !important;
+    line-height: 1.4;
+    font-weight: 400;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  #scan-entry-fields :is(h3,h4), #logbook-entry-form :is(h2,h3,summary),
+  .saved-logbooks .logbook-section :is(h2,h3) {
+    font-size: 22px !important;
+    line-height: 1.3;
+    font-weight: 800;
+  }
+  #scan-entry-fields .scan-review-doc-meta,
+  #scan-entry-fields .scan-review-doc-meta span {
+    font-size: 22px !important;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  #scan-entry-fields .scan-review-doc-meta strong { font-size: 16px !important; }
+  .scan-page .scan-draft-sheet #scan-entry-fields {
+    display: grid;
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    align-content: start;
+    gap: 12px 10px;
+    padding: 2px;
+  }
+  #scan-entry-fields .scan-card-fields { display: contents; }
+  #scan-entry-fields > :is(section,.scan-trips,.scan-fields,.scan-actions,p,label),
+  #scan-entry-fields .scan-book-number, #scan-entry-fields .scan-review-doc-meta,
+  #scan-entry-fields .scan-review-remarks { grid-column: 1 / -1; }
+  #scan-entry-fields [data-field="assetId"], #scan-entry-fields [data-field="employeeId"],
+  #scan-entry-fields [data-field="workOrderId"],
+  #scan-entry-fields .scan-card-fields > label:has(.employee-id-lookup) { grid-column: span 2; }
+  #scan-entry-fields .scan-trips { display: block; padding: 8px 0; }
+  #scan-entry-fields .scan-trips > .scan-time-entry { max-width: 300px; margin: 10px 0; }
+  /* Named fields keep optional correction fields from shifting the time/gap columns. */
+  #scan-entry-fields .scan-trip-entry {
+    display: grid;
+    grid-template-columns: 82px minmax(190px,1fr) 170px 170px 72px 94px 44px;
+    grid-template-areas: "serial equipment loading unloading trips gap remove";
+    gap: 7px;
+    align-items: start;
+    margin: 12px 0;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--line,#ded3e8);
+  }
+  #scan-entry-fields .scan-trip-serial { grid-area: serial; }
+  #scan-entry-fields [data-trip-field="equipmentName"] { grid-area: equipment; }
+  #scan-entry-fields [data-trip-field="loadingTime"] { grid-area: loading; }
+  #scan-entry-fields [data-trip-field="unloadingTime"] { grid-area: unloading; }
+  #scan-entry-fields [data-trip-field="tripCount"] { grid-area: trips; }
+  #scan-entry-fields .scan-trip-gap { grid-area: gap; }
+  #scan-entry-fields .scan-trip-entry label > span { white-space: nowrap; font-size: 16px !important; }
+  #scan-entry-fields .scan-trip-entry :is(input,output) { font-size: 20px !important; height: 48px; }
+  #scan-entry-fields .scan-trip-entry input[type] { font-size: 20px !important; }
+  #scan-entry-fields .scan-trip-remove {
+    grid-area: remove;
+    align-self: start;
+    justify-self: end;
+    margin: 27px 0 0;
+    width: 44px;
+    min-height: 48px;
+    padding: 8px;
+  }
+  #scan-entry-fields .scan-trip-untimed {
+    grid-template-columns: 82px minmax(190px,1fr) 80px 44px;
+    grid-template-areas: "serial equipment trips remove";
+  }
+  #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
+    grid-template-columns: 82px minmax(190px,1fr) 170px 170px 72px 44px;
+    grid-template-areas: "serial equipment loading unloading trips remove";
+  }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 90px 44px;
+    gap: 10px;
+    align-items: end;
+  }
+  #scan-entry-fields .scan-machine-summary .scan-trip-remove { margin: 0; align-self: end; }
+  #scan-entry-fields .scan-machine-summary .scan-add-machine { margin: 8px 0 4px; }
+  #scan-entry-fields .scan-machine-summary .scan-fields {
+    display: grid;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    gap: 12px;
+  }
+  #scan-entry-fields .scan-machine-summary output { font-size: 24px !important; }
+  #scan-entry-fields .scan-confirm { display: flex; flex-direction: row; align-items: center; }
+  #scan-entry-fields .scan-confirm input { width: auto; flex: 0 0 auto; }
+  #scan-entry-fields .searchable-select-control input,
+  #logbook-entry-form .searchable-select-control input { padding-left: 8px !important; padding-right: 28px !important; }
+  #scan-entry-fields .searchable-select-control > svg:first-child,
+  #logbook-entry-form .searchable-select-control > svg:first-child { display: none; }
+  #scan-entry-fields .searchable-select-control > svg:last-child,
+  #logbook-entry-form .searchable-select-control > svg:last-child { width: 16px; right: 6px; }
+  #scan-entry-fields .searchable-select-menu :is(li,strong),
+  #logbook-entry-form .searchable-select-menu :is(li,strong) { font-size: 18px !important; line-height: 1.4; }
+  #scan-entry-fields .searchable-select-full-value,
+  #logbook-entry-form .searchable-select-full-value { font-size: 16px !important; overflow-wrap: anywhere; }
+  #logbook-entry-form .searchable-select { grid-template-columns: minmax(0,1fr); }
+  #logbook-entry-form .searchable-select > small { grid-column: 1 / -1; }
+  #scan-entry-fields .employee-id-lookup > div { flex-wrap: wrap; }
+  #scan-entry-fields .employee-id-lookup input { flex: 1 1 160px; }
+  #scan-entry-fields .employee-id-lookup button { min-height: 44px; font-size: 16px !important; }
+  /* Vertical labels recover the space previously reserved for a 100–150px label column. */
+  #logbook-entry-form .logbook-fields,
+  #logbook-entry-form .logbook-edit-fields > .logbook-section:first-child .logbook-fields {
+    display: grid;
+    grid-template-columns: repeat(4,minmax(0,1fr));
+    gap: 12px;
+  }
+  #logbook-entry-form .logbook-field:nth-child(3n) { grid-column: auto; }
+  #logbook-entry-form .logbook-field:has(.logbook-book-number),
+  #logbook-entry-form .logbook-field:has(textarea),
+  #logbook-entry-form .logbook-field:has([name="employeeId"]) { grid-column: span 2; }
+  #logbook-entry-form .logbook-sheet-spacer { display: none; }
+  #logbook-entry-form .logbook-section { padding: 12px; margin-bottom: 10px; }
+  #logbook-entry-form .logbook-section-title { margin-bottom: 10px; flex-wrap: wrap; }
+  #logbook-entry-form .logbook-field output { overflow-wrap: anywhere; }
+  #logbook-entry-form .logbook-field.logbook-meter-invalid > small { display: block; }
+  #logbook-entry-form .logbook-table-wrap { max-height: 360px; max-width: 100%; overflow: auto; }
+  #logbook-entry-form .logbook-table { width: 100%; table-layout: auto; }
+  #logbook-entry-form .logbook-table :is(th,td) { padding: 7px 6px; font-size: 16px !important; }
+  #logbook-entry-form .logbook-table th { font-weight: 800; white-space: nowrap; }
+  #logbook-entry-form .logbook-table :is(input,select,output) {
+    font-size: 18px !important; min-height: 44px; height: auto; padding: 7px; box-sizing: border-box;
+  }
+  #logbook-entry-form .logbook-table input[type=time] { min-width: 155px; }
+  #logbook-entry-form .logbook-table input[type=date] { min-width: 165px; }
+  #logbook-entry-form .logbook-table input[type=number] { min-width: 70px; }
+  #logbook-entry-form .logbook-vehicle-trips .logbook-table td:has([data-trip-equipment]) { min-width: 220px; }
+  #logbook-entry-form .logbook-trip-serial { width: 1%; white-space: nowrap; font-weight: 700; }
+  #logbook-entry-form .logbook-hours-summary { grid-column: 1 / -1; }
+  #logbook-entry-form .logbook-hours-summary output { font-size: 24px !important; }
+  #logbook-entry-form .logbook-save-bar button,
+  .scan-page .scan-selected-card .scan-draft-sheet .scan-entry-footer button { min-height: 44px; font-size: 16px !important; font-weight: 700; }
+  /* Saved records and report tables share labels; long values remain available in full. */
+  .app :is(.saved-logbooks,.saved-logbook-review,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) :is(th,dt,label),
+  .app :is(.saved-logbooks,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) label > span {
+    font-size: 16px !important; font-weight: 800; line-height: 1.35;
+  }
+  .app :is(.saved-logbooks,.saved-logbook-review,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) td {
+    font-size: 16px !important; line-height: 1.4; padding: 8px;
+  }
+  .app :is(.saved-logbooks,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) :is(input,select) {
+    font-size: 18px !important; min-height: 44px; height: auto;
+  }
+  .app .saved-logbook-review .saved-logbook-values dd { font-size: 22px !important; line-height: 1.35; }
+  .app .saved-logbook-review .saved-logbook-values dt { font-size: 16px !important; font-weight: 800; }
+  .app .saved-logbook-review .saved-logbook-values { gap: 12px; }
+  .app .scan-batch-report :is(th,td) { padding: 8px; }
+  .app .scan-batch-report .scan-report-issues { white-space: normal; }
+  @container scan-review (min-width:950px) {
+    #scan-entry-fields { --logbook-label-size: 18px; }
+  }
+  @container logbook-entry (min-width:950px) {
+    #logbook-entry-form { --logbook-label-size: 18px; }
+  }
+  @container scan-review (max-width:880px) {
+    .scan-page .scan-draft-sheet #scan-entry-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    #scan-entry-fields .scan-trip-entry,
+    #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
+      grid-template-columns: repeat(6,minmax(0,1fr));
+      grid-template-areas: "serial equipment equipment equipment equipment remove" "loading loading unloading unloading trips gap";
+    }
+    #scan-entry-fields .scan-trip-untimed { grid-template-columns: 82px minmax(0,1fr) 56px 44px; grid-template-areas: "serial equipment trips remove"; }
+    #scan-entry-fields .scan-machine-summary .scan-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  }
+  @container scan-review (max-width:640px) {
+    #scan-entry-fields .scan-trip-entry,
+    #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
+      grid-template-columns: repeat(2,minmax(0,1fr));
+      grid-template-areas: "serial remove" "equipment equipment" "loading unloading" "trips gap";
+    }
+    #scan-entry-fields .scan-trip-untimed { grid-template-areas: "serial remove" "equipment equipment" "trips trips"; }
+  }
+  @container scan-review (max-width:390px) {
+    .scan-page .scan-draft-sheet #scan-entry-fields { grid-template-columns: minmax(0,1fr); }
+    #scan-entry-fields [data-field], #scan-entry-fields .scan-card-fields > label { grid-column: 1 / -1; }
+    #scan-entry-fields .scan-machine-summary .scan-fields { grid-template-columns: minmax(0,1fr); }
+    #scan-entry-fields .scan-trip-entry,
+    #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) { grid-template-areas: "serial remove" "equipment equipment" "loading loading" "unloading unloading" "trips gap"; }
+    #scan-entry-fields .scan-trip-untimed { grid-template-areas: "serial remove" "equipment equipment" "trips trips"; }
+  }
+  @container logbook-entry (max-width:900px) {
+    #logbook-entry-form .logbook-fields,
+    #logbook-entry-form .logbook-edit-fields > .logbook-section:first-child .logbook-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  }
+  @container logbook-entry (max-width:480px) {
+    #logbook-entry-form .logbook-fields,
+    #logbook-entry-form .logbook-edit-fields > .logbook-section:first-child .logbook-fields { grid-template-columns: minmax(0,1fr); }
+    #logbook-entry-form .logbook-field { grid-column: 1 / -1 !important; }
+  }
+}
+
+/* A named important layer outranks the older unlayered workspace reset without
+   raising selector specificity across every report component. */
+@layer logbook-report-fonts {
+  @media screen {
+    .app :is(.saved-logbooks,.saved-logbook-review,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) :is(th,dt,label),
+    .app :is(.saved-logbooks,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) label > span {
+      font-size: 16px !important; font-weight: 800;
+    }
+    .app :is(.saved-logbooks,.saved-logbook-review,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) td { font-size: 16px !important; }
+    .app :is(.saved-logbooks,.vlb-create-batch,.operations-reports,.mp-reports,.scan-batch-report) :is(input,select):not(:where(#logbook-entry-form *,#scan-entry-fields *)) { font-size: 18px !important; }
+  }
+}
+.vlb-fleet-table{counter-reset:vlb-fleet-row}
+.vlb-fleet-table thead tr::before{content:"Sr. No."}
+.vlb-fleet-table tbody tr{counter-increment:vlb-fleet-row}
+.vlb-fleet-table tbody tr::before{content:counter(vlb-fleet-row)}
+.vlb-fleet-table tr::before{display:table-cell;padding:8px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line,#e4ddec)}

@@ -1,0 +1,23 @@
+{
+  "name": "Caliber Pulse-II",
+  "short_name": "Caliber Pulse-II",
+  "description": "All Departments Linked In One Place",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf5f8",
+  "theme_color": "#522e90",
+  "icons": [
+    {
+      "src": "/pulse-ii-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pulse-ii-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

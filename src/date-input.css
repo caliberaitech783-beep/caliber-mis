@@ -1,0 +1,52 @@
+/* Hide the locale-ordered native text and paint data-dmy (day-first) over it.
+   DateInput only adds this class for desktop Chromium. The media-query fallback
+   below also protects unusual mobile Chromium builds that report desktop UA data. */
+input.dmy-date-input { position: relative; min-width: 0; max-width: 100%; overflow: hidden; }
+input.dmy-date-input::-webkit-datetime-edit,
+input.dmy-date-input::-webkit-datetime-edit-fields-wrapper,
+input.dmy-date-input::-webkit-datetime-edit-text,
+input.dmy-date-input::-webkit-datetime-edit-day-field,
+input.dmy-date-input::-webkit-datetime-edit-month-field,
+input.dmy-date-input::-webkit-datetime-edit-year-field,
+input.dmy-date-input::-webkit-datetime-edit-hour-field,
+input.dmy-date-input::-webkit-datetime-edit-minute-field,
+input.dmy-date-input::-webkit-datetime-edit-second-field,
+input.dmy-date-input::-webkit-datetime-edit-ampm-field { color: transparent; background: transparent; }
+input.dmy-date-input::before {
+  content: attr(data-dmy);
+  position: absolute; top: 0; bottom: 0; left: 0;
+  padding-left: inherit;
+  display: flex; align-items: center;
+  white-space: nowrap; pointer-events: none;
+  color: inherit;
+}
+input.dmy-date-input[data-empty]::before { opacity: .55; }
+input.dmy-date-input:not(:disabled):not([readonly]) { cursor: pointer; }
+
+/* Reserve separate space for the day-first text and the native calendar button.
+   The overlay must never paint underneath the picker, even in narrow toolbars. */
+input.dmy-date-input[type="date"][data-dmy] {
+  box-sizing: border-box;
+  min-width: calc(12ch + 2.25em);
+  padding-right: 2.25em;
+  flex-shrink: 0;
+}
+input.dmy-date-input::before { right: 2.25em; overflow: hidden; }
+input.dmy-date-input::-webkit-calendar-picker-indicator {
+  position: absolute; right: .4em; top: 50%; transform: translateY(-50%);
+  width: 1.25em; height: 1.25em; margin: 0; padding: 0;
+}
+
+@media (hover: none), (pointer: coarse) {
+  input.dmy-date-input::-webkit-datetime-edit,
+  input.dmy-date-input::-webkit-datetime-edit-fields-wrapper,
+  input.dmy-date-input::-webkit-datetime-edit-text,
+  input.dmy-date-input::-webkit-datetime-edit-day-field,
+  input.dmy-date-input::-webkit-datetime-edit-month-field,
+  input.dmy-date-input::-webkit-datetime-edit-year-field,
+  input.dmy-date-input::-webkit-datetime-edit-hour-field,
+  input.dmy-date-input::-webkit-datetime-edit-minute-field,
+  input.dmy-date-input::-webkit-datetime-edit-second-field,
+  input.dmy-date-input::-webkit-datetime-edit-ampm-field { color: inherit; }
+  input.dmy-date-input::before { content: none; }
+}

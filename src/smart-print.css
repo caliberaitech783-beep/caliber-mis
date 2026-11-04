@@ -1,0 +1,86 @@
+.smart-print-dialog { width: min(1100px, calc(100vw - 24px)); max-height: 90dvh; padding: 0; border: 1px solid #d7dfeb; border-radius: 14px; color: var(--ink,#17233c); background: var(--surface,#fff); box-shadow: 0 20px 80px #0004; }
+.smart-print-dialog::backdrop { background: #17233c88; }
+.smart-print-export-toast { display: flex; flex: 1 0 100%; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #522e90; color: #fff; box-shadow: 0 6px 24px #0004; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.smart-print-export-toast[hidden] { display: none; }
+.smart-print-export-toast.success { background: #166534; }
+.smart-print-export-toast.error { background: #991b1b; }
+.smart-print-dialog .smart-print-export-toast button { flex-shrink: 0; background: transparent; color: #fff; border-color: #ffffff66; }
+.smart-print-dialog > header,.smart-print-dialog > footer { display: flex; align-items: center; gap: 12px; padding: 18px 22px; background: var(--surface,#fff); }
+.smart-print-dialog > header { border-bottom: 1px solid #d7dfeb; }
+.smart-print-dialog header div,.smart-print-dialog footer span { flex: 1; min-width: 0; }
+.smart-print-dialog h2,.smart-print-dialog header p { margin: 0; overflow-wrap: anywhere; }
+.smart-print-dialog header p { margin-top: 5px; font-size: 13px; }
+.smart-print-body { padding: 18px 22px; max-height: 65dvh; overflow: auto; }
+.smart-print-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.smart-print-controls > label { display: grid; gap: 5px; }
+.smart-print-dialog button,.smart-print-dialog select { padding: 10px 14px; min-height: 42px; border: 1px solid #d7dfeb; border-radius: 7px; background: var(--surface,#fff); color: inherit; cursor: pointer; }
+.smart-print-dialog button.primary { background: #522e90; color: #fff; }
+.smart-print-dialog button.smart-print-saved-print { background: #522e90; color: #fff; }
+.smart-print-dialog button.smart-print-saved-delete { border-color: #dc5b63; color: #b92f3a; }
+.smart-print-dialog button:disabled { opacity: .5; cursor: not-allowed; }
+.smart-print-dialog :is(button,select,input):focus-visible { outline: 3px solid #8060be; outline-offset: 3px; }
+.smart-print-columns { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 10px; margin: 16px 0; }
+.smart-print-columns label { display: flex; align-items: center; gap: 9px; padding: 12px; border: 1px solid #d7dfeb; border-radius: 7px; cursor: pointer; }
+.smart-print-columns input { width: 18px; height: 18px; accent-color: #522e90; }
+.smart-print-preview { overflow: auto; }
+.smart-print-preview table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.smart-print-preview :is(th,td) { border: 1px solid #d7dfeb; padding: 9px; text-align: left; }
+.smart-print-preview td { vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+.smart-print-notice { font-size: 13px; }
+.smart-print-dialog > footer { border-top: 1px solid #d7dfeb; flex-wrap: wrap; }
+@media(max-width:600px) { .smart-print-body,.smart-print-dialog > header,.smart-print-dialog > footer { padding: 12px; } .smart-print-columns { grid-template-columns: 1fr; } }
+.smart-print-dialog button.smart-print-export { border-color: #522e90; color: #522e90; font-weight: 700; }
+.smart-print-sheet { padding: 14px; border: 1px solid #d7dfeb; border-radius: 7px; background: #fff; color: #17233c; }
+.smart-print-sheet h4 { margin: 0 0 4px; font-size: 16px; overflow-wrap: anywhere; }
+.smart-print-sheet table { border-collapse: collapse; table-layout: auto; width: 100%; }
+.smart-print-sheet :is(th, td) { border: 1px solid #000; vertical-align: top; }
+.smart-print-sheet p { margin: 0 0 12px; color: #65758b; font-size: 12px; }
+.smart-print-sheet th { background: #fff; color: #000; font-size: 11px; text-transform: uppercase; }
+.smart-print-header-check { display: inline-flex; align-items: center; gap: 7px; min-width: max-content; cursor: pointer; }
+.smart-print-header-check input { width: 15px; height: 15px; margin: 0; accent-color: #522e90; flex: 0 0 auto; }
+.smart-print-header-check input:disabled { cursor: not-allowed; }
+.smart-print-column-off { opacity: .42; text-decoration: line-through; }
+.smart-print-sheet td.smart-print-column-off { background: #f8fafc; color: #8b98aa; }
+.smart-print-sheet tbody tr:nth-child(even) { background: #f2f2f2; }
+.smart-print-sheet tr.highlight-row td { background: #f8caca; }
+.smart-print-dialog { position: fixed; }
+.smart-print-page-prompt:empty { display: none; }
+.smart-print-page-prompt { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 16px; background: #17233c99; border-radius: inherit; }
+.smart-print-page-size { width: min(460px, 100%); padding: 22px; border-radius: 12px; background: var(--surface,#fff); box-shadow: 0 18px 40px #17233c55; }
+.smart-print-page-size h3 { margin: 0 0 6px; }
+.smart-print-page-size p { margin: 0 0 16px; font-size: 13px; }
+.smart-print-page-size > div { display: grid; gap: 10px; }
+.smart-print-options { width: min(560px, 100%); max-height: calc(100% - 24px); overflow: auto; }
+.smart-print-options fieldset { margin: 0 0 12px; padding: 10px 14px 12px; border: 1px solid var(--line, #dbe4ee); border-radius: 10px; display: grid; gap: 8px; }
+.smart-print-options legend { padding: 0 6px; font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--muted, #5b6a82); }
+.smart-print-radio { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.smart-print-radio input { width: 16px; height: 16px; margin: 0; accent-color: #51288e; }
+.smart-print-options input[type="text"], .smart-print-options input[type="number"] { height: 38px; padding: 0 12px; border: 1px solid var(--line, #cbd6ec); border-radius: 8px; font: inherit; }
+.smart-print-options input[type="number"] { width: 110px; }
+.smart-print-options select { height: 38px; padding: 0 12px; border: 1px solid var(--line, #cbd6ec); border-radius: 8px; font: inherit; max-width: 100%; }
+.smart-print-printer-note { margin: 0; font-size: 12px; color: var(--muted, #5b6a82); }
+.smart-print-options-error:empty { display: none; }
+.smart-print-options-error { margin: 0 0 10px; color: #b23836; font-size: 12px; font-weight: 700; }
+/* Night mode: the dialog chrome goes dark; the preview stays a white paper sheet. */
+:root[data-theme="dark"] .smart-print-dialog { border-color: #45354d; background: #241d27; color: #f6f0f7; }
+:root[data-theme="dark"] .smart-print-dialog::backdrop { background: #000000a6; }
+:root[data-theme="dark"] .smart-print-dialog > :is(header, footer) { border-color: #45354d; background: #241d27; }
+:root[data-theme="dark"] .smart-print-dialog :is(button, select) { border-color: #5a4763; background: #2d2331; color: #f6f0f7; }
+:root[data-theme="dark"] .smart-print-dialog button:is(.primary, .smart-print-saved-print) { border-color: #6d43a1; background: #6d43a1; color: #fff; }
+:root[data-theme="dark"] .smart-print-dialog button.smart-print-saved-delete { border-color: #ff8a8e80; color: #ff9bac; }
+:root[data-theme="dark"] .smart-print-dialog button.smart-print-export { border-color: #a67bd3; color: #c9a8f0; }
+:root[data-theme="dark"] .smart-print-dialog :is(button, select, input):focus-visible { outline-color: #c9a8f0; }
+:root[data-theme="dark"] .smart-print-columns label { border-color: #45354d; }
+:root[data-theme="dark"] .smart-print-columns input { accent-color: #a67bd3; }
+:root[data-theme="dark"] .smart-print-page-prompt { background: #000000a6; }
+:root[data-theme="dark"] .smart-print-page-size { background: #241d27; box-shadow: 0 18px 40px #000000a6; }
+:root[data-theme="dark"] .smart-print-options :is(input[type="text"], input[type="number"], select) { border-color: #5a4763; background: #171219; color: #f6f0f7; }
+:root[data-theme="dark"] .smart-print-options-error { color: #ff9bac; }
+:root[data-theme="dark"] .smart-print-sheet { border-color: #45354d; }
+:root[data-theme="dark"] .smart-print-sheet :is(th, td) { border-color: #000; }
+:root[data-theme="dark"] .smart-print-sheet th { background: #fff; color: #000; }
+:root[data-theme="dark"] .smart-print-sheet td { background: #fff; color: #17233c; }
+:root[data-theme="dark"] .smart-print-sheet td.smart-print-column-off { background: #f8fafc; color: #8b98aa; }
+:root[data-theme="dark"] .smart-print-sheet tbody tr:nth-child(even) td { background: #f2f2f2; }
+:root[data-theme="dark"] .smart-print-sheet tr.highlight-row td { background: #f8caca; }
+:root[data-theme="dark"] .smart-print-sheet td :is(b, strong) { color: inherit; }

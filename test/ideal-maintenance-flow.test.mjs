@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+test("Idle requests require a reason and assigned-site manager approval before MIS",()=>{
+  const server=fs.readFileSync(new URL("../server.mjs",import.meta.url),"utf8");
+  const client=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
+  assert.match(server,/ideal_requested_at TIMESTAMPTZ/);
+  assert.match(server,/idle_reason TEXT NOT NULL DEFAULT ''/);
+  assert.match(server,/status='Closed',idle_reason=\$3/);
+  assert.match(server,/\['No driver','No work'\]\.includes\(idleReason\)/);
+  assert.match(server,/designation\?\.key==='projectManager'/);
+  assert.match(server,/Only an assigned manager can approve/);
+  assert.match(server,/const canApproveIdle=req.session.role==='super'&&\(designation\?\.key==='projectManager'\|\|req.session.permissions\?\.adminLevel==='Manager'\)/);
+  assert.match(server,/!userManagesSite\(manager,eligible.rows\[0\].site\)/);
+  assert.match(client,/const canApproveIdle=true/);
+  assert.match(server,/userManagesSite\(manager,eligible\.rows\[0\]\.site\)/);
+  assert.match(server,/status='Closed',closed_at=CASE WHEN status='Closed' THEN closed_at ELSE COALESCE\(ideal_requested_at,NOW\(\)\) END/);
+  assert.match(server,/awaiting MIS verification/);
+  assert.match(server,/app\.patch\('\/api\/requests\/:reference\/idle-cancel'/);
+  assert.match(server,/status='In progress',idle_reason=''/);
+  assert.match(server,/The request has returned to active maintenance/);
+  assert.match(server,/status NOT IN \('Closed','Idle','Ideal'\)/);
+  assert.match(client,/Idle approvals \(\{managerDataReady\?idealRows\.length:"—"\}\)/);
+  assert.match(client,/Make on road/);
+  assert.match(client,/an assigned manager approves Make on road/);
+  assert.match(client,/name="idealChoice"/);
+  assert.match(client,/status, ideal, idleReason:/);
+  assert.match(client,/Idle reason \*/);
+  assert.match(client,/<option>No driver<\/option><option>No work<\/option>/);
+  assert.match(client,/row\.idleReason \|\| "—"/);
+});

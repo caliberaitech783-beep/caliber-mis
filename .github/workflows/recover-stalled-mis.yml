@@ -1,0 +1,33 @@
+name: Recover stalled MIS App Service
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/recover-stalled-mis.yml']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+      - name: Restart the existing stalled App Service
+        run: az webapp restart --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --only-show-errors
+      - name: Check recovered HTTP service
+        run: |
+          for attempt in {1..24}; do
+            if curl --fail --silent --max-time 10 https://pulse-ll.cmll.in/api/health -o "$RUNNER_TEMP/mis-recovery-health.json"; then
+              python3 -c 'import json,os; h=json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"mis-recovery-health.json"))); print({"status":h.get("status"),"commit":h.get("commit")})'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'The app is still unavailable after restart; deployment recovery is required.'
+          exit 1

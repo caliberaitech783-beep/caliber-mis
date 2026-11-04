@@ -1,0 +1,9 @@
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {fleetDoorKey} from '../shared/scan-fleet-door.mjs';
+export function doorLabel(asset){const label=String(asset.door||asset.registration||asset.name||'').trim(),name=String(asset.name||'').trim();return name&&name!==label?label+' · '+name:label;}
+export function searchSiteDoors(records,kind,location,query=''){
+ if(!location)return [];
+ const site=canonicalSiteName(location),prefix=fleetDoorKey(query,kind);
+ return records.filter(r=>r.kind===kind&&r.site&&canonicalSiteName(r.site)===site&&fleetDoorKey(r.door||r.name||r.registration,kind).startsWith(prefix))
+  .sort((a,b)=>doorLabel(a).localeCompare(doorLabel(b),undefined,{numeric:true,sensitivity:'base'}));
+}

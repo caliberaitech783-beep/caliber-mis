@@ -1,0 +1,286 @@
+/* Mobile browser compatibility, especially iOS Safari and in-app browsers. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+}
+
+.app,
+.normal {
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+}
+
+/* The login screen must not use the dynamic viewport unit: on phones it changes every time the
+   address bar or keyboard slides in or out, which re-lays the form out and makes it jump. */
+.login {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.login-visual {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.overlay {
+  overscroll-behavior: contain;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+
+.modal {
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal > header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+}
+
+:root[data-theme="dark"] .modal:not(.director-timing-modal):not(.report-zip-modal) > header {
+  background: #241d27;
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .modal:not(.director-timing-modal):not(.report-zip-modal) > header button {
+  color: #c5d0df;
+}
+
+/* Keep fixed and scrollable panels inside the visible iOS viewport as its bars or keyboard move. */
+.mine-dashboard {
+  min-height: calc(100dvh - 66px);
+}
+
+.master-form .formgrid {
+  max-height: 55dvh;
+}
+
+.master-table-scroll {
+  max-height: max(320px, calc(100dvh - 400px));
+}
+
+.notification-popover {
+  max-height: min(520px, calc(100dvh - 110px));
+}
+@media (max-width: 700px) {
+  .normal .notification-popover {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(410px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 32px);
+    box-sizing: border-box;
+  }
+}
+
+.dashboard-asset-modal {
+  max-height: 94dvh;
+}
+
+.dashboard-asset-list {
+  max-height: min(50dvh, 560px);
+}
+
+.director-timing-modal {
+  max-height: min(88dvh, 850px);
+}
+
+.report-zip-modal {
+  max-height: min(88dvh, 820px);
+}
+
+.hierarchy-matrix-scroll {
+  max-height: calc(100dvh - 390px);
+}
+
+.audit-table-wrap {
+  max-height: calc(100dvh - 414px);
+}
+
+.table-parameter-filter-popover {
+  max-height: min(70dvh, 620px);
+}
+
+.report-columns-dialog,
+.report-sort-dialog,
+.table-parameter-filter-popover.dialog-mode {
+  max-height: calc(100dvh - 48px);
+}
+
+.report-column-list {
+  height: min(340px, 45dvh);
+}
+
+.master-form .formgrid,
+.master-table-scroll,
+.notification-list,
+.dashboard-asset-list,
+.hierarchy-matrix-scroll,
+.audit-table-wrap,
+.table-parameter-filter-popover,
+.report-column-list {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+input,
+select,
+textarea,
+button {
+  scroll-margin-block: 96px;
+}
+
+@media (max-width: 1100px) {
+  .hierarchy-matrix-scroll {
+    max-height: calc(100dvh - 450px);
+  }
+}
+
+/* Eliminate legacy double-tap click deferral on every interactive control,
+   including hybrid touch devices that do not match the coarse-pointer query. */
+button,
+a,
+[role="button"],
+summary,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  touch-action: manipulation;
+}
+
+@media (max-width: 900px) {
+  .normal > header {
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .audit-table-wrap {
+    max-height: none;
+  }
+
+  .login > main {
+    min-height: calc(100svh - 200px);
+  }
+
+  /* iOS zooms the page when a focused form control is smaller than 16px. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .normal:not(.embedded-workspace):has(.mobile-workspace) {
+    height: 100vh;
+    height: 100svh;
+    height: 100dvh;
+  }
+}
+
+.notification-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  isolation: isolate;
+}
+
+.notification-overlay > .notification-scrim {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #0713268f !important;
+  backdrop-filter: blur(2px);
+}
+
+.notification-overlay > .notification-popover-mobile {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 1;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  transform: none;
+  border-radius: 14px;
+}
+
+@media (max-width: 700px) {
+  .report-columns-dialog,
+  .report-sort-dialog,
+  .table-parameter-filter-popover.dialog-mode {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .report-column-list {
+    height: 42dvh;
+  }
+}
+
+@media (max-width: 560px) {
+  .login > main {
+    min-height: 100svh;
+    padding:
+      max(28px, env(safe-area-inset-top))
+      max(22px, env(safe-area-inset-right))
+      max(36px, calc(env(safe-area-inset-bottom) + 20px))
+      max(22px, env(safe-area-inset-left));
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  .login-theme-toggle,
+  .password-toggle,
+  .modal > header button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .loginbox .remember-me,
+  .login-auth-tabs button,
+  .form footer button,
+  .mobile-tabs button,
+  .normal-header-nav button,
+  .row-actions button {
+    min-height: 44px;
+  }
+
+  .loginbox .remember-me input {
+    width: 20px;
+    height: 20px;
+  }
+}

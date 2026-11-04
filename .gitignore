@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.oracle-wallet/
+backups/
+dist/
+node_modules/
+.local/
+
+
+ocr-model-cache/

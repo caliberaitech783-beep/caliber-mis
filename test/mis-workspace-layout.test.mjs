@@ -1,0 +1,49 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const mainSource = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const workflowStyles = fs.readFileSync(new URL("../src/mobile-workflow.css", import.meta.url), "utf8");
+
+test("the workspace tab strip sits inside the banner", () => {
+  const hero = mainSource.slice(
+    mainSource.indexOf('<div className="welcome workspace-hero">'),
+    mainSource.indexOf('{createdRequestRef && <div className="workflow-success-popup"'),
+  );
+  assert.match(hero, /<div className="workspace-hero-intro">/);
+  assert.match(hero, /<div className="mobile-tabs" role="tablist">/);
+  for (const label of ["Requests", "MIS verification", "Closed history", "Idle Vehicles"]) {
+    assert.ok(hero.includes(`>${label}</button>`), `${label} tab should render inside the banner`);
+  }
+  assert.match(hero, /<\/div>\s*<\/div>\s*$/);
+  assert.match(mainSource, /\{createdRequestRef && <div className="workflow-success-popup"[\s\S]*?\}\s*\{isProduction && tab === "requests"/);
+  assert.match(workflowStyles, /\.welcome\.workspace-hero\s*\{[^}]*flex-direction:\s*column/s);
+  assert.match(workflowStyles, /\.welcome\.workspace-hero\s\.mobile-tabs\s*\{[^}]*margin:\s*0/s);
+});
+
+test("the workspace body claims the full width and starts right under the banner", () => {
+  assert.match(mainSource, /\{\(embedded\|\|section==="profile"\)&&showRequestsMenu&&<div[^>]*className=\{`mobile-workspace\$\{isMaintenance \? " maintenance-workspace" : ""\}`\}>/);
+  assert.match(workflowStyles, /\.normal > main:has\(\.mobile-workspace\)\s*\{[^}]*padding:\s*22px clamp\(/s);
+  assert.match(workflowStyles, /\.mobile-workspace \.sectiontitle\s*\{[^}]*margin:\s*4px 0 8px/s);
+});
+
+test("Production and MIS use the same compact banner and enlarged table as Maintenance", () => {
+  assert.match(workflowStyles, /\.normal:not\(\.embedded-workspace\) \.mobile-workspace > \.welcome\.workspace-hero\s*\{[^}]*flex-direction:\s*row;[^}]*padding-block:\s*12px/s);
+  assert.match(workflowStyles, /\.normal:not\(\.embedded-workspace\) \.mobile-workspace > section\.panel\s*\{[^}]*min-height:\s*390px/s);
+  assert.doesNotMatch(workflowStyles, /\.normal:not\(\.embedded-workspace\) \.maintenance-workspace > (?:\.welcome\.workspace-hero|section\.panel)/);
+});
+
+test("workflow tables use page scrolling with a single horizontal scrollbar", () => {
+  assert.doesNotMatch(mainSource, /table-top-scroll/);
+  assert.doesNotMatch(workflowStyles, /table-top-scroll/);
+  assert.match(mainSource, /<div className="scroll mobile-workflow-table">/);
+  assert.doesNotMatch(workflowStyles, /\.normal:not\(\.embedded-workspace\):has\(\.mobile-workspace\)\s*\{[^}]*height:\s*100vh/s);
+  assert.doesNotMatch(workflowStyles, /\.normal:not\(\.embedded-workspace\) \.mobile-workspace > section\.panel\s*\{[^}]*overflow:\s*hidden/s);
+});
+
+test("workflow tables keep horizontal scrolling without an internal vertical scrollbar", () => {
+  assert.match(workflowStyles, /::-webkit-scrollbar\s*\{[^}]*width:\s*0;\s*height:\s*12px/s);
+  assert.match(workflowStyles, /::-webkit-scrollbar:vertical\s*\{[^}]*width:\s*0/s);
+  assert.doesNotMatch(workflowStyles, /\.normal \.scroll\.mobile-workflow-table::-webkit-scrollbar:vertical/);
+  assert.match(workflowStyles, /::-webkit-scrollbar:horizontal\s*\{[^}]*height:\s*12px/s);
+});

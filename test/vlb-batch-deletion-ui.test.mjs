@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {transformWithOxc} from 'vite';
+const nodes=(tree,predicate)=>{const out=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))out.push(n);visit(n.props.children)};visit(tree);return out};
+test('restoring over a replacement requires preview, explicit replacement consent, exact approval and delivered OTP',async()=>{
+ const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=v]};
+ const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
+ const {code}=await transformWithOxc(source,'vlb-batch-deletion.jsx',{jsx:{runtime:'classic'}});
+ const Component=new Function('React','useState','useEffect',code+';return VlbBatchDeletion')(React,useState,()=>{});
+ let changed=0,dismissed=0;const calls=[],preview={id:'request',operation:'restore',approval:'Approve restore request hash',requiresReplacementDeletion:true,recipient:'OTP recipient',expiresAt:'2026-11-01T10:00:00Z',manifest:{original:{name:'B01',counts:{cards:1},restoreUntil:'2026-11-10T10:00:00Z'},target:{batch:{id:'new',name:'B02'},records:[{id:1,bookNo:'VLB1'}],scans:[],backups:[]}}};
+ const read=async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/preview')?preview:{sent:true,complete:true}};
+ const render=()=>{cursor=0;return Component({batch:{id:'old',name:'B01'},operation:'restore',read,onChanged:()=>changed++,onDismiss:()=>dismissed++})};
+ const button=(tree,text)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(text))[0];
+ let tree=render();assert.equal(button(tree,'Preview exact items').props.disabled,true);
+ nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Restore correct original'}});await button(render(),'Preview exact items').props.onClick();tree=render();
+ assert.equal(calls.length,1);assert.equal(calls[0].body.batchId,'old');assert.match(renderToStaticMarkup(tree),/A replacement batch exists: B02/);
+ nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='off')[0].props.onChange({target:{value:preview.approval}});
+ assert.equal(button(render(),'Approve and send').props.disabled,true,'replacement checkbox is mandatory');
+ nodes(render(),n=>n.type==='input'&&n.props.type==='checkbox')[0].props.onChange({target:{checked:true}});
+ await button(render(),'Approve and send').props.onClick();assert.equal(calls.length,2);assert.equal(calls[1].body.deleteReplacement,true);
+ tree=render();assert.equal(button(tree,'Delete replacement and restore original').props.disabled,true);
+ nodes(tree,n=>n.type==='input'&&n.props.autoComplete==='one-time-code')[0].props.onChange({target:{value:'123456'}});
+ await button(render(),'Delete replacement and restore original').props.onClick();assert.equal(calls[2].body.otp,'123456');assert.equal(calls[2].body.approval,preview.approval);assert.equal(changed,1);assert.equal(dismissed,1);
+});

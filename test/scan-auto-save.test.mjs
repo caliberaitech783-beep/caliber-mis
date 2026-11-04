@@ -1,0 +1,83 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';
+import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
+const valid={doorText:'V321',bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
+test('automatic saving requires complete valid values while Work Order remains optional',()=>{
+ const card={status:'review',draft:valid,raw_fields:{},checks:{errors:[],warnings:[]}};
+ assert.equal(canAutoSaveScanCard(card,'vehicle'),true);
+ assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetBlock:{message:'Verify the machine first.'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...card,raw_fields:{fleetRejection:{message:'Original needs recovery.'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...card,context_mismatch:['Wrong date.']},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...card,draft:{...valid,workOrderId:''},checks:{errors:[],warnings:['No Work Order selected. Confirm whether this card requires a contract.']}},'vehicle'),true);
+ for(const c of [{...card,status:'posted'},{...card,status:'rejected'},{...card,checks:null},{...card,draft:{...valid,employeeId:''}},{...card,checks:{warnings:['Working hours exceed shift.']}},{...card,checks:{errors:['Duplicate scan.']}}])assert.equal(canAutoSaveScanCard(c,'vehicle'),false);
+});
+test('complete cards post independently without approval; retries, validation and concurrent edits are protected',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
+ const masters=[[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E1',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]];
+ masters.push([6,'Equipment master',{category:'Equipment',door:'D19',currentLocation:'Sasti OC'}]);
+ for(const [id,name,data]of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
+ let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
+ const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
+ const app=express();app.use(express.json());const session=(q,s,n)=>{if(!q.headers.authorization)return s.sendStatus(401);q.session={login:'test-admin'};n()},admin=(q,s,n)=>q.headers.authorization==='admin'?n():s.sendStatus(403);
+ let pulseAvailable=true;let archives=0;const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readHours:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return {breakdownHours:0}},ocr:{close(){}},archiveSavedBatch:async(b,rows)=>{assert.ok(rows.every(r=>r.status==='posted'));archives++;return {status:'saved'}}});await service.start();await prepareVlbFixture(db,valid);t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
+ const call=async(id,revision=1,auth='admin')=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+id+'/auto-save',{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({revision})});return {status:r.status,data:r.headers.get('content-type')?.includes('json')?await r.json():null}};
+ const batch=randomUUID(),context={bookDate:valid.bookDate,location:valid.location,cardShift:valid.cardShift};await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Auto save test','test-admin']);
+ const add=async(ordinal,draft,hash=randomUUID())=>{const id=randomUUID();await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,'test.png',$4,$5,$6,$7::jsonb,'review')",[id,batch,ordinal,Buffer.from('retained image'),hash,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);return id};
+ const first=await add(1,valid),second=await add(2,{...valid,aFormNo:'76',employeeId:''});
+ assert.equal((await call(first)).status,409,'a complete legacy card still needs a saved selection');
+ const setupRoot='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
+ for(const [route,body] of [['/context',{expectedContext:context}],['/validate-context',{action:'proceed'}]]){const checked=await fetch(setupRoot+route,{method:'POST',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(checked.status,200,await checked.text())}
+ assert.equal((await call(first,1,'')).status,401);assert.equal((await call(first,1,'normal')).status,403);
+ assert.equal((await call(first,99)).status,409);
+ const saved=await call(first);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.status,'posted');assert.equal(saved.data.archive,null);assert.equal(archives,0);
+ const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;assert.equal(stored.scanSaveMode,'automatic-validation');assert.equal(stored.autoSavedBy,'test-admin');assert.equal(stored.reviewedBy,undefined);
+ const reportBase='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
+ const reportResponse=await fetch(reportBase+'/report?cards=another-batch',{headers:{Authorization:'admin'}});assert.equal(reportResponse.status,200);const report=await reportResponse.json();assert.equal(report.batchId,batch);assert.equal(report.counts.cards,2);assert.equal(report.counts.saved,1);assert.equal(report.counts.pending,1);assert.equal(report.totals.trips,1);assert.equal(report.tables[1].rows.length,1,'only saved matching cards enter Excel');
+ const liveBatch=await(await fetch(reportBase,{headers:{Authorization:'admin'}})).json();assert.equal(liveBatch.cards.find(c=>c.id===first).saved_data.scanCardId,first);
+ const pdf=await fetch(reportBase+'/report.pdf',{headers:{Authorization:'admin'}});assert.equal(pdf.status,200);assert.match(pdf.headers.get('content-type'),/application\/pdf/);assert.ok(pdf.headers.get('content-disposition').includes(batch));assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+ assert.equal((await fetch(reportBase+'/report')).status,401);assert.equal((await fetch(reportBase+'/report.pdf',{headers:{Authorization:'normal'}})).status,403);
+ assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
+ assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
+ await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);
+ const concurrent=await Promise.all([call(second,2),call(second,2)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
+ const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
+ const warning=await add(4,{...valid,aFormNo:'77',closingHmr:9});
+ const corrected=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+warning,{method:'PUT',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'save',draft:{...valid,aFormNo:'77',meterCorrectionHistory:[]}})});assert.equal(corrected.status,200,await corrected.text());
+ const fixed=await call(warning,2);assert.equal(fixed.status,200,JSON.stringify(fixed));
+ const audit=fixed.data.record.data.meterCorrectionHistory;assert.equal(audit.length,1);assert.equal(audit[0].before.closingHmr,9);assert.equal(audit[0].after.closingHmr,6);assert.match(audit[0].issues.closingHmr,/maximum.*8/);assert.equal(audit[0].by,'test-admin');
+ const persisted=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[fixed.data.record.id])).rows[0].data;assert.deepEqual(persisted.meterCorrectionHistory,audit);
+ const correctedReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const cardsTable=correctedReport.tables.find(table=>table.name==='Cards');const errorIndex=cardsTable.columns.findIndex(column=>column.tone==='error'),fixedIndex=cardsTable.columns.findIndex(column=>column.tone==='corrected');assert.ok(errorIndex>0);assert.ok(cardsTable.rows.some(row=>/9 hours/.test(row[errorIndex])&&/6 hours/.test(row[fixedIndex])));
+
+ const breached=await add(40,{...valid,aFormNo:'77A',closingHmr:9,closingKmr:251});const breachedSave=await call(breached);assert.equal(breachedSave.status,200,JSON.stringify(breachedSave));assert.match(breachedSave.data.record.data.meterRuleErrors.closingHmr,/Exceeds limit/);assert.match(breachedSave.data.record.data.meterRuleErrors.closingKmr,/Exceeds limit/);
+ const errorReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const errorTable=errorReport.tables.find(t=>t.name==='Cards'),errorColumn=errorTable.columns.findIndex(c=>c.tone==='error');assert.ok(errorTable.rows.some(r=>String(r[errorColumn]).includes(breachedSave.data.record.data.employeeName)&&String(r[errorColumn]).includes(breachedSave.data.record.data.caliberId)&&/251 km/.test(r[errorColumn])));
+ const rejected=await add(5,{...valid,aFormNo:'78'});await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[rejected]);assert.equal((await call(rejected)).status,409);
+ pulseAvailable=false;
+ const fallback=await add(6,{...valid,aFormNo:'79'});const missing=await call(fallback);assert.equal(missing.status,409);assert.match(missing.data.error,/Enter BD hours manually/);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[fallback])).rows[0].status,'review');
+ await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'79',manualBreakdownHours:'1.5'}),fallback]);
+ const manual=await call(fallback,2);assert.equal(manual.status,200);const manualData=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[manual.data.record.id])).rows[0].data;assert.equal(manualData.breakdownHours,1.5);assert.equal(manualData.breakdownHoursSource,'manual');assert.equal(manualData.hoursSource.enteredBy,'test-admin');
+ pulseAvailable=true;
+ const equipmentBatch=randomUUID(),equipmentId=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[equipmentBatch,'equipment','Equipment','test-admin']);await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'job.png',$3,$4,$5,'review')",[equipmentId,equipmentBatch,Buffer.from('job image'),randomUUID(),JSON.stringify({...valid,doorText:'E1',assetId:'4',trips:[],scanMachineSummary:[]})]);assert.equal((await call(equipmentId)).status,200);
+
+ // No printed card number and no Work Order master must still save. Null card
+ // numbers allow distinct unnumbered scans without colliding in the unique index.
+ await db.query("DELETE FROM master_records WHERE id=5");
+ const unnumbered={...valid,aFormNo:'',jobCardNo:'',workOrderId:''};
+ for(const ordinal of [7,8]){
+  const id=await add(ordinal,unnumbered);
+  const result=await call(id);
+  assert.equal(result.status,200,JSON.stringify(result));
+  assert.ok(result.data.record.book_no);
+  const row=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[result.data.record.id])).rows[0].data;
+  assert.equal(row.scanCardNumber,null);
+  assert.equal(row.workOrderContract,null);
+ }
+ const noNumberHash=randomUUID(),original=await add(9,unnumbered,noNumberHash);
+ assert.equal((await call(original)).status,200);
+ const imageDuplicate=await add(10,unnumbered,noNumberHash);
+ assert.equal((await call(imageDuplicate)).status,409,'duplicate image remains blocked without a printed number');
+});
+

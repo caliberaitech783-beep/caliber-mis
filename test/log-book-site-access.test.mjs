@@ -1,0 +1,110 @@
+import {prepareVlbFixture} from './operational-fixture.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import {PGlite} from '@electric-sql/pglite';
+import {randomUUID} from 'node:crypto';
+import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../shared/log-book-access.mjs';
+import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
+
+process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
+test('site and regional scopes use canonical site names and deny unassigned MIS identities',()=>{
+  const mis={role:'super',permissions:{adminLevel:'Admin',separateMisCredentials:true}};
+  assert.deepEqual(logBookSiteScope(mis).sites,[]);
+  assert.equal(siteAllowed(logBookSiteScope({...mis,site:'Sasti OB'}),'Sasti OC'),true);
+  assert.equal(siteAllowed(logBookSiteScope({...mis,site:'Sasti OB'}),'Jayant OC'),false);
+  assert.equal(siteAllowed(logBookSiteScope({...mis,managerRegion:'NCL'}),'Jayant OB'),true);
+  assert.equal(siteAllowed(logBookSiteScope({...mis,managerRegion:'NCL'}),'Sasti OC'),false);
+  assert.equal(logBookSiteScope({...mis,managerRegion:'All'}).sites?.length,0);
+  assert.equal(logBookSiteScope({role:'super',permissions:{adminLevel:'Admin'}}).sites,null);
+  for(const adminLevel of ['Admin','Super Admin']){
+   const admin={role:'super',site:'Sasti OC',permissions:{adminLevel}};
+   assert.equal(logBookSiteScope(admin,{site:'Jayant OC'}).sites,null,'full administrators retain all-site access even with a profile site');
+   assert.equal(siteAllowed(logBookSiteScope(admin),'Jayant OC'),true);
+  }
+  assert.equal(siteAllowed(logBookSiteScope({role:'normal',site:'Sasti OC',managerRegion:'All'}),'Jayant OC'),false);
+  assert.equal(employeeAtLocation({site:'Sasti OC | Majri OC'},'Sasti OB'),true);
+  assert.equal(employeeAtLocation({site:''},'Sasti OC'),false);
+});
+
+test('VLB/ELB options, paginated records, lookups, hours and writes enforce site scope on the server',async t=>{
+  const db=new PGlite();t.after(()=>db.close());
+  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');await db.exec(LOG_BOOK_SCHEMA);await db.exec(SCAN_SCHEMA);
+  const ids={};
+  for(const [key,master,data] of [
+    ['vehicle','Equipment master',{category:'Vehicle',door:'V1',site:'Sasti OC'}],
+    ['equipment','Equipment master',{category:'Equipment',door:'E1',site:'Sasti OC'}],
+    ['driver','Employee master',{employeeId:'CMPL1111',name:'Site employee',site:'Sasti OC'}],
+    ['otherDriver','Employee master',{employeeId:'CMPL2222',name:'Other site employee',site:'Jayant OC'}],
+    ['shift','Shift Master',{name:'Shift A',site:'Sasti OC'}],
+    ['otherAsset','Equipment master',{category:'Vehicle',door:'V2',site:'Jayant OC'}],
+    ['otherShift','Shift Master',{name:'Shift A',site:'Jayant OC'}],
+    ['wo','Work Order master',{woNo:'WO-SASTI',site:'Sasti OC'}],
+    ['otherWo','Work Order master',{woNo:'WO-JAYANT',site:'Jayant OC'}],
+  ])ids[key]=(await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',[master,JSON.stringify(data)])).rows[0].id;
+  for(const site of ['Sasti OB','Jayant OC'])for(const kind of ['vehicle','equipment'])await db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,1,$5,$6,$7)',[site+kind,kind,'2026-12-28',site,JSON.stringify({location:site,bookDate:'2026-12-28'}),randomUUID(),'fixture']);
+  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+  const pool={query,connect:async()=>({query,release(){}})};
+  const profiles={admin:{},site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
+  const app=express();app.use(express.json());
+  const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};if(req.headers.authorization==='admin')req.session.permissions={adminLevel:'Admin'};next()};
+  const requireAdministrator=(req,res,next)=>next();
+  let oracleReads=0;
+  registerErpEmployees(app,{pool,config:{},requireSession,requireAdministrator,readSource:async()=>{oracleReads++;return {employeeId:'CMPL3333',name:'Remote employee',site:'Jayant OC'}}});
+  registerLogBooks(app,{pool,requireSession,requireAdministrator});
+  registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getSiteScope:async session=>logBookSiteScope(session),ocr:{recognize:async()=>({}),close(){}}});
+  app.use((err,req,res,next)=>res.status(err.status||500).json({error:err.message}));
+  const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
+  const call=async(path,method='GET',body,auth='site')=>{if(body&&['POST','PUT'].includes(method)&&path.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
+  const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
+  for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,false);assert.deepEqual(scanOptions.data.sites,login==='site'?['Sasti OC']:login==='region'?['Dudhichua East OC','Dudhichua OC','Jayant OC']:[]);assert.ok(scanOptions.data.assets.every(row=>row.site===(login==='site'?'Sasti OC':'Jayant OC')));}
+  const options=await call('/api/log-books/options');assert.equal(options.data.canSelectSite,false);assert.deepEqual(options.data.sites,['Sasti OC']);
+  for(const key of ['assets','employees','shifts','workOrders'])assert.ok(options.data[key].every(row=>row.site==='Sasti OC'),key);
+  assert.equal(options.data.employees.length,1);
+  assert.deepEqual((await call('/api/log-books/options','GET',null,'region')).data.sites,['Jayant OC']);
+  assert.deepEqual((await call('/api/log-books/options','GET',null,'unassigned')).data.sites,[]);
+  for(const kind of ['vehicle','equipment'])for(const suffix of ['','?first=1','?last=1','?before=999']){
+    const r=await call('/api/log-books/'+kind+suffix);assert.equal(r.status,200);assert.equal(r.data.records.length,1);assert.equal(r.data.records[0].data.location,'Sasti OB');
+    assert.equal((await call('/api/log-books/'+kind+suffix,'GET',null,'unassigned')).data.records.length,0);
+  }
+  const body={bookDate:'2026-12-28',location:'Sasti OC',assetId:ids.vehicle,employeeId:ids.driver,shiftId:ids.shift,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:10,closingHmr:11,trips:[],requestKey:randomUUID()};
+  assert.equal((await call('/api/log-books/vehicle','POST',{...body,location:'Jayant OC'})).status,403);
+  assert.equal((await call('/api/log-books/vehicle','POST',{...body,employeeId:ids.otherDriver})).status,400);
+  const other=(await db.query("SELECT id FROM mis_log_books WHERE site='Jayant OC' AND book_type='vehicle'")).rows[0].id;
+  assert.equal((await call('/api/log-books/vehicle/'+other,'PUT',{...body,revision:1})).status,403,'cannot move an out-of-scope record into own site');
+  assert.equal((await call('/api/log-books/hours','POST',{location:'Jayant OC'})).status,403);
+  assert.equal((await call('/api/log-books/hours?scan=1','POST',{location:'Jayant OC'})).status,403);
+  const scanEmployee=await call('/api/log-books/employee-lookup?scan=1','POST',{caliberId:'CMPL2222',location:'Jayant OC'});assert.equal(scanEmployee.status,403);
+  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL1111',location:'Sasti OB'})).status,200);
+  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Sasti OC'})).status,403);
+  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Jayant OC'})).status,403);
+  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL3333',location:'Sasti OC'})).status,403);
+  assert.equal(oracleReads,1);assert.equal((await db.query("SELECT count(*) AS n FROM master_records WHERE master_name='ERP Employee master'")).rows[0].n,0,'out-of-scope ERP employee is never cached');
+  assert.equal((await call('/api/log-books/equipment','POST',{...body,assetId:ids.equipment})).status,201);
+  const scans={};
+  for(const [key,site,owner] of [['local','Sasti OC','other'],['remote','Jayant OC','other'],['ownWrongSite','Jayant OC','site']]){
+    const batch=randomUUID(),card=randomUUID();scans[key]={batch,card};
+    const selected={bookDate:'2026-12-30',location:site,cardShift:'I'};
+    await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle',$2,$3,$4::jsonb)",[batch,key,owner,JSON.stringify({...selected,confirmed:true})]);
+    await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status,checked_by) VALUES($1,$2,1,'test', $3,'test',$4,$5::jsonb,'approved','site')",[card,batch,Buffer.from('test'),JSON.stringify(selected),JSON.stringify({extractionDraft:selected})]);
+  }
+  const visible=(await call('/api/scan-batches')).data.batches.map(batch=>batch.id);
+  assert.ok(visible.includes(scans.local.batch));assert.ok(!visible.includes(scans.remote.batch));
+  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/report')).status,200);
+  assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report')).status,403);
+  assert.equal((await call('/api/scan-batches/'+scans.remote.batch+'/report.pdf')).status,403);
+  assert.equal((await call('/api/scan-batches/'+scans.local.batch+'/context','POST',{expectedContext:{bookDate:'2026-12-30',location:'Jayant OC',cardShift:'I'}})).status,403,'a user cannot attach another site through Scan setup');
+  assert.equal((await call('/api/scan-cards/'+scans.remote.card+'/image')).status,403);
+  assert.equal((await call('/api/scan-cards/'+scans.ownWrongSite.card+'/auto-save','POST',{revision:1})).status,403);
+  assert.equal((await call('/api/scan-batches/'+scans.ownWrongSite.batch+'/post','POST',{cards:[{id:scans.ownWrongSite.card,revision:1}]})).status,403);
+  // Old originals remain discoverable beyond the first 100 batches, with the same site protection.
+  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,created_at) SELECT gen_random_uuid(),'vehicle','History '||n,'site','2026-12-01'::timestamptz FROM generate_series(1,105) n");
+  const first=(await call('/api/scan-batches')).data,second=(await call('/api/scan-batches?offset='+first.nextOffset)).data;
+  assert.equal(first.batches.length,100);assert.equal(first.nextOffset,100);assert.equal(second.nextOffset,null);assert.ok(second.batches.length>=5);
+  assert.equal(new Set([...first.batches,...second.batches].map(b=>b.id)).size,first.batches.length+second.batches.length,'history pages do not repeat batches with matching timestamps');
+  assert.ok([...first.batches,...second.batches].every(b=>b.id!==scans.remote.batch));
+  assert.equal((await call('/api/scan-batches?offset=-1')).status,400);
+  assert.equal((await call('/api/scan-batches?offset=invalid')).status,400);
+});

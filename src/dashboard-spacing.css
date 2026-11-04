@@ -1,0 +1,74 @@
+/* Dashboard-only density: retain readable text and all existing data/actions. */
+@media screen and (min-width: 1181px) and (hover: hover) and (pointer: fine) {
+  .mine-dashboard.mine-oem-view > .dashboard-filter-bar:not([data-collapsed="true"]) {
+    display: grid;
+    grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+    align-items: center;
+  }
+  .mine-dashboard.mine-oem-view > .dashboard-filter-bar .mine-head-actions {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) auto auto;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+    margin-top: 0;
+  }
+  .mine-dashboard.mine-oem-view > .dashboard-filter-bar .mine-head-actions :is(input, select) {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
+}
+.mine-dashboard .bd-balance-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mine-dashboard .mine-breakdown-movement-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mine-dashboard .bd-balance-summary .idle { --bd-color: #d18c22; }
+@media (max-width: 700px) {
+  .mine-dashboard .bd-balance-summary { grid-template-columns: repeat(5, minmax(160px, 1fr)); overflow-x: auto; }
+  .mine-dashboard .mine-breakdown-movement-kpis { grid-template-columns: repeat(5, minmax(180px, 1fr)); overflow-x: auto; }
+}
+.mine-dashboard .mine-dashboard-head { padding: 10px 14px; gap: 10px; margin-bottom: 6px; }
+.mine-dashboard .mine-dashboard-head > div:first-child { flex: 0 1 300px; gap: 10px; }
+.mine-dashboard .mine-dashboard-head h1 { font-size: clamp(24px, 1.6vw, 30px) !important; margin: 3px 0; }
+.mine-dashboard .mine-head-actions { gap: 8px; }
+.mine-dashboard .mine-head-actions :is(input, select) { padding: 7px 10px; min-height: 40px; min-width: 0; }
+.mine-dashboard .mine-panel > header { padding: 9px 12px; gap: 10px; }
+.mine-dashboard .mine-fleet-region-chart > header { display: flex; flex-wrap: wrap; justify-content: space-between; }
+.mine-dashboard .mine-fleet-chart-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+.mine-dashboard .mine-fleet-chart-heading h2 { margin: 0; white-space: nowrap; }
+.mine-dashboard .mine-fleet-chart-toggle { display: inline-flex; width: auto; max-width: 100%; gap: 3px; padding: 3px; }
+.mine-dashboard .mine-fleet-chart-toggle button { min-height: 36px; padding: 5px 8px; white-space: nowrap; }
+.mine-dashboard .mine-fleet-chart-tools { margin-left: auto; }
+.mine-dashboard .mine-maintenance-availability-head { padding: 10px 12px !important; }
+.mine-dashboard .mine-maintenance-availability-tabs button { min-height: 40px; padding: 7px 10px; }
+.mine-dashboard .mine-breakdown-movement-kpis { gap: 6px; }
+.mine-dashboard .mine-breakdown-movement-kpis > div { min-height: 64px; padding: 8px 10px; gap: 5px 8px; }
+.mine-dashboard .mine-breakdown-type-mix :is(article, button) { padding: 8px 10px; gap: 6px; }
+.mine-dashboard :is(.mine-breakdown-site-row, .mine-road-site-row) { min-height: 58px; padding-block: 8px; }
+.mine-dashboard .daily-bd-balance { --bd-gutter: 14px; margin-bottom: 6px; }
+.mine-dashboard .bd-balance-header { padding: 10px var(--bd-gutter); gap: 10px; }
+.mine-dashboard .bd-balance-controls { gap: 8px; }
+.mine-dashboard .mine-fleet-chart-x { padding: 2px 4px; margin: 0; }
+.mine-dashboard .mine-fleet-region-chart { padding-bottom: 3px; }
+.mine-dashboard .bd-balance-day { grid-template-rows: 42px 36px 180px 32px 64px 44px; }
+.mine-dashboard .bd-balance-day-date { gap: 0; }
+.mine-dashboard .bd-balance-scroll { margin-bottom: 4px; padding-bottom: 0; }
+@media (min-width: 1200px) {
+  .mine-dashboard .mine-fleet-region-chart > header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .mine-dashboard .mine-fleet-chart-heading { display: contents; }
+  .mine-dashboard .mine-fleet-chart-toggle { justify-self: center; }
+  .mine-dashboard .mine-fleet-chart-tools { justify-self: end; flex-wrap: wrap; min-width: 0; }
+}
+@media screen {
+  .app:has(.mine-dashboard) > aside { z-index: 50; }
+  .content:has(.mine-dashboard) > .top { position: sticky; z-index: 40; }
+  .mine-dashboard > .dashboard-filter-bar { position: sticky; top: var(--dashboard-banner-top, var(--dashboard-sticky-top, 0px)); z-index: 30; align-self: start; }
+}
+@media (max-width: 700px) {
+  .mine-dashboard .mine-dashboard-head > div:first-child { flex-basis: 100%; }
+  .mine-dashboard .mine-fleet-chart-heading { gap: 8px; width: 100%; }
+  .mine-dashboard .mine-fleet-chart-toggle { flex-wrap: wrap; }
+  .mine-dashboard .mine-fleet-chart-tools { margin-left: 0; }
+}
+@media print {
+  .mine-dashboard > .dashboard-filter-bar { position: static; }
+}
