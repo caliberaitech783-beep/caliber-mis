@@ -71,3 +71,5 @@
 .vlb-batch-actions button.danger,.logbook-table button.danger{color:#b52d38;border-color:#edb5bb}
 
 .vlb-fleet-stepper [hidden]{display:none!important}.vlb-fleet-stepper output[aria-label="Breakdown Hrs"]{display:block;min-height:44px;padding:10px 12px;border:1px solid var(--border,#d7c7ee);border-radius:8px;background:var(--panel,#fff);font-weight:650}
+
+.vlb-batch-stage-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}.vlb-batch-stage-toolbar .vlb-stage-steps{margin-bottom:0}
