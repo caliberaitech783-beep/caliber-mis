@@ -67,4 +67,8 @@ test('the scan page reopens the entry after a refresh, lists the entries of the 
  assert.match(workspace,/if\(batch\?\.id&&batch\.id===previous\)return;/,'re-selecting the same VLB batch keeps the scan entry in the address');
  const css=read('src/bulk-card-scanning.css');
  assert.match(css,/\.scan-entry-list button\[aria-pressed="true"\]/);
+ assert.match(css,/\.scan-entry-total\{[^}]*font-size:26px/);
+ assert.match(css,/\.scan-entry-list button strong\{[^}]*white-space:pre-line/);
+ const batchCss=read('src/vlb-create-batch.css');
+ assert.match(batchCss,/\.vlb-entry-batch-picker \.vlb-batch-notice>strong\{white-space:nowrap\}/);
 });

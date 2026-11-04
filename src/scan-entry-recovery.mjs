@@ -20,6 +20,11 @@ export function recallScanEntry(storage,kind,vlbBatchId){
 export const entryCancelled=entry=>Boolean(entry?.expected_context?.cancelled||entry?.expected_context?.deletedVlbBatch);
 export const entryHasUnsavedCards=entry=>Number(entry?.cards||0)>Number(entry?.posted||0);
 
+export function scanEntryHeading(entry,index=0,trips=0){
+ const batchNumber='B'+(String(entry?.name||'').match(/B0*(\d+)$/i)?.[1]||index+1);
+ return {batchNumber,text:String(entry?.name||batchNumber)+' ('+(Number(entry?.cards)||0)+' cards)\n'+batchNumber+' ('+(Number(trips)||0)+' trips)'};
+}
+
 // `entries` are the scan entries already filtered to the VLB batch's date, site
 // and shift, newest first as the server lists them.
 export function chooseScanEntry(entries,{remembered=''}={}){

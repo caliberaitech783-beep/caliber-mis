@@ -88,6 +88,14 @@ test('the purple extraction strip stays on the overview and is omitted from card
  assert.equal(nodes(harness('&scanView=review&scanGroup=brown').render(),node=>node.type===scope.ScanExtractionStatus).length,0);
 });
 
+test('fleet reconciliation is collapsed below Card status on the VLB overview',()=>{
+ const report=React.createElement('section',{'aria-label':'fleet report'}),tree=harness().render({fleetReconciliation:report});
+ const details=nodes(tree,n=>n.type==='details'&&n.props.className==='scan-fleet-reconciliation')[0];
+ assert.ok(details);assert.equal(details.props.open,undefined);
+ const ordered=nodes(tree,n=>n.props.className==='scan-card-groups'||n.props.className==='scan-fleet-reconciliation').map(n=>n.props.className);
+ assert.deepEqual(ordered,['scan-card-groups','scan-fleet-reconciliation']);
+});
+
 test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
  assert.match(source,/autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card \{autoSaveError\.ordinal\}\.<\/strong> \{autoSaveError\.message\}/);

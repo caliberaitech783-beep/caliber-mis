@@ -74,7 +74,9 @@ test('batch selection opens the requested editor directly without an intermediat
   const workspace=new Function('React','useState','useEffect','VlbCreateBatch','ElbBatchManual','FleetReconciliation','fetch','sessionStorage','window',code+';return VlbEntryWorkspace')(React,useState,()=>{},Picker,()=>null,()=>null,fetch,{setItem:(...v)=>saved.push(v)},{location:{href:'https://example.test/?page=trip-scan&batch=old'},history:{replaceState(){}}});
   const render=()=>{cursor=0;return workspace({kind:'vehicle',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   let tree=render();assert.equal(nodes(tree,n=>n.type===Picker).length,1);assert.equal(nodes(tree,n=>n.type===Editor).length,0,'entry requires an open site batch selection');nodes(tree,n=>n.type===Picker)[0].props.onSelected(batch);
-  tree=render();assert.ok(saved.some(v=>v[1]===batch.id));assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,batch.id);assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
+  tree=render();assert.ok(saved.some(v=>v[1]===batch.id));
+  const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);assert.ok(editor.props.fleetReconciliation,'fleet report moves into the selected entry screen instead of rendering above it');
+  assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
  }
 });
 

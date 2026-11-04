@@ -36,11 +36,11 @@ for(const kind of ['vehicle','equipment'])test(kind+' multi-select tracks visibl
  let tree=render();assert.equal(selectedButton(tree).props.disabled,true);
  const checks=nodes(tree,'input').filter(n=>String(n.props['aria-label']||'').startsWith('Select card '));assert.deepEqual(checks.map(n=>Boolean(n.props.disabled)),[false,false,false,false,true,true,true]);
  checks[0].props.onChange({target:{checked:true}});tree=render();checks[2].props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests[0], [members[0],members[2]]);
- get(tree,'input','Select all visible unsaved cards').props.onChange({target:{checked:true}});tree=render();assert.equal(selectedButton(tree).props.children[1],4);
+ assert.equal(get(tree,'input','Select all visible unsaved cards'),undefined,'bulk select control is removed');
  nodes(tree,'button').find(n=>n.props.children==='Clear selection').props.onClick();tree=render();assert.equal(selectedButton(tree).props.disabled,true);
- get(tree,'input','Search batch report').props.onChange({target:{value:'FINDME'}});tree=render();get(tree,'input','Select all visible unsaved cards').props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests.at(-1),[members[0]],'select all applies only to the filtered visible rows');
+ get(tree,'input','Search batch report').props.onChange({target:{value:'FINDME'}});tree=render();get(tree,'input','Select card 1').props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests.at(-1),[members[0]],'filtered rows remain individually selectable');
  members[0]={...members[0],revision:99};tree=render();assert.equal(selectedButton(tree).props.disabled,true,'a changed card requires a fresh selection');
- props.actionsDisabled=true;tree=render();assert.equal(get(tree,'input','Select all visible unsaved cards').props.disabled,true);
+ props.actionsDisabled=true;tree=render();assert.equal(get(tree,'input','Select card 1').props.disabled,true);
 });
 for(const kind of ['vehicle','equipment'])test(kind+' abort selection stays selected through OCR progress and never enables deletion of processing cards',()=>{
  const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
