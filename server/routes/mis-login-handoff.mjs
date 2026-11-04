@@ -36,10 +36,13 @@ export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,f
   if(!response.ok||!valid(result.grant)||!result.profile?.permissions?.separateMisCredentials)return res.status(401).json({error:'Pulse could not complete MIS sign-in. Please start again.'});
   const token=randomUUID();await sessionStore.create({token,...result.profile});
   await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token) VALUES($1,$2)',[token,result.grant]);
-  res.cookie(readyCookie,token,{...options,maxAge:60000});res.redirect(303,'/?misCredentialReady=1');
+  res.cookie(readyCookie+'_'+digest(state),token,{...options,maxAge:60000});res.redirect(303,'/?misCredentialReady='+state);
  }));
  app.get('/api/mis-credentials/session',safe(async(req,res)=>{
-  const token=cookie(req,readyCookie);res.clearCookie(readyCookie,options);
+  const handoff=req.query?.handoff;
+  if(handoff!==undefined&&!valid(handoff))return res.status(400).json({error:'Invalid MIS sign-in handoff. Start again from Pulse.'});
+  const name=handoff?readyCookie+'_'+digest(handoff):readyCookie;
+  const token=cookie(req,name);res.clearCookie(name,options);
   if(!/^[0-9a-f-]{36}$/i.test(token))return res.status(401).json({error:'Start MIS sign-in from Pulse.'});
   const session=await credentialClient.validateSession(token,await sessionStore.get(token));
   if(!session)return res.status(401).json({error:'MIS sign-in expired. Start again from Pulse.'});

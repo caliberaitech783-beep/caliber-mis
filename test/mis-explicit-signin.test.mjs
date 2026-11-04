@@ -41,3 +41,12 @@ test('a fresh MIS page shows sign-in even when browser storage contains a previo
   const App=new Function(...Object.keys(scope),`${code};return MisApp;`)(...Object.values(scope));
   assert.equal(App().type,Login);assert.equal(options.autoStart,true);
 });
+
+
+test('a completed tab-scoped credential handoff requests only its own ready cookie',async()=>{
+ const handoff='a'.repeat(43);
+ const result=await runHook('?misCredentialReady='+handoff);
+ assert.deepEqual(result.requests,['/api/mis-sso/config','/api/mis-credentials/session?handoff='+handoff]);
+ assert.equal(result.events[0].type,'mis-shared-signin');
+ assert.deepEqual(result.redirects,[]);
+});

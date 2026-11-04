@@ -10,9 +10,9 @@ test('MIS callback requires browser state and one-time proof; session is retriev
  const start=await call('/api/mis-credentials/start');assert.equal(start.status,303);const target=new URL(start.url);assert.equal(target.origin,'https://pulse.cmll.in');assert.equal(target.searchParams.get('login'),'mis');const state=target.searchParams.get('misState'),cookie='__Host-mis_credential_state='+state;
  assert.equal(start.cookies.__Host_mis_credential_state,undefined);assert.equal(Object.values(start.cookies)[0].options.httpOnly,true);
  assert.equal((await call('/api/mis-credentials/callback',{state,code:'c'.repeat(43)})).status,400);
- const callback=await call('/api/mis-credentials/callback',{state,code:'c'.repeat(43)},cookie);assert.equal(callback.status,303);assert.equal(callback.url,'/?misCredentialReady=1');assert.equal(exchange.url,'https://pulse.cmll.in/api/integrations/mis/exchange');assert.equal(exchange.state,state);assert.equal(exchange.verifier.length,43);
+ const callback=await call('/api/mis-credentials/callback',{state,code:'c'.repeat(43)},cookie);assert.equal(callback.status,303);assert.equal(callback.url,'/?misCredentialReady='+state);assert.equal(exchange.url,'https://pulse.cmll.in/api/integrations/mis/exchange');assert.equal(exchange.state,state);assert.equal(exchange.verifier.length,43);
  assert.equal((await call('/api/mis-credentials/callback',{state,code:'c'.repeat(43)},cookie)).status,400);
- const token=callback.cookies['__Host-mis_credential_ready'].value;assert.equal((await call('/api/mis-credentials/session',{},'__Host-mis_credential_ready='+token)).body.token,token);
+ const readyName=Object.keys(callback.cookies).find(name=>name.startsWith('__Host-mis_credential_ready_'));const token=callback.cookies[readyName].value;assert.equal((await call('/api/mis-credentials/session',{handoff:state},readyName+'='+token)).body.token,token);
  assert.equal((await call('/api/mis-credentials/session')).status,401);
  }finally{await db.close()}
 });

@@ -22,11 +22,12 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
         }
       }
       if(mode==='client'&&!session?.token){
-        if(query.get('misCredentialReady')==='1'){
-          const response=await fetch('/api/mis-credentials/session',{cache:'no-store'});
+        const handoff=query.get('misCredentialReady');
+        if(handoff==='1'||/^[A-Za-z0-9_-]{43}$/.test(handoff||'')){
+          const response=await fetch('/api/mis-credentials/session'+(handoff==='1'?'':'?handoff='+encodeURIComponent(handoff)),{cache:'no-store'});
           const result=await response.json();if(stopped)return;
           window.history.replaceState(null,'','/');
-          if(!response.ok||!result.token)throw Error('Pulse could not complete MIS sign-in. Please start again.');
+          if(!response.ok||!result.token)throw Error(result.error||'Pulse could not complete MIS sign-in. Please start again.');
           window.dispatchEvent(new CustomEvent('mis-shared-signin',{detail:result}));
         }else if(query.get('misSsoReady')==='1'){
           const response=await fetch('/api/mis-sso/session',{cache:'no-store'});
@@ -37,7 +38,7 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
         }else if(autoStart)window.location.replace('/api/mis-credentials/start');
       }
     };
-    void start().catch(()=>{if(!stopped)setStatus(current=>({...current,error:'Shared sign-in is temporarily unavailable. Please retry.'}));});
+    void start().catch(error=>{if(!stopped)setStatus(current=>({...current,error:error.message||'Shared sign-in is temporarily unavailable. Please retry.'}));});
     return()=>{stopped=true;};
   },[session?.token,paused,autoStart]);
   return status;
