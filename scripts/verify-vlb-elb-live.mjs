@@ -67,6 +67,7 @@ if(process.argv.includes('--azure')){
  assert.equal(preferred([closed,open],closed.id),open,'A remembered closed batch must not override the open batch');
  assert.equal(preferred([closed],closed.id),null,'Closed batches must not auto-open for work');
  const pool=new pg.Pool({...misDatabaseConfig(),connectionTimeoutMillis:15000,max:2});
+ const moduleChecks={vehicle:0,equipment:0};
  let checked=0,restricted=0,admins=0,openSelections=0,restrictedCandidates=0;
  try{
   const sessions=(await pool.query(`SELECT token,role,employee_name AS name,login_name AS login,assigned_role AS "assignedRole",permissions
@@ -88,9 +89,13 @@ if(process.argv.includes('--azure')){
     AND (lower(trim(record_data->>'login'))=$1 OR lower(trim(record_data->>'employee'))=$2)
     ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
    const scope=logBookSiteScope(session,user),admin=isMisAdministrator(session);
-   assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
-   assert.equal(options.canSelectSite,admin,'Only administrators receive unrestricted site selection');
-   if(admin)admins++;else{
+   assert.deepEqual([...options.sites].sort(),REGION_DATA.flatMap(region=>region.sites).filter(site=>siteAllowed(scope,site)).sort(),'Scan selector must show exactly the permitted sites');
+   assert.equal(options.canSelectSite,scope.sites===null,'Assigned sites must restrict administrators too');
+   const manual=await liveJson(base+'/api/log-books/options',{headers});
+   assert.ok(manual.sites.every(site=>siteAllowed(scope,site)),'Manual options must contain only permitted sites');
+   console.log(JSON.stringify({account:session.login,assignedSites:scope.sites,scanSites:options.sites,manualSites:manual.sites,modules:['VLB','ELB']}));
+   if(admin)admins++;
+   if(scope.sites!==null){
     restricted++;
     const outside=REGION_DATA.flatMap(region=>region.sites).find(site=>!siteAllowed(scope,site));
     if(outside){
@@ -102,7 +107,7 @@ if(process.argv.includes('--azure')){
     const r=await fetch(base+'/api/log-books/'+kind+'?first=1',{headers,signal:AbortSignal.timeout(30000)});
     if(r.status===403)continue;
     assert.equal(r.status,200);
-    const data=await liveJson(base+'/api/log-books/'+kind+'?first=1',{headers,initialResponse:r,allowDenied:true});if(!data)continue;assert.ok((data.records||[]).every(row=>siteAllowed(scope,row.data?.location||row.site)),'VLB/ELB records must stay within scope');
+    const data=await liveJson(base+'/api/log-books/'+kind+'?first=1',{headers,initialResponse:r,allowDenied:true});if(!data)continue;moduleChecks[kind]++;assert.ok((data.records||[]).every(row=>siteAllowed(scope,row.data?.location||row.site)),'VLB/ELB records must stay within scope');
    }
    const r=await fetch(base+'/api/vlb-batches?scan=1',{headers,signal:AbortSignal.timeout(30000)});
    if(r.ok){
@@ -117,10 +122,11 @@ if(process.argv.includes('--azure')){
    if(restricted>=2&&admins>=1&&openSelections>=1)break;
   }
  }finally{await pool.end();}
- const result={commit:health.commit,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true};
+ const result={commit:health.commit,moduleChecks,checkedAccounts:checked,restrictedCandidateSessions:restrictedCandidates,restrictedAccounts:restricted,administratorAccounts:admins,liveOpenBatchSelections:openSelections,closedBatchPreferenceRejected:true};
  console.log(JSON.stringify(result));
+ assert.ok(moduleChecks.vehicle>0&&moduleChecks.equipment>0,'Both VLB and ELB must be verified with authorized accounts');
  assert.ok(restricted>0,'A current restricted MIS session is required for live access verification');
- assert.ok(admins>0,'A current administrator session is required for live all-site verification');
+ assert.ok(checked>0,'A current authorized session is required');
  assert.ok(openSelections>0,'An existing open site batch is required for live selection verification');
 }
 
