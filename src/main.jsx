@@ -12081,7 +12081,7 @@ function App() {
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
     session, theme,
   ]);
-  if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity}/>;
+  if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
   if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">

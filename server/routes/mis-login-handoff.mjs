@@ -43,7 +43,7 @@ export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,f
   if(handoff!==undefined&&!valid(handoff))return res.status(400).json({error:'Invalid MIS sign-in handoff. Start again from Pulse.'});
   const name=handoff?readyCookie+'_'+digest(handoff):readyCookie;
   const token=cookie(req,name);res.clearCookie(name,options);
-  if(!/^[0-9a-f-]{36}$/i.test(token))return res.status(401).json({error:'Start MIS sign-in from Pulse.'});
+  if(!/^[0-9a-f-]{36}$/i.test(token))return res.status(req.browserSession?409:401).json({error:'Start MIS sign-in from Pulse.'});
   const session=await credentialClient.validateSession(token,await sessionStore.get(token));
   if(!session)return res.status(401).json({error:'MIS sign-in expired. Start again from Pulse.'});
   res.json({token,...session});
