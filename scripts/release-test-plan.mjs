@@ -3,15 +3,16 @@ import {readFileSync} from 'node:fs';
 const safeUiPath = path =>
   /^src\/[^/]*(?:dashboard|report|reconciliation)[^/]*\.jsx$/.test(path)
   || /^src\/.*\.css$/.test(path)
-  || path === 'shared/fleet-reconciliation-summary.mjs';
+  || path === 'shared/fleet-reconciliation-summary.mjs'
+  || path === 'scripts/release-test-plan.mjs';
 
 const safeTestPath = path =>
-  /^test\/(?:dashboard|report|fleet-reconciliation|frontend-module-boundary)[^/]*\.test\.mjs$/.test(path);
+  /^test\/(?:dashboard|report|fleet-reconciliation|release-test-plan)[^/]*\.test\.mjs$/.test(path);
 
 export function releaseTestPlan(files = []) {
   const changed = [...new Set(files.map(file => String(file).trim().replaceAll('\\', '/')).filter(Boolean))];
   const fast = changed.length > 0 && changed.every(path => safeUiPath(path) || safeTestPath(path));
-  const focused = new Set(['test/frontend-module-boundary.test.mjs']);
+  const focused = new Set(['test/module-layout.test.mjs']);
   for (const path of changed) {
     if (path.includes('fleet-reconciliation')) focused.add('test/fleet-reconciliation-summary.test.mjs');
     if (path.includes('dashboard')) focused.add('test/dashboard-readable-typography.test.mjs');
