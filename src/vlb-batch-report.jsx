@@ -35,7 +35,7 @@ const cell=value=>value===null||value===undefined||value===''?'—':value;
 export function MachineReport({report,statuses}){
  const loaders=report?.loaders||[],others=report?.others||[],totals=report?.totals||{};
  const label=row=>row.statusLabel||statuses?.[row.status]?.label||row.status||'Not saved';
- return <details className="logbook-section vlb-machine-report" aria-label="Machine-wise shift report"><summary>Machine-wise shift report</summary>
+ return <details className="logbook-section vlb-machine-report" aria-label="ELB -- Machine-wise shift report"><summary>ELB -- Machine-wise shift report</summary>
   <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Door</th><th>Equipment</th><th>Trips</th><th>Cards</th><th>Operator</th><th>Opening HMR</th><th>Closing HMR</th><th>Hours</th><th>Trips/hour</th><th>BD hours</th><th>Status</th><th>ELB no.</th></tr></thead><tbody>
    {loaders.map(row=><tr key={row.assetId}><td>{row.door}</td><td>{cell(row.equipmentName)}</td><td>{row.trips}</td><td>{cell(row.sourceCards)}</td><td>{cell(row.operator)}</td><td>{cell(row.openingHmr)}</td><td>{cell(row.closingHmr)}</td><td>{cell(row.hours)}</td><td>{cell(row.tripsPerHour)}</td><td>{cell(row.breakdownHours)}</td><td>{label(row)}</td><td>{cell(row.bookNo)}</td></tr>)}
    {!loaders.length&&<tr><td colSpan={12}>No machine loaded trips in this batch.</td></tr>}
