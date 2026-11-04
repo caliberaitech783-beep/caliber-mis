@@ -1,0 +1,24 @@
+name: Verify existing VLB and ELB production access
+on: workflow_dispatch
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+      - name: Verify current production VLB and ELB access
+        run: |
+          EXPECTED_COMMIT=$(curl --fail --silent https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit')
+          export EXPECTED_COMMIT
+          node scripts/verify-vlb-elb-live.mjs --azure
