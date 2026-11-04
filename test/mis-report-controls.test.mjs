@@ -81,7 +81,7 @@ test('batch report shows only saved totals as tiles, keeps its heading and downl
  const saved=(id,ordinal,mode)=>({id,batch_id:batch.id,ordinal,status:'posted',saved_data:{scanCardId:id,scanBatchId:batch.id,door:'V'+ordinal,scanSaveMode:mode}});
  const cards=[saved('automatic',1,'automatic-validation'),saved('corrected',2,'manual-review'),{id:'pending',batch_id:batch.id,ordinal:3,status:'review',draft:{}},{...saved('foreign',4,'automatic-validation'),batch_id:'other'}];
  const tree=render({batch,cards,token:'test'});
- assert.deepEqual(nodes(tree,'dt').map(node=>node.props.children),['Trips','Kilometres','Working hours']);
+ assert.deepEqual(nodes(tree,'dt').map(node=>node.props.children),['Completed trips','Machine loading trips','Handover completions','Kilometres','Working hours']);
  assert.deepEqual(nodes(render({batch:{...batch,kind:'equipment'},cards,token:'test'}),'dt').map(node=>node.props.children),['Working hours']);
  const header=nodes(tree,'header')[0];
  assert.equal(nodes(header,'h2').length,1);

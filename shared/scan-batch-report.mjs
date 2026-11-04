@@ -36,9 +36,10 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
  const rejectedCards=batchMembers.filter(card=>card.status==='rejected'),visibleIds=new Set(members.map(card=>card.id));
  const counts={cards:rows.length+rejectedCards.filter(card=>!visibleIds.has(card.id)).length,saved:saved.length,rejected:rejectedCards.length,deleted:rows.filter(c=>c.deleted).length};counts.pending=counts.cards-counts.saved-counts.rejected-counts.deleted;
  const totals={trips:vehicle?sum(saved.map(r=>r.trips)):null,kilometres:vehicle?sum(saved.map(r=>r.kilometres)):null,hours:sum(saved.map(r=>r.hours))};
+ const tripBreakdown=vehicle?{completed:totals.trips,machineLoading:sum(tripRows.map(row=>row.machineTrips)),handover:sum(tripRows.filter(row=>row.machineTrips===0).map(row=>row.trips))}:null;
  const title=`${vehicle?'Trip':'Job'} Card batch report · ${batch.id.slice(0,8)}`;
  const summaryRows=[['Batch ID',batch.id],['Batch name',batch.name||''],['Created',batch.created_at||''],['Cards in this batch',counts.cards],['Saved cards',counts.saved],['Pending / unresolved cards',counts.pending],['Rejected cards',counts.rejected],['Deleted log books',counts.deleted],...(vehicle?[['Trips (saved cards)',totals.trips],['Kilometres (saved cards)',totals.kilometres]]:[]),['Working hours (saved cards)',totals.hours]].map(([metric,value])=>({metric,value}));
- return {contextChecked:Boolean(batch.expected_context),title,batchId:batch.id,name:batch.name||'',vehicle,counts,totals,rows,tripRows,summaryRows,machineRows:[...machines.values()].map(r=>({equipment:r.equipment,equipmentId:r.equipmentId,written:[...r.written].join(', '),unresolved:r.unresolved,trips:r.trips,cards:r.cards.size,vehicles:r.vehicles.size})).sort((a,b)=>a.equipment.localeCompare(b.equipment))};
+ return {contextChecked:Boolean(batch.expected_context),title,batchId:batch.id,name:batch.name||'',vehicle,counts,totals,tripBreakdown,rows,tripRows,summaryRows,machineRows:[...machines.values()].map(r=>({equipment:r.equipment,equipmentId:r.equipmentId,written:[...r.written].join(', '),unresolved:r.unresolved,trips:r.trips,cards:r.cards.size,vehicles:r.vehicles.size})).sort((a,b)=>a.equipment.localeCompare(b.equipment))};
 }
 
 const column=(key,label)=>({key,label:compactLogBookLabel(label),value:row=>row[key]});
