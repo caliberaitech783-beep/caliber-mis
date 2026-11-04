@@ -2,13 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {uiDeltaPlan} from '../scripts/ui-delta-plan.mjs';
-import {applyUiDelta} from '../scripts/deploy-ui-delta.mjs';
+import {applyUiDelta,missingUiAssets} from '../scripts/deploy-ui-delta.mjs';
 import {focusedSourceTests} from '../scripts/release-test-plan.mjs';
 
 const baseline='a'.repeat(40), current='b'.repeat(40);
 const context={baseline,current,healthy:true};
 const change=(path,status='M')=>({path,status});
 const eligible=uiDeltaPlan([change('src/reports-workspace.css')],context);
+
+test('immutable assets are preserved and only absent assets are uploaded',async()=>{
+ const result=await missingUiAssets(['vendor.js','new.js'],{
+  readLocal:async file=>Buffer.from(file),
+  readRemote:async file=>file==='vendor.js'?Buffer.from(file):null
+ });
+ assert.deepEqual(result,['new.js']);
+});
+
+test('an existing asset with different bytes blocks the delta before writes',async()=>{
+ await assert.rejects(missingUiAssets(['vendor.js'],{
+  readLocal:async()=>Buffer.from('expected'),readRemote:async()=>Buffer.from('different')
+ }),/existing immutable UI asset differs/);
+ await assert.rejects(missingUiAssets(['vendor.js'],{
+  readLocal:async()=>Buffer.from('expected'),readRemote:async()=>{throw Error('read unavailable');}
+ }),/read unavailable/);
+});
 
 test('only existing allowlisted UI files can use additive deployment',()=>{
  assert.equal(eligible.eligible,true);
@@ -74,6 +91,8 @@ test('delta API uses additive uploads, preserves complete fallback, and never cl
  assert.match(source,/api\/zip\/site\/wwwroot\/dist\/app-assets\//);
  assert.doesNotMatch(source,/api\/zip\/site\/wwwroot\/dist\/'/);
  assert.match(source,/path\.resolve\('dist\/app-assets'\)/);
+ assert.match(source,/input:newAssets\.join/);
+ assert.doesNotMatch(source,/previous-dist.zip|backup.archive/);
  assert.match(source,/'dist\/index.html', 'dist\/app-version.txt', 'DEPLOYMENT_SHA'/);
  assert.doesNotMatch(source,/method:\s*['"]DELETE|api\/zipdeploy|npm.*prune|rmSync|unlink/);
  assert.match(workflow,/if: steps\.ui-delta\.outputs\.applied != 'true'/);
