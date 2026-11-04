@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {ibossAccountsAllowed,ibossAccountsEligible} from '../iboss-access.mjs';
-import {ADMIN_SUBMENU_OPTIONS} from '../admin-access.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {ibossAccountsAllowed,ibossAccountsEligible} from '../shared/iboss-access.mjs';
+import {ADMIN_SUBMENU_OPTIONS} from '../shared/admin-access.mjs';
 test('Account User retains Accounts access after the profile refresh',()=>{
   const user={userType:'Account User',userGroup:'Account User',adminLevel:''};
   const profile=resolveMobileAccess({user});

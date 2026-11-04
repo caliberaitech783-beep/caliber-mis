@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildXlsxReportBundleBuffer,buildXlsxWorkbookBuffer} from '../director-report-bundle.mjs';
+import {buildXlsxReportBundleBuffer,buildXlsxWorkbookBuffer} from '../shared/director-report-bundle.mjs';
 
 function storedFiles(buffer){
   assert.ok(Buffer.isBuffer(buffer));
@@ -139,7 +139,7 @@ test('wide bundle worksheets use valid references beyond Z and legacy workbooks 
 });
 
 test('server exports define full print areas and repeat headings with page-width fitting',async()=>{
-  const {buildXlsxSheetsWorkbook}=await import('../report-xlsx.mjs');
+  const {buildXlsxSheetsWorkbook}=await import('../shared/report-xlsx.mjs');
   const blob=buildXlsxSheetsWorkbook('Report',[{name:"Vendor's ledger",columns:[{label:'Bill'}],rows:[['One'],['Two']]}]);
   const files=storedFiles(Buffer.from(await blob.arrayBuffer()));
   const sheet=files.get('xl/worksheets/sheet1.xml');

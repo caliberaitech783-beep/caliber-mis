@@ -1,12 +1,12 @@
 import {recordCountLabel} from './iboss-record-count.mjs';
 import {createAccountPageLoader} from './iboss-account-loader.mjs';
 import React,{useEffect,useMemo,useState,useRef} from 'react';
-import {accountPrivileges} from '../account-role-access.mjs';
+import {accountPrivileges} from '../shared/account-role-access.mjs';
 import {BookUser,Contact,Wallet,Landmark,Network,Settings,BookOpen,Percent,ArrowLeft,RefreshCw} from 'lucide-react';
-import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../iboss-accounts.mjs';
-import {purchaseOrderRange} from '../purchase-order-report.mjs';
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../shared/iboss-accounts.mjs';
+import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import DateInput from './date-input.mjs';
 import './stock-statement.css';
 import './iboss-accounts.css';
@@ -14,7 +14,7 @@ import IbossDashboard from './iboss-dashboard.jsx';
 import IbossChat from './iboss-chat.jsx';
 import IbossReportMerge from './iboss-report-merge.jsx';
 import DrillPanel from './iboss-drill-panel.jsx';
-import {accountDrill,ACCOUNT_DRILLS} from '../iboss-drill.mjs';
+import {accountDrill,ACCOUNT_DRILLS} from './lib/iboss-drill.mjs';
 const SECTIONS=[['dashboard','Dashboard'],['masters','Masters'],['transactions','Transactions'],['merge','Report Merge'],['chat','Chat Bot']];
 const icons=[BookUser,Contact,Wallet,Landmark,Settings,Network,BookOpen,Percent];
 export default function IbossAccounts({token,ReportSection,initialSection='dashboard',permissions={}}) {

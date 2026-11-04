@@ -29,7 +29,7 @@ const step=(text,name)=>{
   return match[0];
 };
 const deployStep=text=>{const match=/- name: '?Deploy to [^\n]*[\s\S]*?uses: azure\/webapps-deploy@v3[\s\S]*?(?=\n {6}- name:)/.exec(text);assert.ok(match,'deploy step exists');return match[0];};
-const verificationSteps=['npm run ocr:prepare','npm run build','npm test','node --check server.mjs','node scripts/verify-server-start.mjs','node scripts/verify-ui-release.mjs\n','node scripts/verify-ui-release.mjs --live',"await import('./local-card-ocr.mjs')","loadHandwritingModel","h.commit!==process.env.EXPECTED_COMMIT",'printf \'%s\\n\'','> DEPLOYMENT_SHA'];
+const verificationSteps=['npm run ocr:prepare','npm run build','npm test','node --check server.mjs','node scripts/verify-server-start.mjs','node scripts/verify-ui-release.mjs\n','node scripts/verify-ui-release.mjs --live',"await import('./server/services/local-card-ocr.mjs')","loadHandwritingModel","h.commit!==process.env.EXPECTED_COMMIT",'printf \'%s\\n\'','> DEPLOYMENT_SHA'];
 
 test('the test platform is manual-only and never targets production',()=>{
   const triggers=topLevel(testWorkflow,'on');

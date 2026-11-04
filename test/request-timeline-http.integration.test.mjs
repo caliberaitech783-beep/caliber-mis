@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import {hashPassword} from '../password-auth.mjs';
+import {hashPassword} from '../server/services/password-auth.mjs';
 
 const base=process.env.BDMS_AUDIT_BASE_URL,databaseUrl=process.env.BDMS_AUDIT_DATABASE_URL;
 const india=value=>new Date(new Date(value).getTime()+19800000).toISOString().slice(0,19);

@@ -2,9 +2,9 @@ import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber,formatVlbCardNumber} from '../vlb-card-number.mjs';
-import {previewBookNumber,scanBookPreviewSequence} from '../book-number-preview.mjs';
-import {LOG_BOOK_SCHEMA,insertLogBook} from '../log-book.mjs';
+import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber,formatVlbCardNumber} from '../shared/vlb-card-number.mjs';
+import {previewBookNumber,scanBookPreviewSequence} from '../shared/book-number-preview.mjs';
+import {LOG_BOOK_SCHEMA,insertLogBook} from '../server/routes/log-book.mjs';
 import {randomUUID} from 'node:crypto';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations

@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {isMisAdministrator} from '../mis-admin-access.mjs';
+import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
 import './mis-admin.css';
 export default function MisTelegram({session}){
  const admin=isMisAdministrator(session);

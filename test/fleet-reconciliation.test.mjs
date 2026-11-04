@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reconcileFleet,shiftForDate,fleetShift,validFleetDate} from '../fleet-reconciliation.mjs';
+import {reconcileFleet,shiftForDate,fleetShift,validFleetDate} from '../server/rules/fleet-reconciliation.mjs';
 const site='Sasti OC',date='2026-11-02',shift='S1';
 const window={start:Date.parse(date+'T05:00:00+05:30'),end:Date.parse(date+'T13:00:00+05:30')};
 const now=Date.parse('2026-11-03T13:00:00+05:30');

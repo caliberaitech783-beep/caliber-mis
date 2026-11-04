@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import express from 'express';
-import {createScanBatch,tripBatchPrefix,SCAN_BATCH_NAMING_SCHEMA} from '../scan-batch-naming.mjs';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
+import {createScanBatch,tripBatchPrefix,SCAN_BATCH_NAMING_SCHEMA} from '../server/rules/scan-batch-naming.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
 
 const context={bookDate:'2026-12-29',location:'JAYANT',cardShift:'I'};
 const prefix='CMLL/2026-12-29/JAYANT/S1/NITINKUMAR';

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';import {scanAbortApproval} from '../src/scan-card-deletion-selection.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';import {scanAbortApproval} from '../src/scan-card-deletion-selection.mjs';
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}};
 async function fixture(t,kind,recognize,concurrency=1){
  const db=new PGlite();await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args),pool={query,connect:async()=>({query,release(){}})};

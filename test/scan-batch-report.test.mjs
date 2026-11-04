@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {scanBatchReport,scanBatchReportTables,scanBatchExportTables} from '../scan-batch-report.mjs';
-import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
+import {scanBatchReport,scanBatchReportTables,scanBatchExportTables} from '../shared/scan-batch-report.mjs';
+import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 const batch={id:'11111111-1111-4111-a111-111111111111',kind:'vehicle',name:'This scan run',created_at:'2026-10-28T12:00:00Z'};
 const data={aFormNo:'75',bookDate:'2026-10-19',location:'Sasti OC',door:'V1',caliberId:'CMPL1',employeeName:'Driver One',shiftName:'Shift I',shiftHours:8,openingKmr:0,closingKmr:40,totalRunningKmr:40,openingHmr:0,closingHmr:6,totalWorkingHmr:6,totalTrips:2,trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:2}]};
 const card=(id,ordinal,extra={})=>({id,batch_id:batch.id,ordinal,status:'posted',filename:id+'.png',book_no:'BOOK-'+id,page_count:1,draft:{...data,totalTrips:999,closingKmr:999},saved_data:{...data,scanCardId:id,scanBatchId:batch.id},...extra});

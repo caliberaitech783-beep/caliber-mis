@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCanvas} from '@napi-rs/canvas';
-import {cleanTripCell,resolveTripGrid} from '../trip-row-vision.mjs';
-import {readingCellImages} from '../trip-meter-ocr.mjs';
-import {extractCard} from '../scan-extraction.mjs';
-import {normalizeLogBook} from '../log-book.mjs';
-import {machineDiscrepancies} from '../trip-card-rules.mjs';
+import {cleanTripCell,resolveTripGrid} from '../server/services/trip-row-vision.mjs';
+import {readingCellImages} from '../server/rules/trip-meter-ocr.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {normalizeLogBook} from '../server/routes/log-book.mjs';
+import {machineDiscrepancies} from '../shared/trip-card-rules.mjs';
 const blank=()=>({present:false,value:''});
 const cell=value=>({present:true,value});
 const row=(n,type,no)=>({rowNumber:n,equipmentType:type,equipmentNo:no,loading:cell('08:20'),unloading:cell('08:40')});

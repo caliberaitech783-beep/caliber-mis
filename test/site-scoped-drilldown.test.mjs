@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { normalizedBreakdownType } from "../dashboard-breakdown-movement.mjs";
+import { normalizedBreakdownType } from "../src/lib/dashboard-breakdown-movement.mjs";
 
 test("the breakdown type normaliser is shared so drilldown keys match the type mix", () => {
   // The mix cards and the drilldown filter must agree on the label, or a card

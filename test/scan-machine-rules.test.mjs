@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {identifyCardMachine,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,siteEquipmentOptions,compactScanEquipmentReferences} from '../scan-machine-rules.mjs';
-import {linkedScanEquipment} from '../scan-fleet-door.mjs';
-import {extractCard} from '../scan-extraction.mjs';
+import {identifyCardMachine,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,siteEquipmentOptions,compactScanEquipmentReferences} from '../shared/scan-machine-rules.mjs';
+import {linkedScanEquipment} from '../shared/scan-fleet-door.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
 
 const site='Jayant OC';

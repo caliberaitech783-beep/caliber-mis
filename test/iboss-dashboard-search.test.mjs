@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {dashboardMetric,DASHBOARD_METRICS} from '../iboss-dashboard.mjs';
-import {accountView} from '../iboss-accounts.mjs';
+import {dashboardMetric,DASHBOARD_METRICS} from '../server/rules/iboss-dashboard.mjs';
+import {accountView} from '../shared/iboss-accounts.mjs';
 const range={from:'2026-04-01',to:'2026-09-30',company:'1'};
 test('dashboard search applies to the full source and count before pagination, with bound literal text',()=>{
  for(const key of Object.keys(DASHBOARD_METRICS)){

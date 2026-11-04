@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {displaySiteName} from '../region-scope.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import {ApprovalOtpPanel} from './vlb-approval-otp.jsx';
 
 export const batchDateTime=value=>formatDisplayDateTime(value);

@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {normalizeEnvironmentLabel,environmentBannerParts,environmentTitlePrefix} from '../environment-label.mjs';
+import {normalizeEnvironmentLabel,environmentBannerParts,environmentTitlePrefix} from '../shared/environment-label.mjs';
 import './environment-banner.css';
 
 const RETRY_MS=15_000,MAX_ATTEMPTS=20,HEIGHT_PROPERTY='--mis-environment-banner-height';

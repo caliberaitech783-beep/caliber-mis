@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildSiteInOutReportRows,buildInOutReportRows,IN_OUT_REPORT_COLUMNS} from '../in-out-report.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildSiteInOutReportRows,buildInOutReportRows,IN_OUT_REPORT_COLUMNS} from '../shared/in-out-report.mjs';
 
 test('MIS reports have the approved column order and wrapping',()=>{
   const reports=buildDepartmentReports();

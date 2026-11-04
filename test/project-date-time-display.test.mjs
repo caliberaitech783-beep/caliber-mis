@@ -4,12 +4,12 @@ import {readFile} from 'node:fs/promises';
 
 const files=[
   'server.mjs',
-  'consolidated-report-pdf.mjs',
-  'consolidated-whatsapp-report.mjs',
-  'ticket-consolidated-report.mjs',
-  'director-report-email.mjs',
-  'director-report-bundle.mjs',
-  'table-export-pdf.mjs',
+  'server/services/consolidated-report-pdf.mjs',
+  'server/rules/consolidated-whatsapp-report.mjs',
+  'server/rules/ticket-consolidated-report.mjs',
+  'server/rules/director-report-email.mjs',
+  'shared/director-report-bundle.mjs',
+  'server/services/table-export-pdf.mjs',
 ];
 
 test('all user-facing server report formatters use the project date-time standard',async()=>{

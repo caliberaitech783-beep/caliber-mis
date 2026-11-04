@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import * as policy from '../request-correction-policy.mjs';
-import * as returns from '../request-correction-return.mjs';
-import {validateRequestTimelineChange} from '../request-timeline.mjs';
+import * as policy from '../shared/request-correction-policy.mjs';
+import * as returns from '../server/rules/request-correction-return.mjs';
+import {validateRequestTimelineChange} from '../shared/request-timeline.mjs';
 
 const STATUS=policy.REQUEST_CORRECTION_STATUS;
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8').replaceAll('\r\n','\n');

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dashboardListTrigger, movementRequestRows, allLifecycleRequestRows, recordedTrendRows, forecastBasisRows } from "../src/dashboard-card-actions.mjs";
-import { breakdownMovementForRange, breakdownTypeShare } from "../dashboard-breakdown-movement.mjs";
+import { breakdownMovementForRange, breakdownTypeShare } from "../src/lib/dashboard-breakdown-movement.mjs";
 
 test("card background opens once without replacing a nested chart or control action", () => {
   const opened = [];

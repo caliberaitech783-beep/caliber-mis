@@ -1,9 +1,9 @@
-import {validateTripEquipment} from '../trip-equipment-validation.mjs';
-import {meterRuleIssues,tripEquipmentRequired} from '../trip-card-rules.mjs';
-import {responseReviewNeeded,recoveredTripNumberIssues} from '../scan-response-recovery.mjs';
-import {manualBreakdownHours} from '../breakdown-hours-source.mjs';
-import {validTripTime} from '../vlb-trip-handover.mjs';
-import {CARD_SHIFTS,machineDiscrepancies} from '../trip-card-rules.mjs';
+import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {meterRuleIssues,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
+import {responseReviewNeeded,recoveredTripNumberIssues} from '../shared/scan-response-recovery.mjs';
+import {manualBreakdownHours} from '../shared/breakdown-hours-source.mjs';
+import {validTripTime} from '../shared/vlb-trip-handover.mjs';
+import {CARD_SHIFTS,machineDiscrepancies} from '../shared/trip-card-rules.mjs';
 const required=[['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId','Driver / operator'],['shiftId','Shift'],['shiftHours','Shift hours'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR']];
 export function scanFieldState(draft,key,issues){
  if(!issues[key])return '';

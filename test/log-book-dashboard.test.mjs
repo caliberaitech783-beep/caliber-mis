@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';
-import {registerLogBookDashboard,dashboardFilters} from '../log-book-dashboard.mjs';
+import {registerLogBookDashboard,dashboardFilters} from '../server/routes/log-book-dashboard.mjs';
 test('dashboard aggregates all saved rows, aliases and zero sites; filters and permissions protect counts and drilldowns',async()=>{
  const db=new PGlite();let server;try{
   await db.exec(`CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,data JSONB,deleted_at TIMESTAMPTZ);CREATE TABLE master_records(master_name TEXT,record_data JSONB);CREATE TABLE mis_workflow_drafts(owner_login TEXT,workflow TEXT,site TEXT,payload JSONB,created_at TIMESTAMPTZ DEFAULT now(),deleted_at TIMESTAMPTZ);`);

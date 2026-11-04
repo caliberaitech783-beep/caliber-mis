@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { PURGEABLE_TABLES, deadRowShare, diskState, sharePercent, tableLabel } from "../storage-management.mjs";
-import { HOUSEKEEPING_CATEGORIES } from "../data-housekeeping.mjs";
+import { PURGEABLE_TABLES, deadRowShare, diskState, sharePercent, tableLabel } from "../server/rules/storage-management.mjs";
+import { HOUSEKEEPING_CATEGORIES } from "../server/rules/data-housekeeping.mjs";
 
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");

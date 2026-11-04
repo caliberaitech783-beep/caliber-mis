@@ -1,14 +1,14 @@
-import * as siteAccess from '../region-scope.mjs';
-import {telegramSiteName} from '../telegram-site-groups.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {telegramSiteName} from '../server/rules/telegram-site-groups.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {setImmediate as nextTurn} from 'node:timers/promises';
-import {defaultWhatsAppReportSettings,whatsappPurposeEnabled} from '../whatsapp-report-settings.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {assignedUserSiteName,canonicalSiteName} from '../site-location.mjs';
-import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient} from '../whatsapp-workflow-policy.mjs';
-import {reportTemplateFallback} from '../whatsapp-template-runtime.mjs';
+import {defaultWhatsAppReportSettings,whatsappPurposeEnabled} from '../shared/whatsapp-report-settings.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {assignedUserSiteName,canonicalSiteName} from '../shared/site-location.mjs';
+import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient} from '../server/rules/whatsapp-workflow-policy.mjs';
+import {reportTemplateFallback} from '../server/services/whatsapp-template-runtime.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const normalizeLogin=value=>String(value||'').trim().toLowerCase();

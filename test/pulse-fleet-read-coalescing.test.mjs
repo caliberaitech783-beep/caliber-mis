@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPulseMasterSync} from '../pulse-master-sync.mjs';
+import {createPulseMasterSync} from '../server/routes/pulse-master-sync.mjs';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const snapshot=door=>({'Equipment master':[{id:1,door}],'Region master':[],'Shift Master':[],'Users & employees':[]});

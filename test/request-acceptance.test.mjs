@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { REQUEST_ACCEPTANCE_DELAY_MS, requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagEligible, arrivalRedFlagRequired, hasArrivalRedFlagReason } from "../request-acceptance.mjs";
+import { REQUEST_ACCEPTANCE_DELAY_MS, requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagEligible, arrivalRedFlagRequired, hasArrivalRedFlagReason } from "../src/lib/request-acceptance.mjs";
 
 test("unaccepted requests are highlighted one hour after production timing", () => {
   const start = "2026-09-07 10:00";
@@ -81,7 +81,7 @@ test("requests accepted more than one hour after production timing are highlight
 test("late acceptance red rows are carried into print, PDF and Excel exports", () => {
   const client = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
-  const pdfSource = readFileSync(new URL("../table-export-pdf.mjs", import.meta.url), "utf8");
+  const pdfSource = readFileSync(new URL("../server/services/table-export-pdf.mjs", import.meta.url), "utf8");
   assert.match(client, /const lateAcceptanceHighlight = highlightLateAcceptance \? requestAcceptedLate : undefined;/);
   assert.match(client, /<ExportMenu title=\{exportTitle\} columns=\{filterColumns\} rows=\{sortedRows\} highlightRow=\{lateAcceptanceHighlight\} \/>/);
   assert.match(client, /smartPrintColumns = columns, smartPrintRows = rows/);

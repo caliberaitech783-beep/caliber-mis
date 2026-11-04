@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildDailyBdBalance, dailyBdRecordsForMetric} from '../src/daily-bd-balance.mjs';
-import {matchesBreakdownMovement} from '../dashboard-breakdown-movement.mjs';
+import {matchesBreakdownMovement} from '../src/lib/dashboard-breakdown-movement.mjs';
 
 test('balance cards separate idle and ideal from active requests, including drilldowns', () => {
   const rows = ['Open', 'Accepted', 'Idle', ' ideal ', 'Closed'].map((status, id) => ({ref: String(id), status, start: '2026-09-16 08:00:00', ...(status === 'Closed' ? {closedAt: '2026-09-16 10:00:00'} : {})}));

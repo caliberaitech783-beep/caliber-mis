@@ -3,7 +3,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import pg from 'pg';
-import {hashPassword} from '../password-auth.mjs';
+import {hashPassword} from '../server/services/password-auth.mjs';
 const state=path.join(process.env.LOCALAPPDATA,'CaliberERP');
 const config=JSON.parse(await readFile(path.join(state,'database.json'),'utf8'));
 if(config.database!=='caliber_erp'||config.port!==55432)throw new Error('Expected independent ERP database.');

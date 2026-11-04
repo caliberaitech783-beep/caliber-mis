@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import {hashPassword} from '../password-auth.mjs';
-import {installTenderIdentity,tenderProfile} from '../tender-identity.mjs';
-import {TENDER_ALL_PERMISSIONS} from '../tender-permissions.mjs';
+import {hashPassword} from '../server/services/password-auth.mjs';
+import {installTenderIdentity,tenderProfile} from '../server/routes/tender-identity.mjs';
+import {TENDER_ALL_PERMISSIONS} from '../shared/tender-permissions.mjs';
 const key='test-only-integration-key-32-characters-minimum';
 const row={id:42,record_data:{login:'TENDERTEST',employee:'Tender Test',passwordHash:hashPassword('test-password'),tenderAccess:true,tenderRoles:'Bid Manager | Finance / Treasury'}};
 test('Tender User defaults to full access, with independent per-user and view selections',()=>{

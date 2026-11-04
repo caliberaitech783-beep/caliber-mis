@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fleetMachineSummary,fleetScannedCardTotal} from '../fleet-reconciliation-summary.mjs';
+import {fleetMachineSummary,fleetScannedCardTotal} from '../shared/fleet-reconciliation-summary.mjs';
 
 test('machine summary shows only scanned VLB cards while zero-card vehicles stay out',()=>{
  const rows=[

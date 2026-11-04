@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {misRequestAllowed,misPageAllowed,authorizeMisRequest} from '../mis-application-access.mjs';
-import {installMisCredentialClient} from '../mis-credential-client.mjs';
+import {misRequestAllowed,misPageAllowed,authorizeMisRequest} from '../shared/mis-application-access.mjs';
+import {installMisCredentialClient} from '../server/routes/mis-credential-client.mjs';
 const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Employee master','Vehicle Log Book','Trip Card Bulk Scan'],misMobileAccess:['Dashboard']}};
 test('MIS API permissions fail closed and follow assigned masters and working menus',()=>{
  assert.equal(misRequestAllowed(session,{path:'/api/employee-master',method:'POST'}),true);

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {fleetErpUpdates} from '../fleet-erp-sync.mjs';
-import {withFleetDriverNames} from '../fleet-driver-names.mjs';
+import {fleetErpUpdates} from '../server/rules/fleet-erp-sync.mjs';
+import {withFleetDriverNames} from '../server/rules/fleet-driver-names.mjs';
 
 test('ERP sync updates existing stable assets only and preserves unrelated fields and usable saved values',()=>{
   const rows=[{id:1,record_data:{oracleEquipmentTno:'42',model:'-',currentLocation:'Sasti',status:'Idle'}},{id:2,record_data:{oracleEquipmentTno:'43',model:'Saved model'}}];
@@ -32,7 +32,7 @@ test('targeted sync is authenticated, transactional, and never inserts or delete
   assert.match(route,/'COMMIT'/);
   assert.match(route,/'ROLLBACK'/);
   assert.doesNotMatch(route,/DELETE FROM|INSERT INTO/);
-  const oracle=readFileSync(new URL('../oracle-db.mjs',import.meta.url),'utf8');
+  const oracle=readFileSync(new URL('../server/services/oracle-db.mjs',import.meta.url),'utf8');
   assert.match(oracle,/NULLIF\(NULLIF\(TRIM\(equipment.manufacturermodelno\), '-'/);
   assert.match(oracle,/NULLIF\(NULLIF\(TRIM\(equipment.manufacturemodelcode\), '-'/);
 });

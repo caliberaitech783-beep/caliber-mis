@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createFeedCache} from '../request-feed-cache.mjs';
+import {createFeedCache} from '../server/rules/request-feed-cache.mjs';
 
 test('an archive on another server cannot reuse a stale feed under its new ETag',async()=>{
   const cache=createFeedCache({ttlMs:30000});

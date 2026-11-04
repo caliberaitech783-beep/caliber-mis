@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dailyCountChange, formatCountDelta, indiaCountDayWindow, resolveCountTrend } from "../src/fleet-count-trend.mjs";
-import { dashboardFleetSnapshot } from "../dashboard-fleet-snapshot.mjs";
-import { fleetChartCounts } from "../dashboard-equipment-metrics.mjs";
-import * as access from "../dashboard-equipment-access.mjs";
+import { dashboardFleetSnapshot } from "../shared/dashboard-fleet-snapshot.mjs";
+import { fleetChartCounts } from "../shared/dashboard-equipment-metrics.mjs";
+import * as access from "../server/rules/dashboard-equipment-access.mjs";
 
 test("the daily count window rolls over at midnight in India regardless of device timezone", () => {
   const before = indiaCountDayWindow("2026-09-19T18:29:59.999Z");

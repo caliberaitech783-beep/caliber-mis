@@ -1,4 +1,4 @@
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
 
 export const PERIOD_PRESETS = [
   ['today','Today'],['yesterday','Yesterday'],['last7','Last 7 days'],

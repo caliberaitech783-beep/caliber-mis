@@ -1,7 +1,7 @@
 import React,{useEffect,useId,useMemo,useRef,useState} from 'react';
 import {ChevronDown,Search} from 'lucide-react';
 import './searchable-select.css';
-import {matchesSmartSearch} from '../smart-search.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 
 const normalize=(value)=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const normalizedOption=(option)=>typeof option==='string'

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 test("Oracle integration is read-only, lazy, protected, and environment configured", () => {
-  const oracle = fs.readFileSync(new URL("../oracle-db.mjs", import.meta.url), "utf8");
+  const oracle = fs.readFileSync(new URL("../server/services/oracle-db.mjs", import.meta.url), "utf8");
   const server = fs.readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
   const example = fs.readFileSync(new URL("../.env.example", import.meta.url), "utf8");
   assert.match(oracle, /process\.env\.ORACLE_DB_USER/);
@@ -25,7 +25,7 @@ test("Equipment Master Oracle synchronization is manual only", () => {
 });
 
 test("request forms fetch and persist Oracle logbook driver names", () => {
-  const oracle = fs.readFileSync(new URL("../oracle-db.mjs", import.meta.url), "utf8");
+  const oracle = fs.readFileSync(new URL("../server/services/oracle-db.mjs", import.meta.url), "utf8");
   const server = fs.readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
   const client = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   assert.match(oracle, /equipmentlogbookdetail/i);

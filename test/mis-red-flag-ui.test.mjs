@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import * as requestAcceptance from '../request-acceptance.mjs';
-import * as equipment from '../request-equipment.mjs';
-import {normalizeEquipmentGroup} from '../equipment-group.mjs';
-import {requestsVisibleToMisWorkspace} from '../mis-request-visibility.mjs';
+import * as requestAcceptance from '../src/lib/request-acceptance.mjs';
+import * as equipment from '../shared/request-equipment.mjs';
+import {normalizeEquipmentGroup} from '../shared/equipment-group.mjs';
+import {requestsVisibleToMisWorkspace} from '../shared/mis-request-visibility.mjs';
 import {requestStatusLabel} from '../src/request-status.mjs';
 import {defaultDurationSort} from '../src/duration-sort.mjs';
 import {dailyUpdatesExportText} from '../src/daily-updates-order.mjs';
 import DateInput from '../src/date-input.mjs';
-import {managerRoleSelection} from '../admin-access.mjs';
+import {managerRoleSelection} from '../shared/admin-access.mjs';
 
 const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const componentSource=source.slice(source.indexOf('function RequestRedFlagForm('),source.indexOf('function TripCardCell('))+'\n'+source.slice(source.indexOf('function MobileWorkflowTable('),source.indexOf('function RequestEditForm('))+'\n'+source.slice(source.indexOf('function Normal('),source.indexOf('function App('));

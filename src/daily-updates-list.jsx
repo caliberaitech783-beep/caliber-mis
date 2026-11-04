@@ -1,6 +1,6 @@
 import React, { useSyncExternalStore } from "react";
 import { DAILY_UPDATES_ORDERS, DEFAULT_DAILY_UPDATES_ORDER, dailyUpdateAuthor, dailyUpdateReason, dailyUpdateStamp, dailyUpdatesCountLabel, latestDailyUpdate, readDailyUpdatesOrder, sortDailyUpdates, storeDailyUpdatesOrder } from "./daily-updates-order.mjs";
-import { formatDisplayDateTime } from "../date-time-format.mjs";
+import { formatDisplayDateTime } from "../shared/date-time-format.mjs";
 
 // The order is one app-wide preference: switching it in any open list switches every list at once.
 const listeners = new Set();

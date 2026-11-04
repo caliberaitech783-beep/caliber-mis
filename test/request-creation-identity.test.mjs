@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {requestEquipmentCreationDetails, requestEquipmentDetails} from '../request-equipment.mjs';
-import {findActiveRequestConflict} from '../request-conflict.mjs';
-import {submitMaintenanceRequest} from '../request-submit.mjs';
+import {requestEquipmentCreationDetails, requestEquipmentDetails} from '../shared/request-equipment.mjs';
+import {findActiveRequestConflict} from '../shared/request-conflict.mjs';
+import {submitMaintenanceRequest} from '../src/lib/request-submit.mjs';
 
 test('selected equipment with no report door retains its master identity through submission', async () => {
   for (const record of [

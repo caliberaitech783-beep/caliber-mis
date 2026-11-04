@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {readFileSync} from 'node:fs';
-import {notificationText, notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory} from '../notification-text.mjs';
-import {createNotificationFeed} from '../notification-feed.mjs';
+import {notificationText, notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory} from '../src/lib/notification-text.mjs';
+import {createNotificationFeed} from '../server/rules/notification-feed.mjs';
 import {createNotificationTracker, createNotificationSound} from '../src/notification-alerts.mjs';
 
 test('legacy opened/closed messages put site and one door before retained details', () => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergePrivilegeRecords, privilegeEnabled } from "../privilege-record.mjs";
+import { mergePrivilegeRecords, privilegeEnabled } from "../server/rules/privilege-record.mjs";
 
 test("keeps selected privilege role and site as strings", () => {
   const merged = mergePrivilegeRecords(

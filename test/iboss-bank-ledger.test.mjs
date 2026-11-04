@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {BANK_LEDGER_REPORT,bankLedgerSql} from '../iboss-bank-ledger.mjs';
-import {accountPageQuery} from '../iboss-account-pages.mjs';
-import {dashboardMetric,DASHBOARD_QUERIES} from '../iboss-dashboard.mjs';
-import {mergeStatements} from '../iboss-report-merge.mjs';
+import {BANK_LEDGER_REPORT,bankLedgerSql} from '../shared/iboss-bank-ledger.mjs';
+import {accountPageQuery} from '../server/rules/iboss-account-pages.mjs';
+import {dashboardMetric,DASHBOARD_QUERIES} from '../server/rules/iboss-dashboard.mjs';
+import {mergeStatements} from '../shared/iboss-report-merge.mjs';
 test('bank closing uses voucher history once with inclusive selected end date and explicit debit/credit',()=>{
  const sql=bankLedgerSql(true);assert.match(sql,/v.voucherdate< TO_DATE\(:to_date,'YYYY-MM-DD'\)\+1/);assert.match(sql,/:to_date AS snapshot_date/);assert.match(sql,/d.accountcode=:anchor_key/);assert.doesNotMatch(sql,/cmpl.accountbalance|cmpl.accountopening/i);
  assert.match(sql,/d.amount<0 THEN -d.amount/);assert.match(sql,/GREATEST\(-SUM\(NVL\(d.amount,0\)\),0\) AS closing_debit/);assert.match(sql,/GROUP BY v.companycode,d.accountcode/);

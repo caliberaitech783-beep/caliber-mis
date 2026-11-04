@@ -37,7 +37,7 @@ test('report-only deployments validate an immutable report delta and protect new
   assert.ok(workflow.includes('ref: ${{ inputs.report_source_sha || github.sha }}'));
   assert.ok(workflow.includes('[[ "$REPORT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'));
   assert.ok(workflow.includes('git merge-base --is-ancestor "$base" "$source_sha"'));
-  assert.ok(workflow.includes('department-reports.mjs|test/department-reports.test.mjs) ;;'));
+  assert.ok(workflow.includes('shared/department-reports.mjs|test/department-reports.test.mjs) ;;'));
   assert.ok(workflow.includes('Report-only release contains an unrelated file: $file'));
   assert.ok(workflow.includes('npm test'));
   assert.ok(workflow.includes('APP_VERSION_SOURCE=%s'));

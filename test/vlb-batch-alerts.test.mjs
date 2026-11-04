@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {dueBatchAlerts,shiftEndInstant,shiftsInForce,alertMessage,normalizeAlertSettings,createVlbBatchAlertWorker,DEFAULT_ALERT_SETTINGS} from '../vlb-batch-alerts.mjs';
+import {dueBatchAlerts,shiftEndInstant,shiftsInForce,alertMessage,normalizeAlertSettings,createVlbBatchAlertWorker,DEFAULT_ALERT_SETTINGS} from '../server/routes/vlb-batch-alerts.mjs';
 
 const ist=(date,time)=>Date.parse(`${date}T${time}+05:30`);
 const shifts=[

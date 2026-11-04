@@ -10,7 +10,7 @@ import {
   inboxDismissPath,
   inboxItems,
   normalizeAnnouncement,
-} from '../announcement.mjs';
+} from '../server/rules/announcement.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const source = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -101,7 +101,7 @@ test('administrators compose announcements from the User Sessions page and can r
 });
 
 test('announcements may carry one validated image served separately from the poll', async () => {
-  const { announcementImageError, announcementImageBinary, announcementValidationError: validate } = await import('../announcement.mjs');
+  const { announcementImageError, announcementImageBinary, announcementValidationError: validate } = await import('../server/rules/announcement.mjs');
   const png = 'data:image/png;base64,iVBORw0KGgo=';
   assert.equal(announcementImageError(''), '');
   assert.equal(announcementImageError(png), '');

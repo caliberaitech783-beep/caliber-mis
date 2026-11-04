@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bdmsChatConversation as answer} from '../telegram-bdms-conversation.mjs';
-import {bdmsResolvePeriod,bdmsPeriodSelection,bdmsRecordDay,bdmsEffectiveReport} from '../telegram-bdms-period.mjs';
+import {bdmsChatConversation as answer} from '../server/rules/telegram-bdms-conversation.mjs';
+import {bdmsResolvePeriod,bdmsPeriodSelection,bdmsRecordDay,bdmsEffectiveReport} from '../shared/telegram-bdms-period.mjs';
 const base={session:{role:'super'},today:'2026-10-09',requests:[{ref:'REQ-1',site:'Sasti OC',status:'Open',start:'2026-10-09'},{ref:'REQ-2',site:'Majri OC',status:'Open',start:'2026-10-08'},{ref:'REQ-3',site:'Sasti OC',status:'Closed',start:'2026-10-01',closedAt:'2026-10-09',verifiedAt:'2026-10-08'}]};
 test('report menus default to today, show weekday and retain selected period through details',()=>{
  const today=answer({...base,text:'Open breakdowns'});assert.match(today.text,/Friday, 09 Oct 2026/);assert.match(today.text,/Matching requests: 1/);assert.doesNotMatch(today.text,/REQ-2 ·/);

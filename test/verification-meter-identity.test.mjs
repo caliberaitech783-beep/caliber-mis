@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {requestMeterReadings,requestMeterTypeForRequest} from '../request-equipment.mjs';
-import {validateClosingMeterReadings} from '../request-workflow.mjs';
+import {requestMeterReadings,requestMeterTypeForRequest} from '../shared/request-equipment.mjs';
+import {validateClosingMeterReadings} from '../shared/request-workflow.mjs';
 
 const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
 const form=source.slice(source.indexOf('function VerifyRequestForm('),source.indexOf('function ProductionFirstTripForm('));

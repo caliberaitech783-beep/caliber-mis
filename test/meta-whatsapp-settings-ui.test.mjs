@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
-const access = readFileSync(new URL("../admin-access.mjs", import.meta.url), "utf8");
+const access = readFileSync(new URL("../shared/admin-access.mjs", import.meta.url), "utf8");
 const css = readFileSync(new URL("../src/meta-whatsapp-setup.css", import.meta.url), "utf8");
 
 test("Meta API setup is an administrator-only WhatsApp workspace", () => {

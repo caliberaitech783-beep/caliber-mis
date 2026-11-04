@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
-import {LOG_BOOK_SCHEMA,insertLogBook} from '../log-book.mjs';
-import {registerVlbBatches} from '../vlb-batches.mjs';
+import {LOG_BOOK_SCHEMA,insertLogBook} from '../server/routes/log-book.mjs';
+import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const connectionString=process.env.VLB_BATCH_TEST_DATABASE_URL;

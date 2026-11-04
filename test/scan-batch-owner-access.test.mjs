@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {allowedScanBatches,requireLogBookSite,logBookSiteScope} from '../log-book-access.mjs';
+import {allowedScanBatches,requireLogBookSite,logBookSiteScope} from '../shared/log-book-access.mjs';
 const previousRule=async(client,_scope,login)=>(await client.query("SELECT b.id FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING b.created_by=$1 AND bool_and(COALESCE(c.status,'queued')<>'posted')",[login])).rows.map(row=>row.id);
 
 test('owner access survives partial posting without weakening site restrictions',async t=>{

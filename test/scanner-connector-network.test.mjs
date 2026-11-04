@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {redeemScannerTicket} from '../scanner-connector-auth.mjs';
+import {redeemScannerTicket} from '../server/routes/scanner-connector-auth.mjs';
 test('scanner authorization retries a pre-connection timeout once with the same ticket',async()=>{
  let calls=0;const payload={ticket:'synthetic',nonce:'test',kind:'vehicle'},response={ok:true};
  const result=await redeemScannerTicket(async(url,options)=>{calls++;assert.equal(url,'https://pulse-ll.cmll.in/api/scanner-connector/redeem');assert.deepEqual(JSON.parse(options.body),payload);if(calls===1)throw Object.assign(new TypeError('fetch failed'),{cause:{code:'UND_ERR_CONNECT_TIMEOUT'}});return response;},payload,{sleep:async()=>{}});

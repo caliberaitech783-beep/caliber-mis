@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
-import {SCAN_BACKUP_SCHEMA,registerScanBackup} from '../scan-backup.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
+import {SCAN_BACKUP_SCHEMA,registerScanBackup} from '../server/routes/scan-backup.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;

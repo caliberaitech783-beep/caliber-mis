@@ -8,7 +8,7 @@ import * as model from "../src/table-layouts.mjs";
 import * as tableModel from "../src/table-actions-model.mjs";
 import { defaultDurationSort } from "../src/duration-sort.mjs";
 import { primaryRecordDateColumn } from "../src/record-date-range.mjs";
-import { reportTime12 } from "../report-time-format.mjs";
+import { reportTime12 } from "../shared/report-time-format.mjs";
 
 const columns = ["door", "status", "model"].map(key => ({ key, label: key }));
 const memory = () => {

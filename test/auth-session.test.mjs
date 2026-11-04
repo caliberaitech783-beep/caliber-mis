@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {createSessionStore} from "../auth-session.mjs";
+import {createSessionStore} from "../server/services/auth-session.mjs";
 
 test("stores login sessions in PostgreSQL", async () => {
   const calls = [];

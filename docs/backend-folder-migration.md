@@ -16,8 +16,9 @@ the root. Move modules according to their purpose, not their `.mjs` extension.
 | `server/routes/` | Backend HTTP route registration |
 | `server/services/` | Backend services and supporting utilities |
 | `server/middleware/` | Request/response middleware |
-| `server/rules/` (future) | Business rules used only by the backend |
-| `shared/` (future) | Modules actually used by both frontend and backend |
+| `server/rules/` | Backend rules and supporting modules |
+| `shared/` | Modules shared by frontend, backend or operational tools |
+| `src/lib/` | Frontend-only modules formerly at the root |
 | `scripts/` | Build, verification and maintenance tools |
 | `test/` | Existing automated tests |
 | `docs/` | Maintained guides |
@@ -48,7 +49,41 @@ Both current Azure workflows deploy the complete workspace (`package: .`), so
 the new `server/` directory is included. They continue to run the same startup
 command. The optional `scripts/stage-production-release.mjs` utility also
 includes `server/`, with a packaging regression check for the relocated files.
-No workflow, dependency or deployment-setting change is required for this batch.
+No workflow, dependency or deployment-setting change was required for that pilot.
+
+## Remaining root modules
+
+The continuation from `5901ead` relocates the remaining 296 modules:
+
+| Destination | Modules moved |
+| --- | ---: |
+| `server/routes/` | 37 |
+| `server/services/` | 49 |
+| `server/rules/` | 83 |
+| `shared/` | 118 |
+| `src/lib/` | 9 |
+
+Only `server.mjs`, `build-site.mjs` and `vite.config.mjs` remain as root `.mjs`
+files. [Module locations](module-locations.json) maps each old path to its new
+location. Files used only by tests or legacy features are retained, not deleted.
+The inventory includes backend maintenance scripts as consumers as well as the
+main server and frontend. It preserves existing module boundaries; separating
+mixed responsibilities inside individual modules is outside this change.
+
+All imports, source-reading tests, command-line checks and documentation
+references follow the new paths. File-relative logo, font, scanner-script and
+OCR-cache paths still point to their original resources. The optional release
+stager includes `shared/`, and source-based build identities include shared
+frontend code. Azure workflows keep their existing deployment behavior, with
+only module paths in cache keys and smoke commands updated.
+
+Validation includes a before/after import-target audit, executable-structure
+comparison, the full existing test suite, production build, real server startup
+on disposable PostgreSQL, six batch-handoff browser scenarios and 42 responsive
+layout checks. The runtime import graph test guards both the main application
+and the standalone scanner connector; packaging tests guard both backend and
+shared folders. Changes to old source-path assertions retain their original
+behavioral checks.
 
 ## Verification and rollout procedure
 
@@ -73,7 +108,5 @@ No workflow, dependency or deployment-setting change is required for this batch.
    no database rollback. Do not assume historical tag-based rollout instructions
    still match the active workflows.
 
-Continue with other backend-only leaf modules after this pilot is verified.
-Move shared modules only after checking both browser and server dependency
-graphs. Review obsolete documentation separately; do not remove files merely
-to reduce the file count.
+Review obsolete documentation separately; do not remove files merely to reduce
+the file count. Keep future module moves separate from application logic changes.

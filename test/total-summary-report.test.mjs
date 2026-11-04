@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDepartmentReports,DEPARTMENT_REPORT_TITLES} from '../department-reports.mjs';
-import {HIERARCHY_REPORT_GROUPS} from '../hierarchy-report-catalogue.mjs';
+import {buildDepartmentReports,DEPARTMENT_REPORT_TITLES} from '../shared/department-reports.mjs';
+import {HIERARCHY_REPORT_GROUPS} from '../shared/hierarchy-report-catalogue.mjs';
 
 test('total summary adds open cases without modifying the verified-only summary or duplicating rows',()=>{
   const requests=[

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {createPulseWriter,pulseWriteMode,PULSE_UNAVAILABLE_MESSAGES} from '../pulse-writer.mjs';
-import {listPendingPulseWrites,markPulseWriteApplied,remindPendingPulse,pendingPulseMessage} from '../pulse-pending.mjs';
+import {createPulseWriter,pulseWriteMode,PULSE_UNAVAILABLE_MESSAGES} from '../server/rules/pulse-writer.mjs';
+import {listPendingPulseWrites,markPulseWriteApplied,remindPendingPulse,pendingPulseMessage} from '../server/routes/pulse-pending.mjs';
 
 test('the Pulse writer refuses in off mode and needs a URL and token in live mode',async()=>{
  assert.equal(pulseWriteMode({}),'off');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'LIVE'}),'live');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'dry-run'}),'off');

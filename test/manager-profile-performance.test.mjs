@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
-import { liveEquipmentMetrics, liveEquipmentRoadStatuses } from "../dashboard-equipment-metrics.mjs";
-import { requestWithEquipmentMasterDetails } from "../request-equipment.mjs";
+import { liveEquipmentMetrics, liveEquipmentRoadStatuses } from "../shared/dashboard-equipment-metrics.mjs";
+import { requestWithEquipmentMasterDetails } from "../shared/request-equipment.mjs";
 
 test("a 2,500-row manager profile prepares fleet and request data without a quadratic scan", () => {
   const equipment = Array.from({length: 2500}, (_, index) => ({

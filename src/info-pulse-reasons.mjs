@@ -1,4 +1,4 @@
-import {parseIstTimestamp} from '../ai-feeder.mjs';
+import {parseIstTimestamp} from '../shared/ai-feeder.mjs';
 
 const text = value => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 

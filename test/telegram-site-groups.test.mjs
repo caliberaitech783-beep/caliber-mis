@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {TELEGRAM_SITES,telegramSiteName,telegramUserHasSite,normalizeTelegramSiteGroups} from '../telegram-site-groups.mjs';
-import {parseTelegramUpdate,telegramSiteGroupDetails,createTelegramJoinRequestLink} from '../telegram.mjs';
+import {TELEGRAM_SITES,telegramSiteName,telegramUserHasSite,normalizeTelegramSiteGroups} from '../server/rules/telegram-site-groups.mjs';
+import {parseTelegramUpdate,telegramSiteGroupDetails,createTelegramJoinRequestLink} from '../server/services/telegram.mjs';
 
 test('site groups use all eight sites and recognize legacy and short labels',()=>{
   assert.equal(TELEGRAM_SITES.length,8);

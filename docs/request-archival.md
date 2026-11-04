@@ -4,7 +4,7 @@ Nothing is archived by deployment or startup. An authenticated Admin/Super Admin
 must explicitly preview and execute the operation. Managers and operational users
 cannot archive or restore.
 
-The currently authorized scope is fixed in `request-archive.mjs`:
+The currently authorized scope is fixed in `server/services/request-archive.mjs`:
 
 - Every site and request status.
 - Actual `created_at` strictly before September 30, 2026, 00:00 Asia/Kolkata

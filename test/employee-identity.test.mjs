@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {suggestedCaliberId,employeeIdentity} from '../employee-identity.mjs';
-import {normalizeEmployee,importEmployees,registerEmployeeMaster} from '../employee-master.mjs';
-import {EMPLOYEE_FIELDS} from '../employee-master-fields.mjs';
+import {suggestedCaliberId,employeeIdentity} from '../shared/employee-identity.mjs';
+import {normalizeEmployee,importEmployees,registerEmployeeMaster} from '../server/routes/employee-master.mjs';
+import {EMPLOYEE_FIELDS} from '../shared/employee-master-fields.mjs';
 
 test('Employee ID and Caliber ID are separate fields without changing existing employee references',()=>{
   assert.equal(EMPLOYEE_FIELDS.find(([key])=>key==='caliberId')[1],'Employee ID');

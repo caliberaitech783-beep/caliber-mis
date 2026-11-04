@@ -1,6 +1,6 @@
 import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';import {createCanvas} from '@napi-rs/canvas';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';import {createPaddleEvidence} from '../paddle-evidence.mjs';import {paddleFixture} from './paddle-fixture.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';import {createPaddleEvidence} from '../server/services/paddle-evidence.mjs';import {paddleFixture} from './paddle-fixture.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const operationalPaddleFixture=(...args)=>JSON.parse(JSON.stringify(paddleFixture(...args)).replaceAll('2026-10','2026-12').replaceAll('/10/2026','/12/2026').replaceAll('/10/26','/12/26').replaceAll('-10-2026','-12-2026'));
 test('PC evidence creates a review draft online, preserves corrections, and posts only after explicit approval',async t=>{

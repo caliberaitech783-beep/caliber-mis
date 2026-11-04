@@ -9,7 +9,7 @@ import {
   findFleetAssetForRequest,
   liveEquipmentMetrics,
   liveEquipmentRoadStatus,
-} from "../dashboard-equipment-metrics.mjs";
+} from "../shared/dashboard-equipment-metrics.mjs";
 
 test("dashboard equipment totals use all persisted master records", () => {
   assert.deepEqual(
@@ -373,7 +373,7 @@ test("formatted identifiers still respect site scope and duplicate requests coun
 });
 
 test("fleet opening meters use saved request readings, including legacy readings and zero", async () => {
-  const { fleetAssetRequestDetails } = await import("../dashboard-equipment-metrics.mjs");
+  const { fleetAssetRequestDetails } = await import("../shared/dashboard-equipment-metrics.mjs");
   const record = { door: "S1", category: "Vehicle", currentLocation: "Majri OB", hmr: 999, kmr: 999 };
   const request = { door: "S1", site: "Majri OB", status: "Open" };
   const readings = (fields) => {
@@ -388,7 +388,7 @@ test("fleet opening meters use saved request readings, including legacy readings
 });
 
 test("fleet lists carry each asset's current breakdown request or its live road status", async () => {
-  const { fleetAssetRequestDetails } = await import("../dashboard-equipment-metrics.mjs");
+  const { fleetAssetRequestDetails } = await import("../shared/dashboard-equipment-metrics.mjs");
   const records = [
     { id: 1, door: "S1 - REG01", chassisNo: "CH-01", category: "Vehicle", currentLocation: "Majri OB" },
     { id: 2, door: "S2", chassisNo: "CH-02", category: "Equipment", currentLocation: "Majri OB" },

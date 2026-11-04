@@ -11,7 +11,7 @@ import {
   REQUEST_CORRECTION_MANAGER_ROLES,
   requestCorrectionValidationError,
   validCorrectionEvidence,
-} from '../request-correction-policy.mjs';
+} from '../shared/request-correction-policy.mjs';
 
 const tinyPng='data:image/png;base64,iVBORw0KGgo=';
 

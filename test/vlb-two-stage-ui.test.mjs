@@ -4,11 +4,11 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {meterCorrectionReport} from '../scan-meter-history.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {displaySiteName} from '../region-scope.mjs';
-import {bookShiftCode,systemBookDate} from '../trip-card-rules.mjs';
-import {vlbRecordSource} from '../vlb-batch-format.mjs';
+import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');

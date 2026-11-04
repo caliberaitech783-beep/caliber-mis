@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {assignedUserRoles} from '../account-role-access.mjs';
-import {resolveMobileAccess,normalizeMobileUserRole,MOBILE_USER_ROLES} from '../mobile-access.mjs';
-import {masterAccessAllows,accessAllows,navigationPermissionsForView} from '../admin-access.mjs';
-import {CDIR_MASTERS} from '../cdir-masters.mjs';
-import {cdirViewerContext} from '../cdir-access.mjs';
-import {canReadDashboardEquipment} from '../dashboard-equipment-access.mjs';
+import {assignedUserRoles} from '../shared/account-role-access.mjs';
+import {resolveMobileAccess,normalizeMobileUserRole,MOBILE_USER_ROLES} from '../shared/mobile-access.mjs';
+import {masterAccessAllows,accessAllows,navigationPermissionsForView} from '../shared/admin-access.mjs';
+import {CDIR_MASTERS} from '../shared/cdir-masters.mjs';
+import {cdirViewerContext} from '../server/rules/cdir-access.mjs';
+import {canReadDashboardEquipment} from '../server/rules/dashboard-equipment-access.mjs';
 
 test('existing HR sessions read the shared breakdown feed using current account permissions',async()=>{
  const {readFileSync}=await import('node:fs');

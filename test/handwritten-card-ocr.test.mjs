@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import{createCanvas}from'@napi-rs/canvas';
-import{cleanHandwrittenField,recognizeHandwrittenCard}from'../handwritten-card-ocr.mjs';import{readingCellImages}from'../trip-meter-ocr.mjs';import{mergeReextractedDraft}from'../scan-reextract.mjs';import{matchScannedSite}from'../scan-site-match.mjs';import{scanFieldIssues}from'../src/scan-field-review.mjs';
+import{cleanHandwrittenField,recognizeHandwrittenCard}from'../server/services/handwritten-card-ocr.mjs';import{readingCellImages}from'../server/rules/trip-meter-ocr.mjs';import{mergeReextractedDraft}from'../server/rules/scan-reextract.mjs';import{matchScannedSite}from'../shared/scan-site-match.mjs';import{scanFieldIssues}from'../src/scan-field-review.mjs';
 test('handwriting parsing handles spaces and terminal punctuation but never guesses ambiguous digits',()=>{
  assert.equal(cleanHandwrittenField('openingHmr','30048 :'),'30048');assert.equal(cleanHandwrittenField('employeeCode','1 87 64'),'18764');
  assert.equal(cleanHandwrittenField('openingKmr','2QLL 2 1'),'');assert.equal(cleanHandwrittenField('closingHmr','3168Y.'),'');

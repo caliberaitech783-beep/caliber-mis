@@ -1,6 +1,6 @@
-import { parseRequestTimelineTimestamp } from "../request-timeline.mjs";
-import { displaySiteName, REGION_DATA } from "../region-scope.mjs";
-import { breakdownMeterValue } from "../breakdown-meter-columns.mjs";
+import { parseRequestTimelineTimestamp } from "../shared/request-timeline.mjs";
+import { displaySiteName, REGION_DATA } from "../shared/region-scope.mjs";
+import { breakdownMeterValue } from "../shared/breakdown-meter-columns.mjs";
 
 export function hourlyBreakdownEvents(requests, hours, now = Date.now()) {
   const end = Number(now), start = end - hours * 3600000;

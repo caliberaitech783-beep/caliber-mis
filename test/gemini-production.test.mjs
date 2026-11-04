@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {geminiEnabled,configuredGeminiKey} from '../gemini-card-reader.mjs';
+import {geminiEnabled,configuredGeminiKey} from '../server/services/gemini-card-reader.mjs';
 test('online scanning explicitly enables Gemini and reuses a server key without Windows DPAPI',async()=>{
  assert.equal(geminiEnabled({MIS_GEMINI_API:'true'}),true);
  assert.equal(geminiEnabled({MIS_GEMINI_HYBRID:'true'}),false);

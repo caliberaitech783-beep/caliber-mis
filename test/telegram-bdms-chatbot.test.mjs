@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bdmsChatAnswer,bdmsChatIntent,bdmsChatCanRead,bdmsChatFlow,bdmsChatKeyboard} from '../telegram-bdms-chatbot.mjs';
-import {scopeInfoPulseRequests} from '../info-pulse-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {TELEGRAM_SITES} from '../telegram-site-groups.mjs';
+import {bdmsChatAnswer,bdmsChatIntent,bdmsChatCanRead,bdmsChatFlow,bdmsChatKeyboard} from '../shared/telegram-bdms-chatbot.mjs';
+import {scopeInfoPulseRequests} from '../server/rules/info-pulse-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {TELEGRAM_SITES} from '../server/rules/telegram-site-groups.mjs';
 const session={role:'normal',assignedRole:'Maintenance User'};
 const requests=[{ref:'REQ-123',door:'V160',site:'Jayant OC',status:'Running BD',complaint:'Hydraulic leak'}, {ref:'REQ-456',door:'V200',site:'Sasti OC',status:'Closed',firstTripDone:true}, {ref:'REQ-789',door:'V300',site:'Jayant OC',status:'Open',archivedAt:'2026-01-01'}];
 test('language must be selected before queries; switching resets menu',()=>{

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {dashboardFleetSnapshot} from '../dashboard-fleet-snapshot.mjs';
-import {liveEquipmentMetrics, fleetChartCounts} from '../dashboard-equipment-metrics.mjs';
+import {dashboardFleetSnapshot} from '../shared/dashboard-fleet-snapshot.mjs';
+import {liveEquipmentMetrics, fleetChartCounts} from '../shared/dashboard-equipment-metrics.mjs';
 import {dailyCountChange,indiaCountDayWindow} from '../src/fleet-count-trend.mjs';
-import * as access from '../dashboard-equipment-access.mjs';
+import * as access from '../server/rules/dashboard-equipment-access.mjs';
 
 const assets = Object.freeze([
   Object.freeze({id:1,door:'V-01',chassisNo:'CH-01',category:'Vehicle',currentLocation:'Majri OB',status:'Off road'}),

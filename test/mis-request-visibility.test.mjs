@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GLOBALLY_HIDDEN_REQUEST_OWNERS, GLOBALLY_RETIRED_REQUEST_REFERENCES, GLOBAL_REQUEST_OWNER_HIDE_CUTOFF, MIS_HIDDEN_REQUEST_REFERENCES, requestsVisibleGlobally, requestsVisibleToMisWorkspace, requestsVisibleToSession } from "../mis-request-visibility.mjs";
+import { GLOBALLY_HIDDEN_REQUEST_OWNERS, GLOBALLY_RETIRED_REQUEST_REFERENCES, GLOBAL_REQUEST_OWNER_HIDE_CUTOFF, MIS_HIDDEN_REQUEST_REFERENCES, requestsVisibleGlobally, requestsVisibleToMisWorkspace, requestsVisibleToSession } from "../shared/mis-request-visibility.mjs";
 
 const rows = [
   { ref: "REQ-1787994776734" },

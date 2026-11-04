@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveMobileAccess,loginRecordCandidates,userLoginCandidates} from '../mobile-access.mjs';
-import {assignedUserRoles,hasAccountRole,accountPrivileges,ACCOUNT_PRIVILEGES} from '../account-role-access.mjs';
-import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from '../iboss-access.mjs';
+import {resolveMobileAccess,loginRecordCandidates,userLoginCandidates} from '../shared/mobile-access.mjs';
+import {assignedUserRoles,hasAccountRole,accountPrivileges,ACCOUNT_PRIVILEGES} from '../shared/account-role-access.mjs';
+import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from '../shared/iboss-access.mjs';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 const session=profile=>({...profile,role:profile.sessionRole});

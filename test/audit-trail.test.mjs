@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { auditChangedFields, auditDateRange, auditIndiaDateKey, auditRouteDetails, auditSafeError, auditShouldRecord, auditSubmittedFields } from "../audit-trail.mjs";
+import { auditChangedFields, auditDateRange, auditIndiaDateKey, auditRouteDetails, auditSafeError, auditShouldRecord, auditSubmittedFields } from "../server/rules/audit-trail.mjs";
 
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 const client = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
@@ -224,7 +224,7 @@ test("the Audit Trail page stays responsive with hundreds of events", () => {
 });
 
 test('background jobs display server context without inventing device or user metadata', async () => {
-  const {auditDeviceDetails}=await import('../device-details.mjs');
+  const {auditDeviceDetails}=await import('../shared/device-details.mjs');
   const source=client.slice(client.indexOf('function auditEventValues('),client.indexOf('\nfunction AuditTrailPage'));
   const values=new Function('auditValueCache','auditDeviceDetails','auditTimestampLabel','auditChangeAfter','auditChangesLabel',source+'; return auditEventValues;')(new WeakMap(),auditDeviceDetails,value=>value,(changes=[],field)=>changes.find(change=>change.field===field)?.after||'—',changes=>changes.map(change=>change.field).join(','));
   const system=values({requestMethod:'SYSTEM',changedFields:[],reason:'{"checked":452,"updated":0}'});

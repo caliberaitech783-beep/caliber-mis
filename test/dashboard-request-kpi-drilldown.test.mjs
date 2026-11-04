@@ -77,6 +77,6 @@ test("dashboard drilldowns show the request's daily updates inline", () => {
   assert.equal((browser.match(/<td data-sort-value=\{latestUpdateStamp\(record\.dailyRemarks\)\} data-export-value=\{dailyUpdatesExportText\(record\.dailyRemarks, \{ category: record\.repairCategory \}\)\}><Remarks remarks=\{record\.dailyRemarks\} category=\{record\.repairCategory\} \/><\/td>/g) || []).length, 2);
   assert.match(source, /dailyRemarks: Array\.isArray\(request\.dailyRemarks\) \? request\.dailyRemarks : \[\],/);
   assert.ok((source.match(/<DashboardRecordBrowser [^\n]*?Remarks=\{MaintenanceRemarks\}/g) || []).length >= 2, "both drilldown hosts pass the updates cell");
-  const metrics = fs.readFileSync(new URL("../dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
+  const metrics = fs.readFileSync(new URL("../shared/dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
   assert.match(metrics, /dailyRemarks: Array\.isArray\(current\?\.dailyRemarks\) \? current\.dailyRemarks : \[\],/);
 });

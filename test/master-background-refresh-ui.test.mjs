@@ -1,4 +1,4 @@
-import {CDIR_MASTERS} from '../cdir-masters.mjs';
+import {CDIR_MASTERS} from '../shared/cdir-masters.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";

@@ -1,7 +1,7 @@
 import SmartSelect from './smart-select.jsx';
 import React,{useState,useEffect,useRef} from 'react';
 import {RefreshCw,Upload,Plus,Save,Search,Building2,CalendarDays,FileText} from 'lucide-react';
-import {ERP_MASTER_FIELDS,WORK_BASIC_FIELDS,WORK_TABS} from '../erp-master-fields.mjs';
+import {ERP_MASTER_FIELDS,WORK_BASIC_FIELDS,WORK_TABS} from '../shared/erp-master-fields.mjs';
 import './erp-masters.css';
 const value=v=>v===null||v===undefined||v===''?'—':typeof v==='boolean'?(v?'Yes':'No'):String(v);
 export default function ErpMasters({name,session,ExportMenu,PrintButton,parseCsv}){

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {maintenanceMetersRequired,requireMaintenanceMeters} from '../maintenance-meter-required.mjs';
+import {maintenanceMetersRequired,requireMaintenanceMeters} from '../shared/maintenance-meter-required.mjs';
 
 const maintenance={role:'normal',assignedRole:'Maintenance User'};
 test('only Maintenance Users require both meters',()=>{

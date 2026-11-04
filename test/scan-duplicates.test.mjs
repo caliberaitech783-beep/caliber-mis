@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID,createHash} from 'node:crypto';
-import {registerLogBooks,LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {registerBulkCardScanning,SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
+import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
 import {drawCard} from './scan-card-fixture.mjs';
-import {fingerprintScanImage} from '../scan-fingerprint.mjs';
-import {applyContentDuplicate,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,backfillScanFingerprints,listDuplicateCards} from '../scan-duplicates.mjs';
+import {fingerprintScanImage} from '../server/services/scan-fingerprint.mjs';
+import {applyContentDuplicate,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,backfillScanFingerprints,listDuplicateCards} from '../server/services/scan-duplicates.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0';
 

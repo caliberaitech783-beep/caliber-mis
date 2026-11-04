@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { recordCountLine, withSerialColumn } from "../serial-column.mjs";
+import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
 
 function storedFiles(buffer) {
   const files = new Map();

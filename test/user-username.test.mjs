@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {duplicateUsername,lockUsernamesForWrite,normalizeUsername,USERNAME_WRITE_LOCK_KEY} from '../user-username.mjs';
+import {duplicateUsername,lockUsernamesForWrite,normalizeUsername,USERNAME_WRITE_LOCK_KEY} from '../server/rules/user-username.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const ui=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

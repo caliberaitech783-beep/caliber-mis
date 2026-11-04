@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildTicketWhatsAppReport,buildTicketReportTable,prepareTicketReportRows,ticketReportDue,ticketReportWindow} from '../ticket-consolidated-report.mjs';
-import {buildXlsxWorkbookBuffer} from '../director-report-bundle.mjs';
+import {buildTicketWhatsAppReport,buildTicketReportTable,prepareTicketReportRows,ticketReportDue,ticketReportWindow} from '../server/rules/ticket-consolidated-report.mjs';
+import {buildXlsxWorkbookBuffer} from '../shared/director-report-bundle.mjs';
 
 test('CRM report windows follow 8, 15 and 20 India time',()=>{
   const eight=ticketReportWindow(new Date('2026-08-27T02:31:00Z'));

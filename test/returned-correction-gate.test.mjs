@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import {renderToStaticMarkup} from 'react-dom/server';
-import * as policy from '../request-correction-policy.mjs';
+import * as policy from '../shared/request-correction-policy.mjs';
 import * as icons from 'lucide-react';
 
 const source=readFileSync(new URL('../src/returned-correction-gate.jsx',import.meta.url),'utf8');

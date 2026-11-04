@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {ibossAccountsEligible,ibossAccountsAllowed} from '../iboss-access.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
+import {ibossAccountsEligible,ibossAccountsAllowed} from '../shared/iboss-access.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
 const session=user=>{const p=resolveMobileAccess({user:{userType:'Super User',...user}});return {role:p.sessionRole,permissions:p.permissions};};
 test('IBOSS admits explicit administrators, directors and Accounts staff',()=>{
  for(const user of [{adminLevel:'Admin'},{adminLevel:'Super Admin'},{designation:'Director'},{department:'Accounts'},{designation:'Senior Accountant'},{department:'Finance & Accounts'}])assert.equal(ibossAccountsAllowed(session(user)),true,JSON.stringify(user));

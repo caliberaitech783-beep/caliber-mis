@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertTestDatabaseUrl,prepareTestPlatformDatabase,PRODUCTION_DATABASE_HOST,TABLES_TO_EMPTY} from '../scripts/prepare-test-platform-database.mjs';
-import {verifyPassword} from '../password-auth.mjs';
+import {verifyPassword} from '../server/services/password-auth.mjs';
 
 const testUrl='postgresql://caliber_test_admin:secret@caliber-mis-test-pg-783.postgres.database.azure.com:5432/caliber_mis';
 

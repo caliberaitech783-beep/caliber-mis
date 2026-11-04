@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {maintenanceDelay,pendingRemark,olderThanTenDays,availabilityPercentage,reportPdfHeading,recentBreakdownStatus} from '../report-refinements.mjs';
-import {buildDirectorReportTables} from '../director-report-bundle.mjs';
-import {buildDepartmentReports,availabilityRows} from '../department-reports.mjs';
+import {maintenanceDelay,pendingRemark,olderThanTenDays,availabilityPercentage,reportPdfHeading,recentBreakdownStatus} from '../shared/report-refinements.mjs';
+import {buildDirectorReportTables} from '../shared/director-report-bundle.mjs';
+import {buildDepartmentReports,availabilityRows} from '../shared/department-reports.mjs';
 import {visibleInMisRequests} from '../src/mis-history.mjs';
 const now = new Date('2026-09-08T12:00:00+05:30');
 test('pending delay uses acceptance, and No Update begins strictly after 24 hours',()=>{

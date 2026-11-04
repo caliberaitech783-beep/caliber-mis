@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {pulseDailyUpdates} from '../src/info-pulse-reasons.mjs';
-import {buildInfoPulseBreakdowns} from '../info-pulse-data.mjs';
-import {scopeInfoPulseRequests} from '../info-pulse-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {approvedDelayedReason} from '../delayed-reason.mjs';
-import {requestsWithDoorNumbers} from '../equipment-door.mjs';
+import {buildInfoPulseBreakdowns} from '../shared/info-pulse-data.mjs';
+import {scopeInfoPulseRequests} from '../server/rules/info-pulse-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {approvedDelayedReason} from '../shared/delayed-reason.mjs';
+import {requestsWithDoorNumbers} from '../shared/equipment-door.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
 const helper = server.slice(server.indexOf('async function attachDailyRemarks('), server.indexOf('async function requestWorkflowWhatsAppLogins('));

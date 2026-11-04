@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
-import {canEditBreakdownResponsibility} from '../breakdown-responsibility.mjs';
+import {canEditBreakdownResponsibility} from '../server/rules/breakdown-responsibility.mjs';
 
 const compile=async(file,name)=>{
   const source=readFileSync(new URL(file,import.meta.url),'utf8').replace(/^import .*;\r?$/gm,'').replace(/export default function/g,'function').replace(/export function/g,'function');

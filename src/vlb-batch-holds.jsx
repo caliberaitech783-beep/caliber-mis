@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {displaySiteName} from '../region-scope.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
 
 export const holdRoleLabels={vlb_door:'VLB vehicle',vlb_loader:'VLB loading machine',elb_door:'ELB machine'};
 export const holdRoles=(roles=[])=>roles.map(role=>holdRoleLabels[role]||role).join(', ');

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 const source=readFileSync(new URL('../src/breakdown-reason-history.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'reason.jsx',{jsx:{runtime:'classic'}});

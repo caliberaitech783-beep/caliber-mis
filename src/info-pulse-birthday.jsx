@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {Pause, Play} from 'lucide-react';
-import {infoPulseDate} from '../info-pulse-data.mjs';
+import {infoPulseDate} from '../shared/info-pulse-data.mjs';
 import './info-pulse-birthday.css';
 
 export function BirthdayMarquee({names = []}) {

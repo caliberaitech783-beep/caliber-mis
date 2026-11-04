@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {misDatabaseConfig} from '../mis-database-config.mjs';
+import {misDatabaseConfig} from '../server/rules/mis-database-config.mjs';
 
 test('MIS refuses missing or shared Pulse database configuration', () => {
   for (const DATABASE_URL of ['', 'postgresql://u:p@server.postgres.database.azure.com/postgres', 'postgresql://u:p@server.postgres.database.azure.com/tender_tracker']) {

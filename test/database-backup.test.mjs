@@ -27,7 +27,7 @@ import {
   resolveDatabaseUrl,
   restoreDatabase,
   streamQueryRows
-} from '../database-backup.mjs';
+} from '../server/services/database-backup.mjs';
 
 test('quotes identifiers safely',()=>{
   assert.equal(quoteIdentifier('maintenance_requests'),'"maintenance_requests"');

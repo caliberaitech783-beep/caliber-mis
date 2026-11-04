@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 const row=(rowNumber,equipmentName)=>({rowNumber,equipmentName,loadingTime:'09:00',unloadingTime:'09:20',tripCount:1});
 
 test('blank paper summary is counted from populated rows and repeated equipment above',()=>{

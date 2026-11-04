@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient,whatsAppRecipientRole,WHATSAPP_WORKFLOW_DELIVERY_RULES,workflowReminderSlot,workflowRequestLink,workflowWhatsAppRecipientLogins} from '../whatsapp-workflow-policy.mjs';
-import {defaultWhatsAppReportSettings,normalizeWhatsAppReportSettings} from '../whatsapp-report-settings.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {managerReportScope,reportScopeIncludesSite} from '../region-scope.mjs';
+import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient,whatsAppRecipientRole,WHATSAPP_WORKFLOW_DELIVERY_RULES,workflowReminderSlot,workflowRequestLink,workflowWhatsAppRecipientLogins} from '../server/rules/whatsapp-workflow-policy.mjs';
+import {defaultWhatsAppReportSettings,normalizeWhatsAppReportSettings} from '../shared/whatsapp-report-settings.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {managerReportScope,reportScopeIncludesSite} from '../shared/region-scope.mjs';
 
 const mobile=(login,role,site='Sasti OB')=>({login,userType:'Mobile User',assignedRole:role,site});
 const manager=(login,roles,site='Sasti OB',extra={})=>({login,userType:'Super User',adminLevel:'Manager',managerRole:roles.join(' | '),site,...extra});

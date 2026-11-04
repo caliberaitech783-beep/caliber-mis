@@ -1,13 +1,13 @@
 import test from 'node:test';
-import {accountPrivileges} from '../account-role-access.mjs';
+import {accountPrivileges} from '../shared/account-role-access.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS,accountView} from '../iboss-accounts.mjs';
-import {TRANSACTION_VIEWS} from '../iboss-account-transactions.mjs';
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
+import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS,accountView} from '../shared/iboss-accounts.mjs';
+import {TRANSACTION_VIEWS} from '../shared/iboss-account-transactions.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
 const titles=['Payment Advice Register','Asset Register','Debit Note Register','Credit Note Register','Bill Receipt Register','Payable/Receivable Report','Bill Outstanding More than 180 Days','TDS Payable Summary','TDS Receivable','Party Wise TCS Summary','Cash Purchase Register','Emi Details','Fixed Deposit Register','Bank Guaranty Report','Bank Guaranty Closer','Bank Guaranty Nature','Bank Guaranty Type','Bank Guaranty Commission','Fixed Deposit Interest','Fixed Deposit Withdrawl','Asset Details Report','Imprest Balance','Internal Balance Details','Bank Balance Details','Bank Reconciliation','Expense Vehiclewise','EMI Schedule','Combined and Individual EMI Schedule'];
 test('Masters and Transactions contain exactly the reference links without mixing the sections',()=>{
  assert.equal(ACCOUNT_SECTIONS.masters.length,8);

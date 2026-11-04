@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fleetBreakdownCaseCounts } from "../dashboard-equipment-metrics.mjs";
+import { fleetBreakdownCaseCounts } from "../shared/dashboard-equipment-metrics.mjs";
 import { fleetBreakdownCategory, fleetBreakdownRequests } from "../src/fleet-breakdown-drilldown.mjs";
 
 const assets = [

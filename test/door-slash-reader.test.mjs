@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cardPrompt,createGeminiCardReader} from '../gemini-card-reader.mjs';
-import {aFields} from '../gemini-hybrid.mjs';
+import {cardPrompt,createGeminiCardReader} from '../server/services/gemini-card-reader.mjs';
+import {aFields} from '../server/services/gemini-hybrid.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,7 +37,7 @@ test('reader corrects a punctuated S separator before populating or linking a dr
  const result=await reader.recognize(Buffer.from('S/62'));
  assert.equal(result.handwrittenFields.door,'S/62');assert.equal(result.handwritingCandidates.door.value,'S/62');
  assert.equal(result.extraction.doorFormatting.original,'S:162');assert.equal(result.extraction.fields.door.value,'S:162');
- const {extractCard}=await import('../scan-extraction.mjs');
+ const {extractCard}=await import('../server/rules/scan-extraction.mjs');
  const extracted=extractCard(result.text,'vehicle',[{id:62,master_name:'Equipment master',record_data:{door:'Scania 62',category:'vehicle',site:'Jayant OC'}}],result);
  assert.equal(extracted.draft.doorText,'S/62');assert.equal(extracted.draft.assetId,'62');
 });

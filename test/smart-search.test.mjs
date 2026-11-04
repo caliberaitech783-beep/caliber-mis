@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { matchesSmartSearch, normalizeSearchText } from "../smart-search.mjs";
+import { matchesSmartSearch, normalizeSearchText } from "../shared/smart-search.mjs";
 
 test("smart search ignores case, punctuation, spacing, and accents", () => {
   assert.equal(normalizeSearchText("  SÁSTI—OB / 2ND  "), "sasti ob 2nd");
@@ -19,11 +19,11 @@ test("smart search matches every token across fields in any order", () => {
 
 test("every active portal search is wired to the shared smart matcher", () => {
   const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  assert.match(source, /import \{ matchesSmartSearch \} from "\.\.\/smart-search\.mjs"/);
+  assert.match(source, /import \{ matchesSmartSearch \} from "\.\.\/shared\/smart-search\.mjs"/);
   assert.doesNotMatch(source, /Object\.values\([^)]*\)\.join\(" "\)\.toLowerCase\(\)\.includes/);
   assert.match(source, /data-smart-search/);
   assert.match(source, /aria-label="Focus page smart search"/);
-  const equipment = readFileSync(new URL("../request-equipment.mjs", import.meta.url), "utf8");
+  const equipment = readFileSync(new URL("../shared/request-equipment.mjs", import.meta.url), "utf8");
   assert.match(equipment, /matchesSmartSearch\(query, label, requestEquipmentDetails\(record\)/);
 });
 

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {machineSummary,machineTripTotal,machineDiscrepancies} from '../trip-card-rules.mjs';
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
-import {estimateMissingTripTimes} from '../scan-trip-estimates.mjs';
-import {buildMachineSnapshot,buildFleetList} from '../vlb-two-stage.mjs';
-import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
+import {machineSummary,machineTripTotal,machineDiscrepancies} from '../shared/trip-card-rules.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
+import {estimateMissingTripTimes} from '../shared/scan-trip-estimates.mjs';
+import {buildMachineSnapshot,buildFleetList} from '../server/rules/vlb-two-stage.mjs';
+import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 
 const carry={equipmentName:'V19',equipmentId:'19',loadingTime:'',unloadingTime:'05:10',tripCount:1};
 const loaded={equipmentName:'V19',equipmentId:'19',loadingTime:'05:30',unloadingTime:'05:50',tripCount:1};

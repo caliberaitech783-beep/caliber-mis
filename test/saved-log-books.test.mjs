@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {savedLogBookFilters} from '../saved-log-book-filters.mjs';
-import {registerLogBooks,LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
+import {savedLogBookFilters} from '../server/rules/saved-log-book-filters.mjs';
+import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
-import {misPageAllowed} from '../mis-application-access.mjs';
+import {misPageAllowed} from '../shared/mis-application-access.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('Legacy Saved VLB and Saved ELB links redirect to operational batches',()=>{

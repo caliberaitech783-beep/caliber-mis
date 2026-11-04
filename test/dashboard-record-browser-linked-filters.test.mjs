@@ -10,12 +10,12 @@ import * as tableModel from "../src/table-actions-model.mjs";
 import * as recordDates from "../src/record-date-range.mjs";
 import * as dateRanges from "../src/date-range-filter.mjs";
 import { defaultDurationSort } from "../src/duration-sort.mjs";
-import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../breakdown-duration.mjs";
+import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../src/lib/breakdown-duration.mjs";
 import { requestStatusSortRank } from "../src/request-status.mjs";
-import { formatDisplayDateTime } from "../date-time-format.mjs";
-import { reportTime12 } from "../report-time-format.mjs";
-import { REGION_DATA } from "../region-scope.mjs";
-import { matchesSmartSearch } from "../smart-search.mjs";
+import { formatDisplayDateTime } from "../shared/date-time-format.mjs";
+import { reportTime12 } from "../shared/report-time-format.mjs";
+import { REGION_DATA } from "../shared/region-scope.mjs";
+import { matchesSmartSearch } from "../shared/smart-search.mjs";
 import DateInput from '../src/date-input.mjs';
 
 const h = React.createElement;

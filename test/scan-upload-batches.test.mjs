@@ -39,7 +39,7 @@ test('PDF uploads expose elapsed timing and a real abort controller',()=>{
  assert.match(src,/\(uploading\|\|pending\.length>0\).*className="scan-abort" onClick=\{abortUpload\}>Abort/);
  assert.match(src,/signal:controller\.signal/);
  assert.match(src,/e\.name==='AbortError'/);
- const server=readFileSync(new URL('../bulk-card-scanning.mjs',import.meta.url),'utf8');
+ const server=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  assert.match(server,/\/api\/scan-batches\/:id\/abort/);
  assert.match(server,/status IN\('queued','reading'\)/);
 });

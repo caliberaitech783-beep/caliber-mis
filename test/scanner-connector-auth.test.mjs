@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';
-import {randomUUID} from 'node:crypto';import http from 'node:http';import {registerScannerConnectorAuth} from '../scanner-connector-auth.mjs';
+import {randomUUID} from 'node:crypto';import http from 'node:http';import {registerScannerConnectorAuth} from '../server/routes/scanner-connector-auth.mjs';
 test('online scanner authorization is single use; local token cannot approve, post or access other scans',async t=>{
  const app=express();app.use(express.json());let base;
  const session=(req,res,next)=>req.headers.authorization==='Bearer online-session'?(req.session={login:'test'},next()):res.sendStatus(401);

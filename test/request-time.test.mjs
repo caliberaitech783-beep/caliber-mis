@@ -5,7 +5,7 @@ import {
   isValidTime24,
   parseIndiaRequestDateTime,
   TIME_24H_PATTERN,
-} from "../request-time.mjs";
+} from "../shared/request-time.mjs";
 
 test("the browser time pattern accepts valid manual HH:MM:SS values", () => {
   const browserPattern = new RegExp(`^(?:${TIME_24H_PATTERN})$`);

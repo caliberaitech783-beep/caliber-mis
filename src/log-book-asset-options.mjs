@@ -1,4 +1,4 @@
-import {canonicalSiteName} from '../site-location.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 export function logBookAssets(options,kind,location){
  return (options?.assets||[]).filter(asset=>asset.kind===kind&&(!location||!asset.site||canonicalSiteName(asset.site)===canonicalSiteName(location)));
 }

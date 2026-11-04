@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {registerManpowerReports} from '../manpower-report-api.mjs';
+import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('manpower HTTP report reads scoped saved books and batches from PostgreSQL',{skip:!connectionString},async t=>{
  const target=new URL(connectionString);assert.ok(['localhost','127.0.0.1'].includes(target.hostname)&&target.pathname==='/caliber_mis');
  const {default:pg}=await import('pg'),{default:express}=await import('express');
- const {withVlbTripHandovers}=await import('../vlb-trip-handover.mjs');
+ const {withVlbTripHandovers}=await import('../shared/vlb-trip-handover.mjs');
  const schema='manpower_'+randomUUID().replaceAll('-',''),bootstrap=new pg.Client({connectionString});await bootstrap.connect();await bootstrap.query('CREATE SCHEMA '+schema);
  const pool=new pg.Pool({connectionString,options:'-c search_path='+schema});
  t.after(async()=>{await pool.end();await bootstrap.query('DROP SCHEMA '+schema+' CASCADE');await bootstrap.end();});

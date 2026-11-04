@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createSessionStore} from '../../auth-session.mjs';
-import {repairLegacySessionDefaults} from '../../auth-session-schema.mjs';
+import {createSessionStore} from '../../server/services/auth-session.mjs';
+import {repairLegacySessionDefaults} from '../../server/rules/auth-session-schema.mjs';
 
 // Run against a temporary table that shadows auth_sessions on this connection.
 // Never modify production sessions, even when verifying on the production DB.

@@ -26,7 +26,7 @@ test('fleet driver lookup batches both logbooks, closes connections, shares and 
   };
   oracledb.createPool=async()=>({getConnection:async()=>connection});
   try {
-    const {oracleLatestFleetDrivers}=await import('../oracle-db.mjs');
+    const {oracleLatestFleetDrivers}=await import('../server/services/oracle-db.mjs');
     await assert.rejects(oracleLatestFleetDrivers(), /temporary fixture failure/);
     const [first, second]=await Promise.all([oracleLatestFleetDrivers(), oracleLatestFleetDrivers()]);
     assert.equal(first, second);

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate,scanContextSelectionChanged} from '../scan-batch-context.mjs';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {parseScanContext,scanContextReady,scanContextIssues,scanCardContextIssues,scanContextGate,scanContextSelectionChanged} from '../shared/scan-batch-context.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const context={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('scan selection requires a real date, site and marked shift and never trusts confirmed flags',()=>{

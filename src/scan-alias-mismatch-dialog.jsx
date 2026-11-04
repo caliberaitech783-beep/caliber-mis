@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel from './equipment-alias-otp-panel.jsx';
 import {nextMismatchPair,mismatchPairCount} from './scan-alias-mismatch.mjs';
-import {matchesSmartSearch} from '../smart-search.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 
 // Equipment mismatch · cards vs Pulse. Opens by itself when extraction finishes, before
 // card 1. Works category by category (tipper headers, trip body equipment, ELB headers) and

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import{previewBookNumber}from'../book-number-preview.mjs';import{saveDraftRecovery,loadDraftRecovery}from'../scan-draft-cache.mjs';
+import{previewBookNumber}from'../shared/book-number-preview.mjs';import{saveDraftRecovery,loadDraftRecovery}from'../shared/scan-draft-cache.mjs';
 test('book preview shows date, marked shift and source-specific series without allocating a number',()=>{
  assert.equal(previewBookNumber('vehicle',{bookDate:'2026-10-18',cardShift:'II'}),'VLB_S/18TH-OCT26/S2/001');
  for(const [shift,code]of [['I','S1'],['III','S3'],['Day','D'],['Night','N']])assert.equal(previewBookNumber('vehicle',{bookDate:'2026-10-18',cardShift:shift},12),`VLB_S/18TH-OCT26/${code}/012`);

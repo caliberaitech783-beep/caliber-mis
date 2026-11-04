@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {birthdayNames,currentBirthdayNames} from '../info-pulse-birthdays.mjs';
+import {birthdayNames,currentBirthdayNames} from '../server/services/info-pulse-birthdays.mjs';
 
 test('birthdays use India calendar day, active employees and stable deduplication',()=>{
   const person={empId:'1',name:'Today',status:'ACTIVE',dobMonth:9,dobDay:27,contact:'private',dobISO:'1990-09-27'};

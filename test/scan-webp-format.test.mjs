@@ -1,12 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
 import {randomUUID} from 'node:crypto';
-import {scanImageDimensions,scanImageExtension,scanImageMime} from '../scan-image-format.mjs';
+import {scanImageDimensions,scanImageExtension,scanImageMime} from '../server/rules/scan-image-format.mjs';
 import {sniffScanImageType,scanImageExtensionForType} from '../public/scan-image-type.mjs';
-import {scanBlobKey} from '../scan-blob-storage.mjs';
-import {SCAN_ENCODE_MAX_BYTES,prepareLocalScanImage} from '../scan-image-encode.mjs';
+import {scanBlobKey} from '../server/services/scan-blob-storage.mjs';
+import {SCAN_ENCODE_MAX_BYTES,prepareLocalScanImage} from '../server/services/scan-image-encode.mjs';
 import {compressScannerPage,MAX_PAGE_BYTES} from '../public/scanner-compression.mjs';
-import {prepareGeminiScanImage} from '../local-card-ocr.mjs';
+import {prepareGeminiScanImage} from '../server/services/local-card-ocr.mjs';
 
 const browserCanvas=(width,height)=>{
  const canvas=createCanvas(width,height);

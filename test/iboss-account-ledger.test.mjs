@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
-import {accountLedgerQueries} from '../iboss-account-ledger.mjs';
+import {accountLedgerQueries} from '../server/rules/iboss-account-ledger.mjs';
 const input={account:'5990',company:'1',from:'2026-04-01',to:'2026-09-30'};
 test('ledger binds account and company and calculates running balance before period filtering',()=>{
  const q=accountLedgerQueries({...input,page:2});assert.equal(q.rows.binds.offset,400);assert.equal(q.rows.binds.limit,201);assert.equal(q.rows.binds.account,'5990');assert.equal(q.rows.binds.company_code,'1');assert.equal(q.rows.binds.MI,undefined);assert.ok(!Object.keys(q.rows.binds).includes('MI'));

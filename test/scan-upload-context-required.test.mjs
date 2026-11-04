@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {requireScanUploadContext,scanContextGate,scanContextError,applyScanContext} from '../scan-batch-context.mjs';
+import {requireScanUploadContext,scanContextGate,scanContextError,applyScanContext} from '../shared/scan-batch-context.mjs';
 const expected={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('trip-card uploads require an explicitly entered real date and marked shift',()=>{
  for(const value of [undefined,null,{}, {...expected,bookDate:''},{...expected,cardShift:''},{...expected,bookDate:'2026-02-30'}])assert.throws(()=>requireScanUploadContext('vehicle',value));

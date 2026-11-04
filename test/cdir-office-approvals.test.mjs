@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {readFileSync} from 'node:fs';
-import {CDIR_MASTERS} from '../cdir-masters.mjs';
-import {CDIR_DELETION_SCHEMA,registerCdirDeletions,cdirDirectAdministrator,deletionProtectedMaster} from '../cdir-deletion.mjs';
-import {EMPLOYEE_TRANSFER_SCHEMA,registerEmployeeTransfers,employeeTransferAccess,employeeTransferSiteAllowed} from '../employee-transfer.mjs';
-import {officeApprovalKey,cdirApprovalRecipients} from '../cdir-approval-routing.mjs';
-import {resolveMobileAccess,normalizeMobileUserRole} from '../mobile-access.mjs';
-import {cdirViewerContext} from '../cdir-access.mjs';
-import {canEditCdirEmployee} from '../cdir-employee-edit.mjs';
+import {CDIR_MASTERS} from '../shared/cdir-masters.mjs';
+import {CDIR_DELETION_SCHEMA,registerCdirDeletions,cdirDirectAdministrator,deletionProtectedMaster} from '../server/routes/cdir-deletion.mjs';
+import {EMPLOYEE_TRANSFER_SCHEMA,registerEmployeeTransfers,employeeTransferAccess,employeeTransferSiteAllowed} from '../server/routes/employee-transfer.mjs';
+import {officeApprovalKey,cdirApprovalRecipients} from '../server/rules/cdir-approval-routing.mjs';
+import {resolveMobileAccess,normalizeMobileUserRole} from '../shared/mobile-access.mjs';
+import {cdirViewerContext} from '../server/rules/cdir-access.mjs';
+import {canEditCdirEmployee} from '../server/routes/cdir-employee-edit.mjs';
 
 const profiles={
  hr:{login:'hr',userRoles:'HR User',site:'Nagpur'},

@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
-import {employeeTransferAccess,employeeTransferSiteAllowed} from '../employee-transfer.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import {employeeTransferAccess,employeeTransferSiteAllowed} from '../server/routes/employee-transfer.mjs';
 
 test('deletion register renders scoped decisions and exports snapshot/history through shared controls',async()=>{
  const source=readFileSync(new URL('../src/cdir-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');

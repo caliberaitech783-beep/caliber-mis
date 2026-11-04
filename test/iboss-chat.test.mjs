@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chatOptions,matchChatQuestion,filterChatOptions,vendorSearchText} from '../src/iboss-chat-options.mjs';
-import {ACCOUNT_VIEWS} from '../iboss-accounts.mjs';
+import {ACCOUNT_VIEWS} from '../shared/iboss-accounts.mjs';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
 test('chat options stay within assigned report sections',()=>{
  assert.deepEqual(chatOptions([]),[]);
  const masters=chatOptions(['Masters']),transactions=chatOptions(['Transactions']);

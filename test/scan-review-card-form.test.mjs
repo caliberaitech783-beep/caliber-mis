@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
-import {scanContextGate} from '../scan-batch-context.mjs';
+import {scanContextGate} from '../shared/scan-batch-context.mjs';
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
 const scope={React};
 for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildBdAgeingReport,canViewBdAgeingReport,bdAgeingReportHandler} from '../bd-ageing-report.mjs';
+import {buildBdAgeingReport,canViewBdAgeingReport,bdAgeingReportHandler} from '../shared/bd-ageing-report.mjs';
 
 const now = Date.parse('2026-10-06T06:30:00Z');
 const day = 86400000;

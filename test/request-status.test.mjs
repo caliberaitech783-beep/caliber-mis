@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {requestStatusLabel} from '../src/request-status.mjs';
 import {visibleInMisRequests, visibleInMisHistory} from '../src/mis-history.mjs';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildDirectorReportTables} from '../director-report-bundle.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildDirectorReportTables} from '../shared/director-report-bundle.mjs';
 
 const closed = Object.freeze({ref:'REQ-VERIFIED', status:'Closed', start:'2026-09-09 08:00:00', closedAt:'2026-09-09 10:00:00'});
 const verified = Object.freeze({...closed, productionFirstTripAt:'2026-09-09 10:30:00', verifiedAt:'2026-09-09 11:00:00', verifiedBy:'MIS User'});

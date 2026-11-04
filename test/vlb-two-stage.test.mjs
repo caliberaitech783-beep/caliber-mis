@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
-import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
-import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,activeSiteHolds,holdSummary,machineReportRows} from '../vlb-two-stage.mjs';
+import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},
@@ -140,7 +140,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const late=await call('/api/log-books/vehicle','POST',lateInput);assert.equal(late.status,201,JSON.stringify(late.data));
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,200,'retry remains idempotent');
  assert.equal((await call('/api/log-books/vehicle/'+late.data.id,'PUT',{...lateInput,revision:late.data.revision,remark:'changed'})).status,409,'late VLB is immediately locked');
- const {insertLogBook,resolveLogBookData}=await import('../log-book.mjs');
+ const {insertLogBook,resolveLogBookData}=await import('../server/routes/log-book.mjs');
  await db.exec('BEGIN');try{const data=await resolveLogBookData(pool,'vehicle',card('V4',[{equipmentName:'V19',tripCount:3}]));data.scanCardId=randomUUID();await insertLogBook(pool,'vehicle',data,randomUUID(),'alice');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}
  const newMachine=(await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[JSON.stringify({category:'Equipment',door:'G2',equipmentName:'Grader G2',group:'Grader',currentLocation:'Sasti OC'})])).rows[0].id;
  const lateElbInput={bookDate:'2026-12-18',location:'Sasti OC',assetId:String(newMachine),employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:20,closingHmr:22,requestKey:randomUUID()};

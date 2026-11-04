@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {linkVlbTripHandovers,validTripTimes} from '../vlb-trip-handover.mjs';
+import {linkVlbTripHandovers,validTripTimes} from '../shared/vlb-trip-handover.mjs';
 const card=(id,date,driver,trips,patch={})=>({id,book_no:'VLB/'+id,data:{location:'Sasti OC',door:'V189',bookDate:date,employeeId:id,employeeName:driver,shiftId:id,masterShiftStart:'21:00:00',timeMode:'with',trips,...patch}});
 const loading=(time='23:50')=>({equipmentName:'V25',loadingTime:time,unloadingTime:'',tripCount:1});
 const unloading=(time='00:10')=>({equipmentName:'V99',loadingTime:'',unloadingTime:time,tripCount:1});

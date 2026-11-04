@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {ageingSnapshots,ageingSummaryResult} from '../iboss-ageing-snapshots.mjs';
+import {ageingSnapshots,ageingSummaryResult} from '../server/rules/iboss-ageing-snapshots.mjs';
 import {accountsResponse,fetchAccountsReport} from '../src/iboss-accounts-response.mjs';
 const tick=()=>new Promise(r=>setImmediate(r));
 test('slow table and count requests share one background query and expire together',async()=>{

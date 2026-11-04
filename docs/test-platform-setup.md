@@ -53,9 +53,9 @@ If `caliber-mis-test-783` is taken (section 3 checks), pick another name and set
 
 ### Three rules the server enforces
 
-1. **The database must be named `caliber_mis`.** `mis-database-config.mjs` refuses any other database name, so a second database on the live server is not possible: the test copy needs its **own server**. This also keeps the test copy's credentials useless against the live server.
+1. **The database must be named `caliber_mis`.** `server/rules/mis-database-config.mjs` refuses any other database name, so a second database on the live server is not possible: the test copy needs its **own server**. This also keeps the test copy's credentials useless against the live server.
 2. **`MIS_DATABASE_CONNECTION_MODE` must stay unset on the test app.** The live value `shared-admin` pins every connection to the live server and database; with that setting the test app would refuse to start.
-3. **`MIS_SCAN_BLOB_ENABLED` must be `false` (or unset) on the test app.** Hot scan storage in Azure Blob is limited to `caliber-mis-783` in `scan-blob-storage.mjs`; any other app refuses to start with it on.
+3. **`MIS_SCAN_BLOB_ENABLED` must be `false` (or unset) on the test app.** Hot scan storage in Azure Blob is limited to `caliber-mis-783` in `server/services/scan-blob-storage.mjs`; any other app refuses to start with it on.
 
 ## 1. Before merging the pull request (10 minutes)
 

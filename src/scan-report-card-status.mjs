@@ -1,4 +1,4 @@
-import {CARD_GROUPS,cardIssueGroups,cardReviewGroup} from '../scan-card-groups.mjs';
+import {CARD_GROUPS,cardIssueGroups,cardReviewGroup} from '../shared/scan-card-groups.mjs';
 import {manualScanIssues} from './scan-manual-fields.mjs';
 const fields={bookDate:['bookDate'],location:['location'],door:['doorText','assetId'],employeeCode:['employeeId'],employeeName:['employeeId'],shift:['shiftId','cardShift'],shiftHours:['shiftHours'],workOrder:['workOrderId'],cardNo:['aFormNo','jobCardNo'],openingHmr:['openingHmr'],closingHmr:['closingHmr'],hours:['openingHmr','closingHmr'],openingKmr:['openingKmr'],closingKmr:['closingKmr'],kilometres:['openingKmr','closingKmr'],trips:['trips','scanMachineSummary']};
 export const CARD_STATUS_LEGEND=[['error','Error / mismatch'],['red','Blank / rejected'],['brown','Needs correction'],['pending','Processing'],['orange','Complete / saved']];

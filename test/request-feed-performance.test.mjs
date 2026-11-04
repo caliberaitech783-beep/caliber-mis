@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createFeedCache} from '../request-feed-cache.mjs';
+import {createFeedCache} from '../server/rules/request-feed-cache.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
@@ -56,7 +56,7 @@ test('a failed read is never handed to the next poll', async () => {
 });
 
 test('the requests route shares the feed and every write clears it', () => {
-  assert.match(server, /import \{createFeedCache\} from '\.\/request-feed-cache\.mjs';/);
+  assert.match(server, /import \{createFeedCache\} from '\.\/server\/rules\/request-feed-cache\.mjs';/);
   assert.match(server, /const requestFeedCache=createFeedCache\(\{ttlMs:30_000\}\);/);
   const guard = server.slice(server.indexOf('const requestFeedCache=createFeedCache('), server.indexOf('const port=Number('));
   assert.match(guard, /if\(req\.method!=='GET'&&req\.method!=='HEAD'\)\{/);

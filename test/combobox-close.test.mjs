@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import {searchSiteDoors,doorLabel} from '../src/door-search.mjs';
-import * as equipment from '../request-equipment.mjs';
+import * as equipment from '../shared/request-equipment.mjs';
 
 const find=(node,predicate)=>!React.isValidElement(node)?[]:[...(predicate(node)?[node]:[]),...React.Children.toArray(node.props.children).flatMap(child=>find(child,predicate))];
 const records=[{id:'s12',door:'S12',kind:'vehicle',site:'Dhoptala OC',equipmentName:'Scania'}];

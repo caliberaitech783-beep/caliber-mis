@@ -15,12 +15,12 @@ import * as tableModel from "../src/table-actions-model.mjs";
 import * as recordDates from "../src/record-date-range.mjs";
 import * as dateRanges from "../src/date-range-filter.mjs";
 import { groupOemRecordsBySite, oemDetailReportRows, oemEquipmentLabel } from "../src/oem-dashboard-filters.mjs";
-import { matchesSmartSearch } from "../smart-search.mjs";
-import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../breakdown-duration.mjs";
+import { matchesSmartSearch } from "../shared/smart-search.mjs";
+import { calculateBreakdownMinutes, formatBreakdownDaysHours } from "../src/lib/breakdown-duration.mjs";
 import { requestStatusSortRank } from "../src/request-status.mjs";
-import { formatDisplayDateTime } from "../date-time-format.mjs";
+import { formatDisplayDateTime } from "../shared/date-time-format.mjs";
 import { dailyUpdatesExportText } from "../src/daily-updates-order.mjs";
-import { breakdownMeterColumns } from "../breakdown-meter-columns.mjs";
+import { breakdownMeterColumns } from "../shared/breakdown-meter-columns.mjs";
 
 // Compile the real JSX components in memory, using the repository's render-test
 // harness. This does not run the site build or touch the preview's app version.

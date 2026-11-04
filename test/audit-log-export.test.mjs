@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {auditLogExportDue,auditLogExportSlot,buildAuditLogExportEmail} from '../audit-log-export.mjs';
+import {auditLogExportDue,auditLogExportSlot,buildAuditLogExportEmail} from '../server/rules/audit-log-export.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 

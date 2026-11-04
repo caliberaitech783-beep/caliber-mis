@@ -2,8 +2,8 @@ import {isDeletableScanCard,isAbortableScanCard} from './scan-card-deletion-sele
 import './meter-correction-report.css';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from './scan-report-card-status.mjs';
 import React,{useState} from 'react';
-import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
-import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
+import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
+import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 import './scan-batch-report.css';
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
 export default function ScanBatchReport({batch,cards,token,ReportSection,contextBlocked=false,options=null,onReviewCard,reviewDisabled=false,onAbort,onAbortCards,abortDisabled=false,selectionDisabled,onDeleteCard,onDeleteCards,actionsDisabled=false}){

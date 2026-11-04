@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerMisTelegram} from '../mis-telegram.mjs';
+import {registerMisTelegram} from '../server/routes/mis-telegram.mjs';
 const admin={role:'super',login:'admin',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees']}},user={role:'super',login:'person',permissions:{separateMisCredentials:true,adminLevel:'Admin',misDesktopAccess:[]}};
 test('private MIS Telegram setup, authenticated linking and durable notification retry',async t=>{
  const db=new PGlite(),pool={query:(...args)=>args[0].includes('CREATE TABLE')?db.exec(args[0]):db.query(...args),connect:async()=>({query:(...args)=>db.query(...args),release(){}})};

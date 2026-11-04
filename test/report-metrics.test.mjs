@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {elapsedLabel, elapsedMilliseconds, latestTimestamp, parseReportTimestamp} from "../report-metrics.mjs";
+import {elapsedLabel, elapsedMilliseconds, latestTimestamp, parseReportTimestamp} from "../shared/report-metrics.mjs";
 
 test("parses persisted and optimistic India timestamps", () => {
   assert.equal(parseReportTimestamp("2026-08-18 10:15")?.toISOString(), "2026-08-18T04:45:00.000Z");

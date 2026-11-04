@@ -12,8 +12,8 @@ import {
   signedCount,
   summarizeInOutReport,
   vehicleListLabel,
-} from '../in-out-report.mjs';
-import {DIRECTOR_REPORT_TITLES,buildDirectorReportTables} from '../director-report-bundle.mjs';
+} from '../shared/in-out-report.mjs';
+import {DIRECTOR_REPORT_TITLES,buildDirectorReportTables} from '../shared/director-report-bundle.mjs';
 
 const requests=[
   {ref:'REQ-1',equipment:'EX-1',site:'Sasti OC',status:'Open',start:'2026-09-01 08:00'},
@@ -139,7 +139,7 @@ test('In and Out report ships in the director bundle and the General Report tab'
   assert.equal(inOut.rows[0][column('pendingClose')],'2');
   const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   const styles=readFileSync(new URL('../src/reports-workspace.css',import.meta.url),'utf8');
-  assert.match(source,/from "\.\.\/in-out-report\.mjs"/);
+  assert.match(source,/from "\.\.\/shared\/in-out-report\.mjs"/);
   assert.doesNotMatch(source,/category: "general", title: IN_OUT_REPORT_TITLE/,"the In and Out Report is no longer listed under General Report");
   assert.doesNotMatch(source,/InOutReportSummary/);
   assert.match(styles,/\.in-out-net\.positive/);

@@ -10,7 +10,7 @@ import {
   requestTimelineDurations,
   formatTimelineDuration,
   requestTimelineEvents,
-} from "../request-timeline.mjs";
+} from "../shared/request-timeline.mjs";
 
 const now = new Date("2026-09-08T10:30:00.789Z"); // 16:00 IST
 const timeline = {
@@ -66,7 +66,7 @@ test("timestamps reject ambiguous partial inputs and never substitute the curren
 });
 
 test("parsing and durations are independent of the process timezone", () => {
-  const moduleUrl = new URL("../request-timeline.mjs", import.meta.url).href;
+  const moduleUrl = new URL("../shared/request-timeline.mjs", import.meta.url).href;
   const script = `import {parseRequestTimelineTimestamp,requestTimelineDurations} from ${JSON.stringify(moduleUrl)}; process.stdout.write(JSON.stringify([parseRequestTimelineTimestamp('2026-09-08 10:20:30.123').toISOString(),requestTimelineDurations({start:'2026-09-08 10:00:00',acceptedAt:'2026-09-08 10:01:01'})]));`;
   const output = ["UTC", "Asia/Kolkata", "America/New_York"].map(TZ => execFileSync(process.execPath, ["--input-type=module", "-e", script], {encoding: "utf8", env: {...process.env, TZ}}));
   assert.equal(output[0], output[1]);

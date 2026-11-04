@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
-import {bdmsChatCanRead,BDMS_WELCOME} from '../telegram-bdms-chatbot.mjs';
+import {bdmsChatCanRead,BDMS_WELCOME} from '../shared/telegram-bdms-chatbot.mjs';
 const source=readFileSync(new URL('../src/bdms-assistant.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
 const {code}=await transformWithOxc(source,'assistant.jsx',{jsx:{runtime:'classic'}});
 function harness(){

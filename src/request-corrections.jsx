@@ -1,7 +1,7 @@
 import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {CheckCircle2,Eye,ImageUp,LockKeyhole,Pencil,RefreshCw,Search,Send,ShieldCheck,Trash2,X} from 'lucide-react';
-import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,requestCorrectionFields,requestCorrectionReviewRemarkError} from '../request-correction-policy.mjs';
+import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,requestCorrectionFields,requestCorrectionReviewRemarkError} from '../shared/request-correction-policy.mjs';
 import SearchableSelect from './searchable-select.jsx';
 import RequestTimelineButton from './request-timeline.jsx';
 import './request-corrections.css';

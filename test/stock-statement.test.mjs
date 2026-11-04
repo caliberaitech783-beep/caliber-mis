@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {STOCK_STATEMENT_SQL,stockStatementRow} from '../stock-statement.mjs';
+import {STOCK_STATEMENT_SQL,stockStatementRow} from '../server/rules/stock-statement.mjs';
 
 test('stock statement is removed from the top-level IBOSS dropdown',()=>{
   const source=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

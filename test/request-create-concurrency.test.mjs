@@ -1,17 +1,17 @@
-import * as siteAccess from '../region-scope.mjs';
-import {requestShiftLabel} from '../request-shift.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {requestShiftLabel} from '../shared/request-shift.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
-import {activeRequestConflictMessage,isActiveMaintenanceRequest} from '../request-conflict.mjs';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
-import {requestsVisibleGlobally} from '../mis-request-visibility.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {parseIndiaRequestDateTime} from '../request-time.mjs';
-import {validRequestAudioDataUrl} from '../request-workflow.mjs';
-import {validComplaintMedia} from '../complaint-media.mjs';
-import * as timeline from '../request-timeline.mjs';
+import {activeRequestConflictMessage,isActiveMaintenanceRequest} from '../shared/request-conflict.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
+import {requestsVisibleGlobally} from '../shared/mis-request-visibility.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {parseIndiaRequestDateTime} from '../shared/request-time.mjs';
+import {validRequestAudioDataUrl} from '../shared/request-workflow.mjs';
+import {validComplaintMedia} from '../shared/complaint-media.mjs';
+import * as timeline from '../shared/request-timeline.mjs';
 
 const source=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const auth=source.slice(source.indexOf('async function requireSession('),source.indexOf('async function requireSuper('));

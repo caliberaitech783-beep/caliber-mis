@@ -60,7 +60,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ocr-model-cache
-          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('server/services/handwritten-card-ocr.mjs', 'package-lock.json') }}
 
       - name: Install exact locked dependencies
         run: npm ci --no-audit --no-fund
@@ -90,8 +90,8 @@ jobs:
         run: |
           node --check server.mjs
           node scripts/verify-server-start.mjs
-          node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
-          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
+          node --input-type=module -e "await import('./server/services/local-card-ocr.mjs'); await import('./shared/report-xlsx.mjs')"
+          node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./server/services/handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
 
       # Keep the complete workspace format that Azure already runs.
       # Build and deployment share one runner, avoiding the large artifact transfer.

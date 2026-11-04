@@ -1,9 +1,9 @@
 import {documentResponse} from './iboss-document-response.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,X,ExternalLink,RefreshCw,CornerUpLeft} from 'lucide-react';
-import {MERGE_CHAINS} from '../iboss-report-merge.mjs';
-import {purchaseOrderRange} from '../purchase-order-report.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {MERGE_CHAINS} from '../shared/iboss-report-merge.mjs';
+import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import DateInput from './date-input.mjs';
 import './iboss-report-merge.css';
 

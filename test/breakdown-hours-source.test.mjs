@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {manualBreakdownHours,applyBreakdownHours} from '../breakdown-hours-source.mjs';
+import {manualBreakdownHours,applyBreakdownHours} from '../shared/breakdown-hours-source.mjs';
 const data=()=>({bookDate:'2026-10-28',location:'Sasti OC',assetId:1,shiftId:2,shiftHours:8,totalWorkingHmr:4,availabilityHours:4,idleHours:4,manualBreakdownHours:'2.5'});
 test('Pulse is always tried first and its actual zero beats a manual fallback',async()=>{
  let calls=0;const result=await applyBreakdownHours(data(),{readHours:async input=>{calls++;assert.equal(input.runningHours,4);return {breakdownHours:0,source:'Pulse'}}});

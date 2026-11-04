@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fleetAssetCounts, liveEquipmentRoadStatus } from '../dashboard-equipment-metrics.mjs';
+import { fleetAssetCounts, liveEquipmentRoadStatus } from '../shared/dashboard-equipment-metrics.mjs';
 
 test('chart off-road counts include active maintenance types, count assets once and exclude idle and stale master status', () => {
   const records = [{door:'A',category:'Equipment'}, {door:'B',category:'Vehicle'}, {door:'C',category:'Vehicle'}, {door:'D',category:'Equipment',status:'Off road'}, {door:'E',category:'Vehicle'}];

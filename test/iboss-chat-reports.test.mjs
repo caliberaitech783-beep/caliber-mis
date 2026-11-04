@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {accountPageQuery} from '../iboss-account-pages.mjs';
-import {CHAT_REPORTS} from '../iboss-chat-reports.mjs';
+import {accountPageQuery} from '../server/rules/iboss-account-pages.mjs';
+import {CHAT_REPORTS} from '../shared/iboss-chat-reports.mjs';
 test('chat summaries aggregate before pagination and distinguish paid, unpaid and preclosed',()=>{
  const emi=accountPageQuery('chat-emi-summary');assert.match(emi.sql,/cmpl.emireport/);assert.match(emi.sql,/COUNT\(\*\) AS emi_count/);assert.doesNotMatch(emi.sql,/loandetail/);
  const paid=accountPageQuery('chat-payment-done','2026-10-01','2026-10-04');assert.match(paid.sql,/paymentdone\)\)='YES'/);assert.match(paid.sql,/SUM\(a.amount\)/);

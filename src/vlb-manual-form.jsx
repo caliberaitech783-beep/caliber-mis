@@ -1,11 +1,11 @@
-import {shiftMeterIssues} from '../trip-card-rules.mjs';
+import {shiftMeterIssues} from '../shared/trip-card-rules.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
-import {employeeAtLocation} from '../log-book-access.mjs';
-import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
+import {employeeAtLocation} from '../shared/log-book-access.mjs';
+import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
 import SmartSelect from './smart-select.jsx';
 import DoorCombobox from './door-combobox.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
-import {matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
+import {matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../shared/trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import ManualBookDate from './manual-book-date.jsx';
 import {advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder} from './log-book-enter-navigation.mjs';
@@ -13,7 +13,7 @@ import React,{useEffect,useState,useRef} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
 
-import {canonicalSiteName} from '../site-location.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 import './vlb-manual-form.css';
 

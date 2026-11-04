@@ -1,9 +1,9 @@
-import {userSiteScope, reportScopeIncludesSite} from '../region-scope.mjs';
+import {userSiteScope, reportScopeIncludesSite} from '../shared/region-scope.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {validComplaintMedia,readComplaintMedia,COMPLAINT_MEDIA_LIMIT} from '../complaint-media.mjs';
-import {auditSubmittedFields} from '../audit-trail.mjs';
+import {validComplaintMedia,readComplaintMedia,COMPLAINT_MEDIA_LIMIT} from '../shared/complaint-media.mjs';
+import {auditSubmittedFields} from '../server/rules/audit-trail.mjs';
 const photo={name:'photo.png',data:'data:image/png;base64,aGVsbG8='};
 const video={name:'video.mp4',data:'data:video/mp4;base64,aGVsbG8='};
 test('complaint evidence is protected in audit records',()=>{

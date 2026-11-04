@@ -1,11 +1,11 @@
-import {CDIR_DELETION_SCHEMA} from '../cdir-deletion.mjs';
+import {CDIR_DELETION_SCHEMA} from '../server/routes/cdir-deletion.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {readFileSync} from 'node:fs';
-import {EMPLOYEE_TRANSFER_SCHEMA,ET_STATUS,employeeTransferAccess,registerEmployeeTransfers} from '../employee-transfer.mjs';
-import {CDIR_MASTERS} from '../cdir-masters.mjs';
+import {EMPLOYEE_TRANSFER_SCHEMA,ET_STATUS,employeeTransferAccess,registerEmployeeTransfers} from '../server/routes/employee-transfer.mjs';
+import {CDIR_MASTERS} from '../shared/cdir-masters.mjs';
 
 test('employee transfer authorization excludes general users and non-Project Managers',()=>{
   assert.equal(employeeTransferAccess({assignedRole:'HR User'}).canSubmit,true);

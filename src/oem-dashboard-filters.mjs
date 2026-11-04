@@ -1,4 +1,4 @@
-import { canonicalSiteName, recordBelongsToSite } from "../site-location.mjs";
+import { canonicalSiteName, recordBelongsToSite } from "../shared/site-location.mjs";
 import { equipmentGroupLabel } from "./dashboard-drilldown-model.mjs";
 
 export function oemEquipmentLabel(record) {

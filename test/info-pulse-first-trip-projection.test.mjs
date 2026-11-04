@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildInfoPulseFirstTripPending, isProductionFirstTripPending} from '../info-pulse-data.mjs';
+import {buildInfoPulseFirstTripPending, isProductionFirstTripPending} from '../shared/info-pulse-data.mjs';
 
 test('Info Pulse selects the same saved first-trip timestamp as the Production feed', () => {
   const server = readFileSync(new URL('../server.mjs', import.meta.url),'utf8');

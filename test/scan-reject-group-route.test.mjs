@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0';
 const context={bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'};
 

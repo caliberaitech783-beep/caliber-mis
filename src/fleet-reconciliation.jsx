@@ -1,7 +1,7 @@
 import React,{useEffect,useState,useRef} from 'react';
 import './fleet-reconciliation.css';
-import {canonicalSiteName} from '../site-location.mjs';
-import {fleetMachineSummary,fleetScannedCardTotal} from '../fleet-reconciliation-summary.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {fleetMachineSummary,fleetScannedCardTotal} from '../shared/fleet-reconciliation-summary.mjs';
 
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 const headings=['Site','Date','Shift','Door no.','Type','Vehicle / equipment','Model','VLB / ELB','Breakdown','Idle reason','Remarks','Status'];

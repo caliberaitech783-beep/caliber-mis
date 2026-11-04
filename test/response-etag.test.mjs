@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {jsonEntityTag, requestEtagMatches} from "../response-etag.mjs";
+import {jsonEntityTag, requestEtagMatches} from "../server/services/response-etag.mjs";
 
 test("JSON entity tags are stable for unchanged payloads and namespaced by endpoint", () => {
   const body = JSON.stringify({records: [{ref: "BD-1"}]});

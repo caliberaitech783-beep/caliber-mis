@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {PGlite} from '@electric-sql/pglite';
-import {REQUEST_HISTORY_MEDIA_FIELDS,requestHistorySnapshotSql,requestHistoryTimelineSql} from '../request-history-payload.mjs';
-import {retryDatabaseRead} from '../database-read-retry.mjs';
-import {measureRequestHistoryPayload} from '../request-history-diagnostics.mjs';
+import {REQUEST_HISTORY_MEDIA_FIELDS,requestHistorySnapshotSql,requestHistoryTimelineSql} from '../server/rules/request-history-payload.mjs';
+import {retryDatabaseRead} from '../server/rules/database-read-retry.mjs';
+import {measureRequestHistoryPayload} from '../server/rules/request-history-diagnostics.mjs';
 
 test('history stays on demand and legacy media never enters timeline responses',async()=>{
   const db=new PGlite();

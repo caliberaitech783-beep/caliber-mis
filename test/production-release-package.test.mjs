@@ -12,9 +12,10 @@ test('release preserves runtime bytes, pinned model and relative links while exc
   'server/routes/client-error-report.mjs':'export const route=true;',
   'server/services/system-diagnostics.mjs':'export const service=true;',
   'server/middleware/server-error-response.mjs':'export const middleware=true;',
+  'shared/site-location.mjs':'export const site=true;',
   'package.json':'{"scripts":{"start":"node server.mjs"}}',
   'package-lock.json':'{"lockfileVersion":3}',
-  'scan-extraction-queue.mjs':'export const queue=true;',
+  'server/services/scan-extraction-queue.mjs':'export const queue=true;',
   'public/cd/directory-data.json':'{"people":[]}',
   'assets/fonts/handwriting.ttf':'font-bytes',
   'scripts/verify-ui-release.mjs':'export const check=true;',
@@ -37,6 +38,7 @@ test('release preserves runtime bytes, pinned model and relative links while exc
  await mkdir(path.join(root,'node_modules/.bin'));await symlink('../example/index.js',path.join(root,'node_modules/.bin/example'));
  const trackedFiles=Object.keys(fixtures).filter(file=>!['dist','node_modules','ocr-model-cache'].some(folder=>file.startsWith(folder+'/'))&&file!=='DEPLOYMENT_SHA');
  await stageProductionRelease({root,destination,trackedFiles});
+ assert.equal(await readFile(path.join(destination,'shared/site-location.mjs'),'utf8'),fixtures['shared/site-location.mjs']);
  for(const file of ['server/routes/client-error-report.mjs','server/services/system-diagnostics.mjs','server/middleware/server-error-response.mjs'])assert.equal(await readFile(path.join(destination,file),'utf8'),fixtures[file],file);
  for(const file of Object.keys(fixtures).filter(file=>isRuntimeSource(file)||['dist/','node_modules/','ocr-model-cache/'].some(prefix=>file.startsWith(prefix))||file==='DEPLOYMENT_SHA'))assert.equal(await readFile(path.join(destination,file),'utf8'),fixtures[file],file);
  for(const file of ['test/private-fixture.json','docs/notes.md','.env.production','.local/secret.json','backups/backup.json','README.md','.github/workflows/deploy.yml'])await assert.rejects(access(path.join(destination,file)));

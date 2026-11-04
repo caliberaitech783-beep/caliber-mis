@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createScanFleetQueue} from '../scan-fleet-queue.mjs';
+import {createScanFleetQueue} from '../server/rules/scan-fleet-queue.mjs';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import express from 'express';import PDFDocument from 'pdfkit';import {PGlite} from '@electric-sql/pglite';
-import {registerLocalDocumentScanning,stablePageId} from '../local-document-scanning.mjs';import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {registerLocalDocumentScanning,stablePageId} from '../server/routes/local-document-scanning.mjs';import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('stable page references are deterministic and separate every source and page',()=>{assert.equal(stablePageId('abc',1),stablePageId('abc',1));assert.notEqual(stablePageId('abc',1),stablePageId('abc',2));assert.notEqual(stablePageId('abc',1),stablePageId('def',1));assert.match(stablePageId('abc',1),/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-a[a-f0-9]{3}-[a-f0-9]{12}$/)});
 test('saved PDF folder import is admin-only, creates review-source pages once, never posts log books and retains original files',async t=>{

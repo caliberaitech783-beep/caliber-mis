@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hourlyBreakdownEvents, hourlyBreakdownView, openHourlyBreakdownTab, breakdownElapsed } from "../src/hourly-breakdown.mjs";
-import { REGION_DATA } from "../region-scope.mjs";
+import { REGION_DATA } from "../shared/region-scope.mjs";
 
 test("site aliases merge, permitted zero-count sites remain, and timers stop on closure", () => {
   const now = Date.parse("2026-09-11T12:00:00+05:30");

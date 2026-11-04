@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {operationalDate,OPERATIONAL_START_MESSAGE} from '../operational-start.mjs';
+import {operationalDate,OPERATIONAL_START_MESSAGE} from '../shared/operational-start.mjs';
 
 const display=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('-'):'';
 export default function ManualBookDate({value,onChange}){

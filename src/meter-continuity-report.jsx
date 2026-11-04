@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {OPERATIONAL_START} from '../operational-start.mjs';
-import {CLASS_LABELS,DEFAULT_TOLERANCE} from '../meter-continuity-report.mjs';
+import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {CLASS_LABELS,DEFAULT_TOLERANCE} from '../shared/meter-continuity-report.mjs';
 import './production-reports.css';
 import './meter-continuity-report.css';
 

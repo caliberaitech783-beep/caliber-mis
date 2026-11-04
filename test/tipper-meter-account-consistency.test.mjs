@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {requestMeterTypesForRequest, requestMeterReadings} from '../request-equipment.mjs';
+import {requestMeterTypesForRequest, requestMeterReadings} from '../shared/request-equipment.mjs';
 
 test('Volvo tipper exposes closing KMR regardless of account master visibility', () => {
   const request = {ref: 'REQ-1791254430195', door: 'V611-96916', chassis: 'YV2XG30G3T899691628', equipmentGroup: 'VOLVO TIPPERS', meterType: 'HMR', openingMeterReading: '5968', closingMeterReadings: {HMR: '5968', KMR: ''}};

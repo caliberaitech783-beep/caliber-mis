@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {manualBackupWindow} from '../scan-backup.mjs';
+import {manualBackupWindow} from '../server/routes/scan-backup.mjs';
 test('scan backup has no global reminder, status error toast or Open Backup card',()=>{
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
  const page=readFileSync(new URL('../src/scan-card-backup.jsx',import.meta.url),'utf8');

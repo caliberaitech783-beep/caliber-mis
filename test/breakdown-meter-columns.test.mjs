@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {breakdownMeterValue,breakdownMeterFields,latestBreakdownMeterValue,withBreakdownMeterColumns} from '../breakdown-meter-columns.mjs';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildDirectorReportTables} from '../director-report-bundle.mjs';
-import {FLEET_ACTIVITY_COLUMNS,fleetActivityTable} from '../site-consolidated-report.mjs';
+import {breakdownMeterValue,breakdownMeterFields,latestBreakdownMeterValue,withBreakdownMeterColumns} from '../shared/breakdown-meter-columns.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildDirectorReportTables} from '../shared/director-report-bundle.mjs';
+import {FLEET_ACTIVITY_COLUMNS,fleetActivityTable} from '../server/rules/site-consolidated-report.mjs';
 import {hourlyBreakdownEvents} from '../src/hourly-breakdown.mjs';
 
 const tipper={ref:'REQ-1',door:'T-12',site:'Pakri Barwadih',status:'Closed',equipmentGroup:'Tipper',complaint:'Brake failure',category:'Mechanical',

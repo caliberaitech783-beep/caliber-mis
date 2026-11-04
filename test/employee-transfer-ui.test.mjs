@@ -5,9 +5,9 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
 import DateInput from '../src/date-input.mjs';
-import {formatDisplayDate,formatDisplayDateTime} from '../date-time-format.mjs';
-import {CDIR_MASTER_FIELDS,CDIR_MASTERS} from '../cdir-masters.mjs';
-import {employeeTransferAccess,employeeTransferVisible} from '../employee-transfer.mjs';
+import {formatDisplayDate,formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import {CDIR_MASTER_FIELDS,CDIR_MASTERS} from '../shared/cdir-masters.mjs';
+import {employeeTransferAccess,employeeTransferVisible} from '../server/routes/employee-transfer.mjs';
 
 const source=readFileSync(new URL('../src/employee-transfer.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
 const {code}=await transformWithOxc(source,'employee-transfer.jsx',{jsx:{runtime:'classic'}});

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildDepartmentReports, DEPARTMENT_REPORT_TITLES} from '../department-reports.mjs';
-import {stageTimingRow, stageGapLabel, slowestStageGap, slowestStageLabel, stageTimingSteps, STAGE_TIMING_GAPS} from '../stage-timing-report.mjs';
+import {buildDepartmentReports, DEPARTMENT_REPORT_TITLES} from '../shared/department-reports.mjs';
+import {stageTimingRow, stageGapLabel, slowestStageGap, slowestStageLabel, stageTimingSteps, STAGE_TIMING_GAPS} from '../shared/stage-timing-report.mjs';
 import {isDurationColumn} from '../src/duration-sort.mjs';
 
 const STAGE_TIMING_REPORT = 'Request Stage Timing';

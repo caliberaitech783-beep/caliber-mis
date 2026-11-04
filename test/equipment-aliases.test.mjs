@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {aliasForSelection,attachEquipmentAliases,aliasWrittenKey} from '../equipment-alias-rules.mjs';
-import {createEquipmentAlias,revokeEquipmentAlias,loadEquipmentAliases,registerEquipmentAliases,withEquipmentAliases} from '../equipment-aliases.mjs';
-import {matchCardMachine,scannedTripEquipmentRow,scanEquipmentMatchIssues,selectTripEquipment,tripEquipmentSelectionValue,resolvedByAlias,aliasMachineHint} from '../scan-machine-rules.mjs';
-import {resolveTripEquipment,validateTripEquipment} from '../trip-equipment-validation.mjs';
-import {scanFleetIssues} from '../scan-fleet-assignment.mjs';
+import {aliasForSelection,attachEquipmentAliases,aliasWrittenKey} from '../shared/equipment-alias-rules.mjs';
+import {createEquipmentAlias,revokeEquipmentAlias,loadEquipmentAliases,registerEquipmentAliases,withEquipmentAliases} from '../shared/equipment-aliases.mjs';
+import {matchCardMachine,scannedTripEquipmentRow,scanEquipmentMatchIssues,selectTripEquipment,tripEquipmentSelectionValue,resolvedByAlias,aliasMachineHint} from '../shared/scan-machine-rules.mjs';
+import {resolveTripEquipment,validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {scanFleetIssues} from '../shared/scan-fleet-assignment.mjs';
 
 const site='Dudhichua East OB';
 const demo={id:'179',door:'DEMO21-00179',name:'DEMO21-00179',kind:'equipment',site};

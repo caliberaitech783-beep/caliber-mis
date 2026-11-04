@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {chooseConnectedScanner,captureScanner} from '../scanner-selection.mjs';
+import {chooseConnectedScanner,captureScanner} from '../shared/scanner-selection.mjs';
 const a={id:'a',name:'Canon'},b={id:'b',name:'Epson'},c={id:'c',name:'Brother'};
 test('detects all Windows models and preserves an explicit selection',()=>{
  const brother={id:'brother',name:'Brother ADS-3100 USB'},canon={id:'canon',name:'Canon DR-C225II USB'};

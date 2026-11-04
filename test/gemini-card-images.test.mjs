@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createCanvas,loadImage} from '@napi-rs/canvas';import {DETAIL_VIEW_WEBP_QUALITY,cardDetailViews,summaryDetailViews} from '../gemini-card-images.mjs';
+import {createCanvas,loadImage} from '@napi-rs/canvas';import {DETAIL_VIEW_WEBP_QUALITY,cardDetailViews,summaryDetailViews} from '../server/services/gemini-card-images.mjs';
 test('native-pixel detail columns retain header and footer at either card orientation',async()=>{
  const source=createCanvas(100,200),ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,100,200);ctx.fillStyle='black';ctx.fillRect(15,5,10,10);ctx.fillRect(75,185,10,10);
  const original=source.toBuffer('image/png'),sets=[];

@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {OPERATIONAL_START} from '../operational-start.mjs';
-import {productionShifts} from '../production-report.mjs';
+import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {productionShifts} from '../shared/production-report.mjs';
 import './production-reports.css';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const labels={S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'};

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {requestMeterReadingLabel} from '../request-equipment.mjs';
+import {requestMeterReadingLabel} from '../shared/request-equipment.mjs';
 
 test('all manager closed histories enable completion details without changing active queues', () => {
   const source = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');

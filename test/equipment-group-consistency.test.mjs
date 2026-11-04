@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {equipmentGroupValue,normalizeEquipmentGroup} from '../equipment-group.mjs';
+import {equipmentGroupValue,normalizeEquipmentGroup} from '../shared/equipment-group.mjs';
 import {drilldownView,equipmentGroupLabel} from '../src/dashboard-drilldown-model.mjs';
-import {requestEquipmentDetails,requestEquipmentGroupOptionLabel,requestEquipmentGroupOptions,requestEquipmentRecordsForGroup} from '../request-equipment.mjs';
-import {buildDepartmentReports} from '../department-reports.mjs';
+import {requestEquipmentDetails,requestEquipmentGroupOptionLabel,requestEquipmentGroupOptions,requestEquipmentRecordsForGroup} from '../shared/request-equipment.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
 
 const frozenRows=rows=>Object.freeze(rows.map(row=>Object.freeze(row)));
 const ids=rows=>rows.map(row=>row.id);

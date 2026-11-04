@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import React from "react";
 import { transformWithOxc } from "vite";
-import { fleetChartCounts } from "../dashboard-equipment-metrics.mjs";
+import { fleetChartCounts } from "../shared/dashboard-equipment-metrics.mjs";
 import { fleetBarHeightPercent } from "../src/fleet-bar-scale.mjs";
 
 const source = readFileSync(new URL("../src/fleet-site-bars.jsx", import.meta.url), "utf8")
