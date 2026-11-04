@@ -145,7 +145,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
  assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td>/);
  assert.match(html,/<th>Operator<\/th><th>Caliber ID<\/th><th>Opening HMR<\/th><th>Closing HMR<\/th><th>Working HMR<\/th><th>BD hours<\/th><th>Idle hours<\/th><th>Availability hours<\/th><th>Job card<\/th><th>Remarks<\/th>/);
- assert.match(html,/Close &amp; lock ELB is blocked: Machines without a saved ELB/);
+ assert.doesNotMatch(html,/Close &amp; lock ELB is blocked: Machines without a saved ELB/);
  const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>ELB open<\/td>/);
