@@ -229,3 +229,14 @@ test('saved ELB buttons stay disabled after saving and unsaved machines remain s
 });
 
 
+test('machine report headers toggle numeric sorting and keep missing values last within equipment groups',async()=>{
+ const h=hooks();
+ const {MachineReport}=await compile('vlb-batch-report.jsx',{React,useState:h.useState},['MachineReport']);
+ const report={loaders:[{assetId:'a',door:'V10',trips:10},{assetId:'b',door:'V2',trips:2},{assetId:'c',door:'V3',trips:null}],others:[{assetId:'d',door:'D10'},{assetId:'e',door:'D2'}],totals:{trips:12}};
+ const render=()=>{h.reset();return MachineReport({report})};
+ const doors=tree=>nodes(tree,n=>n.type==='tr'&&n.key!=null).map(n=>React.Children.toArray(n.props.children)[0].props.children);
+ let tree=render();assert.equal(nodes(tree,n=>n.type==='th'&&n.props['aria-sort']).length,12);
+ button(tree,'Trips').props.onClick();tree=render();assert.deepEqual(doors(tree),['V2','V10','V3','D10','D2']);assert.equal(nodes(tree,n=>n.type==='th'&&n.props['aria-sort']==='ascending').length,1);
+ button(tree,'Trips').props.onClick();tree=render();assert.deepEqual(doors(tree),['V10','V2','V3','D10','D2']);
+ button(tree,'Door').props.onClick();tree=render();assert.deepEqual(doors(tree),['V2','V3','V10','D2','D10']);assert.equal(report.loaders[0].door,'V10');assert.match(renderToStaticMarkup(tree),/Totals · 5 machines/);
+});

@@ -33,10 +33,22 @@ export default function VlbBatchReport({batch,ReportSection,onView}){
 const cell=value=>value===null||value===undefined||value===''?'—':value;
 // Machine-wise shift report: loaders with trips and HMR first, then every other machine by status.
 export function MachineReport({report,statuses}){
- const loaders=report?.loaders||[],others=report?.others||[],totals=report?.totals||{};
+ const [sort,setSort]=useState({key:'',direction:'asc'});
+ const totals=report?.totals||{};
  const label=row=>row.statusLabel||statuses?.[row.status]?.label||row.status||'Not saved';
+ const columns=[['door','Door'],['equipmentName','Equipment'],['trips','Trips'],['sourceCards','Cards'],['operator','Operator'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],['hours','Hours'],['tripsPerHour','Trips/hour'],['breakdownHours','BD hours'],['status','Status'],['bookNo','ELB no.']];
+ const numeric=new Set(['trips','sourceCards','openingHmr','closingHmr','hours','tripsPerHour','breakdownHours']);
+ const sorted=rows=>!sort.key?rows:[...rows].sort((a,b)=>{
+  const value=row=>sort.key==='status'?label(row):row[sort.key];
+  const av=value(a),bv=value(b),missing=v=>v==null||v===''||v==='—';
+  if(missing(av)||missing(bv))return Number(missing(av))-Number(missing(bv));
+  const result=numeric.has(sort.key)?Number(av)-Number(bv):String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:'base'});
+  return sort.direction==='asc'?result:-result;
+ });
+ const loaders=sorted(report?.loaders||[]),others=sorted(report?.others||[]);
+ const changeSort=key=>setSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  return <details className="logbook-section vlb-machine-report" aria-label="ELB -- Machine-wise shift report"><summary>ELB -- Machine-wise shift report</summary>
-  <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Door</th><th>Equipment</th><th>Trips</th><th>Cards</th><th>Operator</th><th>Opening HMR</th><th>Closing HMR</th><th>Hours</th><th>Trips/hour</th><th>BD hours</th><th>Status</th><th>ELB no.</th></tr></thead><tbody>
+  <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{columns.map(([key,title])=><th key={key} aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" className={'sort-header'+(sort.key===key?' active':'')} onClick={()=>changeSort(key)}><span>{title}</span><span aria-hidden="true">{sort.key===key?(sort.direction==='asc'?'↑':'↓'):'↕'}</span></button></th>)}</tr></thead><tbody>
    {loaders.map(row=><tr key={row.assetId}><td>{row.door}</td><td>{cell(row.equipmentName)}</td><td>{row.trips}</td><td>{cell(row.sourceCards)}</td><td>{cell(row.operator)}</td><td>{cell(row.openingHmr)}</td><td>{cell(row.closingHmr)}</td><td>{cell(row.hours)}</td><td>{cell(row.tripsPerHour)}</td><td>{cell(row.breakdownHours)}</td><td>{label(row)}</td><td>{cell(row.bookNo)}</td></tr>)}
    {!loaders.length&&<tr><td colSpan={12}>No machine loaded trips in this batch.</td></tr>}
    {others.length>0&&<tr className="vlb-machine-report-group"><th colSpan={12}>Other equipment</th></tr>}
