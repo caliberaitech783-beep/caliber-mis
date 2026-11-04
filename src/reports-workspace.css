@@ -374,6 +374,22 @@
   width: 116px;
   font-size: 12px;
 }
+.generated-report-section[data-category="vlb-saved-batch"] .generated-report-heading-actions > .generated-report-search {
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.generated-report-section[data-category="vlb-saved-batch"] .generated-report-search label {
+  box-sizing: border-box;
+  width: 320px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.generated-report-section[data-category="vlb-saved-batch"] .generated-report-search input {
+  min-width: 0;
+  font-size: 14px;
+}
 
 .report-heading-table-actions .report-table-filter-toolbar {
   min-height: 0;
