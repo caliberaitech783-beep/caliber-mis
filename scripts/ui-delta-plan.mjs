@@ -10,13 +10,19 @@ export function uiDeltaPlan(changes, {baseline, current, healthy = false} = {}) 
  const valid = value => /^[0-9a-f]{40}$/.test(value || '');
  const files = changes.map(change => change.path);
  const safe = file => /^src\/[A-Za-z0-9_/-]+\.(?:css|jsx)$/.test(file);
- const ui = files.filter(file => file.startsWith('src/'));
+ const controllers = new Set(['scripts/deploy-ui-delta.mjs','scripts/ui-delta-plan.mjs','test/ui-delta-deployment.test.mjs']);
+ const hasController = files.some(file => controllers.has(file) && file.startsWith('scripts/'));
+ const applicationFiles = files.filter(file => !controllers.has(file));
+ const controllerOnlyOrSafeUi = applicationFiles.length === 0 || releaseTestPlan(applicationFiles).lane === 'fast';
+ const ui = files.filter(file => file.startsWith('src/') || (file.startsWith('scripts/') && controllers.has(file)));
  const plan = releaseTestPlan(files);
  return {
   eligible: healthy && valid(baseline) && valid(current) && baseline !== current
-   && plan.lane === 'fast' && ui.length > 0
+   // Controller patches still select the full test suite in the workflow. They
+   // do not change the server runtime, so resending its dependencies is needless.
+   && (plan.lane === 'fast' || (hasController && controllerOnlyOrSafeUi)) && ui.length > 0
    && changes.every(change => change.status === 'M')
-   && ui.every(safe) && files.every(file => safe(file) || /^test\/[A-Za-z0-9_-]+\.test\.mjs$/.test(file)),
+   && ui.every(file => safe(file) || controllers.has(file)) && files.every(file => safe(file) || controllers.has(file) || /^test\/[A-Za-z0-9_-]+\.test\.mjs$/.test(file)),
   files: ui, baseline, current, tests: plan.tests
  };
 }

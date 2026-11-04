@@ -44,6 +44,14 @@ test('source-based focused tests include regressions mentioning each changed com
  ]),['test/relevant.test.mjs']);
 });
 
+test('existing controller patches avoid runtime transfer while retaining full validation',()=>{
+ const files=['scripts/deploy-ui-delta.mjs','scripts/ui-delta-plan.mjs','test/ui-delta-deployment.test.mjs'];
+ const plan=uiDeltaPlan(files.map(file=>change(file)),context);
+ assert.equal(plan.eligible,true);
+ for(const file of ['server.mjs','src/main.jsx','package-lock.json','scripts/configure-gemini-azure.py'])assert.equal(uiDeltaPlan([...files.map(file=>change(file)),change(file)],context).eligible,false,file);
+ assert.equal(uiDeltaPlan([change('scripts/deploy-ui-delta.mjs','A')],context).eligible,false);
+});
+
 const fixture=failAt=>{
  const calls=[];
  const ops=Object.fromEntries(['backup','assertBaseline','publishAssets','publishSources','publishIdentity','restart','verify','restore'].map(name=>[name,async arg=>{
