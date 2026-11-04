@@ -18,6 +18,29 @@ test('100 vehicles reconcile with overlapping work/breakdown and multiple cards 
  assert.equal(result.rows.find(r=>r.assetId==='71').cards.length,1);assert.equal(result.rows.find(r=>r.assetId==='71').breakdowns.length,1);
  assert.equal(result.rows.find(r=>r.assetId==='1').cards.length,2);
 });
+
+test('100 assets of each type reconcile as 80 working + 10 breakdown + 10 unused',()=>{
+ for(const kind of ['vehicle','equipment']){
+  const assets=Array.from({length:100},(_,i)=>asset(i+1,kind));
+  const books=Array.from({length:80},(_,i)=>({...book(i+1,{totalWorkingHmr:4}),book_type:kind}));
+  const breakdowns=Array.from({length:10},(_,i)=>bd(i+81));
+  const reasons=Array.from({length:10},(_,i)=>({asset_key:'chassis:CH'+(i+91),reason:kind==='vehicle'?'Driver unavailable':'Operator unavailable',remarks:'Absent'}));
+  const result=run({assets,books,breakdowns,reasons}),s=result.summary[kind];
+  assert.equal(result.rows.length,100);assert.equal(s.operated,80);assert.equal(s.breakdownOnly,10);assert.equal(s.idle+s.pending,10);
+  assert.equal(s.total,s.operated+s.breakdownOnly+s.idle+s.pending);
+  assert.ok(result.rows.filter(r=>!r.operated&&!r.breakdown).every(r=>r.reason&&r.remarks==='Absent'));
+ }
+});
+
+test('ELB breakdown statuses and Pulse idle reasons remain visible without inventing work',()=>{
+ const assets=[asset(1,'equipment'),asset(2,'equipment'),asset(3,'equipment'),{...asset(4,'equipment'),sourceMissing:true}];
+ const books=[{...book(1,{shiftStatus:'breakdown',statusReason:'Engine failure'}),book_type:'equipment'},{...book(2,{shiftStatus:'working_partial_breakdown',totalWorkingHmr:3,statusReason:'Hydraulics'}),book_type:'equipment'}];
+ const result=run({assets,books,breakdowns:[bd(3,{vehicleIdle:true,idleReason:'Operator unavailable',description:'Absent'})]});
+ assert.equal(result.summary.equipment.total,3);assert.equal(result.summary.equipment.breakdownOnly,1);assert.equal(result.summary.equipment.operatedBreakdown,1);assert.equal(result.summary.equipment.idle,1);
+ assert.equal(result.rows.find(r=>r.assetId==='1').breakdowns[0].reason,'Engine failure');
+ assert.equal(result.rows.find(r=>r.assetId==='3').reason,'Operator unavailable');
+ assert.equal(result.rows.find(r=>r.assetId==='3').remarks,'Absent');
+});
 test('complete equipment population includes zero-work equipment and explicit idle reasons',()=>{
  const assets=[asset(1,'equipment'),asset(2,'equipment'),asset(3,'equipment'),asset(4,'equipment')];
  const books=[{...book(1,{totalWorkingHmr:3}),book_type:'equipment'},{...book(2,{shiftStatus:'no_operator',statusReason:'Absent'}),book_type:'equipment'},{...book(3,{totalWorkingHmr:0}),book_type:'equipment'}];

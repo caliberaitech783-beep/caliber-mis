@@ -106,10 +106,8 @@ export function buildMachineSnapshot(records,assets,site){
  return {machines:[...machines.values()].sort((a,b)=>b.trips-a.trips||a.label.localeCompare(b.label,undefined,{numeric:true})),unresolved};
 }
 
-// Manual ELB is generated only from the unique loading machines printed in the locked
-// VLB cards. The snapshot has already resolved every printed notation to one Equipment
-// Master id, so aliases across cards collapse to one row without pulling unrelated site
-// equipment into the batch.
+// Every site machine needs an ELB outcome, including machines with no VLB trips.
+// Retain resolved loading machines and their trip totals alongside the site roster.
 export function buildFleetList(assets,site,machines=[]){
  const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>assetBookKind(asset)==='equipment'&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
  const rows=new Map();
@@ -117,6 +115,10 @@ export function buildFleetList(assets,site,machines=[]){
   const asset=byId.get(String(machine.assetId));if(!asset)continue;
   const atSite=canonicalSiteName(assetSite(asset))===canonical;
   rows.set(machineKey(asset),{assetId:machineKey(asset),door:assetDoor(asset)||assetLabel(asset)||machine.label,equipmentName:text(asset.equipmentName||asset.equipment||asset.name),equipmentGroup:text(asset.group||asset.equipmentGroup||asset.category),trips:Number(machine.trips)||0,sourceCards:Number(machine.sourceCards)||0,atSite});
+ }
+ for(const asset of byId.values()){
+  if(canonicalSiteName(assetSite(asset))!==canonical||rows.has(machineKey(asset)))continue;
+  rows.set(machineKey(asset),{assetId:machineKey(asset),door:assetDoor(asset)||assetLabel(asset),equipmentName:text(asset.equipmentName||asset.equipment||asset.name),equipmentGroup:text(asset.group||asset.equipmentGroup||asset.category),trips:0,sourceCards:0,atSite:true});
  }
  return [...rows.values()].sort((a,b)=>b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
 }
