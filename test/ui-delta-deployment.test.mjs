@@ -71,7 +71,10 @@ test('failed automatic restore remains a failed release',async()=>{
 test('delta API uses additive uploads, preserves complete fallback, and never cleans files',()=>{
  const source=readFileSync(new URL('../scripts/deploy-ui-delta.mjs',import.meta.url),'utf8');
  const workflow=readFileSync(new URL('../.github/workflows/main_caliber-mis-783.yml',import.meta.url),'utf8');
- assert.match(source,/api\/zip\/site\/wwwroot\/dist\//);
+ assert.match(source,/api\/zip\/site\/wwwroot\/dist\/app-assets\//);
+ assert.doesNotMatch(source,/api\/zip\/site\/wwwroot\/dist\/'/);
+ assert.match(source,/path\.resolve\('dist\/app-assets'\)/);
+ assert.match(source,/'dist\/index.html', 'dist\/app-version.txt', 'DEPLOYMENT_SHA'/);
  assert.doesNotMatch(source,/method:\s*['"]DELETE|api\/zipdeploy|npm.*prune|rmSync|unlink/);
  assert.match(workflow,/if: steps\.ui-delta\.outputs\.applied != 'true'/);
  assert.match(workflow,/package: \./);

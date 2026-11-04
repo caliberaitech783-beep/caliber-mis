@@ -80,11 +80,13 @@ export async function deployUiDelta({baseline, current, output = process.env.RUN
   assertBaseline, restart, verify,
   backup: async () => {
    await assertBaseline(baseline);
-   const archive = await call(scm+'/api/zip/site/wwwroot/dist/');
+   // Installer ZIPs and training videos live alongside the UI in dist. They
+   // cannot change in this lane and must neither be copied nor overwritten.
+   const archive = await call(scm+'/api/zip/site/wwwroot/dist/app-assets/');
    if (archive.readUInt32LE(0) !== 0x04034b50) throw Error('Invalid rollback archive.');
    await writeFile(path.join(directory,'previous-dist.zip'), archive);
    const files = {};
-   for (const file of [...plan.files, 'DEPLOYMENT_SHA']) files[file] = (await call(vfs(file))).toString('base64');
+   for (const file of [...plan.files, 'dist/index.html', 'dist/app-version.txt', 'DEPLOYMENT_SHA']) files[file] = (await call(vfs(file))).toString('base64');
    if (Buffer.from(files.DEPLOYMENT_SHA,'base64').toString().trim() !== baseline) throw Error('Disk release differs from live release.');
    await writeFile(path.join(directory,'previous-files.json'), JSON.stringify(files));
    await writeFile(path.join(directory,'release.json'), JSON.stringify({baseline,current}));
@@ -92,11 +94,12 @@ export async function deployUiDelta({baseline, current, output = process.env.RUN
   },
   publishAssets: async () => {
    // Publish all hashed assets before the HTML entry point; old assets remain.
-   const files = (await readdir('dist', {recursive:true, withFileTypes:true})).filter(entry=>entry.isFile()).map(entry=>path.relative('dist',path.join(entry.parentPath,entry.name)).replaceAll('\\','/')).filter(file=>!['index.html','app-version.txt'].includes(file));
+   const assetRoot = path.resolve('dist/app-assets');
+   const files = (await readdir(assetRoot, {recursive:true, withFileTypes:true})).filter(entry=>entry.isFile()).map(entry=>path.relative(assetRoot,path.join(entry.parentPath,entry.name)).replaceAll('\\','/'));
    if (!files.length || files.some(file=>file.startsWith('../'))) throw Error('Built UI assets are missing or invalid.');
    const zip = path.join(directory,'new-assets.zip');
-   execFileSync('zip', ['-q', zip, '-@'], {cwd:'dist', input:files.join('\n')+'\n', stdio:['pipe','pipe','pipe']});
-   await call(scm+'/api/zip/site/wwwroot/dist/', {method:'PUT', body:await readFile(zip), type:'application/zip'});
+   execFileSync('zip', ['-q', zip, '-@'], {cwd:assetRoot, input:files.join('\n')+'\n', stdio:['pipe','pipe','pipe']});
+   await call(scm+'/api/zip/site/wwwroot/dist/app-assets/', {method:'PUT', body:await readFile(zip), type:'application/zip'});
   },
   publishSources: async () => { for (const file of plan.files) await put(file, await readFile(file)); },
   publishIdentity: async () => {
@@ -105,7 +108,7 @@ export async function deployUiDelta({baseline, current, output = process.env.RUN
    await put('DEPLOYMENT_SHA', Buffer.from(current+'\n'));
   },
   restore: async backup => {
-   await call(scm+'/api/zip/site/wwwroot/dist/', {method:'PUT', body:backup.archive, type:'application/zip'});
+   await call(scm+'/api/zip/site/wwwroot/dist/app-assets/', {method:'PUT', body:backup.archive, type:'application/zip'});
    for (const [file, bytes] of Object.entries(backup.files)) await put(file, Buffer.from(bytes,'base64'));
   }
  }, plan);
