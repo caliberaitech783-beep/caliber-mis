@@ -89,7 +89,7 @@ if(process.argv.includes('--azure')){
     ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
    const scope=logBookSiteScope(session,user),admin=isMisAdministrator(session);
    assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
-   assert.equal(options.canSelectSite,admin,'Only administrators receive unrestricted site selection');
+   assert.equal(options.canSelectSite,scope.sites===null,'Site selection follows the assigned operational scope, including administrators');
    if(admin)admins++;else{
     restricted++;
     const outside=REGION_DATA.flatMap(region=>region.sites).find(site=>!siteAllowed(scope,site));
