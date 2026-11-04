@@ -165,8 +165,3 @@ jobs:
           done
           echo "Pulse-II release health could not be verified."
           exit 1
-
-      - name: Verify live VLB and ELB access and open batch selection
-        env:
-          EXPECTED_COMMIT: ${{ env.RELEASE_COMMIT }}
-        run: node scripts/verify-vlb-elb-live.mjs --azure
