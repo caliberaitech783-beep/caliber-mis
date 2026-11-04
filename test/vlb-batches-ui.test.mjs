@@ -61,7 +61,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'},onExit(){}})};
  render();slots[0]=options;slots[1]=selection;slots[2]={records,name:batch.name};slots[8]=false;slots[13]=true;
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
- let tree=render();assert.match(renderToStaticMarkup(tree),/2 cards · 1 Manual \+ 1 Scan/);assert.equal(button(tree,'Create Batch').props.disabled,false);
+ let tree=render();assert.doesNotMatch(renderToStaticMarkup(tree),/All matching saved entries|2 cards · 1 Manual \+ 1 Scan/);assert.equal(button(tree,'Create Batch').props.disabled,false);
  await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false);assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);
  const sent=JSON.parse(calls[0].request.body);assert.deepEqual({site:sent.site,date:sent.date,shift:sent.shift},selection);assert.ok(sent.requestKey);assert.equal(sent.records,undefined,'server selects all entries');
  slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
@@ -69,7 +69,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  slots[14]={login:'admin',mis:true,admin:true};slots[2]={records,name:batch.name,siteOpenBatch:{...batch,id:'site-open',name:'Existing open site batch'}};tree=render();assert.equal(button(tree,'Create Batch').props.disabled,true,'admin is also blocked while the selected site has an open batch');assert.match(renderToStaticMarkup(tree),/Close it before creating another batch for this site, regardless of date or shift/);
  slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.ok(button(render(),'Open existing batch'));
  slots[3]=[{...batch,created_by:'alice'},{...batch,id:'other',name:'Other open batch',created_by:'bob'},{...batch,id:'closed',name:'Locked batch',created_by:'alice',closed_at:'2026-10-30T10:00:00Z'}];slots[14]={login:'alice',mis:true};slots[4]={...batch,created_by:'alice'};
- tree=render();let html=renderToStaticMarkup(tree);assert.ok(html.indexOf('vlb-batch-setup')<html.indexOf('Open batch:'));assert.ok(html.indexOf('vlb-batch-tabs')<html.indexOf('All matching saved entries')||html.includes('CLOSED'));
+ tree=render();let html=renderToStaticMarkup(tree);assert.ok(html.indexOf('vlb-batch-setup')<html.indexOf('Open batch:'));assert.doesNotMatch(html,/All matching saved entries/);
  const tab=label=>nodes(tree,n=>n.props.role==='tab'&&n.props.children===label)[0];assert.equal(tab('Open').props['aria-selected'],true);assert.doesNotMatch(html,/Locked batch/);
  tab('Closed').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Closed')[0].props['aria-selected'],true);
  assert.match(renderToStaticMarkup(tree),/Locked batch/);assert.doesNotMatch(renderToStaticMarkup(tree),/Other open batch/);

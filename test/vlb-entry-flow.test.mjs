@@ -22,7 +22,8 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  const {code}=await transformWithOxc(compiled,'vlb-create-batch.jsx',{jsx:{runtime:'classic'}});
  const openVlbEntryBatches=new Function('React','canonicalSiteName',code+';return openVlbEntryBatches')(React,(await import('../shared/site-location.mjs')).canonicalSiteName);
  const open={id:'open',site:'Jayant OB',closed_at:null},closed={id:'closed',site:'Jayant OC',closed_at:'2026-12-31T10:00:00Z'},other={id:'other',site:'Sasti OC',closed_at:null};
- assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC').map(batch=>batch.id),['closed','open']);
+ assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC','vehicle').map(batch=>batch.id),['open']);
+ assert.deepEqual(openVlbEntryBatches([closed,other,open],'Jayant OC','equipment').map(batch=>batch.id),['closed','open']);
  assert.match(source,/preferredVlbEntryBatch\(entryMatching,remembered\)/,'auto-fetch restores the selected batch or the sole open batch');
  const preferred=new Function('React','canonicalSiteName',code+';return preferredVlbEntryBatch')(React,(await import('../shared/site-location.mjs')).canonicalSiteName);
  assert.equal(preferred([closed,open],closed.id),open);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
@@ -78,6 +79,7 @@ test('batch selection opens the requested editor directly without an intermediat
   tree=render();assert.ok(saved.some(v=>v[1]===batch.id));
   const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);assert.ok(editor.props.fleetReconciliation,'fleet report moves into the selected entry screen instead of rendering above it');
   assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
+  nodes(tree,n=>n.type===Picker)[0].props.onSelected({...batch,twoStage:true,stage:'elb_open',vlb_locked_at:'2026-12-31T12:00:00Z'});tree=render();assert.equal(nodes(tree,n=>n.type===Editor).length,0,'locked VLB batches cannot reopen manual, scan or upload entry');assert.match(renderToStaticMarkup(tree),/is locked\. Unlock or reopen the batch/);
  }
 });
 
