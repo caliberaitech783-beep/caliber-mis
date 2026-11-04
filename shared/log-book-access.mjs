@@ -3,9 +3,10 @@ import {canonicalSiteName} from './site-location.mjs';
 import {managerReportScope,userSiteScope,userSiteSelection,reportScopeIncludesSite,displaySiteSelection} from './region-scope.mjs';
 
 export function logBookSiteScope(session={},user={}) {
-  if(isMisAdministrator(session))return {sites:null,label:'All sites'};
   const profile={...(session.permissions||{}),...session,...user};
   if(userSiteSelection(profile).length)return userSiteScope(profile);
+  // Operational site assignments also apply to administrators in VLB and ELB.
+  if(isMisAdministrator(session))return {sites:null,label:'All sites'};
   const scope=managerReportScope(profile);
   // An All assignment never grants unrestricted operational access to non-admins.
   if(scope.sites!==null)return scope;

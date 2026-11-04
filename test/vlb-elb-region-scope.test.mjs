@@ -11,6 +11,14 @@ test('VLB and ELB use explicit site before broader regional settings',()=>{
  assert.deepEqual(logBookSiteScope(session,{}).sites,[]);
 });
 test('only actual administrators receive all-site access',()=>{
- for(const session of [{role:'super',permissions:{adminLevel:'Admin'}},{role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees']}}])assert.equal(logBookSiteScope(session,{site:'Sasti OC'}).sites,null);
+ for(const session of [{role:'super',permissions:{adminLevel:'Admin'}},{role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees']}}]){
+  assert.equal(logBookSiteScope(session).sites,null);
+  assert.equal(siteAllowed(logBookSiteScope(session,{site:'Sasti OC'}),'Jayant OC'),false);
+  assert.equal(siteAllowed(logBookSiteScope(session,{site:'Sasti OC'}),'Sasti OB'),true);
+  const multiple=logBookSiteScope(session,{site:'Sasti OC | Jayant OC'});
+  assert.equal(siteAllowed(multiple,'Sasti OC'),true);
+  assert.equal(siteAllowed(multiple,'Jayant OC'),true);
+  assert.equal(siteAllowed(multiple,'Majri OC'),false);
+ }
  assert.deepEqual(logBookSiteScope({role:'super',permissions:{separateMisCredentials:true,adminLevel:'Admin'}}).sites,[]);
 });
