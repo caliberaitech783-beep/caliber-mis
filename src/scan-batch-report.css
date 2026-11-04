@@ -31,3 +31,15 @@
 
 .scan-batch-report-selection{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0}.scan-batch-report-selection label{display:flex;align-items:center;gap:8px}.scan-batch-report-selection input,.scan-report-card-actions input{width:18px;height:18px;vertical-align:middle;margin-right:8px}
 .scan-group-deletion-preview{max-height:280px;overflow:auto}.scan-group-deletion-preview table{border-collapse:collapse;width:100%;font-size:12px}.scan-group-deletion-preview th,.scan-group-deletion-preview td{border:1px solid #ddd;padding:8px;text-align:left;overflow-wrap:anywhere}.scan-group-deletion-preview th{position:sticky;top:0;background:var(--panel,#fff)}
+.scan-batch-report-table{max-width:100%;isolation:isolate;scrollbar-gutter:stable}
+.scan-batch-report-table>table{table-layout:auto;width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
+.scan-batch-report-table>table>thead>tr>th{z-index:2;line-height:1.4}
+.scan-batch-report-table>table>tbody>tr>td{vertical-align:middle;line-height:1.5}
+.scan-batch-report-table .scan-report-card-actions{position:static;min-width:132px;width:132px;background:var(--panel,#fff);box-shadow:none}
+.scan-batch-report-table th.scan-report-card-actions{position:sticky;top:0;z-index:2}
+.scan-batch-report-table .scan-report-card-actions>button{position:static;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:auto;min-width:108px;min-height:36px;margin:0;padding:8px 12px;white-space:nowrap;line-height:1.4;font-size:13px;border:1px solid #d92d20;border-radius:6px;background:#fff1f0;color:#b42318}
+.scan-batch-report-table td>a.scan-report-badge,.scan-batch-report-table td>span.scan-report-badge{display:inline-flex;align-items:center;white-space:nowrap;min-height:34px;box-sizing:border-box}
+.scan-batch-report-table td.scan-report-issues{white-space:normal;max-width:360px}
+.scan-report-card-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+.scan-page .scan-batch-report-table .scan-report-card-actions>input[type=checkbox]{appearance:auto;box-sizing:border-box;width:18px;min-width:18px;max-width:18px;height:18px;min-height:18px;padding:0;margin:0 8px 0 0;vertical-align:middle}
