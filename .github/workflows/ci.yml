@@ -26,10 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
       - run: npm test
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
@@ -44,10 +51,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-layout-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
       - run: npm run build
       - name: Install browser for log-book layout checks
         run: |

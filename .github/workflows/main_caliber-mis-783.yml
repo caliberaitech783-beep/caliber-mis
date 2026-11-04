@@ -70,6 +70,7 @@ jobs:
           echo "Release test lane: $(tail -n 2 "$GITHUB_OUTPUT" | head -n 1 | cut -d= -f2)"
 
       - name: Set up Node.js and npm download cache
+        id: node
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
@@ -79,9 +80,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ocr-model-cache
-          key: trocr-${{ runner.os }}-node22-${{ hashFiles('server/services/handwritten-card-ocr.mjs', 'package-lock.json') }}
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('server/services/handwritten-card-ocr.mjs') }}
+
+      # An exact cache hit preserves native Linux dependencies and file timestamps.
+      # Never restore a partial cache across lockfile or Node changes.
+      - name: Restore installed dependencies
+        id: dependencies
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
 
       - name: Install exact locked dependencies
+        if: steps.dependencies.outputs.cache-hit != 'true'
         run: npm ci --no-audit --no-fund
 
       - name: Verify pinned handwriting model
@@ -137,8 +148,7 @@ jobs:
         with:
           app-name: 'caliber-mis-783'
           slot-name: 'Production'
-          # Deploy the complete validated workspace. The reduced ZIP package
-          # left Azure without a startable application and returned HTTP 503.
+          # Preserve the complete runtime package used by the verified release path.
           package: .
 
       - name: Verify Pulse-II release health
