@@ -8,7 +8,7 @@ export function hashPassword(password) {
 
 export function verifyPassword(password, encoded) {
   const [algorithm, salt, expectedHex] = String(encoded || "").split(":");
-  if (algorithm !== "scrypt" || !salt || !expectedHex) return false;
+  if (algorithm !== "scrypt" || !/^[a-f0-9]{32}$/i.test(salt||'') || !/^[a-f0-9]{128}$/i.test(expectedHex||'')) return false;
   const expected = Buffer.from(expectedHex, "hex");
   const actual = scryptSync(String(password), salt, expected.length);
   return expected.length === actual.length && timingSafeEqual(expected, actual);

@@ -7,6 +7,7 @@
  * "Server error" for conditions that were temporary or their own input.
  */
 
+import {auditSafeError} from '../rules/audit-trail.mjs';
 export const TRANSIENT_DATABASE_MESSAGE = 'The server is reconnecting to the database. Please retry in a moment.';
 export const REQUEST_REJECTED_MESSAGE = 'The request could not be read. Please refresh and try again.';
 export const UNEXPECTED_ERROR_MESSAGE = 'Something went wrong on the server. Please retry; if this keeps happening, contact the administrator.';
@@ -84,7 +85,9 @@ export function describeServerError(error) {
 export function serverErrorHandler({ log = console.error } = {}) {
   return (error, req, res, _next) => {
     const described = describeServerError(error);
-    log(`[${described.status}] ${req?.method || ''} ${req?.originalUrl || req?.url || ''}`, error);
+    const route=String(req?.path||req?.originalUrl||req?.url||'').split('?')[0];
+    const safe=error?.type?.startsWith('entity.')?{code:error.type,message:'Request body rejected'}:auditSafeError(error);
+    log(`[${described.status}] ${req?.method || ''} ${route}`, safe);
     if (res.headersSent) return;
     if (described.retryAfterSeconds) res.set('Retry-After', String(described.retryAfterSeconds));
     res.status(described.status).json(described.body);

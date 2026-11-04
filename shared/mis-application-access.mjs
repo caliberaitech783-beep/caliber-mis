@@ -15,6 +15,8 @@ export function misPageAllowed(session,page,view){
 export function misRequestAllowed(session,req){
  if(!session?.permissions?.separateMisCredentials)return true;
  const route=req.path||'',read=['GET','HEAD'].includes(req.method);
+ if(route==='/api/security/account')return read;
+ if(['/api/security/session/migrate','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'].includes(route))return req.method==='POST';
  const allowed=page=>misPageAllowed(session,page);
  if(route==='/api/capacity-master')return allowed('Capacity master')&&(read||req.method==='POST');
  if(route==='/api/mis-ticket-sites')return read;

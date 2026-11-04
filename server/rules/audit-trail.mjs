@@ -1,4 +1,4 @@
-const SENSITIVE_FIELD = /(password|hash|token|secret|otp|audio|image|attachment|complaintMedia|file_data|accessToken|authorization|cookie)/i;
+const SENSITIVE_FIELD = /(password|hash|token|secret|otp|audio|image|attachment|complaintMedia|file_data|accessToken|authorization|cookie|^code$|recovery|totp|credential|connectionString|apiKey|privateKey)/i;
 
 export function auditIndiaDateKey(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
@@ -66,8 +66,9 @@ export function auditSubmittedFields(body = {}) {
 export function auditSafeError(error = {}) {
   const code = auditText(error?.code || error?.type || error?.name || "Error", 80);
   const message = auditText(error?.message || "Unexpected server error", 320)
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^:\s/]+:)[^@\s/]+@/gi, '$1[protected]@')
     .replace(/(bearer\s+)[^\s,;]+/gi, "$1[protected]")
-    .replace(/((?:password|token|secret|otp|authorization)\s*[=:]\s*)[^\s,;]+/gi, "$1[protected]");
+    .replace(/((?:password|token|secret|otp|authorization|recoveryCode|apiKey|privateKey)["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)/gi, "$1[protected]");
   return { code, message };
 }
 

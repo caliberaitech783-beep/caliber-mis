@@ -73,10 +73,14 @@ jobs:
         run: node scripts/verify-logbook-layout.mjs
       - name: Verify report to Manual, Scan and Upload batch handoff
         run: node scripts/verify-batch-entry-handoff.mjs
+      - name: Verify HTTPS cookies, MFA enrollment and account recovery
+        run: node scripts/verify-account-security-browser.mjs
       - name: Keep log-book layout evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: logbook-layout-checks
-          path: layout-checks/
+          path: |
+            layout-checks/
+            security-checks/
           if-no-files-found: ignore

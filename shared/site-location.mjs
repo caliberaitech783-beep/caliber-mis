@@ -1,4 +1,4 @@
-const SITE_ALIASES = new Map([
+export const SITE_ALIASES = new Map([
   ["sasti ii", "sasti ob"],
   ["sasti", "sasti ob"],
   ["majri", "majri ob"],
