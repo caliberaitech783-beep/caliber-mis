@@ -137,9 +137,19 @@ function formatSavedAt(value) {
  * open the dialogs without knowing anything else.
  */
 export function SavedReportsPanel({ title = "", tableKey = "", columns = [], open = "", onOpenChange, currentView, onApply, canPrint = false, onPrint }) {
-  const reportKey = savedReportKey(title || tableKey || "table", columns);
+  const reportKey = savedReportKey(tableKey || title || "table", columns);
   const store = useSavedReports(reportKey);
   const [saved, setSaved] = useState(null);
+  const [pendingPrint, setPendingPrint] = useState(false);
+  const printRef = useRef(onPrint);
+  printRef.current = onPrint;
+  // Print after React has committed the restored filters, columns and order.
+  // A timer holding the old callback prints the view that preceded Open.
+  useEffect(() => {
+    if (!pendingPrint || !canPrint) return;
+    setPendingPrint(false);
+    printRef.current?.();
+  }, [pendingPrint, canPrint]);
   useEffect(() => { if (open) void store.load(); }, [open, reportKey]);
   const close = () => onOpenChange("");
   const apply = (report) => onApply(sanitizeTableView(report.state, columns));
@@ -149,7 +159,7 @@ export function SavedReportsPanel({ title = "", tableKey = "", columns = [], ope
     {saved && <PrintReportPrompt name={saved.name} canPrint={canPrint} onPrint={() => { setSaved(null); onPrint(); }} onClose={() => setSaved(null)} />}
     {open === "saved" && <SavedReportsDialog title={title} reports={store.reports} loading={store.loading} error={store.error} canPrint={canPrint}
       onApply={(report) => { apply(report); close(); }}
-      onPrint={(report) => { apply(report); close(); window.setTimeout(onPrint, 60); }}
+      onPrint={(report) => { apply(report); close(); setPendingPrint(true); }}
       onDelete={(report) => store.remove(report.id)} onClose={close} />}
   </>;
 }

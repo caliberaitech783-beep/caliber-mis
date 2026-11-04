@@ -268,7 +268,7 @@ function TableView({ sections, columns, onFilteredRows, toolbarAfterCount, toolb
       {(exportData || printData) && <ExportMenu title={exportTitle || printTitle} columns={(exportData || printData).columns} rows={(exportData || printData).rows} label="Generate" reportGrouping={reportGrouping} smartPrintColumns={smartPrintData.columns} smartPrintRows={smartPrintData.rows} smartPrintItem />}
       {dialog === "columns" && <ColumnsDialog columns={columns} visibleColumnKeys={visible} layoutStore={layoutStore} onApply={(keys) => { setVisible(keys); setDialog(""); }} onClose={() => setDialog("")} />}
       {dialog === "sort" && <SortDialog columns={columns} sort={sort.key ? sort : externalSort || sort} onApply={applySort} onClose={() => setDialog("")} />}
-      {SavedReports && <SavedReports title={reportTitle} tableKey={tableProps.className || ""} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentView} onApply={applySavedView} canPrint={canPrintReport} onPrint={printCurrentView} />}
+      {SavedReports && <SavedReports title={reportTitle} tableKey={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentView} onApply={applySavedView} canPrint={canPrintReport} onPrint={printCurrentView} />}
       <FilterDialog columns={filterColumns} rows={[...dataRows, ...filterRows]} filters={effectiveFilters} onFilterChange={updateFilter} onClearFilters={clearFilters} open={dialog === "filter"} onOpenChange={(open) => setDialog(open ? "filter" : "")} hideTrigger dialogMode />
     </div>
   );

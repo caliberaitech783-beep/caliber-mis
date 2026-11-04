@@ -44,7 +44,7 @@ test("duration menus show clear sort choices instead of individual time values",
   assert.deepEqual(events, [["filter", ""], ["sort", "", "asc"], ["toggle", "breakdownDays"]]);
 });
 
-test("Reports keep their exact time filters; dates, status and meter readings are not duration menus", () => {
+test("Reports offer duration shortcuts while dates, status and meter readings keep their filters", () => {
   const { html } = menu({ durationSortOnly: false });
   assert.ok(html.includes("Filter..."));
   assert.ok(html.includes("0d 0h 7m"));
@@ -55,7 +55,7 @@ test("Reports keep their exact time filters; dates, status and meter readings ar
   }
   for (const label of ["Days of breakdown", "Downtime", "Turn around time (TAT)", "Arrival delay", "Waiting when flagged", "Time taken"]) assert.equal(isDurationColumn(label), true, label);
   const report = main.slice(main.indexOf("function ReportTable("), main.indexOf("function MasterField(", main.indexOf("function ReportTable(")));
-  assert.match(report, /durationSortOnly=\{false\}/);
+  assert.match(report, /durationSortOnly=\{isDurationColumn\(column.label, column.key\)\}/);
   assert.match(report, /defaultDurationSort\(columns\)/);
 });
 

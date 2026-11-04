@@ -30,6 +30,11 @@ export function misRequestAllowed(session,req){
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
  if(route==='/api/masters')return read;
+ // Report controls use the same menu grant as their source tables. The server
+ // still validates export payloads and scopes saved views to the signed-in user.
+ if(route==='/api/exports/pdf')return req.method==='POST'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
+ if(route==='/api/saved-reports')return (read||req.method==='POST')&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
+ if(/^\/api\/saved-reports\/[^/]+$/.test(route))return req.method==='DELETE'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(route.startsWith('/api/masters/'))return allowed(decodeURIComponent(req.params?.master||route.split('/')[3]||''));
  if(route.startsWith('/api/employee-master')||route.startsWith('/api/erp-employees'))return allowed('Employee master');
  if(route==='/api/erp-masters/status')return read&&['Work Order master','Financial Year master','Company master','Pulse Master Sync'].some(allowed);

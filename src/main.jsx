@@ -74,6 +74,8 @@ import {ProtectedAttachment,ProtectedAudio} from "./protected-media.jsx";
 import {readComplaintMedia} from "../shared/complaint-media.mjs";
 import './camera-upload.css';
 import { filterRecordsByDate } from "./record-date-range.mjs";
+import { primaryRecordDateColumn } from "./record-date-range.mjs";
+import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
@@ -4116,11 +4118,13 @@ function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStor
 function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
   const [columnKey, setColumnKey] = useState(sort.key || columns[0]?.key || "");
   const [direction, setDirection] = useState(sort.direction || "asc");
+  const selectedColumn = columns.find(column => column.key === columnKey);
+  const duration = isDurationColumn(selectedColumn?.label, columnKey);
   return createPortal(
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-sort-dialog" role="dialog" aria-modal="true" aria-labelledby="report-sort-title" onPointerDown={(event) => event.stopPropagation()}>
         <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close" className="mis-popup-close">× Close</button></header>
-        <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></SmartSelect></label></div>
+        <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">{duration ? "Lowest to highest time taken" : "Ascending"}</option><option value="desc">{duration ? "Highest to lowest time taken" : "Descending"}</option></SmartSelect></label></div>
         <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!columnKey} onClick={() => onApply(columnKey, direction)}>Apply</button></footer>
       </section>
     </div>,
@@ -4232,7 +4236,7 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false }) {
+function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4246,6 +4250,8 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [columnDialogOpen, setColumnDialogOpen] = useState(false);
   const [sortDialogOpen, setSortDialogOpen] = useState(false);
+  const dateColumn = primaryRecordDateColumn(columns);
+  const dateControl = recordDateFilter || (dateColumn ? {label:dateColumn.label,value:columnFilters[dateColumn.key] || "",onChange:value=>setColumnFilters(current=>({...current,[dateColumn.key]:value}))} : null);
   const [pageSize, setPageSize] = useState(() => mobileTablePageSize() || 50);
   const [page, setPage] = useState(0);
   const deferredQuery = useDeferredValue(query);
@@ -4280,7 +4286,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const exportViewRef = useRef(null);
   useEffect(() => {
     if (!onExportViewChange) return;
-    const next = {sourceRows: rows, rows: sortedRows, columns: displayedColumns};
+    const next = {sourceRows: rows, rows: sortedRows, columns: displayedColumns, allColumns: columns};
     if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
   });
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
@@ -4300,21 +4306,24 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   // Saved reports for this Reports-page table: columns, filters, sort and rows per page.
   const reportTitle = title || (typeof document !== "undefined" ? document.title : "") || "Report";
   const layoutStore = useTableLayouts(layoutKey || reportTitle, columns);
-  const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize });
+  const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize, dateRange: dateControl?.value || "" });
   const applySavedView = (view) => {
     onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(view.visible.length ? view.visible : allColumnKeys, columns));
-    setColumnFilters(view.filters);
+    setColumnFilters({...view.filters, ...(!recordDateFilter && dateColumn && view.dateRange ? {[dateColumn.key]: view.dateRange} : {})});
+    if (recordDateFilter) recordDateFilter.onChange(view.dateRange || "");
     changeSort(view.sort.key, view.sort.direction);
     if (view.pageSize) setPageSize(view.pageSize);
     setPage(0);
   };
-  const printSavedView = () => openSmartPrint({ title: reportTitle, columns: displayedColumns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
+  const printSavedView = () => openSmartPrint({ title: reportTitle, columns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
+        {dateControl && !recordDateFilter && <RecordDateRange {...dateControl} />}
+        <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {rows.length.toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
-        <SavedReportsPanel title={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint onPrint={printSavedView} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <SavedReportsPanel title={reportTitle} tableKey={layoutKey} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint={dataReady} onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
   );
@@ -4326,7 +4335,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
-            durationSortOnly={false}
+            durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
             label={column.label}
             sortKey={column.key}
@@ -7360,7 +7369,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7380,7 +7389,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         <div className="generated-report-heading-actions">
           {headingControl}
           <div className="report-heading-table-actions" ref={setTableToolbarTarget} />
-          <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} className="secondary" label={exportLabel} />
+          {dataReady && <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} smartPrintColumns={exportView?.sourceRows === rows ? exportView.allColumns : columns} smartPrintRows={exportView?.sourceRows === rows ? exportView.rows : rows} className="secondary" label={exportLabel} />}
         </div>
       </div>
       {controls}
@@ -7388,7 +7397,8 @@ function ReportSection({ title, description, category = "general", icon: ReportI
       {children || (
         <TableViewport className="reports-detail-table emptytable">
           <ReportTable
-            layoutKey={title}
+            layoutKey={reportKey || title}
+            recordDateFilter={recordDateFilter} dataReady={dataReady}
             title={title}
             onExportViewChange={setExportView} smartPrintAction={smartPrintAction}
             onResetSearch={() => { setSearchQuery(""); onResetSearch?.(); }}

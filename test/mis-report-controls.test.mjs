@@ -1,4 +1,5 @@
 import {isDeletableScanCard,isAbortableScanCard} from '../src/scan-card-deletion-selection.mjs';
+import {encodeDateRange,parseDateRange} from '../src/date-range-filter.mjs';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 import test from 'node:test';
@@ -15,7 +16,7 @@ async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,SmartSelect: "select",React,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,SmartSelect: "select",React,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
   return props=>{cursor=0;return render({...props,ReportSection})};
 }
@@ -32,10 +33,20 @@ test('all operational reports use shared controls with full filtered data, prese
     assert.deepEqual(sections[0].props.columns.map(c=>c.label),expected.columns,id);
     if(expected.rows.length)assert.deepEqual(sections[0].props.columns.map(c=>c.value(expected.rows[0])),expected.rows[0],id);
     assert.match(sections[0].props.title,/2026-12-01 to 2026-12-31/);
+    assert.equal(sections[0].props.recordDateFilter.value,encodeDateRange('2026-12-01','2026-12-31'));
+    assert.ok(sections[0].props.reportKey&&!sections[0].props.reportKey.includes('2026-12'),'saved view identity is independent of the chosen dates');
     if(id==='vehicle')assert.equal(sections[0].props.rows.length,135,'all rows beyond the former 100-row page reach print/export');
     if(id==='breakdown')assert.ok(sections[0].props.rows.some(row=>row.includes(null)));
   }
   assert.equal(nodes(render({session:{token:'test'},reportId:'vehicle'}),'button').some(n=>n.props.children==='Print / Save PDF'),false);
+});
+
+test('opening an operational saved date range keeps its table mounted and blocks exports until matching data arrives',async()=>{
+ const filters={from:'2026-11-01',to:'2026-11-04',site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''};
+ const render=await component('operations-reports.jsx','SavedOperationReports',operations,[filters,{records:[],reportRange:'2026-11-01|2026-11-04'},'',false,0,false]);
+ let section=nodes(render({session:{token:'test'},reportId:'daily'}),ReportSection)[0];assert.equal(section.props.dataReady,true);
+ section.props.recordDateFilter.onChange(encodeDateRange('2026-11-02','2026-11-03'));
+ section=nodes(render({session:{token:'test'},reportId:'daily'}),ReportSection)[0];assert.ok(section,'restoring dates must not unmount the pending saved Print action');assert.equal(section.props.dataReady,false);assert.equal(section.props.recordDateFilter.value,encodeDateRange('2026-11-02','2026-11-03'));
 });
 
 test('VLB and ELB batch reports hide individual trip and loading equipment sections while retaining scoped card data',async()=>{

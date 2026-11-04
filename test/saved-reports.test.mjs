@@ -52,7 +52,7 @@ test("the dialogs name the report, warn before replacing, offer printing after s
   assert.match(source, /No saved reports yet\. Use Actions, Report, Save report to keep the current view\./);
   assert.match(source, /export function SavedReportsPanel\(\{ title = "", tableKey = "", columns = \[\], open = "", onOpenChange, currentView, onApply, canPrint = false, onPrint \}\)/);
   assert.match(source, /const result = await store\.save\(name, serializeTableView\(currentView\(\)\)\); close\(\); setSaved\(\{ name: result\?\.name \|\| name \}\);/, "saving opens the print prompt");
-  assert.match(source, /onPrint=\{\(report\) => \{ apply\(report\); close\(\); window\.setTimeout\(onPrint, 60\); \}\}/, "a saved report can be reopened and printed");
+  assert.match(source, /onPrint=\{\(report\) => \{ apply\(report\); close\(\); setPendingPrint\(true\); \}\}/, "saved report printing waits for the restored view to commit");
   assert.match(source, /Authorization: `Bearer \$\{storedSessionToken\(\)\}`/, "requests carry the signed-in session");
   assert.ok(React.isValidElement(React.createElement("div")));
 });
@@ -66,13 +66,13 @@ test("every Actions table offers Report, Save report and Saved reports and print
   assert.match(main, /<SharedActionsTable \{\.\.\.props\} printReport=\{printSavedReport\} SavedReports=\{SavedReportsPanel\}/);
   assert.match(shared, /printReport = null, SavedReports = null, showRowNumbers = true, onClearToolbarFilters = null, \.\.\.tableProps \}\) \{/);
   assert.match(shared, /onSaveReport=\{SavedReports \? \(\) => setSavedReportDialog\("save"\) : undefined\} onSavedReports=\{SavedReports \? \(\) => setSavedReportDialog\("saved"\) : undefined\}/);
-  assert.match(shared, /<SavedReports title=\{reportTitle\} tableKey=\{tableProps\.className \|\| ""\} columns=\{columns\} open=\{savedReportDialog\} onOpenChange=\{setSavedReportDialog\} currentView=\{currentView\} onApply=\{applySavedView\} canPrint=\{canPrintReport\} onPrint=\{printCurrentView\} \/>/);
+  assert.match(shared, /<SavedReports title=\{reportTitle\} tableKey=\{reportTitle\} columns=\{columns\} open=\{savedReportDialog\} onOpenChange=\{setSavedReportDialog\} currentView=\{currentView\} onApply=\{applySavedView\} canPrint=\{canPrintReport\} onPrint=\{printCurrentView\} \/>/);
   assert.doesNotMatch(shared, /savedReportKey|serializeTableView|sanitizeTableView/, "the shared table stays free of saved-report helpers so source-evaluating tests keep working");
   // The Reports page table gets the same flow on its own state.
   const reportTable = main.slice(main.indexOf("function ReportTable("), main.indexOf("function ReportTable(") + 9000);
-  assert.match(reportTable, /const currentSavedView = \(\) => \(\{ visible: displayedColumns\.map\(\(column\) => column\.key\), filters: columnFilters, sort, pageSize \}\);/);
-  assert.match(reportTable, /openSmartPrint\(\{ title: reportTitle, columns: displayedColumns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText \}\)/);
-  assert.match(reportTable, /<SavedReportsPanel title=\{reportTitle\} columns=\{columns\} open=\{savedReportDialog\}/);
+  assert.match(reportTable, /const currentSavedView = \(\) => \(\{ visible: displayedColumns\.map\(\(column\) => column\.key\), filters: columnFilters, sort, pageSize, dateRange:/);
+  assert.match(reportTable, /openSmartPrint\(\{ title: reportTitle, columns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText \}\)/);
+  assert.match(reportTable, /<SavedReportsPanel title=\{reportTitle\} tableKey=\{layoutKey\} columns=\{columns\} open=\{savedReportDialog\}/);
 });
 
 test("saved reports are stored per user on the server and replaced by name", () => {
