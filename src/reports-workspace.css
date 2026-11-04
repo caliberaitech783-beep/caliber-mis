@@ -1,4 +1,4 @@
-/* Report styles are scoped for additive UI releases; server files and downloads stay intact. */
+/* Scoped report styles support verified UI-only releases while server files and downloads stay intact. */
 /* Reports workspace: compact operational hierarchy with category-aware accents. */
 .reports-page {
   --report-accent: #2f66c8;
