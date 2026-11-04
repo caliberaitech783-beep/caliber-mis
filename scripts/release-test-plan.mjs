@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 const safeUiPath = path =>
   /^src\/[^/]*(?:dashboard|report|reconciliation)[^/]*\.jsx$/.test(path)
   || /^src\/.*\.css$/.test(path)
-  || path === 'fleet-reconciliation-summary.mjs';
+  || path === 'shared/fleet-reconciliation-summary.mjs';
 
 const safeTestPath = path =>
   /^test\/(?:dashboard|report|fleet-reconciliation|frontend-module-boundary)[^/]*\.test\.mjs$/.test(path);
