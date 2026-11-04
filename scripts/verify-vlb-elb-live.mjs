@@ -5,9 +5,10 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 
-export async function liveJson(url,{fetchImpl=fetch,attempts=6,wait=ms=>new Promise(r=>setTimeout(r,ms)),...init}={}){
+export async function liveJson(url,{fetchImpl=fetch,initialResponse,allowDenied=false,attempts=6,wait=ms=>new Promise(r=>setTimeout(r,ms)),...init}={}){
  for(let attempt=1;attempt<=attempts;attempt++){
-  const response=await fetchImpl(url,{...init,signal:init.signal||AbortSignal.timeout(30000)});
+  const response=attempt===1&&initialResponse?initialResponse:await fetchImpl(url,{...init,signal:init.signal||AbortSignal.timeout(30000)});
+  if(allowDenied&&[401,403].includes(response.status))return null;
   const text=await response.text();
   const retryable=!text.trim()||[502,503,504].includes(response.status);
   if(retryable&&attempt<attempts){await wait(2000);continue;}
@@ -81,7 +82,7 @@ if(process.argv.includes('--azure')){
    const response=await fetch(base+'/api/log-books/options?scan=1',{headers,signal:AbortSignal.timeout(30000)});
    if([401,403].includes(response.status))continue;
    assert.equal(response.status,200,'Authorized options request must succeed');
-   const options=await liveJson(base+'/api/log-books/options?scan=1',{headers});seen.add(session.login);
+   const options=await liveJson(base+'/api/log-books/options?scan=1',{headers,initialResponse:response,allowDenied:true});if(!options)continue;seen.add(session.login);
    const user=(await pool.query(`SELECT record_data FROM master_records WHERE master_name='Users & employees'
     AND (lower(trim(record_data->>'login'))=$1 OR lower(trim(record_data->>'employee'))=$2)
     ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
@@ -100,11 +101,11 @@ if(process.argv.includes('--azure')){
     const r=await fetch(base+'/api/log-books/'+kind+'?first=1',{headers,signal:AbortSignal.timeout(30000)});
     if(r.status===403)continue;
     assert.equal(r.status,200);
-    const data=await liveJson(base+'/api/log-books/'+kind+'?first=1',{headers});assert.ok((data.records||[]).every(row=>siteAllowed(scope,row.data?.location||row.site)),'VLB/ELB records must stay within scope');
+    const data=await liveJson(base+'/api/log-books/'+kind+'?first=1',{headers,initialResponse:r,allowDenied:true});if(!data)continue;assert.ok((data.records||[]).every(row=>siteAllowed(scope,row.data?.location||row.site)),'VLB/ELB records must stay within scope');
    }
    const r=await fetch(base+'/api/vlb-batches?scan=1',{headers,signal:AbortSignal.timeout(30000)});
    if(r.ok){
-    const {batches=[]}=await liveJson(base+'/api/vlb-batches?scan=1',{headers});assert.ok(batches.every(batch=>siteAllowed(scope,batch.site)),'Scan batch list must stay within scope');
+    const batchData=await liveJson(base+'/api/vlb-batches?scan=1',{headers,initialResponse:r,allowDenied:true});if(!batchData)continue;const {batches=[]}=batchData;assert.ok(batches.every(batch=>siteAllowed(scope,batch.site)),'Scan batch list must stay within scope');
     for(const site of options.sites){
      const matching=batches.filter(batch=>!batch.archived_at&&!batch.deleted_at&&canonicalSiteName(batch.site)===canonicalSiteName(site));
      const active=matching.filter(batch=>!batch.closed_at);
