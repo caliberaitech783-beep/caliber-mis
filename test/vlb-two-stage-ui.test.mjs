@@ -201,3 +201,22 @@ test('View report exposes separate batch-bound Manual, Scan and Upload actions r
   for(const label of ['Manual','Scan','Upload'])assert.equal(button(group,label).props.disabled,true);
  }
 });
+
+test('saved ELB buttons stay disabled after saving and unsaved machines remain selectable',async()=>{
+ const h=hooks();
+ const fetch=async()=>({ok:true,json:async()=>({fleet:[{...fleet[0],saved_at:'now'},fleet[1],fleet[2]]})});
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',fleet,statuses},options:{employees:[]},embedded:true})};
+ let tree=render();
+ assert.equal(button(tree,'Saved').props.disabled,true);
+ assert.equal(button(tree,'Enter ELB').props.disabled,false);
+ button(tree,'Saved').props.onClick();tree=render();
+ assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr'&&n.props['aria-selected']===true)[0]),/VPC-019/,'saved rows cannot be selected even through the handler');
+ h.slots[9]={key:'batch1:19:::',loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
+ await button(tree,'Next').props.onClick();tree=render();
+ const savedButtons=nodes(tree,n=>n.type==='button'&&n.props.children==='Saved');
+ assert.equal(savedButtons.length,2);
+ assert.ok(savedButtons.every(n=>n.props.disabled));
+ assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr'&&n.props['aria-selected']===true)[0]),/G-08/,'save advances to the next unsaved machine');
+});
+
