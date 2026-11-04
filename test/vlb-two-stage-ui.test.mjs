@@ -102,14 +102,14 @@ test('holds panel lists held assets with the express transfer button and walks t
 });
 
 test('create batch shows the stage indicator and Close batch only for two-stage batches',async()=>{
- const h=hooks();const calls=[];let elbEntry=null;
+ const h=hooks();const calls=[];let elbEntry=null,equipmentElb=null;
  const fetch=async(url,request)=>{calls.push({url,method:request.method,body:request.body?JSON.parse(request.body):null});return {ok:true,json:async()=>({id:'batch1',twoStage:true,stage:'elb_open',records:[]})}};
  const Stepper=()=>null,Holds=()=>null,Equipment=()=>null;
  const {VlbCreateBatch,stageLabel}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbFleetStepper:Stepper,VlbBatchHolds:Holds,NewEquipmentRequest:Equipment,window:{prompt:()=>'Correct VLB card V07'}},['VlbCreateBatch','stageLabel']);
  assert.equal(stageLabel('vlb_open'),'VLB open');assert.equal(stageLabel('elb_open'),'ELB open');assert.equal(stageLabel('closed'),'ELB locked · Batch closed');assert.equal(stageLabel(undefined,{closed_at:'2026-11-01'}),'ELB locked · Batch closed');
  const options={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]},selection={site:'Jayant OC',date:'2026-11-01',shift:'S1'};
  const base={id:'batch1',name:'CMLL/JAYANT OC/1ST-NOV-26/S1/B01',site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice'};
- const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){},onElbEntry:batch=>{elbEntry=batch}})};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){},onElbEntry:batch=>{elbEntry=batch},onEquipmentElb:batch=>{equipmentElb=batch}})};
  render();h.slots[0]=options;h.slots[1]=selection;h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};
  // Legacy payload: no stage indicator, Save & lock batch everywhere, no two-stage components rendered.
  h.slots[3]=[{...base,created_by:'alice'}];h.slots[4]=base;h.slots[5]=base;
@@ -142,11 +142,12 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>ELB open<\/td>/);
+ button(tree,'Process Equipment ELB').props.onClick();assert.equal(equipmentElb,elbStage);
  button(tree,'Open ELB manual / scan').props.onClick();assert.equal(elbEntry,elbStage);
  assert.equal(nodes(tree,n=>n.type===Stepper).length,0,'the separate batch-page entry flow is removed');
  await button(tree,'Unlock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/unlock-vlb');assert.deepEqual(calls.at(-1).body,{reason:'Correct VLB card V07'});
  h.slots[5]={...elbStage,canClose:true,closeBlockers:[]};tree=render();await nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB'&&!n.props.disabled)[0].props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/close');
- const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry from the batch');
+ const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry choices from the batch');assert.ok(source.includes("onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}}"),'main.jsx routes equipment processing directly to the contextual ELB report');
 });
 
 test('batch report adds the machine-wise shift report with totals only when the server supplies it',async()=>{
