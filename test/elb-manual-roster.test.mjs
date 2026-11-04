@@ -12,5 +12,7 @@ test('ELB manual renders the full equipment report below machine entry',async()=
  const html=renderToStaticMarkup(Component({session:{token:'test'},batch:{name:'Batch 1'},fleetReconciliation:React.createElement('section',null,'Full equipment report · Idle reasons · Print report')}));
  assert.match(html,/Machine entry/);
  assert.match(html,/Full equipment report · Idle reasons · Print report/);
+ assert.match(html,/<details class="scan-fleet-reconciliation"><summary>Fleet reconciliation · VLB \/ ELB<\/summary>/,'report is collapsed by default with an accessible toggle');
+ assert.doesNotMatch(html,/<details[^>]*\bopen(?:=|\s|>)/);
  assert.ok(html.indexOf('Machine entry')<html.indexOf('Full equipment report'));
 });
