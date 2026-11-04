@@ -115,7 +115,7 @@ test("Excel and print output preserve and wrap multiline daily updates", async (
   const mainRemarks = (main.match(/dailyUpdatesExportText\(row\.dailyRemarks, \{ category: row\.category \}\)/g) || []).length;
   assert.match(main, /xml:space="preserve"/);
   assert.match(main, /<alignment wrapText="1" vertical="top"\/>/);
-  assert.match(main, /<pane ySplit="3" topLeftCell="A4"/);
+  assert.ok(main.includes('<pane ySplit="${firstDataRow}" topLeftCell="A${firstDataRow+1}"'));
   assert.match(main, /<autoFilter ref=/);
   assert.match(main, /orientation="landscape" fitToWidth="1"/);
   assert.match(main, /prepareXlsxExportSheets\(\{ title, sheets, formatCell: exportCellText \}\)/);
