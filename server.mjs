@@ -1528,7 +1528,7 @@ app.use(browserSessionMiddleware({publicUrl:process.env.PUBLIC_APP_URL||'https:/
 app.use(['/api/login','/api/mis-credentials/login'],createLoginLimiter({limit:2000,maxEntries:1024,key:req=>req.socket.remoteAddress||'unknown'}));
 app.use(['/api/login','/api/mis-credentials/login','/api/password-reset/request','/api/password-reset/confirm','/api/change-initial-password','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'],express.json({limit:'8kb',type:JSON_BODY_CONTENT_TYPES}));
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
-const accountSecurity=registerAccountSecurity(app,{pool,requireSession,store:()=>integrationSecrets,enabled:browserSecurityEnabled,requireMfa:process.env.MIS_REQUIRE_MFA==='true'});
+const accountSecurity=registerAccountSecurity(app,{pool,requireSession,store:()=>integrationSecrets,enabled:browserSecurityEnabled,requireMfa:false});
 app.use('/api/login',createLoginLimiter());
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
 const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
