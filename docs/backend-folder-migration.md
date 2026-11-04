@@ -46,8 +46,9 @@ maintenance scripts and deployment commands need a separate reference search.
 
 Both current Azure workflows deploy the complete workspace (`package: .`), so
 the new `server/` directory is included. They continue to run the same startup
-command. No workflow, dependency or deployment-setting change is required for
-this batch.
+command. The optional `scripts/stage-production-release.mjs` utility also
+includes `server/`, with a packaging regression check for the relocated files.
+No workflow, dependency or deployment-setting change is required for this batch.
 
 ## Verification and rollout procedure
 
