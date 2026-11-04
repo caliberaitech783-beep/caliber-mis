@@ -12,8 +12,10 @@ const safeTestPath = path =>
 export function releaseTestPlan(files = []) {
   const changed = [...new Set(files.map(file => String(file).trim().replaceAll('\\', '/')).filter(Boolean))];
   const fast = changed.length > 0 && changed.every(path => safeUiPath(path) || safeTestPath(path));
-  const focused = new Set(['test/module-layout.test.mjs']);
+  const focused = new Set(['test/module-layout.test.mjs', 'test/release-test-plan.test.mjs']);
   for (const path of changed) {
+    // Include changed allowlisted tests instead of silently skipping them.
+    if (safeTestPath(path)) focused.add(path);
     if (path.includes('fleet-reconciliation')) focused.add('test/fleet-reconciliation-summary.test.mjs');
     if (path.includes('dashboard')) focused.add('test/dashboard-readable-typography.test.mjs');
   }

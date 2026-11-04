@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   build:
+    # Main releases already run these checks; preserve PR and manual validation.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     services:
       startup-postgres:
@@ -37,7 +39,7 @@ jobs:
           key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
       - if: steps.dependencies.outputs.cache-hit != 'true'
         run: npm ci --no-audit --no-fund
-      - run: npm test
+      - run: npm test -- --test-concurrency=4
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
       - run: npm run build
