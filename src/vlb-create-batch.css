@@ -22,6 +22,8 @@
 .vlb-create-batch .vlb-batch-list td:first-child{overflow-wrap:normal}
 .vlb-create-batch .vlb-batch-list td:nth-child(2){font-weight:750}
 .vlb-create-batch .vlb-batch-list td:nth-child(3){font-weight:750;white-space:nowrap}
+.vlb-machine-report>summary{cursor:pointer;font-size:20px;font-weight:700;line-height:1.4}
+.vlb-machine-report[open]>summary{margin-bottom:16px}
 .vlb-create-batch .vlb-batch-list :is(th,td):nth-child(-n+3){font-size:16px;font-weight:750}
 .vlb-create-batch .vlb-batch-list td .vlb-batch-actions{flex-wrap:nowrap;align-items:center;margin:0}
 .vlb-create-batch .vlb-batch-list td button{flex:0 0 auto;font-size:14px;line-height:1.35;padding:8px 12px;white-space:nowrap}
