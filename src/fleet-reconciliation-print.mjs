@@ -17,8 +17,8 @@ export function printFleetReconciliation(content){
   const value=original?.tagName==='SELECT'?original.selectedOptions[0]?.textContent:original?.value;
   node.replaceWith(doc.createTextNode(value||'—'));
  });
- copy.querySelectorAll('.fleet-filters,.fleet-toolbar,button,[role="alert"]').forEach(node=>node.remove());
+ copy.querySelectorAll('.fleet-filters,.fleet-toolbar,.fleet-table-actions,button,[role="alert"]').forEach(node=>node.remove());
  doc.body.append(copy);
  frame.contentWindow.addEventListener('afterprint',()=>frame.remove(),{once:true});
- frame.contentWindow.requestAnimationFrame(()=>{frame.contentWindow.focus();frame.contentWindow.print()});
+ frame.contentWindow.requestAnimationFrame(()=>{const table=doc.querySelector('table');if(table&&table.scrollWidth>1500)table.style.zoom=String(1500/table.scrollWidth);frame.contentWindow.focus();frame.contentWindow.print()});
 }
