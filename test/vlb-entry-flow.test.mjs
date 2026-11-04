@@ -77,7 +77,7 @@ test('batch selection opens the requested editor directly without an intermediat
   const render=()=>{cursor=0;return workspace({kind:'vehicle',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   let tree=render();assert.equal(nodes(tree,n=>n.type===Picker).length,1);assert.equal(nodes(tree,n=>n.type===Editor).length,0,'entry requires an open site batch selection');nodes(tree,n=>n.type===Picker)[0].props.onSelected(batch);
   tree=render();assert.ok(saved.some(v=>v[1]===batch.id));
-  const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);assert.ok(editor.props.fleetReconciliation,'fleet report moves into the selected entry screen instead of rendering above it');
+  const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'fleet report is visible before entry for every mode');
   assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected({...batch,twoStage:true,stage:'elb_open',vlb_locked_at:'2026-12-31T12:00:00Z'});tree=render();assert.equal(nodes(tree,n=>n.type===Editor).length,0,'locked VLB batches cannot reopen manual, scan or upload entry');assert.match(renderToStaticMarkup(tree),/is locked\. Unlock or reopen the batch/);
  }
@@ -100,7 +100,7 @@ test('ELB manual and scan sit behind the site batch picker and open only once VL
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(vlbOpen);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,0,'VLB still open keeps the ELB editor closed');assert.match(renderToStaticMarkup(tree),/Lock VLB in batch Sasti 18 Dec S1 before entering ELB cards/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(elbOpen);tree=render();
-  if(mode==='manual'){assert.ok(nodes(tree,n=>n.type===ElbManual)[0].props.fleetReconciliation,'ELB manual retains the full equipment roster with reasons and printing');assert.equal(nodes(tree,n=>n.type===ElbManual)[0].props.batch.id,elbOpen.id,'two-stage ELB manual opens the combined batch machine workflow');assert.equal(nodes(tree,n=>n.type===Editor).length,0)}
+  if(mode==='manual'){assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'ELB manual shows the full roster before entry');assert.equal(nodes(tree,n=>n.type===ElbManual)[0].props.batch.id,elbOpen.id,'two-stage ELB manual opens the combined batch machine workflow');assert.equal(nodes(tree,n=>n.type===Editor).length,0)}
   else assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,elbOpen.id,'ELB scan opens the editor fixed to the batch');
   nodes(tree,n=>n.type===Picker)[0].props.onSelected({...elbOpen,stage:'closed',closed_at:'2026-12-18T12:00:00Z'});tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,1,'closed batches accept new ELB cards');

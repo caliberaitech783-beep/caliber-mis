@@ -28,7 +28,7 @@ test('machine snapshot reconciles labels to one master id and skips held cards',
  assert.deepEqual(machines.map(m=>[m.assetId,m.trips,m.sourceCards]),[['10',10,2]]);
  assert.equal(unresolved.length,1);assert.equal(unresolved[0].bookNo,'D');
  const fleet=buildFleetList(assets,'Sasti OC',machines);
- assert.deepEqual(fleet.map(r=>[r.door,r.trips]),[['VPC-019',10]],'manual ELB includes only unique machines printed in the VLB summaries');
+ assert.deepEqual(fleet.map(r=>[r.door,r.trips]),[['VPC-019',10],['D1',0]],'manual ELB includes every site machine, with VLB loaders first');
  const transferred=assets.map(a=>a.id==='12'?{...a,currentLocation:'Sasti OC'}:a);
  assert.equal(activeSiteHolds(records[2],assets).length,1);assert.equal(activeSiteHolds(records[2],transferred).length,0);
  assert.equal(holdSummary(records,assets)[0].assetId,'12');
@@ -105,10 +105,10 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const locked=await call(batch+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));
  assert.equal(locked.data.stage,'elb_open');assert.ok(locked.data.vlb_locked_at);assert.equal(locked.data.canClose,true);assert.equal(locked.data.canContinue,false);
  assert.deepEqual(locked.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
- assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4]],'manual ELB contains only the two unique machines printed in the VLB summaries');
- assert.equal(locked.data.fleetProgress.total,2);
- await db.query("INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,trips,source_cards) VALUES($1,$2,'D1','Dozer D1',0,0)",[created.data.id,ids.D1]);
- assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077'],'legacy whole-site rows are hidden from an already locked batch');
+ assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
+ assert.equal(locked.data.fleetProgress.total,3);
+ await db.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[created.data.id,ids.D1]);
+ assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077','D1'],'an older open batch automatically gains its missing zero-trip site equipment');
  assert.equal((await call(batch+'/lock-vlb','POST',{})).status,409,'cannot lock twice');
  assert.equal((await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:1}]))).status,409,'VLB frozen after lock');
  const fleet=assetId=>batch+'/fleet/'+assetId;
@@ -127,7 +127,8 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved/);
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
- view=await call(batch);assert.equal(view.data.fleetProgress.saved,2,'a normal ELB save joins the summary-derived batch fleet');assert.deepEqual(view.data.closeBlockers,[]);
+ const idleDozer=await call(fleet(ids.D1),'POST',{shiftStatus:'no_operator',statusReason:'Operator absent'});assert.equal(idleDozer.status,200,JSON.stringify(idleDozer.data));
+ view=await call(batch);assert.equal(view.data.fleetProgress.saved,3,'a normal ELB save joins the summary-derived batch fleet');assert.deepEqual(view.data.closeBlockers,[]);
  assert.equal(view.data.machineReport.totals.trips,12);assert.equal(view.data.machineReport.totals.hours,9);assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1.6);
  const closed=await call(batch+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
  assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
