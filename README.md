@@ -1,5 +1,7 @@
 # Caliber MIS
 
+Project guides: [Documentation index](docs/README.md).
+
 Code organization and the staged backend migration: [Backend folder migration](docs/backend-folder-migration.md).
 
 MIS opens at an explicit sign-in page on every new page load. Sign in with Pulse opens Pulse's existing username-and-password form using `login=1`, including when Pulse is already signed in. After successful authentication, Pulse returns to the empty MIS workspace. MIS does not restore saved browser sessions or automatically start sign-in. The authenticated home contains only a Caliber MIS heading, sign-out control and blank workspace for future features. `index.html` loads `src/mis-entry.jsx`; the inherited Pulse dashboard, menus and background services are not mounted. The separate MIS database remains in place.
