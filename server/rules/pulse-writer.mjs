@@ -24,7 +24,7 @@ export function createPulseWriter({env=process.env,fetchImpl=fetch}={}){
  const post=async(path,body,idempotencyKey)=>{
   const {base,token}=await assertAvailable(path.includes('transfer')?'transfer':'equipment');
   let response;
-  try{response=await fetchImpl(base+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':idempotencyKey},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});}
+  try{response=await fetchImpl(base+path,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':idempotencyKey},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});}
   catch(error){throw refuse('Pulse did not answer within ten seconds. Nothing was changed in Pulse or Pulse-II; try again in a moment.',503);}
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw refuse(data.error||`Pulse refused the update (HTTP ${response.status}). Nothing was changed in Pulse-II.`,response.status===409?409:502);

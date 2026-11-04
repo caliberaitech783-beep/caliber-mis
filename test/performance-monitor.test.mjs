@@ -71,7 +71,7 @@ test('server measures every API request and exposes the numbers to administrator
   assert.ok(server.includes("performanceMonitor.beginRequest(req.method,req.path);res.on('close',()=>finish(res.statusCode));"));
   assert.ok(server.includes("app.get('/api/diagnostics/performance',requireSuper,requireAdministrator,"));
   assert.ok(server.includes("performanceMonitor.trackJob(`${module}: ${action}`,task)"));
-  assert.ok(server.includes('trackJob:performanceMonitor.trackJob,'));
+  assert.ok(server.includes('trackJob:(name,task)=>withoutRowSecurityRequest(()=>performanceMonitor.trackJob(name,task)),'));
   const page=await readFile(new URL('../src/diagnostics-page.jsx',import.meta.url),'utf8');
   assert.ok(page.includes('fetch("/api/diagnostics/performance"'));
 });

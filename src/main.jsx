@@ -1,3 +1,4 @@
+import {browserSessionRequestInit} from './browser-session-transport.mjs';
 import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
 import {isMisAdministrator,MIS_ADMIN_PAGES} from '../shared/mis-admin-access.mjs';
@@ -15,6 +16,7 @@ import ElbBatchReports from './elb-batch-reports.jsx';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
+import {useAccountSecurity,AccountSecurityGate} from './account-security.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
 import VlbCreateBatch from './vlb-create-batch.jsx';
 import VlbBatchApprovals from './vlb-batch-approvals.jsx';
@@ -446,7 +448,8 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
   const nativeFetch = window.fetch.bind(window);
   window.__sessionExpiryFetch = true;
   window.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input?.url || "";
+    const rawUrl = typeof input === "string" ? input : input?.url || input?.href || "";
+    const url=rawUrl.startsWith(window.location.origin+"/")?rawUrl.slice(window.location.origin.length):rawUrl;
     let requestInit = init;
     if (url.startsWith("/api/") && clientDeviceId) {
       const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
@@ -456,7 +459,11 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
     // The edge firewall rejects some valid JSON bodies (large media and known
     // false-positive permission text), so the transport helper uses the
     // server's JSON-compatible text/plain path for those requests.
-    if (url.startsWith("/api/")) requestInit = edgeSafeJsonInit(requestInit);
+    if (url.startsWith("/api/")) {
+      const headers=new Headers(requestInit?.headers||(typeof Request!=="undefined"&&input instanceof Request?input.headers:undefined));
+      requestInit=browserSessionRequestInit({...requestInit,headers});
+      requestInit = edgeSafeJsonInit(requestInit);
+    }
     // While a deployment restarts the app the gateway answers 502/503/504 for
     // a few seconds. Read-only API calls wait and retry instead of showing an
     // error; writes are never replayed because the server may have applied them.
@@ -467,6 +474,7 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
       clearStoredSession();
       window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
     }
+    if(response.status===403&&url.startsWith("/api/")){const result=await response.clone().json().catch(()=>null);if(result?.code==="MFA_REQUIRED")window.dispatchEvent(new CustomEvent("mis-security-required"));}
     return response;
   };
 }
@@ -716,13 +724,8 @@ function Login({ onLogin, theme, toggleTheme }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
       body: JSON.stringify({ preferredLanguage, secondaryLanguage }),
     }).catch(() => {});
-    if (rememberMe) {
-      localStorage.setItem("nerveCenterSession", session);
-      sessionStorage.removeItem("nerveCenterSession");
-    } else {
-      sessionStorage.setItem("nerveCenterSession", session);
-      localStorage.removeItem("nerveCenterSession");
-    }
+    sessionStorage.setItem("nerveCenterSession", session);
+    localStorage.removeItem("nerveCenterSession");
     onLogin(JSON.parse(session));
   };
   const signIn = async () => {
@@ -11559,6 +11562,7 @@ function App() {
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
+  const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
@@ -12077,6 +12081,7 @@ function App() {
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
     session, theme,
   ]);
+  if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity}/>;
   if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">

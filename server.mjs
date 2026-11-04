@@ -1,3 +1,4 @@
+import {assertProductionSecurityConfig} from './server/services/production-security-config.mjs';
 import {operationalScanSql} from './shared/operational-start.mjs';
 import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
 import {scanDuplicateFlags} from './server/services/scan-duplicates.mjs';
@@ -54,6 +55,9 @@ import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from '
 import {assignedUserRoles,hasAccountRole,accountPrivileges} from './shared/account-role-access.mjs';
 import {dashboardMetric} from './server/rules/iboss-dashboard.mjs';
 import express from 'express';
+import {rowSecurityContext,rowSecurityPool,initializeRowSecurity,withoutRowSecurityRequest} from './server/services/row-security.mjs';
+import {browserSessionMiddleware} from './server/middleware/browser-session-security.mjs';
+import {registerAccountSecurity} from './server/routes/account-security.mjs';
 import {securityHeaders,protectStaticFiles,createLoginLimiter} from './server/middleware/http-security.mjs';
 import {requestHistorySnapshotSql,requestHistoryTimelineSql} from './server/rules/request-history-payload.mjs';
 import {retryDatabaseRead} from './server/rules/database-read-retry.mjs';
@@ -179,7 +183,9 @@ import {jsonEntityTag,requestEtagMatches} from './server/services/response-etag.
 import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './shared/whatsapp-recipient-policy.mjs';
 
 const {Pool}=pg;
+assertProductionSecurityConfig();
 const app=express();
+app.use(rowSecurityContext);
 app.disable('x-powered-by');
 app.use(securityHeaders);
 app.use(enforceContentDeletionPolicy);
@@ -300,13 +306,13 @@ const HIERARCHY_REPORT_SCHEDULE_SETTING_KEY='hierarchy_report_schedules';
 const AUDIT_REASON_HEADER='x-audit-reason';
 const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 
-const pool=new Pool({
+const pool=rowSecurityPool(new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
   max:10,
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
-});
+}),{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
 // Admin > Diagnostics shows these numbers: server freezes, slow pages and database waits.
 const performanceMonitor=createPerformanceMonitor({pool});
 performanceMonitor.start();
@@ -323,8 +329,8 @@ async function currentDataRevisions(keys,client=pool){
 // swap, network blip) emits 'error' on the pool. Without a listener Node
 // treats that as an unhandled 'error' event and exits the whole process,
 // which is what turned a momentary database hiccup into a site-wide outage.
-pool.on('error',error=>console.error('PostgreSQL pool connection error (will reconnect on next query).',error));
-process.on('unhandledRejection',(reason)=>console.error('Unhandled promise rejection (kept the server running).',reason));
+pool.on('error',error=>console.error('PostgreSQL pool connection error (will reconnect on next query).',auditSafeError(error)));
+process.on('unhandledRejection',(reason)=>console.error('Unhandled promise rejection (kept the server running).',auditSafeError(typeof reason==='string'?{message:reason}:reason)));
 const sessionStore=createSessionStore(pool);
 let databaseReady=false;
 let scanBlobReady=null;
@@ -1517,7 +1523,12 @@ app.use((req,res,next)=>{
 
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
+const browserSecurityEnabled=!['off','issuer'].includes(process.env.MIS_SSO_MODE);
+app.use(browserSessionMiddleware({publicUrl:process.env.PUBLIC_APP_URL||'https://pulse-ll.cmll.in',enabled:browserSecurityEnabled}));
+app.use(['/api/login','/api/mis-credentials/login'],createLoginLimiter({limit:2000,maxEntries:1024,key:req=>req.socket.remoteAddress||'unknown'}));
+app.use(['/api/login','/api/mis-credentials/login','/api/password-reset/request','/api/password-reset/confirm','/api/change-initial-password','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'],express.json({limit:'8kb',type:JSON_BODY_CONTENT_TYPES}));
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
+const accountSecurity=registerAccountSecurity(app,{pool,requireSession,store:()=>integrationSecrets,enabled:browserSecurityEnabled,requireMfa:process.env.MIS_REQUIRE_MFA==='true'});
 app.use('/api/login',createLoginLimiter());
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
 const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
@@ -2238,7 +2249,7 @@ async function createStoredBackup({triggerType='Manual',actor={},scheduleSlot=nu
     const {rows:locks}=await client.query("SELECT pg_try_advisory_lock(hashtext('bdms_backup_operation')) AS locked");
     locked=Boolean(locks[0]?.locked);
     if(!locked)throw Object.assign(new Error('Another backup or restore is already running. Try again after it completes.'),{status:409});
-    const result=await exportDatabase({client,output:filePath});
+    const result=await withoutRowSecurityRequest(()=>exportDatabase({client,output:filePath}));
     const stat=await fs.stat(filePath);
     const checksum=await sha256File(filePath);
     await pool.query(`UPDATE backup_runs SET status='Completed',size_bytes=$1,checksum=$2,table_counts=$3::jsonb,completed_at=NOW(),error_message=''
@@ -2532,8 +2543,10 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token))return null;
   const local=await sessionStore.get(token);
   const session=local?.permissions?.separateMisCredentials?await misCredentialClient.validateSession(token,local):(process.env.MIS_SSO_MODE==='off')?local:process.env.MIS_LEGACY_SSO_ENABLED==='true'?await misSharedSignIn.validateSession(token,local):null;
+  req.securitySession=session;
   return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
 }
 
@@ -3268,7 +3281,7 @@ app.post('/api/backups/import/restore',requireSuper,requireTrueSuperAdmin,async(
       const {rows:locks}=await client.query("SELECT pg_try_advisory_lock(hashtext('bdms_backup_operation')) AS locked");
       locked=Boolean(locks[0]?.locked);
       if(!locked)throw Object.assign(new Error('Another backup or restore is already running. Try again after it completes.'),{status:409});
-      restored=await restoreDatabase({client,input:pending.filePath});
+      restored=await withoutRowSecurityRequest(()=>restoreDatabase({client,input:pending.filePath}));
     }finally{
       if(locked)await client.query("SELECT pg_advisory_unlock(hashtext('bdms_backup_operation'))").catch(()=>{});
       client.release();
@@ -7903,7 +7916,7 @@ if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;c
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
 registerClientErrorReports(app,{pool,requireSession,requireAdministrator,serverCommit:()=>deploymentSha});
-const bulkScanning=registerBulkCardScanning(app,{trackJob:performanceMonitor.trackJob,refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
+const bulkScanning=registerBulkCardScanning(app,{trackJob:(name,task)=>withoutRowSecurityRequest(()=>performanceMonitor.trackJob(name,task)),refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
@@ -8665,12 +8678,14 @@ async function initializeDatabase(){
     await migrate();
     await misSharedSignIn.initialize();
     await misCredentialClient.initialize();
+    await accountSecurity.initialize();
     await misTelegram.initialize();misTelegram.start();
     await misLoginHandoff.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
     await logBooks.initialize();
+    await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});
     await bulkScanning.start();
     await scanBackup.start();
     pulseTripVerification.start();
