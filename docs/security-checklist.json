@@ -119,7 +119,7 @@
       "evidence": "Production requires isolated database mode and RLS. HTTP database access waits for successful RLS initialization."
     }
   ],
-  "userAction": "At the next sign-in, enroll an authenticator and save the recovery codes. Old sessions may require a fresh Pulse sign-in before enrollment.",
+  "userAction": "Normal Pulse sign-in is preserved. Mandatory MFA is disabled by the later sign-in compatibility release; enable enforcement separately if required.",
   "references": [
     "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
     "https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html",
