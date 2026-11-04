@@ -40,7 +40,7 @@ test('PDF buffers and documents are released on render failure, encoding failure
  }
 });
 
-test('only background polls during uploads use unchecked progress; final and normal reads remain full',async()=>{
+test('all background polls use unchecked progress while explicit reads remain full',async()=>{
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  const paths=[],noop=()=>{},uploadingRef={current:true};let rows=[];
  const scope={batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
@@ -51,7 +51,8 @@ test('only background polls during uploads use unchecked progress; final and nor
  await load('batch',false);assert.equal(rows[0].checks,null);assert.equal(canAutoSaveScanCard(rows[0],'vehicle'),false);
  await load('batch');assert.ok(rows[0].checks);
  uploadingRef.current=false;await load('batch',false);
- assert.deepEqual(paths,['/api/scan-batches/batch?progress=1','/api/scan-batches/batch','/api/scan-batches/batch']);
+ assert.ok(rows[0].checks,'an unchanged progress poll retains the last full validation result');
+ assert.deepEqual(paths,['/api/scan-batches/batch?progress=1','/api/scan-batches/batch','/api/scan-batches/batch?progress=1']);
 });
 
 test('elapsed timer updates its own component once per second and clears the interval',async()=>{
