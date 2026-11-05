@@ -1,6 +1,6 @@
 import {recoverCardResponse} from '../../shared/scan-response-recovery.mjs';
 import {normalizeScannedMeter} from '../rules/scan-meter-text.mjs';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -55,15 +55,15 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
  // Share a start gate across all workers, including retries. Faster starts are
  // still bounded, and HTTP 429 responses retain their existing Retry-After fallback.
  async function startRequest(){const turn=gate.then(async()=>{await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();});gate=turn.catch(()=>{});await turn;}
- async function run(image,kind,onProgress){
+ async function run(image,kind,onProgress,forceRead=false){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v16.json`);
-  let record;try{const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
+  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey();await onProgress?.('extracting');
    const preparation=imagePreparation.then(async()=>{
     const source=await prepareImage(image),views=await prepareViews(source);
-    return [{text:cardPrompt(kind)},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+    return [{text:cardPrompt(kind)+(forceRead?' Re-inspect the Door No cell in the full image and upright header detail. The previous reading did not match a unique vehicle. Read every visible letter, slash and digit from this image; do not infer a replacement from other cards or a master list. If unclear, mark door unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
    });
    imagePreparation=preparation.then(()=>{},()=>{});
    const parts=await preparation;
@@ -88,7 +88,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      retryInstruction=(noSummary?'The previous response returned no machine-wise summary. Re-inspect the MACHINE-WISE SUMMARY box below the trip table in the summary band views and return every populated row in fields.machineSummary. ':'')+(missingMachineNumber?'Re-inspect the M and adjacent NO columns for every populated trip and machine-summary row. The previous response dropped machine numbers. For a V in M and 5 in NO, transcribe equipmentType V and equipmentNumber 5. Read the number from that row; never guess it from another card or the fleet master. ':'')+(siteMissing?'Re-inspect the printed SITE header in the full image and upright header detail. If it is legible, transcribe it exactly with status clear; do not infer it from other fields. ':'')+(malformed.length?'The previous response contained malformed or incomplete content. Re-read every populated header, meter, summary and trip-table cell from the images. Return every trip row as exactly [tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime], preserving blank cells as empty strings and unreadable cells as null. Do not omit visible loading or unloading times.':'');
      await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason,delayMs:0});continue;
     }
-    await fs.mkdir(cacheDir,{recursive:true});await fs.writeFile(file+'.tmp',JSON.stringify(record),{mode:0o600});await fs.rename(file+'.tmp',file);
+    await fs.mkdir(cacheDir,{recursive:true});const temp=file+'.'+randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify(record),{mode:0o600});await fs.rename(temp,file);
     break;
    }
   }
@@ -103,6 +103,6 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(kind==='vehicle')rest.shiftSelectionStatus=fields.shift.status==='clear'&&rest.cardShift?'clear':fields.shift.status==='missing'?'missing':'unclear';
   return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
- function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
- return {recognize(image,{kind='vehicle',onProgress}={}){const key=kind+':'+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
+ function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress,job.forceRead)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
+ return {recognize(image,{kind='vehicle',onProgress,forceRead=false}={}){const key=kind+':'+(forceRead?'fresh:':'cached:')+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,forceRead,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
 }

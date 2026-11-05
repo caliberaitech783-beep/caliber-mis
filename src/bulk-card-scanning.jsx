@@ -215,25 +215,26 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  },[batch?.id,busy,uploading,scannerBusy,pending.length,cards.length]);
  useEffect(()=>{let active=true;api('/api/equipment-aliases/settings').then(data=>{if(active)setAliasSettings(data)}).catch(()=>{});return()=>{active=false}},[token]);
  const recoveryIssues=activeResponseRecoveryIssues(card?.raw_fields||{},draft);
+ const scanMatchingPending=!options||['queued','reading'].includes(card?.status);
  const allFieldIssues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:(draft.meterReviewFields||[]).filter(key=>Boolean(draft.meterReviewMessages?.[key]))},kind,card?.raw_fields,options);
- const reviewErrors=(card?.checks?.errors||[]).filter(message=>message!=='Confirm or correct the highlighted meter readings against the original reading table before approval.');
+ const reviewErrors=(scanMatchingPending?[]:card?.checks?.errors||[]).filter(message=>message!=='Confirm or correct the highlighted meter readings against the original reading table before approval.');
  const visibilityKey=kind+':'+(card?.id||'')+':'+(card?.status||'');
  const fleetFields=card?.raw_fields?.fleetReview?.signature===scanFleetSignature(draft)?Object.fromEntries((card.raw_fields.fleetReview.issues||[]).flatMap(issue=>issue.fields.map(field=>[field,'Not assigned to '+issue.selectedSite+' · Pulse: '+issue.pulseSite+'.']))):{};
  if(fleetFields.doorText)fleetFields.assetId=fleetFields.doorText;
  if(Object.keys(fleetFields).some(field=>field.startsWith('scanMachineSummary.')))fleetFields.scanMachineSummary='Equipment not assigned to the selected site; resolve the Pulse review.';
- const manualIssues={...(card?manualScanIssues(draft,kind,card.raw_fields,options):{}),...fleetFields};
+ const manualIssues=scanMatchingPending?{}:{...(card?manualScanIssues(draft,kind,card.raw_fields,options):{}),...fleetFields};
  manualVisibility.current=retainManualFields(manualVisibility.current,visibilityKey,manualIssues);
  const correctionView=!showAll&&!['approved','posted','rejected'].includes(card?.status);
  // Keep complete trip rows visible even when header fields are filtered to corrections.
  const visibleField=key=>['doorText','assetId'].includes(key)||/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
  const visibleTrip=i=>!correctionView||['equipmentName','loadingTime','unloadingTime','tripCount'].some(k=>visibleField(`trips.${i}.${k}`));
- const fieldIssues=correctionView?manualIssues:{...allFieldIssues,...fleetFields};
+ const fieldIssues=scanMatchingPending?{}:correctionView?manualIssues:{...allFieldIssues,...fleetFields};
  // Meter totals over the shift limit stay highlighted in red; since 1 November they no longer block saving (see scan-field-review.mjs).
  const meterLimitIssues=shiftMeterIssues(draft,kind);
  const fieldClass=key=>{const state=scanFieldState(draft,key,fieldIssues);return (state?`scan-field-invalid scan-field-${state}`:'')+(fleetFields[key]?' scan-field-fleet':'');};
  const reviewWarnings=card?.checks?.warnings||[],blockingReviewWarnings=blockingScanWarnings(reviewWarnings);
  const bdFallbackMissing=Boolean(pulseHoursError&&(draft.manualBreakdownHours===undefined||draft.manualBreakdownHours===null||draft.manualBreakdownHours===''));
- const reviewComplete=Boolean(!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
+ const reviewComplete=Boolean(!scanMatchingPending&&!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
   if(!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked)return;
   const next=cards.find(c=>!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
