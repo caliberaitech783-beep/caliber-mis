@@ -101,6 +101,7 @@ import OemBreakdownChart from "./oem-breakdown-chart.jsx";
 import OemBreakdownDetails from "./oem-breakdown-details.jsx";
 import DashboardFilterBar from "./dashboard-filter-bar.jsx";
 import MisDashboard from "./mis-dashboard.jsx";
+import FleetReconciliation from "./fleet-reconciliation.jsx";
 import ErpSidebar from "./erp-sidebar.jsx";
 import PulseMasterSync from "./pulse-master-sync.jsx";
 import PendingInPulse from "./pulse-pending.jsx";
@@ -11988,7 +11989,7 @@ function App() {
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
     requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+  ) : renderedActive==='Fleet reconciliation' ? (<FleetReconciliation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
