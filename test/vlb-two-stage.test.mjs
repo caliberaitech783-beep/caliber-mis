@@ -150,8 +150,15 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const adminView=await call(batch,'GET',undefined,'admin');assert.equal(adminView.data.canClose,true);
  const adminList=await call('/api/vlb-batches','GET',undefined,'admin');assert.equal(adminList.data.batches.find(row=>row.id===created.data.id)?.canClose,true);
  assert.equal((await call(batch+'/close','POST',{},'bob')).status,403,'non-owner MIS users cannot close');
+ const elbPath='/api/log-books/equipment/'+elbForm.data.id;
+ assert.equal((await call(elbPath,'DELETE',{revision:elbForm.data.revision+1})).status,409);
+ assert.equal((await call(elbPath,'DELETE',{revision:elbForm.data.revision})).status,200);
+ assert.equal((await call(batch)).data.fleet.find(row=>row.door==='VPC-077').saved_at,null);
+ const replacement=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
+ assert.equal(replacement.status,201,JSON.stringify(replacement.data));
  const closed=await call(batch+'/close','POST',{},'admin');assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
  assert.equal(closed.data.audit.find(entry=>entry.action==='saved_and_locked').actor,'admin');
+ assert.equal((await call('/api/log-books/equipment/'+replacement.data.id,'DELETE',{revision:replacement.data.revision})).status,403);
  assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
  const list=await call('/api/vlb-batches');assert.equal(list.data.twoStage,true);assert.equal(list.data.batches[0].stage,'closed');
  assert.ok(closed.data.audit.some(e=>e.action==='vlb_locked')&&closed.data.audit.some(e=>e.action==='machine_saved')&&closed.data.audit.some(e=>e.action==='elb_card_linked'));

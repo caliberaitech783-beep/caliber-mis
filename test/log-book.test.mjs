@@ -65,7 +65,8 @@ test('database-backed log books enforce access, persist both forms, generate num
  const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-12-26\/001$/);assert.equal(equipment.data.data.breakdownHours,0);assert.equal(equipment.data.data.hoursSource.runningHours,6.5);assert.equal(equipment.data.data.idleHours,1.5);
  assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),duplicateReason:'Test fixture: continuation card for the same tipper'});assert.equal(second.data.book_no,'VLB_M/18TH-DEC26/S1/002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-12-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'VLB_M/19TH-DEC26/S1/001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
  assert.equal((await call('/api/log-books/vehicle?first=1')).data.records[0].id,first.data.id);const last=await call('/api/log-books/vehicle?last=1');assert.equal(last.data.records.length,1);assert.equal(last.data.records[0].id,nextDay.data.id);
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:1})).status,403);
+ assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:1})).status,409);
+ await db.query("UPDATE mis_vlb_batches SET closed_at=NOW() WHERE book_date='2026-12-18'");
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:2},'normal')).status,403);
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:2})).status,403);
  assert.ok((await call('/api/log-books/vehicle')).data.records.some(r=>r.id===first.data.id));
@@ -82,9 +83,9 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal(end.data.trips[0].handoverLinks[0].counterpart.logBookId,String(opening.data.id));
  const olderPage=(await call('/api/log-books/vehicle?before='+opening.data.id)).data.records.find(r=>r.id===closing.data.id);assert.equal(olderPage.data.trips[0].tripStatus,'closed');
 
- assert.equal((await call('/api/log-books/vehicle/'+opening.data.id,'DELETE',{revision:1})).status,403);
+ assert.equal((await call('/api/log-books/vehicle/'+opening.data.id,'DELETE',{revision:1})).status,200);
  const retained=(await call('/api/log-books/vehicle')).data.records.find(r=>r.id===closing.data.id);
- assert.equal(retained.id,closing.data.id);assert.equal(retained.data.trips[0].tripStatus,'closed');assert.equal(retained.data.totalTrips,1);
+ assert.equal(retained.id,closing.data.id);assert.equal(retained.data.totalTrips,0);
  for(const kind of ['vehicle','equipment']){
   pulseAvailable=false;const fallbackBody={...body,assetId:kind==='vehicle'?1:4,manualBreakdownHours:'1.25',requestKey:randomUUID(),duplicateReason:'Test fixture: repeated card for the same tipper'};
   const fallback=await call('/api/log-books/'+kind,'POST',fallbackBody);assert.equal(fallback.status,201);assert.equal(fallback.data.data.breakdownHours,1.25);assert.equal(fallback.data.data.breakdownHoursSource,'manual');

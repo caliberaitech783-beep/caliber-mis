@@ -8,12 +8,13 @@ import {assetBookKind} from '../../shared/equipment-kind.mjs';
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
+import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
-import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord} from '../rules/vlb-batch-policy.mjs';
+import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
@@ -42,7 +43,7 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA+VLB_BATCH_SCHEMA;
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
-const fail=message=>{throw Object.assign(new Error(message),{status:400})};
+const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 const number=(value,label,{optional=false,integer=false,signed=false}={})=>{
  if(value===''||value===undefined||value===null){if(optional)return null;fail(`${label} is required.`)}
  const n=Number(value);if(!['string','number'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(n)||(!signed&&n<0)||(integer&&!Number.isSafeInteger(n)))fail(`${label} must be a valid ${integer?'whole ':''}${signed?'':'non-negative '}number.`);return n;
@@ -253,7 +254,40 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  }
  app.post('/api/log-books/:kind',...protect,save);
  app.put('/api/log-books/:kind/:id',...protect,save);
- app.delete('/api/log-books/:kind/:id',...protect,(_req,res)=>res.status(403).json({error:'Use Deletion to preview and approve exact records, then verify the WhatsApp OTP. Direct deletion is disabled.'}));
+ const authorizeBatchDeletion=async(req,res,next)=>{
+   try{
+     if(isMisAdministrator(req.session)||(await vlbBatchActor(pool,req.session)).mis)return next();
+     return requireAdministrator(req,res,next);
+   }catch(error){next(error);}
+ };
+ app.delete('/api/log-books/:kind/:id',requireSession,authorizeBatchDeletion,batchScope,async(req,res,next)=>{
+   let client;
+   try{
+     const {kind,id}=req.params;
+     if(!['vehicle','equipment'].includes(kind)||!/^\d+$/.test(id))fail('Invalid log book.');
+     await ensure();
+     client=await pool.connect();
+     await client.query('BEGIN');
+     await client.query('SELECT pg_advisory_xact_lock(709224102)');
+     await lockVlbBatchWrites(client);
+     const record=(await client.query('SELECT * FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ FOR UPDATE',[id,kind])).rows[0];
+     if(!record)fail('Log book is unavailable.',404);
+     requireLogBookSite(req.logBookScope,record.site);
+     const actor=req.session.login||req.session.name;
+     const links=kind==='vehicle'?'mis_vlb_batch_entries':'mis_elb_batch_entries';
+     const batch=(await client.query('SELECT b.* FROM '+links+' e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1',[id])).rows[0];
+     if(!await isOpenBatchForDeletion(client,batch,kind,actor))
+       fail('Use Deletion to review and verify deletion of records outside the open batch stage.',403);
+     if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
+     await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
+     await client.query('DELETE FROM '+links+' WHERE logbook_id=$1',[id]);
+     if(kind==='equipment')await client.query('UPDATE mis_vlb_batch_fleet SET logbook_id=NULL,shift_status=NULL,saved_at=NULL,saved_by=NULL WHERE batch_id=$1 AND logbook_id=$2',[batch.id,id]);
+     await client.query('DELETE FROM mis_pulse_trip_verifications WHERE logbook_id=$1',[id]);
+     await auditVlbBatch(client,batch,actor,'card_deleted',{kind,logbookId:id,revision:record.revision});
+     await client.query('COMMIT');
+     res.json({deleted:true});
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
+ });
  return {initialize:ensure,readHours};
 }
 

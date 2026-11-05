@@ -47,6 +47,7 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal((await api('preview',{records:[a],reason:''})).status,400);
  assert.equal((await api('preview',{records:[a,a],reason:'duplicate'})).status,400);
  assert.equal((await api('preview',{records:[{...a,revision:0}],reason:'duplicate'})).status,409);
+ await db.query('UPDATE mis_vlb_batches SET closed_at=NOW()');
  assert.equal((await call('/api/log-books/vehicle/'+a.id,{revision:1},'admin','DELETE')).status,403);
  let p=await preview([a,b]);
  assert.deepEqual(p.records.map(r=>String(r.id)),[String(a.id),String(b.id)]);assert.match(p.impact,/permanently/i);assert.equal(p.scans[0].id,scanId);

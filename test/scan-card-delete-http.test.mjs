@@ -35,4 +35,12 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  await db.query('UPDATE mis_scan_cards SET revision=2 WHERE id=$1',[other]);
  assert.equal((await call(second+'/delete',{requestId:stale.data.requestId,otp:deliveredOtp,approval:secondApproval},'POST','revision-user')).status,409);
  assert.equal((await db.query('SELECT image FROM mis_scan_cards WHERE id=$1',[other])).rows[0].image.length,10);
+ await prepareVlbFixture(db,{bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'});
+ const openRequest={revision:2,reason:'Wrong scan',approval:'Approve deletion of card '+other+' revision 2'};
+ await db.query('UPDATE mis_vlb_batches SET closed_at=NOW()');
+ assert.equal((await call(second+'/delete',openRequest)).status,409);
+ await db.query('UPDATE mis_vlb_batches SET closed_at=NULL');
+ assert.equal((await call(second+'/delete',openRequest)).status,200);
+ const audit=(await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[other])).rows[0].raw_fields.manualDeletion;
+ assert.equal(audit.otpVerifiedAt,undefined);
 });

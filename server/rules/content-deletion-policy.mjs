@@ -1,4 +1,4 @@
-// Fail closed: legacy deletion handlers are not an alternative to verified OTP.
+// Allow only deletion routes with their own authorization and scope checks.
 export const CONTENT_DELETION_POLICY={recipient:'+91 9925565281',automaticPurges:false,
  message:'Deletion is blocked here. Exact-item preview, reason, impact, recovery information, approval and WhatsApp OTP verification are required. Use Deletion for VLB/ELB; other deletion workflows are unavailable until they support these safeguards.'};
 export function contentDeletionBlocked(method,path){
@@ -9,6 +9,8 @@ export function contentDeletionBlocked(method,path){
  // The user authorized direct deletion of one unsaved scan card. The handler
  // retains session/site permissions, current-revision and saved-card checks.
  if(verb==='POST'&&/^\/api\/scan-cards\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/delete$/.test(url))return false;
+ // The log-book handler rechecks the open stage and record revision under lock.
+ if(verb==='DELETE'&&/^\/api\/log-books\/(?:vehicle|equipment)\/\d+$/.test(url))return false;
  if(verb==='DELETE')return true;
  if(!['POST','PUT','PATCH'].includes(verb))return false;
  // This existing workflow verifies request ownership, exact approval, expiry,

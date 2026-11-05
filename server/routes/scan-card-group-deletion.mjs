@@ -1,7 +1,7 @@
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {isDeletableScanCard,scanDeletionSelection,scanDeletionApproval} from '../../src/scan-card-deletion-selection.mjs';
 export const SCAN_CARD_GROUP_DELETION_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_scan_card_group_deletions(id UUID PRIMARY KEY,batch_id UUID NOT NULL,actor TEXT NOT NULL,cards JSONB NOT NULL,approval TEXT NOT NULL,reason TEXT NOT NULL,otp_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL,expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS mis_scan_card_group_deletions_actor ON mis_scan_card_group_deletions(actor,created_at);`;
-export function registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp,now=()=>Date.now()}){
+export function registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp,openDeletion,lockOpenDeletion,now=()=>Date.now()}){
  const fail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
  const actor=req=>String(req.session.login||req.session.name||'');
  const digest=(id,otp)=>createHash('sha256').update(id+':'+otp).digest('hex');
@@ -26,15 +26,27 @@ export function registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,ge
   await pool.query("UPDATE mis_scan_card_group_deletions SET state='delivered' WHERE id=$1 AND state='pending'",[id]);res.json({requestId:id,recipient:'+91 9925565281',expiresInMinutes:10,count:items.length});
  }));
  app.post('/api/scan-batches/:id/card-deletions/confirm',...protect,wrap(async(req,res)=>{
-  if(!/^[a-f0-9-]{36}$/i.test(String(req.body.requestId||'')))fail('Deletion OTP expired or unavailable. Request a new code.');
-  const client=await pool.connect();let consumed=false;try{await client.query('BEGIN');const row=(await client.query('SELECT * FROM mis_scan_card_group_deletions WHERE id=$1 FOR UPDATE',[req.body.requestId])).rows[0];
-   if(!row||row.state!=='delivered'||row.actor!==actor(req)||row.batch_id!==req.params.id||new Date(row.expires_at).getTime()<=now()||row.attempts>=5)fail('Deletion OTP expired or unavailable. Request a new code.');
-   if(req.body.approval!==row.approval||JSON.stringify(selection(req.body.cards))!==JSON.stringify(row.cards))fail('The selected cards changed. Review and approve the exact selection again.');
-   if(!/^\d{6}$/.test(String(req.body.otp||''))||!timingSafeEqual(Buffer.from(row.otp_hash,'hex'),Buffer.from(digest(req.body.requestId,req.body.otp),'hex'))){await client.query('UPDATE mis_scan_card_group_deletions SET attempts=attempts+1 WHERE id=$1',[row.id]);await client.query('COMMIT');fail('Incorrect WhatsApp OTP.',400)}
-   consumed=true;const cards=await check(client,row.batch_id,row.cards,true),verifiedAt=new Date(now()).toISOString();
+  if(req.body.requestId&&!/^[a-f0-9-]{36}$/i.test(String(req.body.requestId)))fail('Deletion OTP expired or unavailable. Request a new code.');
+  const client=await pool.connect();let consumed=false;try{await client.query('BEGIN');
+   let row;
+   if(!req.body.requestId){
+    await lockOpenDeletion(client);
+    if(!await openDeletion(client,await getBatch(client,req.params.id),req))fail('The batch stage is unavailable for deletion without OTP. Reload before deleting.');
+    const items=selection(req.body.cards),reason=String(req.body.reason||'').trim();
+    if(req.body.approval!==scanDeletionApproval(items)||!reason||reason.length>2000)fail('Approve the exact selected cards and enter a deletion reason.',400);
+    row={batch_id:req.params.id,cards:items,actor:actor(req),reason};
+   }else{
+    row=(await client.query('SELECT * FROM mis_scan_card_group_deletions WHERE id=$1 FOR UPDATE',[req.body.requestId])).rows[0];
+    if(!row||row.state!=='delivered'||row.actor!==actor(req)||row.batch_id!==req.params.id||new Date(row.expires_at).getTime()<=now()||row.attempts>=5)fail('Deletion OTP expired or unavailable. Request a new code.');
+    if(req.body.approval!==row.approval||JSON.stringify(selection(req.body.cards))!==JSON.stringify(row.cards))fail('The selected cards changed. Review and approve the exact selection again.');
+    if(!/^\d{6}$/.test(String(req.body.otp||''))||!timingSafeEqual(Buffer.from(row.otp_hash,'hex'),Buffer.from(digest(req.body.requestId,req.body.otp),'hex'))){await client.query('UPDATE mis_scan_card_group_deletions SET attempts=attempts+1 WHERE id=$1',[row.id]);await client.query('COMMIT');fail('Incorrect WhatsApp OTP.',400)}
+    consumed=true;
+   }
+   const cards=await check(client,row.batch_id,row.cards,true),deletedAt=new Date(now()).toISOString();
    // Entry removal is atomic; storage/backups may retain original scans.
-   for(const card of cards){const message='Card deleted manually by user. Upload again if needed.';await client.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:row.actor,reason:row.reason,otpVerifiedAt:verifiedAt,requestId:row.id,count:cards.length,retainedImageBlobKey:card.image_blob_key||null}}),message])}
-   await client.query("UPDATE mis_scan_card_group_deletions SET state='used' WHERE id=$1",[row.id]);await client.query('COMMIT');res.json({deleted:true,count:cards.length,ids:cards.map(card=>card.id)});
+   for(const card of cards){const message='Card deleted manually by user. Upload again if needed.';await client.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:row.actor,reason:row.reason,deletedAt,...(consumed?{otpVerifiedAt:deletedAt,requestId:row.id}:{}),count:cards.length,retainedImageBlobKey:card.image_blob_key||null}}),message])}
+   if(consumed)await client.query("UPDATE mis_scan_card_group_deletions SET state='used' WHERE id=$1",[row.id]);
+   await client.query('COMMIT');res.json({deleted:true,count:cards.length,ids:cards.map(card=>card.id)});
   }catch(error){await client.query('ROLLBACK');if(consumed)await client.query("UPDATE mis_scan_card_group_deletions SET state='invalidated' WHERE id=$1 AND state='delivered'",[req.body.requestId]);throw error}finally{client.release()}
  }));
 }

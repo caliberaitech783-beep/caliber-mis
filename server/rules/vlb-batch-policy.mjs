@@ -82,6 +82,12 @@ export async function matchingVlbBatch(client,data){
  if(matching.length>1)batchFail('Multiple historical batches exist for this site/date/shift. They require separate review; no batches or cards were changed.');
  return matching[0]||null;
 }
+export async function isOpenBatchForDeletion(client,batch,kind,actor){
+ if(!batch||batch.deleted_at||batch.archived_at||batch.closed_at)return false;
+ if(twoStageEnabled()&&(batch.stage==='elb_open')!==(kind==='equipment'))return false;
+ if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))return false;
+ return !batch.trial_reopened_until||!(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired;
+}
 export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=false}={}){
  requireOperationalDate(data.bookDate);
  await lockVlbBatchWrites(client);
