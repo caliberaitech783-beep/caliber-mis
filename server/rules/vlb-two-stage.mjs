@@ -106,7 +106,7 @@ export function buildMachineSnapshot(records,assets,site){
  return {machines:[...machines.values()].sort((a,b)=>b.trips-a.trips||a.label.localeCompare(b.label,undefined,{numeric:true})),unresolved};
 }
 
-// Every site machine needs an ELB outcome, including machines with no VLB trips.
+// Keep every site machine available for ELB entry, including machines with no VLB trips.
 // Retain resolved loading machines and their trip totals alongside the site roster.
 export function buildFleetList(assets,site,machines=[]){
  const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>assetBookKind(asset)==='equipment'&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
@@ -149,13 +149,16 @@ export function validateFleetEntry(input={},{trips=0,shiftHours=8}={}){
  return {errors,status,hours,breakdownHours:rule.needsBreakdown==='full'?Number(shiftHours):breakdown};
 }
 
-// Closure needs a saved status for every machine in the fleet list and no cards still awaiting a transfer.
+const hasSavedElb=row=>Boolean(row.saved_at&&row.shift_status);
+const needsElb=row=>Number(row.trips)>0&&!hasSavedElb(row);
+
+// Closure requires saved ELBs for machines that loaded trips.
 export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
  const blockers=[];
  if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB before closing the batch.');
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
- const missing=fleet.filter(row=>!row.saved_at||!row.shift_status).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));
- if(missing.length)blockers.push('Machines without a saved ELB: '+missing.map(row=>row.trips?`${row.door} loaded ${row.trips} trips, no ELB saved`:`${row.door} no ELB saved`).join('; ')+'.');
+ const missing=fleet.filter(needsElb).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));
+ if(missing.length)blockers.push('Machines without a saved ELB: '+missing.map(row=>`${row.door} loaded ${row.trips} trips, no ELB saved`).join('; ')+'.');
  if(duplicates.length)blockers.push('Duplicate ELB cards for the same machine: '+duplicates.join(', ')+'. Review before closing.');
  return blockers;
 }
@@ -170,8 +173,9 @@ export function lockBlockers({stage,records=[],holds=[],unresolved=[]}){
 }
 
 export function fleetProgress(fleet=[]){
- const saved=fleet.filter(row=>row.saved_at&&row.shift_status).length,skipped=fleet.filter(row=>row.skipped&&!row.saved_at).length,drafts=fleet.filter(row=>row.draft&&!row.saved_at).length;
- return {total:fleet.length,saved,remaining:fleet.length-saved,skipped,drafts,loaders:fleet.filter(row=>row.trips>0).length};
+ const saved=fleet.filter(hasSavedElb).length,skipped=fleet.filter(row=>row.skipped&&!row.saved_at).length,drafts=fleet.filter(row=>row.draft&&!row.saved_at).length;
+ const remaining=fleet.filter(needsElb).length;
+ return {total:fleet.length,saved,remaining,optionalUnsaved:fleet.length-saved-remaining,skipped,drafts,loaders:fleet.filter(row=>row.trips>0).length};
 }
 
 // Machine-wise shift report: trips from VLB, hours from ELB, trips per hour.

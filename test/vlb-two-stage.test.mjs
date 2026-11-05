@@ -4,7 +4,7 @@ import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
-import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
+import {twoStageEnabled,validateFleetEntry,buildMachineSnapshot,buildFleetList,closureBlockers,fleetProgress,activeSiteHolds,holdSummary,machineReportRows} from '../server/rules/vlb-two-stage.mjs';
 
 const assets=[
  {id:'1',category:'Vehicle',door:'V1',currentLocation:'Sasti OC'},
@@ -49,17 +49,26 @@ test('shift status rules tie trips and hours to a working machine',()=>{
  assert.match(errors({shiftStatus:'working',employeeId:'7',openingHmr:1,closingHmr:10},1).join(' '),/exceed the 8-hour shift/);
 });
 
-test('closure lists missing machines, loaders first, and the machine report totals hours and trips',()=>{
+test('closure requires loading machines and the machine report totals hours and trips',()=>{
  const fleet=[{assetId:'11',door:'D1',trips:0,saved_at:null},{assetId:'10',door:'VPC-019',trips:10,saved_at:'x',shift_status:'working'},{assetId:'13',door:'G1',trips:0,saved_at:null}];
  const blockers=closureBlockers({stage:'elb_open',fleet,holds:[]});
- assert.equal(blockers.length,1);assert.match(blockers[0],/^Machines without a saved ELB: D1 no ELB saved; G1 no ELB saved\.$/);
- assert.match(closureBlockers({stage:'elb_open',fleet:[{door:'VPC-019',trips:10}],holds:[{label:'VPC-077',assetSite:'Jayant OC',cardCount:2,trips:17}]}).join(' '),/VPC-019 loaded 10 trips, no ELB saved/);
+ assert.deepEqual(blockers,[]);
+ assert.match(closureBlockers({stage:'elb_open',fleet:[...fleet,{door:'VPC-077',trips:4,skipped:true}],holds:[{label:'VPC-077',assetSite:'Jayant OC',cardCount:2,trips:17}]}).join(' '),/VPC-077 loaded 4 trips, no ELB saved/);
  assert.match(closureBlockers({stage:'vlb_open',fleet:[]})[0],/Lock VLB/);
  const report=machineReportRows([{assetId:'10',door:'VPC-019',trips:10,shift_status:'working'},{assetId:'11',door:'D1',trips:0,shift_status:'no_operator'}],[{asset_id:10,book_no:'E1',data:{openingHmr:100,closingHmr:105,employeeName:'Op'}}]);
  assert.equal(report.loaders[0].tripsPerHour,2);assert.equal(report.others[0].statusLabel,'No operator');assert.deepEqual([report.totals.trips,report.totals.hours,report.totals.working,report.totals.idle],[10,5,1,1]);
 });
 
-test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper enforces status rules, closure needs every machine',async t=>{
+test('39 saved ELBs can close a 52-machine fleet with 13 unused machines',()=>{
+ const fleet=Array.from({length:52},(_,index)=>({
+  door:'E'+index,trips:index<20?1:0,
+  ...(index<39?{saved_at:'2026-11-01',shift_status:'working'}:{}),
+ }));
+ assert.deepEqual(fleetProgress(fleet),{total:52,saved:39,remaining:0,optionalUnsaved:13,skipped:0,drafts:0,loaders:20});
+ assert.deepEqual(closureBlockers({stage:'elb_open',fleet}),[]);
+});
+
+test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper enforces status rules, closure permits unused equipment to remain blank',async t=>{
  const previous=process.env.VLB_TWO_STAGE_BATCHES;delete process.env.VLB_TWO_STAGE_BATCHES;t.after(()=>{if(previous===undefined)delete process.env.VLB_TWO_STAGE_BATCHES;else process.env.VLB_TWO_STAGE_BATCHES=previous;});
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
@@ -135,8 +144,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved/);
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
- const idleDozer=await call(fleet(ids.D1),'POST',{shiftStatus:'no_operator',statusReason:'Operator absent'});assert.equal(idleDozer.status,200,JSON.stringify(idleDozer.data));
- view=await call(batch);assert.equal(view.data.fleetProgress.saved,3,'a normal ELB save joins the summary-derived batch fleet');assert.deepEqual(view.data.closeBlockers,[]);
+ view=await call(batch);assert.deepEqual(view.data.fleetProgress,{total:3,saved:2,remaining:0,optionalUnsaved:1,skipped:0,drafts:0,loaders:2});assert.deepEqual(view.data.closeBlockers,[]);
  assert.equal(view.data.machineReport.totals.trips,12);assert.equal(view.data.machineReport.totals.hours,9);assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1.6);
  const closed=await call(batch+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
  assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
