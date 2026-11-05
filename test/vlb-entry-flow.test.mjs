@@ -77,7 +77,9 @@ test('batch selection opens the requested editor directly without an intermediat
   const render=()=>{cursor=0;return workspace({kind:'vehicle',session:{login:'alice',token:'test'},mode,children:React.createElement(Editor)})};
   let tree=render();assert.equal(nodes(tree,n=>n.type===Picker).length,1);assert.equal(nodes(tree,n=>n.type===Editor).length,0,'entry requires an open site batch selection');nodes(tree,n=>n.type===Picker)[0].props.onSelected(batch);
   tree=render();assert.ok(saved.some(v=>v[1]===batch.id));
-  const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'fleet report is visible before entry for every mode');
+  const editor=nodes(tree,n=>n.type===Editor)[0];assert.equal(editor.props.vlbBatch.id,batch.id);
+  if(mode==='scan'){assert.equal(nodes(tree,n=>n.type==='details').length,0,'VLB scan does not place fleet details above card status');assert.ok(React.isValidElement(editor.props.fleetReconciliation),'VLB scan supplies fleet details to the card-status workspace')}
+  else assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'VLB manual keeps the fleet report visible before entry');
   assert.equal(nodes(tree,n=>n.type===Picker).length,1,'site picker remains above manual and scan entry');assert.equal(nodes(tree,n=>n.type==='button'&&['Manual entry','Scan / Upload files','Search / change batch'].includes(n.props.children)).length,0);assert.doesNotMatch(renderToStaticMarkup(tree),/Manual entries, scans and uploads continue/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected({...batch,twoStage:true,stage:'elb_open',vlb_locked_at:'2026-12-31T12:00:00Z'});tree=render();assert.equal(nodes(tree,n=>n.type===Editor).length,0,'locked VLB batches cannot reopen manual, scan or upload entry');assert.match(renderToStaticMarkup(tree),/is locked\. Unlock or reopen the batch/);
  }
