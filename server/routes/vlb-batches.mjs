@@ -35,6 +35,13 @@ async function visible(client,id,req){
 }
 async function details(client,batch,req){
  let records=(await client.query('SELECT snapshot FROM mis_vlb_batch_entries WHERE batch_id=$1 ORDER BY logbook_id',[batch.id])).rows.map(r=>r.snapshot).filter(r=>operationalDate(r.data?.bookDate));
+ const scanIds=records.map(record=>record.data?.scanCardId).filter(id=>uuid(id));
+ const scanTable=scanIds.length&&(await client.query("SELECT to_regclass('mis_scan_cards') AS name")).rows[0]?.name;
+ if(scanTable){
+  const scans=(await client.query('SELECT id,filename,raw_fields FROM mis_scan_cards WHERE id=ANY($1::uuid[])',[scanIds])).rows;
+  const sources=new Map(scans.map(scan=>[String(scan.id),scan.raw_fields?.entrySource||(/scanner|page-\d+\.png/i.test(scan.filename||'')?'scan':'upload')]));
+  records=records.map(record=>record.data?.scanCardId?{...record,data:{...record.data,scanEntrySource:record.data.scanEntrySource||sources.get(String(record.data.scanCardId))||'upload'}}:record);
+ }
  records=await withVlbTripHandovers(client,records);
  const requests=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND withdrawn_at IS NULL ORDER BY requested_at DESC',[batch.id])).rows.filter(r=>r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,batch.site));
  const audit=(await client.query('SELECT * FROM mis_vlb_batch_audit WHERE batch_id=$1 ORDER BY id DESC LIMIT 200',[batch.id])).rows;
