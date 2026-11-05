@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveTripEquipment,validateTripEquipment} from '../trip-equipment-validation.mjs';
+import {resolveTripEquipment,validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
 const assets=[{id:1,kind:'equipment',equipmentName:'Volvo150',site:'Jayant'},{id:2,kind:'equipment',door:'Tpc 20',site:'Jayant'},{id:3,kind:'equipment',door:'Lpc 30',site:'Jayant'},{id:4,kind:'equipment',door:'Spc 40',site:'Jayant'},{id:5,kind:'equipment',door:'Vpc 999',site:'Other'}];
 test('approved aliases resolve only against location equipment',()=>{for(const [input,expected] of [['V150','Vpc 150'],['U150','Vpc 150'],['T20','Tpc 20'],['TA20','Tpc 20'],['L30','Lpc 30'],['S40','Spc 40'],['150','Vpc 150']])assert.equal(resolveTripEquipment({equipmentName:input},assets,'Jayant').equipmentName,expected);});
 test('wrong site, wrong family, missing and ambiguous numbers require review',()=>{for(const input of ['V999','T150','V','V151'])assert.ok(resolveTripEquipment({equipmentName:input},assets,'Jayant').error);assert.ok(resolveTripEquipment({equipmentName:'150'},[...assets,{id:6,kind:'equipment',door:'Tpc150',site:'Jayant'}],'Jayant').error);});
 test('U correction is disabled when a genuine U-type machine code exists',()=>assert.ok(resolveTripEquipment({equipmentName:'U150'},[...assets,{id:8,kind:'equipment',equipmentName:'U99',site:'Other'}],'Jayant').error));
 test('details and summary share identity and preserve source reading',()=>{const result=validateTripEquipment({location:'Jayant',trips:[{equipmentName:'U150',tripCount:2}],scanMachineSummary:[{equipmentName:'V150',tripCount:2}]},assets);assert.deepEqual(result.issues,{});assert.equal(result.draft.trips[0].equipmentId,'1');assert.equal(result.draft.trips[0].originalEquipmentName,'U150');assert.equal(result.draft.trips[0].equipmentName,result.draft.scanMachineSummary[0].equipmentName);});
 
-test('scan normalization resolves U, TA and Tata without changing header aliases',async()=>{const {normalizeScanEquipmentRows}=await import('../scan-machine-rules.mjs');const draft={machineNotationRuleVersion:1,location:'Jayant',trips:[{equipmentName:'U150'},{equipmentName:'TA20'},{equipmentName:'Tata20'}]};const result=normalizeScanEquipmentRows(draft,assets);assert.deepEqual(result.trips.map(r=>r.equipmentId),['1','2','2']);assert.deepEqual(result.trips.map(r=>r.originalEquipmentName),['U150','TA20','Tata20']);assert.deepEqual(validateTripEquipment(result,assets).issues,{});});
+test('scan normalization resolves U, TA and Tata without changing header aliases',async()=>{const {normalizeScanEquipmentRows}=await import('../shared/scan-machine-rules.mjs');const draft={machineNotationRuleVersion:1,location:'Jayant',trips:[{equipmentName:'U150'},{equipmentName:'TA20'},{equipmentName:'Tata20'}]};const result=normalizeScanEquipmentRows(draft,assets);assert.deepEqual(result.trips.map(r=>r.equipmentId),['1','2','2']);assert.deepEqual(result.trips.map(r=>r.originalEquipmentName),['U150','TA20','Tata20']);assert.deepEqual(validateTripEquipment(result,assets).issues,{});});
 
 const suffixedAssets=[
  {id:'tpc35',door:'TPC35 - 01150',equipmentName:'TPC35 - 01150',kind:'equipment',site:'Jayant OC'},
@@ -28,7 +28,7 @@ test('joined serial digits, absent numbers and wrong-site equipment are blocked 
  }
 });
 test('scan review and repeated detail/summary normalization keep TA35 as Tpc 35',async()=>{
- const {normalizeScanEquipmentRows}=await import('../scan-machine-rules.mjs');
+ const {normalizeScanEquipmentRows}=await import('../shared/scan-machine-rules.mjs');
  const {scanFieldIssues}=await import('../src/scan-field-review.mjs');
  const input={machineNotationRuleVersion:1,tripBodyRuleVersion:2,location:'Jayant OC',timeMode:'without',trips:[{equipmentName:'TA35',tripCount:2},{equipmentName:'V49',tripCount:1}],scanMachineSummary:[{equipmentName:'T35',tripCount:2},{equipmentName:'U49',tripCount:1}]};
  const before=JSON.stringify(suffixedAssets),scan=normalizeScanEquipmentRows(input,suffixedAssets),first=validateTripEquipment(scan,suffixedAssets),second=validateTripEquipment(first.draft,suffixedAssets);
@@ -63,7 +63,7 @@ test('UP registrations cannot supply a missing, wrong-site or ambiguous Volvo ma
  assert.match(resolveTripEquipment({equipmentName:'U49'},[...upRegistrationAssets,{id:'duplicate-v49',kind:'equipment',door:'Vpc49 - 99999',site:'Jayant OC'}],'Jayant').error,/Multiple equipment/);
 });
 test('scan normalization and review accept U49 with real-style UP registrations',async()=>{
- const {normalizeScanEquipmentRows}=await import('../scan-machine-rules.mjs');const {scanFieldIssues}=await import('../src/scan-field-review.mjs');
+ const {normalizeScanEquipmentRows}=await import('../shared/scan-machine-rules.mjs');const {scanFieldIssues}=await import('../src/scan-field-review.mjs');
  const input={machineNotationRuleVersion:1,tripBodyRuleVersion:2,location:'Jayant OC',timeMode:'without',trips:[{equipmentName:'U49',tripCount:2}],scanMachineSummary:[{equipmentName:'U49',tripCount:2}]};
  const scan=normalizeScanEquipmentRows(input,upRegistrationAssets),result=validateTripEquipment(scan,upRegistrationAssets);
  assert.deepEqual(result.issues,{});assert.equal(result.draft.trips[0].equipmentName,'Vpc 49');assert.equal(result.draft.scanMachineSummary[0].equipmentName,'Vpc 49');assert.equal(result.draft.trips[0].originalEquipmentName,'U49');

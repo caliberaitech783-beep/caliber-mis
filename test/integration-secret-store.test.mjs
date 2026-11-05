@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
-import {createIntegrationSecretStore} from '../integration-secret-store.mjs';
+import {createIntegrationSecretStore} from '../server/services/integration-secret-store.mjs';
 test('connection credentials are encrypted, survive restart, and reject modified ciphertext',async t=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'mis-vault-'));t.after(()=>rm(dir,{recursive:true,force:true}));const data=new Map();
  const pool={query:async(sql,args=[])=>{if(sql.startsWith('INSERT'))data.set(args[0],args[1]);if(sql.startsWith('DELETE'))data.delete(args[0]);return {rows:sql.startsWith('SELECT')&&data.has(args[0])?[{ciphertext:data.get(args[0])}]:[]}}};

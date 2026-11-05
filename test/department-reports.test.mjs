@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {availabilityRows,buildDepartmentReports,DEPARTMENT_REPORT_TITLES,TICKET_ACCEPTANCE_REPORT_TITLE} from '../department-reports.mjs';
+import {availabilityRows,buildDepartmentReports,DEPARTMENT_REPORT_TITLES,TICKET_ACCEPTANCE_REPORT_TITLE} from '../shared/department-reports.mjs';
 const now = new Date('2026-09-07T12:00:00+05:30');
 const build = requests => buildDepartmentReports({requests,now,from:'2026-09-01',to:'2026-09-07'});
 const cell = (report,key,row=report.rows[0]) => report.columns.find(c=>c.key===key).value(row);

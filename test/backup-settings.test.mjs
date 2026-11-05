@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BACKUP_WEEKDAYS,DEFAULT_BACKUP_SETTINGS,indiaBackupSlot,normalizeBackupSettings,scheduledBackupDue} from '../backup-settings.mjs';
+import {BACKUP_WEEKDAYS,DEFAULT_BACKUP_SETTINGS,indiaBackupSlot,normalizeBackupSettings,scheduledBackupDue} from '../server/rules/backup-settings.mjs';
 
 test('normalizes backup schedule, retention, and a safe relative folder',()=>{
   assert.deepEqual(normalizeBackupSettings({

@@ -1,12 +1,16 @@
 # Caliber MIS
 
+Project guides: [Documentation index](docs/README.md).
+
+Code organization and the staged backend migration: [Backend folder migration](docs/backend-folder-migration.md).
+
 MIS opens at an explicit sign-in page on every new page load. Sign in with Pulse opens Pulse's existing username-and-password form using `login=1`, including when Pulse is already signed in. After successful authentication, Pulse returns to the empty MIS workspace. MIS does not restore saved browser sessions or automatically start sign-in. The authenticated home contains only a Caliber MIS heading, sign-out control and blank workspace for future features. `index.html` loads `src/mis-entry.jsx`; the inherited Pulse dashboard, menus and background services are not mounted. The separate MIS database remains in place.
 
 The canonical MIS address is `https://pulse-ll.cmll.in`. The previous `pulseii.cmll.in` DNS/certificate binding remains available and forwards browser pages and sign-in callbacks to the canonical address. Existing health/version endpoints remain directly readable on the old hostname.
 
 Pulse's existing authentication service retains its registered `pulseii.cmll.in` callback. MIS forwards that callback to `pulse-ll.cmll.in` with its single-use code/state intact; the host-only sign-in cookie is checked on the new domain. This avoids changing Pulse's authentication backend when renaming MIS.
 
-Independent MIS application based on the existing local Pulse-II MIS workspace: React, Vite, Node.js, Express and PostgreSQL. The entry flow is Pulse → MIS in a new tab at https://pulse-ll.cmll.in → MIS dashboard using shared sign-in. `mis-shared-signin.mjs` implements the authorization-code handoff with S256 PKCE, browser-bound state, short-lived single-use codes and separate MIS sessions. End-to-end production sign-in still requires deployment and private user verification.
+Independent MIS application based on the existing local Pulse-II MIS workspace: React, Vite, Node.js, Express and PostgreSQL. The entry flow is Pulse → MIS in a new tab at https://pulse-ll.cmll.in → MIS dashboard using shared sign-in. `server/routes/mis-shared-signin.mjs` implements the authorization-code handoff with S256 PKCE, browser-bound state, short-lived single-use codes and separate MIS sessions. End-to-end production sign-in still requires deployment and private user verification.
 
 ## Database isolation
 
@@ -19,13 +23,6 @@ No Pulse business records, password hashes or local database files are copied. T
 Use Node.js 22. Run `npm ci`, `npm run build`, then `npm start`. Configure environment settings from `.env.example` through Azure App Service; never commit credentials. Local development also requires a PostgreSQL database named `caliber_mis`.
 
 ## Deployment status
-
-UI-only releases automatically use focused frontend checks when the target's
-deployed commit and verified OCR cache allow it. Other changes retain full checks;
-production approval is unchanged. Main-push validation is handled by the test
-deployment, and PR layout checks reuse the existing build. See
-[faster UI releases](docs/ui-only-deployment.md) for eligibility, fallback and the
-manual `force_full` option. Complete runtime packaging and Azure restarts remain.
 
 Release path since 2 November 2026: a merge to `main` is built, tested and deployed to the **test platform** (`.github/workflows/main_caliber-mis-test.yml`); production `caliber-mis-783` is deployed only from a `release-YYYY-MM-DD-N` tag, or a manual run, after the owner approves the run in the GitHub environment `production` (`.github/workflows/main_caliber-mis-783.yml`). Creating the test platform: `docs/test-platform-setup.md`. Releasing: `docs/release-safety-plan-2026-11-02.md`, section 6.
 

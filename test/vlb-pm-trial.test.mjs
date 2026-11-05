@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
-import {registerVlbBatches} from '../vlb-batches.mjs';
-import {VLB_BATCH_SCHEMA,assertVlbBatchWrite} from '../vlb-batch-policy.mjs';
-import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from '../vlb-pm-trial.mjs';
+import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {VLB_BATCH_SCHEMA,assertVlbBatchWrite} from '../server/rules/vlb-batch-policy.mjs';
+import {activateVlbPmTrial,vlbPmTrial,VLB_PM_TRIAL_ID} from '../server/rules/vlb-pm-trial.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('10-day trial withdraws only the approved pending request, is restart-safe, preserves access and expires on server writes',async t=>{

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 test('blank-card rejection bypasses form validation and preserves draft and original scan',async()=>{
- const source=readFileSync(new URL('../bulk-card-scanning.mjs',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  const route=source.slice(source.indexOf("app.put('/api/scan-cards/:id'"));
  const start=route.indexOf("if(req.body.action==='reject'){");
  const end=route.indexOf("if(!req.body.draft",start);

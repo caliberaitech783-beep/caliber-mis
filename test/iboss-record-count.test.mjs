@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ACCOUNT_VIEWS} from '../iboss-accounts.mjs';
-import {accountPageQuery} from '../iboss-account-pages.mjs';
-import {dashboardMetric,DASHBOARD_METRICS} from '../iboss-dashboard.mjs';
-import {companyScopedSql} from '../iboss-company-scope.mjs';
+import {ACCOUNT_VIEWS} from '../shared/iboss-accounts.mjs';
+import {accountPageQuery} from '../server/rules/iboss-account-pages.mjs';
+import {dashboardMetric,DASHBOARD_METRICS} from '../server/rules/iboss-dashboard.mjs';
+import {companyScopedSql} from '../server/rules/iboss-company-scope.mjs';
 import {createAccountPageLoader} from '../src/iboss-account-loader.mjs';
 import {recordCountLabel} from '../src/iboss-record-count.mjs';
 test('counts wrap the same filtered source without pagination or pagination binds',()=>{

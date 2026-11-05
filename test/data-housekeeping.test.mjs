@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { HOUSEKEEPING_CATEGORIES, housekeepingCategory, purgeRequestError } from "../data-housekeeping.mjs";
+import { HOUSEKEEPING_CATEGORIES, housekeepingCategory, purgeRequestError } from "../server/rules/data-housekeeping.mjs";
 
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");

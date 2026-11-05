@@ -5,7 +5,7 @@ import {startVisiblePoll} from './visible-poll.mjs';
 import './returned-correction-gate.css';
 
 function EvidenceDialog({title,close,children}){
-  return <section className="returned-correction-evidence" role="dialog" aria-label={title}><header><h3>{title}</h3><button type="button" onClick={close}>Close image</button></header>{children}</section>;
+  return <section className="returned-correction-evidence" role="dialog" aria-label={title}><header className="mis-popup-close-header"><h3>{title}</h3><button type="button" onClick={close} className="mis-popup-close">× Close</button></header>{children}</section>;
 }
 
 export default function ReturnedCorrectionGate({token}){
@@ -37,7 +37,7 @@ export default function ReturnedCorrectionGate({token}){
     return ()=>{element.close();document.body.style.overflow=overflow;};
   },[blocked]);
   if(!blocked)return null;
-  return createPortal(<dialog className="returned-correction-gate" ref={dialog} onCancel={event=>event.preventDefault()} aria-labelledby="returned-correction-title">
+  return createPortal(<dialog className="returned-correction-gate" ref={dialog} onCancel={event=>event.preventDefault()} aria-labelledby="returned-correction-title"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close"  disabled aria-label="Close window" title="Complete the required action before closing this window">× Close</button></div>
     <header><h2 id="returned-correction-title">Correction requires your action</h2><p>Admin could not apply your correction. Edit and resubmit it for fresh PM approval, or delete this correction to continue. The maintenance request is not deleted.</p></header>
     {state.error&&<div role="alert">{state.error}<button type="button" onClick={()=>reload.current()}>Retry</button></div>}
     {state.records.map(record=><CorrectionCard key={record.id} record={record} capabilities={{}} token={token} Modal={EvidenceDialog} forced fieldOptions={state.fieldOptions} onChanged={()=>reload.current()} />)}

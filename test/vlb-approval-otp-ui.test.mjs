@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {displaySiteName} from '../region-scope.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');

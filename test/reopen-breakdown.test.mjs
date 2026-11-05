@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {canReopenBreakdown,reopenBreakdownError} from '../reopen-breakdown.mjs';
+import {canReopenBreakdown,reopenBreakdownError} from '../server/rules/reopen-breakdown.mjs';
 const eligible={status:'Closed',closedAt:'2026-10-05 16:00:00',acceptedAt:'2026-10-05 14:00:00'};
 test('reopening sits beside history and uses a spacious dedicated dialog',()=>{
   const ui=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

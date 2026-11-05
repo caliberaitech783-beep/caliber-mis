@@ -1,5 +1,5 @@
 import {requestEventDate} from './dashboard-request-data.mjs';
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 
 // One selection powers both the badge and its drilldown. On-road completion
 // (including a subsequent idle period) removes the request from today's list.

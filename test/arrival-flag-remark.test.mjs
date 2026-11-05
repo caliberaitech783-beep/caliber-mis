@@ -1,5 +1,5 @@
-import * as siteAccess from '../region-scope.mjs';
-import {managerRoleSelection} from '../admin-access.mjs';
+import * as siteAccess from '../shared/region-scope.mjs';
+import {managerRoleSelection} from '../shared/admin-access.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';

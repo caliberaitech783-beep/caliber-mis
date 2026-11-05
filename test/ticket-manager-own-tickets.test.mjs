@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import * as scope from '../region-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
-import {managerRoleSelection} from '../admin-access.mjs';
-import {managerUserRole} from '../ticket-workflow.mjs';
+import * as scope from '../shared/region-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {managerRoleSelection} from '../shared/admin-access.mjs';
+import {managerUserRole} from '../server/rules/ticket-workflow.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const evaluate=(source,deps)=>new Function(...Object.keys(deps),source)(...Object.values(deps));

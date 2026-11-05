@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildCdirOrganisation,cdirPersonId,mergeCdirReportingSuperiors} from '../cdir-organisation.mjs';
+import {buildCdirOrganisation,cdirPersonId,mergeCdirReportingSuperiors} from '../shared/cdir-organisation.mjs';
 
 const row=(empId,name,reportingTo='',extra={})=>({empId,name,reportingTo,status:'ACTIVE',siteLabel:'Example site',...extra});
 

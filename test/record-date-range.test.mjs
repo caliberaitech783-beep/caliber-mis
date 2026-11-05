@@ -98,11 +98,14 @@ test("visible From and To fields apply valid ranges, preserve the prior filter f
   assert.doesNotMatch(renderToStaticMarkup(render()),/All dates|record-date-range-basis/);
 });
 
-test("Reports stay on their existing table implementation; dated workflow tables share their existing filter/export state", () => {
+test("Reports retain their table implementation and share date controls with filtering, saved views and exports", () => {
   const main=readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
   const report=main.slice(main.indexOf("function ReportTable("),main.indexOf("function ReportTable(")+11000);
   assert.match(report,/<table className="report-filter-table">/);
-  assert.doesNotMatch(report,/RecordDateRange|recordDateFilter|primaryRecordDateColumn/);
+  assert.match(report,/primaryRecordDateColumn\(columns\)/);
+  assert.match(report,/dateControl && !recordDateFilter && <RecordDateRange/,'a report with an external period control must not render a second range');
+  assert.match(report,/dateRange: dateControl\?\.value \|\| ""/,'saved views retain the applied record range');
+  assert.match(report,/recordDateFilter\.onChange\(view.dateRange \|\| ""\)/,'opening a saved view restores its external period control');
   const shared=readFileSync(new URL("../src/shared-actions-table.jsx",import.meta.url),"utf8");
   assert.match(shared,/value: effectiveFilters\[dateColumn.key\], onChange: \(value\) => updateFilter\(dateColumn.key, value\)/);
   assert.match(shared,/\{dateRangeControl\}/);

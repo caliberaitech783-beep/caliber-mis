@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
-import {misDatabaseConfig} from '../mis-database-config.mjs';
+import {misDatabaseConfig} from '../server/rules/mis-database-config.mjs';
 
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 

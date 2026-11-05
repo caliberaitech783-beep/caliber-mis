@@ -4,10 +4,18 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../log-book.mjs';
+import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../server/routes/log-book.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:150,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
+test('saving unloading-only rows accepts a missing machine without dropping the original unloading',()=>{
+ const unloading={equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1};
+ const saved=normalizeLogBook('vehicle',{...input(),trips:[unloading,...input().trips]});
+ assert.equal(saved.trips.length,2);assert.equal(saved.trips[0].equipmentName,'');assert.equal(saved.trips[0].unloadingTime,'08:10');
+ assert.equal(saved.machineSummary.reduce((sum,row)=>sum+row.tripCount,0),1);
+ assert.throws(()=>normalizeLogBook('vehicle',{...input(),trips:[{...unloading,loadingTime:'08:00'}]}),/loading equipment/);
+ assert.throws(()=>normalizeLogBook('vehicle',{...input(),timeMode:'without',trips:[unloading]}),/loading equipment/);
+});
 test('template totals use the correct meter pairs, preserve zero and keep missing integration data unavailable',()=>{
  const row=normalizeLogBook('vehicle',{...input(),openingKmr:0,closingKmr:0,totalRunningKmr:999,breakdownHours:0});
  assert.equal(row.docType,'VLB');assert.equal(row.totalRunningKmr,0);assert.equal(row.totalWorkingHmr,6.5);assert.equal(row.trips[0].gapMinutes,null);assert.equal(row.trips[0].durationMinutes,20);assert.equal(row.totalTrips,1);
@@ -36,7 +44,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());
- const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal'};next()};
+ const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'local-test',role:req.headers.authorization==='admin'?'super':'normal',permissions:req.headers.authorization==='admin'?{adminLevel:'Admin'}:{}};next()};
  const requireAdministrator=(req,res,next)=>req.session.role==='super'?next():res.status(403).json({error:'Admin only'});
  let pulseAvailable=true;registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync:{status:()=>({connected:true}),readBreakdownRequests:async()=>{if(!pulseAvailable)throw Error('Pulse offline');return[]}}});app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
@@ -63,8 +71,8 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.ok((await call('/api/log-books/vehicle')).data.records.some(r=>r.id===first.data.id));
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...body,revision:3})).status,409);
  // Complementary driver cards link even when they arrive in reverse order.
- const closingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-12-21',trips:[{equipmentName:'L2',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
- const closing=await call('/api/log-books/vehicle','POST',closingBody);assert.equal(closing.status,201);assert.equal(closing.data.data.totalTrips,0);
+ const closingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-12-21',trips:[{equipmentName:'',loadingTime:'',unloadingTime:'06:30',tripCount:1}]};
+ const closing=await call('/api/log-books/vehicle','POST',closingBody);assert.equal(closing.status,201);assert.equal(closing.data.data.totalTrips,0);assert.equal(closing.data.data.trips[0].equipmentName,'');
  const openingBody={...body,scanMachineSummary:[],requestKey:randomUUID(),bookDate:'2026-12-20',trips:[{equipmentName:'L1',loadingTime:'12:30',unloadingTime:'',tripCount:1}]};
  const opening=await call('/api/log-books/vehicle','POST',openingBody);assert.equal(opening.status,201);assert.equal(opening.data.data.openingTrips,1);
  const linked=(await call('/api/log-books/vehicle')).data.records;

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('actual queue keeps derived shift hours when model tables contain an empty written-hours field',async()=>{
  const db=new PGlite();await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);

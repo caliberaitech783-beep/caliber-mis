@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {ticketEmailConfiguration} from "../ticket-email.mjs";
+import {ticketEmailConfiguration} from "../server/services/ticket-email.mjs";
 
 test("ticket email uses the configured Gmail account and recipients", () => {
   const config = ticketEmailConfiguration({

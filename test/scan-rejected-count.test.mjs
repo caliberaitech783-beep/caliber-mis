@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
-import {scanBatchReport} from '../scan-batch-report.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {scanBatchReport} from '../shared/scan-batch-report.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('rejecting a blank card remains visible to its batch and increments the report count',async t=>{

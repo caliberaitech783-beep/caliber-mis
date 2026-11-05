@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {CARD_GROUPS,cardReviewGroup,reviewGroupSummary,cardIssueGroups,cardDisplayGroup,matchesCardGroup} from '../scan-card-groups.mjs';
+import {CARD_GROUPS,cardReviewGroup,reviewGroupSummary,cardIssueGroups,cardDisplayGroup,matchesCardGroup} from '../shared/scan-card-groups.mjs';
 const draft={doorText:'S/14',bookDate:'2026-10-19',location:'Test site',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:50,aFormNo:'75',timeMode:'with',trips:[{equipmentName:'V12',loadingTime:'01:03',unloadingTime:'01:12',tripCount:1}],scanMachineSummary:[{equipmentName:'V12',tripCount:1}]};
 const card=(id,overrides={})=>({id,status:'review',draft:structuredClone(draft),raw_fields:{},checks:{errors:[]},...overrides});
 test('colour groups count cards, distinguish partial from blank, and exclude pending from red',()=>{
@@ -82,7 +82,7 @@ test('all status counts equal the uploaded-card total for small and large batche
 });
 
 test('a refused automatic save turns an All okay card into Needs attention with the server reason, until its revision changes',async()=>{
- const {withAutoSaveFailures,AUTO_SAVE_REFUSED}=await import('../scan-card-groups.mjs');
+ const {withAutoSaveFailures,AUTO_SAVE_REFUSED}=await import('../shared/scan-card-groups.mjs');
  const okay={id:'c1',revision:2,status:'review',draft:{doorText:'V1',assetId:'1',openingHmr:1},raw_fields:{},checks:{errors:[],warnings:['Batch values applied.']}};
  const saved={id:'c2',revision:1,status:'posted',draft:{},raw_fields:{}};
  const failures=new Map([['c1:2','VLB is locked for batch B5.'],['c2:1','ignored for saved cards']]);

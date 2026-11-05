@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {applyHierarchyDeliveryRule,defaultHierarchyReportScheduleSettings,flowDesignationForUser,GENERAL_REPORT_TITLES,HIERARCHY_REPORT_DESIGNATIONS,hierarchyScheduleLabel,normalizeHierarchyReportScheduleSettings,reportsDueForDesignation,scheduledReportWindow} from '../hierarchy-report-flow.mjs';
+import {DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {applyHierarchyDeliveryRule,defaultHierarchyReportScheduleSettings,flowDesignationForUser,GENERAL_REPORT_TITLES,HIERARCHY_REPORT_DESIGNATIONS,hierarchyScheduleLabel,normalizeHierarchyReportScheduleSettings,reportsDueForDesignation,scheduledReportWindow} from '../shared/hierarchy-report-flow.mjs';
 
 test('Super Admin receives only the configurable consolidated schedule even when designated Director',()=>{
   const designation=flowDesignationForUser({adminLevel:' SUPER  ADMIN ',designation:'Director'});

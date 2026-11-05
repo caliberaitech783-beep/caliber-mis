@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {normalizeSessionMessage,SESSION_MESSAGE_MAX_LENGTH,sessionMessagePayloadValidationError,sessionMessageValidationError,validSessionMessageAudioDataUrl} from "../session-message.mjs";
+import {normalizeSessionMessage,SESSION_MESSAGE_MAX_LENGTH,sessionMessagePayloadValidationError,sessionMessageValidationError,validSessionMessageAudioDataUrl} from "../server/rules/session-message.mjs";
 
 test("session messages are trimmed, required, and short", () => {
   assert.equal(normalizeSessionMessage("  Check the vehicle status.  "),"Check the vehicle status.");

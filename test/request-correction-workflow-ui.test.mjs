@@ -58,7 +58,7 @@ test('correction screen explains and enforces the approval sequence',()=>{
 });
 
 test('Breakdown type in the correction form is a dropdown from the Repair type master',async()=>{
-  const {REQUEST_CORRECTION_TYPES}=await import('../request-correction-policy.mjs');
+  const {REQUEST_CORRECTION_TYPES}=await import('../shared/request-correction-policy.mjs');
   const category=REQUEST_CORRECTION_TYPES.offRoad.fields.find((field)=>field.key==='category');
   assert.equal(category.optionsSource,'breakdownTypes');
   assert.equal(category.kind,'text','server normalisation of the value is unchanged');

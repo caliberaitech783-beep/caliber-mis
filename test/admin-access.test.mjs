@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_MASTER_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, adminAccessPermissions, ensureDirectoryMenuAccess, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../admin-access.mjs";
+import {ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_MASTER_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, adminAccessPermissions, ensureDirectoryMenuAccess, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../shared/admin-access.mjs";
 
 test("legacy administrators retain full access when allowlists are absent", () => {
   const permissions = adminAccessPermissions({userType: "Super Admin"});

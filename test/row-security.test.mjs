@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';
+import {rowSecurityPool,rowSecurityContext,initializeRowSecurity} from '../server/services/row-security.mjs';
+test('forced database RLS isolates sites, rejects cross-site writes and never leaks pooled scope',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec(`CREATE ROLE mis_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ GRANT CREATE,USAGE ON SCHEMA public TO mis_app;GRANT CREATE ON DATABASE postgres TO mis_app;
+ SET ROLE mis_app;CREATE TABLE mis_log_books(id SERIAL PRIMARY KEY,site TEXT NOT NULL);
+ INSERT INTO mis_log_books(site) VALUES('Sasti OC'),('SASTI II'),('Jayant OB 2nd');CREATE VIEW mis_log_book_view AS SELECT * FROM mis_log_books;`);
+ const native={query:(...args)=>db.query(...args),connect:async()=>({query:(...args)=>db.query(...args),release(){}})};
+ await initializeRowSecurity(native,{enabled:true});
+ const pool=rowSecurityPool(native,{enabled:true,resolveScope:async req=>req.scope});
+ const request=(scope,task)=>new Promise((resolve,reject)=>rowSecurityContext({securitySession:{login:'user'},scope},null,()=>Promise.resolve().then(task).then(resolve,reject)));
+ assert.deepEqual((await request({sites:['sasti ob']},()=>pool.query('SELECT site FROM mis_log_books ORDER BY id'))).rows.map(x=>x.site),['Sasti OC','SASTI II']);
+ assert.equal((await request({sites:['sasti ob']},()=>pool.query('SELECT * FROM mis_log_book_view'))).rows.length,2,'view queries retain the request scope');
+ await assert.rejects(request({sites:['sasti ob']},()=>pool.query("INSERT INTO mis_log_books(site) VALUES('Jayant OC')")),error=>error.code==='42501');
+ assert.equal((await request({sites:['jayant ob']},()=>pool.query('SELECT * FROM mis_log_books'))).rows.length,1);
+ await request({sites:['sasti ob']},async()=>{const client=await pool.connect();try{await client.query('BEGIN');await client.query('SAVEPOINT before_scope');assert.equal((await client.query('SELECT * FROM mis_log_books')).rows.length,2);await client.query('ROLLBACK TO SAVEPOINT before_scope');assert.equal((await client.query('SELECT * FROM mis_log_books')).rows.length,2);assert.equal((await client.query("UPDATE mis_log_books SET site='Sasti OC' WHERE site='Jayant OB 2nd'")).rowCount,0);await client.query('COMMIT');}finally{client.release();}});
+ assert.equal((await request({sites:[]},()=>pool.query('SELECT * FROM mis_log_books'))).rows.length,0);
+ assert.equal((await request({sites:null},()=>pool.query('SELECT * FROM mis_log_books'))).rows.length,3);
+ assert.equal((await pool.query('SELECT * FROM mis_log_books')).rows.length,3,'trusted background jobs keep their existing scope');
+ const flags=(await db.query("SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='mis_log_books'::regclass")).rows[0];assert.equal(flags.relrowsecurity,true);assert.equal(flags.relforcerowsecurity,true);
+});

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildDirectorReportTables,buildXlsxWorkbookBuffer} from '../director-report-bundle.mjs';
-import {buildTableExportPdf} from '../table-export-pdf.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildDirectorReportTables,buildXlsxWorkbookBuffer} from '../shared/director-report-bundle.mjs';
+import {buildTableExportPdf} from '../server/services/table-export-pdf.mjs';
 
 const stamp=time=>`2026-09-08 ${time}`;
 const base={status:'Closed',site:'Synthetic QA',door:'D01',owner:'Production actor',acceptedBy:'Maintenance actor',closedBy:'Maintenance actor',firstTripBy:'MIS actor',verifiedBy:'MIS actor'};

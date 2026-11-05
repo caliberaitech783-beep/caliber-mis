@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
 import {createHash,randomUUID} from 'node:crypto';
 import {encodeScanCanvas,prepareScanImages} from '../src/scan-upload-image.mjs';
-import {createScanBlobStorage} from '../scan-blob-storage.mjs';
+import {createScanBlobStorage} from '../server/services/scan-blob-storage.mjs';
 
 const browserCanvas=(width,height)=>{
  const canvas=createCanvas(width,height);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {applySavedScanCard,scanBatchReport} from '../scan-batch-report.mjs';
+import {applySavedScanCard,scanBatchReport} from '../shared/scan-batch-report.mjs';
 const batch={id:'batch',kind:'vehicle'};
 test('confirmed saves update the combined total immediately for corrected and already-valid cards',()=>{
  const cards=['okay','corrected'].map((id,i)=>({id,batch_id:batch.id,ordinal:i+1,status:'review',draft:{totalTrips:999}}));

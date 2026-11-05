@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {ACCOUNT_DRILLS,accountDrill,vehicleKey} from '../iboss-drill.mjs';
-import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../iboss-accounts.mjs';
-import {MERGE_CHAINS,buildTrail,mergeStatements} from '../iboss-report-merge.mjs';
+import {ACCOUNT_DRILLS,accountDrill,vehicleKey} from '../src/lib/iboss-drill.mjs';
+import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../shared/iboss-accounts.mjs';
+import {MERGE_CHAINS,buildTrail,mergeStatements} from '../shared/iboss-report-merge.mjs';
 
 test('every drill column exists in its Accounts report and opens a real step of a real trail',()=>{
  for(const [view,columns] of Object.entries(ACCOUNT_DRILLS)){

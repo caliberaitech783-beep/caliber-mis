@@ -7,11 +7,11 @@ import {transformWithOxc} from 'vite';
 import * as ledger from '../src/daily-bd-balance.mjs';
 import {dashboardCountScale} from '../src/dashboard-count-scale.mjs';
 import {recordedBreakdownRangeLength} from '../src/dashboard-breakdown-forecast.mjs';
-import {recordBelongsToSite} from '../site-location.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {recordBelongsToSite} from '../shared/site-location.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import {dailyBdBalanceExport} from '../src/dashboard-section-export.mjs';
 import DateInput from '../src/date-input.mjs';
-import {timestampMatchesShift} from '../shift-report-time.mjs';
+import {timestampMatchesShift} from '../shared/shift-report-time.mjs';
 
 const source = readFileSync(new URL('../src/daily-bd-balance-chart.jsx', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '').replace('export default function', 'function');
 const {code} = await transformWithOxc(source, 'daily-bd-balance-chart.jsx', {jsx: {runtime: 'classic'}});

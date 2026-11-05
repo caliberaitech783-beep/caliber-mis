@@ -1,5 +1,7 @@
+import {browserSessionRequestInit} from './browser-session-transport.mjs';
+import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
-import {isMisAdministrator,MIS_ADMIN_PAGES} from '../mis-admin-access.mjs';
+import {isMisAdministrator,MIS_ADMIN_PAGES} from '../shared/mis-admin-access.mjs';
 import MisAdministration from './mis-admin.jsx';
 import MisTelegram from './mis-telegram.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
@@ -10,9 +12,11 @@ import OperationsReports from './operations-reports.jsx';
 import CapacityMaster from './capacity-master.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import ScanBatchReports from './scan-batch-reports.jsx';
+import ElbBatchReports from './elb-batch-reports.jsx';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
-import {misPageAllowed} from '../mis-application-access.mjs';
+import {misPageAllowed} from '../shared/mis-application-access.mjs';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
+import {useAccountSecurity,AccountSecurityGate} from './account-security.jsx';
 import LogBookModeChoice from './log-book-mode-choice.jsx';
 import VlbCreateBatch from './vlb-create-batch.jsx';
 import VlbBatchApprovals from './vlb-batch-approvals.jsx';
@@ -24,21 +28,21 @@ import BulkCardScanning from './bulk-card-scanning.jsx';
 import ErpMasters from './erp-masters.jsx';
 import {reportPortalTarget,sameReportView} from './report-portal-target.mjs';
 import BdmsAssistant from './bdms-assistant.jsx';
-import {TENDER_PERMISSION_OPTIONS,TENDER_ALL_PERMISSIONS,normalizedTenderSelection} from '../tender-permissions.mjs';
+import {TENDER_PERMISSION_OPTIONS,TENDER_ALL_PERMISSIONS,normalizedTenderSelection} from '../shared/tender-permissions.mjs';
 import { RequestDeleteReview } from "./workshop-selected-delete.jsx";
-import {ibossAccountsAllowed} from "../iboss-access.mjs";
+import {ibossAccountsAllowed} from "../shared/iboss-access.mjs";
 import OemEmailDeliveryStatus from './oem-email-delivery-status.jsx';
-import {requestShiftLabel,requestShiftColumns} from "../request-shift.mjs";
+import {requestShiftLabel,requestShiftColumns} from "../shared/request-shift.mjs";
 import {RequestShiftProvider,useRequestShiftData,withRequestShiftCells} from "./request-shift-context.jsx";
 import {withDashboardResponsibilityCells} from "./dashboard-responsibility-cells.mjs";
-import {assignedUserRoles,ACCOUNT_PRIVILEGES,accountPrivileges} from "../account-role-access.mjs";
+import {assignedUserRoles,ACCOUNT_PRIVILEGES,accountPrivileges} from "../shared/account-role-access.mjs";
 import { siteReportHtml } from "./site-report.mjs";
-import { isIdleVehicleRequest } from "../request-idle.mjs";
+import { isIdleVehicleRequest } from "../shared/request-idle.mjs";
 import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
 import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource } from "./smart-print.mjs";
 import {beginDownload,runDownloadNotice} from './download-notice.mjs';
-import {pendingPdfRows,REMOVED_REPORT_TITLES} from '../report-pending-export.mjs';
-import {transferReportTimingColumns} from '../transfer-report-timing.mjs';
+import {pendingPdfRows,REMOVED_REPORT_TITLES} from './lib/report-pending-export.mjs';
+import {transferReportTimingColumns} from '../shared/transfer-report-timing.mjs';
 import { listPrinters, printHelperAvailable, printHelperExpected, printHelperLastFailure, printPdfDirect, rememberedPrinter } from "./direct-print.mjs";
 import { showPrintPreview } from "./print-preview.mjs";
 import { printRequestTimeline } from "./request-timeline-print.mjs";
@@ -49,11 +53,11 @@ import "./smart-print.css";
 import "./date-input.css";
 import { describeDateRange, encodeDateRange, looksLikeDateColumn, matchesDateRange, parseDateRange } from "./date-range-filter.mjs";
 import { cellMatchesFilterValues, describeFilterValues, filterValueSelected, parseFilterValues, toggleFilterValue } from "./multi-value-filter.mjs";
-import { recordCountLine, withSerialColumn } from "../serial-column.mjs";
-import {canViewUserSessions,isSessionViewOnlyUser} from "../user-session-access.mjs";
-import {canViewBdAgeingReport} from "../bd-ageing-report.mjs";
+import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
+import {canViewUserSessions,isSessionViewOnlyUser} from "../shared/user-session-access.mjs";
+import {canViewBdAgeingReport} from "../shared/bd-ageing-report.mjs";
 import BdAgeingReport from "./bd-ageing-report.jsx";
-import { notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory } from "../notification-text.mjs";
+import { notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory } from "./lib/notification-text.mjs";
 import { createNotificationTracker } from "./notification-alerts.mjs";
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from "react";
 import TelegramSiteGroups from './telegram-site-groups.jsx';
@@ -69,9 +73,11 @@ import ReopenBreakdownForm from "./reopen-breakdown-form.jsx";
 import {capturePhotoForInput} from "./camera-upload.mjs";
 import {ComplaintMediaInputs,ComplaintMediaView} from "./complaint-media.jsx";
 import {ProtectedAttachment,ProtectedAudio} from "./protected-media.jsx";
-import {readComplaintMedia} from "../complaint-media.mjs";
+import {readComplaintMedia} from "../shared/complaint-media.mjs";
 import './camera-upload.css';
 import { filterRecordsByDate } from "./record-date-range.mjs";
+import { primaryRecordDateColumn } from "./record-date-range.mjs";
+import RecordDateRange from "./record-date-range.jsx";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "./duration-sort.mjs";
 import { closedTimeAfterStartedColumns, ensureJobReferenceVisibleKeys } from "./table-actions-model.mjs";
 import UserProfile from "./user-profile.jsx";
@@ -84,10 +90,10 @@ import ReturnedCorrectionGate from "./returned-correction-gate.jsx";
 import { PulseIcon, SearchScanIcon, BellRingIcon, DoorExitIcon } from "./motion-icons.jsx";
 import { playNotificationSound, loadNotificationSound, saveNotificationSound, NOTIFICATION_SOUNDS } from "./notification-chime.mjs";
 import LiveTemperatureChip from "./live-temperature-chip.jsx";
-import {REQUEST_CORRECTION_MANAGER_ROLES} from "../request-correction-policy.mjs";
+import {REQUEST_CORRECTION_MANAGER_ROLES} from "../shared/request-correction-policy.mjs";
 import EquipmentCombobox from "./equipment-combobox.jsx";
 import SearchableSelect from "./searchable-select.jsx";
-import {CDIR_MASTERS, CDIR_MASTER_FIELDS, isCdirMaster} from "../cdir-masters.mjs";
+import {CDIR_MASTERS, CDIR_MASTER_FIELDS, isCdirMaster} from "../shared/cdir-masters.mjs";
 import { preventTableAutoScroll } from "./table-scroll.mjs";
 import VehicleHistoryScroll from "./vehicle-history-scroll.jsx";
 import FleetSiteBars from "./fleet-site-bars.jsx";
@@ -95,6 +101,7 @@ import OemBreakdownChart from "./oem-breakdown-chart.jsx";
 import OemBreakdownDetails from "./oem-breakdown-details.jsx";
 import DashboardFilterBar from "./dashboard-filter-bar.jsx";
 import MisDashboard from "./mis-dashboard.jsx";
+import FleetReconciliation from "./fleet-reconciliation.jsx";
 import ErpSidebar from "./erp-sidebar.jsx";
 import PulseMasterSync from "./pulse-master-sync.jsx";
 import PendingInPulse from "./pulse-pending.jsx";
@@ -108,15 +115,15 @@ import BreakdownResponsibilityHistory, {responsibilityHistoryText} from "./break
 import { fleetBarHeightPercent } from "./fleet-bar-scale.mjs";
 import { dashboardCountScale } from "./dashboard-count-scale.mjs";
 import { availabilityRequestsForDate } from "./dashboard-availability.mjs";
-import { dashboardFleetSnapshot } from "../dashboard-fleet-snapshot.mjs";
+import { dashboardFleetSnapshot } from "../shared/dashboard-fleet-snapshot.mjs";
 import { fleetBreakdownCategory, fleetBreakdownRequests } from "./fleet-breakdown-drilldown.mjs";
 import DailyUpdatesList, { DailyUpdatesPanel } from "./daily-updates-list.jsx";
 import { dailyUpdatesExportText, latestDailyUpdateStamp } from "./daily-updates-order.mjs";
 import { prepareXlsxExportSheets } from "./xlsx-daily-updates.mjs";
 import { dashboardListTrigger, movementRequestRows, allLifecycleRequestRows, recordedTrendRows, forecastBasisRows } from "./dashboard-card-actions.mjs";
 import { equipmentCategoryLabel, equipmentGroupLabel } from "./dashboard-drilldown-model.mjs";
-import { equipmentGroupValue, normalizeEquipmentGroup } from "../equipment-group.mjs";
-import { equipmentDoorNumber, requestsWithDoorNumbers } from "../equipment-door.mjs";
+import { equipmentGroupValue, normalizeEquipmentGroup } from "../shared/equipment-group.mjs";
+import { equipmentDoorNumber, requestsWithDoorNumbers } from "../shared/equipment-door.mjs";
 import { visibleInProductionHistory } from "./production-history.mjs";
 import { visibleInMaintenanceHistory } from "./maintenance-history.mjs";
 import {
@@ -138,32 +145,32 @@ import UserSiteFields from "./user-site-fields.jsx";
 import { userMasterRole } from "./user-master-role.mjs";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { formatDisplayDate, formatDisplayDateRange, formatDisplayDateTime, formatDisplayTime } from "../date-time-format.mjs";
-import { calculateBreakdownDaysUntilClose, calculateBreakdownMinutes, durationLabelMinutes } from "../breakdown-duration.mjs";
-import { delayedReasonsForRepairType } from "../delayed-reason.mjs";
-import { requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagRequired, hasArrivalRedFlagReason } from "../request-acceptance.mjs";
-import { requestDeletable } from "../request-deletion.mjs";
-import { elapsedLabel, elapsedMilliseconds } from "../report-metrics.mjs";
-import { indiaDateTimeEpoch, indiaDateTimeInputValue, reportRowsWithinRange, validReportDateRange } from "../report-date-range.mjs";
-import { IN_OUT_REPORT_TITLE } from "../in-out-report.mjs";
-import { buildDepartmentReports, TICKET_ACCEPTANCE_REPORT_TITLE } from "../department-reports.mjs";
-import { stageTimingRow, slowestStageGap } from "../stage-timing-report.mjs";
-import { HIERARCHY_REPORTS, HIERARCHY_REPORT_GROUPS, HIERARCHY_REPORT_TITLES, HIERARCHY_REPORT_CODES, normalizeHierarchyReportAccess } from "../hierarchy-report-catalogue.mjs";
-import { reportTime12 } from "../report-time-format.mjs";
-import { ALL_SHIFTS_KEY, formatShiftDateTime, shiftFilterOptions, timestampMatchesShift } from "../shift-report-time.mjs";
-import { olderThanTenDays, recentBreakdownStatus, reportPdfHeading } from "../report-refinements.mjs";
-import { matchesSmartSearch } from "../smart-search.mjs";
-import { batchMasterRecords } from "../record-batches.mjs";
-import { defaultHierarchyReportScheduleSettings, HIERARCHY_REPORT_DESIGNATIONS, hierarchyScheduleLabel } from "../hierarchy-report-flow.mjs";
-import { equipmentMetrics, equipmentRoadStatus, fleetAssetCounts, fleetAssetRequestDetails, fleetChartCounts, createFleetAssetResolver, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses } from "../dashboard-equipment-metrics.mjs";
-import { activeOpenCases } from "../dashboard-open-cases.mjs";
-import { breakdownMovementForRange, breakdownOpenedDate, breakdownTypeShare, dailyBreakdownMovement, normalizedBreakdownType } from "../dashboard-breakdown-movement.mjs";
+import { formatDisplayDate, formatDisplayDateRange, formatDisplayDateTime, formatDisplayTime } from "../shared/date-time-format.mjs";
+import { calculateBreakdownDaysUntilClose, calculateBreakdownMinutes, durationLabelMinutes } from "./lib/breakdown-duration.mjs";
+import { delayedReasonsForRepairType } from "../shared/delayed-reason.mjs";
+import { requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagRequired, hasArrivalRedFlagReason } from "./lib/request-acceptance.mjs";
+import { requestDeletable } from "../shared/request-deletion.mjs";
+import { elapsedLabel, elapsedMilliseconds } from "../shared/report-metrics.mjs";
+import { indiaDateTimeEpoch, indiaDateTimeInputValue, reportRowsWithinRange, validReportDateRange } from "../shared/report-date-range.mjs";
+import { IN_OUT_REPORT_TITLE } from "../shared/in-out-report.mjs";
+import { buildDepartmentReports, TICKET_ACCEPTANCE_REPORT_TITLE } from "../shared/department-reports.mjs";
+import { stageTimingRow, slowestStageGap } from "../shared/stage-timing-report.mjs";
+import { HIERARCHY_REPORTS, HIERARCHY_REPORT_GROUPS, HIERARCHY_REPORT_TITLES, HIERARCHY_REPORT_CODES, normalizeHierarchyReportAccess } from "../shared/hierarchy-report-catalogue.mjs";
+import { reportTime12 } from "../shared/report-time-format.mjs";
+import { ALL_SHIFTS_KEY, formatShiftDateTime, shiftFilterOptions, timestampMatchesShift } from "../shared/shift-report-time.mjs";
+import { olderThanTenDays, recentBreakdownStatus, reportPdfHeading } from "../shared/report-refinements.mjs";
+import { matchesSmartSearch } from "../shared/smart-search.mjs";
+import { batchMasterRecords } from "./lib/record-batches.mjs";
+import { defaultHierarchyReportScheduleSettings, HIERARCHY_REPORT_DESIGNATIONS, hierarchyScheduleLabel } from "../shared/hierarchy-report-flow.mjs";
+import { equipmentMetrics, equipmentRoadStatus, fleetAssetCounts, fleetAssetRequestDetails, fleetChartCounts, createFleetAssetResolver, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses } from "../shared/dashboard-equipment-metrics.mjs";
+import { activeOpenCases } from "./lib/dashboard-open-cases.mjs";
+import { breakdownMovementForRange, breakdownOpenedDate, breakdownTypeShare, dailyBreakdownMovement, normalizedBreakdownType } from "./lib/dashboard-breakdown-movement.mjs";
 import { buildRecordedBreakdownTrend, recordedBreakdownRangeLength, localDateKey } from "./dashboard-breakdown-forecast.mjs";
-import { buildInfoPulseBreakdowns, buildInfoPulseFirstTripPending, isProductionFirstTripPending } from "../info-pulse-data.mjs";
-import { effectiveInfoPulseEtcTimestamp } from "../ai-feeder.mjs";
+import { buildInfoPulseBreakdowns, buildInfoPulseFirstTripPending, isProductionFirstTripPending } from "../shared/info-pulse-data.mjs";
+import { effectiveInfoPulseEtcTimestamp } from "../shared/ai-feeder.mjs";
 import EtcCountdown from "./etc-countdown.jsx";
 import { etcCountdown, etcDisplayValue, etcRemainingSortValue, etcSortValue } from "./etc-countdown.mjs";
-import { recordBelongsToSite, recordsForSite } from "../site-location.mjs";
+import { recordBelongsToSite, recordsForSite } from "../shared/site-location.mjs";
 import {
   findRequestEquipment,
   requestEquipmentDetails,
@@ -175,24 +182,24 @@ import {
   requestMeterReadings,
   requestMeterReadingLabel,
   requestWithEquipmentMasterDetails,
-} from "../request-equipment.mjs";
-import { breakdownMeterColumns, breakdownMeterFields, breakdownMeterValue, withBreakdownMeterColumns } from "../breakdown-meter-columns.mjs";
-import { submitMaintenanceRequest } from "../request-submit.mjs";
-import { activeRequestConflictMessage, findActiveRequestConflict } from "../request-conflict.mjs";
-import {ADMIN_MASTER_OPTIONS, ADMIN_TAB_OPTIONS, ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../admin-access.mjs";
-import {MANAGER_REGION_OPTIONS, REGION_DATA, displaySiteName, displaySiteSelection, managerRegionSelection, sitesForManagerRegions, userSiteSelection} from "../region-scope.mjs";
-import {MOBILE_USER_ROLES, GENERAL_USER_ROLE, GENERAL_USER_MENU_OPTIONS, generalUserMenuSelection, generalUserCanAccessMenu, MIS_VERIFICATION_MENU, normalizeRequestMenuLabel} from "../mobile-access.mjs";
-import {navigationLabel} from "../navigation-visibility.mjs";
-import {edgeSafeJsonInit} from "../request-body-transport.mjs";
+} from "../shared/request-equipment.mjs";
+import { breakdownMeterColumns, breakdownMeterFields, breakdownMeterValue, withBreakdownMeterColumns } from "../shared/breakdown-meter-columns.mjs";
+import { submitMaintenanceRequest } from "./lib/request-submit.mjs";
+import { activeRequestConflictMessage, findActiveRequestConflict } from "../shared/request-conflict.mjs";
+import {ADMIN_MASTER_OPTIONS, ADMIN_TAB_OPTIONS, ADMIN_DEFAULT_TAB_OPTIONS, ADMIN_SUBMENU_OPTIONS, accessAllows, managerRoleSelection, masterAccessAllows, navigationPermissionsForView} from "../shared/admin-access.mjs";
+import {MANAGER_REGION_OPTIONS, REGION_DATA, displaySiteName, displaySiteSelection, managerRegionSelection, sitesForManagerRegions, userSiteSelection} from "../shared/region-scope.mjs";
+import {MOBILE_USER_ROLES, GENERAL_USER_ROLE, GENERAL_USER_MENU_OPTIONS, generalUserMenuSelection, generalUserCanAccessMenu, MIS_VERIFICATION_MENU, normalizeRequestMenuLabel} from "../shared/mobile-access.mjs";
+import {navigationLabel} from "../shared/navigation-visibility.mjs";
+import {edgeSafeJsonInit} from "../shared/request-body-transport.mjs";
 import {fetchPdfExport} from "./pdf-export-request.mjs";
 import {userPermissionOptions,retainedHiddenPermissions} from "./user-permission-options.mjs";
-import {maintenanceMetersRequired} from "../maintenance-meter-required.mjs";
+import {maintenanceMetersRequired} from "../shared/maintenance-meter-required.mjs";
 import {profileHeaderDesignation, profileHeaderName} from "./profile-designation.mjs";
-import {auditDeviceDetails} from "../device-details.mjs";
+import {auditDeviceDetails} from "../shared/device-details.mjs";
 import {readApiJson} from "./api-response.mjs";
 import {fetchWithTransientRetry,isNetworkFailure,isTransientStatus} from "./api-transient-retry.mjs";
 import {requestWriteConnectionMessage,requestWriteOutcomeConfirmed} from "./request-write-recovery.mjs";
-import {requestsVisibleToMisWorkspace, requestsVisibleToDashboard} from "../mis-request-visibility.mjs";
+import {requestsVisibleToMisWorkspace, requestsVisibleToDashboard} from "../shared/mis-request-visibility.mjs";
 import {adaptiveRefreshInterval, mobileTablePageSize} from "./mobile-performance.mjs";
 import {startVisiblePoll} from "./visible-poll.mjs";
 import VerificationTimeField from "./verification-time-field.jsx";
@@ -442,7 +449,8 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
   const nativeFetch = window.fetch.bind(window);
   window.__sessionExpiryFetch = true;
   window.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input?.url || "";
+    const rawUrl = typeof input === "string" ? input : input?.url || input?.href || "";
+    const url=rawUrl.startsWith(window.location.origin+"/")?rawUrl.slice(window.location.origin.length):rawUrl;
     let requestInit = init;
     if (url.startsWith("/api/") && clientDeviceId) {
       const headers = new Headers(init?.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined));
@@ -452,7 +460,11 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
     // The edge firewall rejects some valid JSON bodies (large media and known
     // false-positive permission text), so the transport helper uses the
     // server's JSON-compatible text/plain path for those requests.
-    if (url.startsWith("/api/")) requestInit = edgeSafeJsonInit(requestInit);
+    if (url.startsWith("/api/")) {
+      const headers=new Headers(requestInit?.headers||(typeof Request!=="undefined"&&input instanceof Request?input.headers:undefined));
+      requestInit=browserSessionRequestInit({...requestInit,headers});
+      requestInit = edgeSafeJsonInit(requestInit);
+    }
     // While a deployment restarts the app the gateway answers 502/503/504 for
     // a few seconds. Read-only API calls wait and retry instead of showing an
     // error; writes are never replayed because the server may have applied them.
@@ -463,6 +475,7 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
       clearStoredSession();
       window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
     }
+    if(response.status===403&&url.startsWith("/api/")){const result=await response.clone().json().catch(()=>null);if(result?.code==="MFA_REQUIRED")window.dispatchEvent(new CustomEvent("mis-security-required"));}
     return response;
   };
 }
@@ -712,13 +725,8 @@ function Login({ onLogin, theme, toggleTheme }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
       body: JSON.stringify({ preferredLanguage, secondaryLanguage }),
     }).catch(() => {});
-    if (rememberMe) {
-      localStorage.setItem("nerveCenterSession", session);
-      sessionStorage.removeItem("nerveCenterSession");
-    } else {
-      sessionStorage.setItem("nerveCenterSession", session);
-      localStorage.removeItem("nerveCenterSession");
-    }
+    sessionStorage.setItem("nerveCenterSession", session);
+    localStorage.removeItem("nerveCenterSession");
     onLogin(JSON.parse(session));
   };
   const signIn = async () => {
@@ -3462,7 +3470,7 @@ function FilterableHeader({
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
       {open && createPortal(
-        <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+        <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
             <strong>{label}</strong>
             <button type="button" className="column-filter-close" onClick={() => onToggle(sortKey)} aria-label={`Close ${label} filter`} title="Close">
@@ -3568,7 +3576,7 @@ function TableParameterFilter({ columns = [], rows = [], filters = {}, onFilterC
     };
   }, [open, dialogMode]);
   const filterDialog = (
-    <div className={`table-parameter-filter-popover ${dialogMode ? "dialog-mode" : ""}`} style={dialogMode ? undefined : popoverPosition} role="dialog" aria-modal={dialogMode || undefined} aria-label="Filter report parameters" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+    <div className={`table-parameter-filter-popover ${dialogMode ? "dialog-mode" : ""}`} style={dialogMode ? undefined : popoverPosition} role="dialog" aria-modal={dialogMode || undefined} aria-label="Filter report parameters" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => setOpen(false)}  aria-label="Close window">× Close</button></div>
       <div className="table-parameter-filter-head"><div><strong>Filter report</strong><span>Choose values to compare report records.</span></div><button type="button" onClick={() => setOpen(false)} aria-label="Close report filters" title="Close"><X /></button></div>
       <div className="table-parameter-filter-fields">
         {columns.map((column) => (
@@ -3718,7 +3726,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     usedNames.add(unique.toLowerCase());
     return unique;
   };
-  const worksheets = sheets.map(({ name, title: sheetTitle, columns = [], rows: exportRows = [], highlightedRows = new Set() }, sheetIndex) => {
+  const worksheets = sheets.map(({ name, title: sheetTitle, columns = [], rows: exportRows = [], headerRows, highlightedRows = new Set() }, sheetIndex) => {
     const serial = withSerialColumn(columns, exportRows);
     const usedLabels = new Set();
     const labels = serial.columns.map((column, index) => {
@@ -3728,24 +3736,24 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
       usedLabels.add(label.toLowerCase());
       return label;
     });
-    const summaryRows = [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];
+    const summaryRows = headerRows?.length ? headerRows.map(row=>Array.isArray(row)?row:[row]) : [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];
     const firstDataRow = summaryRows.length + 1;
     const worksheetRows = [...summaryRows, labels, ...serial.rows];
     const sheetData = worksheetRows.map((row, rowIndex) => {
-      const style = rowIndex === 0 ? 3 : rowIndex === 1 ? 4 : rowIndex === 2 ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
-      const height = rowIndex === 0 ? ' ht="24" customHeight="1"' : rowIndex === 2 ? ' ht="30" customHeight="1"' : "";
+      const style = rowIndex < summaryRows.length ? (rowIndex === 0 ? 3 : 4) : rowIndex === summaryRows.length ? 5 : highlightedRows.has(rowIndex - firstDataRow) ? 2 : (rowIndex - firstDataRow) % 2 === 0 ? 6 : 1;
+      const height = rowIndex === 0 ? ' ht="24" customHeight="1"' : rowIndex === summaryRows.length ? ' ht="30" customHeight="1"' : "";
       return `<row r="${rowIndex + 1}"${height}>${row.map((cell, columnIndex) => `<c r="${excelCellReference(columnIndex, rowIndex)}" s="${rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='error'?7:rowIndex >= firstDataRow && serial.columns[columnIndex]?.tone==='corrected'?8:style}" t="inlineStr"><is><t xml:space="preserve">${escapeXlsxText(cell)}</t></is></c>`).join("")}</row>`;
     }).join("");
     const widths = labels.map((label, index) => {
       const maxLength = Math.max(String(label || "").length, ...serial.rows.map((row) => Math.max(...String(row[index] || "").split(/\r?\n/).map((line) => line.length))));
       return `<col min="${index + 1}" max="${index + 1}" width="${Math.min(48, Math.max(12, maxLength + 2))}" customWidth="1"/>`;
     }).join("");
-    const lastCell = excelCellReference(Math.max(0, labels.length - 1), Math.max(2, worksheetRows.length - 1));
-    const filterRange = `A3:${excelCellReference(Math.max(0, labels.length - 1), Math.max(2, worksheetRows.length - 1))}`;
+    const lastCell = excelCellReference(Math.max(0, labels.length - 1), Math.max(summaryRows.length, worksheetRows.length - 1));
+    const filterRange = `A${firstDataRow}:${excelCellReference(Math.max(0, labels.length - 1), Math.max(summaryRows.length, worksheetRows.length - 1))}`;
     const mergedTo = excelCellReference(Math.max(0, labels.length - 1), 0).replace(/1$/, "");
     // SpreadsheetML requires autoFilter before mergeCells. Excel repairs (and may
     // discard) the complete worksheet when these otherwise valid elements are reversed.
-    return { name: sheetName(name, sheetIndex), part: `xl/worksheets/sheet${sheetIndex + 1}.xml`, tableRange: filterRange, printLastCell: lastCell, tableLabels: labels, content: `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${lastCell}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widths}</cols><sheetData>${sheetData}</sheetData><autoFilter ref="${filterRange}"/>${labels.length > 1 ? `<mergeCells count="2"><mergeCell ref="A1:${mergedTo}1"/><mergeCell ref="A2:${mergedTo}2"/></mergeCells>` : ""}<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>` };
+    return { name: sheetName(name, sheetIndex), part: `xl/worksheets/sheet${sheetIndex + 1}.xml`, tableRange: filterRange, printLastCell: lastCell, printHeaderRows: firstDataRow, tableLabels: labels, content: `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${lastCell}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="${firstDataRow}" topLeftCell="A${firstDataRow+1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widths}</cols><sheetData>${sheetData}</sheetData><autoFilter ref="${filterRange}"/>${labels.length > 1 ? `<mergeCells count="${summaryRows.length}">${summaryRows.map((_,i)=>`<mergeCell ref="A${i+1}:${mergedTo}${i+1}"/>`).join('')}</mergeCells>` : ""}<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>` };
   });
   const workbookTitle = escapeXlsxText(title || "Caliber Pulse-II report");
   return zipStoredFiles([
@@ -3755,7 +3763,7 @@ function buildXlsxSheetsWorkbook(title, sheets = []) {
     { name: "docProps/app.xml", content: `<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse-II</Application></Properties>` },
     { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${worksheets.map((sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}<Relationship Id="rId${worksheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
     { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="6"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF10284C"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF000000"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF65758B"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFB91C1C"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8CACA"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyBorder="1" xfId="0" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyBorder="1" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><tableStyles count="0" defaultTableStyle="TableStyleLight15" defaultPivotStyle="PivotStyleLight16"/></styleSheet>` },
-    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${worksheets.map((sheet, index) => `<sheet name="${escapeXlsxText(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets><definedNames>${worksheets.map((sheet,index)=>{const name="'"+sheet.name.replaceAll("'","''")+"'";const cell=sheet.printLastCell.replace(/^([A-Z]+)([0-9]+)$/,(match,col,row)=>String.fromCharCode(36)+col+String.fromCharCode(36)+row);return `<definedName name="_xlnm.Print_Area" localSheetId="${index}">${escapeXlsxText(name+'!$A$1:'+cell)}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeXlsxText(name+'!$1:$3')}</definedName>`;}).join('')}</definedNames></workbook>` },
+    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${worksheets.map((sheet, index) => `<sheet name="${escapeXlsxText(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets><definedNames>${worksheets.map((sheet,index)=>{const name="'"+sheet.name.replaceAll("'","''")+"'";const cell=sheet.printLastCell.replace(/^([A-Z]+)([0-9]+)$/,(match,col,row)=>String.fromCharCode(36)+col+String.fromCharCode(36)+row);return `<definedName name="_xlnm.Print_Area" localSheetId="${index}">${escapeXlsxText(name+'!$A$1:'+cell)}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeXlsxText(name+'!$1:$'+sheet.printHeaderRows)}</definedName>`;}).join('')}</definedNames></workbook>` },
     ...worksheets.flatMap((sheet, index) => [
       {name: `xl/worksheets/_rels/sheet${index + 1}.xml.rels`, content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index + 1}.xml"/></Relationships>`},
       {name: `xl/tables/table${index + 1}.xml`, content: `<?xml version="1.0" encoding="UTF-8"?><table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="${index + 1}" name="ReportTable${index + 1}" displayName="ReportTable${index + 1}" ref="${sheet.tableRange}" totalsRowShown="0"><autoFilter ref="${sheet.tableRange}"/><tableColumns count="${sheet.tableLabels.length}">${sheet.tableLabels.map((label, i) => `<tableColumn id="${i + 1}" name="${escapeXlsxText(label)}"/>`).join("")}</tableColumns><tableStyleInfo name="TableStyleLight15" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`},
@@ -4077,7 +4085,7 @@ function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStor
   return createPortal(
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-columns-dialog" role="dialog" aria-modal="true" aria-labelledby="report-columns-title" onPointerDown={(event) => event.stopPropagation()}>
-        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-columns-title">Select Columns</h2><button type="button" onClick={onClose} aria-label="Close column selector" title="Close"><X /></button></header>
+        <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-columns-title">Select Columns</h2><button type="button" onClick={onClose} aria-label="Close column selector" title="Close" className="mis-popup-close">× Close</button></header>
         {layoutStore && <TableLayoutControls store={layoutStore} draftKeys={draftKeys} defaultKeys={columns.map(column => column.key)} onSelect={keys => { setDraftKeys(keys); setSelectedHidden(""); setSelectedVisible(""); }} />}
         <div className="report-columns-body">
           <div className="report-column-list-panel">
@@ -4114,11 +4122,13 @@ function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStor
 function ReportSortDialog({ columns = [], sort = {}, onApply, onClose }) {
   const [columnKey, setColumnKey] = useState(sort.key || columns[0]?.key || "");
   const [direction, setDirection] = useState(sort.direction || "asc");
+  const selectedColumn = columns.find(column => column.key === columnKey);
+  const duration = isDurationColumn(selectedColumn?.label, columnKey);
   return createPortal(
     <div className="report-action-dialog-backdrop" onPointerDown={onClose}>
       <section className="report-sort-dialog" role="dialog" aria-modal="true" aria-labelledby="report-sort-title" onPointerDown={(event) => event.stopPropagation()}>
-        <header><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close"><X /></button></header>
-        <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></SmartSelect></label></div>
+        <header className="mis-popup-close-header"><button type="button" className="modal-back-button" onClick={onClose} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h2 id="report-sort-title">Sort Report</h2><button type="button" onClick={onClose} aria-label="Close sort dialog" title="Close" className="mis-popup-close">× Close</button></header>
+        <div><label><span>Column</span><SmartSelect value={columnKey} onChange={(event) => setColumnKey(event.target.value)}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</SmartSelect></label><label><span>Direction</span><SmartSelect value={direction} onChange={(event) => setDirection(event.target.value)}><option value="asc">{duration ? "Lowest to highest time taken" : "Ascending"}</option><option value="desc">{duration ? "Highest to lowest time taken" : "Descending"}</option></SmartSelect></label></div>
         <footer><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary" disabled={!columnKey} onClick={() => onApply(columnKey, direction)}>Apply</button></footer>
       </section>
     </div>,
@@ -4230,7 +4240,7 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false }) {
+function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4244,6 +4254,8 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [columnDialogOpen, setColumnDialogOpen] = useState(false);
   const [sortDialogOpen, setSortDialogOpen] = useState(false);
+  const dateColumn = primaryRecordDateColumn(columns);
+  const dateControl = recordDateFilter === false ? null : recordDateFilter || (dateColumn ? {label:dateColumn.label,value:columnFilters[dateColumn.key] || "",onChange:value=>setColumnFilters(current=>({...current,[dateColumn.key]:value}))} : null);
   const [pageSize, setPageSize] = useState(() => mobileTablePageSize() || 50);
   const [page, setPage] = useState(0);
   const deferredQuery = useDeferredValue(query);
@@ -4278,7 +4290,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   const exportViewRef = useRef(null);
   useEffect(() => {
     if (!onExportViewChange) return;
-    const next = {sourceRows: rows, rows: sortedRows, columns: displayedColumns};
+    const next = {sourceRows: rows, rows: sortedRows, columns: displayedColumns, allColumns: columns};
     if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
   });
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
@@ -4298,21 +4310,24 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   // Saved reports for this Reports-page table: columns, filters, sort and rows per page.
   const reportTitle = title || (typeof document !== "undefined" ? document.title : "") || "Report";
   const layoutStore = useTableLayouts(layoutKey || reportTitle, columns);
-  const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize });
+  const currentSavedView = () => ({ visible: displayedColumns.map((column) => column.key), filters: columnFilters, sort, pageSize, dateRange: dateControl?.value || "" });
   const applySavedView = (view) => {
     onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(view.visible.length ? view.visible : allColumnKeys, columns));
-    setColumnFilters(view.filters);
+    setColumnFilters({...view.filters, ...(recordDateFilter !== false && !recordDateFilter && dateColumn && view.dateRange ? {[dateColumn.key]: view.dateRange} : {})});
+    if (recordDateFilter) recordDateFilter.onChange(view.dateRange || "");
     changeSort(view.sort.key, view.sort.direction);
     if (view.pageSize) setPageSize(view.pageSize);
     setPage(0);
   };
-  const printSavedView = () => openSmartPrint({ title: reportTitle, columns: displayedColumns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
+  const printSavedView = () => openSmartPrint({ title: reportTitle, columns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
+        {dateControl && !recordDateFilter && <RecordDateRange {...dateControl} />}
+        <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {rows.length.toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
-        <SavedReportsPanel title={reportTitle} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint onPrint={printSavedView} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <SavedReportsPanel title={reportTitle} tableKey={layoutKey} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint={dataReady} onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
   );
@@ -4324,7 +4339,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
-            durationSortOnly={false}
+            durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
             label={column.label}
             sortKey={column.key}
@@ -7105,7 +7120,7 @@ function SessionMessageInbox({session}) {
     finally{setClosingId("");}
   };
   return createPortal(<div className="session-message-inbox-overlay">
-    <section className={`session-message-inbox${isAnnouncement?' announcement':''}`} role="alertdialog" aria-modal="true" aria-labelledby="session-message-title" aria-describedby="session-message-body">
+    <section className={`session-message-inbox${isAnnouncement?' announcement':''}`} role="alertdialog" aria-modal="true" aria-labelledby="session-message-title" aria-describedby="session-message-body"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={closingId===String(current.id)} aria-label="Close window">× Close</button></div>
       <header><span><MessageCircle /></span><div><small>{isAnnouncement?'Announcement to all users':'Direct message'}</small><h2 id="session-message-title">{isAnnouncement?'Announcement':'Message'} from {current.senderName||current.senderLogin||'Administrator'}</h2></div>{messages.length>1&&<b>{messages.length} messages</b>}</header>
       <div className="session-message-inbox-body" id="session-message-body">{current.message&&<p>{current.message}</p>}{isAnnouncement&&current.hasImage&&<AnnouncementImage id={current.id} token={session.token} />}{current.audioData&&<audio controls preload="metadata" src={current.audioData}>Voice message from the administrator</audio>}<small>Sent {formatTwelveHourDateTime(current.createdAt)}</small></div>
       {error&&<div className="session-message-inbox-error" role="alert"><AlertTriangle />{error}</div>}
@@ -7358,7 +7373,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7378,7 +7393,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         <div className="generated-report-heading-actions">
           {headingControl}
           <div className="report-heading-table-actions" ref={setTableToolbarTarget} />
-          <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} className="secondary" label={exportLabel} />
+          {dataReady && <ExportMenu title={title} columns={exportView?.sourceRows === rows ? exportView.columns : visibleColumns} rows={exportView?.sourceRows === rows ? exportView.rows : rows} smartPrintColumns={exportView?.sourceRows === rows ? exportView.allColumns : columns} smartPrintRows={exportView?.sourceRows === rows ? exportView.rows : rows} className="secondary" label={exportLabel} />}
         </div>
       </div>
       {controls}
@@ -7386,7 +7401,8 @@ function ReportSection({ title, description, category = "general", icon: ReportI
       {children || (
         <TableViewport className="reports-detail-table emptytable">
           <ReportTable
-            layoutKey={title}
+            layoutKey={reportKey || title}
+            recordDateFilter={recordDateFilter} dataReady={dataReady}
             title={title}
             onExportViewChange={setExportView} smartPrintAction={smartPrintAction}
             onResetSearch={() => { setSearchQuery(""); onResetSearch?.(); }}
@@ -7918,9 +7934,9 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
       {directorTimingOpen && createPortal(
         <div className="overlay" onPointerDown={(event) => event.target === event.currentTarget && setDirectorTimingOpen(false)}>
           <div className="modal director-timing-modal" role="dialog" aria-modal="true" aria-label={reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}>
-            <header>
+            <header className="mis-popup-close-header">
               <button type="button" className="modal-back-button" onClick={() => setDirectorTimingOpen(false)} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-schedule-title"><span><CalendarDays /></span><div><h3>{reportAccess.canManageAll ? "Role default report schedules" : "My report schedule"}</h3><p>{reportAccess.canManageAll ? "Set shared report defaults for each role; saved personal schedules take priority" : "Choose your report days, times and reports on WhatsApp"}</p></div></div>
-              <button type="button" onClick={() => setDirectorTimingOpen(false)} aria-label="Close report schedules"><X aria-hidden="true" /></button>
+              <button type="button" onClick={() => setDirectorTimingOpen(false)} aria-label="Close report schedules" className="mis-popup-close">× Close</button>
             </header>
             {reportScheduleLoading ? <div className="report-schedule-loading">Loading saved schedules…</div> : reportScheduleError ? <div className="wrs-feedback wrs-error" role="alert">{reportScheduleError}<button type="button" onClick={() => openReportSchedules(reportScheduleScope)}>Reload schedules</button></div> : <>
               <details className="wrs-schedule-context"><summary>Timing defaults, report windows and site access</summary>
@@ -7976,9 +7992,9 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
       {reportZipOpen && createPortal(
         <div className="overlay report-zip-overlay" onPointerDown={(event) => event.target === event.currentTarget && !reportZipDownloading && setReportZipOpen(false)}>
           <div className="modal report-zip-modal" role="dialog" aria-modal="true" aria-label="Download reports as ZIP">
-            <header>
+            <header className="mis-popup-close-header">
               <button type="button" className="modal-back-button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><div className="report-zip-title"><span><Download /></span><div><h3>Download reports as ZIP</h3><p>Choose reports and receive organised PDF and Excel files in one archive</p></div></div>
-              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Close ZIP report selection"><X aria-hidden="true" /></button>
+              <button type="button" onClick={() => setReportZipOpen(false)} disabled={reportZipDownloading} aria-label="Close ZIP report selection" className="mis-popup-close">× Close</button>
             </header>
             <div className="report-zip-range">
               <div><CalendarDays /><span><b>Report period</b><small>Only records within this IST date and time range are included.</small></span></div>
@@ -8067,6 +8083,14 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
         <ReportSection
           key={`${selectedReport.category}-${selectedReport.title}`}
           title={selectedReport.title}
+          recordDateFilter={selectedReport.dateValue || selectedReport.title === "Availability Report" ? {
+            value: selectedReport.title === "Availability Report" ? encodeDateRange(availabilityFrom, availabilityTo) : encodeDateRange(reportFrom, reportTo),
+            onChange: value => {
+              const range = parseDateRange(value);
+              if (selectedReport.title === "Availability Report") { setAvailabilityFrom(range?.from || ""); setAvailabilityTo(range?.to || ""); }
+              else { setReportFrom(range?.from || ""); setReportTo(range?.to || ""); }
+            },
+          } : null}
           description={selectedReport.description}
           category={selectedReport.category}
           icon={activeCategory.icon}
@@ -9756,7 +9780,7 @@ function Modal({ title, close, children, className = "", overlayClassName = "", 
     >
       <div ref={dialogRef} tabIndex={-1} className={`modal ${className}`.trim()} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : "Dialog"}>
         {topBar}
-        <header>
+        <header className="mis-popup-close-header">
           <button type="button" className="modal-back-button" onClick={close} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h3>{title}</h3>
           {className.split(" ").includes("request-timeline-modal") && <button type="button" className="request-timeline-print" onClick={() => {
             const content = dialogRef.current?.querySelector(".request-timeline-content");
@@ -9764,9 +9788,7 @@ function Modal({ title, close, children, className = "", overlayClassName = "", 
             printRequestTimeline(content, typeof title === "string" ? title : "Time breakdown", `${requestTimelinePrintCss}\n${dailyUpdatesPrintCss}`);
           }}><Printer aria-hidden="true" /><span>Smart Print</span></button>}
           {headerActions}
-          <button type="button" onClick={close} aria-label="Close dialog">
-            <X aria-hidden="true" />
-          </button>
+          <button type="button" onClick={close} aria-label="Close dialog" className="mis-popup-close">× Close</button>
         </header>
         {children}
       </div>
@@ -10751,11 +10773,11 @@ function AiFeederPanel({ breakdowns = [], firstTripPending = [], session = null,
   }, []);
   return createPortal(<div className="ai-feeder-overlay pulse-overlay">
     <div className="ai-feeder-panel pulse-panel" role="dialog" aria-modal="true" aria-labelledby="ai-feeder-title" tabIndex={-1} ref={panelRef}>
-      <header>
+      <header className="mis-popup-close-header">
         <div className="pulse-title"><div className="ai-feeder-heading-line"><span className="ai-feeder-kicker"><PulseIcon /> INFO PULSE</span><span className="pulse-scope"><MapPin aria-hidden="true" /> Scope: {scope?.label || "Assigned location"}</span></div><div className="pulse-birthday-heading"><h2 id="ai-feeder-title">Open breakdowns</h2><InfoPulseBirthday token={session?.token} now={now} /></div></div>
         <div className="ai-feeder-actions">
           {closeAvailableAt > 0 && <span className="ai-feeder-countdown" role="timer" aria-live="off" aria-label={remainingSeconds > 0 ? "Time until Info Pulse can be closed" : "Info Pulse can now be closed"}><small>{remainingSeconds > 0 ? "Close available in" : "You can close"}</small><b>{String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:{String(remainingSeconds % 60).padStart(2, "0")}</b></span>}
-          {remainingSeconds === 0 && <button type="button" onClick={() => closeRef.current()} aria-label="Close Info Pulse"><X /></button>}
+          {remainingSeconds === 0 && <button type="button" onClick={() => closeRef.current()} aria-label="Close Info Pulse" className="mis-popup-close">× Close</button>}
         </div>
       </header>
       <InfoPulseContent breakdowns={breakdowns} firstTripPending={firstTripPending} session={session} scope={scope} now={now} updatedAt={updatedAt} ready={ready} error={error} refreshing={refreshing} onRefresh={onRefresh} ExportMenu={ExportMenu} renderRequestReference={(reference) => <RequestTimelineButton reference={reference} token={session?.token} Dialog={InfoPulseTimelineModal} />} />
@@ -11204,7 +11226,7 @@ function NotificationBell({ session, onOpenEntry }) {
     entryControllerRef.current?.abort();
   }, []);
   const notificationPanel = <div ref={panelRef} className={`notification-popover${notificationOverlayMode ? " notification-popover-mobile" : ""}`} role="dialog" aria-modal={notificationOverlayMode ? "true" : undefined} aria-label="Notifications">
-    <header><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications"><X /></button></div></header>
+    <header className="mis-popup-close-header"><b>Notifications</b><div><span>{visibleItems.length}</span><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications" className="mis-popup-close">× Close</button></div></header>
     <div className="notification-filters">
       <label className="notification-site-filter">Filter by site<SmartSelect value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">All sites</option>{siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>
       <label className="notification-site-filter notification-category-filter">Filter by category<SmartSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories ({siteItems.length})</option>{categoryOptions.map(category => <option key={category.key} value={category.key}>{category.label} ({category.count})</option>)}</SmartSelect></label>
@@ -11541,6 +11563,7 @@ function App() {
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
+  const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
@@ -11638,6 +11661,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
+    if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
     if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
@@ -11646,7 +11670,7 @@ function App() {
     if(['Trip Card Bulk Scan','Job Card Bulk Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
     if(name==='Pulse Master Sync'||['Work Order master','Financial Year master','Company master'].includes(name))return isAdministrator;
-    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options','Saved VLB','Saved ELB','Create VLB Batch'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
+    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options','Saved VLB','Create VLB Batch'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
     if(session?.assignedRole==='HR User')return ['Dashboard','Reports','Tickets','CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(session?.assignedRole==='HR Manager')return ['CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(name==="User Sessions")return canViewUserSessions(session);
@@ -11966,14 +11990,15 @@ function App() {
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
     requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
-  ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} onSaved={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Saved VLB':'Saved ELB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+  ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
-  ) : ['VLB Reports','ELB Reports'].includes(renderedActive) ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='VLB Reports'?'vehicle':'equipment'} session={session}/>
-  ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>) : renderedActive==='Saved ELB' ? (<SavedLogBooks ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Saved VLB'?'vehicle':'equipment'} session={session} canScan={canOpenAdminPage(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Saved VLB'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onExit={()=>selectMenu(renderedActive==='Saved VLB'?'Vehicle Log Book Options':'Equipment Log Book Options')}/>
+  ) : renderedActive==='VLB Reports' ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind="vehicle" session={session}/>
+  ) : renderedActive==='ELB Reports' ? (<ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
+  ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
     <VlbEntryWorkspace key={renderedActive} mode="manual" kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')}><LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></VlbEntryWorkspace></>
   ) : renderedActive === "Stock Statement" ? (
@@ -12058,6 +12083,7 @@ function App() {
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
     session, theme,
   ]);
+  if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
   if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">
@@ -12099,7 +12125,7 @@ function App() {
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
-          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Saved ELB']}].filter(item=>canOpenAdminPage(item.page))},
+          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},

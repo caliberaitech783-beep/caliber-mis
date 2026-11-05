@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../scan-site-match.mjs';
-import {extractCard} from '../scan-extraction.mjs';
-import {cardPrompt,MODEL} from '../gemini-card-reader.mjs';
+import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../shared/scan-site-match.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {cardPrompt,MODEL} from '../server/services/gemini-card-reader.mjs';
 const east='Dudhichua East OC',west='Dudhichua OC',sites=[east,west,'Jayant OC'];
 test('DCH direction aliases return the actual master label across spacing, case and punctuation',()=>{
  for(const reading of ['DCH (East)','dch EAST','D.C.H. (EAST)','D C H - East','Site: DCH(East)','DCH East O.C.'])assert.equal(matchScannedSite([reading],sites),east,reading);
@@ -49,6 +49,7 @@ test('new Trip Cards display OB while preserving literal OC evidence and master 
  assert.equal(extractCard(text(east),'equipment',masters).raw.tripLocationRuleVersion,undefined);
  assert.equal(JSON.stringify(masters),original);
  assert.equal(tripCardLocation('Rock OC / OC (East)'),'Rock OB / OB (East)');
+ assert.equal(tripCardLocation('SASTI 001'),'Sasti OB');
  assert.equal(tripCardLocation('ROCK CLOCK OC123'),'ROCK CLOCK OC123');
  assert.deepEqual(tripCardLocationChoices(['Majri OC','Majri OB'],'Majri OB',true),['Majri OB']);
  assert.deepEqual(tripCardLocationChoices(['Majri OC'],'Majri OC',false),['Majri OC']);

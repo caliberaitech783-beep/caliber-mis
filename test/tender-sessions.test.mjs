@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTenderSession,currentTenderSession,touchTenderSession,endTenderSession} from '../tender-sessions.mjs';
-import {createSessionStore} from '../auth-session.mjs';
+import {createTenderSession,currentTenderSession,touchTenderSession,endTenderSession} from '../server/services/tender-sessions.mjs';
+import {createSessionStore} from '../server/services/auth-session.mjs';
 test('Tender central sessions bind the account and password version and keep BDMS tokens private',async()=>{
  const calls=[];let alive=true;const pool={query:async(q,v)=>{calls.push({q,v});if(q.startsWith('SELECT session_public_id'))return {rows:alive?[{session_public_id:v[0]}]:[]};if(q.startsWith('DELETE'))alive=false;return {rows:[]};}};
  const profile={id:'42',name:'Test',login:'TEST',credentialVersion:'version'};

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import {registerWhatsAppReportSettingsApi,reportTemplateState} from '../whatsapp-report-settings-api.mjs';
-import {defaultWhatsAppReportSettings} from '../whatsapp-report-settings.mjs';
-import {candidateReportTemplate} from '../whatsapp-template-runtime.mjs';
-import {SINGLE_REPORT_TEMPLATE_PURPOSES} from '../whatsapp-template-catalog.mjs';
+import {registerWhatsAppReportSettingsApi,reportTemplateState} from '../server/routes/whatsapp-report-settings-api.mjs';
+import {defaultWhatsAppReportSettings} from '../shared/whatsapp-report-settings.mjs';
+import {candidateReportTemplate} from '../server/services/whatsapp-template-runtime.mjs';
+import {SINGLE_REPORT_TEMPLATE_PURPOSES} from '../shared/whatsapp-template-catalog.mjs';
 
 async function harness(t){
   const app=express();app.use(express.json());

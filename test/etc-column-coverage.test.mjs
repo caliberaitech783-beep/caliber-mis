@@ -4,9 +4,9 @@ import test from "node:test";
 
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const browser = readFileSync(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8");
-const fleet = readFileSync(new URL("../dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
+const fleet = readFileSync(new URL("../shared/dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
 const oem = readFileSync(new URL("../src/oem-breakdown-model.mjs", import.meta.url), "utf8");
-const director = readFileSync(new URL("../director-report-bundle.mjs", import.meta.url), "utf8");
+const director = readFileSync(new URL("../shared/director-report-bundle.mjs", import.meta.url), "utf8");
 
 test("shared production, maintenance and MIS request tables always pair breakdown time with ETC", () => {
   const breakdown = main.slice(main.indexOf("function BreakdownTable("), main.indexOf("const masterFields ="));

@@ -4,10 +4,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createCanvas} from '@napi-rs/canvas';
-import {prepareGeminiScanImage,normalizeScanImage} from '../local-card-ocr.mjs';
-import {cardDetailViews,summaryDetailViews,allCardDetailViews} from '../gemini-card-images.mjs';
-import {createGeminiCardReader} from '../gemini-card-reader.mjs';
-import {aFields} from '../gemini-hybrid.mjs';
+import {prepareGeminiScanImage,normalizeScanImage} from '../server/services/local-card-ocr.mjs';
+import {cardDetailViews,summaryDetailViews,allCardDetailViews} from '../server/services/gemini-card-images.mjs';
+import {createGeminiCardReader} from '../server/services/gemini-card-reader.mjs';
+import {aFields} from '../server/services/gemini-hybrid.mjs';
 
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=()=>({documentType:'ELB',fields:{...Object.fromEntries(aFields('equipment').map(key=>[key,field(null)])),site:field('Sasti OC'),machineSummary:[]},trips:{p:false,r:[]}});

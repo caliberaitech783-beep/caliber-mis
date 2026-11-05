@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {dashboardMetric} from '../iboss-dashboard.mjs';
-import {AGEING_COLUMNS,TRADE_AGE_SUMMARIES,summaryAgeFilter} from '../iboss-trade-age-summary.mjs';
+import {dashboardMetric} from '../server/rules/iboss-dashboard.mjs';
+import {AGEING_COLUMNS,TRADE_AGE_SUMMARIES,summaryAgeFilter} from '../shared/iboss-trade-age-summary.mjs';
 const range={from:'2026-04-01',to:'2026-09-30',company:'1'};
 test('summary buckets cover each boundary exactly once with readable headings',()=>{
  assert.deepEqual(AGEING_COLUMNS.slice(0,3).map(x=>x.label),['0 - 30','31 - 60','61 - 90']);

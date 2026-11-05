@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chooseScanEntry,rememberScanEntry,recallScanEntry,describeScanEntry,entryCancelled,scanEntryStorageKey} from '../src/scan-entry-recovery.mjs';
+import {chooseScanEntry,rememberScanEntry,recallScanEntry,describeScanEntry,entryCancelled,scanEntryStorageKey,scanEntryHeading} from '../src/scan-entry-recovery.mjs';
 
 const memory=()=>{const map=new Map();return {getItem:k=>map.has(k)?map.get(k):null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k)};};
 
@@ -37,6 +37,10 @@ test('entry summary names cards, saved, unsaved and skipped duplicates',()=>{
  assert.equal(describeScanEntry({cards:40,posted:21,duplicates:2}),'40 cards · 21 saved · 19 unsaved · 2 duplicates skipped');
  assert.equal(describeScanEntry({cards:1,posted:1}),'1 card · 1 saved');
  assert.equal(describeScanEntry({}),'0 cards');
+});
+
+test('entry heading shows card and trip totals on two lines',()=>{
+ assert.deepEqual(scanEntryHeading({name:'CMLL/S2/B04',cards:19},3,126),{batchNumber:'B4',text:'CMLL/S2/B04 (19 cards)\nB4 (126 trips)'});
 });
 
 test('the open entry describes itself from the card status summary so the chip and the tiles agree',()=>{

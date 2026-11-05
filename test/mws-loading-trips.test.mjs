@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {machineSummary,machineTripTotal,machineDiscrepancies} from '../trip-card-rules.mjs';
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
-import {estimateMissingTripTimes} from '../scan-trip-estimates.mjs';
-import {buildMachineSnapshot,buildFleetList} from '../vlb-two-stage.mjs';
-import {scanBatchReport,scanBatchReportTables} from '../scan-batch-report.mjs';
+import {machineSummary,machineTripTotal,machineDiscrepancies} from '../shared/trip-card-rules.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
+import {estimateMissingTripTimes} from '../shared/scan-trip-estimates.mjs';
+import {buildMachineSnapshot,buildFleetList} from '../server/rules/vlb-two-stage.mjs';
+import {scanBatchReport,scanBatchReportTables} from '../shared/scan-batch-report.mjs';
 
 const carry={equipmentName:'V19',equipmentId:'19',loadingTime:'',unloadingTime:'05:10',tripCount:1};
 const loaded={equipmentName:'V19',equipmentId:'19',loadingTime:'05:30',unloadingTime:'05:50',tripCount:1};
@@ -68,7 +68,7 @@ test('ELB machine snapshot excludes carry-over rows separately for each card',()
  assert.deepEqual(result.unresolved,[]);
  const onlyCarry=buildMachineSnapshot([record('C',[carry])],assets,site);
  assert.deepEqual(onlyCarry.machines,[]);
- assert.equal(buildFleetList(assets,site,onlyCarry.machines)[0].trips,0,'site machine remains in the fleet with zero loads');
+ assert.deepEqual(buildFleetList(assets,site,onlyCarry.machines).map(({assetId,trips,sourceCards})=>({assetId,trips,sourceCards})),[{assetId:'19',trips:0,sourceCards:0}],'manual ELB retains site machines with zero loading trips while carry-over rows add no trips or cards');
  const estimated=estimateMissingTripTimes({timeMode:'with',trips:[carry,loaded]});
  assert.equal(buildMachineSnapshot([record('E',estimated.trips)],assets,site).machines[0].trips,1);
 });

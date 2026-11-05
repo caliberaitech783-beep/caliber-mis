@@ -2,8 +2,8 @@ import {ledgerReportColumns} from './iboss-ledger-report.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import DrillPanel from './iboss-drill-panel.jsx';
 import DateInput from './date-input.mjs';
-import {purchaseOrderRange} from '../purchase-order-report.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import './iboss-account-ledger.css';
 import {splitLedgerBalance,ledgerFooter} from './iboss-ledger-format.mjs';
 const money=v=>Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -17,7 +17,7 @@ export default function AccountLedger({account,company,range:initialRange,token,
  const footer=ledgerFooter(totals);
  const amountCells=value=>{const sides=splitLedgerBalance(value);return <><td className="ledger-number">{sides.debit?money(sides.debit):''}</td><td className="ledger-number">{sides.credit?money(sides.credit):''}</td></>;};
  return <dialog ref={dialog} className="account-ledger-dialog" onCancel={e=>{e.preventDefault();e.stopPropagation();if(voucher)setVoucher(null);else close();}} aria-labelledby="account-ledger-title">
- <header><div><small>Account Ledger Revised · Read only</small><h2 id="account-ledger-title">{data.account?.PARTYNAME||account}</h2><p>Account: {account} · {data.account?.PARTYTYPENAME||'Account'} · Company: {company||'All companies'}</p></div><button onClick={close} aria-label="Close account ledger">×</button></header>
+ <header className="mis-popup-close-header"><div><small>Account Ledger Revised · Read only</small><h2 id="account-ledger-title">{data.account?.PARTYNAME||account}</h2><p>Account: {account} · {data.account?.PARTYTYPENAME||'Account'} · Company: {company||'All companies'}</p></div><button onClick={close} aria-label="Close account ledger" type="button" className="mis-popup-close">× Close</button></header>
  <form onSubmit={e=>{e.preventDefault();try{purchaseOrderRange(draft.from,draft.to);setError('');setPage(0);setRange({...draft});}catch(e){setError(e.message);}}}><label>From<DateInput value={draft.from} onChange={e=>setDraft({...draft,from:e.target.value})}/></label><label>To<DateInput value={draft.to} onChange={e=>setDraft({...draft,to:e.target.value})}/></label><button>Apply / Refresh</button></form>
  {error&&<p role="alert">{error}</p>}
  {data.loading?<p role="status">Loading ledger and audit details from Oracle…</p>:data.error?<p role="alert">{data.error}</p>:<>

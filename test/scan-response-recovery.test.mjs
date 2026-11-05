@@ -1,13 +1,13 @@
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCardResponse} from '../gemini-card-reader.mjs';
-import {aFields} from '../gemini-hybrid.mjs';
-import {responseReviewNeeded} from '../scan-response-recovery.mjs';
+import {parseCardResponse} from '../server/services/gemini-card-reader.mjs';
+import {aFields} from '../server/services/gemini-hybrid.mjs';
+import {responseReviewNeeded} from '../shared/scan-response-recovery.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
-import {checkScanCard} from '../bulk-card-scanning.mjs';
-import {mergeReextractedDraft} from '../scan-reextract.mjs';
-import {normalizeScanEquipmentRows} from '../scan-machine-rules.mjs';
+import {checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
+import {mergeReextractedDraft} from '../server/rules/scan-reextract.mjs';
+import {normalizeScanEquipmentRows} from '../shared/scan-machine-rules.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=()=>({documentType:'VLB',fields:{...Object.fromEntries(aFields('vehicle').map(k=>[k,field(null)])),door:field('V/19'),bookDate:field('2026-10-29'),machineSummary:[]},trips:{p:true,r:[[1,'V19','08:30','09:00']]}});
 test('one malformed row retains readable headers and rows, flags each invalid cell, and keeps literal times',()=>{
@@ -33,3 +33,11 @@ test('OC normalization after explicit re-extraction retains other manual correct
 });
 
 test('recovered responses never carry equipment into unreadable rows or synthesize a summary',()=>{const draft={trips:[{equipmentName:'VPC1',tripCount:1},{equipmentName:'',tripCount:1}],scanMachineSummary:[]};assert.equal(completeScanTripDetails(draft,{responseRecoveryIssues:['Trip row 2: equipment unreadable']}),draft);assert.equal(draft.trips[1].equipmentName,'');assert.deepEqual(draft.scanMachineSummary,[]);});
+
+test('server scan checks do not require a loader or MWS for an unloading-only card',async()=>{
+ const raw={responseRecoveryIssues:['Trip row 1: equipment number missing or unreadable; re-read the NO column.']};
+ const draft={bookDate:'2026-10-29',location:'Sasti OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:0,closingHmr:1,timeMode:'with',trips:[{rowNumber:1,equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1}],scanMachineSummary:[]};
+ const check=await checkScanCard({query:async()=>({rows:[]})},'vehicle',{raw_fields:raw,draft,page_count:1,expected_pages:1});
+ assert.equal(check.errors.some(message=>/flagged extraction|loading equipment|machine number/i.test(message)),false,JSON.stringify(check));
+ assert.equal(check.warnings.some(message=>/machine-wise summary/i.test(message)),false);
+});

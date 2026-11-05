@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {ADMIN_LOCK_TICKET_CUTOFF,isLockableAdmin,isTrueSuperAdmin} from "../admin-lock-policy.mjs";
+import {ADMIN_LOCK_TICKET_CUTOFF,isLockableAdmin,isTrueSuperAdmin} from "../server/rules/admin-lock-policy.mjs";
 
 test("CRM lock policy starts after 27 August 2026 in India",()=>{
   assert.equal(ADMIN_LOCK_TICKET_CUTOFF,"2026-08-28T00:00:00+05:30");

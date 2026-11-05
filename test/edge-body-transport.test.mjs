@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {EDGE_INSPECTED_BODY_LIMIT_BYTES,JSON_BODY_CONTENT_TYPES,LARGE_JSON_BODY_THRESHOLD_BYTES,LARGE_JSON_CONTENT_TYPE,edgeSafeJsonInit,edgeSignatureJsonBody,embeddedMediaJsonBody,largeJsonBody} from '../request-body-transport.mjs';
+import {EDGE_INSPECTED_BODY_LIMIT_BYTES,JSON_BODY_CONTENT_TYPES,LARGE_JSON_BODY_THRESHOLD_BYTES,LARGE_JSON_CONTENT_TYPE,edgeSafeJsonInit,edgeSignatureJsonBody,embeddedMediaJsonBody,largeJsonBody} from '../shared/request-body-transport.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const ui=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

@@ -6,9 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import { isDurationColumn, compareDurationValues, defaultDurationSort } from "../src/duration-sort.mjs";
 import { tableModel, selectTableRows, tableExportModel } from "../src/table-actions-model.mjs";
-import { calculateBreakdownMinutes, durationLabelMinutes } from "../breakdown-duration.mjs";
+import { calculateBreakdownMinutes, durationLabelMinutes } from "../src/lib/breakdown-duration.mjs";
 import { formatSessionDuration } from "../src/login-session-duration.mjs";
-import { buildDepartmentReports } from "../department-reports.mjs";
+import { buildDepartmentReports } from "../shared/department-reports.mjs";
 import * as dateRanges from "../src/date-range-filter.mjs";
 import * as multiFilters from "../src/multi-value-filter.mjs";
 
@@ -44,7 +44,7 @@ test("duration menus show clear sort choices instead of individual time values",
   assert.deepEqual(events, [["filter", ""], ["sort", "", "asc"], ["toggle", "breakdownDays"]]);
 });
 
-test("Reports keep their exact time filters; dates, status and meter readings are not duration menus", () => {
+test("Reports offer duration shortcuts while dates, status and meter readings keep their filters", () => {
   const { html } = menu({ durationSortOnly: false });
   assert.ok(html.includes("Filter..."));
   assert.ok(html.includes("0d 0h 7m"));
@@ -55,7 +55,7 @@ test("Reports keep their exact time filters; dates, status and meter readings ar
   }
   for (const label of ["Days of breakdown", "Downtime", "Turn around time (TAT)", "Arrival delay", "Waiting when flagged", "Time taken"]) assert.equal(isDurationColumn(label), true, label);
   const report = main.slice(main.indexOf("function ReportTable("), main.indexOf("function MasterField(", main.indexOf("function ReportTable(")));
-  assert.match(report, /durationSortOnly=\{false\}/);
+  assert.match(report, /durationSortOnly=\{isDurationColumn\(column.label, column.key\)\}/);
   assert.match(report, /defaultDurationSort\(columns\)/);
 });
 

@@ -110,12 +110,12 @@ test("rich table cells use their explicit complete export value", () => {
 
 test("Excel and print output preserve and wrap multiline daily updates", async () => {
   const main = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
-  const pdf = await readFile(new URL("../table-export-pdf.mjs", import.meta.url), "utf8");
+  const pdf = await readFile(new URL("../server/services/table-export-pdf.mjs", import.meta.url), "utf8");
   const browser = await readFile(new URL("../src/dashboard-record-browser.jsx", import.meta.url), "utf8");
   const mainRemarks = (main.match(/dailyUpdatesExportText\(row\.dailyRemarks, \{ category: row\.category \}\)/g) || []).length;
   assert.match(main, /xml:space="preserve"/);
   assert.match(main, /<alignment wrapText="1" vertical="top"\/>/);
-  assert.match(main, /<pane ySplit="3" topLeftCell="A4"/);
+  assert.ok(main.includes('<pane ySplit="${firstDataRow}" topLeftCell="A${firstDataRow+1}"'));
   assert.match(main, /<autoFilter ref=/);
   assert.match(main, /orientation="landscape" fitToWidth="1"/);
   assert.match(main, /prepareXlsxExportSheets\(\{ title, sheets, formatCell: exportCellText \}\)/);

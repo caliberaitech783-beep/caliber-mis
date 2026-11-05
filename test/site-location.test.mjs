@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignedUserSiteName, canonicalSiteName, equipmentSiteName, recordBelongsToSite, recordsForSite } from "../site-location.mjs";
+import { assignedUserSiteName, canonicalSiteName, equipmentSiteName, recordBelongsToSite, recordsForSite } from "../shared/site-location.mjs";
 
 test("legacy WCL locations match their renamed dashboard sites", () => {
   assert.equal(canonicalSiteName("Sasti II"), canonicalSiteName("Sasti OB"));

@@ -1,10 +1,10 @@
-import { createFleetAssetResolver, equipmentRoadStatus } from "../dashboard-equipment-metrics.mjs";
-import { equipmentGroupValue, normalizeEquipmentGroup } from "../equipment-group.mjs";
-import { indiaDateTimeEpoch } from "../report-date-range.mjs";
-import { parseReportTimestamp } from "../report-metrics.mjs";
-import { recordBelongsToSite } from "../site-location.mjs";
+import { createFleetAssetResolver, equipmentRoadStatus } from "../shared/dashboard-equipment-metrics.mjs";
+import { equipmentGroupValue, normalizeEquipmentGroup } from "../shared/equipment-group.mjs";
+import { indiaDateTimeEpoch } from "../shared/report-date-range.mjs";
+import { parseReportTimestamp } from "../shared/report-metrics.mjs";
+import { recordBelongsToSite } from "../shared/site-location.mjs";
 import { requestStatusLabel } from "./request-status.mjs";
-import { breakdownMeterFields } from "../breakdown-meter-columns.mjs";
+import { breakdownMeterFields } from "../shared/breakdown-meter-columns.mjs";
 
 const text = (value) => String(value ?? "").trim();
 const normalize = (value) => text(value).toLowerCase();

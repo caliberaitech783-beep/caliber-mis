@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {registerVlbBatches} from '../vlb-batches.mjs';
-import {approvalOtpMessage,APPROVAL_PURPOSES} from '../vlb-approval-otp.mjs';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {approvalOtpMessage,APPROVAL_PURPOSES} from '../server/services/vlb-approval-otp.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 
 // Flag unset: the two-stage batch is on, as in production.
 test('approval OTP message names the batch, the reason and the ten-minute rule',()=>{

@@ -1,5 +1,5 @@
-import {parseIstTimestamp} from '../ai-feeder.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {parseIstTimestamp} from '../shared/ai-feeder.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 import {requestStatusLabel} from './request-status.mjs';
 import {pulseDailyUpdates, pulseDelayReason} from './info-pulse-reasons.mjs';
 import {pulseElapsed} from './info-pulse-timing.mjs';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {companyCode,companyScopedSql} from '../iboss-company-scope.mjs';
-import {DASHBOARD_QUERIES,DASHBOARD_METRICS,dashboardMetric} from '../iboss-dashboard.mjs';
+import {companyCode,companyScopedSql} from '../server/rules/iboss-company-scope.mjs';
+import {DASHBOARD_QUERIES,DASHBOARD_METRICS,dashboardMetric} from '../server/rules/iboss-dashboard.mjs';
 
 test('company is a bind and all-companies preserves the existing queries',()=>{
  for(const value of [[],{},"1' OR 1=1",'x'.repeat(41)])assert.throws(()=>companyCode(value));

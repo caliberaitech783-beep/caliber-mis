@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {userSessionLocationName} from "../site-location.mjs";
+import {userSessionLocationName} from "../shared/site-location.mjs";
 
 test("user session location follows assigned site, manager scope, and admin access", () => {
   assert.equal(userSessionLocationName({site:"Sasti OB",managerSites:"Majri OB"},"Manager"),"Sasti OB");

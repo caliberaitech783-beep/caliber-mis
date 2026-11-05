@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {INFO_PULSE_PROMPT_HOLD_MS, INFO_PULSE_PROMPT_INTERVAL_MS, claimInfoPulsePrompt, infoPulsePromptDecision, infoPulsePromptKey} from '../info-pulse-prompt.mjs';
+import {INFO_PULSE_PROMPT_HOLD_MS, INFO_PULSE_PROMPT_INTERVAL_MS, claimInfoPulsePrompt, infoPulsePromptDecision, infoPulsePromptKey} from '../server/rules/info-pulse-prompt.mjs';
 
 const NOW = Date.parse('2026-09-11T11:00:00+05:30');
 const HOUR = 60 * 60 * 1000;

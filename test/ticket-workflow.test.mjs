@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import {managerUserRole,ticketReference,ticketSiteSlug,validTicketMediaDataUrl} from "../ticket-workflow.mjs";
+import {managerUserRole,ticketReference,ticketSiteSlug,validTicketMediaDataUrl} from "../server/rules/ticket-workflow.mjs";
 
 test("ticket references use site and DDMMYY with a generated sequence", () => {
   const reference = ticketReference({site: "Majri OB", date: new Date(2026, 7, 21), number: 42});

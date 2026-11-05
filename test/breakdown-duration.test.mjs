@@ -7,7 +7,7 @@ import {
   calculateBreakdownDaysUntilClose,
   calculateBreakdownMinutes,
   formatBreakdownDaysHours,
-} from "../breakdown-duration.mjs";
+} from "../src/lib/breakdown-duration.mjs";
 
 test("a breakdown started today shows zero completed days", () => {
   assert.equal(
@@ -75,7 +75,7 @@ test("closed MIS requests display the same breakdown duration used by high-to-lo
 });
 
 test("duration labels convert to minutes for sorting, with dashes first", async () => {
-  const {durationLabelMinutes} = await import("../breakdown-duration.mjs");
+  const {durationLabelMinutes} = await import("../src/lib/breakdown-duration.mjs");
 
   assert.equal(durationLabelMinutes("3d 2h 15m"), 4455);
   assert.equal(durationLabelMinutes("0h 27m"), 27);

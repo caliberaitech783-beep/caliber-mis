@@ -4,11 +4,30 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {aliasForSelection} from '../equipment-alias-rules.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {searchSiteDoors,doorLabel} from '../src/door-search.mjs';
 import {nextMismatchPair,mismatchPairCount} from '../src/scan-alias-mismatch.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
+
+test('equipment search filters normalized details, clears, preserves the chosen pair and closes',async()=>{
+ const h=hooks();let closed=0;
+ const {ScanAliasMismatchDialog}=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,useMemo:h.useMemo,EquipmentAliasOtpPanel:()=>null,nextMismatchPair,mismatchPairCount,matchesSmartSearch},['ScanAliasMismatchDialog']);
+ const fixture={...data,categories:[{...data.categories[0],left:[{id:'3',door:'E05 - MH34BZ2405',name:'Tipper',make:'Volvo',model:'FMX'},{id:'4',door:'T7 - MH34BZ1258',name:'Other',make:'Tata',model:'Prima'}]}]};
+ const props={session,batchLabel:'Test batch',data:fixture,skippedPairs:new Set(),skippedCategories:new Set(),onClose(){closed++}};
+ const render=()=>{h.reset();return ScanAliasMismatchDialog(props)};
+ const find=(node,predicate)=>{if(!React.isValidElement(node))return null;if(predicate(node))return node;for(const child of React.Children.toArray(node.props.children)){const result=find(child,predicate);if(result)return result}return null};
+ let tree=render();
+ find(tree,node=>node.props.id==='scan-alias-search').props.onChange({target:{value:'mh34 bz2405 volvo'}});
+ tree=render();let html=renderToStaticMarkup(tree);
+ assert.match(html,/1 of 2 equipment shown/);assert.doesNotMatch(html,/T7 - MH34BZ1258/);assert.match(html,/Pair: <strong>E05 - MH34BZ2405/);
+ find(tree,node=>node.props.id==='scan-alias-search').props.onChange({target:{value:'no-match'}});
+ tree=render();assert.match(renderToStaticMarkup(tree),/No equipment matches this search/);
+ find(tree,node=>node.props['aria-label']==='Clear equipment search').props.onClick();
+ tree=render();html=renderToStaticMarkup(tree);assert.match(html,/2 of 2 equipment shown/);assert.match(html,/T7 - MH34BZ1258/);
+ find(tree,node=>node.props['aria-label']==='Close equipment mismatch window').props.onClick();assert.equal(closed,1);
+});
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -34,17 +53,17 @@ test('pairs run in order and skipping advances to the next pair or category',()=
 test('the mismatch box shows one pair at a time with the two columns, the suggestion and the pair line',async()=>{
  const h=hooks();
  const EquipmentAliasOtpPanel=props=>React.createElement('div',{className:'otp-panel'},'OTP for '+props.alias.writtenText);
- const {ScanAliasMismatchDialog}=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,useMemo:h.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount},['ScanAliasMismatchDialog']);
+ const {ScanAliasMismatchDialog}=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h.useState,useEffect:h.useEffect,useRef:h.useRef,useMemo:h.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount,matchesSmartSearch},['ScanAliasMismatchDialog']);
  const html=renderToStaticMarkup(React.createElement(ScanAliasMismatchDialog,{session,batchLabel:'DCH (East) · 01-11-2026 · Shift I',data,busy:false,error:'',approver:{login:'nitish'},approverTelegramLinked:true,skippedPairs:new Set(),skippedCategories:new Set(),onPair(){},onSkipPair(){},onSkipCategory(){},onClose(){},onRefresh(){}}));
  assert.match(html,/Equipment mismatch · trip cards vs Pulse/);assert.match(html,/Category 1 of 2 · Tippers \(trip card header\) · 1 pair\(s\) pending · 2 in all/);
  assert.match(html,/Pulse tippers at this site, not found on any card/);assert.match(html,/DEMO732-00211/);assert.match(html,/suggested by number/);
  assert.match(html,/Card tippers not found in Pulse/);assert.match(html,/V 732<\/strong> read as Volvo · No\. 732 · 3 row\(s\) on 3 card\(s\)/);
  assert.doesNotMatch(html,/L21/,'only one pair on screen');assert.match(html,/Pair and continue to OTP/);assert.match(html,/Skip this pair/);assert.match(html,/Skip category/);
  const h2=hooks();const pending={...data,categories:[{...data.categories[0],right:[{...data.categories[0].right[0],alias:{id:'a1',status:'pending',writtenText:'V 732',otps:[]}}]},data.categories[1]]};
- const mod=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h2.useState,useEffect:h2.useEffect,useRef:h2.useRef,useMemo:h2.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount},['ScanAliasMismatchDialog']);
+ const mod=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h2.useState,useEffect:h2.useEffect,useRef:h2.useRef,useMemo:h2.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount,matchesSmartSearch},['ScanAliasMismatchDialog']);
  const resumed=renderToStaticMarkup(React.createElement(mod.ScanAliasMismatchDialog,{session,batchLabel:'x',data:pending,busy:false,error:'',approver:null,approverTelegramLinked:true,skippedPairs:new Set(),skippedCategories:new Set(),onPair(){},onSkipPair(){},onSkipCategory(){},onClose(){},onRefresh(){}}));
  assert.match(resumed,/OTP for V 732/,'a pending pair resumes at its OTP step');assert.doesNotMatch(resumed,/Pair and continue to OTP/);
- const h3=hooks();const empty=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h3.useState,useEffect:h3.useEffect,useRef:h3.useRef,useMemo:h3.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount},['ScanAliasMismatchDialog']);
+ const h3=hooks();const empty=await compile('scan-alias-mismatch-dialog.jsx',{React,useState:h3.useState,useEffect:h3.useEffect,useRef:h3.useRef,useMemo:h3.useMemo,EquipmentAliasOtpPanel,nextMismatchPair,mismatchPairCount,matchesSmartSearch},['ScanAliasMismatchDialog']);
  const done=renderToStaticMarkup(React.createElement(empty.ScanAliasMismatchDialog,{session,batchLabel:'x',data:{...data,categories:data.categories.map(c=>({...c,right:[]}))},busy:false,error:'',skippedPairs:new Set(),skippedCategories:new Set(),onPair(){},onSkipPair(){},onSkipCategory(){},onClose(){},onRefresh(){}}));
  assert.match(done,/All written machines in this batch match Pulse/);assert.match(done,/Start card review/);
 });

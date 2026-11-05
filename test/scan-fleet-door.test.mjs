@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {extractCard} from '../scan-extraction.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
 const master=(id,master_name,record_data)=>({id,master_name,record_data});
 test('scanned fleet initials, Caliber ID, date and latest location work order resolve against masters',()=>{
  const masters=[master(1,'Equipment master',{door:'Scania 12',category:'vehicle',site:'Dhoptala OB'}),master(2,'Equipment master',{door:'Volvo 25',category:'equipment',site:'Dhoptala OB'}),master(3,'Employee master',{caliberId:'8311',employeeId:'legacy',name:'Anoop Sunil Paul',site:'Dhoptala OB'}),master(4,'Work order master',{site:'Dhoptala OB',workOrderDate:'2026-01-01'}),master(5,'Work Order master',{site:'Dhoptala OB',workOrderDate:'2026-09-01'}),master(6,'Work Order master',{site:'Other',workOrderDate:'2026-10-01'})];
@@ -11,7 +11,7 @@ test('scanned fleet initials, Caliber ID, date and latest location work order re
 });
 
 test('linked equipment resolves padded fleet doors within location and type, without guessing duplicates',async()=>{
- const {linkedScanEquipment,fleetDoorKey}=await import('../scan-fleet-door.mjs');
+ const {linkedScanEquipment,fleetDoorKey}=await import('../shared/scan-fleet-door.mjs');
  const rows=[{id:'1',door:'Scania 1',kind:'vehicle',site:'Jayant OC'},{id:'2',door:'S01',kind:'vehicle',site:'Sasti OC'},{id:'3',door:'S/01',kind:'equipment',site:'Jayant OC'}];
  assert.equal(fleetDoorKey('S/01'),fleetDoorKey('Scania 1'));
  assert.equal(linkedScanEquipment(rows,'S/01','Jayant OC','vehicle').id,'1');

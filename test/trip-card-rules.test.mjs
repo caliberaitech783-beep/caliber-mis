@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {extractCard} from '../scan-extraction.mjs';import {CARD_SHIFTS,markedShift,formatBookNumber,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {extractCard} from '../server/rules/scan-extraction.mjs';import {CARD_SHIFTS,markedShift,formatBookNumber,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,latestWorkOrder,interTripGap} from '../shared/trip-card-rules.mjs';
 const masters=[{id:1,master_name:'Equipment master',record_data:{equipmentName:'V189-2306675',category:'Vehicle',currentLocation:'Jayant OC'}},{id:2,master_name:'Employee master',record_data:{name:'MADAN PATEL',employeeId:'CMPL16560',employeeCode:'16560',site:'Jayant OC'}},{id:3,master_name:'Shift Master',record_data:{site:'Jayant OC',shiftName:'I',startTime:'05:00:00'}},{id:4,master_name:'Work Order master',record_data:{workOrderNo:'WO1',site:'Jayant OC'}}];
 test('Trip Card labelled data maps IDs, marked shifts, tabular meters, trip rows and machine summary',()=>{const text='Site: Jayant OC\nDATE 13 10 26\nDoor No. V189 Caliber ID 16560 FORM A 2230\nSHIFT [x] I (05:00-01:00) [ ] II (01:00-09:00) [ ] III (09:00-05:00)\nHMR (Hours) 19345 19351\nKMR (Kilometer) 257263 257328\n1 25 08:20 08:40\n2 25 09:20 09:40\nMACHINE-WISE SUMMARY\n1 25 2';const d=extractCard(text,'vehicle',masters).draft;assert.equal(d.docType,'VLB');assert.equal(d.bookDate,'2026-10-13');assert.equal(d.bookDateSource,'scan');assert.equal(d.employeeId,'2');assert.equal(d.aFormNo,'2230');assert.equal(d.assetId,'1');assert.equal(d.cardShift,'I');assert.equal(d.shiftHours,8);assert.equal(d.shiftId,'3');assert.equal(d.workOrderId,'4');assert.equal(d.openingKmr,'257263');assert.equal(d.closingHmr,'19351');assert.equal(d.trips.length,2);assert.equal(d.trips[0].equipmentName,'25'); // Missing M stays literal for review; never invent V.
 assert.deepEqual(machineDiscrepancies(d.trips,d.scanMachineSummary),[]);});
@@ -14,7 +14,7 @@ test('latest workbook rules choose newest location contract, use inter-trip idle
 test('M and No columns after the time columns combine into the equipment label',()=>{const d=extractCard('Site: Sasti OC\nTRIP DETAILS\n1 08:20 08:40 V 65\n2 10:26 10:40 T 88','vehicle',[]).draft;assert.equal(d.timeMode,'with');assert.deepEqual(d.trips.map(r=>r.equipmentName),['VPC65','TPC88']);});
 
 test('scan shift labels and trip clocks follow each location master',async()=>{
- const {cardShiftLabel,selectedMasterShift,tripClockForShift}=await import('../trip-card-rules.mjs');
+ const {cardShiftLabel,selectedMasterShift,tripClockForShift}=await import('../shared/trip-card-rules.mjs');
  const rows=[{id:'j',site:'Jayant OC',shiftName:'Shift B',startTime:'12:00:00',endTime:'20:00:00'},{id:'s',site:'Sasti OC',shiftName:'Shift B',startTime:'13:00:00',endTime:'21:00:00'}];
  assert.equal(cardShiftLabel(rows,'Jayant OC','II'),'II · 12:00–20:00');
  assert.equal(cardShiftLabel(rows,'Sasti OC','II'),'II · 13:00–21:00');
@@ -33,7 +33,7 @@ test('scan matches CMLL identifiers while preserving the written prefix and digi
  assert.equal(extractCard('Caliber ID: OTHER16560','vehicle',employees).raw.employeeCode,'OTHER16560');
 });
 test('explicit shift labels and provider variants match numeric and named location masters',async()=>{
- const {selectedMasterShift}=await import('../trip-card-rules.mjs');
+ const {selectedMasterShift}=await import('../shared/trip-card-rules.mjs');
  for(const value of ['II','Shift II','2','S2','B'])assert.equal(extractCard('Site: Jayant OC','vehicle',[],{cardShift:value}).draft.cardShift,'II');
  for(const value of ['Shift: II','Shift: 2','Shift: B','SHIFT [x] S2'])assert.equal(markedShift(value),'II');
  assert.equal(markedShift('SHIFT: I / II / III'),'');
@@ -45,7 +45,7 @@ test('explicit shift labels and provider variants match numeric and named locati
 });
 
 test('Dudhichua East scanned Shift I links equivalent seed and Pulse shifts and follows card-date revisions',async()=>{
- const {selectedMasterShift,cardShiftLabel}=await import('../trip-card-rules.mjs');
+ const {selectedMasterShift,cardShiftLabel}=await import('../shared/trip-card-rules.mjs');
  const seed={id:'10',site:'Dudhichua East OC',shiftName:'Shift A',shiftCode:'A',startTime:'05:00:00',endTime:'13:00:00'};
  const imported={...seed,id:'20',shiftName:'I',shiftCode:'I',startTime:'05:00',endTime:'13:00'};
  const rows=[imported,seed];

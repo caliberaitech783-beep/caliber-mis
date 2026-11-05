@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {MERGE_CHAINS,MAX_MERGE_STEPS,mergeChain,resolveSelection,mergeStatements,buildMergedReport,buildTrail} from '../iboss-report-merge.mjs';
+import {MERGE_CHAINS,MAX_MERGE_STEPS,mergeChain,resolveSelection,mergeStatements,buildMergedReport,buildTrail} from '../shared/iboss-report-merge.mjs';
 
-import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../iboss-accounts.mjs';
+import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../shared/iboss-accounts.mjs';
 
 const range={from:'2026-04-01',to:'2026-09-30'};
 

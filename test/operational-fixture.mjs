@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {canonicalSiteName} from '../site-location.mjs';
-import {vlbRecordShift} from '../vlb-batch-format.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {vlbRecordShift} from '../shared/vlb-batch-format.mjs';
 // Arrange a permitted batch for tests of logbook/scanner behavior. Batch
 // ownership, locking and approval behavior have their own integration tests.
 export async function prepareVlbFixture(db,input={},login='test-admin'){

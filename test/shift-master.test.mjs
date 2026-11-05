@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftDurationMinutes,shiftIdentity} from '../shift-master.mjs';
-import {displaySiteName,normalizeOperationalSiteFields} from '../region-scope.mjs';
+import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftDurationMinutes,shiftIdentity} from '../shared/shift-master.mjs';
+import {displaySiteName,normalizeOperationalSiteFields} from '../shared/region-scope.mjs';
 
 test('supplied Shift Master workbook rows are represented once with the supplied shift times',()=>{
   assert.equal(SHIFT_MASTER_DEFAULTS.length,23);

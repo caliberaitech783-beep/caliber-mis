@@ -2,7 +2,7 @@ import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {SCAN_QUEUE_SCHEMA,claimNextScanCard,requestScanBatch} from '../scan-extraction-queue.mjs';
+import {SCAN_QUEUE_SCHEMA,claimNextScanCard,requestScanBatch} from '../server/services/scan-extraction-queue.mjs';
 async function setup(t){
  const db=new PGlite();t.after(()=>db.close());
  await db.exec(`CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,created_at TIMESTAMPTZ DEFAULT '2026-12-01T00:00:00Z');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {registerLogBooks} from '../log-book.mjs';
+import {registerLogBooks} from '../server/routes/log-book.mjs';
 import {prepareVlbFixture} from './operational-fixture.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0';

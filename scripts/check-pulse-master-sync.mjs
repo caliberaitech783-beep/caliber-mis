@@ -2,7 +2,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import {isDeepStrictEqual} from 'node:util';
-import {PULSE_MASTER_NAMES} from '../pulse-master-sync.mjs';
+import {PULSE_MASTER_NAMES} from '../server/routes/pulse-master-sync.mjs';
 const state=path.join(process.env.LOCALAPPDATA,'CaliberERP');
 const config=JSON.parse(await readFile(path.join(state,'database.json'),'utf8'));
 const connection=JSON.parse(await readFile(path.join(state,'pulse-master-session.json'),'utf8'));

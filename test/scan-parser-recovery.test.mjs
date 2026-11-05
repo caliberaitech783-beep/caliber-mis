@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {recoverMalformedScanCards} from '../scan-parser-recovery.mjs';
+import {recoverMalformedScanCards} from '../shared/scan-parser-recovery.mjs';
 
 test('deployment never requeues or modifies existing cards, including format failures',async t=>{
  const db=new PGlite();t.after(()=>db.close());

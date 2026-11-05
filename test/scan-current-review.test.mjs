@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkScanCard} from '../bulk-card-scanning.mjs';
+import {checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
 
 const masters=[
  {id:1,master_name:'Equipment master',record_data:{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}},

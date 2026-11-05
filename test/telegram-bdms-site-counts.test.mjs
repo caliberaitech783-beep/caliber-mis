@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bdmsChatAnswer} from '../telegram-bdms-chatbot.mjs';
-import {bdmsChatConversation} from '../telegram-bdms-conversation.mjs';
-import {bdmsChatMetricsReply} from '../telegram-bdms-metrics.mjs';
-import {bdmsSiteCounts} from '../telegram-bdms-site-counts.mjs';
+import {bdmsChatAnswer} from '../shared/telegram-bdms-chatbot.mjs';
+import {bdmsChatConversation} from '../server/rules/telegram-bdms-conversation.mjs';
+import {bdmsChatMetricsReply} from '../server/rules/telegram-bdms-metrics.mjs';
+import {bdmsSiteCounts} from '../shared/telegram-bdms-site-counts.mjs';
 const session={role:'super'},requests=Array.from({length:12},(_,i)=>({ref:`REQ-${i}`,site:i<9?'Sasti OC':'Majri OC',status:'Running BD',start:'2026-10-09',requesterLogin:i===0?'prod':'other'}));
 test('site counts cover every matching request before bounded detail display',()=>{
  const reply=bdmsChatAnswer({session,requests,text:'Running BD'});

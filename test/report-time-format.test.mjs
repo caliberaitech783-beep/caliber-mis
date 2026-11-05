@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reportTime12} from '../report-time-format.mjs';
+import {reportTime12} from '../shared/report-time-format.mjs';
 test('report times use AM/PM and retain seconds, dates and Indian timezone',()=>{
   assert.equal(reportTime12('07-09-2026'),'07-09-26');
   assert.equal(reportTime12('10:32:43 PM 07-09-2026'),'10:32:43 PM 07-09-26');

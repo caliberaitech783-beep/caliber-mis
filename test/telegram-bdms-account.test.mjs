@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {telegramBdmsAccountChoice as choose} from '../telegram-bdms-account.mjs';
+import {telegramBdmsAccountChoice as choose} from '../server/rules/telegram-bdms-account.mjs';
 test('multiple connected accounts require explicit selection without unlinking alerts',()=>{
  const links=[{login:'ANOOP'},{login:'prod'}];
  assert.deepEqual(choose({links,text:'/start'}),{kind:'choose',logins:['anoop','prod']});

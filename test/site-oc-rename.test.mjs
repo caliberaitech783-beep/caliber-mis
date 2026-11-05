@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {canonicalSiteName,recordBelongsToSite} from '../site-location.mjs';
-import {REGION_DATA,displaySiteName,normalizeOperationalSiteFields,normalizeUserSiteFields,reportScopeIncludesSite,userSiteScope} from '../region-scope.mjs';
+import {canonicalSiteName,recordBelongsToSite} from '../shared/site-location.mjs';
+import {REGION_DATA,displaySiteName,normalizeOperationalSiteFields,normalizeUserSiteFields,reportScopeIncludesSite,userSiteScope} from '../shared/region-scope.mjs';
 import {drilldownView} from '../src/dashboard-drilldown-model.mjs';
 
 test('every renamed OC site preserves OB identity, scope, and legacy filter selection',()=>{

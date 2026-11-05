@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { indiaDateTimeEpoch, reportRowsWithinRange, validReportDateRange } from "../report-date-range.mjs";
+import { indiaDateTimeEpoch, reportRowsWithinRange, validReportDateRange } from "../shared/report-date-range.mjs";
 
 test("report date ranges use IST and include exact boundaries", () => {
   assert.equal(indiaDateTimeEpoch("2026-09-02 08:00"), Date.parse("2026-09-02T08:00:00+05:30"));

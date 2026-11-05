@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {telegramChatbotLink} from '../telegram-chatbot-link.mjs';
-import {parseTelegramUpdate} from '../telegram.mjs';
+import {telegramChatbotLink} from '../server/rules/telegram-chatbot-link.mjs';
+import {parseTelegramUpdate} from '../server/services/telegram.mjs';
 test('public entry opens chatbot without connecting a shared identity',()=>{
  assert.equal(telegramChatbotLink('@caliber_bdms_bot'),'https://t.me/caliber_bdms_bot?start=bdms');
  const update=parseTelegramUpdate({message:{chat:{id:123,type:'private'},text:'/start bdms'}});

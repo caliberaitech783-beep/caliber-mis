@@ -1,7 +1,7 @@
 name: MIS validation
-# Main pushes are validated by the test deployment, including layout checks.
-# Keep PR check names for repositories that still require them.
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 concurrency:
@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   build:
+    # Main releases already run these checks; preserve PR and manual validation.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     services:
       startup-postgres:
@@ -26,11 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --no-audit --no-fund
-      - run: npm test
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
+      - run: npm test -- --test-concurrency=4
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
       - run: npm run build
@@ -38,7 +47,7 @@ jobs:
         env:
           RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
 
-      - name: Share the validated UI with layout checks
+      - name: Share the validated UI build
         uses: actions/upload-artifact@v4
         with:
           name: validated-ui
@@ -47,17 +56,48 @@ jobs:
 
   logbook-layout:
     needs: build
+    # Pushes skip the full build job; their layout/security checks still run.
+    if: always() && (github.event_name == 'push' || needs.build.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --no-audit --no-fund
-      - name: Restore the validated UI (do not rebuild)
+      - uses: actions/cache@v4
+        id: dependencies
+        with:
+          path: node_modules
+          key: mis-layout-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+      - if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Reuse the validated UI for pull requests and manual checks
+        if: github.event_name != 'push'
         uses: actions/download-artifact@v4
         with:
           name: validated-ui
           path: dist/
-      - uses: ./.github/actions/check-logbook-layout
+      - name: Build UI for main-push layout and security checks
+        if: github.event_name == 'push'
+        run: npm run build
+      - name: Install browser for log-book layout checks
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
+          npx playwright install --with-deps chromium
+      - name: Verify responsive VLB and ELB layouts
+        run: node scripts/verify-logbook-layout.mjs
+      - name: Verify report to Manual, Scan and Upload batch handoff
+        run: node scripts/verify-batch-entry-handoff.mjs
+      - name: Verify HTTPS cookies, MFA enrollment and account recovery
+        run: node scripts/verify-account-security-browser.mjs
+      - name: Keep log-book layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logbook-layout-checks
+          path: |
+            layout-checks/
+            security-checks/
+          if-no-files-found: ignore

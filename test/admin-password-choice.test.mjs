@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
-import {hashPassword, verifyPassword} from '../password-auth.mjs';
-import {assignedUserRoles,hasAccountRole} from '../account-role-access.mjs';
+import {hashPassword, verifyPassword} from '../server/services/password-auth.mjs';
+import {assignedUserRoles,hasAccountRole} from '../shared/account-role-access.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
 const sourceBetween = (start, end) => {

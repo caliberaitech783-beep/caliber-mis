@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createCanvas} from '@napi-rs/canvas';
-import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '../paddle-evidence.mjs';import {paddleFixture} from './paddle-fixture.mjs';
+import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '../server/services/paddle-evidence.mjs';import {paddleFixture} from './paddle-fixture.mjs';
 const image=()=>{const c=createCanvas(1435,1800);return c.toBuffer('image/png')};
 test('local OCR is bound to the exact scan and cannot supply approval or a ready-made draft',()=>{
  const bytes=image(),e=createPaddleEvidence({...paddleFixture(),status:'approved',draft:{assetId:'999'},checked:true},bytes);

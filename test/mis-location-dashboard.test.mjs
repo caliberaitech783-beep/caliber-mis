@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import {assignedUserSiteName} from "../site-location.mjs";
+import {assignedUserSiteName} from "../shared/site-location.mjs";
 
 test("MIS users and managers use location-scoped requests, TAT, and partitioned first-trip KPIs",()=>{
   const source=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");

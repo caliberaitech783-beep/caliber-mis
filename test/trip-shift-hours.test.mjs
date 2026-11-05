@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractCard} from '../scan-extraction.mjs';
-import {markedShiftEvidence,manualTripShiftPatch} from '../trip-card-rules.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {markedShiftEvidence,manualTripShiftPatch} from '../shared/trip-card-rules.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
-import {cardPrompt} from '../gemini-card-reader.mjs';
-import {checkScanCard} from '../bulk-card-scanning.mjs';
+import {cardPrompt} from '../server/services/gemini-card-reader.mjs';
+import {checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
 test('new Trip Cards derive hours from all five checked options, ignoring conflicting printed hours',()=>{
  for(const [label,shift,hours]of [['I (A)','I',8],['II (B)','II',8],['III (C)','III',8],['DAY SHIFT','Day',12],['NIGHT SHIFT','Night',12]]){
   for(const text of ['[x] '+label,label+' ✓']){

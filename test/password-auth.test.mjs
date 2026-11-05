@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hashPassword, initializeUserCredentials, publicUserRecord, verifyPassword } from "../password-auth.mjs";
+import { hashPassword, initializeUserCredentials, publicUserRecord, verifyPassword } from "../server/services/password-auth.mjs";
+
+test('malformed credential hashes fail closed without allocating arbitrary key lengths',()=>{
+ for(const encoded of ['',null,'scrypt:salt:xyz','scrypt:'+('a'.repeat(32))+':'+('f'.repeat(10000)),'scrypt:'+('a'.repeat(32))+':'+('z'.repeat(128))])assert.equal(verifyPassword('password',encoded),false);
+});
 
 test("hashes and verifies an initial phone-number password", () => {
   const hash = hashPassword("9925565281");

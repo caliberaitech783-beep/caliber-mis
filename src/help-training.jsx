@@ -71,7 +71,7 @@ export default function HelpTraining({role = "", roles = [], location = ""}) {
     </span>
     {open && createPortal(<div className="help-training-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeGuide(); }}>
       <section className="help-training-dialog" role="dialog" aria-modal="true" aria-labelledby="help-training-title">
-        <header>
+        <header className="mis-popup-close-header">
           <span className="help-training-heading-lead">
             <span className={`help-training-weather${temperature.error ? " is-error" : Number.isFinite(temperature.celsius) ? "" : " is-loading"}`} role="status" aria-live="polite" title={temperature.error ? "Outside temperature unavailable" : `Outside temperature${temperature.place ? ` at ${temperature.place}` : ""}, refreshed every 10 minutes`}>{formatTemperature(temperature.celsius)}</span>
             <span className="help-training-heading-icon"><CircleHelp /></span>
@@ -82,7 +82,7 @@ export default function HelpTraining({role = "", roles = [], location = ""}) {
             <button type="button" className={language === "en" ? "active" : ""} aria-pressed={language === "en"} onClick={() => setLanguage("en")}>English</button>
             <button type="button" className={language === "hi" ? "active" : ""} aria-pressed={language === "hi"} onClick={() => setLanguage("hi")}>हिन्दी</button>
           </div>
-          <button ref={closeButtonRef} type="button" className="help-training-close" onClick={closeGuide} aria-label="Close Help & Training"><X /></button>
+          <button ref={closeButtonRef} type="button" className="help-training-close mis-popup-close" onClick={closeGuide} aria-label="Close Help & Training">× Close</button>
         </header>
         {guides.length > 1 && <nav className="help-training-role-tabs" aria-label="Manager guide">
           {guides.map((option) => <button key={option.role} type="button" className={option.role === guide.role ? "active" : ""} aria-pressed={option.role === guide.role} onClick={() => setSelectedRole(option.role)}>{option.role}</button>)}

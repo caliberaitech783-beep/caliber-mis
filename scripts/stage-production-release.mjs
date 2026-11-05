@@ -4,7 +4,7 @@ import {promisify} from 'node:util';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const exec=promisify(execFile);
-const runtimeFolders=new Set(['assets','public','scripts','src']);
+const runtimeFolders=new Set(['assets','public','scripts','src','server','shared']);
 export function isRuntimeSource(file){
  const parts=file.split('/');
  if(parts.some(part=>!part||part==='..'||part.startsWith('.')))return false;

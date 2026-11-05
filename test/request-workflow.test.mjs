@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {requestDateTimeValue, requestMayBeChanged, requestMayBeVerified, validRequestAudioDataUrl, validTripCardImageDataUrl} from "../request-workflow.mjs";
+import {requestDateTimeValue, requestMayBeChanged, requestMayBeVerified, validRequestAudioDataUrl, validTripCardImageDataUrl} from "../shared/request-workflow.mjs";
 
 test("accepts a complete India date and time for request workflow actions", () => {
   assert.equal(requestDateTimeValue("2026-08-14", "14:30:10")?.toISOString(), "2026-08-14T09:00:10.000Z");

@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createGeminiCardReader,parseCardResponse,cardPrompt,geminiHttpError,MODEL} from '../gemini-card-reader.mjs';
-import {aFields} from '../gemini-hybrid.mjs';
-import {extractCard} from '../scan-extraction.mjs';
+import {createGeminiCardReader,parseCardResponse,cardPrompt,geminiHttpError,MODEL} from '../server/services/gemini-card-reader.mjs';
+import {aFields} from '../server/services/gemini-hybrid.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=(kind='vehicle')=>({documentType:kind==='vehicle'?'VLB':'ELB',fields:{...Object.fromEntries(aFields(kind).map(k=>[k,field(null)])),bookDate:field('2026-10-11'),site:field('Jayant'),door:field('V309'),cardNumber:field('75'),employeeCode:field('3943'),openingHmr:field('18749'),closingHmr:field('18756'),...(kind==='vehicle'?{openingKmr:field('222772.9'),closingKmr:field('222836.3'),printedTotalTrips:field('2')}:{}),machineSummary:kind==='vehicle'?[{equipmentName:field('T50'),tripCount:field('2')}]:[]},trips:kind==='vehicle'?{p:true,r:[[1,'T50','12:38','12:49'],[2,'T50','1:03','1:12']]}:{p:false,r:[]}});
 const ok=raw=>({ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:raw}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:50,totalTokenCount:150}})});
+test('door recovery bypasses same-image OCR cache and stores a fresh reading',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-fresh-door-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,init)=>{calls++;const data=response();data.fields.door=field(calls===1?'V1833':'V/833');if(calls===2)assert.match(JSON.parse(init.body).contents[0].parts[0].text,/Re-inspect the Door No cell/);return ok(JSON.stringify(data));}});
+ const image=Buffer.from('same-original-card');
+ await reader.recognize(image);await reader.recognize(image);assert.equal(calls,1);
+ const fresh=await reader.recognize(image,{forceRead:true});assert.equal(calls,2);assert.equal(fresh.handwrittenFields.door,'V/833');
+ assert.equal((await reader.recognize(image)).handwrittenFields.door,'V/833');assert.equal(calls,2);
+});
 test('one Gemini call fills header, meter, summary and literal individual rows; same-image cache avoids another call',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-single-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
  const opts={prepareViews:async()=>[{label:'Header',image:Buffer.from('detail')}],cacheDir:dir,getKey:async()=>'test-secret',minIntervalMs:0,sleep:async()=>{},fetchImpl:async(url,options)=>{calls++;assert.ok(url.includes(MODEL));const body=JSON.parse(options.body);assert.equal(body.contents[0].parts.filter(p=>p.inlineData).length,2);assert.equal(body.contents[0].parts[1].inlineData.data,Buffer.from('card').toString('base64'));assert.ok(body.contents[0].parts[0].text.includes('ONE response'));const data=response();data.fields.shift=field('III (C)');return ok(JSON.stringify(data));}};

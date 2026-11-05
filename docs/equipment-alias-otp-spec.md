@@ -190,7 +190,7 @@ Verify each against a month of real data on the test platform before production.
 - Alias list per site: active, suspended, retired, revoked, with full history.
 - Weekly Telegram line to NITISH and the MIS manager: mappings approved, by route, by
   site, and how many emergency approvals were self-approved.
-- Rules section added to `CARD-MACHINE-RULES.md` so the behaviour is documented in the
+- Rules section added to [CARD-MACHINE-RULES.md](CARD-MACHINE-RULES.md) so the behaviour is documented in the
   repository.
 
 ## 11. Prerequisites before go-live

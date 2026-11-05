@@ -14,7 +14,7 @@ test('real PostgreSQL: login survives the reverted public-ID schema without inva
 });
 
 test('real PostgreSQL: all roles remain signed in after inactivity while absolute expiry and revocation apply', {skip:!connectionString}, async()=>{
-  const {createSessionStore}=await import('../auth-session.mjs');
+  const {createSessionStore}=await import('../server/services/auth-session.mjs');
   const pool=new pg.Pool({connectionString,ssl:process.env.AUTH_SESSION_TEST_DATABASE_SSL==='false'?false:{rejectUnauthorized:false},max:1});
   const client=await pool.connect();
   try {

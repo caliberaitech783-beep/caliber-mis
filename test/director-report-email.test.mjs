@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildDirectorReportEmail,buildDirectorReportZipAttachment} from '../director-report-email.mjs';
+import {buildDirectorReportEmail,buildDirectorReportZipAttachment} from '../server/rules/director-report-email.mjs';
 
 test('Director report email renders department links for PDF and Excel',()=>{
   const email=buildDirectorReportEmail({generatedAt:new Date('2026-09-01T13:30:00Z'),archiveUrl:'https://bdms.cmll.in/r/zip123',links:[

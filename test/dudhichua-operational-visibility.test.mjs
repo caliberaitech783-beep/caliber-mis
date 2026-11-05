@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { requestsVisibleToSession, requestsVisibleGlobally, requestsVisibleToDashboard } from "../mis-request-visibility.mjs";
+import { requestsVisibleToSession, requestsVisibleGlobally, requestsVisibleToDashboard } from "../shared/mis-request-visibility.mjs";
 import { readFileSync } from "node:fs";
 
 const oldRows = ["Open", "Accepted", "In progress", "Closed", "Idle", "Ideal", "Verified"].map((status, i) => ({ ref: `REQ-OLD-${i}`, site: "Dudhichua OB", createdAt: "2026-09-22 15:00:00", status }));

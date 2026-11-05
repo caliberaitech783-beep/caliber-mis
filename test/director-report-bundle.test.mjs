@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {buildDirectorReportTables,buildDirectorWhatsAppMessage,buildXlsxWorkbookBuffer,directorReportDue,directorReportWindow} from '../director-report-bundle.mjs';
+import {buildDirectorReportTables,buildDirectorWhatsAppMessage,buildXlsxWorkbookBuffer,directorReportDue,directorReportWindow} from '../shared/director-report-bundle.mjs';
 
 test('Director report window runs daily at 7 PM India time',()=>{
   const window=directorReportWindow(new Date('2026-09-01T13:35:00Z'));

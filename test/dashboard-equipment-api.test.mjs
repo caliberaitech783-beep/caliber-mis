@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {canReadDashboardEquipment,currentDashboardUserCandidate,dashboardEquipmentScope,dashboardEquipmentScopeIsUsable,dashboardSessionFromProfile,scopeDashboardEquipmentRecords} from '../dashboard-equipment-access.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {recordsForSite} from '../site-location.mjs';
+import {canReadDashboardEquipment,currentDashboardUserCandidate,dashboardEquipmentScope,dashboardEquipmentScopeIsUsable,dashboardSessionFromProfile,scopeDashboardEquipmentRecords} from '../server/rules/dashboard-equipment-access.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {recordsForSite} from '../shared/site-location.mjs';
 
 const equipment=[
   {id:1,equipmentName:'EX-1',currentLocation:'SASTI II'},

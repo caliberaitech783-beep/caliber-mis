@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {canManagePendingCorrection,canDeletePendingCorrection,REQUEST_CORRECTION_STATUS as STATUS,requestCorrectionTypesForRole} from '../request-correction-policy.mjs';
+import {canManagePendingCorrection,canDeletePendingCorrection,REQUEST_CORRECTION_STATUS as STATUS,requestCorrectionTypesForRole} from '../shared/request-correction-policy.mjs';
 
 const record={status:STATUS.PENDING,requestedByLogin:' Manager ',correctionType:'onRoad'};
 const owner={requester:true,login:'manager',allowedTypes:['onRoad'],inScope:true};
@@ -57,7 +57,7 @@ test('pending correction endpoints lock the row, validate edits and retain delet
 test('management handler commits valid changes and rolls back denied or invalid operations',async()=>{
   const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
   const source=server.slice(server.indexOf('async function managePendingCorrection'),server.indexOf("  app.patch('/api/request-corrections/:id',"));
-  const {normalizeRequestCorrectionChanges,requestCorrectionChangedFields}=await import('../request-correction-policy.mjs');
+  const {normalizeRequestCorrectionChanges,requestCorrectionChangedFields}=await import('../shared/request-correction-policy.mjs');
   async function run({method='PATCH',context=owner,status=STATUS.PENDING,body={reason:'Correcting an entry mistake',proposedChanges:{closedBy:'Correct name'}}}={}){
     const before={...record,id:1,status,site:'Site A',requestReference:'REQ-1',originalValues:{closedBy:'Original name'},proposedChanges:{closedBy:'Wrong name'},reason:'Original correction reason'};
     const queries=[];let saved,released=false,error;

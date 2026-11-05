@@ -1,4 +1,4 @@
-import {effectiveInfoPulseEtcTimestamp, parseIstTimestamp} from '../ai-feeder.mjs';
+import {effectiveInfoPulseEtcTimestamp, parseIstTimestamp} from '../shared/ai-feeder.mjs';
 
 export function pulseElapsed(from, to) {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 'Not recorded';

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
-import {SCAN_BACKUP_SCHEMA} from '../scan-backup.mjs';
-import {VLB_BATCH_SCHEMA} from '../vlb-batches.mjs';
-import {SCAN_SCHEMA,checkScanCard} from '../bulk-card-scanning.mjs';
-import {DELETION_PHONE,registerLogBookDeletion} from '../log-book-deletion.mjs';
+import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+import {SCAN_BACKUP_SCHEMA} from '../server/routes/scan-backup.mjs';
+import {VLB_BATCH_SCHEMA} from '../server/routes/vlb-batches.mjs';
+import {SCAN_SCHEMA,checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
+import {DELETION_PHONE,registerLogBookDeletion} from '../server/rules/log-book-deletion.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomic, scoped and permanent',async t=>{

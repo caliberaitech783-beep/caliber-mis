@@ -7,9 +7,9 @@ import express from 'express';
 import PDFDocument from 'pdfkit';
 import {PGlite} from '@electric-sql/pglite';
 import {MAX_SCAN_ENTRY_CARDS,scanEntryRemaining,requireScanEntrySpace} from '../public/scan-entry-limit.mjs';
-import {registerLocalDocumentScanning} from '../local-document-scanning.mjs';
-import {SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
-import {LOG_BOOK_SCHEMA} from '../log-book.mjs';
+import {registerLocalDocumentScanning} from '../server/routes/local-document-scanning.mjs';
+import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
+import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('entry limit allows partial entries and rejects a 41st card',()=>{

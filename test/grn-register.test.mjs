@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {GRN_REGISTER_SQL,grnRegisterRow} from '../grn-register.mjs';
+import {GRN_REGISTER_SQL,grnRegisterRow} from '../server/rules/grn-register.mjs';
 
 test('GRN register retains all item lines under a repeated receipt number',()=>{
   const first=grnRegisterRow({GRN_ID:42,LINE_ID:1,GRN_NO:'CMPL/PUR/26-27/009103',GRN_DATE:'2026-08-03'},0);

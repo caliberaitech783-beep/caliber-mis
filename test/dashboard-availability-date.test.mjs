@@ -4,10 +4,10 @@ import { readFileSync } from "node:fs";
 import React from "react";
 import { transformWithOxc } from "vite";
 import { availabilityRequestsForDate } from "../src/dashboard-availability.mjs";
-import { dashboardFleetSnapshot } from "../dashboard-fleet-snapshot.mjs";
-import { liveEquipmentMetrics, liveEquipmentRoadStatus } from "../dashboard-equipment-metrics.mjs";
-import { recordBelongsToSite } from "../site-location.mjs";
-import { formatDisplayDate } from "../date-time-format.mjs";
+import { dashboardFleetSnapshot } from "../shared/dashboard-fleet-snapshot.mjs";
+import { liveEquipmentMetrics, liveEquipmentRoadStatus } from "../shared/dashboard-equipment-metrics.mjs";
+import { recordBelongsToSite } from "../shared/site-location.mjs";
+import { formatDisplayDate } from "../shared/date-time-format.mjs";
 
 const assets = [
   ...["A", "B", "C", "D"].map(door => ({ door, currentLocation: "Majri OB", category: "Vehicles" })),

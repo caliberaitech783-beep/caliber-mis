@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { REGION_DATA } from "../region-scope.mjs";
+import { REGION_DATA } from "../shared/region-scope.mjs";
 import { changeDrilldownFilter, drilldownView } from "../src/dashboard-drilldown-model.mjs";
 
 const rows = [

@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 // Equipment master overlay: the ALIAS column, the revoke dialog (same two OTP routes as
 // approval) and the administrator list per site with full history and the approver setting.
@@ -26,7 +26,7 @@ export function EquipmentAliasRevokeDialog({session,alias,otpEnabled,approver,ap
  const dialog=useRef(null),[reason,setReason]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[current,setCurrent]=useState(alias);
  useEffect(()=>{const node=dialog.current;if(node&&!node.open)node.showModal();return()=>{if(node?.open)node.close()}},[]);
  const direct=async()=>{setBusy(true);setError('');try{await aliasApi(session)('/api/equipment-aliases/'+alias.id,{reason},'DELETE');await onDone?.();onDismiss?.();}catch(e){setError(e.message)}finally{setBusy(false)}};
- return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="alias-revoke-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}>
+ return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="alias-revoke-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={onDismiss}  aria-label="Close window">× Close</button></div>
   <h2 id="alias-revoke-title">Revoke equipment alias</h2>
   <p>Written <strong>{alias.writtenText}</strong> currently maps to <strong>{alias.equipmentDoor||'equipment '+alias.equipmentId}</strong>{alias.equipmentSite?' at '+alias.equipmentSite:''}. Revoking stops the written label resolving on new cards. Saved logbooks are not changed.</p>
   <p className="scan-alias-note">{aliasHover(alias)}</p>

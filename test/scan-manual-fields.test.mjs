@@ -27,8 +27,8 @@ test('clear handover blanks need no invented time, but unreadable OCR time still
 });
 
 test('literal blank handover times do not become red fields or block automatic saving',async()=>{
- const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
- const {cardReviewGroup}=await import('../scan-card-groups.mjs');
+ const {canAutoSaveScanCard}=await import('../shared/scan-auto-save.mjs');
+ const {cardReviewGroup}=await import('../shared/scan-card-groups.mjs');
  for(const key of ['loadingTime','unloadingTime']){
   const draft={...valid,trips:[{...valid.trips[0],[key]:''}],scanMachineSummary:key==='loadingTime'?[]:valid.scanMachineSummary};
   const reason='Trip 1: check '+(key==='loadingTime'?'loading':'unloading')+' time.';
@@ -43,8 +43,8 @@ test('literal blank handover times do not become red fields or block automatic s
 });
 
 test('missing printed number and absent Work Order master stay All okay for VLB and ELB',async()=>{
- const {canAutoSaveScanCard}=await import('../scan-auto-save.mjs');
- const {cardReviewGroup}=await import('../scan-card-groups.mjs');
+ const {canAutoSaveScanCard}=await import('../shared/scan-auto-save.mjs');
+ const {cardReviewGroup}=await import('../shared/scan-card-groups.mjs');
  const options={assets:[{id:'1',door:'Vpc12',site:'Jayant OC',kind:'equipment'}],employees:[{id:'2'}],shifts:[{id:'3'}],workOrders:[]};
  for(const kind of ['vehicle','equipment']){
   const draft={...valid,aFormNo:'',jobCardNo:'',workOrderId:'',extractionReviewFields:[],meterReviewFields:[]};

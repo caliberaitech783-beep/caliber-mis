@@ -1,4 +1,4 @@
-import { reportTime12 } from "../report-time-format.mjs";
+import { reportTime12 } from "../shared/report-time-format.mjs";
 
 // Ordering of the daily maintenance updates listed inside table cells.
 // One preference covers every list in the app: a reader who prefers a breakdown's history

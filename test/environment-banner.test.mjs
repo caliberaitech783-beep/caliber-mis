@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import React from 'react';
 import {transformWithOxc} from 'vite';
-import {normalizeEnvironmentLabel,environmentLabelFromEnv,environmentBannerParts,environmentBannerText,environmentTitlePrefix} from '../environment-label.mjs';
+import {normalizeEnvironmentLabel,environmentLabelFromEnv,environmentBannerParts,environmentBannerText,environmentTitlePrefix} from '../shared/environment-label.mjs';
 
 const root=path.dirname(fileURLToPath(new URL('../package.json',import.meta.url)));
 const read=relative=>readFileSync(path.join(root,relative),'utf8').replace(/\r\n/g,'\n');
@@ -32,14 +32,14 @@ test('the label is empty unless MIS_ENVIRONMENT_LABEL is set; live names and str
 
 test('the server reports the label read-only on /api/app-version and /api/health and uses it nowhere else',()=>{
   const server=read('server.mjs');
-  assert.match(server,/^import \{environmentLabelFromEnv\} from '\.\/environment-label\.mjs';$/m);
+  assert.match(server,/^import \{environmentLabelFromEnv\} from '\.\/shared\/environment-label\.mjs';$/m);
   assert.match(server,/^const environmentLabel=environmentLabelFromEnv\(process\.env\);$/m);
   assert.match(server,/res\.json\(\{version:currentAppVersion,commit:deploymentSha,environmentLabel\}\);/);
   assert.match(server,/status:'ok',database:'connected',databaseTime:result\.rows\[0\]\.database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,/);
   assert.match(server,/\{status:'degraded',database:'disconnected',error:databaseError,environmentLabel\}/);
   const uses=server.split('\n').filter(line=>/\benvironmentLabel\b/.test(line));
   assert.equal(uses.length,4,'read once, reported in three responses, nothing else:\n'+uses.join('\n'));
-  // Only environment-label.mjs reads the setting, so no other runtime code can branch on it (comments may name it).
+  // Only shared/environment-label.mjs reads the setting, so no other runtime code can branch on it (comments may name it).
   const reads=/\benv\??\.MIS_ENVIRONMENT_LABEL|\[\s*['"]MIS_ENVIRONMENT_LABEL['"]\s*\]|getenv\(\s*['"]MIS_ENVIRONMENT_LABEL/;
   const readers=[];
   const visit=directory=>{
@@ -51,7 +51,7 @@ test('the server reports the label read-only on /api/app-version and /api/health
     }
   };
   visit(root);
-  assert.deepEqual(readers.sort(),['environment-label.mjs']);
+  assert.deepEqual(readers.sort(),['shared/environment-label.mjs']);
 });
 
 const componentSource=read('src/environment-banner.jsx').replace(/^import .*;\n/gm,'').replace('export default function','function');

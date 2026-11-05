@@ -5,7 +5,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import * as order from "../src/daily-updates-order.mjs";
-import { formatDisplayDateTime } from "../date-time-format.mjs";
+import { formatDisplayDateTime } from "../shared/date-time-format.mjs";
 
 const updates = [
   { createdAt: "2026-09-16 20:38", authorName: "SUNIL KUMAR MAHATO", remark: "Compressor assembly sent for upgradation", delayedReason: "Waiting for compressor assembly" },

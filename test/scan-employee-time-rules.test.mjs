@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {normalizeScannedTime,validScannedTime} from '../scan-clock.mjs';
+import {normalizeScannedTime,validScannedTime} from '../shared/scan-clock.mjs';
 import {scanTimeInput} from '../src/scan-time-input.mjs';
-import {matchesEmployeeReference,employeeReferenceVariants} from '../employee-identity.mjs';
-import {extractCard} from '../scan-extraction.mjs';
-import {aFields,reconcile} from '../gemini-hybrid.mjs';
-import {registerErpEmployees} from '../erp-employee-source.mjs';
-import {userSiteScope} from '../region-scope.mjs';
-import {cleanTripCell} from '../trip-row-vision.mjs';
+import {matchesEmployeeReference,employeeReferenceVariants} from '../shared/employee-identity.mjs';
+import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {aFields,reconcile} from '../server/services/gemini-hybrid.mjs';
+import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
+import {userSiteScope} from '../shared/region-scope.mjs';
+import {cleanTripCell} from '../server/services/trip-row-vision.mjs';
 
 const person={employeeId:'CMPL3228',caliberId:'CMPL3228',caliberCode:'CMLL3228',employeeCode:'83',name:'AADIKA PRASAD YADAV',site:'POUNI OB'};
 test('explicit single-minute notation becomes HH:MM without guessing blank or invalid times',()=>{

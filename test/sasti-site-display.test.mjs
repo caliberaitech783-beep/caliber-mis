@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {buildDepartmentReports} from '../department-reports.mjs';
-import {buildDirectorReportTables,DIRECTOR_REPORT_TITLES} from '../director-report-bundle.mjs';
-import {locationCountLabel} from '../in-out-report.mjs';
-import {managerReportScope} from '../region-scope.mjs';
+import {buildDepartmentReports} from '../shared/department-reports.mjs';
+import {buildDirectorReportTables,DIRECTOR_REPORT_TITLES} from '../shared/director-report-bundle.mjs';
+import {locationCountLabel} from '../shared/in-out-report.mjs';
+import {managerReportScope} from '../shared/region-scope.mjs';
 
 const now=new Date('2026-09-15T06:00:00Z');
 const request={ref:'REQ-SASTI',door:'S-1',site:'SASTI',status:'Open',start:'2026-09-15 09:00:00'};

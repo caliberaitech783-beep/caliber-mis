@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPulseSignInBridge} from '../pulse-signin-bridge.mjs';
+import {createPulseSignInBridge} from '../server/services/pulse-signin-bridge.mjs';
 import {PGlite} from '@electric-sql/pglite';
-import {registerMasterSync} from '../master-sync.mjs';
+import {registerMasterSync} from '../server/routes/master-sync.mjs';
 
 test('automatic connection sends only the posting user grant to fixed HTTPS Pulse and never sends a password',async()=>{
  const actors=[],calls=[];

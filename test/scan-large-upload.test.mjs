@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {randomUUID} from 'node:crypto';
-import {registerBulkCardScanning} from '../bulk-card-scanning.mjs';
+import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
 
 test('scanner upload accepts multi-megabyte scans and rejects malformed base64 without crashing',async t=>{
  const batchId=randomUUID(),stored=[];

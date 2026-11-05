@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import * as model from '../src/report-period-model.mjs';
-import {reportRowsWithinRange} from '../report-date-range.mjs';
+import {reportRowsWithinRange} from '../shared/report-date-range.mjs';
 import DateInput from '../src/date-input.mjs';
 
 test('all preset ranges use Monday weeks, inclusive fortnight and calendar boundaries',()=>{

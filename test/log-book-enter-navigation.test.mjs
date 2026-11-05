@@ -1,17 +1,18 @@
-import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';
-import {validateTripEquipment,resolveTripEquipment} from '../trip-equipment-validation.mjs';
-import {blankJob,blankBreakdown,padManualRows} from '../manual-log-book-details.mjs';
-import {employeeAtLocation} from '../log-book-access.mjs';
+import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
+import {validateTripEquipment,resolveTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {blankJob,blankBreakdown,padManualRows} from '../shared/manual-log-book-details.mjs';
+import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
-import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
-import * as rules from '../trip-card-rules.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
+import * as rules from '../shared/trip-card-rules.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {missingAssetMessage} from '../src/log-book-asset-options.mjs';
+import {manualTimeValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 
 function control(name, overrides={}) {
   return {name,tagName:'INPUT',type:'text',value:'value',readOnly:false,tabIndex:0,dataset:{},
@@ -81,7 +82,7 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
-  const scope={compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+  const scope={compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};

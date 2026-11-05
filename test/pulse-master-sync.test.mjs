@@ -4,8 +4,8 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {PGlite} from '@electric-sql/pglite';
-import {hashPassword,verifyPassword} from '../password-auth.mjs';
-import {applyPulseSnapshot,createPulseMasterSync,validatePulseSnapshot,PULSE_MASTER_NAMES} from '../pulse-master-sync.mjs';
+import {hashPassword,verifyPassword} from '../server/services/password-auth.mjs';
+import {applyPulseSnapshot,createPulseMasterSync,validatePulseSnapshot,PULSE_MASTER_NAMES} from '../server/routes/pulse-master-sync.mjs';
 
 async function fixture(t){
  const db=new PGlite();t.after(()=>db.close());

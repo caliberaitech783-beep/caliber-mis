@@ -9,7 +9,7 @@ import {
   requestEquipmentRecordsForGroup,
   requestWithEquipmentMasterDetails,
   requestVehicleOptionLabel,
-} from "../request-equipment.mjs";
+} from "../shared/request-equipment.mjs";
 
 test("selects request equipment by stable id when names are duplicated", () => {
   const records = [

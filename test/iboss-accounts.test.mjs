@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS,accountView,accountRecord} from '../iboss-accounts.mjs';
+import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS,accountView,accountRecord} from '../shared/iboss-accounts.mjs';
 test('Accounts includes every link from the reference in its row order',()=>{
  assert.deepEqual(ACCOUNT_SECTIONS.masters.map(key=>ACCOUNT_VIEWS[key].title),['Account Master','Vendor Master','Account Opening Register','Cost Centre Master','Work Centre Master','Chart Of Accounts','Day Book','Bank Interest']);
 });

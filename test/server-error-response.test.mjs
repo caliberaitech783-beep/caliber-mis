@@ -8,7 +8,7 @@ import {
   serverErrorHandler,
   TRANSIENT_DATABASE_MESSAGE,
   UNEXPECTED_ERROR_MESSAGE,
-} from '../server-error-response.mjs';
+} from '../server/middleware/server-error-response.mjs';
 
 const server = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
 
@@ -92,8 +92,15 @@ test('the express handler writes Retry-After for transient failures and never do
   assert.equal(sent.statusCode, 0, 'must not write after headers were sent');
 });
 
+test('error logging excludes sign-in query codes, body-parser payloads and credential URLs',()=>{
+ const logged=[],handler=serverErrorHandler({log:(...args)=>logged.push(args)});
+ handler(Object.assign(new Error('Malformed body includes secret-value'),{status:400,type:'entity.parse.failed',body:'secret-value'}),{method:'POST',originalUrl:'/api/login?code=sign-in-code'},fakeResponse(),()=>{});
+ handler(new Error('Failed postgres://user:db-password@database/mis'),{method:'GET',url:'/api/x?token=secret-token'},fakeResponse(),()=>{});
+ const text=JSON.stringify(logged);for(const value of ['secret-value','sign-in-code','db-password','secret-token'])assert.ok(!text.includes(value));
+});
+
 test('server.mjs uses the shared handler and survives idle pool errors and stray rejections', () => {
-  assert.match(server, /import \{serverErrorHandler\} from '\.\/server-error-response\.mjs'/);
+  assert.match(server, /import \{serverErrorHandler\} from '\.\/server\/middleware\/server-error-response\.mjs'/);
   assert.match(server, /app\.use\(serverErrorHandler\(\)\)/);
   assert.doesNotMatch(server, /res\.status\(500\)\.json\(\{error:'Server error'\}\)/);
   assert.match(server, /pool\.on\('error'/);

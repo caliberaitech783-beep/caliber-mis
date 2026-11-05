@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bdmsChatConversation} from '../telegram-bdms-conversation.mjs';
+import {bdmsChatConversation} from '../server/rules/telegram-bdms-conversation.mjs';
 const session={role:'normal',assignedRole:'Production User',login:'prod'};
 const requests=[{ref:'REQ-101',requesterLogin:'prod',site:'Jayant OC',door:'V160',status:'Open',maintenanceWork:'Pump repair',acceptedBy:'Demo technician',start:'2026-10-08',linkedRequestReferences:['REQ-102','REQ-SECRET']},{ref:'REQ-102',requesterLogin:'prod',site:'Jayant OC',door:'V160',status:'Running BD',start:'2026-10-08'},{ref:'REQ-SECRET',requesterLogin:'other',site:'Jayant OC',door:'V160',status:'Open',maintenanceWork:'Confidential'}];
 const opts={session,requests,scopeLabel:'Jayant OC',today:'2026-10-08'};

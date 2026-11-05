@@ -2,7 +2,7 @@ import React,{useEffect,useRef} from 'react';
 export default function ScanEquipmentReviewDialog({card,busy,error,onReject,onDelete,onTransfer,onRecheck,onReview,onClose}){
  const dialog=useRef(null),review=card.raw_fields.fleetReview;
  useEffect(()=>{const node=dialog.current;node.showModal();return()=>node.close()},[]);
- return <dialog ref={dialog} className="scan-equipment-dialog" aria-labelledby="scan-equipment-title" onCancel={event=>{event.preventDefault();onClose()}}>
+ return <dialog ref={dialog} className="scan-equipment-dialog" aria-labelledby="scan-equipment-title" onCancel={event=>{event.preventDefault();onClose()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={onClose}  aria-label="Close window">× Close</button></div>
  <button type="button" className="scan-equipment-close" aria-label="Close" title="Close. The card stays on hold; the Equipment review button reopens this." onClick={onClose}>×</button>
  <h2 id="scan-equipment-title">Equipment missing or not at this site</h2><p>Card {card.ordinal} · {card.filename}</p>
  {review.error&&<p role="alert">{review.error}</p>}<ul>{review.issues.map(issue=><li key={issue.key}><strong>{issue.door}</strong><span>Selected site: {issue.selectedSite}</span><span>Pulse location: {issue.pulseSite}</span><small>{issue.fields.filter(field=>field.startsWith('trips.')).length} trip row(s) flagged</small></li>)}</ul>

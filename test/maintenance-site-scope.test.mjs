@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { recordsForSite } from '../site-location.mjs';
+import { recordsForSite } from '../shared/site-location.mjs';
 
 test('maintenance request lists include only the assigned site across statuses', () => {
   const requests = [

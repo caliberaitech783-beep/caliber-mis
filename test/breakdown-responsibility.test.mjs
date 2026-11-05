@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {canEditBreakdownResponsibility} from '../breakdown-responsibility.mjs';
+import {canEditBreakdownResponsibility} from '../server/rules/breakdown-responsibility.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const manager=role=>({role:'super',login:'manager',name:'Manager',permissions:{adminLevel:'Manager',managerRoles:[role]}});

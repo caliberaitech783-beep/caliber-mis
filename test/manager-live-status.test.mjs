@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 import { readFileSync } from "node:fs";
 import React from "react";
 import { transformWithOxc } from "vite";
-import { fleetAssetRequestDetails, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses } from "../dashboard-equipment-metrics.mjs";
-import { requestWithEquipmentMasterDetails } from "../request-equipment.mjs";
-import { recordBelongsToSite } from "../site-location.mjs";
-import { managerRoleSelection } from "../admin-access.mjs";
+import { fleetAssetRequestDetails, liveEquipmentMetrics, liveEquipmentRoadStatus, liveEquipmentRoadStatuses } from "../shared/dashboard-equipment-metrics.mjs";
+import { requestWithEquipmentMasterDetails } from "../shared/request-equipment.mjs";
+import { recordBelongsToSite } from "../shared/site-location.mjs";
+import { managerRoleSelection } from "../shared/admin-access.mjs";
 import { visibleInMisRequests, visibleInMisHistory } from "../src/mis-history.mjs";
-import { isProductionFirstTripPending } from "../info-pulse-data.mjs";
+import { isProductionFirstTripPending } from "../shared/info-pulse-data.mjs";
 import {isNetworkFailure, isTransientStatus} from "../src/api-transient-retry.mjs";
 import {requestWriteConnectionMessage, requestWriteOutcomeConfirmed} from "../src/request-write-recovery.mjs";
 

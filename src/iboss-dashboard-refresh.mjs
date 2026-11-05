@@ -1,4 +1,4 @@
-import {indiaDateTimeInputValue} from '../report-date-range.mjs';
+import {indiaDateTimeInputValue} from '../shared/report-date-range.mjs';
 
 export const DASHBOARD_REFRESH_MS = 10 * 60 * 1000;
 

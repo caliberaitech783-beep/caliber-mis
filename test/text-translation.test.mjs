@@ -11,7 +11,7 @@ import {
   translationCacheKey,
   translationInstructions,
   translatorFromEnvironment,
-} from '../text-translation.mjs';
+} from '../server/services/text-translation.mjs';
 
 test('normalizeLanguage accepts codes, locales and names in either script', () => {
   for (const value of ['hi', 'HI-IN', 'Hindi', 'हिंदी', ' hi-in ']) assert.equal(normalizeLanguage(value), 'hi', value);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
-import {dashboardEquipmentScope, scopeDashboardEquipmentRecords} from "../dashboard-equipment-access.mjs";
+import {dashboardEquipmentScope, scopeDashboardEquipmentRecords} from "../server/rules/dashboard-equipment-access.mjs";
 
 const source=readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
 const styles=readFileSync(new URL("../src/dashboard-concept-a.css",import.meta.url),"utf8");

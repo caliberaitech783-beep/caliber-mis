@@ -1,4 +1,4 @@
-import {CONTENT_DELETION_POLICY} from '../content-deletion-policy.mjs';
+import {CONTENT_DELETION_POLICY} from '../server/rules/content-deletion-policy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

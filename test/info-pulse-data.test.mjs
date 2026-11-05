@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {aiFeederAlerts, parseIstTimestamp} from '../ai-feeder.mjs';
-import {buildInfoPulseBreakdowns, buildInfoPulseCases, buildInfoPulseFirstTripPending, infoPulseColumns, infoPulseDate, infoPulseSiteOptions, infoPulseView, isActiveBreakdown, isProductionFirstTripPending, isProductionFirstTripRequired, productionFirstTripCutoffMs} from '../info-pulse-data.mjs';
-import {infoPulseRequestScope, scopeInfoPulseRequests} from '../info-pulse-scope.mjs';
+import {aiFeederAlerts, parseIstTimestamp} from '../shared/ai-feeder.mjs';
+import {buildInfoPulseBreakdowns, buildInfoPulseCases, buildInfoPulseFirstTripPending, infoPulseColumns, infoPulseDate, infoPulseSiteOptions, infoPulseView, isActiveBreakdown, isProductionFirstTripPending, isProductionFirstTripRequired, productionFirstTripCutoffMs} from '../shared/info-pulse-data.mjs';
+import {infoPulseRequestScope, scopeInfoPulseRequests} from '../server/rules/info-pulse-scope.mjs';
 
 const NOW = Date.parse('2026-09-10T12:00:00+05:30');
 const base = {status: 'Open', site: 'Sasti OC', start: '2026-09-01 12:00', expectedCompletionAt: '2026-09-08 12:00'};

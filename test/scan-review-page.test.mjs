@@ -10,7 +10,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  const module=await import(new URL('../src/'+match[2],import.meta.url));
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
-for(const name of ['ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
+for(const name of ['ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
 const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
@@ -88,6 +88,14 @@ test('the purple extraction strip stays on the overview and is omitted from card
  assert.equal(nodes(harness('&scanView=review&scanGroup=brown').render(),node=>node.type===scope.ScanExtractionStatus).length,0);
 });
 
+test('fleet reconciliation is collapsed below Card status on the VLB overview',()=>{
+ const report=React.createElement('section',{'aria-label':'fleet report'}),tree=harness().render({fleetReconciliation:report});
+ const details=nodes(tree,n=>n.type==='details'&&n.props.className==='scan-fleet-reconciliation')[0];
+ assert.ok(details);assert.equal(details.props.open,undefined);
+ const ordered=nodes(tree,n=>n.props.className==='scan-card-groups'||n.props.className==='scan-fleet-reconciliation').map(n=>n.props.className);
+ assert.deepEqual(ordered,['scan-card-groups','scan-fleet-reconciliation']);
+});
+
 test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
  assert.match(source,/autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card \{autoSaveError\.ordinal\}\.<\/strong> \{autoSaveError\.message\}/);
@@ -101,7 +109,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
  app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
  app.testCapture.setCards([okay(1),okay(2),saved]);
- app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1},{id:'batch-2',name:'B2',cards:4,posted:1}]);
+ app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1,tripCount:11},{id:'batch-2',name:'B2',cards:4,posted:1,tripCount:13}]);
  let tree=app.render({vlbBatch:{id:'vlb-1'}});
  const tile=id=>nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+id)[0];
  const count=id=>nodes(tile(id),n=>n.type==='strong')[0].props.children.join('');
@@ -110,6 +118,11 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.deepEqual(nodes(tile('orange'),n=>n.type==='small')[0].props.children,'1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B2'),n=>n.type==='span')[0].props.children[0],'4 cards · 1 saved · 3 unsaved','other entries keep the server counts');
+ const total=React.Children.toArray(nodes(tree,n=>n.props.className==='scan-entry-total')[0].props.children);
+ assert.equal(total[0].props.children[0].props.children,'Total Count of Batches:');
+ assert.equal(total[0].props.children.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
+ assert.deepEqual(total[0].props.children[4].props.children,[7,' card','s']);
+ assert.deepEqual(total[1].props.children,['Total Trips: ',24]);
  app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  app.testCapture.setFailureTick(n=>n+1);
  tree=app.render({vlbBatch:{id:'vlb-1'}});
@@ -312,4 +325,10 @@ test('date/site/shift prompts do not interrupt correction of an error card',()=>
  app.render();app.effects.find(fn=>String(fn).includes('mismatchPromptedCards'))();
  tree=app.render();
  assert.equal(nodes(tree,n=>n.type==='button'&&n.props['aria-controls']==='scan-mismatch-list')[0].props['aria-expanded'],false);
+});
+for(const kind of ['vehicle','equipment'])test(kind+' selected abort opens only an exact pending-card confirmation',()=>{
+ const app=harness('',kind);app.render();const batch={id:'abort-batch',kind},pending=[{id:'abort-one',batch_id:batch.id,ordinal:1,status:'reading',revision:3,filename:'one.png',draft:{},raw_fields:{}},{id:'abort-two',batch_id:batch.id,ordinal:2,status:'queued',revision:1,filename:'two.png',draft:{},raw_fields:{}}];app.testCapture.setBatch(batch);app.testCapture.setCards(pending);
+ let tree=app.render(),report=nodes(tree,n=>n.type===scope.ScanBatchReport)[0];assert.equal(typeof report.props.onAbortCards,'function');report.props.onAbortCards(pending);tree=app.render();let dialog=nodes(tree,n=>n.type===scope.ScanCardAbortDialog)[0];assert.deepEqual(dialog.props.targets.map(card=>card.id),['abort-one','abort-two']);assert.equal(dialog.props.kind,kind);assert.equal(nodes(tree,n=>n.type===scope.ScanBatchReport)[0].props.selectionDisabled,true);
+ app.testCapture.setCards(pending.map(card=>({...card,revision:20,status:'review'})));tree=app.render();dialog=nodes(tree,n=>n.type===scope.ScanCardAbortDialog)[0];assert.equal(dialog.props.targets[0].status,'reading','confirmation retains the exact reviewed selection');dialog.props.onClose();tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);
+ report=nodes(tree,n=>n.type===scope.ScanBatchReport)[0];report.props.onAbortCards([{...pending[0],status:'posted',logbook_id:9}]);tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);report.props.onAbortCards([{...pending[0],batch_id:'another-batch'}]);tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);
 });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {canViewUserSessions,isSessionViewOnlyUser,requireUserSessionView} from '../user-session-access.mjs';
+import {canViewUserSessions,isSessionViewOnlyUser,requireUserSessionView} from '../shared/user-session-access.mjs';
 test('only exact authenticated login receives the additional read permission',()=>{
   for(const login of ['MAHAKDUDANI','mahakdudani',' MahakDudani '])assert.equal(canViewUserSessions({login,role:'super',permissions:{adminLevel:'Manager'}}),true);
   for(const session of [null,{}, {login:'other',name:'MAHAKDUDANI'},{login:'mahakdudani2'},{role:'normal',permissions:{adminLevel:'Admin'}}])assert.equal(canViewUserSessions(session),false);

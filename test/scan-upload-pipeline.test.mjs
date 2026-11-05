@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPdfUploadSession,transferScanGroups} from '../src/scan-upload-pipeline.mjs';
-import {scanValidationClient} from '../scan-validation-cache.mjs';
+import {scanValidationClient} from '../server/rules/scan-validation-cache.mjs';
 import {readFileSync} from 'node:fs';
 
 test('the counted PDF is reused for rendering and retained documents are bounded and cleaned up',async()=>{

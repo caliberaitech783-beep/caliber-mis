@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {legacyEtcRepairPlan,legacyEtcRepairReason} from '../legacy-etc-repair.mjs';
+import {legacyEtcRepairPlan,legacyEtcRepairReason} from '../server/rules/legacy-etc-repair.mjs';
 
 const iso = value => value?.toISOString();
 

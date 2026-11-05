@@ -10,8 +10,8 @@ import {
   alertTypesForRole,
   effectiveInfoPulseEtcTimestamp,
   parseIstTimestamp,
-} from "../ai-feeder.mjs";
-import {infoPulseRequestScope,isInfoPulseDirector,scopeInfoPulseRequests} from "../info-pulse-scope.mjs";
+} from "../shared/ai-feeder.mjs";
+import {infoPulseRequestScope,isInfoPulseDirector,scopeInfoPulseRequests} from "../server/rules/info-pulse-scope.mjs";
 
 const NOW = Date.parse("2026-09-02T12:00:00+05:30");
 const ist = (value) => value;

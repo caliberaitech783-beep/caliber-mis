@@ -4,10 +4,10 @@ import {randomUUID} from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
 import {PGlite} from '@electric-sql/pglite';
-import {registerVlbBatches} from '../vlb-batches.mjs';
-import {enforceContentDeletionPolicy} from '../content-deletion-policy.mjs';
-import {withVlbTripHandovers} from '../vlb-trip-handover.mjs';
-import {misRequestAllowed} from '../mis-application-access.mjs';
+import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {enforceContentDeletionPolicy} from '../server/rules/content-deletion-policy.mjs';
+import {withVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
+import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 async function setup(t){

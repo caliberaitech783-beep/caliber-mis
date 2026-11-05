@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildMeterContinuityReport,normalizeTolerance} from '../meter-continuity-report.mjs';
+import {buildMeterContinuityReport,normalizeTolerance} from '../shared/meter-continuity-report.mjs';
 
 const card=(id,date,shift,door,o,c,oh,ch,extra={})=>({id,book_no:'VLB_M/'+id,asset_id:door==='V07'?1:2,data:{bookDate:date,cardShift:shift,location:'Sasti OC',door,employeeName:extra.driver||'Ram',caliberId:extra.driverId||'E1',openingKmr:o,closingKmr:c,openingHmr:oh,closingHmr:ch,...(extra.scan?{scanCardId:'s'}:{})}});
 

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {registerOemEmailAdmin} from '../oem-email-admin.mjs';
-import {safeOemRetry,safeOemError} from '../oem-email-delivery-state.mjs';
-import {oemEmailRecipients} from '../oem-breakdown-email.mjs';
+import {registerOemEmailAdmin} from '../server/routes/oem-email-admin.mjs';
+import {safeOemRetry,safeOemError} from '../server/rules/oem-email-delivery-state.mjs';
+import {oemEmailRecipients} from '../server/services/oem-breakdown-email.mjs';
 
 function harness({row,locked=true,data={contacts:[],requests:[],equipment:[]}}={}){
   const routes={},queries=[],messages=[];

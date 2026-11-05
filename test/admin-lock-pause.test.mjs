@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
-import * as policy from '../admin-lock-policy.mjs';
-import {assignedUserRoles,hasAccountRole} from '../account-role-access.mjs';
+import * as policy from '../server/rules/admin-lock-policy.mjs';
+import {assignedUserRoles,hasAccountRole} from '../shared/account-role-access.mjs';
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const extract=(start,end)=>{
@@ -35,7 +35,7 @@ test('CRM account locking is explicitly paused without changing its saved 72-hou
   assert.equal(policy.ADMIN_LOCK_POLICY_PAUSED,true);
   assert.equal(policy.ADMIN_LOCK_HOURS,72);
   assert.equal(policy.ADMIN_LOCK_TICKET_CUTOFF,'2026-08-28T00:00:00+05:30');
-  assert.match(server,/import\s*\{[^}]*ADMIN_LOCK_POLICY_PAUSED[^}]*\}\s*from\s*['"]\.\/admin-lock-policy\.mjs['"]/);
+  assert.match(server,/import\s*\{[^}]*ADMIN_LOCK_POLICY_PAUSED[^}]*\}\s*from\s*['"]\.\/server\/rules\/admin-lock-policy\.mjs['"]/);
   assert.match(server,/crmAdminLockPolicyPaused:\s*ADMIN_LOCK_POLICY_PAUSED/);
 });
 

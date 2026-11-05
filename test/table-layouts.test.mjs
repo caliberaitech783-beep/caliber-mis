@@ -6,9 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithOxc } from "vite";
 import * as model from "../src/table-layouts.mjs";
 import * as tableModel from "../src/table-actions-model.mjs";
-import { defaultDurationSort } from "../src/duration-sort.mjs";
+import { defaultDurationSort, isDurationColumn } from "../src/duration-sort.mjs";
 import { primaryRecordDateColumn } from "../src/record-date-range.mjs";
-import { reportTime12 } from "../report-time-format.mjs";
+import { reportTime12 } from "../shared/report-time-format.mjs";
 
 const columns = ["door", "status", "model"].map(key => ({ key, label: key }));
 const memory = () => {
@@ -166,6 +166,7 @@ test("Reports tables apply the same saved column order through their controlled 
   const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   let capturedKey;
   const render = await harness(main.slice(main.indexOf("function ReportTable("), main.indexOf("function parseCsv(")), "ReportTable", {
+    primaryRecordDateColumn, isDurationColumn,
     useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,
     defaultDurationSort, reportTime12, mobileTablePageSize: () => 0, tableFilterText: value => String(value || ""),
     sortCollator: new Intl.Collator(), matchesSmartSearch: () => true, tableRowMatchesFilters: () => true,

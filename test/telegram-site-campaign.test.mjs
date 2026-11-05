@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {TELEGRAM_SITE_CAMPAIGN,TELEGRAM_SITE_RESEND_CAMPAIGN,telegramSiteCampaignId,telegramSiteExport,telegramCampaignRecipients,telegramCampaignMessage,telegramCampaignBatch} from '../telegram-site-campaign.mjs';
+import {TELEGRAM_SITE_CAMPAIGN,TELEGRAM_SITE_RESEND_CAMPAIGN,telegramSiteCampaignId,telegramSiteExport,telegramCampaignRecipients,telegramCampaignMessage,telegramCampaignBatch} from '../server/rules/telegram-site-campaign.mjs';
 const groups=[{site:'Jayant OC',inviteLink:'https://t.me/+jayant'},{site:'Sasti OC',inviteLink:'https://t.me/+sasti'}];
 const users=[{login:'worker',chatId:'1',user:{employee:'Worker',designation:'Mechanic',site:'Jayant OC | Sasti OC'}},{login:'manager',chatId:'2',user:{employee:'Manager',region:'NCL'}}];
 test('export preserves explicit multi-site assignments, designation, and unassigned review rows',()=>{

@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../log-book-access.mjs';
-import {LOG_BOOK_SCHEMA,registerLogBooks} from '../log-book.mjs';
-import {registerErpEmployees} from '../erp-employee-source.mjs';
-import {registerBulkCardScanning,SCAN_SCHEMA} from '../bulk-card-scanning.mjs';
+import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../shared/log-book-access.mjs';
+import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
+import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('site and regional scopes use canonical site names and deny unassigned MIS identities',()=>{
@@ -17,12 +17,13 @@ test('site and regional scopes use canonical site names and deny unassigned MIS 
   assert.equal(siteAllowed(logBookSiteScope({...mis,site:'Sasti OB'}),'Jayant OC'),false);
   assert.equal(siteAllowed(logBookSiteScope({...mis,managerRegion:'NCL'}),'Jayant OB'),true);
   assert.equal(siteAllowed(logBookSiteScope({...mis,managerRegion:'NCL'}),'Sasti OC'),false);
-  assert.equal(logBookSiteScope({...mis,managerRegion:'All'}).sites,null);
+  assert.equal(logBookSiteScope({...mis,managerRegion:'All'}).sites?.length,0);
   assert.equal(logBookSiteScope({role:'super',permissions:{adminLevel:'Admin'}}).sites,null);
   for(const adminLevel of ['Admin','Super Admin']){
    const admin={role:'super',site:'Sasti OC',permissions:{adminLevel}};
-   assert.equal(logBookSiteScope(admin,{site:'Jayant OC'}).sites,null,'full administrators retain all-site access even with a profile site');
-   assert.equal(siteAllowed(logBookSiteScope(admin),'Jayant OC'),true);
+   assert.equal(siteAllowed(logBookSiteScope(admin,{site:'Jayant OC'}),'Sasti OC'),false,'the current user assignment takes priority');
+   assert.equal(siteAllowed(logBookSiteScope(admin),'Jayant OC'),false);
+   assert.equal(siteAllowed(logBookSiteScope(admin),'Sasti OB'),true);
   }
   assert.equal(siteAllowed(logBookSiteScope({role:'normal',site:'Sasti OC',managerRegion:'All'}),'Jayant OC'),false);
   assert.equal(employeeAtLocation({site:'Sasti OC | Majri OC'},'Sasti OB'),true);
@@ -47,9 +48,9 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   for(const site of ['Sasti OB','Jayant OC'])for(const kind of ['vehicle','equipment'])await db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,1,$5,$6,$7)',[site+kind,kind,'2026-12-28',site,JSON.stringify({location:site,bookDate:'2026-12-28'}),randomUUID(),'fixture']);
   const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
   const pool={query,connect:async()=>({query,release(){}})};
-  const profiles={admin:{},site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
+  const profiles={admin:{},assignedAdmin:{site:'Sasti OC'},site:{site:'Sasti OC'},region:{managerRegion:'NCL'},all:{managerRegion:'All'},unassigned:{}};
   const app=express();app.use(express.json());
-  const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};if(req.headers.authorization==='admin')req.session.permissions={adminLevel:'Admin'};next()};
+  const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};if(['admin','assignedAdmin'].includes(req.headers.authorization))req.session.permissions={adminLevel:'Admin'};next()};
   const requireAdministrator=(req,res,next)=>next();
   let oracleReads=0;
   registerErpEmployees(app,{pool,config:{},requireSession,requireAdministrator,readSource:async()=>{oracleReads++;return {employeeId:'CMPL3333',name:'Remote employee',site:'Jayant OC'}}});
@@ -59,7 +60,19 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
   const call=async(path,method='GET',body,auth='site')=>{if(body&&['POST','PUT'].includes(method)&&path.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
   const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
-  for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,true);assert.deepEqual(scanOptions.data.sites,['Dhoptala OC (2nd)','Dudhichua East OC','Dudhichua OC','Gauri Pauni OC (2nd)','Jayant OC','Lalpeth OC','Majri OC','Sasti OC']);assert.equal(scanOptions.data.assets.length,3);}
+  for(const suffix of ['','?scan=1']){
+   const assignedOptions=await call('/api/log-books/options'+suffix,'GET',null,'assignedAdmin');
+   assert.equal(assignedOptions.status,200);
+   assert.deepEqual(assignedOptions.data.sites,['Sasti OC']);
+   assert.equal(assignedOptions.data.accountLocation,'Sasti OC');
+  }
+  for(const kind of ['vehicle','equipment']){
+   const assignedRecords=await call('/api/log-books/'+kind,'GET',null,'assignedAdmin');
+   assert.equal(assignedRecords.status,200);
+   assert.equal(assignedRecords.data.records.length,1);
+   assert.ok(assignedRecords.data.records.every(row=>row.data.location==='Sasti OB'));
+  }
+  for(const login of ['site','region','unassigned']){const scanOptions=await call('/api/log-books/options?scan=1','GET',null,login);assert.equal(scanOptions.status,200);assert.equal(scanOptions.data.canSelectSite,false);assert.deepEqual(scanOptions.data.sites,login==='site'?['Sasti OC']:login==='region'?['Dudhichua East OC','Dudhichua OC','Jayant OC']:[]);assert.ok(scanOptions.data.assets.every(row=>row.site===(login==='site'?'Sasti OC':'Jayant OC')));}
   const options=await call('/api/log-books/options');assert.equal(options.data.canSelectSite,false);assert.deepEqual(options.data.sites,['Sasti OC']);
   for(const key of ['assets','employees','shifts','workOrders'])assert.ok(options.data[key].every(row=>row.site==='Sasti OC'),key);
   assert.equal(options.data.employees.length,1);
@@ -75,8 +88,8 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const other=(await db.query("SELECT id FROM mis_log_books WHERE site='Jayant OC' AND book_type='vehicle'")).rows[0].id;
   assert.equal((await call('/api/log-books/vehicle/'+other,'PUT',{...body,revision:1})).status,403,'cannot move an out-of-scope record into own site');
   assert.equal((await call('/api/log-books/hours','POST',{location:'Jayant OC'})).status,403);
-  assert.notEqual((await call('/api/log-books/hours?scan=1','POST',{location:'Jayant OC'})).status,403);
-  const scanEmployee=await call('/api/log-books/employee-lookup?scan=1','POST',{caliberId:'CMPL2222',location:'Jayant OC'});assert.equal(scanEmployee.status,200);assert.equal(scanEmployee.data.caliberId,'CMPL2222');
+  assert.equal((await call('/api/log-books/hours?scan=1','POST',{location:'Jayant OC'})).status,403);
+  const scanEmployee=await call('/api/log-books/employee-lookup?scan=1','POST',{caliberId:'CMPL2222',location:'Jayant OC'});assert.equal(scanEmployee.status,403);
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL1111',location:'Sasti OB'})).status,200);
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Sasti OC'})).status,403);
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Jayant OC'})).status,403);

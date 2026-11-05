@@ -1,4 +1,4 @@
-import { indiaDateTimeEpoch } from "../report-date-range.mjs";
+import { indiaDateTimeEpoch } from "../shared/report-date-range.mjs";
 
 // Workflow timestamps are Indian mine time, independent of the device's zone.
 // Keep seconds: these values are also sent to the HH:MM:SS API fields.

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reportPdfText} from '../report-pdf-text.mjs';
-import {buildTableExportPdf} from '../table-export-pdf.mjs';
-import {buildTicketConsolidatedReportPdf} from '../consolidated-report-pdf.mjs';
-import {buildXlsxWorkbookBuffer} from '../director-report-bundle.mjs';
+import {reportPdfText} from '../server/services/report-pdf-text.mjs';
+import {buildTableExportPdf} from '../server/services/table-export-pdf.mjs';
+import {buildTicketConsolidatedReportPdf} from '../server/services/consolidated-report-pdf.mjs';
+import {buildXlsxWorkbookBuffer} from '../shared/director-report-bundle.mjs';
 
 const fragments=pdf=>[...pdf.toString('latin1').matchAll(/<([0-9a-f]+)>/gi)]
   .map(match=>Buffer.from(match[1],'hex').toString('latin1')).join('');

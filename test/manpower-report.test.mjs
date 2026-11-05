@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters} from '../manpower-report.mjs';
-import {registerManpowerReports} from '../manpower-report-api.mjs';
+import {buildManpowerReport,manpowerFilters} from '../server/rules/manpower-report.mjs';
+import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 
 const site='Sasti OC',date='2026-11-10';
 const shifts=[['A','05:00','13:00'],['B','13:00','21:00'],['C','21:00','05:00']].map(([shiftCode,startTime,endTime],i)=>({id:String(31+i),site,shiftCode,shiftName:'Shift '+shiftCode,startTime,endTime,status:'Active'}));

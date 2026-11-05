@@ -8,7 +8,7 @@ import {
   PASSWORD_RESET_OTP_TTL_MINUTES,
   passwordResetValidationError,
   validPasswordResetOtp,
-} from "../password-reset.mjs";
+} from "../server/services/password-reset.mjs";
 
 test("password reset OTPs are six digits and expire under bounded limits", () => {
   assert.equal(generatePasswordResetOtp(() => 42), "000042");

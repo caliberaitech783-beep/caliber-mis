@@ -1,17 +1,18 @@
 import './log-book-readability.css';
-import {compactLogBookLabel,tripSerialNumber} from '../log-book-labels.mjs';
-import {resolveTripEquipment,validateTripEquipment} from '../trip-equipment-validation.mjs';
+import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
+import {resolveTripEquipment,validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
 import {vlbEntryFields,sameVlbEntryContext} from './vlb-entry-context.mjs';
 import ManualLogBookDetails from './manual-log-book-details.jsx';
-import {blankJob,blankBreakdown,padManualRows} from '../manual-log-book-details.mjs';
+import {blankJob,blankBreakdown,padManualRows} from '../shared/manual-log-book-details.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
-import {employeeAtLocation} from '../log-book-access.mjs';
-import {blankTrip,nextTripEntry} from '../trip-entry.mjs';
+import {employeeAtLocation} from '../shared/log-book-access.mjs';
+import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
 import SmartSelect from './smart-select.jsx';
 import DoorCombobox from './door-combobox.jsx';
 import ManualAliasDialog from './manual-alias-dialog.jsx';
 import {missingAssetMessage} from './log-book-asset-options.mjs';
-import {matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap} from '../trip-card-rules.mjs';
+import {matchingWorkOrders,machineSummary,machineTripTotal,CARD_SHIFTS,machineLabel,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
+import {manualTimeValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import ManualBookDate from './manual-book-date.jsx';
 import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder} from './log-book-enter-navigation.mjs';
@@ -19,7 +20,7 @@ import React,{useEffect,useState,useRef} from 'react';
 
 import {Plus,Save,Trash2,RotateCcw,BookOpen,Search,ChevronsLeft,ChevronsRight,Pencil,Printer,X,LogOut,Info,ListFilter} from 'lucide-react';
 
-import {canonicalSiteName} from '../site-location.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 import './log-book-form.css';
 
@@ -90,6 +91,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const reloadDoors=async()=>{setWorking(true);setError('');try{setOptions(await api('/api/log-books/options'));setSuccess('Equipment Master reloaded. Your entry has been kept.')}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const shifts=(options?.shifts||[]).filter(shift=>!form.location||!shift.site||canonicalSiteName(shift.site)===canonicalSiteName(form.location));
+ const selectedShift=shifts.find(shift=>String(shift.id)===String(form.shiftId));
+ const shiftTimeHint=selectedShift?manualTimeValue(selectedShift.startTime)+'–'+manualTimeValue(selectedShift.endTime):'';
 
  const eligibleWorkOrders=matchingWorkOrders(options?.workOrders||[],form.location,form.bookDate);
  useEffect(()=>{if(!editing)return;setForm(current=>{const latest=latestWorkOrder(options?.workOrders||[],current.location,current.bookDate);const id=latest?latest.id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle]);
@@ -150,7 +153,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
    {showStatus&&<div className="logbook-message" role="status">{saved?`${saved.book_no} · Saved · Revision ${saved.revision} · ${editing?'Editing':'View only'}`:'New entry · Not saved'} · {working?'Saving…':loading?'Loading masters…':'Ready'}</div>}
 
-   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
+   {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setShowDelete(false)} disabled={working} aria-label="Close window">× Close</button></div><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
 
    <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
 
@@ -183,7 +186,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
        <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Tr.Sr.No</th><th>Equipment</th><th>Job type</th>{form.timeMode==='with'&&<><th title="Loading time">L. time</th><th title="Unloading time">U. time</th></>}<th>Trips</th>{form.timeMode==='with'&&<th title="Gap to previous trip in minutes">GAP (min)</th>}<th>Remark</th><th/></tr></thead><tbody>
 
-         {form.trips.map((row,index)=><tr key={index}><td className="logbook-trip-serial">{tripSerialNumber(row,index)}</td><td><SmartSelect searchable aria-label={`Equipment name row ${index+1}`} showOverflowValue required={!isEmptyTripPlaceholder(row)} data-enter-empty-trip={isEmptyTripPlaceholder(row)||undefined} data-trip-equipment={index} disabled={!editing||working||!form.location} value={row.equipmentName} onChange={e=>setTrip(index,'equipmentName',e.target.value)}><option value="">Select equipment name</option>{(options?.assets||[]).filter(asset=>asset.kind==='equipment'&&form.location&&canonicalSiteName(asset.site)===canonicalSiteName(form.location)).map(asset=><option key={asset.id} value={machineLabel(asset.door||asset.name)}>{asset.name}{asset.door?' · '+asset.door:''}</option>)}</SmartSelect>{!editing&&row.tripStatus&&<small>{row.tripStatus==='closed'?'Closed':row.tripStatus==='open'?'Open · awaiting unloading':row.tripStatus==='partly-closed'?'Partly closed':'Awaiting loading card'}{row.handoverLinks?.map((link,n)=><span key={n}><br/>{link.role==='loading'?'Unloaded by ':'Loaded by '}{link.counterpart.driverName} · {link.counterpart.bookNo} · {link.counterpart.date} · {link.loadingTime} → {link.unloadingTime} · {display(link.durationMinutes)} min · {link.tripCount} trip(s)</span>)}</small>}</td><td><input aria-label={`Trip job type row ${index+1}`} maxLength={500} value={row.jobType||''} onChange={e=>setTrip(index,'jobType',e.target.value)}/></td>{form.timeMode==='with'&&<><td><input type="time" step="1" aria-label={`Loading time row ${index+1}`} required={!isEmptyTripPlaceholder(row)&&!row.unloadingTime} value={row.loadingTime} onInput={e=>setTrip(index,'loadingTime',e.currentTarget.value)}/></td><td><input type="time" step="1" aria-label={`Unloading time row ${index+1}`} required={!isEmptyTripPlaceholder(row)&&!row.loadingTime} value={row.unloadingTime} onInput={e=>setTrip(index,'unloadingTime',e.currentTarget.value)}/></td></>}<td><input type="number" min="1" step="1" aria-label={`No. of trips row ${index+1}`} required value={row.tripCount} onChange={e=>setTrip(index,'tripCount',e.target.value)}/></td>{form.timeMode==='with'&&<td>{display(interTripGap(form.trips,index))}</td>}<td><input aria-label={`Trip remark row ${index+1}`} maxLength={2000} value={row.remark||''} onChange={e=>setTrip(index,'remark',e.target.value)} onKeyDown={e=>continueManualRemark(e,form.trips,index,blankTrip,rows=>update('trips',rows),'data-trip-equipment')}/></td><td><button type="button" className="logbook-remove" aria-label={`Remove trip row ${index+1}`} onClick={()=>update('trips',form.trips.filter((_,i)=>i!==index))}><Trash2 size={16}/></button></td></tr>)}
+         {form.trips.map((row,index)=><tr key={index}><td className="logbook-trip-serial">{tripSerialNumber(row,index)}</td><td><SmartSelect searchable aria-label={`Equipment name row ${index+1}`} showOverflowValue required={!isEmptyTripPlaceholder(row)&&tripEquipmentRequired(row,form.timeMode)} data-enter-empty-trip={isEmptyTripPlaceholder(row)||undefined} data-trip-equipment={index} disabled={!editing||working||!form.location} value={row.equipmentName} onChange={e=>setTrip(index,'equipmentName',e.target.value)}><option value="">Select equipment name</option>{(options?.assets||[]).filter(asset=>asset.kind==='equipment'&&form.location&&canonicalSiteName(asset.site)===canonicalSiteName(form.location)).map(asset=><option key={asset.id} value={machineLabel(asset.door||asset.name)}>{asset.name}{asset.door?' · '+asset.door:''}</option>)}</SmartSelect>{!editing&&row.tripStatus&&<small>{row.tripStatus==='closed'?'Closed':row.tripStatus==='open'?'Open · awaiting unloading':row.tripStatus==='partly-closed'?'Partly closed':'Awaiting loading card'}{row.handoverLinks?.map((link,n)=><span key={n}><br/>{link.role==='loading'?'Unloaded by ':'Loaded by '}{link.counterpart.driverName} · {link.counterpart.bookNo} · {link.counterpart.date} · {link.loadingTime} → {link.unloadingTime} · {display(link.durationMinutes)} min · {link.tripCount} trip(s)</span>)}</small>}</td><td><input aria-label={`Trip job type row ${index+1}`} maxLength={500} value={row.jobType||''} onChange={e=>setTrip(index,'jobType',e.target.value)}/></td>{form.timeMode==='with'&&<><td><input type="time" step="60" aria-label={`Loading time row ${index+1}`} title={shiftTimeHint&&`Allowed shift time: ${shiftTimeHint}`} required={!isEmptyTripPlaceholder(row)&&!row.unloadingTime} value={manualTimeValue(row.loadingTime)} onInput={e=>{const value=e.currentTarget.value;e.currentTarget.setCustomValidity(!value||timeWithinShift(value,selectedShift)?'':`Enter a time within the selected shift (${shiftTimeHint}).`);setTrip(index,'loadingTime',value)}}/></td><td><input type="time" step="60" aria-label={`Unloading time row ${index+1}`} title={shiftTimeHint&&`Allowed shift time: ${shiftTimeHint}`} required={!isEmptyTripPlaceholder(row)&&!row.loadingTime} value={manualTimeValue(row.unloadingTime)} onInput={e=>{const value=e.currentTarget.value;e.currentTarget.setCustomValidity(!value||timeWithinShift(value,selectedShift)?'':`Enter a time within the selected shift (${shiftTimeHint}).`);setTrip(index,'unloadingTime',value)}}/></td></>}<td><input type="number" min="1" step="1" aria-label={`No. of trips row ${index+1}`} required value={row.tripCount} onChange={e=>setTrip(index,'tripCount',e.target.value)}/></td>{form.timeMode==='with'&&<td>{display(interTripGap(form.trips,index))}</td>}<td><input aria-label={`Trip remark row ${index+1}`} maxLength={2000} value={row.remark||''} onChange={e=>setTrip(index,'remark',e.target.value)} onKeyDown={e=>continueManualRemark(e,form.trips,index,blankTrip,rows=>update('trips',rows),'data-trip-equipment')}/></td><td><button type="button" className="logbook-remove" aria-label={`Remove trip row ${index+1}`} onClick={()=>update('trips',form.trips.filter((_,i)=>i!==index))}><Trash2 size={16}/></button></td></tr>)}
 
          {!form.trips.length&&<tr><td colSpan={form.timeMode==='with'?9:6} className="logbook-empty">No trip rows added. Use Add trip to enter loading and unloading details.</td></tr>}
 

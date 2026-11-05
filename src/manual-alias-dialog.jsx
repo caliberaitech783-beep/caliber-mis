@@ -1,8 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
-import {aliasForSelection} from '../equipment-alias-rules.mjs';
+import {aliasForSelection} from '../shared/equipment-alias-rules.mjs';
 import {searchSiteDoors,doorLabel} from './door-search.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 // Manual VLB / ELB entry: the operator typed a machine the Pulse master does not list at this
 // site. Pair it with one Pulse record; the card continues with that record at once and the
@@ -26,7 +26,7 @@ export default function ManualAliasDialog({session,kind,written,site,assets=[],o
    if(result.alias.status==='active'||!otpEnabled)await onPaired?.(chosen);
   }catch(e){setError(e.message)}finally{setBusy(false)}
  };
- return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="manual-alias-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}>
+ return <dialog ref={dialog} className="scan-equipment-dialog scan-alias-dialog" aria-labelledby="manual-alias-title" onCancel={event=>{event.preventDefault();onDismiss?.()}}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>onDismiss?.()} disabled={busy} aria-label="Close window">× Close</button></div>
   <h2 id="manual-alias-title">Written machine not in Pulse</h2>
   <p><strong>{written}</strong> is not a door of any {kind==='vehicle'?'tipper':'machine'} at {site||'the selected site'}. Pair it with the Pulse record it stands for. The card continues with that record now; the pair becomes a permanent alias {otpEnabled?'after the OTP':'at once'}.</p>
   {!alias&&<><ul className="scan-alias-list">{ranked.map((a,i)=><li key={a.id} className={i===0?'scan-alias-suggested':''}><label><input type="radio" name="manual-alias-choice" disabled={busy} checked={choice===String(a.id)} onChange={()=>setChoice(String(a.id))}/> <strong>{doorLabel(a)}</strong>{i===0?<em> suggested by number</em>:null}</label></li>)}{!ranked.length&&<li>No Pulse {kind==='vehicle'?'tippers':'machines'} at this site.</li>}</ul>

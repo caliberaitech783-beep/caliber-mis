@@ -3,19 +3,19 @@ import {ageingAsOnRange} from './iboss-ageing-as-on.mjs';
 import {fetchAccountsReport} from './iboss-accounts-response.mjs';
 import FinanceCharts from './iboss-finance-charts.jsx';
 import AccountLedger from './iboss-account-ledger.jsx';
-import {TRADE_AGE_BANDS} from '../trade-age-bands.mjs';
+import {TRADE_AGE_BANDS} from '../shared/trade-age-bands.mjs';
 import ReconciliationControls from './iboss-bank-reconciliation.jsx';
 import {recordCountLabel} from './iboss-record-count.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Landmark,Wallet,BookOpen,Clock,FileText,Shield,Users,ArrowUpRight,RefreshCw,ChevronRight,Calendar,AlertTriangle,Percent,Building2} from 'lucide-react';
-import {ACCOUNT_VIEWS} from '../iboss-accounts.mjs';
-import {purchaseOrderRange} from '../purchase-order-report.mjs';
+import {ACCOUNT_VIEWS} from '../shared/iboss-accounts.mjs';
+import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
 import {dashboardFinancialYearRange,DASHBOARD_REFRESH_MS} from './iboss-dashboard-refresh.mjs';
 import {mergeDashboardSection} from './iboss-dashboard-sections.mjs';
-import {formatDisplayDate} from '../date-time-format.mjs';
+import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import EditableDateInput,{typedDateRange} from './iboss-editable-date.mjs';
 import DrillPanel from './iboss-drill-panel.jsx';
-import {accountDrill} from '../iboss-drill.mjs';
+import {accountDrill} from './lib/iboss-drill.mjs';
 import './iboss-dashboard.css';
 
 export const dashboardAmount=value=>{if(value==null)return '—';const number=Number(value);if(!Number.isFinite(number))return '—';const sign=number<0?'−':'';const absolute=Math.abs(number);return sign+(absolute>=1e7?`${(absolute/1e7).toFixed(2)} Cr`:absolute>=1e5?`${(absolute/1e5).toFixed(2)} L`:absolute.toLocaleString('en-IN',{maximumFractionDigits:2}));};
@@ -61,7 +61,7 @@ function MetricDetails({metric,range:initialRange,token,ReportSection,preview,cl
   return {...column,value,sortValue:row=>row[column.key],drilldown:true,render:row=>value(row)===''?'—':<button type="button" className="iboss-detail-link" onClick={()=>{if(!preview&&metric.key.startsWith('trade-')&&['ACCOUNT_NAME','ACCOUNT_CODE'].includes(column.key)){setLedger({account:String(row.ACCOUNT_CODE),company:String(row.COMPANYCODE||range.company||'')});return;}const target=accountDrill(data.view,column.key,row)||ACCOUNT_VIEWS[data.view].columns.map(item=>accountDrill(data.view,item.key,row)).find(Boolean);if(preview||target)setDetail({target,row,from:data.from,to:data.to,label:String(value(row))});}}>{value(row)}</button>};
  }),[data,metric.key,range.company,preview,ageSummary]);
  return <dialog ref={dialog} className="iboss-dash-dialog" aria-labelledby="dashboard-card-title" onCancel={event=>{event.preventDefault();if(detail)setDetail(null);else close();}}>
-  <header><div><small>{preview?'Illustrative preview records':'Oracle records behind this card'}</small><h2 id="dashboard-card-title">{metric.title}</h2></div><button type="button" onClick={close} aria-label="Close dashboard details">×</button></header>
+  <header className="mis-popup-close-header"><div><small>{preview?'Illustrative preview records':'Oracle records behind this card'}</small><h2 id="dashboard-card-title">{metric.title}</h2></div><button type="button" onClick={close} aria-label="Close dashboard details" className="mis-popup-close">× Close</button></header>
   {['bank-reconciliation','trade-payable','trade-receivable'].includes(metric.key)&&<p>{metric.key.startsWith('trade-')&&ageing!=='ledger'?<>As on: {formatDisplayDate(range.to)} · Ageing from bill date</>:<>Voucher period: {formatDisplayDate(range.from)} to {formatDisplayDate(range.to)}</>} · {range.companyName||range.company||'All companies'}</p>}
   {metric.key==='bank-reconciliation'&&<ReconciliationControls ReportSection={ReportSection} rows={reconciliation} bank={bank} status={status} onBank={value=>{setPage(0);setBank(value);}} onStatus={value=>{setPage(0);setStatus(value);}}/>}
   {metric.key.startsWith('trade-')&&ageing==='ledger'&&<p>ERP trade-group ledgers and their child accounts. Opening + period credits − period debits = closing. Closing credit is positive; closing debit is negative. Click an account to view its vouchers.</p>}

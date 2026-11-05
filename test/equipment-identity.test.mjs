@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { equipmentIdentity } from "../equipment-identity.mjs";
+import { equipmentIdentity } from "../server/rules/equipment-identity.mjs";
 
 test("matches equipment by manufacturer serial number regardless of case", () => {
   assert.equal(

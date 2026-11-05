@@ -1,73 +1,78 @@
-import {operationalScanSql} from './operational-start.mjs';
-import {registerClientErrorReports} from './client-error-report.mjs';
-import {scanDuplicateFlags} from './scan-duplicates.mjs';
-import {environmentLabelFromEnv} from './environment-label.mjs';
-import {isMisAdministrator,requireMisAdministrator} from './mis-admin-access.mjs';
-import {registerMisTelegram} from './mis-telegram.mjs';
-import {registerVehicleTransferExpress} from './vehicle-transfer-express.mjs';
-import {registerEquipmentCreateExpress} from './equipment-create-express.mjs';
-import {registerEquipmentAliases,reconcileEquipmentAliases,readAliasApprover,misManagerLogins,sendAliasWeeklySummary,demoteUnapprovedAliases,aliasOtpEnabled} from './equipment-aliases.mjs';
-import {createOtpDelivery,telegramOutboxSender} from './otp-delivery.mjs';
-import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings} from './vlb-batch-alerts.mjs';
-import {createPulseWriter} from './pulse-writer.mjs';
-import {registerPulsePending,remindPendingPulse} from './pulse-pending.mjs';
-import {sendDeletionOtp as sendScopedDeletionOtp} from './deletion-whatsapp.mjs';
-import {scanBlobConfig,createScanBlobStorage} from './scan-blob-storage.mjs';
-import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './content-deletion-policy.mjs';
-import {registerScanBackup} from './scan-backup.mjs';
-import {logBookSiteScope,siteAllowed} from './log-book-access.mjs';
-import {registerGroqScanSettings} from './groq-scan-settings.mjs';
-import {createIntegrationSecretStore} from './integration-secret-store.mjs';
-import {registerScannerConnectorAuth} from './scanner-connector-auth.mjs';
-import {installMisCredentialClient} from './mis-credential-client.mjs';
-import {installMisLoginHandoff} from './mis-login-handoff.mjs';
-import {authorizeMisRequest} from './mis-application-access.mjs';
-import {misDatabaseConfig} from './mis-database-config.mjs';
-import {registerMisDomainRedirect} from './mis-domain.mjs';
-import {registerMisSharedSignIn} from './mis-shared-signin.mjs';
-import {sharedMisDashboardIdentity} from './mis-dashboard-identity.mjs';
-import {registerMasterSync} from './master-sync.mjs';
-import {registerEmployeeMaster} from './employee-master.mjs';
-import {registerErpEmployees} from './erp-employee-source.mjs';
-import {registerLocalDocumentScanning} from './local-document-scanning.mjs';
-import {createLocalCardArchive,scanArchiveConfig} from './scan-card-archive.mjs';
-import {registerBulkCardScanning} from './bulk-card-scanning.mjs';
-import {registerErpMasters} from './erp-master-sync.mjs';
-import {bdmsEffectiveReport} from './telegram-bdms-period.mjs';
-import {registerPulseMasterSync} from './pulse-master-sync.mjs';
-import {createPulseSignInBridge} from './pulse-signin-bridge.mjs';
-import {registerTripVerification} from './pulse-trip-verification.mjs';
-import {registerLogBooks} from './log-book.mjs';
-import {accountLedgerQueries} from './iboss-account-ledger.mjs';
-import {bdmsChatAnswer,bdmsChatCanRead,bdmsChatFlow,bdmsChatQueryAllowed,bdmsChatIntent} from './telegram-bdms-chatbot.mjs';
-import {bdmsChatConversation} from './telegram-bdms-conversation.mjs';
-import {telegramBdmsAccountChoice} from './telegram-bdms-account.mjs';
-import {telegramChatbotLink} from './telegram-chatbot-link.mjs';
-import {sendTelegramWelcomeAudio} from './telegram.mjs';
-import {oracleAccountLedger} from './oracle-db.mjs';
-import {companyCode} from './iboss-company-scope.mjs';
-import {installTenderIdentity} from './tender-identity.mjs';
-import {accountPageQuery,accountPageNumber} from './iboss-account-pages.mjs';
-import {canEditBreakdownResponsibility} from './breakdown-responsibility.mjs';
-import {canReopenBreakdown,reopenBreakdownError} from './reopen-breakdown.mjs';
-import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from './iboss-access.mjs';
-import {assignedUserRoles,hasAccountRole,accountPrivileges} from './account-role-access.mjs';
-import {dashboardMetric} from './iboss-dashboard.mjs';
+import {assertProductionSecurityConfig,legacyPasswordRouteGuard} from './server/services/production-security-config.mjs';
+import {operationalScanSql} from './shared/operational-start.mjs';
+import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
+import {scanDuplicateFlags} from './server/services/scan-duplicates.mjs';
+import {environmentLabelFromEnv} from './shared/environment-label.mjs';
+import {isMisAdministrator,requireMisAdministrator} from './shared/mis-admin-access.mjs';
+import {registerMisTelegram} from './server/routes/mis-telegram.mjs';
+import {registerVehicleTransferExpress} from './server/routes/vehicle-transfer-express.mjs';
+import {registerEquipmentCreateExpress} from './server/routes/equipment-create-express.mjs';
+import {registerEquipmentAliases,reconcileEquipmentAliases,readAliasApprover,misManagerLogins,sendAliasWeeklySummary,demoteUnapprovedAliases,aliasOtpEnabled} from './shared/equipment-aliases.mjs';
+import {createOtpDelivery,telegramOutboxSender} from './server/services/otp-delivery.mjs';
+import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings} from './server/routes/vlb-batch-alerts.mjs';
+import {createPulseWriter} from './server/rules/pulse-writer.mjs';
+import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pending.mjs';
+import {sendDeletionOtp as sendScopedDeletionOtp} from './server/services/deletion-whatsapp.mjs';
+import {scanBlobConfig,createScanBlobStorage} from './server/services/scan-blob-storage.mjs';
+import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './server/rules/content-deletion-policy.mjs';
+import {registerScanBackup} from './server/routes/scan-backup.mjs';
+import {logBookSiteScope,siteAllowed} from './shared/log-book-access.mjs';
+import {registerGroqScanSettings} from './server/routes/groq-scan-settings.mjs';
+import {createIntegrationSecretStore} from './server/services/integration-secret-store.mjs';
+import {registerScannerConnectorAuth} from './server/routes/scanner-connector-auth.mjs';
+import {installMisCredentialClient} from './server/routes/mis-credential-client.mjs';
+import {installMisLoginHandoff} from './server/routes/mis-login-handoff.mjs';
+import {authorizeMisRequest} from './shared/mis-application-access.mjs';
+import {misDatabaseConfig} from './server/rules/mis-database-config.mjs';
+import {registerMisDomainRedirect} from './server/routes/mis-domain.mjs';
+import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
+import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
+import {registerMasterSync} from './server/routes/master-sync.mjs';
+import {registerEmployeeMaster} from './server/routes/employee-master.mjs';
+import {registerErpEmployees} from './server/routes/erp-employee-source.mjs';
+import {registerLocalDocumentScanning} from './server/routes/local-document-scanning.mjs';
+import {createLocalCardArchive,scanArchiveConfig} from './server/services/scan-card-archive.mjs';
+import {registerBulkCardScanning} from './server/routes/bulk-card-scanning.mjs';
+import {registerErpMasters} from './server/routes/erp-master-sync.mjs';
+import {bdmsEffectiveReport} from './shared/telegram-bdms-period.mjs';
+import {registerPulseMasterSync} from './server/routes/pulse-master-sync.mjs';
+import {createPulseSignInBridge} from './server/services/pulse-signin-bridge.mjs';
+import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
+import {registerLogBooks} from './server/routes/log-book.mjs';
+import {accountLedgerQueries} from './server/rules/iboss-account-ledger.mjs';
+import {bdmsChatAnswer,bdmsChatCanRead,bdmsChatFlow,bdmsChatQueryAllowed,bdmsChatIntent} from './shared/telegram-bdms-chatbot.mjs';
+import {bdmsChatConversation} from './server/rules/telegram-bdms-conversation.mjs';
+import {telegramBdmsAccountChoice} from './server/rules/telegram-bdms-account.mjs';
+import {telegramChatbotLink} from './server/rules/telegram-chatbot-link.mjs';
+import {sendTelegramWelcomeAudio} from './server/services/telegram.mjs';
+import {oracleAccountLedger} from './server/services/oracle-db.mjs';
+import {companyCode} from './server/rules/iboss-company-scope.mjs';
+import {installTenderIdentity} from './server/routes/tender-identity.mjs';
+import {accountPageQuery,accountPageNumber} from './server/rules/iboss-account-pages.mjs';
+import {canEditBreakdownResponsibility} from './server/rules/breakdown-responsibility.mjs';
+import {canReopenBreakdown,reopenBreakdownError} from './server/rules/reopen-breakdown.mjs';
+import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from './shared/iboss-access.mjs';
+import {assignedUserRoles,hasAccountRole,accountPrivileges} from './shared/account-role-access.mjs';
+import {dashboardMetric} from './server/rules/iboss-dashboard.mjs';
 import express from 'express';
-import {requestHistorySnapshotSql,requestHistoryTimelineSql} from './request-history-payload.mjs';
-import {retryDatabaseRead} from './database-read-retry.mjs';
-import {measureRequestHistoryPayload} from './request-history-diagnostics.mjs';
-import {applySchemaMigration} from './schema-migration.mjs';
-import {oracleAccountsCount,oracleDashboardCount,oracleStockStatement,oraclePurchaseOrderReport,oracleGrnRegister,oraclePoGrnReconciliation,oracleAccounts,oracleAccountsDashboard,oracleAccountsDashboardMetric,oracleReportMerge,oracleReportMergeTrail} from './oracle-db.mjs';
-import {resolveSelection,mergeChain} from './iboss-report-merge.mjs';
-import {accountView,ACCOUNT_SECTIONS} from './iboss-accounts.mjs';
-import {purchaseOrderRange} from './purchase-order-report.mjs';
-import {fleetErpUpdates} from './fleet-erp-sync.mjs';
-import {correctionErrorIsActionable,returnFailedCorrection,validateReturnedCorrection} from './request-correction-return.mjs';
-import {currentBirthdayNames} from './info-pulse-birthdays.mjs';
+import {rowSecurityContext,rowSecurityPool,initializeRowSecurity,withoutRowSecurityRequest} from './server/services/row-security.mjs';
+import {browserSessionMiddleware} from './server/middleware/browser-session-security.mjs';
+import {registerAccountSecurity} from './server/routes/account-security.mjs';
+import {securityHeaders,protectStaticFiles,createLoginLimiter} from './server/middleware/http-security.mjs';
+import {requestHistorySnapshotSql,requestHistoryTimelineSql} from './server/rules/request-history-payload.mjs';
+import {retryDatabaseRead} from './server/rules/database-read-retry.mjs';
+import {measureRequestHistoryPayload} from './server/rules/request-history-diagnostics.mjs';
+import {applySchemaMigration} from './server/services/schema-migration.mjs';
+import {oracleAccountsCount,oracleDashboardCount,oracleStockStatement,oraclePurchaseOrderReport,oracleGrnRegister,oraclePoGrnReconciliation,oracleAccounts,oracleAccountsDashboard,oracleAccountsDashboardMetric,oracleReportMerge,oracleReportMergeTrail} from './server/services/oracle-db.mjs';
+import {resolveSelection,mergeChain} from './shared/iboss-report-merge.mjs';
+import {accountView,ACCOUNT_SECTIONS} from './shared/iboss-accounts.mjs';
+import {purchaseOrderRange} from './shared/purchase-order-report.mjs';
+import {fleetErpUpdates} from './server/rules/fleet-erp-sync.mjs';
+import {correctionErrorIsActionable,returnFailedCorrection,validateReturnedCorrection} from './server/rules/request-correction-return.mjs';
+import {currentBirthdayNames} from './server/services/info-pulse-birthdays.mjs';
 import compression from 'compression';
-import {createNotificationFeed} from './notification-feed.mjs';
-import {formatDisplayDate,formatDisplayDateTime} from './date-time-format.mjs';
+import {createNotificationFeed} from './server/rules/notification-feed.mjs';
+import {formatDisplayDate,formatDisplayDateTime} from './shared/date-time-format.mjs';
 import pg from 'pg';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -76,108 +81,113 @@ import os from 'node:os';
 import {Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {createHash,randomUUID} from 'node:crypto';
-import {PC_BACKUP_KEY_LIMIT,PC_BACKUP_KEY_SETTING,createAttemptLimiter,createPcBackupKey,matchPcBackupKey,normalizePcBackupKeys,publicPcBackupKeys} from './pc-backup-keys.mjs';
-import {certificateSummary,generatePrintHelperSigning,resolvePrintHelperSigning,signPrintRequest} from './print-helper-signing.mjs';
-import {createSessionStore} from './auth-session.mjs';
-import {repairLegacySessionDefaults} from './auth-session-schema.mjs';
-import {initializeLoginHistory,registerLoginHistoryRoutes} from './user-login-history.mjs';
-import {parseIndiaRequestDateTime} from './request-time.mjs';
-import {REQUEST_TIMELINE_FIELDS,parseRequestTimelineTimestamp,requestExpectedCompletionValue,validateRequestTimelineChange,buildRequestTimelineChanges,requestTimelineEvents,requestTimelineDurations} from './request-timeline.mjs';
-import {requestsWithDoorNumbers} from './equipment-door.mjs';
-import {hashPassword,initializeUserCredentials,publicUserRecord,verifyPassword} from './password-auth.mjs';
-import {generatePasswordResetOtp,PASSWORD_RESET_MAX_ATTEMPTS,PASSWORD_RESET_MAX_REQUESTS_PER_HOUR,PASSWORD_RESET_OTP_TTL_MINUTES,passwordResetValidationError,validPasswordResetOtp} from './password-reset.mjs';
-import {equipmentIdentity} from './equipment-identity.mjs';
-import {mergePrivilegeRecords} from './privilege-record.mjs';
-import {generalUserCanAccessMenu,loginRecordCandidates,normalizeUserAccessLabels,resolveMobileAccess,userLoginCandidates} from './mobile-access.mjs';
-import {resolveRequestIssues,hasOutstandingRequestIssues,REQUEST_CLOSE_STATUSES,requestDateTimeValue,validMeterEvidenceDataUrl,validMeterReading,validMeterReadings,validateClosingMeterReadings,validRequestAudioDataUrl,validTripCardImageDataUrl} from './request-workflow.mjs';
-import {isIdleVehicleRequest} from './request-idle.mjs';
-import {PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL,isProductionFirstTripRequired} from './info-pulse-data.mjs';
-import {createFeedCache} from './request-feed-cache.mjs';
-import {validComplaintMedia} from './complaint-media.mjs';
-import {accessAllows,ensureDirectoryMenuAccess,managerRoleSelection,masterAccessAllows,normalizeAdminLevel} from './admin-access.mjs';
-import {CDIR_CASCADES,CDIR_MASTERS,CDIR_MASTER_NAMES,CDIR_UNIQUE_KEYS,cdirCaps,cdirDirectoryFromMasters,cdirEmployeeError,cdirMastersFromDirectory,cdirNormalizeRecord,isCdirMaster} from './cdir-masters.mjs';
-import {cdirDirectoryForViewer,cdirViewerContext} from './cdir-access.mjs';
-import {CDIR_DELETION_SCHEMA,registerCdirDeletions,deletionProtectedMaster,cdirDirectAdministrator} from './cdir-deletion.mjs';
-import {cdirApprovalRecipients} from './cdir-approval-routing.mjs';
-import {canEditCdirEmployee,registerCdirEmployeeEdit} from './cdir-employee-edit.mjs';
-import {EMPLOYEE_TRANSFER_SCHEMA,registerEmployeeTransfers,employeeTransferAccess,employeeTransferVisible,employeeTransferSiteAllowed} from './employee-transfer.mjs';
-import {mergeCdirReportingSuperiors} from './cdir-organisation.mjs';
-import {replaceCdirRoster} from './cdir-roster-import.mjs';
-import {JSON_BODY_CONTENT_TYPES} from './request-body-transport.mjs';
-import {maintenanceMetersRequired,requireMaintenanceMeters} from './maintenance-meter-required.mjs';
-import {normalizeMobileNavigationVisibility} from './navigation-visibility.mjs';
-import {TICKET_CATEGORIES,managerUserRole,ticketReference,validTicketMediaDataUrl} from './ticket-workflow.mjs';
-import {oracleConfigured,oracleDriverLookup,oracleEquipmentMasterRecords,oracleEquipmentTransfers,oracleHealth,oracleLatestFleetDrivers} from './oracle-db.mjs';
-import {withFleetDriverNames} from './fleet-driver-names.mjs';
-import {transferSyncDate} from './transfer-sync-date.mjs';
-import {applyLatestTransfer,equipmentMatchKeys,isAllowedOracleEquipment,latestTransferByEquipment,oracleEquipmentMasterRecord,transferMasterRecord} from './equipment-transfer-sync.mjs';
-import {createTicketMailer,sendTicketRaisedEmail,ticketEmailConfiguration} from './ticket-email.mjs';
-import {sendScheduledOemEmails} from './oem-breakdown-email.mjs';
-import {registerOemEmailAdmin} from './oem-email-admin.mjs';
-import {requireUserSessionView,isSessionViewOnlyUser} from './user-session-access.mjs';
-import {bdAgeingReportHandler} from './bd-ageing-report.mjs';
-import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './system-diagnostics.mjs';
-import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './data-housekeeping.mjs';
-import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './storage-management.mjs';
-import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './text-translation.mjs';
-import {ANNOUNCEMENT_ACTIVE_DAYS,announcementImageBinary,announcementImageError,announcementReaderKey,announcementReaderKeys,announcementValidationError,normalizeAnnouncement} from './announcement.mjs';
+import {PC_BACKUP_KEY_LIMIT,PC_BACKUP_KEY_SETTING,createAttemptLimiter,createPcBackupKey,matchPcBackupKey,normalizePcBackupKeys,publicPcBackupKeys} from './server/services/pc-backup-keys.mjs';
+import {certificateSummary,generatePrintHelperSigning,resolvePrintHelperSigning,signPrintRequest} from './server/services/print-helper-signing.mjs';
+import {createSessionStore} from './server/services/auth-session.mjs';
+import {repairLegacySessionDefaults} from './server/rules/auth-session-schema.mjs';
+import {initializeLoginHistory,registerLoginHistoryRoutes} from './server/routes/user-login-history.mjs';
+import {parseIndiaRequestDateTime} from './shared/request-time.mjs';
+import {REQUEST_TIMELINE_FIELDS,parseRequestTimelineTimestamp,requestExpectedCompletionValue,validateRequestTimelineChange,buildRequestTimelineChanges,requestTimelineEvents,requestTimelineDurations} from './shared/request-timeline.mjs';
+import {requestsWithDoorNumbers} from './shared/equipment-door.mjs';
+import {hashPassword,initializeUserCredentials,publicUserRecord,verifyPassword} from './server/services/password-auth.mjs';
+import {generatePasswordResetOtp,PASSWORD_RESET_MAX_ATTEMPTS,PASSWORD_RESET_MAX_REQUESTS_PER_HOUR,PASSWORD_RESET_OTP_TTL_MINUTES,passwordResetValidationError,validPasswordResetOtp} from './server/services/password-reset.mjs';
+import {equipmentIdentity} from './server/rules/equipment-identity.mjs';
+import {mergePrivilegeRecords} from './server/rules/privilege-record.mjs';
+import {generalUserCanAccessMenu,loginRecordCandidates,normalizeUserAccessLabels,resolveMobileAccess,userLoginCandidates} from './shared/mobile-access.mjs';
+import {resolveRequestIssues,hasOutstandingRequestIssues,REQUEST_CLOSE_STATUSES,requestDateTimeValue,validMeterEvidenceDataUrl,validMeterReading,validMeterReadings,validateClosingMeterReadings,validRequestAudioDataUrl,validTripCardImageDataUrl} from './shared/request-workflow.mjs';
+import {isIdleVehicleRequest} from './shared/request-idle.mjs';
+import {PRODUCTION_FIRST_TRIP_ROLLOUT_LABEL,isProductionFirstTripRequired} from './shared/info-pulse-data.mjs';
+import {createFeedCache} from './server/rules/request-feed-cache.mjs';
+import {validComplaintMedia} from './shared/complaint-media.mjs';
+import {accessAllows,ensureDirectoryMenuAccess,managerRoleSelection,masterAccessAllows,normalizeAdminLevel} from './shared/admin-access.mjs';
+import {CDIR_CASCADES,CDIR_MASTERS,CDIR_MASTER_NAMES,CDIR_UNIQUE_KEYS,cdirCaps,cdirDirectoryFromMasters,cdirEmployeeError,cdirMastersFromDirectory,cdirNormalizeRecord,isCdirMaster} from './shared/cdir-masters.mjs';
+import {cdirDirectoryForViewer,cdirViewerContext} from './server/rules/cdir-access.mjs';
+import {CDIR_DELETION_SCHEMA,registerCdirDeletions,deletionProtectedMaster,cdirDirectAdministrator} from './server/routes/cdir-deletion.mjs';
+import {cdirApprovalRecipients} from './server/rules/cdir-approval-routing.mjs';
+import {canEditCdirEmployee,registerCdirEmployeeEdit} from './server/routes/cdir-employee-edit.mjs';
+import {EMPLOYEE_TRANSFER_SCHEMA,registerEmployeeTransfers,employeeTransferAccess,employeeTransferVisible,employeeTransferSiteAllowed} from './server/routes/employee-transfer.mjs';
+import {mergeCdirReportingSuperiors} from './shared/cdir-organisation.mjs';
+import {replaceCdirRoster} from './server/services/cdir-roster-import.mjs';
+import {JSON_BODY_CONTENT_TYPES} from './shared/request-body-transport.mjs';
+import {maintenanceMetersRequired,requireMaintenanceMeters} from './shared/maintenance-meter-required.mjs';
+import {normalizeMobileNavigationVisibility} from './shared/navigation-visibility.mjs';
+import {TICKET_CATEGORIES,managerUserRole,ticketReference,validTicketMediaDataUrl} from './server/rules/ticket-workflow.mjs';
+import {oracleConfigured,oracleDriverLookup,oracleEquipmentMasterRecords,oracleEquipmentTransfers,oracleHealth,oracleLatestFleetDrivers} from './server/services/oracle-db.mjs';
+import {withFleetDriverNames} from './server/rules/fleet-driver-names.mjs';
+import {transferSyncDate} from './server/rules/transfer-sync-date.mjs';
+import {applyLatestTransfer,equipmentMatchKeys,isAllowedOracleEquipment,latestTransferByEquipment,oracleEquipmentMasterRecord,transferMasterRecord} from './server/rules/equipment-transfer-sync.mjs';
+import {createTicketMailer,sendTicketRaisedEmail,ticketEmailConfiguration} from './server/services/ticket-email.mjs';
+import {sendScheduledOemEmails} from './server/services/oem-breakdown-email.mjs';
+import {registerOemEmailAdmin} from './server/routes/oem-email-admin.mjs';
+import {requireUserSessionView,isSessionViewOnlyUser} from './shared/user-session-access.mjs';
+import {bdAgeingReportHandler} from './shared/bd-ageing-report.mjs';
+import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
+import {createPerformanceMonitor,performanceDiagnostic} from './server/services/performance-monitor.mjs';
+import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './server/rules/data-housekeeping.mjs';
+import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './server/rules/storage-management.mjs';
+import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './server/services/text-translation.mjs';
+import {ANNOUNCEMENT_ACTIVE_DAYS,announcementImageBinary,announcementImageError,announcementReaderKey,announcementReaderKeys,announcementValidationError,normalizeAnnouncement} from './server/rules/announcement.mjs';
 import {normalizeSavedReportName,savedReportUserKey,savedReportValidationError,serializeTableView} from './src/saved-reports.mjs';
-import {sendDirectorReportEmail} from './director-report-email.mjs';
-import {auditLogExportDue,auditLogExportSlot,sendAuditLogExportEmail} from './audit-log-export.mjs';
-import {buildUserActivitySummary,totalUserWorkedMinutes} from './user-activity-report.mjs';
-import {applyHierarchyDeliveryRule,applyUserReportScheduleOverride,defaultHierarchyReportScheduleSettings,flowDesignationForUser,HIERARCHY_REPORT_DESIGNATIONS,normalizeHierarchyReportScheduleSettings,normalizeUserReportSchedule,reportsAssignedToDesignation,reportsDueForDesignation,reportsForHierarchyEvent,userReportScheduleValidationError} from './hierarchy-report-flow.mjs';
-import {hierarchyAccessAllowsReport} from './hierarchy-report-catalogue.mjs';
-import {hierarchyRecipientReportScope} from './hierarchy-report-scope.mjs';
-import {prepareTicketReportRows,ticketReportWindow,buildTicketReportTable,buildTicketWhatsAppReport} from './ticket-consolidated-report.mjs';
-import {scheduledReportWindowsDue} from './report-delivery-window.mjs';
-import {siteReportMessageContext,recipientReportMessage} from './whatsapp-message-format.mjs';
-import {META_WORKFLOW_TEMPLATES,metaWhatsAppConfiguration,metaWhatsAppStatus,registerMetaWhatsAppPhone,sendMetaWhatsAppDocument,sendMetaWhatsAppTemplate,sendMetaWhatsAppText,submitMetaWhatsAppTemplates,metaWhatsAppTemplateStatuses,setWhatsAppDeliveryPolicyReader} from './meta-whatsapp.mjs';
-import {normalizeWhatsAppReportSettings,whatsappPurposeEnabled,PURPOSE_OPTIONS} from './whatsapp-report-settings.mjs';
-import {telegramConfiguration,telegramStatus,sendTelegramText,sendTelegramDocument,telegramWebhookSecret,newTelegramLinkToken,parseTelegramUpdate,telegramBotUsername,ensureTelegramWebhook,normalizeTelegramRequirement,telegramRequiredFor,createTelegramJoinRequestLink,answerTelegramJoinRequest,telegramChatMemberStatus,telegramSiteGroupDetails} from './telegram.mjs';
-import {TELEGRAM_SITES,telegramSiteName,telegramUserHasSite,normalizeTelegramSiteGroups} from './telegram-site-groups.mjs';
-import {telegramInvitationBatch,telegramInvitationSummary} from './telegram-site-invitations.mjs';
-import {telegramSiteCampaignId,telegramSiteExport,telegramCampaignRecipients,telegramCampaignMessage,telegramCampaignBatch} from './telegram-site-campaign.mjs';
-import {requestedReportTemplate,reportTemplateFallback} from './whatsapp-template-runtime.mjs';
-import {hierarchyReportMessagePurpose} from './whatsapp-template-catalog.mjs';
-import {registerWhatsAppReportSettingsApi,reportTemplateState} from './whatsapp-report-settings-api.mjs';
-import {canonicalSiteName,assignedUserSiteName,userSessionLocationName} from './site-location.mjs';
-import {normalizeSessionMessage,sessionMessagePayloadValidationError} from './session-message.mjs';
-import {BACKUP_FORMAT,backupFileName,exportDatabase,readBackupRecords,restoreDatabase} from './database-backup.mjs';
-import {BACKUP_SETTING_KEY,DEFAULT_BACKUP_SETTINGS,indiaBackupSlot,normalizeBackupSettings,scheduledBackupDue} from './backup-settings.mjs';
-import {dashboardFleetSnapshot} from './dashboard-fleet-snapshot.mjs';
-import {fleetChartCounts} from './dashboard-equipment-metrics.mjs';
+import {sendDirectorReportEmail} from './server/rules/director-report-email.mjs';
+import {auditLogExportDue,auditLogExportSlot,sendAuditLogExportEmail} from './server/rules/audit-log-export.mjs';
+import {buildUserActivitySummary,totalUserWorkedMinutes} from './server/rules/user-activity-report.mjs';
+import {applyHierarchyDeliveryRule,applyUserReportScheduleOverride,defaultHierarchyReportScheduleSettings,flowDesignationForUser,HIERARCHY_REPORT_DESIGNATIONS,normalizeHierarchyReportScheduleSettings,normalizeUserReportSchedule,reportsAssignedToDesignation,reportsDueForDesignation,reportsForHierarchyEvent,userReportScheduleValidationError} from './shared/hierarchy-report-flow.mjs';
+import {hierarchyAccessAllowsReport} from './shared/hierarchy-report-catalogue.mjs';
+import {hierarchyRecipientReportScope} from './server/rules/hierarchy-report-scope.mjs';
+import {prepareTicketReportRows,ticketReportWindow,buildTicketReportTable,buildTicketWhatsAppReport} from './server/rules/ticket-consolidated-report.mjs';
+import {scheduledReportWindowsDue} from './shared/report-delivery-window.mjs';
+import {siteReportMessageContext,recipientReportMessage} from './server/rules/whatsapp-message-format.mjs';
+import {META_WORKFLOW_TEMPLATES,metaWhatsAppConfiguration,metaWhatsAppStatus,registerMetaWhatsAppPhone,sendMetaWhatsAppDocument,sendMetaWhatsAppTemplate,sendMetaWhatsAppText,submitMetaWhatsAppTemplates,metaWhatsAppTemplateStatuses,setWhatsAppDeliveryPolicyReader} from './server/rules/meta-whatsapp.mjs';
+import {normalizeWhatsAppReportSettings,whatsappPurposeEnabled,PURPOSE_OPTIONS} from './shared/whatsapp-report-settings.mjs';
+import {telegramConfiguration,telegramStatus,sendTelegramText,sendTelegramDocument,telegramWebhookSecret,newTelegramLinkToken,parseTelegramUpdate,telegramBotUsername,ensureTelegramWebhook,normalizeTelegramRequirement,telegramRequiredFor,createTelegramJoinRequestLink,answerTelegramJoinRequest,telegramChatMemberStatus,telegramSiteGroupDetails} from './server/services/telegram.mjs';
+import {TELEGRAM_SITES,telegramSiteName,telegramUserHasSite,normalizeTelegramSiteGroups} from './server/rules/telegram-site-groups.mjs';
+import {telegramInvitationBatch,telegramInvitationSummary} from './server/rules/telegram-site-invitations.mjs';
+import {telegramSiteCampaignId,telegramSiteExport,telegramCampaignRecipients,telegramCampaignMessage,telegramCampaignBatch} from './server/rules/telegram-site-campaign.mjs';
+import {requestedReportTemplate,reportTemplateFallback} from './server/services/whatsapp-template-runtime.mjs';
+import {hierarchyReportMessagePurpose} from './shared/whatsapp-template-catalog.mjs';
+import {registerWhatsAppReportSettingsApi,reportTemplateState} from './server/routes/whatsapp-report-settings-api.mjs';
+import {canonicalSiteName,assignedUserSiteName,userSessionLocationName} from './shared/site-location.mjs';
+import {normalizeSessionMessage,sessionMessagePayloadValidationError} from './server/rules/session-message.mjs';
+import {BACKUP_FORMAT,backupFileName,exportDatabase,readBackupRecords,restoreDatabase} from './server/services/database-backup.mjs';
+import {BACKUP_SETTING_KEY,DEFAULT_BACKUP_SETTINGS,indiaBackupSlot,normalizeBackupSettings,scheduledBackupDue} from './server/rules/backup-settings.mjs';
+import {dashboardFleetSnapshot} from './shared/dashboard-fleet-snapshot.mjs';
+import {fleetChartCounts} from './shared/dashboard-equipment-metrics.mjs';
 import {dailyCountChange,indiaCountDayWindow} from './src/fleet-count-trend.mjs';
-import {REGION_DATA,displaySiteName,displaySiteSelection,managerReportScope,normalizeOperationalSiteFields,normalizeUserSiteFields,reportScopeIncludesSite,userSiteScope,userSiteSelection} from './region-scope.mjs';
-import {attachRequestOems,consolidatedReportDue,consolidatedReportWindow,prepareConsolidatedRows} from './consolidated-whatsapp-report.mjs';
-import {buildFleetConsolidatedReportPdf,buildTicketConsolidatedReportPdf} from './consolidated-report-pdf.mjs';
-import {buildTableExportPdf,buildTableBundlePdf} from './table-export-pdf.mjs';
-import {buildDirectorReportArchiveBuffer,buildDirectorReportTables,buildDirectorWhatsAppMessage,buildXlsxWorkbookBuffer,buildXlsxReportBundleBuffer,directorReportFilename,directorReportWindow,DIRECTOR_REPORT_TITLES} from './director-report-bundle.mjs';
-import {buildSiteFleetReportTables,buildSiteReportMessage,reportSites,siteReportFilename,timestampInReportWindow} from './site-consolidated-report.mjs';
-import {ADMIN_LOCK_TICKET_CUTOFF,ADMIN_LOCK_POLICY_PAUSED,isLockableAdmin,isTrueSuperAdmin} from './admin-lock-policy.mjs';
-import {activeRequestConflictMessage,isActiveMaintenanceRequest} from './request-conflict.mjs';
-import {AUDIT_HIDDEN_EVENT_TYPES,auditChangedFields,auditDateRange,auditIndiaDateKey,auditRouteDetails,auditSafeError,auditShouldRecord,auditSubmittedFields} from './audit-trail.mjs';
-import {requestDeletionBlocker,requestDeletionSnapshot,normalizeDeletionReferences,REQUEST_BULK_DELETE_LIMIT} from './request-deletion.mjs';
-import {duplicateUsername,lockUsernamesForWrite} from './user-username.mjs';
-import {canReadDashboardEquipment,currentDashboardUserCandidate,dashboardEquipmentScope,dashboardEquipmentScopeIsUsable,dashboardSessionFromProfile,scopeDashboardEquipmentRecords} from './dashboard-equipment-access.mjs';
-import {infoPulseRequestScope,scopeInfoPulseRequests} from './info-pulse-scope.mjs';
-import {claimInfoPulsePrompt,infoPulsePromptKey} from './info-pulse-prompt.mjs';
-import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient,whatsAppRecipientRole,workflowReminderSlot,workflowRequestLink,workflowWhatsAppRecipientLogins} from './whatsapp-workflow-policy.mjs';
-import {DELAYED_REASON_DEFAULTS,DELAYED_REASON_DEFAULT_REPAIR_TYPES,approvedDelayedReason,delayedReasonRequired} from './delayed-reason.mjs';
-import {BREAKDOWN_SUB_CATEGORY_DEFAULTS} from './breakdown-sub-category.mjs';
+import {REGION_DATA,displaySiteName,displaySiteSelection,managerReportScope,normalizeOperationalSiteFields,normalizeUserSiteFields,reportScopeIncludesSite,userSiteScope,userSiteSelection} from './shared/region-scope.mjs';
+import {attachRequestOems,consolidatedReportDue,consolidatedReportWindow,prepareConsolidatedRows} from './server/rules/consolidated-whatsapp-report.mjs';
+import {buildFleetConsolidatedReportPdf,buildTicketConsolidatedReportPdf} from './server/services/consolidated-report-pdf.mjs';
+import {buildTableExportPdf,buildTableBundlePdf} from './server/services/table-export-pdf.mjs';
+import {buildDirectorReportArchiveBuffer,buildDirectorReportTables,buildDirectorWhatsAppMessage,buildXlsxWorkbookBuffer,buildXlsxReportBundleBuffer,directorReportFilename,directorReportWindow,DIRECTOR_REPORT_TITLES} from './shared/director-report-bundle.mjs';
+import {buildSiteFleetReportTables,buildSiteReportMessage,reportSites,siteReportFilename,timestampInReportWindow} from './server/rules/site-consolidated-report.mjs';
+import {ADMIN_LOCK_TICKET_CUTOFF,ADMIN_LOCK_POLICY_PAUSED,isLockableAdmin,isTrueSuperAdmin} from './server/rules/admin-lock-policy.mjs';
+import {activeRequestConflictMessage,isActiveMaintenanceRequest} from './shared/request-conflict.mjs';
+import {AUDIT_HIDDEN_EVENT_TYPES,auditChangedFields,auditDateRange,auditIndiaDateKey,auditRouteDetails,auditSafeError,auditShouldRecord,auditSubmittedFields} from './server/rules/audit-trail.mjs';
+import {requestDeletionBlocker,requestDeletionSnapshot,normalizeDeletionReferences,REQUEST_BULK_DELETE_LIMIT} from './shared/request-deletion.mjs';
+import {duplicateUsername,lockUsernamesForWrite} from './server/rules/user-username.mjs';
+import {canReadDashboardEquipment,currentDashboardUserCandidate,dashboardEquipmentScope,dashboardEquipmentScopeIsUsable,dashboardSessionFromProfile,scopeDashboardEquipmentRecords} from './server/rules/dashboard-equipment-access.mjs';
+import {infoPulseRequestScope,scopeInfoPulseRequests} from './server/rules/info-pulse-scope.mjs';
+import {claimInfoPulsePrompt,infoPulsePromptKey} from './server/rules/info-pulse-prompt.mjs';
+import {isExcludedWorkflowWhatsAppRecipient,isWorkflowWhatsAppRecipient,isWhatsAppAllAlertRecipient,isWhatsAppReportsOnlyRecipient,whatsAppRecipientRole,workflowReminderSlot,workflowRequestLink,workflowWhatsAppRecipientLogins} from './server/rules/whatsapp-workflow-policy.mjs';
+import {DELAYED_REASON_DEFAULTS,DELAYED_REASON_DEFAULT_REPAIR_TYPES,approvedDelayedReason,delayedReasonRequired} from './shared/delayed-reason.mjs';
+import {BREAKDOWN_SUB_CATEGORY_DEFAULTS} from './server/rules/breakdown-sub-category.mjs';
 // Keep globally excluded request owners out of every server-backed view and report.
-import {requestsVisibleGlobally,requestsVisibleToSession} from './mis-request-visibility.mjs';
-import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArchive} from './request-archive.mjs';
-import {serverErrorHandler} from './server-error-response.mjs';
-import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './vehicle-transfer-workflow.mjs';
-import {legacyEtcRepairPlan,legacyEtcRepairReason} from './legacy-etc-repair.mjs';
-import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shift-master.mjs';
-import {requestShiftLabel} from './request-shift.mjs';
-import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorrection,canDeletePendingCorrection,normalizeRequestCorrectionChanges,requestCorrectionChangedFields,requestCorrectionFields,requestCorrectionReviewRemarkError,requestCorrectionSnapshot,requestCorrectionTimelineFields,requestCorrectionType,requestCorrectionTypesForManagerRoles,requestCorrectionValidationError} from './request-correction-policy.mjs';
-import {jsonEntityTag,requestEtagMatches} from './response-etag.mjs';
-import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './whatsapp-recipient-policy.mjs';
+import {requestsVisibleGlobally,requestsVisibleToSession} from './shared/mis-request-visibility.mjs';
+import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArchive} from './server/services/request-archive.mjs';
+import {serverErrorHandler} from './server/middleware/server-error-response.mjs';
+import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './shared/vehicle-transfer-workflow.mjs';
+import {legacyEtcRepairPlan,legacyEtcRepairReason} from './server/rules/legacy-etc-repair.mjs';
+import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shared/shift-master.mjs';
+import {requestShiftLabel} from './shared/request-shift.mjs';
+import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorrection,canDeletePendingCorrection,normalizeRequestCorrectionChanges,requestCorrectionChangedFields,requestCorrectionFields,requestCorrectionReviewRemarkError,requestCorrectionSnapshot,requestCorrectionTimelineFields,requestCorrectionType,requestCorrectionTypesForManagerRoles,requestCorrectionValidationError} from './shared/request-correction-policy.mjs';
+import {jsonEntityTag,requestEtagMatches} from './server/services/response-etag.mjs';
+import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from './shared/whatsapp-recipient-policy.mjs';
 
 const {Pool}=pg;
+assertProductionSecurityConfig();
 const app=express();
+app.use(rowSecurityContext);
+app.disable('x-powered-by');
+app.use(securityHeaders);
 app.use(enforceContentDeletionPolicy);
 // Azure Front Door / App Service terminate TLS and proxy to Node. Without this
 // every visitor shares the proxy's address, so per-IP limits (password reset
@@ -197,6 +207,8 @@ app.use(compression({
 const slowRequestThresholdMs=Math.max(250,Number(process.env.SLOW_REQUEST_THRESHOLD_MS||1000));
 app.use((req,res,next)=>{
   const startedAt=process.hrtime.bigint();
+  // 'close' also fires for requests the browser abandoned, so none stay "running".
+  if(req.path.startsWith('/api/')){const finish=performanceMonitor.beginRequest(req.method,req.path);res.on('close',()=>finish(res.statusCode));}
   const originalEnd=res.end;
   res.end=function(...args){
     const durationMs=Number(process.hrtime.bigint()-startedAt)/1e6;
@@ -294,13 +306,16 @@ const HIERARCHY_REPORT_SCHEDULE_SETTING_KEY='hierarchy_report_schedules';
 const AUDIT_REASON_HEADER='x-audit-reason';
 const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 
-const pool=new Pool({
+const pool=rowSecurityPool(new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
   max:10,
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
-});
+}),{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
+// Admin > Diagnostics shows these numbers: server freezes, slow pages and database waits.
+const performanceMonitor=createPerformanceMonitor({pool});
+performanceMonitor.start();
 
 async function currentDataRevisions(keys,client=pool){
   const normalized=[...new Set(keys.map(value=>String(value||'').trim()).filter(Boolean))].sort();
@@ -314,8 +329,8 @@ async function currentDataRevisions(keys,client=pool){
 // swap, network blip) emits 'error' on the pool. Without a listener Node
 // treats that as an unhandled 'error' event and exits the whole process,
 // which is what turned a momentary database hiccup into a site-wide outage.
-pool.on('error',error=>console.error('PostgreSQL pool connection error (will reconnect on next query).',error));
-process.on('unhandledRejection',(reason)=>console.error('Unhandled promise rejection (kept the server running).',reason));
+pool.on('error',error=>console.error('PostgreSQL pool connection error (will reconnect on next query).',auditSafeError(error)));
+process.on('unhandledRejection',(reason)=>console.error('Unhandled promise rejection (kept the server running).',auditSafeError(typeof reason==='string'?{message:reason}:reason)));
 const sessionStore=createSessionStore(pool);
 let databaseReady=false;
 let scanBlobReady=null;
@@ -1508,7 +1523,14 @@ app.use((req,res,next)=>{
 
 // Audit interception is registered first so malformed and oversized request
 // bodies are also logged.
+const browserSecurityEnabled=!['off','issuer'].includes(process.env.MIS_SSO_MODE);
+app.use(browserSessionMiddleware({publicUrl:process.env.PUBLIC_APP_URL||'https://pulse-ll.cmll.in',enabled:browserSecurityEnabled}));
+app.use(['/api/login','/api/change-initial-password','/api/password-reset/request','/api/password-reset/confirm'],legacyPasswordRouteGuard());
+app.use(['/api/login','/api/mis-credentials/login'],createLoginLimiter({limit:2000,maxEntries:1024,key:req=>req.socket.remoteAddress||'unknown'}));
+app.use(['/api/login','/api/mis-credentials/login','/api/password-reset/request','/api/password-reset/confirm','/api/change-initial-password','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'],express.json({limit:'8kb',type:JSON_BODY_CONTENT_TYPES}));
 app.use(express.json({limit:'20mb',type:JSON_BODY_CONTENT_TYPES}));
+const accountSecurity=registerAccountSecurity(app,{pool,requireSession,store:()=>integrationSecrets,enabled:browserSecurityEnabled,requireMfa:false});
+app.use('/api/login',createLoginLimiter());
 const misCredentialClient=installMisCredentialClient(app,{pool,sessionStore});
 const misLoginHandoff=installMisLoginHandoff(app,{pool,sessionStore,credentialClient:misCredentialClient});
 const misSharedSignIn=registerMisSharedSignIn(app,{pool,sessionStore,requireSession,mode:process.env.MIS_SSO_MODE||'client'});
@@ -2228,7 +2250,7 @@ async function createStoredBackup({triggerType='Manual',actor={},scheduleSlot=nu
     const {rows:locks}=await client.query("SELECT pg_try_advisory_lock(hashtext('bdms_backup_operation')) AS locked");
     locked=Boolean(locks[0]?.locked);
     if(!locked)throw Object.assign(new Error('Another backup or restore is already running. Try again after it completes.'),{status:409});
-    const result=await exportDatabase({client,output:filePath});
+    const result=await withoutRowSecurityRequest(()=>exportDatabase({client,output:filePath}));
     const stat=await fs.stat(filePath);
     const checksum=await sha256File(filePath);
     await pool.query(`UPDATE backup_runs SET status='Completed',size_bytes=$1,checksum=$2,table_counts=$3::jsonb,completed_at=NOW(),error_message=''
@@ -2522,8 +2544,10 @@ app.post('/api/change-initial-password',async(req,res,next)=>{
 
 async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token))return null;
   const local=await sessionStore.get(token);
   const session=local?.permissions?.separateMisCredentials?await misCredentialClient.validateSession(token,local):(process.env.MIS_SSO_MODE==='off')?local:process.env.MIS_LEGACY_SSO_ENABLED==='true'?await misSharedSignIn.validateSession(token,local):null;
+  req.securitySession=session;
   return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
 }
 
@@ -3258,7 +3282,7 @@ app.post('/api/backups/import/restore',requireSuper,requireTrueSuperAdmin,async(
       const {rows:locks}=await client.query("SELECT pg_try_advisory_lock(hashtext('bdms_backup_operation')) AS locked");
       locked=Boolean(locks[0]?.locked);
       if(!locked)throw Object.assign(new Error('Another backup or restore is already running. Try again after it completes.'),{status:409});
-      restored=await restoreDatabase({client,input:pending.filePath});
+      restored=await withoutRowSecurityRequest(()=>restoreDatabase({client,input:pending.filePath}));
     }finally{
       if(locked)await client.query("SELECT pg_advisory_unlock(hashtext('bdms_backup_operation'))").catch(()=>{});
       client.release();
@@ -4214,6 +4238,7 @@ function diagnosticChecks(){
       const deliveries=await messageDeliveryCounts('WhatsApp');
       return {...deliveryDiagnostic(deliveries,'WhatsApp'),facts:[['Provider',config.provider==='fast2sms'?'Fast2SMS':'Meta Cloud API'],['Sent in 24 h',String(deliveries.sent||0)],['Failed in 24 h',String(deliveries.failed||0)]]};
     }},
+    {key:'performance',label:'Speed and freezes',run:async()=>performanceDiagnostic(performanceMonitor.snapshot())},
     {key:'email',label:'Email',run:async()=>{
       const {config,transporter}=createTicketMailer();
       if(!transporter)diagnosticState('off','Email (SMTP) is not configured.');
@@ -4230,6 +4255,12 @@ app.get('/api/diagnostics',requireSuper,requireAdministrator,async(req,res,next)
     res.set('Cache-Control','no-store');
     res.json(await runDiagnostics(diagnosticChecks()));
   }catch(error){next(error)}
+});
+
+app.get('/api/diagnostics/performance',requireSuper,requireAdministrator,(req,res)=>{
+  req.audit=false;
+  res.set('Cache-Control','no-store');
+  res.json(performanceMonitor.snapshot());
 });
 
 app.get('/api/reports/iboss-accounts/:view/count',requireSession,async(req,res)=>{
@@ -7886,7 +7917,7 @@ if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;c
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
 registerClientErrorReports(app,{pool,requireSession,requireAdministrator,serverCommit:()=>deploymentSha});
-const bulkScanning=registerBulkCardScanning(app,{refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:async()=>({sites:null,label:'All sites'}),pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
+const bulkScanning=registerBulkCardScanning(app,{trackJob:(name,task)=>withoutRowSecurityRequest(()=>performanceMonitor.trackJob(name,task)),refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}
@@ -8586,8 +8617,9 @@ app.use((req,res,next)=>{
   if(['/cd/directory-data.json','/cd/caliber-directory.html'].includes(directoryPath))return res.status(404).end();
   next();
 });
+app.use(protectStaticFiles);
 app.use('/app-assets',express.static(path.join(staticRoot,'app-assets'),{immutable:true,maxAge:'1y'}));
-app.use(express.static(staticRoot));
+app.use(express.static(staticRoot===root?path.join(root,'public'):staticRoot));
 app.get(/^(?!\/api).*/,(_req,res)=>res.sendFile(path.join(staticRoot,'index.html')));
 app.use((error,req,res,next)=>{
   const auditedError=auditSafeError(error);
@@ -8618,7 +8650,7 @@ async function appendBackendProcessAudit({module='Cloud runtime',action,targetRe
 async function runAuditedBackendProcess({module,action,targetReference=''},task){
   const startedAt=Date.now();
   try{
-    const result=await task();
+    const result=await performanceMonitor.trackJob(`${module}: ${action}`,task);
     if(!result?.skipped)await appendBackendProcessAudit({module,action,targetReference,outcome:'Success',reason:backendResultSummary(result),durationMs:Date.now()-startedAt});
     return result;
   }catch(error){
@@ -8647,12 +8679,14 @@ async function initializeDatabase(){
     await migrate();
     await misSharedSignIn.initialize();
     await misCredentialClient.initialize();
+    await accountSecurity.initialize();
     await misTelegram.initialize();misTelegram.start();
     await misLoginHandoff.initialize();
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
     await logBooks.initialize();
+    await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});
     await bulkScanning.start();
     await scanBackup.start();
     pulseTripVerification.start();

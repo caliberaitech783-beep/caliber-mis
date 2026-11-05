@@ -7,11 +7,11 @@
  *  4. people    - every designation with the named people who hold it.
  * Pure functions only, so the page and the tests share one model.
  */
-import { resolveMobileAccess, userLoginCandidates } from "../mobile-access.mjs";
-import { whatsAppRecipientRole } from "../whatsapp-recipient-policy.mjs";
+import { resolveMobileAccess, userLoginCandidates } from "../shared/mobile-access.mjs";
+import { whatsAppRecipientRole } from "../shared/whatsapp-recipient-policy.mjs";
 
-/** The four read-only Administration pages built from this model (names shared with admin-access.mjs). */
-import { ORGANISATION_PAGE_NAMES } from "../admin-access.mjs";
+/** The four read-only Administration pages built from this model (names shared with shared/admin-access.mjs). */
+import { ORGANISATION_PAGE_NAMES } from "../shared/admin-access.mjs";
 export { ORGANISATION_PAGE_NAMES };
 export const ORGANISATION_PAGES = Object.freeze({ access: ORGANISATION_PAGE_NAMES[0], levels: ORGANISATION_PAGE_NAMES[1], reporting: ORGANISATION_PAGE_NAMES[2], people: ORGANISATION_PAGE_NAMES[3] });
 export const ORGANISATION_CHART_PAGE = ORGANISATION_PAGES.reporting;

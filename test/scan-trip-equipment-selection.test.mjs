@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../scan-machine-rules.mjs';
-import {completePreviousShiftMachines} from '../scan-trip-estimates.mjs';
-import {machineDiscrepancies} from '../trip-card-rules.mjs';
-import {completeScanTripDetails} from '../scan-trip-completion.mjs';
-import {validateTripEquipment} from '../trip-equipment-validation.mjs';
+import {selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
+import {completePreviousShiftMachines} from '../shared/scan-trip-estimates.mjs';
+import {machineDiscrepancies} from '../shared/trip-card-rules.mjs';
+import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
+import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
 const assets=[
  {id:'vpc3',door:'VPC3 - 76167',kind:'equipment',site:'Sasti OC'},
  {id:'vpc4',door:'VPC4 - 76168',kind:'equipment',site:'Sasti OC'},

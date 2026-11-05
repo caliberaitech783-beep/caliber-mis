@@ -1,4 +1,4 @@
-import {isIdleVehicleRequest} from '../request-idle.mjs';
+import {isIdleVehicleRequest} from '../shared/request-idle.mjs';
 const text = (value) => String(value ?? "").trim();
 const status = (request) => text(request?.status).toLowerCase();
 

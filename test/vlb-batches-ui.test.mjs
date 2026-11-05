@@ -1,17 +1,17 @@
-import {meterCorrectionReport} from '../scan-meter-history.mjs';
+import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {canonicalSiteName} from '../site-location.mjs';
-import {displaySiteName} from '../region-scope.mjs';
-import {bookShiftCode,systemBookDate} from '../trip-card-rules.mjs';
-import {vlbRecordSource} from '../vlb-batch-format.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
+import {displaySiteName} from '../shared/region-scope.mjs';
+import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
-import {misPageAllowed,misRequestAllowed} from '../mis-application-access.mjs';
-import {formatDisplayDateTime} from '../date-time-format.mjs';
+import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -19,7 +19,7 @@ async function compile(file,scope,names){
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
 }
 const nodes=(tree,predicate)=>{const found=[];const visit=node=>{if(Array.isArray(node))return node.forEach(visit);if(!React.isValidElement(node))return;if(predicate(node))found.push(node);visit(node.props.children)};visit(tree);return found};
-test('VLB and ELB show three entry options and standalone batch access inherits the VLB permission',async()=>{
+test('VLB and ELB show three entry options and both permissions can open the shared operational batch',async()=>{
  const icon=()=>null,{LogBookModeChoice}=await compile('log-book-mode-choice.jsx',{React,BookOpen:icon,Keyboard:icon,ScanLine:icon,Layers:icon},['LogBookModeChoice']);
  const cards=nodes(LogBookModeChoice({kind:'vehicle'}),n=>n.type==='button');assert.equal(cards.length,3);assert.doesNotMatch(renderToStaticMarkup(LogBookModeChoice({kind:'vehicle'})),/Create Batch/);
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(main.includes("{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)'"));assert.ok(main.includes("activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']"));
@@ -29,7 +29,12 @@ test('VLB and ELB show three entry options and standalone batch access inherits 
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misPageAllowed(session,'Create VLB Batch','desktop'));
  for(const [path,method] of [['/api/vlb-batches','GET'],['/api/vlb-batches/preview','GET'],['/api/vlb-batches','POST'],['/api/vlb-batches/id/close','POST']])assert.ok(misRequestAllowed(session,{path,method}));
- assert.equal(misPageAllowed({...session,permissions:{...session.permissions,misDesktopAccess:['Equipment Log Book']}},'Create VLB Batch','desktop'),false);
+ const elbSession={...session,permissions:{...session.permissions,misDesktopAccess:['Equipment Log Book']}};
+ assert.equal(misPageAllowed(elbSession,'Create VLB Batch','desktop'),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'GET'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/fleet/7',method:'POST'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/close',method:'POST'}),true);
+ assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'POST'}),false,'ELB-only access cannot create or lock the VLB stage');
 });
 
 test('dedicated PM navigation permits only review routes without granting VLB editing permissions',()=>{
@@ -56,15 +61,15 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'},onExit(){}})};
  render();slots[0]=options;slots[1]=selection;slots[2]={records,name:batch.name};slots[8]=false;slots[13]=true;
  const button=(tree,label)=>nodes(tree,n=>n.type==='button'&&renderToStaticMarkup(n).includes(label))[0];
- let tree=render();assert.match(renderToStaticMarkup(tree),/2 cards · 1 Manual \+ 1 Scan/);assert.equal(button(tree,'Create Batch').props.disabled,false);
- await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false);assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);
+ let tree=render();assert.doesNotMatch(renderToStaticMarkup(tree),/All matching saved entries|2 cards · 1 Manual \+ 1 Scan/);assert.equal(button(tree,'Create Batch').props.disabled,false);
+ await button(tree,'Create Batch').props.onClick();tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false);assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.doesNotMatch(renderToStaticMarkup(tree),/CLOSED ·/);assert.ok(button(tree,'Show unbatched entries'));
  const sent=JSON.parse(calls[0].request.body);assert.deepEqual({site:sent.site,date:sent.date,shift:sent.shift},selection);assert.ok(sent.requestKey);assert.equal(sent.records,undefined,'server selects all entries');
- slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.match(renderToStaticMarkup(tree),/CLOSED/);assert.equal(button(tree,'Create Batch').props.disabled,false);
+ slots[4]={...batch,amendment_by:'alice'};slots[5]=slots[4];tree=render();await button(tree,'Save &amp; lock batch').props.onClick();tree=render();assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.doesNotMatch(renderToStaticMarkup(tree),/CLOSED ·/);assert.ok(button(tree,'Show unbatched entries'));assert.equal(button(tree,'Create Batch').props.disabled,false);
  slots[2]={records:[],name:batch.name};tree=render();assert.equal(button(tree,'Create Batch').props.disabled,false,'new batch can start empty');assert.doesNotMatch(renderToStaticMarkup(tree),/Create Batch · 0 cards/);
- slots[14]={login:'admin',mis:true,admin:true};slots[2]={records,name:batch.name,siteOpenBatch:{...batch,id:'site-open',name:'Existing open site batch'}};tree=render();assert.equal(button(tree,'Create Batch').props.disabled,true,'admin is also blocked while the selected site has an open batch');assert.match(renderToStaticMarkup(tree),/Close it before creating another batch for this site, regardless of date or shift/);
- slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.ok(button(render(),'Open existing batch'));
+ slots[14]={login:'admin',mis:true,admin:true};slots[2]={records,name:batch.name,siteOpenBatch:{...batch,id:'site-open',name:'Existing open site batch'}};tree=render();assert.equal(button(tree,'Create Batch').props.disabled,true,'admin is also blocked while the selected site has an open batch');assert.doesNotMatch(renderToStaticMarkup(tree),/Close it before creating another batch for this site, regardless of date or shift/);
+ slots[2]={records,name:batch.name,existingBatch:batch};assert.equal(button(render(),'Create Batch').props.disabled,true);assert.equal(button(render(),'Open existing batch'),undefined);assert.doesNotMatch(renderToStaticMarkup(render()),/Existing batch:|Batch ID preview:|A batch already exists for this site/);
  slots[3]=[{...batch,created_by:'alice'},{...batch,id:'other',name:'Other open batch',created_by:'bob'},{...batch,id:'closed',name:'Locked batch',created_by:'alice',closed_at:'2026-10-30T10:00:00Z'}];slots[14]={login:'alice',mis:true};slots[4]={...batch,created_by:'alice'};
- tree=render();let html=renderToStaticMarkup(tree);assert.ok(html.indexOf('vlb-batch-setup')<html.indexOf('Open batch:'));assert.ok(html.indexOf('vlb-batch-tabs')<html.indexOf('All matching saved entries')||html.includes('CLOSED'));
+ tree=render();let html=renderToStaticMarkup(tree);assert.ok(html.indexOf('vlb-batch-setup')<html.indexOf('Open batch:'));assert.doesNotMatch(html,/All matching saved entries/);
  const tab=label=>nodes(tree,n=>n.props.role==='tab'&&n.props.children===label)[0];assert.equal(tab('Open').props['aria-selected'],true);assert.doesNotMatch(html,/Locked batch/);
  tab('Closed').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Closed')[0].props['aria-selected'],true);
  assert.match(renderToStaticMarkup(tree),/Locked batch/);assert.doesNotMatch(renderToStaticMarkup(tree),/Other open batch/);
@@ -116,7 +121,7 @@ test('opened batch search and shared export controls use only its saved snapshot
  let report=render();assert.equal(report.type,ReportSection);assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);
  assert.equal(vlbBatchColumns.find(c=>c.key==='hours').value(records[0]),0);
  assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VLB Scan');
- const search=nodes(report.props.controls,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});report=render();assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,2,'search must not alter batch membership');
+ const search=nodes(report.props.headingControl,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});report=render();assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,2,'search must not alter batch membership');
  // Exercise the shared section: its Generate menu must receive the same
  // filtered rows and column choices that the report table supplies for print.
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

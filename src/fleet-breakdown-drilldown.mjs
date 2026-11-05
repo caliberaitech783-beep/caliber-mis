@@ -1,5 +1,5 @@
-import { fleetBreakdownCaseCounts } from "../dashboard-equipment-metrics.mjs";
-import { recordBelongsToSite } from "../site-location.mjs";
+import { fleetBreakdownCaseCounts } from "../shared/dashboard-equipment-metrics.mjs";
+import { recordBelongsToSite } from "../shared/site-location.mjs";
 
 // Use the same site asset matching and registration fallback as the chart counts.
 export function fleetBreakdownCategory(records, request) {

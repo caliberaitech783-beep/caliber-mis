@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from '../whatsapp-recipient-policy.mjs';
-import {resolveMobileAccess} from '../mobile-access.mjs';
-import {userSiteScope,reportScopeIncludesSite} from '../region-scope.mjs';
-import {canonicalSiteName} from '../site-location.mjs';
+import {isRequestAlertSuppressedUser,isRequestLifecycleAlert} from '../shared/whatsapp-recipient-policy.mjs';
+import {resolveMobileAccess} from '../shared/mobile-access.mjs';
+import {userSiteScope,reportScopeIncludesSite} from '../shared/region-scope.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 
 const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
 test('admin group blocks request lifecycle and reminder messages, including untyped request alerts',async()=>{

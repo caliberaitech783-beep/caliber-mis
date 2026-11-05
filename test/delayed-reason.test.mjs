@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import {DELAYED_REASON_DEFAULTS,DELAYED_REASON_DEFAULT_REPAIR_TYPES,DELAYED_REASONS_BY_REPAIR_TYPE,approvedDelayedReason,delayedReasonRequired,delayedReasonsForRepairType} from '../delayed-reason.mjs';
+import {DELAYED_REASON_DEFAULTS,DELAYED_REASON_DEFAULT_REPAIR_TYPES,DELAYED_REASONS_BY_REPAIR_TYPE,approvedDelayedReason,delayedReasonRequired,delayedReasonsForRepairType} from '../shared/delayed-reason.mjs';
 
 test('the requests table only displays the delayed reason; only approved reasons are accepted',()=>{
   const client=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
@@ -123,7 +123,7 @@ test('the Delayed reason column only appears once ETC has passed and the close f
 test('Delayed Reason master, close form, and server validation are connected',()=>{
   const client=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   const server=fs.readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
-  const access=fs.readFileSync(new URL('../admin-access.mjs',import.meta.url),'utf8');
+  const access=fs.readFileSync(new URL('../shared/admin-access.mjs',import.meta.url),'utf8');
   assert.match(access,/"Region master",\s*"Shift Master",\s*"Delayed Reason",\s*"Vehicle transfers"/);
   assert.match(client,/\["Region master", Building2, "region"\],\s*\["Shift Master", Clock, "shift"\],\s*\["Delayed Reason", Clock, "delayed"\],\s*\["Vehicle transfers", ArrowRightLeft, "transfers"\]/);
   assert.match(client,/useMasterRecords\("Delayed Reason"\)/);

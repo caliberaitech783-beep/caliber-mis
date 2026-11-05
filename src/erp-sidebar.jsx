@@ -1,4 +1,4 @@
-import {isMisAdministrator} from '../mis-admin-access.mjs';
+import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
 import React, {useState} from 'react';
 import './erp-layout.css';
 import {ChevronDown, ChevronRight, LayoutDashboard, Search, PanelLeftClose, LogOut, FileText} from 'lucide-react';
@@ -23,6 +23,7 @@ export default function ErpSidebar({active,setActive,logout,open,hidden=false,on
     <label className="erp-menu-search"><Search size={14}/><input aria-label="Search menu" placeholder="Search pages…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
     <nav aria-label="ERP modules">
       {matches('Dashboard')&&<button className={`erp-page${active==='Dashboard'?' selected':''}`} onClick={()=>select('Dashboard')}><LayoutDashboard size={16}/>Dashboard</button>}
+      {matches('Fleet reconciliation')&&<button className={`erp-page${active==='Fleet reconciliation'?' selected':''}`} onClick={()=>select('Fleet reconciliation')}><FileText size={16}/>Fleet reconciliation</button>}
       {groups.map(group=>{
         const pages=group.pages.filter(includesQuery);if(query&&!matches(group.name)&&!pages.length)return null;
         const visible=matches(group.name)?group.pages:pages;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sharedMisDashboardIdentity} from '../mis-dashboard-identity.mjs';
-import {dashboardEquipmentScope,dashboardEquipmentScopeIsUsable} from '../dashboard-equipment-access.mjs';
+import {sharedMisDashboardIdentity} from '../server/rules/mis-dashboard-identity.mjs';
+import {dashboardEquipmentScope,dashboardEquipmentScopeIsUsable} from '../server/rules/dashboard-equipment-access.mjs';
 
 test('a server-validated Pulse administrator opens an empty MIS database without copied users',()=>{
   const session={sharedPulseIdentity:true,login:'synthetic-admin',name:'Synthetic Admin',role:'super',permissions:{adminLevel:'Super Admin'}};

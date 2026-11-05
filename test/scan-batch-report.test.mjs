@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {scanBatchReport,scanBatchReportTables,scanBatchExportTables} from '../scan-batch-report.mjs';
-import {buildXlsxSheetsWorkbook} from '../report-xlsx.mjs';
+import {scanBatchReport,scanBatchReportTables,scanBatchExportTables} from '../shared/scan-batch-report.mjs';
+import {buildXlsxSheetsWorkbook} from '../shared/report-xlsx.mjs';
 const batch={id:'11111111-1111-4111-a111-111111111111',kind:'vehicle',name:'This scan run',created_at:'2026-10-28T12:00:00Z'};
 const data={aFormNo:'75',bookDate:'2026-10-19',location:'Sasti OC',door:'V1',caliberId:'CMPL1',employeeName:'Driver One',shiftName:'Shift I',shiftHours:8,openingKmr:0,closingKmr:40,totalRunningKmr:40,openingHmr:0,closingHmr:6,totalWorkingHmr:6,totalTrips:2,trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:2}]};
 const card=(id,ordinal,extra={})=>({id,batch_id:batch.id,ordinal,status:'posted',filename:id+'.png',book_no:'BOOK-'+id,page_count:1,draft:{...data,totalTrips:999,closingKmr:999},saved_data:{...data,scanCardId:id,scanBatchId:batch.id},...extra});
@@ -32,6 +32,7 @@ test('linked handover legs retain driver credits and count one completed trip in
  const loading=card('loading',1,{saved_data:{...data,scanCardId:'loading',scanBatchId:batch.id,openingTrips:1,endingTrips:0,totalTrips:0,trips:[{equipmentName:'D19',loadingTime:'12:30',unloadingTime:'',tripCount:1,completedTrips:0}]}});
  const unloading=card('unloading',2,{saved_data:{...data,scanCardId:'unloading',scanBatchId:batch.id,openingTrips:0,endingTrips:1,totalTrips:1,trips:[{equipmentName:'D19',loadingTime:'',unloadingTime:'13:30',tripCount:1,completedTrips:1}]}});
  const report=scanBatchReport(batch,[loading,unloading]);assert.equal(report.totals.trips,1);assert.equal(report.machineRows[0].trips,1);
+ assert.deepEqual(report.tripBreakdown,{completed:1,machineLoading:1,handover:1});
  assert.equal(report.rows[0].openingTrips,1);assert.equal(report.rows[1].endingTrips,1);
  assert.equal(scanBatchReport(batch,[loading]).totals.trips,0);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,1);
 });

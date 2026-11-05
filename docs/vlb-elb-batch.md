@@ -110,7 +110,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS mis_equipment_create_one_live ON mis_equipment
 
 1. Batch must have at least one VLB card.
 2. No VLB card in the batch may be awaiting a transfer (section 6).
-3. Every trip row's `equipmentName` must resolve to exactly one Equipment master id through the existing card machine rules (`CARD-MACHINE-RULES.md`, `resolveTripEquipment`). An unresolved label blocks the lock and names the card and row.
+3. Every trip row's `equipmentName` must resolve to exactly one Equipment master id through the existing card machine rules ([CARD-MACHINE-RULES.md](CARD-MACHINE-RULES.md), `resolveTripEquipment`). An unresolved label blocks the lock and names the card and row.
 4. Build the machine snapshot: group trip rows by resolved asset id, sum `tripCount`, count source cards. Insert into `mis_vlb_batch_machines`. The snapshot is stored, not recomputed, so a later correction cannot silently change what ELB is checked against; correcting VLB after this point requires Unlock VLB, which deletes and rebuilds the snapshot.
 5. Build the fleet list: every equipment-kind Equipment master record at this site, into `mis_vlb_batch_fleet`, with trips copied from the snapshot.
 6. Set `stage='elb_open'`, `vlb_locked_at`, `vlb_locked_by`. Audit `vlb_locked` with the snapshot and fleet count.
@@ -166,7 +166,7 @@ Close batch requires an ELB row with a shift status for every machine in the bat
 3. Duplicate ELB for the same asset in the same batch blocks closure (same rule the production report already applies).
 4. Set `stage='closed'`, `closed_at=NOW()`, `closure_revision+1`. Audit.
 
-The production reports (`production-report.mjs`) already refuse to run when a productive machine has no ELB. After this change that condition cannot occur for a closed batch, so the report gate becomes a safety net rather than the place the operator first learns about it.
+The production reports (`shared/production-report.mjs`) already refuse to run when a productive machine has no ELB. After this change that condition cannot occur for a closed batch, so the report gate becomes a safety net rather than the place the operator first learns about it.
 
 ## 6. Asset from another site, or from no site
 
@@ -194,7 +194,7 @@ Today `resolveLogBookData` rejects a card whose asset's `currentLocation` differ
 
 ### Express transfer by OTP
 
-The existing Vehicle transfers workflow (`vehicle-transfer-workflow.mjs`, routes in `server.mjs`) runs in three steps: source PM approval, destination MIS verification, destination PM acceptance. Today completion updates `currentLocation` only in the Pulse-II synced copy, which the sync then preserves. With Pulse as the sole master, completion must instead write the new site to Pulse and let the sync bring it back, for the normal workflow as well as the express one. The express path is the same workflow with the three steps collapsed into one OTP:
+The existing Vehicle transfers workflow (`shared/vehicle-transfer-workflow.mjs`, routes in `server.mjs`) runs in three steps: source PM approval, destination MIS verification, destination PM acceptance. Today completion updates `currentLocation` only in the Pulse-II synced copy, which the sync then preserves. With Pulse as the sole master, completion must instead write the new site to Pulse and let the sync bring it back, for the normal workflow as well as the express one. The express path is the same workflow with the three steps collapsed into one OTP:
 
 1. The operator at the entering site presses **Express transfer (OTP)** on the asset row. If a transfer for this asset is already pending in the normal workflow, the panel shows its stage and offers to send the OTP for that record instead of creating a second one, since the workflow allows only one pending transfer per asset.
 2. The server creates a Vehicle transfers record: source = asset's current master site, destination = batch site, transfer date = batch date, equipment fields copied from the master, remarks `Express transfer requested from VLB/ELB batch <name>`, status `Awaiting source approval`. The requesting user must be an MIS user or manager with the destination site in scope, which is the same rule as a normal submission.
@@ -234,14 +234,14 @@ Nothing in the batch depends on the express path. A transfer raised and approved
 
 ### Dependency on Pulse: two write endpoints
 
-Today the Pulse connector only reads masters; `ERP-LOCAL.md` records that no API call writes master changes back to Pulse. Both OTP flows need Pulse to accept two authorised writes: complete a vehicle transfer, and create an equipment record. These are small additions on the Pulse side, protected by the same service credential the sync uses plus the OTP approval record as evidence. They must be built and tested on the Pulse test instance before the Pulse-II test platform can exercise the OTP flows end to end. Until they exist, the test platform runs the OTP flows against a stub that updates the synced copy only, clearly labelled, so the batch flow itself can still be trialled.
+Today the Pulse connector only reads masters; [ERP-LOCAL.md](ERP-LOCAL.md) records that no API call writes master changes back to Pulse. Both OTP flows need Pulse to accept two authorised writes: complete a vehicle transfer, and create an equipment record. These are small additions on the Pulse side, protected by the same service credential the sync uses plus the OTP approval record as evidence. They must be built and tested on the Pulse test instance before the Pulse-II test platform can exercise the OTP flows end to end. Until they exist, the test platform runs the OTP flows against a stub that updates the synced copy only, clearly labelled, so the batch flow itself can still be trialled.
 
 ### New equipment that exists at no site
 
 A newly bought tipper or machine may reach the site before anyone has created it in the Equipment master. Its door number resolves to nothing, so the card can neither be saved against an asset nor held against another site. The entry screen handles this in place:
 
 1. When a door or machine label on a manual, scanned or uploaded card matches no Equipment master record, the field shows **Not in Equipment master** with a **Create new equipment** button. The card itself is kept as a draft and is not saved until the asset exists.
-2. **Create new equipment** opens a short form, prefilled from the card where possible: door number, category (tipper, excavator, dozer, grader, hydra, pay loader, as in `CARD-MACHINE-RULES.md`), make, model, registration number, chassis number, site = the batch site, and the first HMR/KMR reading from the card. Chassis or registration is mandatory, because that is the key the Pulse master sync later uses to link the record. Door number alone is not enough.
+2. **Create new equipment** opens a short form, prefilled from the card where possible: door number, category (tipper, excavator, dozer, grader, hydra, pay loader, as in [CARD-MACHINE-RULES.md](CARD-MACHINE-RULES.md)), make, model, registration number, chassis number, site = the batch site, and the first HMR/KMR reading from the card. Chassis or registration is mandatory, because that is the key the Pulse master sync later uses to link the record. Door number alone is not enough.
 3. The server checks the Equipment master for the same chassis, registration or door at any site. A match anywhere means this is a transfer case, not a new asset, and the screen switches to the express transfer flow of the previous section. Only a genuinely unknown asset continues.
 4. The server stores the draft equipment record in a pending table, generates a six-digit OTP with a ten-minute expiry, and sends it by Telegram to the PM of the **entering** site, since no other site owns the asset:
 
@@ -303,13 +303,13 @@ A footer row totals trips and hours. Machines with zero trips appear below the l
 
 ## 9. Server work, in order
 
-1. `vlb-batch-policy.mjs`: schema additions, `stage` helpers, snapshot builder, closure checks, hold helpers. Pure functions with unit tests for: label resolution (V19 = VPC 019), missing machine, other equipment ignored, held card blocking, duplicate ELB.
+1. `server/rules/vlb-batch-policy.mjs`: schema additions, `stage` helpers, snapshot builder, closure checks, hold helpers. Pure functions with unit tests for: label resolution (V19 = VPC 019), missing machine, other equipment ignored, held card blocking, duplicate ELB.
 2. `vlb-batch-fleet.mjs`: fleet list builder at lock, `GET /api/vlb-batches/:id/fleet`, `PUT /api/vlb-batches/:id/fleet/:assetId/draft` (auto-save), `POST /api/vlb-batches/:id/fleet/:assetId` (validate, write ELB log book, link), shift-status rules with tests for the trips-versus-status refusal.
-3. `vlb-batches.mjs`: new routes `POST /api/vlb-batches/:id/lock-vlb`, `POST /api/vlb-batches/:id/unlock-vlb` (PM), rename close semantics to run section 5 checks, `GET /api/vlb-batches/:id/machines`.
-4. `log-book.mjs`: equipment books link into the batch when an `elb_open` batch matches; site mismatch produces a hold instead of a 400 for both kinds. Scan path: `scanFleetBlockingMessage` becomes a hold warning rather than a save block.
-5. New `vehicle-transfer-express.mjs`: OTP table, `POST /api/vehicle-transfers/express` (create or reuse pending transfer, send OTP to source PMs), `POST /api/vehicle-transfers/:id/express-otp` (verify and complete all three steps in one transaction), informational Telegram to the destination PM. Site-hold evaluation lives in `vlb-batch-policy.mjs` and runs against the current Equipment master on every batch read.
-6. New `equipment-create-express.mjs`: pending table, `POST /api/equipment/express` (duplicate check across all sites, draft, OTP to entering-site PM), `POST /api/equipment/express/:id/otp` (create master record, save waiting card, link to batch). Reuse the OTP hashing and attempt rules from the transfer module.
-7. Report: machine section in `scan-batch-report.mjs` and the batch PDF/Excel.
+3. `server/routes/vlb-batches.mjs`: new routes `POST /api/vlb-batches/:id/lock-vlb`, `POST /api/vlb-batches/:id/unlock-vlb` (PM), rename close semantics to run section 5 checks, `GET /api/vlb-batches/:id/machines`.
+4. `server/routes/log-book.mjs`: equipment books link into the batch when an `elb_open` batch matches; site mismatch produces a hold instead of a 400 for both kinds. Scan path: `scanFleetBlockingMessage` becomes a hold warning rather than a save block.
+5. New `server/routes/vehicle-transfer-express.mjs`: OTP table, `POST /api/vehicle-transfers/express` (create or reuse pending transfer, send OTP to source PMs), `POST /api/vehicle-transfers/:id/express-otp` (verify and complete all three steps in one transaction), informational Telegram to the destination PM. Site-hold evaluation lives in `server/rules/vlb-batch-policy.mjs` and runs against the current Equipment master on every batch read.
+6. New `server/routes/equipment-create-express.mjs`: pending table, `POST /api/equipment/express` (duplicate check across all sites, draft, OTP to entering-site PM), `POST /api/equipment/express/:id/otp` (create master record, save waiting card, link to batch). Reuse the OTP hashing and attempt rules from the transfer module.
+7. Report: machine section in `shared/scan-batch-report.mjs` and the batch PDF/Excel.
 8. Feature flag `VLB_TWO_STAGE_BATCHES` read per request, on by default, `0` turns the two-stage flow off without a redeploy.
 9. Migration note: batches already closed before deployment get `stage='closed'` and no machine snapshot; the machine section shows "Not available for batches closed before two-stage processing".
 
@@ -319,7 +319,7 @@ Nothing in this draft goes to the live Pulse-II site (pulse-ll.cmll.in) until th
 
 1. **Feature flag.** All two-stage behaviour sits behind a server setting `VLB_TWO_STAGE_BATCHES`, on by default. `0` returns the site to single-step Save & lock batch with no schema change beyond the additive tables. The flag is read per request, so it can be switched without a redeploy. Decision on 1 November 2026: go live for all users directly.
 2. **Pulse test instance.** The two write endpoints are added to a test copy of Pulse first. The Pulse-II test platform syncs from that copy, so express transfers and new equipment can be exercised end to end without touching the live Pulse master.
-3. **Test platform.** A separate deployment with its own URL and its own PostgreSQL database, restored from a recent live backup through the existing Backup page export, so the team sees their real sites, fleet and employees. It connects to Pulse masters read-only exactly as the local ERP setup documents in `ERP-LOCAL.md`. Telegram OTPs go through a separate test bot and a test PM group, never the live PM chats. WhatsApp and email delivery are disabled. The page header carries a visible TEST banner.
+3. **Test platform.** A separate deployment with its own URL and its own PostgreSQL database, restored from a recent live backup through the existing Backup page export, so the team sees their real sites, fleet and employees. It connects to Pulse masters read-only exactly as the local ERP setup documents in [ERP-LOCAL.md](ERP-LOCAL.md). Telegram OTPs go through a separate test bot and a test PM group, never the live PM chats. WhatsApp and email delivery are disabled. The page header carries a visible TEST banner.
 4. **Team trial.** Site MIS users run real shifts in parallel: the live site as today, the test site with the two-stage flow, for an agreed number of days. Items checked: time per shift to complete the fleet dialog, how often transfers and new-equipment OTPs are needed, machine checklist accuracy against the scanned cards, and whether closure messages are understandable to the operator.
 5. **Sign-off list.** The trial ends with a written list of changes from the team. Those are built and re-tested on the test platform. Only then is the flag turned on for the live site, one site first, then all.
 6. **Rollback.** Turning the flag off returns the live site to single-step batches at once. Batches closed under the two-stage flow stay closed and readable; batches mid-stage are shown as open for the old Save & lock button.
@@ -334,7 +334,7 @@ Nothing in this draft goes to the live Pulse-II site (pulse-ll.cmll.in) until th
 
 ## 12. Build status and test platform switches
 
-Built on branch `feature/vlb-elb-two-stage` (1 November 2026). Server modules: `vlb-two-stage.mjs` (flag, schema, pure rules), `vlb-batch-stages.mjs` (lock, fleet, stepper save, ELB linking, closure checks), `otp-approval.mjs` and `otp-delivery.mjs` (shared OTP controls, Telegram first then WhatsApp), `vehicle-transfer-express.mjs`, `equipment-create-express.mjs`. Tests: `test/vlb-two-stage.test.mjs`, `test/express-otp.test.mjs`, `test/vlb-two-stage-ui.test.mjs`.
+Built on branch `feature/vlb-elb-two-stage` (1 November 2026). Server modules: `server/rules/vlb-two-stage.mjs` (flag, schema, pure rules), `server/rules/vlb-batch-stages.mjs` (lock, fleet, stepper save, ELB linking, closure checks), `shared/otp-approval.mjs` and `server/services/otp-delivery.mjs` (shared OTP controls, Telegram first then WhatsApp), `server/routes/vehicle-transfer-express.mjs`, `server/routes/equipment-create-express.mjs`. Tests: `test/vlb-two-stage.test.mjs`, `test/express-otp.test.mjs`, `test/vlb-two-stage-ui.test.mjs`.
 
 | Switch | Value on the test platform | Live default |
 |---|---|---|
@@ -346,4 +346,4 @@ The feature is on by default. Setting  on the App Service turns it off without a
 
 Open items before go-live: the two Pulse write endpoints (section 6), a per-site option for a destination-PM OTP, and the team's change list from the trial.
 
-2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.
+2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`server/services/vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.
