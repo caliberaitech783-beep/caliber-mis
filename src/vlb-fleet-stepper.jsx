@@ -1,5 +1,7 @@
 import React,{useState,useEffect} from 'react';
 import SmartSelect from './smart-select.jsx';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
+import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 
 // Pure helpers shared with the batch page and the UI tests.
@@ -36,13 +38,23 @@ export const fleetDraftFields=(row={})=>{
  const source=row.logbook||{};
  return {
   shiftStatus:'working',employeeId:text(source.employeeId),
+  ...(source.operatorSplit?{secondOperatorId:text(source.operatorSplit.secondOperatorId),handoverHmr:text(source.operatorSplit.handoverHmr)}:{}),
   openingHmr:text(source.openingHmr),closingHmr:text(source.closingHmr),manualBreakdownHours:text(source.manualBreakdownHours),
   statusReason:text(source.statusReason),jobCardNo:text(source.jobCardNo),remark:text(source.remark),idleHours:text(source.idleHours??source.idleHoursEntered),
  };
 };
 // Walks the ELB fleet one machine at a time. Next saves through the fleet endpoint and moves on to
 // the next unsaved machine. Pulse breakdowns are fetched for each selected machine.
-export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false}){
+const machineStatus=item=>item.saved_at?'Saved':item.skipped?'Skipped':'Not saved';
+const machineColumns=[
+ {key:'door',label:'Machine no.',value:item=>item.door},
+ {key:'equipment',label:'Equipment Master match',value:item=>item.equipmentName||'—'},
+ {key:'trips',label:'VLB trips',value:item=>Number(item.trips)||0},
+ {key:'status',label:'ELB status',value:item=>machineStatus(item)+(item.saved_at&&item.book_no?' · '+item.book_no:'')},
+];
+const machineCollator=new Intl.Collator('en-IN',{numeric:true,sensitivity:'base'});
+
+export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
@@ -76,7 +88,9 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  };
  const update=(key,value)=>{setForm(current=>({...current,[key]:value}));setDirty(true);setError('')};
  const next=async()=>{
-  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved)return;setBusy(true);setError('');setNotice('');
+  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved)return;
+  if(operatorSplit?.error){setError(operatorSplit.error);return}
+  setBusy(true);setError('');setNotice('');
   try{
    const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,revision:row.logbook_revision,idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:crypto.randomUUID()});
    const list=result.fleet||fleet.map(item=>item.assetId===row.assetId?{...item,saved_at:new Date().toISOString(),shift_status:form.shiftStatus,draft:null,skipped:false}:item);
@@ -96,15 +110,29 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  };
  const dismiss=()=>onDismiss?.();
  const saved=fleet.filter(item=>item.saved_at).length,skipped=fleet.filter(item=>item.skipped&&!item.saved_at);
+ const [machineQuery,setMachineQuery]=useState('');
+ const [statusFilter,setStatusFilter]=useState('');
+ const [machineSort,setMachineSort]=useState('');
+ const [sortKey,direction]=machineSort.split(':');
+ const sortColumn=machineColumns.find(column=>column.key===sortKey);
+ const visibleMachines=embedded?fleet.map((item,itemIndex)=>({item,itemIndex})).filter(({item})=>
+  (!statusFilter||machineStatus(item)===statusFilter)&&matchesSmartSearch(machineQuery,machineColumns.map(column=>column.value(item)))
+ ):[];
+ if(sortColumn)visibleMachines.sort((a,b)=>
+  machineCollator.compare(sortColumn.value(a.item),sortColumn.value(b.item))*(direction==='desc'?-1:1)
+ );
+ const reportMachines=visibleMachines.map(({item})=>item);
+ const machineReportTitle=['ELB Manual machines',batch?.name,batch?.site,batch?.report_date,batch?.shift].filter(Boolean).join(' · ');
  if(!row)return embedded?<section className="logbook-section vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p></section>:<div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-label="Machine entry" className="logbook-dialog vlb-fleet-stepper"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss}  aria-label="Close window">× Close</button></div><p>The fleet list for this batch is empty.</p><div className="vlb-batch-actions"><button type="button" onClick={dismiss}>Close dialog</button></div></div></div>;
  const trips=Number(row.trips)||0;
  const workingStatus=true;
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
+ const surfaceMiner=isSurfaceMiner(row);
+ const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
  const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
- const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
-  {embedded&&<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Machines from VLB summaries</h2><span>{saved} of {fleet.length} saved · Unique machines matched with Equipment Master</span></div><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Machine no.</th><th>Equipment Master match</th><th>VLB trips</th><th>ELB status</th><th/></tr></thead><tbody>{fleet.map((item,itemIndex)=><tr key={item.assetId} aria-selected={itemIndex===index}><td>{item.door}</td><td>{item.equipmentName||'—'}</td><td>{Number(item.trips)||0}</td><td>{item.saved_at?'Saved'+(item.book_no?' · '+item.book_no:''):item.skipped?'Skipped':'Not saved'}</td><td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button></td></tr>)}</tbody></table></div></section>}
+ const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
   {skipped.length>0&&<p className="vlb-fleet-skipped">Skipped: {skipped.map(item=>item.door).join(', ')}. Complete them before closing the batch.</p>}
   <nav className="vlb-status-buttons" role="tablist" aria-label="ELB entry tabs">
@@ -118,7 +146,22 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
    {workingStatus&&<label className="logbook-field"><span>Caliber ID{operatorRequired?' *':''}</span><SmartSelect data-elb-entry="operator" value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select Caliber ID</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.caliberId||e.employeeCode||'')+' · '+(e.name||e.employee||'')}</option>)}</SmartSelect></label>}
    <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input data-elb-entry="opening-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
+   {surfaceMiner&&<label className="logbook-field"><span>Second operator (optional)</span>
+    <SmartSelect data-elb-entry="second-operator" value={form.secondOperatorId||''} disabled={busy} onChange={event=>{
+     const secondOperatorId=event.target.value;
+     setForm(current=>({...current,secondOperatorId,handoverHmr:secondOperatorId?current.handoverHmr:''}));
+     setDirty(true);setError('');
+    }}>
+     <option value="">Single operator</option>
+     {employees.map(employee=><option key={employee.id} value={String(employee.id)}>{(employee.caliberId||employee.employeeCode||'')+' · '+(employee.name||employee.employee||'')}</option>)}
+    </SmartSelect>
+   </label>}
+   {operatorSplit&&<label className="logbook-field"><span>Handover HMR *</span>
+    <input data-elb-entry="handover-hmr" type="number" inputMode="decimal" step="0.01" min="0" required value={form.handoverHmr||''} disabled={busy} onChange={event=>update('handoverHmr',event.target.value)}/>
+    <small>Enter the meter reading when the second operator takes over.</small>
+   </label>}
    <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input data-elb-entry="closing-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
+   {operatorSplit&&!operatorSplit.error&&<p className="logbook-message">First operator {operatorSplit.firstHours.toFixed(2)} h · Second operator {operatorSplit.secondHours.toFixed(2)} h · Combined HMR {operatorSplit.totalHours.toFixed(2)} h</p>}
    <label className="logbook-field"><span>HMR Difference</span><input type="text" aria-label="HMR Difference" readOnly value={hours===null?'':String(hours)}/><small>Closing HMR − Opening HMR</small></label>
    <label className="logbook-field"><span>Breakdown Hrs · from Pulse</span><output aria-label="Breakdown Hrs">{pulse?Number(pulse.breakdownHours).toFixed(3):'—'}</output><small>{pulse?'Same equipment, site, date and shift':pulseLoading?'Fetching from Pulse…':'Pulse unavailable'}</small></label>
    <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" readOnly value={idleHours===null?'':String(idleHours)}/></label>
@@ -135,6 +178,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved} onClick={next}>{busy?'Saving…':row.saved_at?'Save changes':'Next'}</button>{dirty&&<span className="vlb-draft-indicator" role="status">Not saved · select Next to save this ELB</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
   {notice&&<p className="logbook-message success" role="status">{notice}</p>}
- </div>;
+ </>;
+ const machineRows=visibleMachines.map(({item,itemIndex})=><React.Fragment key={item.assetId}><tr key={item.assetId} aria-selected={itemIndex===index}>{machineColumns.map(column=><td key={column.key}>{column.value(item)}</td>)}<td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button></td></tr>{itemIndex===index&&<tr className="vlb-fleet-inline-entry"><td colSpan={machineColumns.length+1}>{machineEntry}</td></tr>}</React.Fragment>);
+ const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{embedded?<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Machines from VLB summaries</h2><span>{saved} of {fleet.length} saved · Unique machines matched with Equipment Master</span></div><div className="vlb-fleet-machine-toolbar"><label>Smart Search<input data-smart-search type="search" placeholder="Machine, equipment, trips or ELB book no." value={machineQuery} onChange={event=>setMachineQuery(event.target.value)}/></label><label>ELB status<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">All statuses</option>{['Not saved','Skipped','Saved'].map(status=><option key={status}>{status}</option>)}</select></label><label>Sort by<select value={machineSort} onChange={event=>setMachineSort(event.target.value)}><option value="">Batch order</option>{machineColumns.map(({key,label})=><optgroup key={key} label={label}><option value={key+':asc'}>{label} · {key==='trips'?'Lowest first':'A–Z'}</option><option value={key+':desc'}>{label} · {key==='trips'?'Highest first':'Z–A'}</option></optgroup>)}</select></label><button type="button" disabled={!machineQuery&&!statusFilter&&!machineSort} onClick={()=>{setMachineQuery('');setStatusFilter('');setMachineSort('')}}>Reset view</button>{ExportMenu&&visibleMachines.length>0&&<div className="vlb-fleet-machine-exports"><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} printOnly/><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} label="Export" smartLabels smartPrintItem={false}/></div>}</div><p className="vlb-fleet-machine-count" role="status">{visibleMachines.length} of {fleet.length} machines shown</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{machineColumns.map(({key,label})=><th key={key} scope="col" aria-sort={sortKey===key?(direction==='desc'?'descending':'ascending'):undefined}>{label}</th>)}<th scope="col">Action</th></tr></thead><tbody>{machineRows}{!visibleMachines.length&&<tr><td colSpan={machineColumns.length+1}>No machines match this search and status filter.</td></tr>}</tbody></table></div></section>:machineEntry}</div>;
  return embedded?content:<div className="logbook-dialog-backdrop">{content}</div>;
 }

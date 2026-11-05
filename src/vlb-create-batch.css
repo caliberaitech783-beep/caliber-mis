@@ -69,7 +69,7 @@
 .vlb-status-buttons{display:flex;gap:8px;flex-wrap:wrap}.vlb-status-buttons button{padding:9px 14px;border:1px solid var(--brand-purple,#6036a0);border-radius:8px;background:var(--panel,#fff);color:var(--brand-purple,#6036a0);font:inherit;font-weight:650;cursor:pointer}.vlb-status-buttons button[aria-pressed=true],.vlb-status-buttons button[aria-selected=true]{background:var(--brand-purple,#6036a0);color:#fff}.vlb-status-buttons button:disabled{opacity:.45;cursor:not-allowed}
 .vlb-fleet-fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}.vlb-fleet-fields .logbook-field span{font-size:13px;font-weight:650}.vlb-fleet-fields .logbook-field small{font-size:12px;color:var(--muted,#68718b)}.vlb-fleet-fields input,.vlb-fleet-fields select{padding:9px;border:1px solid var(--border,#cfbee0);border-radius:7px;font:inherit;background:var(--panel,#fff);color:var(--text,#251b30)}
 .vlb-fleet-stepper-actions{align-items:center}.vlb-fleet-stepper-actions .vlb-draft-indicator{margin-left:auto}.vlb-fleet-stepper button{font:inherit;padding:9px 16px;border:1px solid var(--border,#cfbee0);border-radius:8px;background:var(--panel,#fff);color:var(--text,#251b30);cursor:pointer}.vlb-fleet-stepper button:disabled{opacity:.5;cursor:not-allowed}.vlb-fleet-stepper .vlb-approval-primary{background:var(--brand-purple,#6036a0);border-color:var(--brand-purple,#6036a0);color:#fff}
-.embedded-vlb-fleet-stepper{width:100%;max-width:none;margin-top:12px}.embedded-vlb-fleet-stepper .vlb-fleet-machine-list{padding:0 0 16px;border-bottom:1px solid var(--border,#cfbee0)}.embedded-vlb-fleet-stepper .vlb-fleet-machine-list tr[aria-selected="true"]{background:var(--soft-purple,#f3edf9)}
+.embedded-vlb-fleet-stepper{width:100%;max-width:none;margin-top:12px}.embedded-vlb-fleet-stepper .vlb-fleet-machine-list{padding:0 0 16px;border-bottom:1px solid var(--border,#cfbee0)}.embedded-vlb-fleet-stepper .vlb-fleet-machine-list tr[aria-selected="true"]{background:var(--soft-purple,#f3edf9)}.embedded-vlb-fleet-stepper .vlb-fleet-inline-entry>td{padding:16px 12px 20px;background:var(--panel,#fff)}
 .vlb-machine-report-group th{text-align:left;background:color-mix(in srgb,var(--brand-purple,#6036a0) 8%,var(--panel,#fff))}.vlb-machine-report-summary{font-size:14px;font-weight:650}
 @media(max-width:700px){.vlb-fleet-fields{grid-template-columns:1fr}.vlb-fleet-stepper{padding:16px}}
 .vlb-approval-otp{margin:10px 0;display:grid;gap:8px}.vlb-approval-otp .vlb-approval-help{margin:0}
@@ -78,5 +78,14 @@
 .vlb-fleet-stepper [hidden]{display:none!important}.vlb-fleet-stepper output[aria-label="Breakdown Hrs"]{display:block;min-height:44px;padding:10px 12px;border:1px solid var(--border,#d7c7ee);border-radius:8px;background:var(--panel,#fff);font-weight:650}
 
 .vlb-batch-stage-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}.vlb-batch-stage-toolbar .vlb-stage-steps{margin-bottom:0}
+.vlb-batch-report-totals{display:flex;justify-content:space-between;gap:16px;margin:14px 0 8px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;font-size:1.05rem}
 
 .vlb-create-batch .vlb-open-batch-notice{font-size:18px}.vlb-create-batch .vlb-open-batch-notice button{font-size:14px}
+.vlb-fleet-machine-toolbar{display:flex;flex-wrap:wrap;align-items:end;gap:8px 12px}
+.vlb-fleet-machine-toolbar label{display:grid;gap:4px;font-size:.85rem;font-weight:600}
+.vlb-fleet-machine-toolbar label:first-child{flex:1 1 250px}
+.vlb-fleet-machine-toolbar input,.vlb-fleet-machine-toolbar select{width:100%;min-height:38px;padding:6px 10px;border:1px solid var(--border,#cfbee0);border-radius:8px;background:var(--surface,#fff);color:inherit}
+.vlb-fleet-machine-exports{display:flex;flex-wrap:wrap;gap:8px}
+.vlb-fleet-machine-exports button{display:inline-flex;align-items:center;gap:6px}
+.vlb-fleet-machine-exports svg{width:16px;height:16px}
+.vlb-fleet-machine-count{margin:8px 0;font-size:.85rem}

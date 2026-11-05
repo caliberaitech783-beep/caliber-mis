@@ -1,7 +1,7 @@
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import './meter-correction-report.css';
 import React,{useState} from 'react';
-import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
+import {vlbRecordSource,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 
 export const vlbBatchColumns=[
@@ -26,7 +26,8 @@ export const vlbBatchColumns=[
 export const visibleVlbBatchColumns=records=>vlbBatchColumns.filter(column=>(!column.tone||records.some(record=>meterCorrectionReport(record.data).original))&&(!column.when||records.some(column.when)));
 export default function VlbBatchReport({batch,ReportSection,onView}){
  const [search,setSearch]=useState('');
- const section=<ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${batch.records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} columns={onView?[...visibleVlbBatchColumns(batch.records),{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View VLB</button>}]:visibleVlbBatchColumns(batch.records)} rows={batch.records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction exportLabel="Generate" emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver, source or any report value" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/>;
+ const totalTrips=batch.records.reduce((sum,record)=>sum+vlbRecordTrips(record),0);
+ const section=<><div className="vlb-batch-report-totals" aria-label="VLB batch totals"><strong>Total Cards: {batch.records.length}</strong><strong>Total Trips: {totalTrips}</strong></div><ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${batch.records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} columns={onView?[...visibleVlbBatchColumns(batch.records),{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View VLB</button>}]:visibleVlbBatchColumns(batch.records)} rows={batch.records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction exportLabel="Generate" emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver, source or any report value" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/></>;
  if(!batch.machineReport)return section;
  return <>{section}<MachineReport report={batch.machineReport} statuses={batch.statuses}/></>;
 }

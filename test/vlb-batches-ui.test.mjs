@@ -8,7 +8,7 @@ import {transformWithOxc} from 'vite';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
-import {vlbRecordSource} from '../shared/vlb-batch-format.mjs';
+import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
@@ -55,7 +55,7 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const records=[{id:1,book_no:'VLB-1',data:{door:'V07'}},{id:2,book_no:'VLB-2',data:{door:'V12',scanCardId:'saved-scan'}}],batch={id:'batch1',name:'CMLL/SASTI OC/30TH -OCT-26/S1/B01',records,site:'Sasti OC',report_date:'2026-10-30',shift:'S1'};
  const fetch=async(url,request)=>{calls.push({url,request});return {ok:true,json:async()=>({...batch,closed_at:'2026-10-30T10:00:00Z',closure_revision:1})}};
- const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null},['VlbCreateBatch','availableShifts']);
+ const {VlbCreateBatch,availableShifts}=await compile('vlb-create-batch.jsx',{React,SmartSelect:"select",useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null},['VlbCreateBatch','availableShifts']);
  const options={sites:['Sasti OC'],shifts:[{site:'Sasti OB',name:'Shift A',shiftCode:'I'},{site:'Sasti OC',name:'Shift B',shiftCode:'II'},{site:'Jayant OC',name:'Shift C',shiftCode:'III'},{site:'Sasti OC',name:'Night',status:'inactive'}]};
  const selection={site:'Sasti OC',date:'2026-10-30',shift:'S1'};assert.deepEqual(availableShifts(options,selection).map(s=>s.code),['S1','S2']);
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'},onExit(){}})};
@@ -114,14 +114,14 @@ test('opened batch search and shared export controls use only its saved snapshot
  const slots=[];let cursor=0;
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const ReportSection=()=>null;
- const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordSource,displaySiteName,meterCorrectionReport},['VlbBatchReport','vlbBatchColumns']);
- const records=[{id:1,book_no:'VLB_M/29TH-OCT26/S1/001',data:{door:'V07',totalTrips:0,totalWorkingHmr:0}},{id:2,book_no:'VLB_S/29TH-OCT26/S1/001',data:{door:'V12',scanCardId:'scan'}}];
+ const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['VlbBatchReport','vlbBatchColumns']);
+ const records=[{id:1,book_no:'VLB_M/29TH-OCT26/S1/001',data:{door:'V07',totalTrips:2,totalWorkingHmr:0}},{id:2,book_no:'VLB_S/29TH-OCT26/S1/001',data:{door:'V12',scanCardId:'scan',scanEntrySource:'scan',totalTrips:3}},{id:3,book_no:'VLB_S/29TH-OCT26/S1/002',data:{door:'V14',scanCardId:'upload',scanEntrySource:'upload',trips:[{tripCount:4}]}}];
  const batch={id:'saved',name:'CMLL/SASTI OC/29TH -OCT-26/S1/B01',site:'Sasti OC',report_date:'2026-10-29',shift:'S1',records};
- const render=()=>{cursor=0;return VlbBatchReport({batch,ReportSection})};
- let report=render();assert.equal(report.type,ReportSection);assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);
+ const render=()=>{cursor=0;const tree=VlbBatchReport({batch,ReportSection});return {tree,report:nodes(tree,n=>n.type===ReportSection)[0]}};
+ let rendered=render(),report=rendered.report;assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);assert.match(renderToStaticMarkup(rendered.tree),/Total Cards: 3.*Total Trips: 9/);assert.deepEqual(records.map(vlbRecordEntryType),['manual','scan','upload']);
  assert.equal(vlbBatchColumns.find(c=>c.key==='hours').value(records[0]),0);
  assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VLB Scan');
- const search=nodes(report.props.headingControl,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});report=render();assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,2,'search must not alter batch membership');
+ const search=nodes(report.props.headingControl,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});({report}=render());assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,3,'search must not alter batch membership');
  // Exercise the shared section: its Generate menu must receive the same
  // filtered rows and column choices that the report table supplies for print.
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');

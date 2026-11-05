@@ -23,3 +23,9 @@ export function vlbBatchPrefix(input){
 export const vlbBatchName=(selection,sequence)=>`${vlbBatchPrefix(selection)}/B${String(sequence).padStart(2,'0')}`;
 export const vlbRecordShift=data=>bookShiftCode(data.bookShiftCode)||bookShiftCode(data.cardShift)||bookShiftCode(data.shiftName);
 export const vlbRecordSource=record=>record.data?.scanCardId?'VLB Scan':'VLB Manual';
+export const vlbRecordEntryType=record=>!record.data?.scanCardId?'manual':record.data?.scanEntrySource==='scan'?'scan':'upload';
+export const vlbRecordTrips=record=>{
+ const data=record.data||{},saved=Number(data.completedTrips??data.totalTrips);
+ if(Number.isFinite(saved))return saved;
+ return (data.trips||[]).reduce((sum,row)=>sum+(Number(row.tripCount)||0),0);
+};
