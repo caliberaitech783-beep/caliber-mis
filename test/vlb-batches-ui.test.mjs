@@ -114,11 +114,12 @@ test('opened batch search and shared export controls use only its saved snapshot
  const slots=[];let cursor=0;
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const ReportSection=()=>null;
- const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['VlbBatchReport','vlbBatchColumns']);
+ const {VlbBatchReport,vlbBatchColumns}=await compile('vlb-batch-report.jsx',{React,useState,vlbRecordEntryType,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['VlbBatchReport','vlbBatchColumns']);
  const records=[{id:1,book_no:'VLB_M/29TH-OCT26/S1/001',data:{door:'V07',totalTrips:2,totalWorkingHmr:0}},{id:2,book_no:'VLB_S/29TH-OCT26/S1/001',data:{door:'V12',scanCardId:'scan',scanEntrySource:'scan',totalTrips:3}},{id:3,book_no:'VLB_S/29TH-OCT26/S1/002',data:{door:'V14',scanCardId:'upload',scanEntrySource:'upload',trips:[{tripCount:4}]}}];
  const batch={id:'saved',name:'CMLL/SASTI OC/29TH -OCT-26/S1/B01',site:'Sasti OC',report_date:'2026-10-29',shift:'S1',records};
  const render=()=>{cursor=0;const tree=VlbBatchReport({batch,ReportSection});return {tree,report:nodes(tree,n=>n.type===ReportSection)[0]}};
  let rendered=render(),report=rendered.report;assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);assert.match(renderToStaticMarkup(rendered.tree),/Total Cards: 3.*Total Trips: 9/);assert.deepEqual(records.map(vlbRecordEntryType),['manual','scan','upload']);
+ cursor=0;const scanned=VlbBatchReport({batch,ReportSection,entryType:'scan'});const scannedReport=nodes(scanned,n=>n.type===ReportSection)[0];assert.deepEqual(scannedReport.props.rows,[records[1]]);assert.match(renderToStaticMarkup(scanned),/Total Cards: 1.*Total Trips: 3/);
  assert.equal(vlbBatchColumns.find(c=>c.key==='hours').value(records[0]),0);
  assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VLB Scan');
  const search=nodes(report.props.headingControl,n=>n.type==='input')[0];assert.equal(search.props['aria-label'],'Smart Search opened batch');search.props.onChange({target:{value:'V12'}});({report}=render());assert.equal(report.props.query,'V12');assert.equal(report.props.rows.length,3,'search must not alter batch membership');

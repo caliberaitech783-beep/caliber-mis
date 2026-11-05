@@ -201,7 +201,7 @@ test('ELB fleet table shows a serial number column before Door',()=>{
 
 test('batch report adds the machine-wise shift report with totals only when the server supplies it',async()=>{
  const h=hooks();const ReportSection=()=>null;
- const {VlbBatchReport,MachineReport}=await compile('vlb-batch-report.jsx',{React,useState:h.useState,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['VlbBatchReport','MachineReport']);
+ const {VlbBatchReport,MachineReport}=await compile('vlb-batch-report.jsx',{React,useState:h.useState,vlbRecordEntryType,vlbRecordSource,vlbRecordTrips,displaySiteName,meterCorrectionReport},['VlbBatchReport','MachineReport']);
  const records=[{id:1,book_no:'VLB-1',data:{door:'V07'}}];
  const batch={id:'b',name:'B01',site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records};
  h.reset();let tree=VlbBatchReport({batch,ReportSection});assert.equal(nodes(tree,n=>n.type===ReportSection).length,1,'legacy batches include the report section');
@@ -220,7 +220,8 @@ test('View report keeps the unbatched action beside stages and shows entry optio
  const batch={id:'selected-batch',name:'Jayant batch',site:'Jayant OC',report_date:'2026-11-03',shift:'S1',records:[{data:{}},{data:{scanCardId:'scan',scanEntrySource:'scan'}},{data:{scanCardId:'upload',scanEntrySource:'upload'}}],twoStage:true,stage:'vlb_open',closed_at:null};
  const browser={location:{href:'https://example.test/?page=vlb-create-batch'},history:{replaceState(_state,_unused,path){browser.location.href=new URL(path,browser.location.href).href}}};
  const fetch=async url=>{calls.push(url);return {ok:true,json:async()=>batch}};
- const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbFleetStepper:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:browser},['VlbCreateBatch']);
+ const Report=()=>null;
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:Report,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbFleetStepper:()=>null,VlbBatchHolds:()=>null,NewEquipmentRequest:()=>null,window:browser},['VlbCreateBatch']);
  const entered=[];
  const render=()=>{h.reset();return VlbCreateBatch({session:{token:'test'},onExit(){},onManual:value=>entered.push(['manual',value.id]),onScan:value=>{entered.push(['scan',value.id]);browser.location.href='https://example.test/?page=trip-scan'}})};
  render();h.slots[0]={sites:['Jayant OC'],shifts:[]};h.slots[3]=[batch];h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};
@@ -231,8 +232,12 @@ test('View report keeps the unbatched action beside stages and shows entry optio
   h.slots[5]=selected;tree=render();
   const entryOptions=nodes(tree,n=>n.props['aria-label']==='Batch entry options');
   assert.equal(entryOptions.length,selected.stage==='vlb_open'?1:0);
-  for(const label of ['Manual','Scan','Upload'])assert.equal(Boolean(button(tree,label)),selected.stage==='vlb_open');
-  if(selected.stage==='vlb_open')assert.match(renderToStaticMarkup(entryOptions[0]),/Manual \(1\).*Scan \(1\).*Upload \/ PDF \(1\)/);
+  for(const label of ['Manual','Scan','PDF'])assert.equal(Boolean(button(tree,label)),selected.stage==='vlb_open');
+  if(selected.stage==='vlb_open'){
+   assert.match(renderToStaticMarkup(entryOptions[0]),/Manual \(1\).*Scan \(1\).*PDF \(1\)/);
+   button(tree,'Scan').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Report)[0].props.entryType,'scan');
+   button(tree,'Scan').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Report)[0].props.entryType,'');
+  }
   const toolbar=nodes(tree,n=>n.props.className==='vlb-batch-stage-toolbar')[0];
   assert.ok(toolbar);assert.ok(button(toolbar,'Show unbatched entries'));
   assert.equal(React.Children.toArray(toolbar.props.children)[0].props.stage,selected.stage);
