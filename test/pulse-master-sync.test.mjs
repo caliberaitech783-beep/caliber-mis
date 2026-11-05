@@ -18,7 +18,7 @@ const snapshot=(door='EQ-1')=>({'Equipment master':[{id:5,door,chassis:'CH-1'}],
 test('source updates preserve local IDs, adopt unique local matches and delete only linked source removals',async t=>{
  const {db,pool}=await fixture(t);
  await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1),('Region master',$2)",[JSON.stringify({door:'OLD',chassis:'CH-1'}),JSON.stringify({code:'LOCAL',name:'Local only'})]);
- const counts=await applyPulseSnapshot(pool,snapshot());assert.deepEqual(Object.values(counts),[1,1,1,0]);
+ const counts=await applyPulseSnapshot(pool,snapshot());assert.deepEqual(Object.values(counts),[1,1,0]);
  const before=(await db.query("SELECT id FROM master_records WHERE record_data->>'chassis'='CH-1'")).rows[0].id;
  await applyPulseSnapshot(pool,snapshot('EQ-UPDATED'));
  const equipment=(await db.query("SELECT * FROM master_records WHERE record_data->>'chassis'='CH-1'")).rows[0];
@@ -30,12 +30,21 @@ test('source updates preserve local IDs, adopt unique local matches and delete o
 test('malformed, duplicate and missing master groups never erase existing data',async t=>{
  const {db,pool}=await fixture(t);await applyPulseSnapshot(pool,snapshot());
  for(const bad of [null,[],{}, {'Equipment master':{}},{'Equipment master':[{id:1},{id:1}]}])await assert.rejects(applyPulseSnapshot(pool,bad));
- assert.equal((await db.query('SELECT * FROM master_records')).rows.length,3);
+ assert.equal((await db.query('SELECT * FROM master_records')).rows.length,2);
+});
+test('full Pulse snapshots leave previously linked regions and local site edits intact',async t=>{
+ const {db,pool}=await fixture(t);
+ const local={code:'WCL',name:'Local West',sites:'Sasti OC | New Site'};
+ const {rows:[{id}]}=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Region master',$1) RETURNING id",[JSON.stringify(local)]);
+ await db.query("INSERT INTO pulse_master_links VALUES('Region master','7',$1)",[id]);
+ for(const source of [snapshot(),{...snapshot(),'Region master':[]}])await applyPulseSnapshot(pool,source);
+ assert.deepEqual((await db.query("SELECT id,record_data FROM master_records WHERE master_name='Region master'")).rows,[{id,record_data:local}]);
+ await assert.rejects(applyPulseSnapshot(pool,snapshot(),['Region master']),/Invalid Pulse master/);
 });
 test('a failed transaction rolls back changes across all three masters',async t=>{
  const {db,pool}=await fixture(t);await applyPulseSnapshot(pool,snapshot());
- await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Region master',$1),('Region master',$1)",[JSON.stringify({code:'DUP'})]);
- const bad=snapshot('SHOULD-ROLLBACK');bad['Region master']=[{id:99,code:'DUP'}];await assert.rejects(applyPulseSnapshot(pool,bad),/Multiple local/);
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Shift Master',$1),('Shift Master',$1)",[JSON.stringify({name:'Duplicate Shift'})]);
+ const bad=snapshot('SHOULD-ROLLBACK');bad['Shift Master']=[{id:99,name:'Duplicate Shift'}];await assert.rejects(applyPulseSnapshot(pool,bad),/Multiple local/);
  assert.equal((await db.query("SELECT record_data FROM master_records WHERE master_name='Equipment master'")).rows[0].record_data.door,'EQ-1');
 });
 test('connection stores only a source session; expiry preserves last good copies and source requests stay read-only except login',async t=>{
@@ -49,7 +58,8 @@ test('connection stores only a source session; expiry preserves last good copies
  await service.connect({username:'sync-admin',password:'do-not-store-me'});
  const saved=await readFile(stateFile,'utf8');assert.ok(!saved.includes('do-not-store-me'));assert.ok(!JSON.stringify(service.status()).includes('private-source-session'));
  assert.deepEqual(calls.map(c=>c[1]),['POST','GET']);assert.deepEqual(service.status().masters,PULSE_MASTER_NAMES);
- expired=true;await assert.rejects(service.sync(),/expired or was denied/);assert.equal((await db.query('SELECT * FROM master_records')).rows.length,3);
+ assert.equal(new URL(calls[1][0]).searchParams.get('names').includes('Region master'),false);
+ expired=true;await assert.rejects(service.sync(),/expired or was denied/);assert.equal((await db.query('SELECT * FROM master_records')).rows.length,2);
  await service.disconnect();assert.equal(service.status().connected,false);await assert.rejects(readFile(stateFile),{code:'ENOENT'});
 });
 test('source authentication cannot use a manager or partial master permission',async t=>{

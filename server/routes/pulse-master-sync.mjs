@@ -5,7 +5,7 @@ import {shiftIdentity} from '../../shared/shift-master.mjs';
 import {hashPassword} from '../services/password-auth.mjs';
 import {randomBytes} from 'node:crypto';
 
-export const PULSE_MASTER_NAMES=['Equipment master','Region master','Shift Master','Users & employees'];
+export const PULSE_MASTER_NAMES=['Equipment master','Shift Master','Users & employees'];
 const SOURCE='https://pulse.cmll.in';
 export function validatePulseSnapshot(data){
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Pulse returned an invalid master response.');
@@ -24,7 +24,7 @@ export function validatePulseSnapshot(data){
 function recordKey(master,row){
  if(master==='Shift Master')return `${shiftIdentity({...row,shiftName:row.shiftName||row.name||row.shift})}|${String(row.effectiveFrom||'').trim()}`;
  if(master==='Users & employees')return String(row.login||row.empId||row.employeeId||row.employee||'').trim().toLowerCase();
- const value=master==='Equipment master'?(row.chassis||row.door||row.registration):master==='Region master'?(row.code||row.name):(row.name||row.shiftName||row.shift);
+ const value=master==='Equipment master'?(row.chassis||row.door||row.registration):(row.name||row.shiftName||row.shift);
  return String(value||'').trim().toLowerCase();
 }
 export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_NAMES){
@@ -134,8 +134,8 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      busy=true;
      try{
        const login=await request('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:String(credentials.username),password:String(credentials.password),portal:'operations'})});
-       if(!login?.token||login.role!=='super'||!['admin','super admin'].includes(String(login.permissions?.adminLevel||'').toLowerCase()))throw new Error('Use a Pulse Admin or Super Admin with access to all four masters. Complete any required password change in Pulse first.');
-       if(PULSE_MASTER_NAMES.some(name=>!masterAccessAllows(login.permissions,name)&&!masterAccessAllows(login.permissions,name,'mobileMasterAccess')))throw new Error('This Pulse account cannot read all four requested masters.');
+       if(!login?.token||login.role!=='super'||!['admin','super admin'].includes(String(login.permissions?.adminLevel||'').toLowerCase()))throw new Error('Use a Pulse Admin or Super Admin with access to the requested masters. Complete any required password change in Pulse first.');
+       if(PULSE_MASTER_NAMES.some(name=>!masterAccessAllows(login.permissions,name)&&!masterAccessAllows(login.permissions,name,'mobileMasterAccess')))throw new Error('This Pulse account cannot read all requested masters.');
        const snapshot=await fetchMasters(login.token);
        // Credentials are persisted only through the encrypted integration store.
        await save(login.token,String(credentials.username));if(credentialStore)await credentialStore.write('pulse',{username:String(credentials.username),password:String(credentials.password)});token=login.token;username=String(credentials.username);

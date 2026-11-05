@@ -480,6 +480,7 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
   };
 }
 const subsidiaryData = REGION_DATA;
+const regionMasterTitle = "Region / Site Master";
 const nav = [
   ["Dashboard", LayoutDashboard],
   ["CD", BookOpen],
@@ -8119,7 +8120,7 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
   );
 }
 
-function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, userOptions = [], siteOptions = [], canCreateSuperAdmin = false, deletionApprovalRequired = false }) {
+function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, userOptions = [], siteOptions = [], canCreateSuperAdmin = false, deletionApprovalRequired = false, headerControl = null }) {
   const [q, setQ] = useState(""),
     [editing, setEditing] = useState(null),
     [changingPassword, setChangingPassword] = useState(null),
@@ -8131,7 +8132,7 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
   const fields = masterFields[name],
     editFields = name === "Users & employees" ? [...fields, ...userPrivilegeFields, ...userSubmenuFields] : fields,
     displayFields = name === "Privilege" ? fields.slice(0, 2) : fields,
-    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master",
+    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master" || name === "Region master",
     masterValue = (record, key) => {
       if (name === "Users & employees" && key === "site") return userMasterLocation(record);
       const type = fields.find(([field]) => field === key)?.[2];
@@ -8275,8 +8276,9 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
     <section className="panel pagepanel generic">
       <header>
         <div>
-          <h1>{name==='Users & employees'?'Login Details':name}</h1>
+          <h1>{name==='Users & employees'?'Login Details':name==='Region master'?regionMasterTitle:name}</h1>
           <p>{rows.length} records shown · import CSV or add one manually</p>
+          {headerControl}
         </div>
         <MasterActions
           name={name}
@@ -9577,14 +9579,14 @@ function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenR
   </>);
 }
 
-function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, gotoEquipment }) {
+function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, gotoEquipment, onManage }) {
   const normalizedRegions = records.map((record, index) => ({
     ...record,
     code: String(record.code || record.shortName || "").trim() || `REG-${index + 1}`,
     sitesList: regionSites(record),
   }));
-  const [activeRegionCode, setActiveRegionCode] = useState(() => normalizedRegions[0]?.code || "WCL");
-  const activeRegion = normalizedRegions.find((region) => region.code === activeRegionCode) || normalizedRegions[0];
+  const [activeRegionId, setActiveRegionId] = useState(() => normalizedRegions[0]?.id);
+  const activeRegion = normalizedRegions.find((region) => region.id === activeRegionId) || normalizedRegions[0];
   const [activeSite, setActiveSite] = useState("");
   const [query, setQuery] = useState("");
   const [equipmentRecords] = useMasterRecords("Equipment master", vehicles);
@@ -9592,7 +9594,7 @@ function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, got
   useEffect(() => {
     const nextSite = visibleSites.includes(activeSite) ? activeSite : visibleSites[0] || "";
     if (nextSite !== activeSite) setActiveSite(nextSite);
-  }, [activeRegionCode, activeSite, visibleSites.join("|")]);
+  }, [activeRegionId, activeSite, visibleSites.join("|")]);
   const siteMetrics = (site) => {
     const siteRecords = equipmentRecords.filter((record) => recordBelongsToSite(record, site));
     const siteRequests = requests.filter((record) => recordBelongsToSite(record, site));
@@ -9612,15 +9614,16 @@ function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, got
     <section className="region-master-page panel pagepanel">
       <header>
         <div>
-          <h1>Region master</h1>
-          <p>{normalizedRegions.length} regions configured · WCL and NCL site control center</p>
+          <h1>{regionMasterTitle}</h1>
+          <p>{normalizedRegions.length} regions configured · Managed in Pulse‑II</p>
+          <button className="secondary" type="button" onClick={onManage}>Manage regions and sites</button>
         </div>
         <MasterActions name="Region master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} />
       </header>
       <div className="region-master-toolbar">
         <div className="region-main-tabs" role="tablist" aria-label="Region tabs">
           {normalizedRegions.map((region) => (
-            <button key={region.code} type="button" role="tab" aria-selected={activeRegion?.code === region.code} className={activeRegion?.code === region.code ? "active" : ""} onClick={() => setActiveRegionCode(region.code)}>
+            <button key={region.id} type="button" role="tab" aria-selected={activeRegion?.id === region.id} className={activeRegion?.id === region.id ? "active" : ""} onClick={() => setActiveRegionId(region.id)}>
               <Building2 />
               <span><b>{region.code}</b><small>{region.name}</small></span>
             </button>
@@ -9683,11 +9686,7 @@ function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, got
 }
 Generic = function GenericWithMasters(props) {
   const name = props.name,
-    seed =
-      name === "Region master"
-        ? subsidiaryData.map((s) => ({ ...s, sites: s.sites.join(" | ") }))
-        : [],
-    [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(name, seed);
+    [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(name);
   const masterSiteOptions = name === "Users & employees"
     ? [...new Set([
         ...privilegeSiteOptions,
@@ -9710,13 +9709,13 @@ Generic = function GenericWithMasters(props) {
 };
 const OriginalSubsidiaries = Subsidiaries;
 Subsidiaries = function SubsidiariesWithImport({ gotoEquipment, requests = [] } = {}) {
-  const [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(
-    "Region master",
-    subsidiaryData.map((s) => ({ ...s, sites: s.sites.join(" | ") })),
-  );
-  if (loadError && !loaded) return <MasterLoadError name="Region master" error={loadError} retry={retryLoad} />;
-  if (!loaded) return <MasterLoader name="Region master" />;
-  return <RegionMasterPage records={records} requests={requests} onAdd={onAdd} onDeleteAll={onDeleteAll} gotoEquipment={gotoEquipment} />;
+  const [managing, setManaging] = useState(false);
+  const [storedRecords, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords("Region master");
+  if (loadError && !loaded) return <MasterLoadError name={regionMasterTitle} error={loadError} retry={retryLoad} />;
+  if (!loaded) return <MasterLoader name={regionMasterTitle} />;
+  const records = storedRecords.map(record => ({...record, code: record.code || record.shortName || "", sites: regionSites(record).join(" | ")}));
+  if (managing) return <MasterPage name="Region master" records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onDeleteAll={onDeleteAll} headerControl={<button className="secondary" type="button" onClick={() => setManaging(false)}>Back to region overview</button>} />;
+  return <RegionMasterPage records={records} requests={requests} onAdd={onAdd} onDeleteAll={onDeleteAll} gotoEquipment={gotoEquipment} onManage={() => setManaging(true)} />;
 };
 function InfoPulseTimelineModal({ overlayClassName = "", ...props }) {
   // Escape animated pulse rows so the lifecycle is neither clipped nor covered by sibling cards.
@@ -12123,7 +12122,7 @@ function App() {
         hidden={sidebarHidden}
         onHide={()=>{changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
-          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
+          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
           {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},

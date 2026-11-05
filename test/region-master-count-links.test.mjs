@@ -25,13 +25,13 @@ test("region totals open the entire region, site totals retain only the chosen s
   const slots = [];
   let cursor = 0, opened;
   const bindings = {SmartSelect: "select",React, liveEquipmentMetrics, recordBelongsToSite, vehicles: [],
-    regionSites: (record) => record.sites, matchesSmartSearch: () => true, useEffect() {},
+    regionMasterTitle: "Region / Site Master", regionSites: (record) => record.sites, matchesSmartSearch: () => true, useEffect() {},
     useState(initial) {const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial; return [slots[index], (next) => {slots[index] = next;}];},
     useMasterRecords: () => [equipment],
     ...Object.fromEntries([...component.matchAll(/<([A-Z]\w*)\b/g)].map((match) => [match[1], () => null])),
     Gauge: () => null, CheckCircle2: () => null, AlertTriangle: () => null, Clock: () => null};
   const Component = new Function(...Object.keys(bindings), `${code}; return RegionMasterPage;`)(...Object.values(bindings));
-  const render = () => {cursor = 0; return Component({records: [{code: "WCL", sites}, {code: "NCL", sites: ["Jayant OB"]}], requests,
+  const render = () => {cursor = 0; return Component({records: [{id: 1, code: "WCL", sites}, {id: 2, code: "NCL", sites: ["Jayant OB"]}], requests,
     gotoEquipment: (...args) => {opened = args;}});};
   let tree = render();
   for (const button of descendants(descendants(tree, (node) => node.props.className === "region-summary-strip")[0], (node) => node.type === "button")) {

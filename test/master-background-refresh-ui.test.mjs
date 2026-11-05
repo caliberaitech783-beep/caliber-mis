@@ -20,7 +20,8 @@ for (const [name, start, end] of definitions) {
     const fixture = [{id: "fixture", door: "D-01"}];
     for (const [loaded, error, expectedScreen] of [[true, "", null], [true, "Connection interrupted", null], [false, "", MasterLoader], [false, "Connection interrupted", MasterLoadError]]) {
       const scope = {SmartSelect: "select",
-        React, CDIR_MASTERS, useMasterRecords: () => [fixture, Null, loaded, Null, Null, Null, error, Null], vehicles: [], subsidiaryData: [],
+        React, CDIR_MASTERS, useMasterRecords: () => [fixture, Null, loaded, Null, Null, Null, error, Null], vehicles: [],
+        useState: initial => [initial, Null], regionSites: () => [], regionMasterTitle: "Region / Site Master",
         MasterLoadError, MasterLoader, OriginalEquipment: Null, OriginalGeneric: Null,
         masterFields: {"OEM master": [["oem", "OEM name"]]}, MasterPage: Null, RegionMasterPage: Null,
         normalizeEquipmentRecord: value => value,
@@ -31,7 +32,7 @@ for (const [name, start, end] of definitions) {
       else {
         assert.notEqual(tree.type, MasterLoadError);
         assert.notEqual(tree.type, MasterLoader);
-        assert.deepEqual(tree.props.records, fixture);
+        assert.deepEqual(tree.props.records, name === "Subsidiaries" ? [{...fixture[0], code:"", sites:""}] : fixture);
       }
     }
   });

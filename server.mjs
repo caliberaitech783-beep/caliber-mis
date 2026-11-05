@@ -1410,6 +1410,10 @@ async function migrate(){
       }
       await client.query("INSERT INTO app_metadata (key,value,updated_at) VALUES ('site_ob_to_oc_v1','true',NOW()) ON CONFLICT (key) DO NOTHING");
     }
+    const regionMasterSeed=await client.query("INSERT INTO app_metadata (key,value,updated_at) VALUES ('local_region_site_master_v1','true',NOW()) ON CONFLICT (key) DO NOTHING RETURNING key");
+    if(regionMasterSeed.rowCount)await client.query(`INSERT INTO master_records(master_name,record_data)
+      SELECT 'Region master',value FROM jsonb_array_elements($1::jsonb) AS value
+      WHERE NOT EXISTS (SELECT 1 FROM master_records WHERE master_name='Region master')`,[JSON.stringify(REGION_DATA.map(region=>({...region,sites:region.sites.join(' | ')})))]);
     // Keep a recoverable copy of the original closure fields. Idle entry is
     // the recorded maintenance-completion event; never substitute migration time.
     await client.query('ALTER TABLE maintenance_requests ADD COLUMN IF NOT EXISTS vehicle_idle BOOLEAN NOT NULL DEFAULT FALSE');

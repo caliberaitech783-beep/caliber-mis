@@ -18,7 +18,9 @@ test("region master renders WCL and NCL graphical tabs with site subtabs", () =>
   assert.match(regionSource, /role="tablist" aria-label="Region tabs"/);
   assert.match(regionSource, /className="region-site-tabs"/);
   assert.match(regionSource, /aria-label=\{`\$\{activeRegion\.code\} site tabs`\}/);
-  assert.match(regionSource, /WCL and NCL site control center/);
+  assert.match(regionSource, /Manage regions and sites/);
+  assert.match(source, /useMasterRecords\("Region master"\)/);
+  assert.match(source, /if \(managing\) return <MasterPage name="Region master"/);
   assert.match(regionSource, /Total equipment \/ vehicle/);
   assert.match(regionSource, /On Road/);
   assert.match(regionSource, /Off Road/);
