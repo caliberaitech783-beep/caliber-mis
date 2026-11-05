@@ -14,7 +14,7 @@ function harness(kind='vehicle',overrides={}){
  const slots=[];let cursor=0,closed=0;const requests=[],deletions=[];
  const useState=initial=>{const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value]};
  const Component=new Function('React','useState','useRef','useEffect','scanDeletionApproval',code+';return ScanCardDeletionDialog')(React,useState,value=>useState({current:value})[0],()=>{},scanDeletionApproval);
- const props={target,kind,batchName:'B06',onClose(){closed++},onRequest:async body=>{requests.push(body);return {requestId:'request-exact',recipient:'+91 9925565281',expiresInMinutes:10}},onDelete:async body=>deletions.push(body),...overrides};
+ const props={otpRequired:true,target,kind,batchName:'B06',onClose(){closed++},onRequest:async body=>{requests.push(body);return {requestId:'request-exact',recipient:'+91 9925565281',expiresInMinutes:10}},onDelete:async body=>deletions.push(body),...overrides};
  const render=()=>{cursor=0;return Component(props)},button=(tree,label)=>nodes(tree,n=>n.type==='button'&&n.props.children===label)[0];
  const prepare=()=>{let tree=render();nodes(tree,n=>n.type==='textarea')[0].props.onChange({target:{value:'Wrong scan'}});nodes(tree,n=>n.type==='input'&&n.props.type==='checkbox')[0].props.onChange({target:{checked:true}});return render()};
  return {render,button,prepare,requests,deletions,get closed(){return closed}};
