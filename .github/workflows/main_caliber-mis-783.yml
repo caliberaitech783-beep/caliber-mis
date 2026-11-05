@@ -16,6 +16,10 @@ on:
         description: 'Why this release is started by hand instead of from a release tag (kept with the run)'
         required: true
         type: string
+      force_full:
+        description: Force the original full validation path
+        type: boolean
+        default: false
 
 # Finish an active release safely; GitHub replaces superseded pending runs.
 # The test platform uses its own group (caliber-mis-test-release), so a test
@@ -49,6 +53,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # If the environment lost its required-reviewer rule, this job started
       # without anyone's approval. Stop before anything is built or deployed.
@@ -93,15 +99,37 @@ jobs:
           cache: npm
 
       - name: Restore pinned handwriting model cache
+        id: model-cache
         uses: actions/cache@v4
         with:
           path: ocr-model-cache
-          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+          key: trocr-verified-v2-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json', 'scripts/prepare-handwriting-model.mjs', 'scripts/release-model-cache.mjs') }}
+
+      - name: Classify changes against the deployed target
+        id: changes
+        env:
+          RELEASE_BASE_URL: https://pulse-ll.cmll.in
+          FORCE_FULL: ${{ inputs.force_full && 'true' || 'false' }}
+        run: node scripts/classify-ui-release.mjs
+
+      - name: Select UI-only validation only with a verified runtime model cache
+        id: lane
+        env:
+          CANDIDATE_MODE: ${{ steps.changes.outputs.mode }}
+        run: |
+          mode=full
+          if [ "$CANDIDATE_MODE" = ui ] && node scripts/release-model-cache.mjs; then
+            mode=ui
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "### Release validation: $mode" >> "$GITHUB_STEP_SUMMARY"
+          echo "UI-only requires a known deployed ancestor, frontend-only changes and an intact verified model cache." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install exact locked dependencies
         run: npm ci --no-audit --no-fund
 
       - name: Verify pinned handwriting model
+        if: steps.lane.outputs.mode != 'ui'
         run: npm run ocr:prepare
 
       - name: Build complete UI
@@ -111,9 +139,17 @@ jobs:
         run: npm run build
 
       - name: Run full test suite
+        if: steps.lane.outputs.mode != 'ui'
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: npm test
+
+      - name: Run frontend and release regression tests
+        if: steps.lane.outputs.mode == 'ui'
+        run: node scripts/test-release-ui.mjs
+
+      - name: Check log-book layout using the existing build
+        uses: ./.github/actions/check-logbook-layout
 
       - name: Verify built release identity
         run: |
@@ -121,6 +157,7 @@ jobs:
           printf '%s\n' "$RELEASE_COMMIT" > DEPLOYMENT_SHA
 
       - name: Verify complete deployment runtime
+        if: steps.lane.outputs.mode != 'ui'
         env:
           RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: |
@@ -128,6 +165,10 @@ jobs:
           node scripts/verify-server-start.mjs
           node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
           node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
+
+      - name: Record verified model cache for future UI releases
+        if: steps.lane.outputs.mode != 'ui'
+        run: node scripts/release-model-cache.mjs --seal
 
       # Keep the complete workspace format that Azure already runs.
       # Build and deployment share one runner, avoiding the large artifact transfer.

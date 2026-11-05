@@ -1,7 +1,7 @@
 name: MIS validation
+# Main pushes are validated by the test deployment, including layout checks.
+# Keep PR check names for repositories that still require them.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 concurrency:
@@ -38,8 +38,15 @@ jobs:
         env:
           RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
 
+      - name: Share the validated UI with layout checks
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-ui
+          path: dist/
+          retention-days: 1
 
   logbook-layout:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,17 +55,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run build
-      - name: Install browser for log-book layout checks
-        run: |
-          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
-          npx playwright install --with-deps chromium
-      - name: Verify responsive VLB and ELB layouts
-        run: node scripts/verify-logbook-layout.mjs
-      - name: Keep log-book layout evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Restore the validated UI (do not rebuild)
+        uses: actions/download-artifact@v4
         with:
-          name: logbook-layout-checks
-          path: layout-checks/
-          if-no-files-found: ignore
+          name: validated-ui
+          path: dist/
+      - uses: ./.github/actions/check-logbook-layout

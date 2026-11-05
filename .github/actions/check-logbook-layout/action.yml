@@ -1,0 +1,29 @@
+name: Check log-book layout
+description: Check responsive layouts using the UI already built by this job
+runs:
+  using: composite
+  steps:
+    - name: Install layout tools
+      shell: bash
+      # Keep browser tooling out of the application dependencies and Azure package.
+      run: npm install --prefix "$RUNNER_TEMP/mis-layout-tools" --no-save --package-lock=false --ignore-scripts playwright@1.62.1 esbuild@0.28.2
+    - name: Cache Chromium
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: chromium-${{ runner.os }}-playwright-1.62.1
+    - name: Install browser and system dependencies
+      shell: bash
+      run: node "$RUNNER_TEMP/mis-layout-tools/node_modules/playwright/cli.js" install --with-deps chromium
+    - name: Verify responsive VLB and ELB layouts
+      shell: bash
+      run: |
+        cp scripts/verify-logbook-layout.mjs "$RUNNER_TEMP/mis-layout-tools/check.mjs"
+        node "$RUNNER_TEMP/mis-layout-tools/check.mjs"
+    - name: Keep layout evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: logbook-layout-${{ github.job }}
+        path: layout-checks/
+        if-no-files-found: ignore

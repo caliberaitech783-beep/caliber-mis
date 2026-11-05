@@ -14,6 +14,11 @@ on:
       - 'docs/**'
       - '*.md'
   workflow_dispatch:
+    inputs:
+      force_full:
+        description: Force the original full validation path
+        type: boolean
+        default: false
 
 # Separate from the production group (caliber-mis-783-release): a test release
 # never cancels or blocks a production release. GitHub replaces superseded
@@ -57,6 +62,8 @@ jobs:
       TEST_GEMINI_CONFIGURED: ${{ secrets.MIS_TEST_GEMINI_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Refuse to touch the production app
         run: |
@@ -79,24 +86,80 @@ jobs:
           cache: npm
 
       - name: Restore pinned handwriting model cache
+        id: model-cache
         uses: actions/cache@v4
         with:
           path: ocr-model-cache
-          key: trocr-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json') }}
+          key: trocr-verified-v2-${{ runner.os }}-node22-${{ hashFiles('handwritten-card-ocr.mjs', 'package-lock.json', 'scripts/prepare-handwriting-model.mjs', 'scripts/release-model-cache.mjs') }}
+
+      - name: Login to Azure with the test platform identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_TEST_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TEST_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_TEST_SUBSCRIPTION_ID }}
+
+      - name: Resolve the deployed test baseline address
+        id: baseline
+        env:
+          TEST_BASELINE_URL: ${{ vars.PULSE_TEST_URL }}
+        run: |
+          url="$TEST_BASELINE_URL"
+          if [ -z "$url" ]; then
+            host=$(az webapp show --name "$TEST_WEBAPP_NAME" --resource-group "$TEST_RESOURCE_GROUP" --query defaultHostName -o tsv)
+            url="https://$host"
+          fi
+          case "$url" in
+            *pulse-ll.cmll.in*|*pulseii.cmll.in*|*caliber-mis-783*)
+              echo "::error::Refusing a production baseline for a test release."
+              exit 1;;
+            https://[A-Za-z0-9]*) ;;
+            *) echo "::error::Invalid test baseline address."; exit 1;;
+          esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Classify changes against the deployed target
+        id: changes
+        env:
+          RELEASE_BASE_URL: ${{ steps.baseline.outputs.url }}
+          FORCE_FULL: ${{ inputs.force_full && 'true' || 'false' }}
+        run: node scripts/classify-ui-release.mjs
+
+      - name: Select UI-only validation only with a verified runtime model cache
+        id: lane
+        env:
+          CANDIDATE_MODE: ${{ steps.changes.outputs.mode }}
+        run: |
+          mode=full
+          if [ "$CANDIDATE_MODE" = ui ] && node scripts/release-model-cache.mjs; then
+            mode=ui
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "### Release validation: $mode" >> "$GITHUB_STEP_SUMMARY"
+          echo "UI-only requires a known deployed ancestor, frontend-only changes and an intact verified model cache." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install exact locked dependencies
         run: npm ci --no-audit --no-fund
 
       - name: Verify pinned handwriting model
+        if: steps.lane.outputs.mode != 'ui'
         run: npm run ocr:prepare
 
       - name: Build complete UI
         run: npm run build
 
       - name: Run full test suite
+        if: steps.lane.outputs.mode != 'ui'
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: npm test
+
+      - name: Run frontend and release regression tests
+        if: steps.lane.outputs.mode == 'ui'
+        run: node scripts/test-release-ui.mjs
+
+      - name: Check log-book layout using the existing build
+        uses: ./.github/actions/check-logbook-layout
 
       - name: Verify built release identity
         run: |
@@ -104,6 +167,7 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > DEPLOYMENT_SHA
 
       - name: Verify complete deployment runtime
+        if: steps.lane.outputs.mode != 'ui'
         env:
           RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: |
@@ -112,15 +176,12 @@ jobs:
           node --input-type=module -e "await import('./local-card-ocr.mjs'); await import('./report-xlsx.mjs')"
           node --input-type=module -e "const {env}=await import('@huggingface/transformers'); env.allowRemoteModels=false; const {loadHandwritingModel}=await import('./handwritten-card-ocr.mjs'); const model=await loadHandwritingModel(); await model.dispose(); console.log('Pinned OCR model verified offline.')"
 
+      - name: Record verified model cache for future UI releases
+        if: steps.lane.outputs.mode != 'ui'
+        run: node scripts/release-model-cache.mjs --seal
+
       # The test identity holds Website Contributor on the test resource group
       # only (docs/test-platform-setup.md, section 6); it cannot reach production.
-      - name: Login to Azure with the test platform identity
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_TEST_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TEST_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_TEST_SUBSCRIPTION_ID }}
-
       - name: Configure Gemini extraction on the test app (only with a test key)
         if: env.TEST_GEMINI_CONFIGURED == 'true'
         env:

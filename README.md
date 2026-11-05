@@ -20,6 +20,13 @@ Use Node.js 22. Run `npm ci`, `npm run build`, then `npm start`. Configure envir
 
 ## Deployment status
 
+UI-only releases automatically use focused frontend checks when the target's
+deployed commit and verified OCR cache allow it. Other changes retain full checks;
+production approval is unchanged. Main-push validation is handled by the test
+deployment, and PR layout checks reuse the existing build. See
+[faster UI releases](docs/ui-only-deployment.md) for eligibility, fallback and the
+manual `force_full` option. Complete runtime packaging and Azure restarts remain.
+
 Release path since 2 November 2026: a merge to `main` is built, tested and deployed to the **test platform** (`.github/workflows/main_caliber-mis-test.yml`); production `caliber-mis-783` is deployed only from a `release-YYYY-MM-DD-N` tag, or a manual run, after the owner approves the run in the GitHub environment `production` (`.github/workflows/main_caliber-mis-783.yml`). Creating the test platform: `docs/test-platform-setup.md`. Releasing: `docs/release-safety-plan-2026-11-02.md`, section 6.
 
 Azure Web App `caliber-mis-783` uses the existing `ASP-coalminefleetmaintenancerg-b234` Linux plan in Central India and subscription `58ca09cf-ab5d-47a8-a438-e1fb2a40d030`. Its runtime is Node.js 22; `npm start` launches `server.mjs`, which reads `PORT` (configure 8080). No new hosting plan was created. GitHub Actions with Azure OIDC deployed commit `93f20810bd636b51ac77a740da392e3899b22425` successfully in [run 39557861853](https://github.com/caliberaitech783-beep/caliber-mis/actions/runs/39557861853). Deployment success does not establish application health.
