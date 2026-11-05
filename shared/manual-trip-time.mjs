@@ -5,6 +5,22 @@ const clockMinutes=value=>{const match=String(value||'').match(/^(\d{1,2}):(\d{2
 
 export const manualTimeValue=value=>String(value||'').slice(0,5);
 
+export function shiftTimeInputValue(value){
+ const time=manualTimeValue(value),minutes=clockMinutes(time);
+ if(minutes===null)return time;
+ const hour=Math.floor(minutes/60)%12||12;
+ return String(hour).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+}
+
+export function resolveShiftTime(value,shift){
+ const match=String(value||'').trim().match(/^(\d{1,2}):(\d{2})$/);
+ if(!match||Number(match[1])>23||Number(match[2])>59)return String(value||'');
+ const hour=Number(match[1]),minute=Number(match[2]);
+ if(hour>12){const result=String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');return timeWithinShift(result,shift)?result:String(value||'');}
+ const candidates=[hour%12,(hour%12)+12].map(candidate=>String(candidate).padStart(2,'0')+':'+String(minute).padStart(2,'0'));
+ return candidates.find(candidate=>timeWithinShift(candidate,shift))||String(value||'');
+}
+
 export function timeWithinShift(value,shift){
  const time=clockMinutes(value),start=clockMinutes(shift?.startTime||shift?.start),end=clockMinutes(shift?.endTime||shift?.end);
  if(time===null||start===null||end===null)return false;
