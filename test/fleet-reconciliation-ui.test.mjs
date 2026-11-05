@@ -20,9 +20,11 @@ test('all assets, unused reasons, and zero-card summary rows stay available in t
  const row=(id,kind,extra)=>({assetId:id,assetKey:id,site:'Sasti OC',date:'2026-11-02',shift:'S1',door:id,kind,name:kind,model:'M1',cards:[],breakdowns:[],operated:false,breakdown:false,reason:'',remarks:'',status:'Reason pending',...extra});
  slots[2]={site:'Sasti OC',date:'2026-11-02',shift:'S1',updatedAt:'2026-11-02T10:00:00Z',warnings:[],unmatched:[],summary:{vehicle:{total:2,operated:1,breakdownOnly:0,idle:1,pending:0},equipment:{total:1,operated:0,breakdownOnly:0,idle:0,pending:1}},rows:[row('V1','vehicle',{cards:[{id:1,reference:'VLB-1'}],operated:true,status:'Operated only'}),row('V2','vehicle',{reason:'Driver unavailable',remarks:'Absent',status:'Idle / Not operated'}),row('E1','equipment')]};
  let tree=render(),html=renderToStaticMarkup(tree);
- assert.match(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.match(html,/E1/);assert.match(html,/All site assets/);
+ assert.match(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.doesNotMatch(html,/E1/);assert.match(html,/All assets/);
  nodes(tree,n=>n.type==='select'&&n.props['aria-label']==='Assets to report')[0].props.onChange({target:{value:'unused'}});
- tree=render();html=renderToStaticMarkup(tree);assert.doesNotMatch(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.match(html,/Reason pending/);assert.match(html,/2 of 3 assets shown/);
+ tree=render();html=renderToStaticMarkup(tree);assert.doesNotMatch(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.match(html,/Reason pending/);assert.match(html,/1 of 2 assets shown/);
  nodes(tree,n=>n.type==='select'&&n.props.value==='detail')[0].props.onChange({target:{value:'summary'}});
- html=renderToStaticMarkup(render());assert.match(html,/V2/);assert.match(html,/E1/);assert.match(html,/2 machines/);
+ html=renderToStaticMarkup(render());assert.match(html,/V2/);assert.doesNotMatch(html,/E1/);assert.match(html,/1 machines/);
+ tree=render();nodes(tree,n=>n.props.role==='tab'&&n.props.id==='fleet-tab-equipment')[0].props.onClick();
+ html=renderToStaticMarkup(render());assert.match(html,/E1/);assert.doesNotMatch(html,/VLB-1/);assert.match(html,/1 of 1 assets shown/);
 });

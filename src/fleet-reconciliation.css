@@ -25,3 +25,7 @@
 .fleet-reconciliation .fleet-table-wrap td>div{display:inline-flex;align-items:center;gap:8px;margin-right:10px}
 .fleet-reconciliation .fleet-table-wrap td small{display:inline;white-space:nowrap;margin-top:0}
 }
+
+.fleet-detail-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.fleet-detail-tabs [role=tab]{background:var(--panel,#fff);color:inherit}
+.fleet-detail-tabs [aria-selected=true]{background:#56309a;color:#fff}
