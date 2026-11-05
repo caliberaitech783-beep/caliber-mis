@@ -100,7 +100,8 @@ test('ELB manual and scan sit behind the site batch picker and open only once VL
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(vlbOpen);tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,0,'VLB still open keeps the ELB editor closed');assert.match(renderToStaticMarkup(tree),/Lock VLB in batch Sasti 18 Dec S1 before entering ELB cards/);
   nodes(tree,n=>n.type===Picker)[0].props.onSelected(elbOpen);tree=render();
-  if(mode==='manual'){assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'ELB manual shows the full roster before entry');assert.equal(nodes(tree,n=>n.type===ElbManual)[0].props.batch.id,elbOpen.id,'two-stage ELB manual opens the combined batch machine workflow');assert.equal(nodes(tree,n=>n.type===Editor).length,0)}
+  assert.equal(tree.props.children.at(-1)?.type,'details','ELB site fleet is the last card below the entry workflow');
+  if(mode==='manual'){assert.ok(nodes(tree,n=>n.type==='details'&&n.props.open).length,'ELB manual keeps the full roster available below entry');assert.equal(nodes(tree,n=>n.type===ElbManual)[0].props.batch.id,elbOpen.id,'two-stage ELB manual opens the combined batch machine workflow');assert.equal(nodes(tree,n=>n.type===Editor).length,0)}
   else assert.equal(nodes(tree,n=>n.type===Editor)[0].props.vlbBatch.id,elbOpen.id,'ELB scan opens the editor fixed to the batch');
   nodes(tree,n=>n.type===Picker)[0].props.onSelected({...elbOpen,stage:'closed',closed_at:'2026-12-18T12:00:00Z'});tree=render();
   assert.equal(nodes(tree,n=>n.type===Editor).length,1,'closed batches accept new ELB cards');
