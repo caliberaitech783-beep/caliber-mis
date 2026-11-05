@@ -46,7 +46,7 @@ function render(name, componentName) {
     return [value, () => {}];
   };
   const scope = {SmartSelect: "select",
-    React, useState, useEffect: () => {}, useRef: value => ({current: value}), masterFields,
+    React, useState, useEffect: () => {}, useRef: value => ({current: value}), masterFields, regionMasterTitle: "Region / Site Master",
     userPrivilegeFields: [], userSubmenuFields: [], userAccessOptions: {},
     privilegeAccessOptions: ["Super User", "Mobile User"], mobileUserRoleOptions: ["Maintenance User"],
     mobileRoleAuthority: {"Maintenance User": "Edit requests"}, persistedUserTypeOptions: ["Mobile User", "Super Admin"],

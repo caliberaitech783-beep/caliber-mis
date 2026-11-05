@@ -1410,6 +1410,7 @@ async function migrate(){
       }
       await client.query("INSERT INTO app_metadata (key,value,updated_at) VALUES ('site_ob_to_oc_v1','true',NOW()) ON CONFLICT (key) DO NOTHING");
     }
+    // Initialize the local master once. An intentional empty list stays empty.
     const regionMasterSeed=await client.query("INSERT INTO app_metadata (key,value,updated_at) VALUES ('local_region_site_master_v1','true',NOW()) ON CONFLICT (key) DO NOTHING RETURNING key");
     if(regionMasterSeed.rowCount)await client.query(`INSERT INTO master_records(master_name,record_data)
       SELECT 'Region master',value FROM jsonb_array_elements($1::jsonb) AS value
