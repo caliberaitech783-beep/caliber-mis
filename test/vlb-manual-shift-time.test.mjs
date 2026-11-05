@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {batchShift,manualTimeValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 
 test('manual VLB times use minutes and stay inside the selected batch shift',()=>{
@@ -7,6 +8,14 @@ test('manual VLB times use minutes and stay inside the selected batch shift',()=
  assert.equal(manualTimeValue('05:33:52'),'05:33');
  for(const value of ['05:00','08:25','13:00'])assert.equal(timeWithinShift(value,day),true,value);
  for(const value of ['04:59','13:01','23:00'])assert.equal(timeWithinShift(value,day),false,value);
+});
+
+test('the active VLB manual table uses minute-only shift-validated inputs',()=>{
+ const source=readFileSync(new URL('../src/log-book-form.jsx',import.meta.url),'utf8');
+ assert.match(source,/import \{manualTimeValue,timeWithinShift\} from '\.\.\/shared\/manual-trip-time\.mjs'/);
+ assert.equal((source.match(/type="time" step="60"/g)||[]).length,2);
+ assert.doesNotMatch(source,/type="time" step="1"/);
+ assert.match(source,/timeWithinShift\(value,selectedShift\)/);
 });
 
 test('overnight shift windows and effective batch shift selection are supported',()=>{
