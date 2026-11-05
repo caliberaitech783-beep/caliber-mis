@@ -76,6 +76,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
   ['Equipment master',{category:'Vehicle',door:'V1',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   ['Equipment master',{category:'Vehicle',door:'V2',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   ['Users & employees',{login:'alice',employee:'Alice',employeeId:'CM-1',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
+  ['Users & employees',{login:'bob',employee:'Bob',employeeId:'CM-2',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
   ['Shift Master',{site:'Sasti OC',shiftName:'Shift A',shiftCode:'I',startTime:'05:00:00',endTime:'13:00:00'}],
   ['Equipment master',{category:'Equipment',door:'VPC-019',equipmentName:'VPC 019',group:'Excavator',currentLocation:'Sasti OC'}],
   ['Equipment master',{category:'Equipment',door:'D1',equipmentName:'Dozer D1',group:'Dozer',currentLocation:'Sasti OC'}],
@@ -86,7 +87,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json({limit:'5mb'}));
- const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization,role:'super',permissions:{adminLevel:req.headers.authorization==='alice'?'Admin':''}};next()};
+ const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization,role:'super',site:req.headers.authorization==='bob'?'Sasti OC':undefined,permissions:{adminLevel:['alice','admin'].includes(req.headers.authorization)?'Admin':''}};next()};
  registerLogBooks(app,{pool,requireSession,requireAdministrator:(req,res,next)=>next(),pulseMasterSync:{status:()=>({connected:false}),readBreakdownRequests:async()=>[]}});
  app.use((error,req,res,next)=>res.status(500).json({error:error.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
@@ -146,7 +147,11 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
  view=await call(batch);assert.deepEqual(view.data.fleetProgress,{total:3,saved:2,remaining:0,optionalUnsaved:1,skipped:0,drafts:0,loaders:2});assert.deepEqual(view.data.closeBlockers,[]);
  assert.equal(view.data.machineReport.totals.trips,12);assert.equal(view.data.machineReport.totals.hours,9);assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1.6);
- const closed=await call(batch+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
+ const adminView=await call(batch,'GET',undefined,'admin');assert.equal(adminView.data.canClose,true);
+ const adminList=await call('/api/vlb-batches','GET',undefined,'admin');assert.equal(adminList.data.batches.find(row=>row.id===created.data.id)?.canClose,true);
+ assert.equal((await call(batch+'/close','POST',{},'bob')).status,403,'non-owner MIS users cannot close');
+ const closed=await call(batch+'/close','POST',{},'admin');assert.equal(closed.status,200,JSON.stringify(closed.data));assert.equal(closed.data.stage,'closed');assert.ok(closed.data.closed_at);
+ assert.equal(closed.data.audit.find(entry=>entry.action==='saved_and_locked').actor,'admin');
  assert.equal((await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'not_in_use'})).status,409,'closed batch freezes machines');
  const list=await call('/api/vlb-batches');assert.equal(list.data.twoStage,true);assert.equal(list.data.batches[0].stage,'closed');
  assert.ok(closed.data.audit.some(e=>e.action==='vlb_locked')&&closed.data.audit.some(e=>e.action==='machine_saved')&&closed.data.audit.some(e=>e.action==='elb_card_linked'));

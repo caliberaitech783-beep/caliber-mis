@@ -175,7 +175,7 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.match(html,/<td>D-07<\/td><td>Dozer<\/td><td>0<\/td><td>Maintenance<\/td>/);
  assert.match(html,/<th>Operator<\/th><th>Caliber ID<\/th><th>Opening HMR<\/th><th>Closing HMR<\/th><th>Working HMR<\/th><th>BD hours<\/th><th>Idle hours<\/th><th>Availability hours<\/th><th>Job card<\/th><th>Remarks<\/th>/);
  assert.doesNotMatch(html,/Close &amp; lock ELB is blocked: Machines without a saved ELB/);
- const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));
+ const closeButtons=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB');assert.ok(closeButtons.length>=2,'detail panel and open batch notice both show Close & lock ELB');assert.ok(closeButtons.every(n=>n.props.disabled));assert.match(html,/The batch owner or an MIS administrator can close and lock this ELB/);
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Lock VLB'),undefined);
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>ELB open<\/td>/);
  button(tree,'Process Equipment ELB').props.onClick();assert.equal(equipmentElb,elbStage);
@@ -189,7 +189,8 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  assert.ok(button(tree,'Process Equipment ELB'));assert.equal(nodes(tree,n=>n.props.id==='vlb-equipment-elb-details')[0].props.hidden,false);
  assert.equal(nodes(tree,n=>n.type===Stepper).length,0,'the separate batch-page entry flow is removed');
  await button(tree,'Unlock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/unlock-vlb');assert.deepEqual(calls.at(-1).body,{reason:'Correct VLB card V07'});
- h.slots[5]={...elbStage,canClose:true,closeBlockers:[],fleetProgress:{...elbStage.fleetProgress,saved:2,remaining:0}};tree=render();assert.match(renderToStaticMarkup(tree),/ELBs saved: 2 · Required remaining: 0 · 1 optional with no saved ELB/);await nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB'&&!n.props.disabled)[0].props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/close');
+ h.slots[14]={login:'admin',admin:true};h.slots[3]=[{...base,stage:'elb_open',created_by:'bob',canClose:true}];
+ h.slots[5]={...elbStage,canClose:true,closeBlockers:[],fleetProgress:{...elbStage.fleetProgress,saved:2,remaining:0}};tree=render();assert.equal(button(tree,'Close batch').props.disabled,false);assert.match(renderToStaticMarkup(tree),/ELBs saved: 2 · Required remaining: 0 · 1 optional with no saved ELB/);await nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).join('')==='Close & lock ELB'&&!n.props.disabled)[0].props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/close');
  const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');assert.ok(source.includes("onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}}"),'main.jsx routes ELB entry choices from the batch');assert.ok(source.includes("onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}}"),'main.jsx routes equipment processing directly to the contextual ELB report');
 });
 
