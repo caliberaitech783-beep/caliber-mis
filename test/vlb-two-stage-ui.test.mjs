@@ -58,6 +58,19 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  cleanup?.();
 });
 
+test('embedded ELB form stays directly below the selected equipment row',async()=>{
+ const h=hooks();
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
+ const batch={id:'batch1',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[]},embedded:true})};
+ let tree=render(),html=renderToStaticMarkup(tree);
+ assert.match(html,/aria-selected="true"[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
+ assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+ button(tree,'Enter ELB').props.onClick();tree=render();html=renderToStaticMarkup(tree);
+ assert.match(html,/aria-selected="true"><td>G-08[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
+ assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+});
+
 test('switching machines ignores late Pulse responses and failed lookups show retry instead of zero',async()=>{
  const h=hooks(),pending=[];let lastDeps,cleanup;
  const useEffect=(fn,deps)=>{if(!lastDeps||deps.some((v,i)=>v!==lastDeps[i])){cleanup?.();lastDeps=deps;cleanup=fn();}};

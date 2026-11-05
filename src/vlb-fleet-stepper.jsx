@@ -126,38 +126,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
- const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
-  {embedded&&<section className="logbook-section vlb-fleet-machine-list">
-   <div className="logbook-section-title"><h2>Machines from VLB summaries</h2><span>{saved} of {fleet.length} saved · Unique machines matched with Equipment Master</span></div>
-   <div className="vlb-fleet-machine-toolbar">
-    <label>Smart Search<input data-smart-search type="search" placeholder="Machine, equipment, trips or ELB book no." value={machineQuery} onChange={event=>setMachineQuery(event.target.value)}/></label>
-    <label>ELB status<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}>
-     <option value="">All statuses</option>
-     {['Not saved','Skipped','Saved'].map(status=><option key={status}>{status}</option>)}
-    </select></label>
-    <label>Sort by<select value={machineSort} onChange={event=>setMachineSort(event.target.value)}>
-     <option value="">Batch order</option>
-     {machineColumns.map(({key,label})=><optgroup key={key} label={label}>
-      <option value={key+':asc'}>{label} · {key==='trips'?'Lowest first':'A–Z'}</option>
-      <option value={key+':desc'}>{label} · {key==='trips'?'Highest first':'Z–A'}</option>
-     </optgroup>)}
-    </select></label>
-    <button type="button" disabled={!machineQuery&&!statusFilter&&!machineSort} onClick={()=>{setMachineQuery('');setStatusFilter('');setMachineSort('')}}>Reset view</button>
-    {ExportMenu&&visibleMachines.length>0&&<div className="vlb-fleet-machine-exports">
-     <ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} printOnly/>
-     <ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} label="Export" smartLabels smartPrintItem={false}/>
-    </div>}
-   </div>
-   <p className="vlb-fleet-machine-count" role="status">{visibleMachines.length} of {fleet.length} machines shown</p>
-   <div className="logbook-table-wrap"><table className="logbook-table">
-    <thead><tr>{machineColumns.map(({key,label})=><th key={key} scope="col" aria-sort={sortKey===key?(direction==='desc'?'descending':'ascending'):undefined}>{label}</th>)}<th scope="col">Action</th></tr></thead>
-    <tbody>{visibleMachines.map(({item,itemIndex})=><tr key={item.assetId} aria-selected={itemIndex===index}>
-     {machineColumns.map(column=><td key={column.key}>{column.value(item)}</td>)}
-     <td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button></td>
-    </tr>)}
-    {!visibleMachines.length&&<tr><td colSpan={machineColumns.length+1}>No machines match this search and status filter.</td></tr>}</tbody>
-   </table></div>
-  </section>}
+ const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
   {skipped.length>0&&<p className="vlb-fleet-skipped">Skipped: {skipped.map(item=>item.door).join(', ')}. Complete them before closing the batch.</p>}
   <nav className="vlb-status-buttons" role="tablist" aria-label="ELB entry tabs">
@@ -188,6 +157,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved} onClick={next}>{busy?'Saving…':row.saved_at?'Save changes':'Next'}</button>{dirty&&<span className="vlb-draft-indicator" role="status">Not saved · select Next to save this ELB</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
   {notice&&<p className="logbook-message success" role="status">{notice}</p>}
- </div>;
+ </>;
+ const machineRows=visibleMachines.map(({item,itemIndex})=><React.Fragment key={item.assetId}><tr key={item.assetId} aria-selected={itemIndex===index}>{machineColumns.map(column=><td key={column.key}>{column.value(item)}</td>)}<td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button></td></tr>{itemIndex===index&&<tr className="vlb-fleet-inline-entry"><td colSpan={machineColumns.length+1}>{machineEntry}</td></tr>}</React.Fragment>);
+ const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{embedded?<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Machines from VLB summaries</h2><span>{saved} of {fleet.length} saved · Unique machines matched with Equipment Master</span></div><div className="vlb-fleet-machine-toolbar"><label>Smart Search<input data-smart-search type="search" placeholder="Machine, equipment, trips or ELB book no." value={machineQuery} onChange={event=>setMachineQuery(event.target.value)}/></label><label>ELB status<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">All statuses</option>{['Not saved','Skipped','Saved'].map(status=><option key={status}>{status}</option>)}</select></label><label>Sort by<select value={machineSort} onChange={event=>setMachineSort(event.target.value)}><option value="">Batch order</option>{machineColumns.map(({key,label})=><optgroup key={key} label={label}><option value={key+':asc'}>{label} · {key==='trips'?'Lowest first':'A–Z'}</option><option value={key+':desc'}>{label} · {key==='trips'?'Highest first':'Z–A'}</option></optgroup>)}</select></label><button type="button" disabled={!machineQuery&&!statusFilter&&!machineSort} onClick={()=>{setMachineQuery('');setStatusFilter('');setMachineSort('')}}>Reset view</button>{ExportMenu&&visibleMachines.length>0&&<div className="vlb-fleet-machine-exports"><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} printOnly/><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} label="Export" smartLabels smartPrintItem={false}/></div>}</div><p className="vlb-fleet-machine-count" role="status">{visibleMachines.length} of {fleet.length} machines shown</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{machineColumns.map(({key,label})=><th key={key} scope="col" aria-sort={sortKey===key?(direction==='desc'?'descending':'ascending'):undefined}>{label}</th>)}<th scope="col">Action</th></tr></thead><tbody>{machineRows}{!visibleMachines.length&&<tr><td colSpan={machineColumns.length+1}>No machines match this search and status filter.</td></tr>}</tbody></table></div></section>:machineEntry}</div>;
  return embedded?content:<div className="logbook-dialog-backdrop">{content}</div>;
 }
