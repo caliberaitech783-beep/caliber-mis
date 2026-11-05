@@ -186,7 +186,7 @@ test('batch report adds the machine-wise shift report with totals only when the 
  assert.match(html,/Totals · 2 machines<\/th><th>42<\/th>/);assert.match(html,/Fleet summary: 2 machines · 1 working · 1 down · 0 idle/);
 });
 
-test('View report keeps the unbatched action beside stages and omits entry tabs',async()=>{
+test('View report keeps the unbatched action beside stages and shows entry options only while VLB is open',async()=>{
  const h=hooks(),calls=[];
  const batch={id:'selected-batch',name:'Jayant batch',site:'Jayant OC',report_date:'2026-11-03',shift:'S1',records:[],twoStage:true,stage:'vlb_open',closed_at:null};
  const browser={location:{href:'https://example.test/?page=vlb-create-batch'},history:{replaceState(_state,_unused,path){browser.location.href=new URL(path,browser.location.href).href}}};
@@ -200,8 +200,9 @@ test('View report keeps the unbatched action beside stages and omits entry tabs'
  assert.deepEqual(calls,['/api/vlb-batches/selected-batch']);
  for(const selected of [batch,{...batch,stage:'elb_open'},{...batch,stage:'closed',closed_at:'2026-11-03T12:00:00Z'}]){
   h.slots[5]=selected;tree=render();
-  assert.equal(nodes(tree,n=>n.props['aria-label']==='Batch entry options').length,0);
-  for(const label of ['Manual','Scan','Upload'])assert.equal(button(tree,label),undefined);
+  const entryOptions=nodes(tree,n=>n.props['aria-label']==='Batch entry options');
+  assert.equal(entryOptions.length,selected.stage==='vlb_open'?1:0);
+  for(const label of ['Manual','Scan','Upload'])assert.equal(Boolean(button(tree,label)),selected.stage==='vlb_open');
   const toolbar=nodes(tree,n=>n.props.className==='vlb-batch-stage-toolbar')[0];
   assert.ok(toolbar);assert.ok(button(toolbar,'Show unbatched entries'));
   assert.equal(React.Children.toArray(toolbar.props.children)[0].props.stage,selected.stage);
