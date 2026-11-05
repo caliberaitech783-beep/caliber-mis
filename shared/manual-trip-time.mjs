@@ -5,6 +5,12 @@ const clockMinutes=value=>{const match=String(value||'').match(/^(\d{1,2}):(\d{2
 
 export const manualTimeValue=value=>String(value||'').slice(0,5);
 
+export function fixedMinuteInput(value){
+ const digits=String(value||'').replace(/\D/g,'').slice(0,4);
+ if(!digits)return '';
+ return digits.length<=2?digits+':':digits.slice(0,2)+':'+digits.slice(2);
+}
+
 export function shiftTimeInputValue(value){
  const time=manualTimeValue(value),minutes=clockMinutes(time);
  if(minutes===null)return time;

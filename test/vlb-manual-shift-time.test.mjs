@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {batchShift,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
+import {batchShift,fixedMinuteInput,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
 
 test('manual VLB times use minutes and stay inside the selected batch shift',()=>{
  const day={id:'1',site:'Dudhichua OC',shiftCode:'A',startTime:'05:00:00',endTime:'13:00:00'};
@@ -11,11 +11,17 @@ test('manual VLB times use minutes and stay inside the selected batch shift',()=
  assert.equal(resolveShiftTime('05:33',day),'05:33');
  assert.equal(resolveShiftTime('12:45',day),'12:45');
  assert.equal(shiftTimeInputValue('13:27'),'01:27');
+ assert.equal(fixedMinuteInput('1'),'1:');
+ assert.equal(fixedMinuteInput('12'),'12:');
+ assert.equal(fixedMinuteInput('12:3'),'12:3');
+ assert.equal(fixedMinuteInput('12:34'),'12:34');
+ assert.equal(fixedMinuteInput(''),'');
 });
 
 test('the active VLB manual table uses minute-only shift-validated inputs',()=>{
  const source=readFileSync(new URL('../src/log-book-form.jsx',import.meta.url),'utf8');
  assert.match(source,/resolveShiftTime,shiftTimeInputValue,timeWithinShift/);
+ assert.equal((source.match(/fixedMinuteInput\(e\.target\.value\)/g)||[]).length,2);
  assert.equal((source.match(/type="text" inputMode="numeric" placeholder="HH:MM"/g)||[]).length,2);
  assert.doesNotMatch(source,/type="time"/);
  assert.match(source,/timeWithinShift\(value,selectedShift\)/);
