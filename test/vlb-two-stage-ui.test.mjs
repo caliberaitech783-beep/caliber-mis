@@ -229,6 +229,20 @@ test('saved ELB buttons stay disabled after saving and unsaved machines remain s
 });
 
 
+test('admins can open saved ELBs, edit prefilled values and save the current revision',async()=>{
+ const h=hooks(),calls=[];
+ const savedFleet=fleet.map(item=>item.assetId==='7'?{...item,logbook_revision:4,logbook:{openingHmr:100,closingHmr:104,statusReason:'Original'}}:item);
+ const fetch=async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>({fleet:savedFleet})}};
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',fleet:savedFleet,statuses,canEditSavedFleet:true},options:{employees:[]},embedded:true})};
+ let tree=render();assert.equal(button(tree,'Edit').props.disabled,false);button(tree,'Edit').props.onClick();tree=render();
+ const remark=nodes(tree,n=>n.type==='input'&&n.props.value==='Original')[0];assert.ok(remark,'saved data pre-fills the editor');remark.props.onChange({target:{value:'Corrected'}});
+ h.slots[9]={key:'batch1:7:::',loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
+ assert.equal(button(tree,'Skip').props.disabled,true);
+ await button(tree,'Save changes').props.onClick();
+ assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');assert.equal(calls[0].body.revision,4);assert.equal(calls[0].body.statusReason,'Corrected');
+});
+
 test('machine report headers toggle numeric sorting and keep missing values last within equipment groups',async()=>{
  const h=hooks();
  const {MachineReport}=await compile('vlb-batch-report.jsx',{React,useState:h.useState,vlbRecordSource},['MachineReport']);

@@ -125,6 +125,12 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(batchStage(batch)!=='elb_open')fail('Machine entry is available only while ELB is open for this batch.',409);
  const row=(await client.query('SELECT * FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2 FOR UPDATE',[batch.id,assetId])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
+ if(row.logbook_id){
+  if(!ops.allowEditSaved)fail('Only an MIS administrator can edit a saved ELB.',403);
+  const prior=(await client.query('SELECT revision FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[row.logbook_id])).rows[0];
+  if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
+  if(Number(input.revision)!==Number(prior.revision))fail('This ELB changed. Reload the batch before editing.',409);
+ }
  const shiftHours=[8,12].includes(Number(input.shiftHours))?Number(input.shiftHours):null;
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch shift at this site. Correct the Shift Master first.',409);

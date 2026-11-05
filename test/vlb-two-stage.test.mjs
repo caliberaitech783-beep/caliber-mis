@@ -124,6 +124,14 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const loader=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7'});
  assert.equal(loader.status,200,JSON.stringify(loader.data));assert.equal(loader.data.record.book_type,'equipment');assert.equal(loader.data.record.data.shiftStatus,'working');assert.equal(loader.data.record.data.fleetTrips,8);
  assert.equal(loader.data.fleetProgress.saved,1);assert.equal(loader.data.fleet[0].draft,null);
+ assert.equal((await call(batch)).data.canEditSavedFleet,true,'admin capability is supplied by the server');
+ const editInput={shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7',remark:'Admin correction',revision:loader.data.record.revision};
+ const edited=await call(fleet(ids['VPC-019']),'POST',editInput);
+ assert.equal(edited.status,200,JSON.stringify(edited.data));
+ assert.equal(edited.data.record.id,loader.data.record.id,'editing updates the existing record');
+ assert.equal(edited.data.record.book_no,loader.data.record.book_no,'editing preserves the ELB number');
+ assert.equal(edited.data.record.data.remark,'Admin correction');
+ assert.equal((await call(fleet(ids['VPC-019']),'POST',editInput)).status,409,'stale edits cannot overwrite the new revision');
  let closeTry=await call(batch+'/close','POST',{});assert.equal(closeTry.status,409);assert.match(closeTry.data.error,/VPC-077 loaded 4 trips, no ELB saved/);
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
