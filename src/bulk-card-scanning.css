@@ -381,3 +381,9 @@
   .scan-review-compact .scan-preview-fit > .scan-preview-image { height: auto; }
   .scan-review-compact .scan-source .scan-preview-fit .scan-preview-image img { height: auto; object-fit: contain; }
 }
+
+.scan-page .scan-correction-status.scan-review-working{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid #a98acb;border-radius:8px;background:#f3ebff;color:#402367;line-height:1.4}
+.scan-review-spinner{flex:none;width:1.2em;height:1.2em;border:2px solid #cbb5e5;border-top-color:#542d83;border-radius:50%;animation:scan-review-spin .8s linear infinite}
+.scan-page .scan-correction-status.scan-review-advisory{padding:12px 16px;background:#f5f1fb;color:#402367;border-radius:8px}
+@keyframes scan-review-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.scan-review-spinner{animation:none}}
