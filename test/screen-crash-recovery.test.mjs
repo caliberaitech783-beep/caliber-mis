@@ -60,7 +60,7 @@ test('the scan page reopens the entry after a refresh, lists the entries of the 
  assert.match(page,/chooseScanEntry\(rows,\{remembered:recallScanEntry\(localStorage,kind,vlbBatch\.id\)\}\);if\(entry\)void selectBatch\(entry\.id\)/);
  assert.match(page,/rememberScanEntry\(localStorage,kind,vlbBatch\.id,d\.batch\.id\)/);
  assert.match(page,/className="scan-entry-list" aria-label="Scan entries for this batch"/);
- assert.match(page,/if\(Array\.isArray\(d\.duplicates\)&&fresh\)setDuplicates\(d\.duplicates\);if\(!Array\.isArray\(d\.cards\)\)d\.cards=\[\]/);
+ assert.match(page,/if\(Array\.isArray\(d\.duplicates\)&&validated\)setDuplicates\(d\.duplicates\);if\(!Array\.isArray\(d\.cards\)\)d\.cards=\[\]/);
  assert.match(page,/uploadWithRetry\(\(\)=>api\('\/api\/scan-batches\/'\+entryId\+'\/cards'/);
  for(const panel of ['ScanEquipmentReviewDialog','ScanDuplicateList','ScanBatchReport'])assert.match(page,new RegExp('<ApplicationErrorBoundary compact[\\s\\S]{0,400}?><'+panel),panel+' is fenced');
  const workspace=read('src/vlb-entry-workspace.jsx');

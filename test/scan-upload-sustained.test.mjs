@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {scanProgressNeedsValidation} from '../src/scan-reader-status.mjs';
 import assert from 'node:assert/strict';
 import React from 'react';
 import {readFileSync} from 'node:fs';
@@ -40,19 +41,19 @@ test('PDF buffers and documents are released on render failure, encoding failure
  }
 });
 
-test('all background polls use unchecked progress while explicit reads remain full',async()=>{
+test('background polls fetch validation for changed trip cards and retain unchanged checks',async()=>{
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  const paths=[],noop=()=>{},uploadingRef={current:true};let rows=[];
- const scope={batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
+ const scope={kind:'vehicle',scanProgressNeedsValidation,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
   api:async path=>{paths.push(path);return {batch:{id:'batch'},cards:[{id:'card',status:'review',revision:1,checks:path.includes('?progress=1')?null:{errors:['Needs review']},draft:{},raw_fields:{}}]};},
   setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,
   chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
- await load('batch',false);assert.equal(rows[0].checks,null);assert.equal(canAutoSaveScanCard(rows[0],'vehicle'),false);
+ await load('batch',false);assert.deepEqual(rows[0].checks,{errors:['Needs review']});assert.equal(canAutoSaveScanCard(rows[0],'vehicle'),false);
  await load('batch');assert.ok(rows[0].checks);
  uploadingRef.current=false;await load('batch',false);
  assert.ok(rows[0].checks,'an unchanged progress poll retains the last full validation result');
- assert.deepEqual(paths,['/api/scan-batches/batch?progress=1','/api/scan-batches/batch','/api/scan-batches/batch?progress=1']);
+ assert.deepEqual(paths,['/api/scan-batches/batch?progress=1','/api/scan-batches/batch','/api/scan-batches/batch','/api/scan-batches/batch?progress=1']);
 });
 
 test('elapsed timer updates its own component once per second and clears the interval',async()=>{
