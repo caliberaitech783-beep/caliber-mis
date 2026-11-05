@@ -10,9 +10,10 @@ import {displaySiteName} from '../shared/region-scope.mjs';
 import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
+import {matchesSmartSearch} from '../shared/smart-search.mjs';
 
 async function compile(file,scope,names){
- scope={employeeAtLocation,...scope};
+ scope={employeeAtLocation,matchesSmartSearch,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -243,6 +244,40 @@ test('admins can open saved ELBs, edit prefilled values and save the current rev
  assert.equal(button(tree,'Skip').props.disabled,true);
  await button(tree,'Save changes').props.onClick();
  assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');assert.equal(calls[0].body.revision,4);assert.equal(calls[0].body.statusReason,'Corrected');
+});
+
+test('ELB machine controls share filtered and sorted rows with print and export, and select the correct machine',async()=>{
+ const h=hooks();
+ const ExportMenu=()=>null;
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
+ const batch={id:'batch1',name:'B10',fleet,statuses};
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,embedded:true,ExportMenu})};
+ const change=(control,value)=>control.props.onChange({target:{value}});
+ const list=tree=>nodes(tree,node=>node.props.className?.split(' ').includes('vlb-fleet-machine-list'))[0];
+ const rowKeys=tree=>nodes(list(tree),node=>node.type==='tr'&&node.key!=null).map(node=>node.key);
+ const search=tree=>nodes(list(tree),node=>node.type==='input'&&node.props.type==='search')[0];
+ const select=(tree,index)=>nodes(list(tree),node=>node.type==='select')[index];
+ let tree=render();
+ change(select(tree,1),'trips:asc');tree=render();
+ assert.deepEqual(rowKeys(tree),['7','8','19']);
+ change(select(tree,0),'Not saved');tree=render();
+ assert.deepEqual(rowKeys(tree),['8','19']);
+ const menus=nodes(tree,node=>node.type===ExportMenu);
+ assert.equal(menus.length,2);
+ assert.equal(menus[0].props.printOnly,true);
+ for(const menu of menus){
+  assert.deepEqual(menu.props.rows.map(item=>item.assetId),['8','19']);
+  assert.match(menu.props.title,/B10/);
+ }
+ button(list(tree),'Enter ELB').props.onClick();tree=render();
+ assert.equal(nodes(list(tree),node=>node.props['aria-selected']===true)[0].key,'8');
+ change(search(tree),'vpc019 excavator');tree=render();
+ assert.deepEqual(rowKeys(tree),['19']);
+ change(search(tree),'no matching machine');tree=render();
+ assert.match(renderToStaticMarkup(list(tree)),/No machines match/);
+ assert.equal(nodes(tree,node=>node.type===ExportMenu).length,0);
+ button(list(tree),'Reset view').props.onClick();
+ assert.deepEqual(rowKeys(render()),['19','7','8']);
 });
 
 test('machine report headers toggle numeric sorting and keep missing values last within equipment groups',async()=>{
