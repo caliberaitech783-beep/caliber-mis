@@ -87,17 +87,21 @@ test('batch report shows only saved totals as tiles, keeps its heading and downl
  assert.equal(nodes(header,'h2').length,1);
  assert.deepEqual(nodes(header,'button').map(node=>node.props.children),['Download batch Excel','Download batch PDF']);
  const cardTable=nodes(tree,'table')[0];assert.deepEqual(nodes(nodes(cardTable,'tbody')[0],'tr').map(row=>row.props['data-card-id']),['automatic','corrected','pending']);
- assert.ok(nodes(tree,'summary').some(node=>node.props.children==='All cards'));
+ assert.ok(nodes(tree,'summary').some(node=>nodes(node,'strong').some(strong=>strong.props.children==='All cards')));
 });
 
-test('one search beside the batch report heading controls every table without duplicate search fields',async()=>{
+test('smart search sits beside All cards and column filters are available for every data column',async()=>{
  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const props={batch:{id:'batch',kind:'vehicle',name:'Chosen batch'},cards:[{id:'card',batch_id:'batch',ordinal:1,status:'review',draft:{}}],token:'test'};
  let tree=render(props);
- const searches=nodes(tree,'input').filter(node=>node.props.type==='search');
- assert.equal(searches.length,1);assert.equal(searches[0].props.placeholder,'Search this report');
- assert.ok(nodes(nodes(tree,'header')[0],'input').includes(searches[0]));
- searches[0].props.onChange({target:{value:'V/833'}});
+ const smart=nodes(tree,'input').find(node=>node.props['aria-label']==='Smart search all cards');
+ assert.ok(smart);assert.equal(smart.props.placeholder,'Smart search all cards');
+ const allCards=nodes(tree,'summary').find(node=>nodes(node,'strong').some(strong=>strong.props.children==='All cards'));
+ assert.ok(allCards&&nodes(allCards,'input').includes(smart));
+ const cardTable=scanBatchReportTables(scanBatchReport(props.batch,props.cards)).find(table=>table.name==='Cards');
+ const filters=nodes(tree,'input').filter(node=>String(node.props['aria-label']||'').startsWith('Filter '));
+ assert.equal(filters.length,cardTable.columns.length+1,'every data column plus Issues has a filter');
+ smart.props.onChange({target:{value:'V/833'}});
  tree=render(props);
  for(const section of nodes(tree,ReportSection)){assert.equal(section.props.showSearch,false);assert.equal(section.props.query,'V/833');}
 });

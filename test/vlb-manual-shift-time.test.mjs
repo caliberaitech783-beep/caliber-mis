@@ -16,6 +16,7 @@ test('the active VLB manual table uses minute-only shift-validated inputs',()=>{
  assert.equal((source.match(/type="time" step="60"/g)||[]).length,2);
  assert.doesNotMatch(source,/type="time" step="1"/);
  assert.match(source,/timeWithinShift\(value,selectedShift\)/);
+ assert.match(source,/vehicle&&fleetReconciliation&&<details className="scan-fleet-reconciliation"><summary>Site fleet · VLB, breakdown and idle details<\/summary>\{fleetReconciliation\}<\/details>/);
 });
 
 test('overnight shift windows and effective batch shift selection are supported',()=>{
