@@ -11,6 +11,10 @@ test('a valid first match needs no second OCR request',async()=>{
  const extracted=card();extracted.draft.assetId='42';
  await recoverFirstScanDoor({kind:'vehicle',extracted,readAgain:()=>assert.fail('unnecessary retry')});
 });
+test('a missing site is reviewed before retrying a door that cannot yet be matched safely',async()=>{
+ const extracted=card();extracted.draft.location='';
+ await recoverFirstScanDoor({kind:'vehicle',extracted,readAgain:()=>assert.fail('no safe site scope for a retry')});
+});
 test('unreadable, ambiguous and different-site retry results never produce a guessed match',async()=>{
  for(const draft of [{assetId:'',location:'Sasti OC'},{assetId:'42',location:'Jayant OC'}]){
   const result=await recoverFirstScanDoor({kind:'vehicle',extracted:card(),readAgain:async()=>({}),extract:async()=>({raw:{door:'V/833'},draft})});

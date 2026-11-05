@@ -3,7 +3,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 // Finish one scan before exposing an unresolved door to the review screen.
 // The retry must read the retained image afresh, not return its OCR cache entry.
 export async function recoverFirstScanDoor({kind,extracted,readAgain,extract,onProgress}){
- if(kind!=='vehicle'||extracted.draft.assetId)return extracted;
+ if(kind!=='vehicle'||extracted.draft.assetId||!extracted.draft.location)return extracted;
  const originalDoor=extracted.draft.doorText||'';
  const recovery={attempted:true,originalDoor,recovered:false};
  extracted.raw.firstScanDoorRecovery=recovery;
