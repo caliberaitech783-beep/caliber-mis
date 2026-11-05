@@ -11661,6 +11661,7 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
+    if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
     if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
