@@ -397,7 +397,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  </section>;
 }
 
-function ScanCardDeletionDialog({otpRequired,target,targets,kind,batchName,onClose,onRequest,onDelete}){
+function ScanCardDeletionDialog({otpRequired=true,target,targets,kind,batchName,onClose,onRequest,onDelete}){
  const dialog=useRef(null),pending=useRef(false);
  const [reason,setReason]=useState(''),[approved,setApproved]=useState(false),[request,setRequest]=useState(null),[otp,setOtp]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState('');
  const multiple=Boolean(targets),count=targets?.length||1;

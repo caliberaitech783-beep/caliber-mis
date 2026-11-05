@@ -32,6 +32,15 @@ for(const kind of ['vehicle','equipment'])test(kind+' deletion dialog binds expl
  tree=app.render();await app.button(tree,'Verify OTP and delete card').props.onClick();
  assert.deepEqual(app.deletions,[{requestId:'request-exact',otp:'123456',approval:'Approve deletion of card card-exact revision 6'}]);
 });
+for(const kind of ['vehicle','equipment'])test(kind+' open-stage dialog confirms deletion without requesting OTP',async()=>{
+ const app=harness(kind,{otpRequired:false});
+ assert.equal(app.button(app.render(),'Delete card').props.disabled,true);
+ const tree=app.prepare();
+ assert.doesNotMatch(renderToStaticMarkup(tree),/WhatsApp OTP/);
+ await app.button(tree,'Delete card').props.onClick();
+ assert.deepEqual(app.requests,[]);
+ assert.deepEqual(app.deletions,[{reason:'Wrong scan',revision:6,approval:'Approve deletion of card card-exact revision 6'}]);
+});
 test('cancel and Escape close without requesting OTP or deleting',()=>{
  const app=harness();let tree=app.render();app.button(tree,'Cancel').props.onClick();tree.props.onCancel({preventDefault(){}});
  nodes(tree,n=>n.props['aria-label']==='Close card deletion')[0].props.onClick();
