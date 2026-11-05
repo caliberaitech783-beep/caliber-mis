@@ -18,39 +18,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  plan:
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://pulse-ll.cmll.in
-    services:
-      startup-postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: release_check
-          POSTGRES_PASSWORD: release_check
-          POSTGRES_DB: caliber_mis
-        ports: ['54320:5432']
-        options: >-
-          --health-cmd "pg_isready -U release_check -d caliber_mis"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      lane: ${{ steps.test-plan.outputs.lane }}
+      tests: ${{ steps.test-plan.outputs.tests }}
+      delta: ${{ steps.test-plan.outputs.delta }}
+      baseline: ${{ steps.test-plan.outputs.baseline }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 50
-
-      - name: Resolve the main commit
-        run: |
-          RELEASE_COMMIT="$(git rev-parse 'HEAD^{commit}')"
-          if ! [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::The checked-out release commit could not be resolved."
-            exit 1
-          fi
-          echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
-          echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Resolve the classification commit
+        run: echo "RELEASE_COMMIT=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_ENV"
 
       - name: Select safe release test lane
         id: test-plan
@@ -86,6 +72,135 @@ jobs:
           git diff --name-only "$BEFORE_COMMIT" "$RELEASE_COMMIT" > changed-release-files.txt
           node scripts/release-test-plan.mjs changed-release-files.txt >> "$GITHUB_OUTPUT"
           echo "Release test lane: $(tail -n 2 "$GITHUB_OUTPUT" | head -n 1 | cut -d= -f2)"
+
+  full_tests:
+    name: Full tests (shard ${{ matrix.shard }}/3)
+    needs: plan
+    if: needs.plan.outputs.lane != 'fast'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_COMMIT: ${{ github.sha }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [1, 2, 3]
+    services:
+      startup-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: release_check
+          POSTGRES_PASSWORD: release_check
+          POSTGRES_DB: caliber_mis
+        ports: ['54320:5432']
+        options: >-
+          --health-cmd "pg_isready -U release_check -d caliber_mis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 50
+      - name: Set up Node.js and npm download cache
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Restore pinned handwriting model cache
+        uses: actions/cache@v4
+        with:
+          path: ocr-model-cache
+          key: trocr-${{ runner.os }}-node22-${{ hashFiles('server/services/handwritten-card-ocr.mjs') }}
+
+      # An exact cache hit preserves native Linux dependencies and file timestamps.
+      # Never restore a partial cache across lockfile or Node changes.
+      - name: Restore installed dependencies
+        id: dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+
+      - name: Install exact locked dependencies
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        run: npm ci --no-audit --no-fund
+
+      # Retain a valid install even if a later validation step fails.
+      - name: Save installed dependencies before validation
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules
+          key: mis-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json', 'package.json') }}
+
+      - name: Verify pinned handwriting model
+        run: npm run ocr:prepare
+
+      - name: Build complete UI
+        env:
+          # The UI version is the released commit even when the tag is annotated.
+          APP_VERSION_SOURCE: ${{ github.sha }}
+        run: npm run build
+
+      - name: Run full test suite for sensitive or unknown changes
+        env:
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+        # Native Node sharding partitions the same automatic test discovery.
+        # No test list or exclusion filter is introduced; all three must pass.
+        run: npm test -- --test-concurrency=4 --test-shard=${{ matrix.shard }}/3
+
+  release:
+    needs: [plan, full_tests]
+    # A skipped matrix is valid only for the focused UI lane. Failed/cancelled
+    # shards, missing classification or cancellation always prevent deployment.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && ((needs.plan.outputs.lane == 'fast' && needs.full_tests.result == 'skipped') || (needs.plan.outputs.lane != 'fast' && needs.full_tests.result == 'success')) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://pulse-ll.cmll.in
+    services:
+      startup-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: release_check
+          POSTGRES_PASSWORD: release_check
+          POSTGRES_DB: caliber_mis
+        ports: ['54320:5432']
+        options: >-
+          --health-cmd "pg_isready -U release_check -d caliber_mis"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 50
+
+      - name: Resolve the main commit
+        run: |
+          RELEASE_COMMIT="$(git rev-parse 'HEAD^{commit}')"
+          if ! [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The checked-out release commit could not be resolved."
+            exit 1
+          fi
+          echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
+          echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
+
+      - name: Use the classified release plan
+        id: test-plan
+        env:
+          PLAN_LANE: ${{ needs.plan.outputs.lane }}
+          PLAN_TESTS: ${{ needs.plan.outputs.tests }}
+          PLAN_DELTA: ${{ needs.plan.outputs.delta }}
+          PLAN_BASELINE: ${{ needs.plan.outputs.baseline }}
+        run: |
+          printf 'lane=%s\ntests=%s\ndelta=%s\nbaseline=%s\n' "$PLAN_LANE" "$PLAN_TESTS" "$PLAN_DELTA" "$PLAN_BASELINE" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js and npm download cache
         id: node
@@ -135,14 +250,6 @@ jobs:
         env:
           DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
         run: node --test ${{ steps.test-plan.outputs.tests }}
-
-      - name: Run full test suite for sensitive or unknown changes
-        if: steps.test-plan.outputs.lane != 'fast'
-        env:
-          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
-        # Bound parallelism explicitly; Node defaults to one worker on two cores.
-        # Every test still runs before deployment.
-        run: npm test -- --test-concurrency=4
 
       - name: Verify built release identity
         run: |

@@ -103,7 +103,8 @@ test('production deploys directly from main without a release tag or approval ga
   const commit=step(productionWorkflow,'Resolve the main commit');
   assert.match(commit,/git rev-parse 'HEAD\^\{commit\}'/);
   assert.match(commit,/RELEASE_COMMIT=\$\{RELEASE_COMMIT\}" >> "\$GITHUB_ENV"/);
-  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to Azure Web App'].map(name=>productionWorkflow.indexOf(name));
+  const releaseJob=productionWorkflow.slice(productionWorkflow.indexOf('  release:'));
+  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to Azure Web App'].map(name=>releaseJob.indexOf(name));
   assert.deepEqual([...stepOrder].sort((a,b)=>a-b),stepOrder,'the pushed commit is resolved before it is built and deployed');
 });
 
@@ -134,7 +135,8 @@ test('production uses focused tests only for an explicitly classified safe UI or
  assert.match(focused,/if: steps\.test-plan\.outputs\.lane == 'fast'/);
  assert.match(focused,/node --test \$\{\{ steps\.test-plan\.outputs\.tests \}\}/);
  const full=step(productionWorkflow,'Run full test suite for sensitive or unknown changes');
- assert.match(full,/if: steps\.test-plan\.outputs\.lane != 'fast'/);
+ assert.match(productionWorkflow,/full_tests:[\s\S]*?if: needs\.plan\.outputs\.lane != 'fast'/);
+ assert.match(full,/--test-shard=\$\{\{ matrix\.shard \}\}\/3/);
  assert.match(full,/npm test/);
 });
 
