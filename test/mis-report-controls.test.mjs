@@ -90,7 +90,7 @@ test('batch report shows only saved totals as tiles, keeps its heading and downl
  assert.ok(nodes(tree,'summary').some(node=>nodes(node,'strong').some(strong=>strong.props.children==='All cards')));
 });
 
-test('smart search sits beside All cards and column filters are available for every data column',async()=>{
+test('smart search sits beside All cards and Pulse-style filters open from every data column',async()=>{
  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const props={batch:{id:'batch',kind:'vehicle',name:'Chosen batch'},cards:[{id:'card',batch_id:'batch',ordinal:1,status:'review',draft:{}}],token:'test'};
  let tree=render(props);
@@ -99,8 +99,13 @@ test('smart search sits beside All cards and column filters are available for ev
  const allCards=nodes(tree,'summary').find(node=>nodes(node,'strong').some(strong=>strong.props.children==='All cards'));
  assert.ok(allCards&&nodes(allCards,'input').includes(smart));
  const cardTable=scanBatchReportTables(scanBatchReport(props.batch,props.cards)).find(table=>table.name==='Cards');
- const filters=nodes(tree,'input').filter(node=>String(node.props['aria-label']||'').startsWith('Filter '));
- assert.equal(filters.length,cardTable.columns.length+1,'every data column plus Issues has a filter');
+ const filters=nodes(tree,'button').filter(node=>node.props['aria-haspopup']==='dialog');
+ assert.equal(filters.length,cardTable.columns.length+1,'every data column plus Issues has a filter menu');
+ assert.equal(nodes(tree,'input').filter(node=>String(node.props['aria-label']||'').startsWith('Filter ')).length,0,'inline filter row is removed');
+ filters[0].props.onClick();tree=render(props);
+ const dialog=nodes(tree,'div').find(node=>node.props.role==='dialog');
+ assert.ok(dialog);assert.ok(nodes(dialog,'button').some(node=>node.props.children==='All Values'));
+ assert.ok(nodes(dialog,'input').some(node=>String(node.props['aria-label']||'').startsWith('Search ')));
  smart.props.onChange({target:{value:'V/833'}});
  tree=render(props);
  for(const section of nodes(tree,ReportSection)){assert.equal(section.props.showSearch,false);assert.equal(section.props.query,'V/833');}
