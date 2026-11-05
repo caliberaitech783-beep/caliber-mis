@@ -1,6 +1,7 @@
 import React,{useState,useEffect} from 'react';
 import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
+import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 
 // Pure helpers shared with the batch page and the UI tests.
@@ -37,6 +38,7 @@ export const fleetDraftFields=(row={})=>{
  const source=row.logbook||{};
  return {
   shiftStatus:'working',employeeId:text(source.employeeId),
+  ...(source.operatorSplit?{secondOperatorId:text(source.operatorSplit.secondOperatorId),handoverHmr:text(source.operatorSplit.handoverHmr)}:{}),
   openingHmr:text(source.openingHmr),closingHmr:text(source.closingHmr),manualBreakdownHours:text(source.manualBreakdownHours),
   statusReason:text(source.statusReason),jobCardNo:text(source.jobCardNo),remark:text(source.remark),idleHours:text(source.idleHours??source.idleHoursEntered),
  };
@@ -86,7 +88,9 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  };
  const update=(key,value)=>{setForm(current=>({...current,[key]:value}));setDirty(true);setError('')};
  const next=async()=>{
-  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved)return;setBusy(true);setError('');setNotice('');
+  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved)return;
+  if(operatorSplit?.error){setError(operatorSplit.error);return}
+  setBusy(true);setError('');setNotice('');
   try{
    const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,revision:row.logbook_revision,idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:crypto.randomUUID()});
    const list=result.fleet||fleet.map(item=>item.assetId===row.assetId?{...item,saved_at:new Date().toISOString(),shift_status:form.shiftStatus,draft:null,skipped:false}:item);
@@ -124,6 +128,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const workingStatus=true;
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
+ const surfaceMiner=isSurfaceMiner(row);
+ const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
  const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
  const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
@@ -140,7 +146,22 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
    {workingStatus&&<label className="logbook-field"><span>Caliber ID{operatorRequired?' *':''}</span><SmartSelect data-elb-entry="operator" value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select Caliber ID</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.caliberId||e.employeeCode||'')+' · '+(e.name||e.employee||'')}</option>)}</SmartSelect></label>}
    <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input data-elb-entry="opening-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
+   {surfaceMiner&&<label className="logbook-field"><span>Second operator (optional)</span>
+    <SmartSelect data-elb-entry="second-operator" value={form.secondOperatorId||''} disabled={busy} onChange={event=>{
+     const secondOperatorId=event.target.value;
+     setForm(current=>({...current,secondOperatorId,handoverHmr:secondOperatorId?current.handoverHmr:''}));
+     setDirty(true);setError('');
+    }}>
+     <option value="">Single operator</option>
+     {employees.map(employee=><option key={employee.id} value={String(employee.id)}>{(employee.caliberId||employee.employeeCode||'')+' · '+(employee.name||employee.employee||'')}</option>)}
+    </SmartSelect>
+   </label>}
+   {operatorSplit&&<label className="logbook-field"><span>Handover HMR *</span>
+    <input data-elb-entry="handover-hmr" type="number" inputMode="decimal" step="0.01" min="0" required value={form.handoverHmr||''} disabled={busy} onChange={event=>update('handoverHmr',event.target.value)}/>
+    <small>Enter the meter reading when the second operator takes over.</small>
+   </label>}
    <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input data-elb-entry="closing-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
+   {operatorSplit&&!operatorSplit.error&&<p className="logbook-message">First operator {operatorSplit.firstHours.toFixed(2)} h · Second operator {operatorSplit.secondHours.toFixed(2)} h · Combined HMR {operatorSplit.totalHours.toFixed(2)} h</p>}
    <label className="logbook-field"><span>HMR Difference</span><input type="text" aria-label="HMR Difference" readOnly value={hours===null?'':String(hours)}/><small>Closing HMR − Opening HMR</small></label>
    <label className="logbook-field"><span>Breakdown Hrs · from Pulse</span><output aria-label="Breakdown Hrs">{pulse?Number(pulse.breakdownHours).toFixed(3):'—'}</output><small>{pulse?'Same equipment, site, date and shift':pulseLoading?'Fetching from Pulse…':'Pulse unavailable'}</small></label>
    <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" readOnly value={idleHours===null?'':String(idleHours)}/></label>

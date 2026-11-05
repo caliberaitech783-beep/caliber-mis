@@ -1,15 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveFleetEntry,readFleetBreakdowns} from '../server/rules/vlb-batch-stages.mjs';
+import {resolveLogBookData} from '../server/routes/log-book.mjs';
 
 const batch={id:'batch',site:'Sasti OC',report_date:'2026-11-02',shift:'S1',stage:'elb_open'};
-function fixture({bd=0,trips=0,unavailable=false}={}){
- const row={asset_id:'19',door:'EX19',trips,logbook_id:null};
+function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='Sasti OC'}={}){
+ const row={asset_id:'19',door:surfaceMiner?'SM1':'EX19',trips,logbook_id:null};
+ const shift={site:'Sasti OC',shiftCode:'I',startTime:'06:00',endTime:'14:00'};
  const writes=[];
  const client={async query(sql,args){
   if(sql.startsWith('SELECT * FROM mis_vlb_batch_fleet'))return {rows:[row]};
   if(sql.startsWith('SELECT asset_id FROM mis_vlb_batch_fleet'))return {rows:[{asset_id:'19'}]};
-  if(sql.includes("master_name='Shift Master'"))return {rows:[{id:'4',record_data:{site:'Sasti OC',shiftCode:'I',startTime:'06:00',endTime:'14:00'}}]};
+  if(sql.includes("master_name='Shift Master'"))return {rows:[{id:'4',record_data:shift}]};
+  if(sql.includes('WHERE master_name=ANY'))return {rows:[]};
+  if(sql.includes('FROM master_records WHERE id=ANY'))return {rows:[
+   {id:'19',master_name:'Equipment master',record_data:{door:row.door,site:'Sasti OC',group:'Surface Miner'}},
+   {id:'4',master_name:'Shift Master',record_data:shift},
+   {id:'7',master_name:'Employee master',record_data:{name:'Operator A',site:'Sasti OC'}},
+   {id:'8',master_name:'Employee master',record_data:{name:'Operator B',site:secondSite,caliberId:'CB'}},
+  ].filter(master=>args[0].map(String).includes(master.id))};
   writes.push({sql,args});return {rows:[]};
  }};
  const pulse={breakdownHours:bd,breakdowns:bd?[{reference:'BD-1',description:'Engine fault',hours:bd}]:[],source:'https://pulse.cmll.in'};
@@ -20,6 +29,31 @@ test('Working-only saves use authoritative Pulse hours and preserve event detail
  const f=fixture({bd:2,trips:5});
  const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',shiftStatus:'working',employeeId:'7',openingHmr:100,closingHmr:105,manualBreakdownHours:99,shiftHours:12,requestKey:'test'},'mis',f.ops);
  assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,8);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
+});
+
+test('Surface Miner operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
+ const f=fixture({surfaceMiner:true});
+ const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
+ const record=await saveFleetEntry(f.client,batch,'19',input,'mis',{...f.ops,resolve:resolveLogBookData});
+ assert.equal(record.data.totalWorkingHmr,8);
+ assert.equal(record.data.employeeName,'Operator A');
+ assert.deepEqual(record.data.operatorSplit,{secondOperatorId:8,secondOperatorName:'Operator B',secondOperatorCaliberId:'CB',handoverHmr:104,firstHours:4,secondHours:4,totalHours:8});
+ assert.equal(f.writes.filter(({sql})=>sql.startsWith('INSERT INTO mis_elb_batch_entries')).length,1);
+});
+
+test('operator handover rejects excess HMR, an invalid reading, duplicate operators and ineligible equipment or operators',async()=>{
+ const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
+ for(const [fixtureOptions,patch,error] of [
+  [{surfaceMiner:true},{closingHmr:108.01},/cannot exceed 8 hours/],
+  [{surfaceMiner:true},{handoverHmr:109},/below closing HMR/],
+  [{surfaceMiner:true},{secondOperatorId:'7'},/two different operators/],
+  [{surfaceMiner:true,secondSite:'Jayant OC'},{},/second operator assigned to this location/],
+  [{},{},/only for a Surface Miner/],
+ ]){
+  const f=fixture(fixtureOptions);
+  await assert.rejects(()=>saveFleetEntry(f.client,batch,'19',{...input,...patch},'mis',{...f.ops,resolve:resolveLogBookData}),error);
+  assert.equal(f.writes.length,0);
+ }
 });
 test('full-shift breakdown and zero-work machines save through Working without requiring an operator',async()=>{
  for(const [bd,status,idle] of [[8,'breakdown',0],[0,'not_in_use',8],[2,'not_in_use',6]]){

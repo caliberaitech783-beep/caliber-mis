@@ -2,6 +2,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
+import {isSurfaceMiner,splitSurfaceMinerHmr} from '../../shared/surface-miner-hmr.mjs';
 import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch} from './vlb-batch-policy.mjs';
 import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
@@ -131,6 +132,12 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
   if(Number(input.revision)!==Number(prior.revision))fail('This ELB changed. Reload the batch before editing.',409);
  }
+ let operatorSplit;
+ if(text(input.secondOperatorId)||text(input.handoverHmr)){
+  if(input.entryMode!=='working-only'||!isSurfaceMiner({door:row.door,equipmentGroup:row.equipment_group,equipmentName:row.equipment_name}))fail('Two operators can share an ELB shift only for a Surface Miner.',400);
+  operatorSplit=splitSurfaceMinerHmr(input);
+  if(operatorSplit.error)fail(operatorSplit.error,400);
+ }
  const shiftHours=[8,12].includes(Number(input.shiftHours))?Number(input.shiftHours):null;
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch shift at this site. Correct the Shift Master first.',409);
@@ -151,7 +158,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   openingHmr:opening??(nonWorking?0:''),closingHmr:closing??(nonWorking?(opening??0):''),jobCardNo:text(input.jobCardNo),remark:text(input.remark),timeMode:'without',
   manualBreakdownHours:breakdownHours??'',shiftStatus:status,statusReason:text(input.statusReason),breakdownDetails:Array.isArray(input.breakdownDetails)?input.breakdownDetails:undefined,
   idleHoursEntered:num(input.idleHours),batchId:batch.id,fleetTrips:row.trips,bookShiftCode:batch.shift};
- const data=await ops.resolve(client,'equipment',body);
+ const data=await ops.resolve(client,'equipment',body,operatorSplit?{operatorSplit,enforceEmployeeSite:true}:undefined);
  Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:row.trips,batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
  if(pulse){Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);

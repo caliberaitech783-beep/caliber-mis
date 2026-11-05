@@ -11,9 +11,10 @@ import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
+import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
 
 async function compile(file,scope,names){
- scope={employeeAtLocation,matchesSmartSearch,...scope};
+ scope={employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -56,6 +57,20 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
  await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url==='/api/vlb-batches/batch1/fleet/8/breakdowns'));
  cleanup?.();
+});
+
+test('Surface Miner ELB shows the saved operator split and its combined HMR',async()=>{
+ const h=hooks();
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
+ const machine={...fleet[0],door:'SM1',equipmentName:'Surface Miner',saved_at:'now',logbook:{
+  employeeId:7,openingHmr:100,closingHmr:108,operatorSplit:{secondOperatorId:8,handoverHmr:104},
+ }};
+ const batch={id:'batch1',site:'Sasti OC',fleet:[machine],canEditSavedFleet:true};
+ const tree=VlbFleetStepper({session:{token:'t'},batch,options:{employees:[]},embedded:true});
+ const html=renderToStaticMarkup(tree);
+ assert.match(html,/Second operator \(optional\)/);
+ assert.equal(nodes(tree,node=>node.props['data-elb-entry']==='handover-hmr')[0].props.value,'104');
+ assert.match(html,/First operator 4.00 h · Second operator 4.00 h · Combined HMR 8.00 h/);
 });
 
 test('embedded ELB form stays directly below the selected equipment row',async()=>{
