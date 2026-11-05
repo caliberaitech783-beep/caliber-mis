@@ -19,7 +19,7 @@ function harness({fail=false,postFail=false,autosaving=false,last=false,contextB
  const current=card('1'),next=card('2'),visible=last?[current]:[current,next],events=[];
  const location={href:'https://example.test/?batch=test&card=1&scanView=review#scan'};
  const dirtyRef={current:true},selectedRevision={current:'1:1'};
- const scope={SmartSelect: "select",contextBlocked,groupFilter:'brown',card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push([config.method==='PUT'?'put':'post',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');if(config.method==='POST'){if(postFail)throw Error('Equipment is not assigned to this site');return {record:{id:9,book_no:'TEST/0001',data:{scanCardId:current.id,scanBatchId:'test'}},archive:null};}return {revision:2};},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible.map(row=>row.id===current.id&&!postFail?{...row,status:'posted'}:row);},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,remainingScanCards,applySavedScanCard,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
+ const scope={SmartSelect: "select",contextBlocked,groupFilter:'brown',card:current,savingRef:{current:autosaving},setNotice:v=>events.push(['notice',v]),setSavedCardId:()=>{},setBusy:v=>events.push(['busy',v]),setProgress:v=>events.push(['progress',v]),setError:v=>events.push(['error',v]),api:async(path,config)=>{events.push([config.method==='PUT'?'put':'post',path,JSON.parse(config.body)]);if(fail)throw Error('Save failed');if(config.method==='POST'){if(postFail)throw Error('Equipment is not assigned to this site');return {record:{id:9,book_no:'TEST/0001',data:{scanCardId:current.id,scanBatchId:'test'}},archive:null};}return {revision:2};},draft:{},editRevision:{current:1},checked:false,noTrips:false,localStorage:{removeItem:()=>{}},draftKey:id=>id,setDirty:()=>{},dirtyRef,load:async()=>{events.push(['load']);return visible.map(row=>row.id===current.id&&!postFail?{...row,status:'posted'}:row);},batch:{id:'test'},list:async()=>events.push(['list']),nextScanReviewCard,remainingScanCards,applySavedScanCard,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},filtered:visible,setAutosaveStatus:()=>{},selectedRevision,setSelected:id=>events.push(['selected',id]),window:{location,history:{replaceState:(_a,_b,url)=>{location.href=new URL(url,location.href).href;}}},reviewPage:true,navigateReview:()=>events.push(['overview'])};
  return {run:new Function(...Object.keys(scope),'return ('+handler+')')(...Object.values(scope)),events,location,selectedRevision};
 }
 test('successful explicit save advances after persistence and updates the card link',async()=>{
@@ -32,6 +32,8 @@ test('successful explicit save advances after persistence and updates the card l
  assert.deepEqual(h.events.find(e=>e[0]==='selected'),['selected','2']);
  assert.equal(new URL(h.location.href).searchParams.get('card'),'2');
  assert.equal(h.selectedRevision.current,null);
+ const progress=h.events.filter(([kind])=>kind==='progress').map(([,message])=>message);
+ assert.match(progress[0],/Checking card 1/);assert.match(progress[1],/Validating card 1/);assert.equal(progress.at(-1),'');
 });
 test('failed or in-flight save never advances or closes the card',async()=>{
  for(const options of [{fail:true},{postFail:true},{autosaving:true}]){
@@ -50,6 +52,7 @@ test('a blocked batch cannot save or advance, while rejecting a wrong card remai
 test('failed validation retains the corrected draft without reporting a completed save',async()=>{
  const h=harness({postFail:true});await h.run('save');
  assert.match(h.events.find(e=>e[0]==='error'&&e[1])?.[1],/Corrections saved as a draft.*not assigned/);
+ assert.deepEqual(h.events.at(-1),['progress','']);
  assert.equal(h.events.some(e=>e[0]==='notice'&&e[1].startsWith('Card saved.')),false);
 });
 
