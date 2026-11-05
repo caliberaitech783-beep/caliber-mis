@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {requireScanUploadContext,scanContextGate,scanContextError,applyScanContext} from '../shared/scan-batch-context.mjs';
+import {requireScanUploadContext,scanContextGate,scanContextError,applyScanContext,scanContextIssues} from '../shared/scan-batch-context.mjs';
 const expected={bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I'};
 test('trip-card uploads require an explicitly entered real date and marked shift',()=>{
  for(const value of [undefined,null,{}, {...expected,bookDate:''},{...expected,cardShift:''},{...expected,bookDate:'2026-02-30'}])assert.throws(()=>requireScanUploadContext('vehicle',value));
@@ -17,6 +17,7 @@ test('handwritten dates and shifts that differ from the batch never block it: th
  assert.deepEqual(applyScanContext(expected,cards[1].draft),{...expected,bookDateSource:'batch'});
  assert.deepEqual(applyScanContext(expected,cards[2].draft),{...expected,shiftHours:8,shiftId:''});
  assert.deepEqual(applyScanContext(expected,{...expected,bookDate:'',bookDateSource:'scan-unreadable',location:'Sasti OB'}),{...expected,location:'Sasti OB',bookDateSource:'batch'},'an unreadable date takes the batch date; an equivalent site name is kept');
+ assert.deepEqual(scanContextIssues({...expected,location:'Sasti OB'},{...expected,location:'SASTI 001'}),[],'the printed SASTI 001 scan code is the Sasti OB site');
  assert.equal(scanContextError(scanContextGate(expected,cards)),'Confirm the batch date, site and shift before proceeding.');
  assert.equal(scanContextGate({...expected,confirmed:true},[{status:'reading'}]).blocked,true);
 });

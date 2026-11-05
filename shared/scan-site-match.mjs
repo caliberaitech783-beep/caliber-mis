@@ -1,6 +1,10 @@
 import {canonicalSiteName} from './site-location.mjs';
 // Trip Card display only. Do not rename masters or rewrite stored records.
-export const tripCardLocation=value=>String(value??'').replace(/\boc\b/gi,'OB');
+export const tripCardLocation=value=>{
+ const location=String(value??'').trim();
+ if(/^sasti\s*0*1$/i.test(location))return 'Sasti OB';
+ return location.replace(/\boc\b/gi,'OB');
+};
 export function tripCardLocationChoices(sites=[],current='',enabled=false){
  return [...new Set([...sites.map(site=>enabled?tripCardLocation(site):site),...(current?[current]:[])])];
 }
