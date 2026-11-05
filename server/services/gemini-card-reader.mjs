@@ -63,7 +63,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    const key=await getKey();await onProgress?.('extracting');
    const preparation=imagePreparation.then(async()=>{
     const source=await prepareImage(image),views=await prepareViews(source);
-    return [{text:cardPrompt(kind)+(forceRead?' Re-inspect the Door No cell in the full image and upright header detail. The previous reading did not match a unique vehicle. Read every visible letter, slash and digit from this image; do not infer a replacement from other cards or a master list. If unclear, mark door unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+    return [{text:cardPrompt(kind)+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
    });
    imagePreparation=preparation.then(()=>{},()=>{});
    const parts=await preparation;

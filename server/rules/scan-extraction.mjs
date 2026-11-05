@@ -12,6 +12,25 @@ import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,se
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
 export const scanEquipmentMasters=masters=>masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)==='equipment').map(r=>({...r.record_data,id:String(r.id),kind:'equipment',site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}));
+export function extractScanResult(result,kind,masters){
+ const extracted=extractCard(result.text,kind,masters,result),data=result.extraction||result.hybrid;
+ if(result.firstScanReadRecovery)extracted.raw.firstScanReadRecovery=result.firstScanReadRecovery;
+ if(data){
+  extracted.raw[result.extraction?'gemini':'hybrid']=data;
+  extracted.raw.tripGridIssues=data.issues;
+  extracted.draft.trips=data.rows;
+  extracted.draft.scanMachineSummary=data.summary;
+  extracted.draft.timeMode=data.rows.some(row=>row.loadingTime||row.unloadingTime)?'with':'without';
+  if(kind==='vehicle'){
+   extracted.draft.extractionReviewFields.push('trips','scanMachineSummary');
+   extracted.draft=normalizeScanEquipmentRows(extracted.draft,scanEquipmentMasters(masters));
+  }else{
+   extracted.draft.openingKmr='';extracted.draft.closingKmr='';
+   extracted.draft.shiftHours=result.handwrittenFields?.shiftHours||'';
+  }
+ }
+ return extracted;
+}
 export function extractCard(text,kind,masters=[],hints={}){
  text=String(text||'');const pick=pattern=>{const m=text.match(new RegExp('(?:^|\\n|\\b)(?:'+pattern+')[ \t]*(?:[:=#][ \t]*|[ \t]+)([^\\n]+)','i'));return m?.[1]?.split(/\b(?:CALIBER\s*ID|FORM\s*A|TRIP\s+CARD|DRIVER\s*NAME|DOOR\s*NO\.?)\b/i)[0]?.trim()||'';};
  const numeric=pattern=>{const raw=normalizeScannedMeter(pick(pattern).replaceAll(',',''));return /^\d+(?:\.\d+)?$/.test(raw)?raw:''};
