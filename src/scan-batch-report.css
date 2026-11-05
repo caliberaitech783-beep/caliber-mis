@@ -9,6 +9,8 @@
 .scan-batch-report>header>.scan-actions{margin:0;flex:none;flex-wrap:nowrap}.scan-batch-report>header>.scan-actions button{white-space:nowrap}
 .scan-batch-report-search{display:block;flex:1 1 160px;max-width:280px;min-width:0;align-self:center}
 .scan-batch-report-search input{box-sizing:border-box;width:100%;min-height:42px;border:1px solid #d9c9e8;border-radius:8px;padding:10px 12px;font:inherit;color:inherit;background:var(--panel,#fff)}
+.scan-all-cards-heading{display:inline-flex;align-items:center;gap:18px;min-width:min(620px,75vw);vertical-align:middle}.scan-all-cards-heading .scan-batch-report-search{width:min(420px,55vw);max-width:none}.scan-all-cards-heading .scan-batch-report-search input{min-height:36px;padding:7px 10px}
+.scan-report-column-filters th{position:sticky;top:38px;z-index:2;padding:5px;background:var(--panel,#fff)}.scan-report-column-filters input{box-sizing:border-box;width:100%;min-width:90px;height:32px;padding:5px 7px;border:1px solid #cdbddc;border-radius:5px;background:var(--panel,#fff);color:inherit;font:inherit;font-weight:400}
 @media(max-width:650px){.scan-batch-report-search{flex-basis:100%;max-width:none}.scan-batch-report>header>.scan-actions{flex-wrap:wrap}}
 .scan-report-legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .scan-report-badge{display:inline-block;padding:5px 8px;border:1px solid;border-radius:5px;font-weight:700;line-height:1.4;white-space:normal}

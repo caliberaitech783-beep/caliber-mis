@@ -38,7 +38,7 @@ for(const kind of ['vehicle','equipment'])test(kind+' multi-select tracks visibl
  checks[0].props.onChange({target:{checked:true}});tree=render();checks[2].props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests[0], [members[0],members[2]]);
  assert.equal(get(tree,'input','Select all visible unsaved cards'),undefined,'bulk select control is removed');
  nodes(tree,'button').find(n=>n.props.children==='Clear selection').props.onClick();tree=render();assert.equal(selectedButton(tree).props.disabled,true);
- get(tree,'input','Search batch report').props.onChange({target:{value:'FINDME'}});tree=render();get(tree,'input','Select card 1').props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests.at(-1),[members[0]],'filtered rows remain individually selectable');
+ get(tree,'input','Smart search all cards').props.onChange({target:{value:'FINDME'}});tree=render();get(tree,'input','Select card 1').props.onChange({target:{checked:true}});tree=render();selectedButton(tree).props.onClick();assert.deepEqual(requests.at(-1),[members[0]],'filtered rows remain individually selectable');
  members[0]={...members[0],revision:99};tree=render();assert.equal(selectedButton(tree).props.disabled,true,'a changed card requires a fresh selection');
  props.actionsDisabled=true;tree=render();assert.equal(get(tree,'input','Select card 1').props.disabled,true);
 });
