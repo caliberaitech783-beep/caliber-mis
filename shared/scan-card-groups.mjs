@@ -1,4 +1,5 @@
 import {machineDiscrepancies} from './trip-card-rules.mjs';
+import {blockingScanWarnings} from './scan-auto-save.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
 
 export const ISSUE_CARD_GROUPS=[
@@ -26,12 +27,12 @@ export function hasCardData(card,kind){
   (d.scanMachineSummary||[]).some(r=>['equipmentName','tripCount'].some(k=>present(r[k])));
 }
 export function cardReviewGroup(card,kind,options=null,context=null){
- if(['queued','reading'].includes(card.status))return 'pending';
+ if(card.validationPending||['queued','reading'].includes(card.status))return 'pending';
  if(card.status==='posted')return 'orange';
  if(card.status!=='rejected'&&card.context_mismatch?.length)return 'error';
  if(card.status==='error')return 'error';
  if(card.status==='rejected'||!hasCardData(card,kind))return 'red';
- if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options)).length||(card.checks?.errors||[]).length)return 'brown';
+ if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options)).length||(card.checks?.errors||[]).length||blockingScanWarnings(card.checks?.warnings).length)return 'brown';
  return 'orange';
 }
 export function reviewGroupSummary(cards,kind,options=null,context=null){
@@ -71,5 +72,8 @@ export function cardDisplayGroup(card,kind,options=null,context=null){
  return primary==='brown'?(cardIssueGroups(card,kind,options)[0]||primary):primary;
 }
 export function matchesCardGroup(card,group,kind,options=null,context=null){
- return group==='all'||cardDisplayGroup(card,kind,options,context)===group;
+ if(group==='all')return true;
+ const display=cardDisplayGroup(card,kind,options,context);
+ if(group==='actionable')return card.status!=='rejected'&&!['pending','orange'].includes(display);
+ return display===group;
 }

@@ -96,3 +96,10 @@ test('a refused automatic save turns an All okay card into Needs attention with 
  const summary=reviewGroupSummary([card,posted],'vehicle',null);
  assert.equal(summary.orange,1);assert.equal(summary.saved,1);assert.equal(summary.waiting,0);assert.equal(summary.attention,1);
 });
+
+test('direct correction queue waits for validation and excludes matched and rejected cards',()=>{
+ const rows=[card('pending',{validationPending:true,draft:{...draft,assetId:''}}),card('matched'),
+  card('warning',{checks:{warnings:['Check the marked shift.']}}),card('door',{draft:{...draft,assetId:''}}),card('rejected',{status:'rejected'})];
+ assert.deepEqual(rows.filter(row=>matchesCardGroup(row,'actionable','vehicle')).map(row=>row.id),['warning','door']);
+ assert.equal(reviewGroupSummary(rows,'vehicle').pending,1);
+});

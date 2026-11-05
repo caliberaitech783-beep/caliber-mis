@@ -11,6 +11,40 @@ import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
 import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from '../../shared/trip-card-rules.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
+function matchScanEmployee(masters,raw,location){
+ const employees=masters.filter(row=>['C-Dir Employee master','ERP Employee master','Employee master'].includes(row.master_name)&&employeeAtLocation(row.record_data,location));
+ const matches=row=>raw.employeeCode?matchesEmployeeReference(row.record_data,raw.employeeCode):raw.employee&&key(row.record_data.name||row.record_data.employee)===key(raw.employee);
+ const imported=employees.filter(row=>row.master_name==='Employee master'&&matches(row));
+ return imported.length===1?imported[0]:imported.length?null:one(employees.filter(row=>row.master_name!=='Employee master'),matches);
+}
+
+export function matchScanDraft(draft,raw,kind,masters){
+ if(!draft.location)return draft;
+ const changes={};
+ if(!draft.assetId&&draft.doorText){
+  const assets=masters.filter(row=>row.master_name==='Equipment master'&&assetBookKind(row.record_data)===kind)
+   .map(row=>({...row.record_data,id:String(row.id),kind,site:row.record_data.currentLocation||row.record_data.site||row.record_data.location||''}));
+  const asset=linkedScanEquipment(assets,draft.doorText,draft.location,kind);
+  if(asset)changes.assetId=asset.id;
+ }
+ if(!draft.employeeId){
+  const employee=matchScanEmployee(masters,raw,draft.location);
+  if(employee)changes.employeeId=String(employee.id);
+ }
+ if(draft.bookDate){
+  if(!draft.shiftId){
+   const shift=selectedMasterShift(masters.filter(row=>row.master_name==='Shift Master').map(row=>({...row.record_data,id:String(row.id)})),draft.location,draft.cardShift,draft.bookDate);
+   if(shift)changes.shiftId=shift.id;
+  }
+  if(!draft.workOrderId){
+   const order=latestWorkOrder(masters.filter(row=>row.master_name==='Work Order master').map(row=>({...row.record_data,id:String(row.id)})),draft.location,draft.bookDate);
+   if(order)changes.workOrderId=order.id;
+  }
+ }
+ if(!draft.shiftHours&&CARD_SHIFTS[draft.cardShift])changes.shiftHours=CARD_SHIFTS[draft.cardShift].hours;
+ return Object.keys(changes).length?{...draft,...changes}:draft;
+}
+
 export const scanEquipmentMasters=masters=>masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)==='equipment').map(r=>({...r.record_data,id:String(r.id),kind:'equipment',site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}));
 export function extractScanResult(result,kind,masters){
  const extracted=extractCard(result.text,kind,masters,result),data=result.extraction||result.hybrid;
@@ -53,10 +87,7 @@ export function extractCard(text,kind,masters=[],hints={}){
  const doorAssets=locationNeedsReview?[]:raw.location?assets.filter(r=>{const site=r.record_data.currentLocation||r.record_data.site||r.record_data.location;return !site||canonicalSiteName(site)===canonicalSiteName(raw.location)}):assets;
  const linked=linkedScanEquipment(doorAssets.map(r=>({...r.record_data,id:r.id,kind,site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''})),raw.door,'',kind);const asset=linked?doorAssets.find(r=>r.id===linked.id):null;
  const assetSite=asset?.record_data.currentLocation||asset?.record_data.site||asset?.record_data.location||'';const knownSite=masters.map(r=>r.record_data.currentLocation||r.record_data.site||r.record_data.location||'').find(s=>raw.location&&canonicalSiteName(s)===canonicalSiteName(raw.location));const location=locationNeedsReview?'':raw.location?(assetSite&&canonicalSiteName(assetSite)===canonicalSiteName(raw.location)?assetSite:knownSite||raw.location):assetSite;
- const employees=masters.filter(r=>['C-Dir Employee master','ERP Employee master','Employee master'].includes(r.master_name)&&employeeAtLocation(r.record_data,location));
- const matchingEmployee=r=>raw.employeeCode?matchesEmployeeReference(r.record_data,raw.employeeCode):raw.employee&&key(r.record_data.name||r.record_data.employee)===key(raw.employee);
- const imported=employees.filter(r=>r.master_name==='Employee master'),importMatches=imported.filter(matchingEmployee);
- const employee=importMatches.length===1?importMatches[0]:importMatches.length?null:one(employees.filter(r=>r.master_name!=='Employee master'),matchingEmployee);
+ const employee=matchScanEmployee(masters,raw,location);
  const shiftEvidence=markedShiftEvidence(text),textShift=shiftEvidence.value,hintShift=normalizeCardShift(hints.cardShift),shiftUnclear=(kind==='vehicle'&&(shiftEvidence.status==='unclear'||(hints.shiftSelectionStatus&&hints.shiftSelectionStatus!=='clear')))||Boolean(hintShift&&textShift&&hintShift!==textShift),cardShift=shiftUnclear?'':hintShift||textShift,mapped=selectedMasterShift(masters.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:r.id})),location,cardShift,bookDate);
  const shift=mapped?mapped:!cardShift&&raw.shift?one(masters,r=>r.master_name==='Shift Master'&&canonicalSiteName(r.record_data.site||r.record_data.siteName)===canonicalSiteName(location)&&key(r.record_data.shiftName||r.record_data.name||r.record_data.shift)===key(raw.shift)):null;
  const orders=masters.filter(r=>['Work Order master','Work order master','Work Order Master','WO master'].includes(r.master_name)).map(r=>({...r.record_data,id:r.id}));const eligible=matchingWorkOrders(orders,location,bookDate),wo=raw.workOrder?one(eligible,r=>key(r.workOrderNo)===key(raw.workOrder)):latestWorkOrder(orders,location,bookDate);

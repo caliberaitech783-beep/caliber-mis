@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -331,4 +331,25 @@ for(const kind of ['vehicle','equipment'])test(kind+' selected abort opens only 
  let tree=app.render(),report=nodes(tree,n=>n.type===scope.ScanBatchReport)[0];assert.equal(typeof report.props.onAbortCards,'function');report.props.onAbortCards(pending);tree=app.render();let dialog=nodes(tree,n=>n.type===scope.ScanCardAbortDialog)[0];assert.deepEqual(dialog.props.targets.map(card=>card.id),['abort-one','abort-two']);assert.equal(dialog.props.kind,kind);assert.equal(nodes(tree,n=>n.type===scope.ScanBatchReport)[0].props.selectionDisabled,true);
  app.testCapture.setCards(pending.map(card=>({...card,revision:20,status:'review'})));tree=app.render();dialog=nodes(tree,n=>n.type===scope.ScanCardAbortDialog)[0];assert.equal(dialog.props.targets[0].status,'reading','confirmation retains the exact reviewed selection');dialog.props.onClose();tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);
  report=nodes(tree,n=>n.type===scope.ScanBatchReport)[0];report.props.onAbortCards([{...pending[0],status:'posted',logbook_id:9}]);tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);report.props.onAbortCards([{...pending[0],batch_id:'another-batch'}]);tree=app.render();assert.equal(nodes(tree,n=>n.type===scope.ScanCardAbortDialog).length,0);
+});
+
+test('finished validation opens the unresolved card once without routing through a status tile',()=>{
+ const app=harness();app.render();
+ const context={bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I',confirmed:true};
+ const batch={id:'batch-review',kind:'vehicle',expected_context:context};
+ app.testCapture.setBatch(batch);app.testCapture.activeRef.current=batch.id;
+ app.testCapture.setExpectedContext(context);
+ app.testCapture.setOptions({assets:[],employees:[],sites:['Sasti OC'],shifts:[],workOrders:[]});
+ app.testCapture.setAliasCheckedBatches(new Set([batch.id]));
+ const row={id:'unresolved',batch_id:batch.id,ordinal:2,status:'review',revision:2,draft:{},raw_fields:{},checks:{errors:['Door number is missing.'],warnings:[]}};
+ const route=()=>app.effects.find(effect=>String(effect).includes('autoReviewEntry.current'))();
+ app.testCapture.setCards([{...row,id:'saved',status:'posted'},{...row,validationPending:true,checks:null}]);
+ app.render();route();assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
+ app.testCapture.setCards([{...row,id:'saved',status:'posted'},row]);
+ app.render();route();
+ assert.equal(new URL(app.window.location.href).searchParams.get('scanGroup'),'actionable');
+ assert.equal(new URL(app.window.location.href).searchParams.get('card'),'unresolved');
+ const tree=app.render();
+ nodes(tree,node=>node.type==='button'&&node.props.children==='Back to card status')[0].props.onClick();
+ app.render();route();assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
 });
