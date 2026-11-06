@@ -17,10 +17,16 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehi
  const broadMatches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key||aliasKeys(row).includes(key));
  const requestedExact=exactKey(door),hasSuffix=/^[A-Z]+\d+-[^-]+$/.test(requestedExact);
  const exactMatches=hasSuffix?broadMatches.filter(row=>identifiers(row).some(value=>exactKey(value)===requestedExact)):[];
- const matches=hasSuffix?exactMatches:broadMatches;
+ const candidates=hasSuffix?exactMatches:broadMatches;
+ const currentLocation=row=>row.currentLocation||row.location||row.site||'';
+ const selectedSite=canonicalSiteName(tripCardLocation(site));
+ const isAtSite=row=>canonicalSiteName(tripCardLocation(currentLocation(row)))===selectedSite;
+ // Short equipment numbers can be reused at different mines.
+ const siteMatches=kind==='equipment'?candidates.filter(isAtSite):[];
+ const matches=siteMatches.length?siteMatches:candidates;
  if(matches.length>1)throw Error('Pulse has duplicate machine identifiers for '+door+'. Resolve the Equipment Master duplicates before saving. The scan is retained.');
- const current=matches[0]?.currentLocation||matches[0]?.location||matches[0]?.site||'';
- if(matches.length&&canonicalSiteName(tripCardLocation(current))===canonicalSiteName(tripCardLocation(site)))return null;
+ if(matches.length&&isAtSite(matches[0]))return null;
+ const current=matches.length?currentLocation(matches[0]):'';
  return {door,selectedSite:site,pulseSite:matches.length?current||'Unassigned':'Not registered',reason:matches.length?'transfer-required':'unknown-machine',message:'Card kept for review: machine '+door+' is '+(matches.length?'assigned in Pulse to '+(current||'no site'):'not registered in Pulse')+'; selected mine: '+site+'. '+(matches.length?'Complete its transfer':'Register the machine and assign it')+' in Pulse, then recheck this card. The original scan and draft are retained.'};
 }
 

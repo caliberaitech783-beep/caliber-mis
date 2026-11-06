@@ -28,8 +28,19 @@ test('a serial suffix distinguishes duplicate TPC short codes',()=>{
   {door:'TPC63 - 99999',kind:'equipment',currentLocation:'Other OB'},
  ];
  assert.equal(scanFleetAssignment(rows,{doorText:'T63 - 05017',location:'Jayant OB'},{},'','equipment'),null);
- assert.throws(()=>scanFleetAssignment(rows,{doorText:'T63',location:'Jayant OB'},{},'','equipment'),/duplicate/);
+ assert.equal(scanFleetAssignment(rows,{doorText:'T63',location:'Jayant OB'},{},'','equipment'),null);
+ assert.equal(scanFleetAssignment(rows,{doorText:'T63 - 99999',location:'Jayant OB'},{},'','equipment').reason,'transfer-required');
  assert.equal(scanFleetAssignment(rows.slice(0,1),{doorText:'T63 - 12345',location:'Jayant OB'},{},'','equipment').reason,'unknown-machine');
+});
+test('repeated TPC22 trips and summary use the unique equipment at the batch site',()=>{
+ const majri={door:'TPC22 - 12345',currentLocation:'Majri OC'};
+ const rows=[...fleet,{door:'TPC22 - 67890',currentLocation:'Sasti OB'},majri];
+ const draft={location:'majri ob',trips:[{equipmentName:'TPC22'},{equipmentName:'TPC22'}],scanMachineSummary:[{equipmentName:'TPC22',trips:2}]};
+ assert.deepEqual(scanFleetIssues(rows,draft),[]);
+ assert.throws(()=>scanFleetIssues([...rows,{...majri,door:'TPC22 - 54321'}],draft),/duplicate.*TPC22/);
+ const [issue]=scanFleetIssues(rows.slice(0,-1),draft);
+ assert.equal(issue.reason,'transfer-required');
+ assert.deepEqual(issue.fields,['trips.0.equipmentName','trips.1.equipmentName','scanMachineSummary.0.equipmentName']);
 });
 test('fleet detection retains the original scan and draft until the user chooses a disposition',async()=>{
  const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
