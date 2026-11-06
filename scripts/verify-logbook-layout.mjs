@@ -1,6 +1,6 @@
 // Real components and production CSS, with synthetic records and no live API access.
 import assert from 'node:assert/strict';
-import {readFileSync,readdirSync,mkdirSync,writeFileSync} from 'node:fs';
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
@@ -10,6 +10,8 @@ const start=source.indexOf("    <div className={'scan-trip-row scan-trip-entry'"
 const end=source.indexOf('\n   )}',start);
 assert.ok(start>0&&end>start,'Scan trip fixture must use the current component markup');
 const tripMarkup=source.slice(start,end);
+const timeEntryMarkup=source.match(/^\s*(<label className="scan-time-entry"[^\n]+)$/m)?.[1];
+assert.ok(timeEntryMarkup,'Scan fixture must include the real time-mode control');
 const fieldDefinition=source.match(/^const fields=(.+);$/m)[1];
 const fixture=`
 import React,{useState} from 'react';
@@ -27,19 +29,25 @@ const options={accountLocation:'Sasti OC',sites:['Sasti OC'],assets:[{id:'1',kin
 const record={id:1,book_no:'VLB_S/1ST-NOV26/S1/030',book_type:'vehicle',data:{bookDate:'2026-11-01',location:'Sasti OC',door:'V/792',assetId:'2',employeeId:'3',employeeName:'Example driver',caliberId:'CMPL9143',shiftId:'4',shiftName:'Shift A',shiftHours:8,openingKmr:32577.1,closingKmr:32675.6,openingHmr:1978,closingHmr:1984,totalWorkingHmr:6,totalRunningKmr:98.5,timeMode:'with',trips:[{rowNumber:8,equipmentName:'TPC50-05008',loadingTime:'10:49',unloadingTime:'11:12',tripCount:1}],remark:'Layout verification'}};
 window.fetch=async url=>new Response(JSON.stringify(String(url).includes('/options')?options:String(url).includes('/hours')?{breakdownHours:0,warnings:[]}:{records:[],nextCursor:null}),{headers:{'Content-Type':'application/json'}});
 function ScanFixture(){
- const [draft,setDraft]=useState({location:'Sasti OC',timeMode:mode==='untimed'?'without':'with',trips:[record.data.trips[0],{...record.data.trips[0],rowNumber:9}]});
- const i=0,correctionView=mode==='correction',card={raw_fields:{responseRecoveryIssues:mode==='recovery'?['Check printed serial']:[]}},fieldIssues={};
+ const [draft,setDraft]=useState({location:'Sasti OC',timeMode:mode.startsWith('untimed')?'without':'with',trips:[record.data.trips[0],{...record.data.trips[0],rowNumber:9}]});
+ const i=0,correctionView=mode.endsWith('correction'),card={raw_fields:{responseRecoveryIssues:mode.includes('recovery')?['Check printed serial']:[]}},fieldIssues={};
  const recoveryIssues=activeResponseRecoveryIssues(card.raw_fields,draft);
- const visibleTrip=()=>true,visibleField=()=>true,fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
+ // A restrictive header filter must never hide valid trip controls.
+ const visibleField=key=>mode!=='filtered-correction'||key.endsWith('.tripCount'),fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
  const update=(key,value)=>setDraft(d=>({...d,[key]:value}));
  const tripEquipmentOptions=[{id:'TPC50-05008',name:'TPC50-05008'}],resolvedMachineName=a=>a.name,tripEquipmentSelectionValue=r=>r.equipmentName,selectTripEquipment=(r,value)=>({...r,equipmentName:value});
- return <div className="scan-page scan-review-page scan-review-compact" style={{height:'auto',display:'block',padding:0}}><div className="scan-selected-card" style={{display:'block'}}><section className="scan-draft-sheet" style={{height:'auto',position:'static',transform:'none',width:'100%'}}><fieldset id="scan-entry-fields"><div className="scan-fields scan-card-fields"><div className="scan-review-doc-meta"><strong>Book NO</strong><span>{record.book_no}</span></div><label><span>Doc type</span><input readOnly value="VLB"/></label>{fields.map(([key,label,type])=><label key={key} data-field={key}><span>{compactLogBookLabel(label)}</span>{["number","date"].includes(type)?<input readOnly type={type} value={record.data[key]??""}/>:<SmartSelect showOverflowValue aria-label={label} value="selected" onChange={()=>{}}><option value="selected">{key==="assetId"?"V792 · Volvo":key==="workOrderId"?"CMLL/SASTI/2026/WORK-ORDER-123456789":record.data[key]||label}</option></SmartSelect>}</label>)}</div><div className="scan-trips">{draft.trips.map((r,i)=>(${tripMarkup}))}</div></fieldset></section></div></div>;
+ return <div className={'scan-page scan-review-page'+(mode==='full-correction'?'':' scan-review-compact')} style={{height:'auto',display:'block',padding:0}}><div className="scan-workspace" style={{display:'block',height:'auto',width:'100%'}}><div className="scan-selected-card" style={{display:'block'}}><section className="scan-draft-sheet" style={{height:'auto',position:'static',transform:'none',width:'100%'}}><fieldset id="scan-entry-fields"><div className="scan-fields scan-card-fields"><div className="scan-review-doc-meta"><strong>Book NO</strong><span>{record.book_no}</span></div><label><span>Doc type</span><input readOnly value="VLB"/></label>{fields.map(([key,label,type])=><label key={key} data-field={key}><span>{compactLogBookLabel(label)}</span>{["number","date"].includes(type)?<input readOnly type={type} value={record.data[key]??""}/>:<SmartSelect showOverflowValue aria-label={label} value="selected" onChange={()=>{}}><option value="selected">{key==="assetId"?"V792 · Volvo":key==="workOrderId"?"CMLL/SASTI/2026/WORK-ORDER-123456789":record.data[key]||label}</option></SmartSelect>}</label>)}</div><div className="scan-trips">${timeEntryMarkup}{draft.trips.map((r,i)=>(${tripMarkup}))}</div></fieldset></section></div></div></div>;
 }
 const manual=mode.startsWith('manual-');
 createRoot(document.getElementById('fixture')).render(<div className="app erp-shell" style={{display:'block',minHeight:0}}><main className="mobile-workspace" style={{padding:0,margin:0}}>{manual?<LogBookForm kind={mode==='manual-elb'?'equipment':'vehicle'} session={{token:'fixture',user:{location:'Sasti OC'}}} initialRecord={record}/>:mode==='saved'?<SavedLogBookDetails record={record} kind="vehicle"/>:<ScanFixture/>}</main></div>);
 `;
 const bundle=await build({stdin:{contents:fixture,loader:'jsx',resolveDir:process.cwd(),sourcefile:'logbook-layout-fixture.jsx'},bundle:true,write:false,format:'iife',platform:'browser',define:{'process.env.NODE_ENV':'"production"'},loader:{'.css':'empty'}});
-const css=readdirSync('dist/app-assets').filter(n=>n.endsWith('.css')).map(n=>readFileSync('dist/app-assets/'+n,'utf8')).join('\n');
+// Builds retain older hashed assets for open tabs/rollback. Match the current
+// entry page instead of layering every historical stylesheet over this fixture.
+const entryHtml=readFileSync('dist/index.html','utf8');
+const styles=[...entryHtml.matchAll(/<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)].map(match=>new URL(match[1],'https://fixture.invalid'));
+assert.ok(styles.length,'Built entry must reference a stylesheet');
+const css=styles.map(url=>{assert.equal(url.origin,'https://fixture.invalid');assert.ok(url.pathname.startsWith('/app-assets/')&&url.pathname.endsWith('.css'));return readFileSync('dist'+url.pathname,'utf8');}).join('\n');
 const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><style>html,body{margin:0;padding:0}#fixture{width:100%;min-width:0}.app.erp-shell{width:100%;padding:0}.mobile-workspace{width:100%;box-sizing:border-box}</style></head><body><div id="fixture"></div><script>'+bundle.outputFiles[0].text.replaceAll('</script','<\\/script')+'</script></body></html>';
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(html)});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -47,7 +55,7 @@ const browser=await chromium.launch({headless:true});
 mkdirSync('layout-checks',{recursive:true});
 const findings=[];
 try{
- for(const width of [320,390,640,840,900,1024])for(const mode of ['scan','recovery','correction','untimed','manual-vlb','manual-elb','saved']){
+ for(const width of [320,390,640,840,900,1024])for(const mode of ['scan','recovery','correction','recovery-correction','filtered-correction','full-correction','untimed','untimed-correction','manual-vlb','manual-elb','saved']){
   const page=await browser.newPage({viewport:{width,height:1000},locale:'en-IN'});
   const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(width,mode,error.message)});
   await page.goto('http://127.0.0.1:'+server.address().port+'/?mode='+mode);
@@ -68,7 +76,17 @@ try{
     if(e.type==='time'&&box.width<168)issues.push('Native time too narrow: '+box.width);
     if(e.closest('.scan-trip-entry')&&e.tagName==='INPUT'&&parseFloat(s.fontSize)!==20)issues.push('Trip value must use its bounded 20px font: '+s.fontSize);
    }
-   if(mode==='scan'||mode==='recovery'||mode==='correction'||mode==='untimed'){
+   if(!mode.startsWith('manual')&&mode!=='saved'){
+    const timeMode=document.querySelector('.scan-time-entry');
+    if(!timeMode||!visible(timeMode))issues.push('Time entry mode must remain available during correction');
+    else if(timeMode.getBoundingClientRect().height>120)issues.push('Time entry selector must not reserve a blank 220px flex row');
+    const timed=!mode.startsWith('untimed');
+    for(const row of document.querySelectorAll('.scan-trip-entry')){
+     for(const selector of ['.scan-trip-serial','[data-trip-field="equipmentName"]','[data-trip-field="tripCount"]',...(timed?['[data-trip-field="loadingTime"]','[data-trip-field="unloadingTime"]','.scan-trip-gap']:[])]){
+      const control=row.querySelector(selector);if(!control||!visible(control))issues.push('Missing trip control '+selector);
+     }
+     if(!timed&&row.querySelector('input[type=time]'))issues.push('Without time must retain its untimed behavior');
+    }
     for(const row of document.querySelectorAll('.scan-trip-entry')){
      const fields=[...row.querySelectorAll('label')].filter(visible).map(e=>e.getBoundingClientRect());
      for(let i=0;i<fields.length;i++)for(let j=i+1;j<fields.length;j++){const a=fields[i],b=fields[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)issues.push('Trip fields overlap');}
@@ -84,6 +102,18 @@ try{
   findings.push(result);
   writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
   if([320,390,840,900,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
+  if(mode==='untimed-correction'){
+   const times=page.locator('.scan-trip-entry input[type=time]');
+   const values=await page.locator('[data-trip-field="tripCount"] input').evaluateAll(nodes=>nodes.map(node=>node.value));
+   await page.locator('.scan-time-entry [role=combobox]').click();
+   await page.getByRole('option',{name:'With time',exact:true}).click();
+   assert.equal(await times.count(),4,'Time fields can be restored without leaving correction view');
+   assert.equal(await page.locator('.scan-trip-gap').count(),2);
+   await page.locator('.scan-time-entry [role=combobox]').click();
+   await page.getByRole('option',{name:'Without time',exact:true}).click();
+   assert.equal(await times.count(),0,'Without time keeps its existing behavior');
+   assert.deepEqual(await page.locator('[data-trip-field="tripCount"] input').evaluateAll(nodes=>nodes.map(node=>node.value)),values,'Switching mode never changes trip counts');
+  }
   if(mode==='scan'){
    await page.getByRole('button',{name:'Remove trip 1',exact:true}).click();
    assert.equal(await page.locator('.scan-trip-entry').count(),1,'Delete removes only the selected row');
@@ -94,5 +124,5 @@ try{
  writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
  const failures=findings.filter(f=>f.issues.length);
  assert.deepEqual(failures,[],'Responsive layout regressions: '+JSON.stringify(failures));
- console.log('Verified 42 layouts: scan, serial correction, issue correction, no-time, VLB, ELB and saved records at 320–1024px; delete preserves serials.');
+ console.log('Verified '+findings.length+' layouts: complete scan trip controls, correction/recovery, time-mode switching, VLB, ELB and saved records at 320–1024px; delete preserves serials.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

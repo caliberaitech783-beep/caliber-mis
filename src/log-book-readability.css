@@ -73,6 +73,8 @@
   #scan-entry-fields .scan-card-fields > label:has(.employee-id-lookup) { grid-column: span 2; }
   #scan-entry-fields .scan-trips { display: block; padding: 8px 0; }
   #scan-entry-fields .scan-trips > .scan-time-entry { max-width: 300px; margin: 10px 0; }
+  /* The legacy row-layout flex basis becomes a 220px height in column labels. */
+  #scan-entry-fields .scan-time-entry > :is(select,.searchable-select) { width: 100%; min-width: 0; flex: 0 0 auto; }
   /* Named fields keep optional correction fields from shifting the time/gap columns. */
   #scan-entry-fields .scan-trip-entry {
     display: grid;
@@ -106,10 +108,7 @@
     grid-template-columns: 82px minmax(190px,1fr) 80px 44px;
     grid-template-areas: "serial equipment trips remove";
   }
-  #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) {
-    grid-template-columns: 82px minmax(190px,1fr) 170px 170px 72px 44px;
-    grid-template-areas: "serial equipment loading unloading trips remove";
-  }
+  /* Correction rows retain the complete timed grid, including the derived gap. */
   #scan-entry-fields .scan-machine-summary .scan-trip-row {
     display: grid;
     grid-template-columns: minmax(0,1fr) 90px 44px;
