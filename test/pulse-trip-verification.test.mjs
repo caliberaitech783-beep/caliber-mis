@@ -95,7 +95,7 @@ test('blocked cards send nothing; offline retries persist; deleted cards and loc
 test('queue entries commit with scanned vehicle books; rollbacks, manual books and equipment books add no jobs',async t=>{
  const {db,pool,card}=await fixture(t);
  const relief={...card.data,openingHmr:105,closingHmr:108,totalWorkingHmr:3};
- await pool.query('BEGIN');await insertLogBook(pool,'vehicle',{...relief,scanCardId:randomUUID()},randomUUID(),'MIS tester');await pool.query('ROLLBACK');
+ await pool.query('BEGIN');await insertLogBook(pool,'vehicle',{...relief,assetId:2,scanCardId:randomUUID()},randomUUID(),'MIS tester');await pool.query('ROLLBACK');
  assert.equal((await db.query('SELECT COUNT(*)::int AS count FROM mis_pulse_trip_verifications')).rows[0].count,1);
  const manual={...relief,duplicateReason:'Test fixture: manual card beside the posted scan card'};delete manual.scanCardId;
  await insertLogBook(pool,'vehicle',manual,randomUUID(),'MIS tester');
