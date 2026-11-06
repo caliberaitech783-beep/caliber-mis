@@ -17,8 +17,32 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
-      - name: Verify current production VLB and ELB access
+      - name: Read the reported saved VLB card and validate its trip counts
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          EXPECTED_COMMIT=$(curl --fail --silent https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit')
-          export EXPECTED_COMMIT
-          node scripts/verify-vlb-elb-live.mjs --azure
+          node --input-type=commonjs <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          (async()=>{
+           const deadline=Date.now()+18*60*1000;
+           while(true){
+            try{
+             const health=await fetch('https://pulse-ll.cmll.in/api/health',{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+             if(health.status==='ok'&&/^[a-f0-9]{40}$/.test(health.commit)){
+              const r=await fetch('https://api.github.com/repos/'+process.env.GITHUB_REPOSITORY+'/compare/ab827c9...'+health.commit,{headers:{Authorization:'Bearer '+process.env.GH_TOKEN},signal:AbortSignal.timeout(10000)});
+              if(r.ok&&['identical','ahead'].includes((await r.json()).status)){console.log('Live release '+health.commit);break;}
+             }
+            }catch{}
+            if(Date.now()>deadline)throw Error('A live release containing the trip-count fix did not become healthy');
+            await new Promise(r=>setTimeout(r,15000));
+           }
+           const token=execFileSync('az',['account','get-access-token','--resource','https://management.azure.com/','--query','accessToken','-o','tsv'],{encoding:'utf8'}).trim();
+           const encoded=Buffer.from("const {Pool}=require('pg');\n(async()=>{\n const root='file:///home/site/wwwroot/';\n const {misDatabaseConfig}=await import(root+'server/rules/mis-database-config.mjs');\n const {decodeScanRow}=await import(root+'server/rules/scan-text-storage.mjs');\n const {ignoreScanLoadingWithoutEquipment,machineTripTotal,machineDiscrepancies}=await import(root+'shared/trip-card-rules.mjs');\n const {vlbCountedTrips}=await import(root+'shared/vlb-trip-handover.mjs');\n const pool=new Pool({...misDatabaseConfig(),connectionTimeoutMillis:12000,statement_timeout:20000,max:1});\n try{\n  const c=await pool.connect();\n  try {\n   await c.query('BEGIN READ ONLY');\n   const {rows}=await c.query(`SELECT c.ordinal,c.status,c.draft,c.raw_fields,c.error,l.book_no,l.data AS saved_data,l.deleted_at\n      FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id\n      WHERE c.batch_id=$1 AND c.duplicate_of IS NULL ORDER BY c.ordinal`,['9375680f-4d15-4ad2-a4d3-f457c3072353']);\n   const text=v=>String(v??'').toUpperCase().replace(/[^A-Z0-9]/g,'');\n   const matches=rows.map(decodeScanRow).filter(r=>{\n    const d=r.saved_data||r.draft||{};\n    const meterMatch=Number(d.openingHmr)===15808&&Number(d.closingHmr)===15814&&Number(d.openingKmr)===248040.5;\n    return meterMatch||([d.door,d.doorText,r.raw_fields?.door].some(v=>text(v)==='V1372')&&['2324','2394'].includes(text(d.aFormNo||r.raw_fields?.cardNo)));\n   });\n   if(matches.length!==1){console.log(JSON.stringify({batchCards:rows.length,matchingCards:matches.length}));return;}\n   const card=matches[0],data=ignoreScanLoadingWithoutEquipment(card.saved_data||card.draft);\n   const trips=data.trips||[],first=trips[0],last=trips.at(-1);\n   const counted=trips.reduce((sum,row)=>sum+vlbCountedTrips(row,data.timeMode),0);\n   const mismatches=machineDiscrepancies(trips,data.scanMachineSummary||[]);\n   console.log(JSON.stringify({ordinal:card.ordinal,vehicle:data.door||data.doorText||'V1372',form:data.aFormNo,book:card.book_no||null,status:card.status,activeSaved:!!card.saved_data&&!card.deleted_at,storedTrips:card.saved_data?.totalTrips??null,scanHasError:!!String(card.error||'').trim(),counted,machineTrips:machineTripTotal(trips),summaryMismatches:mismatches.length,first:{loading:first?.loadingTime||'',unloading:first?.unloadingTime||'',count:vlbCountedTrips(first||{},data.timeMode)},last:{loading:last?.loadingTime||'',unloading:last?.unloadingTime||'',count:vlbCountedTrips(last||{},data.timeMode)}}));\n  } finally {await c.query('ROLLBACK');c.release();}\n } finally {await pool.end();}\n})().catch(e=>{console.error(e.code||e.name,e.message.replace(/postgres(?:ql)?:\\S+/gi,'[redacted]'));process.exitCode=1;});").toString('base64');
+           const command='/bin/bash -c "printf %s '+encoded+' | base64 -d | NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node --input-type=commonjs"';
+           const response=await fetch('https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net/api/command',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({command,dir:'/home/site/wwwroot'}),signal:AbortSignal.timeout(120000)});
+           if(!response.ok)throw Error('Azure command HTTP '+response.status);
+           const result=await response.json();
+           console.log(result.Output||'');
+           if(result.ExitCode!==0){console.error(result.Error||'Remote verification failed');process.exitCode=1;}
+          })().catch(e=>{console.error(e.message);process.exitCode=1;});
+          NODE
