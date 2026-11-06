@@ -7891,7 +7891,7 @@ const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(proce
 const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
 const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
-registerErpEmployees(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator,getSiteScope:logBookScope});
+registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
 const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});

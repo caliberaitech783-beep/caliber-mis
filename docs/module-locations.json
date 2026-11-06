@@ -46,7 +46,6 @@
   "director-report-email.mjs": "server/rules/director-report-email.mjs",
   "employee-identity.mjs": "shared/employee-identity.mjs",
   "employee-master-fields.mjs": "shared/employee-master-fields.mjs",
-  "employee-master-sync.mjs": "server/services/employee-master-sync.mjs",
   "employee-master.mjs": "server/routes/employee-master.mjs",
   "employee-transfer.mjs": "server/routes/employee-transfer.mjs",
   "environment-label.mjs": "shared/environment-label.mjs",
