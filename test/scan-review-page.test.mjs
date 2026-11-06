@@ -409,3 +409,12 @@ test('finished validation opens the unresolved card once without routing through
  nodes(tree,node=>node.type==='button'&&node.props.children==='Back to card status')[0].props.onClick();
  app.render();route();assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
 });
+
+test('a refused card can navigate Next in review without restarting background posting',()=>{
+ const app=harness('&scanView=review&scanGroup=all');app.render();
+ const draft={location:'Sasti OC',trips:[],scanMachineSummary:[]};
+ const cards=[1,2].map(n=>({id:'refused-'+n,batch_id:'b',ordinal:n,revision:1,status:'review',draft,raw_fields:{},checks:{errors:['Needs correction']}}));
+ app.testCapture.setCards(cards);app.testCapture.setSelected(cards[0].id);app.testCapture.setDraft(draft);app.testCapture.setOptions({assets:[],employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});
+ app.testCapture.autoSaveFailures.current.set(cards[0].id+':1','Vehicle already has a saved card');app.testCapture.setFailureTick(n=>n+1);
+ const tree=app.render();const next=nodes(tree,n=>n.type==='button'&&n.props.children==='Next')[0];assert.equal(next.props.disabled,false);next.props.onClick();assert.equal(new URL(app.window.location.href).searchParams.get('card'),cards[1].id);
+});
