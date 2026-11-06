@@ -54,10 +54,11 @@ export function isUnloadingOnlyTrip(row){
  return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
 }
 // A blank loader with a recorded unload is an unloading handover on scanned cards.
-export function ignoreScanLoadingWithoutEquipment(draft){
+export function ignoreScanLoadingWithoutEquipment(draft,{openingOnly=false}={}){
  if(draft?.timeMode==='without'||!Array.isArray(draft?.trips))return draft;
  let changed=false;
  const trips=draft.trips.map((row,index)=>{
+  if(openingOnly&&(index!==0||Number(row?.rowNumber||1)!==1))return row;
   const estimate=row?.timeEstimates?.unloadingTime;
   const estimatedUnload=estimate?.anchorField==='loadingTime'&&estimate.value===row.unloadingTime;
   if(!row||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;

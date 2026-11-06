@@ -54,7 +54,8 @@ export function completePreviousShiftMachines(input={},records=[]){
 
 export async function fillScanTripEstimates(client,input={},raw={}){
  if(raw.responseRecoveryIssues?.length)return input;
- const next=ignoreScanLoadingWithoutEquipment(estimateMissingTripTimes(ignoreScanLoadingWithoutEquipment(input),raw));
+ const openingOnly={openingOnly:true};
+ const next=ignoreScanLoadingWithoutEquipment(estimateMissingTripTimes(ignoreScanLoadingWithoutEquipment(input,openingOnly),raw),openingOnly);
  const needsMachine=(next.trips||[]).some(row=>!isUnloadingOnlyTrip(row)&&(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
  const previous=previousScanShift(next);
  if(!needsMachine||!previous||!operationalDate(previous.bookDate)||!next.assetId||!next.location)return next;
