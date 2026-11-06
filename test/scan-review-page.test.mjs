@@ -133,7 +133,7 @@ test('fleet upload details start collapsed and the automatic-save alert names th
 
 test('a refused automatic save moves the card from All okay to Needs attention and the entry chip follows the tiles',()=>{
  const app=harness('&batch=batch-1');app.render();
- const okay=n=>({id:'card-'+n,batch_id:'batch-1',ordinal:n,filename:'ok'+n+'.png',status:'review',revision:3,checks:{errors:[],warnings:[]},draft:{bookDate:'2026-11-01',doorText:'V'+n,assetId:String(n),employeeId:'1',shiftId:'1',cardShift:'I',shiftHours:8,openingHmr:1,closingHmr:2,openingKmr:1,closingKmr:2,location:'Sasti OC',timeMode:'without',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]},raw_fields:{}});
+ const okay=n=>({id:'card-'+n,batch_id:'batch-1',ordinal:n,filename:'ok'+n+'.png',status:'review',revision:3,checks:{errors:[],warnings:[]},draft:{bookDate:'2026-11-01',doorText:'V'+n,assetId:String(n),employeeId:'1',shiftId:'1',cardShift:'I',shiftHours:8,openingHmr:1,closingHmr:2,openingKmr:10,closingKmr:11,location:'Sasti OC',timeMode:'without',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]},raw_fields:{}});
  const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
  app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
  app.testCapture.setCards([okay(1),okay(2),saved]);

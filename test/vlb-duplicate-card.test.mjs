@@ -53,10 +53,10 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  assert.notEqual(extra.data.book_no,first.data.book_no);
  const audit=(await db.query("SELECT detail FROM mis_vlb_batch_audit WHERE action='card_added_duplicate'")).rows;assert.equal(audit.length,1);assert.deepEqual(audit[0].detail.existing,[first.data.book_no]);
  // editing either card does not trip the rule against itself; the extra card keeps its reason
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:12,revision:first.data.revision})).status,200);
+ assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:1012,revision:first.data.revision})).status,200);
  const rejectedEdit=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingHmr:109,revision:extra.data.revision});
  assert.equal(rejectedEdit.status,409);assert.equal(rejectedEdit.data.code,'shift_hmr_limit');
- const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:14,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
+ const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:1014,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
  // the first card without a reason cannot be edited into a different tipper that already has a card
  const other=await call('/api/log-books/vehicle','POST',{...input,assetId:5,requestKey:randomUUID()});assert.equal(other.status,201);
  assert.equal(other.data.data.employeeId,first.data.data.employeeId);
