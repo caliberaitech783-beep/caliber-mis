@@ -97,7 +97,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const created=await call('/api/vlb-batches','POST',{...selection,requestKey:randomUUID()});
  assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.twoStage,true);assert.equal(created.data.stage,'vlb_open');assert.equal(created.data.canLockVlb,false,'empty batch cannot lock');
  const batch='/api/vlb-batches/'+created.data.id;
- const card=(door,trips)=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:ids[door],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:10,closingKmr:60,openingHmr:100,closingHmr:106,timeMode:'without',trips,requestKey:randomUUID()});
+ const card=(door,trips)=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:ids[door],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips,requestKey:randomUUID()});
  const first=await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:5},{equipmentName:'VPC 019',tripCount:3}]));
  assert.equal(first.status,201,JSON.stringify(first.data));assert.deepEqual(first.data.data.siteHolds,[]);
  const elbEarly=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids.D1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:1,closingHmr:3,requestKey:randomUUID()});

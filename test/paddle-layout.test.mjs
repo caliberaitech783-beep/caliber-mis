@@ -7,7 +7,7 @@ test('spatial extraction retains every populated row, split merged times, and re
  // The unreadable loading cell is excluded from calculated MWS; the printed
  // summary remains literal so its disagreement can still be reviewed.
  assert.deepEqual(machineSummary(draft.trips),[{equipmentName:'VPC19',tripCount:16},{equipmentName:'SPC6',tripCount:1}]);assert.deepEqual(draft.scanMachineSummary.map(({equipmentName,tripCount})=>({equipmentName,tripCount})),[{equipmentName:'VPC19',tripCount:17},{equipmentName:'SPC6',tripCount:1}]);
- assert.equal(draft.bookDate,'2026-10-18');assert.equal(draft.aFormNo,'1042');assert.equal(draft.openingHmr,'200');assert.equal(draft.closingKmr,'140');assert.ok(draft.extractionReviewFields.includes('trips'));assert.ok(draft.meterReviewFields.includes('openingHmr'));
+ assert.equal(draft.bookDate,'2026-10-18');assert.equal(draft.aFormNo,'1042');assert.equal(draft.openingHmr,'200');assert.equal(draft.closingKmr,'1040');assert.ok(draft.extractionReviewFields.includes('trips'));assert.ok(draft.meterReviewFields.includes('openingHmr'));
 });
 test('unknown layouts and incomplete OCR geometry do not manufacture trip rows',()=>{
  const source=paddleFixture();source.pages[0].rec_texts=source.pages[0].rec_texts.map(t=>t==='Loading Time'?'Unknown heading':t);assert.equal(paddleLayout(source).tripGrid,undefined);

@@ -31,7 +31,7 @@ async function harness(t){
  const call=async(path,method='GET',body,user='alice')=>{const r=await fetch(`http://127.0.0.1:${server.address().port}`+path,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,data:await r.json()}};
  return {db,call};
 }
-const input={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}]};
+const input={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:1000,closingKmr:1010,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}]};
 
 test('a second manual card for the same tipper and shift needs a reason, is audited and flagged',async t=>{
  const {db,call}=await harness(t);
@@ -45,8 +45,8 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  assert.equal(extra.status,201,JSON.stringify(extra.data));assert.equal(extra.data.data.duplicateReason,'Card full, continuation card for second half of shift');assert.deepEqual(extra.data.data.duplicateOf,[first.data.book_no]);
  const audit=(await db.query("SELECT detail FROM mis_vlb_batch_audit WHERE action='card_added_duplicate'")).rows;assert.equal(audit.length,1);assert.deepEqual(audit[0].detail.existing,[first.data.book_no]);
  // editing either card does not trip the rule against itself; the extra card keeps its reason
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:12,revision:first.data.revision})).status,200);
- const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...input,closingKmr:14,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,'Card full, continuation card for second half of shift');
+ assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:1012,revision:first.data.revision})).status,200);
+ const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...input,closingKmr:1014,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,'Card full, continuation card for second half of shift');
  // the first card without a reason cannot be edited into a different tipper that already has a card
  const other=await call('/api/log-books/vehicle','POST',{...input,assetId:5,requestKey:randomUUID()});assert.equal(other.status,201);
  assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,assetId:1,revision:other.data.revision})).status,409);

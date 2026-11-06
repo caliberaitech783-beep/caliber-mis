@@ -82,7 +82,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
     const r=await call('/api/log-books/'+kind+suffix);assert.equal(r.status,200);assert.equal(r.data.records.length,1);assert.equal(r.data.records[0].data.location,'Sasti OB');
     assert.equal((await call('/api/log-books/'+kind+suffix,'GET',null,'unassigned')).data.records.length,0);
   }
-  const body={bookDate:'2026-12-28',location:'Sasti OC',assetId:ids.vehicle,employeeId:ids.driver,shiftId:ids.shift,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:10,closingHmr:11,trips:[],requestKey:randomUUID()};
+  const body={bookDate:'2026-12-28',location:'Sasti OC',assetId:ids.vehicle,employeeId:ids.driver,shiftId:ids.shift,shiftHours:8,openingKmr:100,closingKmr:110,openingHmr:10,closingHmr:11,trips:[],requestKey:randomUUID()};
   assert.equal((await call('/api/log-books/vehicle','POST',{...body,location:'Jayant OC'})).status,403);
   assert.equal((await call('/api/log-books/vehicle','POST',{...body,employeeId:ids.otherDriver})).status,400);
   const other=(await db.query("SELECT id FROM mis_log_books WHERE site='Jayant OC' AND book_type='vehicle'")).rows[0].id;

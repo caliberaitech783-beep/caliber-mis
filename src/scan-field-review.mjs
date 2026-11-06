@@ -1,5 +1,5 @@
 import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
-import {meterRuleIssues,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
+import {meterPlacementIssues,meterRuleIssues,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
 import {responseReviewNeeded,recoveredTripNumberIssues} from '../shared/scan-response-recovery.mjs';
 import {manualBreakdownHours} from '../shared/breakdown-hours-source.mjs';
 import {validTripTime} from '../shared/vlb-trip-handover.mjs';
@@ -23,5 +23,6 @@ export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null){
  if(options){for(const [field,collection,label,read]of [['assetId','assets','Equipment Master',raw.door],['employeeId','employees','Employee Master',raw.employeeCode],['shiftId','shifts','Shift Master',draft.cardShift]])if(!draft[field]){if(!options[collection]?.length)issues[field]=label+' is empty in this MIS database. Sync/import it before matching scans.';else if(read)issues[field]='Scan reads '+String(read).slice(0,80)+'; no unique '+label+' match was found. Check the reading or master record.';}}
  if(kind==='vehicle'&&options){const v=validateTripEquipment(draft,options.assets||[]);Object.assign(issues,v.issues);const differences=machineDiscrepancies(v.draft.trips,v.draft.scanMachineSummary);if(differences.length)issues.scanMachineSummary=differences.join(' ');for(const [key,message] of Object.entries(v.issues))if(key.startsWith('scanMachineSummary.'))issues.scanMachineSummary=[issues.scanMachineSummary,message].filter(Boolean).join(' ');}
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
+ Object.assign(issues,meterPlacementIssues(draft,kind));
  return issues;
 }

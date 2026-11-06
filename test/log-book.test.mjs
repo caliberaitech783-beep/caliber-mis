@@ -7,7 +7,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {normalizeLogBook,timeGapMinutes,registerLogBooks,assetBookKind} from '../server/routes/log-book.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
-const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:100,closingKmr:150,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
+const input=()=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingKmr:1000,closingKmr:1050,openingHmr:200,closingHmr:206.5,timeMode:'with',trips:[{equipmentName:'VPC-60',loadingTime:'08:20:00',unloadingTime:'08:40:00',tripCount:1}]});
 test('saving unloading-only rows accepts a missing machine without dropping the original unloading',()=>{
  const unloading={equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1};
  const saved=normalizeLogBook('vehicle',{...input(),trips:[unloading,...input().trips]});
@@ -17,8 +17,9 @@ test('saving unloading-only rows accepts a missing machine without dropping the 
  assert.throws(()=>normalizeLogBook('vehicle',{...input(),timeMode:'without',trips:[unloading]}),/loading equipment/);
 });
 test('template totals use the correct meter pairs, preserve zero and keep missing integration data unavailable',()=>{
- const row=normalizeLogBook('vehicle',{...input(),openingKmr:0,closingKmr:0,totalRunningKmr:999,breakdownHours:0});
- assert.equal(row.docType,'VLB');assert.equal(row.totalRunningKmr,0);assert.equal(row.totalWorkingHmr,6.5);assert.equal(row.trips[0].gapMinutes,null);assert.equal(row.trips[0].durationMinutes,20);assert.equal(row.totalTrips,1);
+ const row=normalizeLogBook('vehicle',{...input(),totalRunningKmr:999,breakdownHours:0});
+ assert.equal(row.docType,'VLB');assert.equal(row.totalRunningKmr,50);assert.equal(row.totalWorkingHmr,6.5);assert.equal(row.trips[0].gapMinutes,null);assert.equal(row.trips[0].durationMinutes,20);assert.equal(row.totalTrips,1);
+ const zero=normalizeLogBook('vehicle',{...input(),openingKmr:0,closingKmr:0,openingHmr:0,closingHmr:0});assert.equal(zero.totalRunningKmr,0);assert.equal(zero.totalWorkingHmr,0);
  for(const field of ['breakdownHours','workOrderContract'])assert.equal(row[field],null);
  assert.equal(row.availabilityHours,6.5);assert.equal(row.idleHours,1.5);
  const equipment=normalizeLogBook('equipment',{...input(),openingKmr:'',closingKmr:''});assert.equal(equipment.docType,'QLB');assert.equal(equipment.totalWorkingHmr,6.5);assert.equal(equipment.openingKmr,null);assert.deepEqual(equipment.trips,[]);
@@ -58,7 +59,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const invalidLoading={...body,requestKey:randomUUID(),trips:[{...body.trips[0],equipmentName:'V-TEST',equipmentId:'1',equipmentSource:'master-selection'}],scanMachineSummary:[]};assert.equal((await call('/api/log-books/vehicle','POST',invalidLoading)).status,400);
  const repeat=await call('/api/log-books/vehicle','POST',body);assert.equal(repeat.status,200);assert.equal(repeat.data.book_no,first.data.book_no);
  assert.equal((await call('/api/log-books/vehicle')).data.records.length,1);
- const edited=await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,closingKmr:170,revision:1});assert.equal(edited.status,200);assert.equal(edited.data.revision,2);assert.equal(edited.data.data.totalRunningKmr,70);
+ const edited=await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,closingKmr:1070,revision:1});assert.equal(edited.status,200);assert.equal(edited.data.revision,2);assert.equal(edited.data.data.totalRunningKmr,70);
  assert.equal((await call(`/api/log-books/vehicle/${first.data.id}`,'PUT',{...body,revision:1})).status,409);
  assert.equal((await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),shiftId:5})).status,400);
  assert.equal((await call('/api/log-books/equipment','POST',{...body,requestKey:randomUUID()})).status,400);

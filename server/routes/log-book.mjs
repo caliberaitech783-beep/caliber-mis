@@ -28,7 +28,7 @@ import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from '../../shared/log-book-access.mjs';
-import {meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
+import {meterPlacementIssues,meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -65,6 +65,7 @@ export function normalizeLogBook(kind,input={}){
  if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
  const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
 const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR',{signed:true}):null;
+const placementIssues=meterPlacementIssues({openingHmr,openingKmr},kind);if(placementIssues.openingKmr)fail(placementIssues.openingKmr);
 const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');

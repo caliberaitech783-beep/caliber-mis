@@ -31,7 +31,7 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(path,method='GET',body,user='alice')=>{const r=await fetch(`http://127.0.0.1:${server.address().port}`+path,{method,headers:{Authorization:user,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,data:await r.json()}};
- const input={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:0,closingKmr:10,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}],duplicateReason:'Test fixture: repeated cards for the same tipper'};
+ const input={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:8,openingKmr:1000,closingKmr:1010,openingHmr:100,closingHmr:106,manualBreakdownHours:0,timeMode:'without',trips:[{equipmentName:'VPC28',tripCount:2}],duplicateReason:'Test fixture: repeated cards for the same tipper'};
  const save=async(patch={},user='alice')=>call('/api/log-books/vehicle','POST',{...input,...patch,requestKey:randomUUID()},user);
  const initialBatch=await call('/api/vlb-batches','POST',{site:'Sasti OC',date:input.bookDate,shift:'S1',requestKey:randomUUID()});assert.equal(initialBatch.status,201,JSON.stringify(initialBatch.data));
  const seed=await save();assert.equal(seed.status,201,JSON.stringify(seed.data));
