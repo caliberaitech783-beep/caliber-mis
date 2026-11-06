@@ -22,6 +22,7 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  [13,'Users & employees',{login:'production',userType:'Super User',adminLevel:'Manager',managerRole:'Production Manager',managerSites:'Sasti OC'}],
  [14,'Users & employees',{login:'wrongpm',userType:'Super User',adminLevel:'Manager',managerRole:'Project Manager',managerSites:'Jayant OC'}],
  [15,'Users & employees',{login:'dual',userType:'Super User',adminLevel:'Manager',managerRole:'Project Manager',userRoles:['MIS User'],managerSites:'Sasti OC'}],
+ ...[31,32,33,34].map(id=>[id,'Equipment master',{category:'Vehicle',door:'V'+id,currentLocation:'Sasti OC',equipmentName:'Tipper'}]),
  ];masters.push([30,'Equipment master',{category:'Equipment',door:'VPC28',currentLocation:'Sasti OC'}]);for(const [id,name,row] of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(row)]);
  const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
@@ -38,7 +39,7 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  const createBody={site:'Sasti OC',date:'2026-12-30',shift:'S1',requestKey:randomUUID()};
 
  const manual=await save({},'bob');assert.equal(manual.status,201,JSON.stringify(manual.data));
- const scan=async(user='alice',options)=>{await db.exec('BEGIN');try{const data={...await resolveLogBookData(pool,'vehicle',input),scanCardId:randomUUID()};const result=await insertLogBook(pool,'vehicle',data,randomUUID(),user,options);await db.exec('COMMIT');return result}catch(e){await db.exec('ROLLBACK');throw e}};
+ const scan=async(user='alice',assetId=31)=>{await db.exec('BEGIN');try{const data={...await resolveLogBookData(pool,'vehicle',{...input,assetId}),scanCardId:randomUUID()};const result=await insertLogBook(pool,'vehicle',data,randomUUID(),user);await db.exec('COMMIT');return result}catch(e){await db.exec('ROLLBACK');throw e}};
  const scanned=await scan();
  const created=await call('/api/vlb-batches/'+initialBatch.data.id);assert.equal(created.status,200,JSON.stringify(created.data));const path='/api/vlb-batches/'+created.data.id;
  assert.equal(created.data.closed_at,null,'new batches stay open');assert.equal(created.data.closure_revision,0);assert.equal(created.data.entry_count,3);
@@ -69,7 +70,7 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  assert.equal((await call(path+'/reopen-decision','POST',{requestId:replacement.data.id,decision:'approve'},'pm')).status,200);
  assert.equal((await call(path+'/reopen','POST',{},'bob')).status,403,'another MIS user cannot consume approval');
  const reopened=await call(path+'/reopen','POST',{});assert.equal(reopened.status,200,JSON.stringify(reopened.data));assert.equal(reopened.data.name,created.data.name);assert.equal(reopened.data.amendment_by,'alice');
- assert.equal((await save({},'bob')).status,403);await assert.rejects(()=>scan('bob'),/another MIS user/);
+ assert.equal((await save({},'bob')).status,403);await assert.rejects(()=>scan('bob',32),/another MIS user/);
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,revision:1},'bob')).status,403);
  const failed=await save({closingHmr:'bad'});assert.equal(failed.status,400);assert.equal((await call(path)).data.closed_at,null,'failed saves do not relock');
  const retryKey=randomUUID();const added=await call('/api/log-books/vehicle','POST',{...input,requestKey:retryKey});assert.equal(added.status,201,JSON.stringify(added.data));
@@ -81,10 +82,10 @@ test('live saves auto-attach, closure blocks existing-card edits, and only the s
  assert.equal((await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,bookDate:'2026-12-29',revision:1})).status,409,'batched cards cannot move to another scope');
  const amended=await call('/api/log-books/vehicle/'+manual.data.id,'PUT',{...input,remark:'Approved amendment',revision:1});assert.equal(amended.status,200,JSON.stringify(amended.data));
  batch=(await call(path)).data;assert.ok(batch.closed_at,'editing a saved card locks its batch');assert.equal(batch.records.find(r=>r.id===manual.data.id).data.remark,'Approved amendment');
- await grant();await scan();batch=(await call(path)).data;assert.ok(batch.closed_at,'individual scan saves relock');assert.equal(batch.entry_count,5);
+ await grant();await scan('alice',32);batch=(await call(path)).data;assert.ok(batch.closed_at,'individual scan saves relock');assert.equal(batch.entry_count,5);
  await grant();await db.exec(LOG_BOOK_SCHEMA);assert.equal((await call(path)).data.closed_at,null,'reapplying schema does not lock a current approved amendment');
  // One Save all transaction may contain multiple records; lock only after every insert succeeds.
- const multi=async(fail=false)=>{await db.exec('BEGIN');try{const records=[];for(let i=0;i<2;i++){const data={...await resolveLogBookData(pool,'vehicle',input),scanCardId:randomUUID()};records.push(await insertLogBook(pool,'vehicle',data,randomUUID(),'alice',{relock:false}));}await lockSavedVlbBatches(pool,'alice',records.map(r=>r.id));if(fail)throw Error('Simulated save failure');await db.exec('COMMIT');return records;}catch(e){await db.exec('ROLLBACK');throw e}};
+ const multi=async(fail=false)=>{await db.exec('BEGIN');try{const records=[];for(let i=0;i<2;i++){const data={...await resolveLogBookData(pool,'vehicle',{...input,assetId:33+i}),scanCardId:randomUUID()};records.push(await insertLogBook(pool,'vehicle',data,randomUUID(),'alice',{relock:false}));}await lockSavedVlbBatches(pool,'alice',records.map(r=>r.id));if(fail)throw Error('Simulated save failure');await db.exec('COMMIT');return records;}catch(e){await db.exec('ROLLBACK');throw e}};
  await assert.rejects(()=>multi(true),/Simulated save failure/);batch=(await call(path)).data;assert.equal(batch.closed_at,null);assert.equal(batch.entry_count,5);
  await multi();batch=(await call(path)).data;assert.ok(batch.closed_at);assert.equal(batch.entry_count,7);assert.equal(batch.closure_revision,5);
  assert.ok(batch.audit.some(e=>e.action==='card_updated'&&e.detail.before&&e.detail.after));assert.ok(batch.audit.some(e=>e.action==='reopened'));assert.ok(batch.audit.some(e=>e.action==='reopen_rejected'));assert.equal(batch.audit.filter(e=>e.action==='saved_and_locked').length,5);
