@@ -14,7 +14,7 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  const call=async(url,body,method='POST',actor='test-admin')=>{const response=await fetch(base+url,{method,headers:{'Content-Type':'application/json','X-Test-Actor':actor},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
  const batch=randomUUID(),id=randomUUID(),other=randomUUID();
  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle','Deletion fixture','test-admin',$2::jsonb)",[batch,JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I',confirmed:true})]);
- for(const [index,cardId] of [id,other].entries())await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'fixture.png',$4,$5,$6::jsonb,'review')",[cardId,batch,index+1,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC'})]);
+ for(const [index,cardId] of [id,other].entries())await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'fixture.png',$4,$5,$6::jsonb,'review')",[cardId,batch,index+1,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',door:'V-200'})]);
  const path='/api/scan-cards/'+id,approval='Approve deletion of card '+id+' revision 1';
  const request={revision:1,reason:'Test-only fixture',approval};
  assert.equal((await call(path+'/delete',{otp:'123456',approval})).status,409);
@@ -29,7 +29,7 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  const deleted=await call(path+'/delete',payload);assert.equal(deleted.status,200,JSON.stringify(deleted));
  assert.equal((await call(path+'/delete',payload)).status,409,'single use');
  const rows=(await db.query('SELECT * FROM mis_scan_cards ORDER BY ordinal')).rows;
- assert.equal(rows[0].image,null);assert.equal(rows[0].status,'rejected');assert.deepEqual(rows[0].draft,{});assert.equal(rows[1].image.length,10);assert.equal(rows[1].status,'review');
+ assert.equal(rows[0].image,null);assert.equal(rows[0].status,'rejected');assert.deepEqual(rows[0].draft,{});assert.equal(rows[0].raw_fields.manualDeletion.vehicle,'V-200');assert.equal(rows[1].image.length,10);assert.equal(rows[1].status,'review');
  const second='/api/scan-cards/'+other,secondApproval='Approve deletion of card '+other+' revision 1';
  const stale=await call(second+'/deletion-otp',{revision:1,reason:'Test revision',approval:secondApproval},'POST','revision-user');assert.equal(stale.status,200);
  await db.query('UPDATE mis_scan_cards SET revision=2 WHERE id=$1',[other]);

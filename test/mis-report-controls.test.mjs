@@ -90,6 +90,18 @@ test('batch report shows only saved totals as tiles, keeps its heading and downl
  assert.ok(nodes(tree,'summary').some(node=>nodes(node,'strong').some(strong=>strong.props.children==='All cards')));
 });
 
+test('deleted VLB scans are listed below the download controls with their saved vehicle snapshot',async()=>{
+ const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
+ const batch={id:'batch',kind:'vehicle',name:'Deleted scans'},cards=[
+  {id:'deleted-3',batch_id:'batch',ordinal:3,status:'rejected',draft:{},raw_fields:{manualDeletion:{vehicle:'V-200'}}},
+  {id:'deleted-1',batch_id:'batch',ordinal:1,status:'rejected',draft:{},raw_fields:{manualDeletion:{vehicle:'V-101'}}},
+  {id:'active',batch_id:'batch',ordinal:2,status:'review',draft:{door:'V-300'}}
+ ];
+ const tree=render({batch,cards,token:'test'}),box=nodes(tree,'div').find(node=>node.props.className==='scan-batch-deleted-cards');
+ assert.ok(box);assert.deepEqual(nodes(box,'li').map(node=>node.props.children.join('')),['Card 1 · Vehicle V-101','Card 3 · Vehicle V-200']);
+ assert.equal(nodes(render({batch:{...batch,kind:'equipment'},cards,token:'test'}),'div').some(node=>node.props.className==='scan-batch-deleted-cards'),false);
+});
+
 test('smart search sits beside All cards and Pulse-style filters open from every data column',async()=>{
  const render=await component('scan-batch-report.jsx','ScanBatchReport',{scanBatchReport,scanBatchReportTables,scanReportCardStatus,CARD_STATUS_LEGEND});
  const props={batch:{id:'batch',kind:'vehicle',name:'Chosen batch'},cards:[{id:'card',batch_id:'batch',ordinal:1,status:'review',draft:{}}],token:'test'};

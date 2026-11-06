@@ -226,8 +226,9 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     if((await c.query('SELECT id FROM mis_scan_cards WHERE image_blob_key=$1 AND id<>$2 LIMIT 1',[card.image_blob_key,card.id])).rows.length)fail('The source image is shared. Deletion requires separate review.',409);
     await imageStorage.remove(card.image_blob_key);
    }
-   const message='Card deleted manually by user. Upload again if needed.';
-   await c.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:deletionActor(req),reason,deletedAt:new Date().toISOString(),...(row?{otpVerifiedAt:new Date().toISOString()}: {})}}),message]);
+   const vehicle=String(card.draft?.door||card.draft?.doorText||card.raw_fields?.door||card.saved_data?.door||'').trim();
+   const message='Card deleted manually by user'+(vehicle?' · Vehicle '+vehicle:'')+'. Upload again if needed.';
+   await c.query("UPDATE mis_scan_cards SET status='rejected',image=NULL,image_blob_key=NULL,image_bytes=0,ocr_text='',raw_fields=$2::jsonb,draft='{}'::jsonb,error=$3,review_note=$3,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify({manualDeletion:{by:deletionActor(req),reason,deletedAt:new Date().toISOString(),vehicle,...(row?{otpVerifiedAt:new Date().toISOString()}: {})}}),message]);
    await c.query('COMMIT');res.json({deleted:true});
   }catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}
  }));
