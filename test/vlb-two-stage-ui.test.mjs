@@ -51,7 +51,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  assert.equal(nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Breakdown Hrs').length,0,'Pulse total is read only');
  const tabs=nodes(tree,n=>n.props.role==='tab');tabs[1].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.id==='elb-breakdown-panel')[0].props.hidden,false);
  tabs[0].props.onClick();tree=render();
- const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});
+ const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select'&&n.props['data-elb-entry']==='operator')[0].props.onChange({target:{value:'5'}});
  tree=render();let htmlAfterHours=renderToStaticMarkup(tree);assert.match(htmlAfterHours,/Idle hours<\/span><input[^>]*readOnly=""[^>]*value="1\.5"/);assert.doesNotMatch(htmlAfterHours,/Status reason/);assert.equal((htmlAfterHours.match(/<span>Remark/g)||[]).length,1);
  await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'1.5');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');

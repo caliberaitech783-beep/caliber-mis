@@ -153,7 +153,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  app.get('/api/vlb-batches/:id/fleet/:assetId/breakdowns',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   const batch=await visible(pool,req.params.id,req);
-  res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,logBookOps?.readHours,req.batchActor.login));
+  res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,logBookOps?.readHours,req.batchActor.login,req.query));
  }));
  app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);

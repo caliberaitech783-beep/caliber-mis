@@ -1,3 +1,4 @@
+import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {registerLogBookDashboard} from './log-book-dashboard.mjs';
 import {registerFleetReconciliation} from './fleet-reconciliation-api.mjs';
@@ -56,11 +57,11 @@ export function timeGapMinutes(start,end){
  const parse=value=>{const m=text(value).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);if(!m||Number(m[1])>23||Number(m[2])>59||Number(m[3]||0)>59)fail('Loading and unloading times must be valid clock times.');return Number(m[1])*3600+Number(m[2])*60+Number(m[3]||0)};
  let seconds=parse(end)-parse(start);if(seconds<0)seconds+=86400;return rounded(seconds/60);
 }
-export function normalizeLogBook(kind,input={}){
+export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  if(!['vehicle','equipment'].includes(kind))fail('Invalid log book type.');
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
- const shiftHours=number(input.shiftHours,'Shift hours');if(input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
+ const shiftHours=manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
  const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,kind==='vehicle'?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true});
  if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
@@ -81,7 +82,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=rounded(closingHmr-openingHmr);
- return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
+ return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,...(manualEntry?{manualShift:isManualShift(input.manualShift)?input.manualShift:'',manualShiftOverride:true}:{}),docType:kind==='vehicle'?'VLB':'QLB',
    meterRuleErrors:meterRuleIssues(input,kind),openingKmr,closingKmr,openingHmr,closingHmr,...(replacementKmr!==null?{replacementKmr}:{}),totalRunningKmr:kind==='vehicle'?rounded(replacementKmr??(closingKmr-openingKmr)):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
@@ -91,7 +92,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
 
 const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
-export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit}={}){
+export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit,manualEntry=false}={}){
  requireOperationalDate(input.bookDate||systemBookDate());
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
  if(kind==='vehicle'){
@@ -99,7 +100,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  const validation=validateTripEquipment(input,assets,{anySite:twoStageEnabled()});if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
- const data=normalizeLogBook(kind,input);
+ const data=normalizeLogBook(kind,input,{manualEntry});
      const masterIds=[data.assetId,data.employeeId,data.shiftId];
      if(operatorSplit)masterIds.push(operatorSplit.secondOperatorId);
      if(input.workOrderId)masterIds.push(number(input.workOrderId,'Work Order',{integer:true}));
@@ -112,12 +113,14 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
        if(!secondOperator||!employeeAtLocation(secondOperator,data.location))fail('Select a second operator assigned to this location.');
        data.operatorSplit={...operatorSplit,secondOperatorName:text(secondOperator.employee||secondOperator.name||secondOperator.login),secondOperatorCaliberId:employeeCode(secondOperator)};
      }
-     const shift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
+     const baseShift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
+     const manualShifts=manualEntry&&['day','night'].includes(input.manualShift)?(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[];
+     const shift=manualEntry&&isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,manualShifts):baseShift;
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
-     if(!asset||!employee&&!employeeOptional||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     if(!asset||!employee&&!employeeOptional||!baseShift||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
      const masterShift=normalizeCardShift(shift.shiftCode)||normalizeCardShift(shift.shiftName||shift.name||shift.shift);
-     if(kind==='vehicle'&&masterShift&&data.shiftHours!==CARD_SHIFTS[masterShift].hours)fail('The selected shift requires '+CARD_SHIFTS[masterShift].hours+' hours.');
+     if(!manualEntry&&kind==='vehicle'&&masterShift&&data.shiftHours!==CARD_SHIFTS[masterShift].hours)fail('The selected shift requires '+CARD_SHIFTS[masterShift].hours+' hours.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(assetBookKind(asset)!==kind)fail('Select an asset from the correct log book category.');
      const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift.site||shift.siteName);
@@ -195,7 +198,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),bookNumberCounters,vehicleCardCounters,assets:(await withEquipmentAliases(pool,assets)).filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:(req.query?.scan==='1'?REGION_DATA.flatMap(region=>region.sites):displaySiteSelection([...sites])).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
- const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;if(!asset||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests({actor:input.actor}),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
+ const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,baseShift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data,shift=input.manualEntry||input.manualShiftOverride||isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,['day','night'].includes(input.manualShift)?(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[]):baseShift;if(!asset||!baseShift||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests({actor:input.actor}),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
  app.post('/api/log-books/hours',...protect,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
@@ -229,13 +232,13 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  async function save(req,res,next){
    let client;
    try{
-     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body),updating=Boolean(req.params.id);
+     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body,{manualEntry:true}),updating=Boolean(req.params.id);
      requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
      client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
-     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
+     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true}));
      await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);

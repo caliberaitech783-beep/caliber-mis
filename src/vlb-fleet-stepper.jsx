@@ -37,7 +37,7 @@ const text=value=>value==null?'':String(value);
 export const fleetDraftFields=(row={})=>{
  const source=row.logbook||{};
  return {
-  shiftStatus:'working',employeeId:text(source.employeeId),
+  shiftStatus:'working',manualShift:source.manualShift||'',shiftHours:source.shiftHours??'',employeeId:text(source.employeeId),
   ...(source.operatorSplit?{secondOperatorId:text(source.operatorSplit.secondOperatorId),handoverHmr:text(source.operatorSplit.handoverHmr)}:{}),
   openingHmr:text(source.openingHmr),closingHmr:text(source.closingHmr),manualBreakdownHours:text(source.manualBreakdownHours),
   statusReason:text(source.statusReason),jobCardNo:text(source.jobCardNo),remark:text(source.remark),idleHours:text(source.idleHours??source.idleHoursEntered),
@@ -65,7 +65,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const [activeTab,setActiveTab]=useState('working'),[pulseTick,setPulseTick]=useState(0),[pulseLookup,setPulseLookup]=useState({key:'',loading:false,data:null,error:''});
  const [reliefRequestKey,setReliefRequestKey]=useState('');
  const additional=Boolean(reliefRequestKey);
- const lookupKey=[batch?.id,row?.assetId,batch?.report_date,batch?.site,batch?.shift].join(':');
+ const lookupKey=[batch?.id,row?.assetId,batch?.report_date,batch?.site,batch?.shift].join(':')+(form.manualShift||form.shiftHours?':'+form.manualShift+':'+form.shiftHours:'');
  const api=async(url,method,body,signal)=>{
   const response=await fetch(url,{method,signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
   let data={};try{data=await response.json()}catch{data={}}
@@ -76,7 +76,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   if(!row?.assetId||!batch?.id)return;
   const controller=new AbortController();let cancelled=false;
   setPulseLookup({key:lookupKey,loading:true,data:null,error:''});
-  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns`,'GET',undefined,controller.signal).then(data=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data,error:''});}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
+  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns${form.shiftHours?'?'+new URLSearchParams({shiftHours:form.shiftHours,manualShift:form.manualShift||''}):''}`,'GET',undefined,controller.signal).then(data=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data,error:''});}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
   return()=>{cancelled=true;controller.abort();};
  },[lookupKey,pulseTick,session.token]);
  const pulse=pulseLookup.key===lookupKey?pulseLookup.data:null;
@@ -143,7 +143,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const surfaceMiner=isSurfaceMiner(row);
  const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
- const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
+ const idleHours=fleetIdleHours(form.shiftHours||pulse?.shiftHours,hours);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
  const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
@@ -153,7 +153,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
    <button type="button" id="elb-breakdown-tab" role="tab" aria-selected={activeTab==='breakdowns'} aria-controls="elb-breakdown-panel" onClick={()=>setActiveTab('breakdowns')}>Breakdown details{pulse?' ('+(pulse.breakdowns?.length||0)+')':''}</button>
   </nav>
   <p className="logbook-message">{batch.site} · {batch.report_date} · {batch.shift} · {row.door}</p>
-  <p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
+  <div className="logbook-fields"><label className="logbook-field"><span>Shift</span><SmartSelect aria-label="Manual ELB Shift" disabled={busy} value={form.manualShift||''} onChange={event=>{const manualShift=event.target.value;setForm(current=>({...current,manualShift,shiftHours:['day','night'].includes(manualShift)?12:(current.shiftHours||pulse?.shiftHours||8)}));setDirty(true);setError('');}}><option value="">Batch shift · {batch.shift}</option><option value="day">Day</option><option value="night">Night</option></SmartSelect></label><label className="logbook-field"><span>Shift Hrs</span><SmartSelect aria-label="Manual ELB Shift Hrs" disabled={busy} value={form.shiftHours||pulse?.shiftHours||8} onChange={event=>update('shiftHours',Number(event.target.value))}><option value={8}>8 Hrs</option><option value={12}>12 Hrs</option></SmartSelect></label></div><p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
   {pulseError&&<p className="logbook-message error" role="alert">Pulse breakdown lookup failed: {pulseError} <button type="button" onClick={()=>setPulseTick(n=>n+1)}>Retry Pulse</button></p>}
   <div id="elb-working-panel" role="tabpanel" aria-labelledby="elb-working-tab" hidden={activeTab!=='working'}>
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
