@@ -40,3 +40,24 @@ test('changing the source session never joins an older in-flight fleet read',asy
  shared.resolve(snapshot('SHARED'));manual[0].resolve(Response.json(snapshot('OLD')));manual[1].resolve(Response.json(snapshot('NEW')));
  assert.equal((await original)[0].door,'SHARED');assert.equal((await first)[0].door,'OLD');assert.equal((await same)[0].door,'OLD');assert.equal((await changed)[0].door,'NEW');
 });
+
+test('ordinary MIS saving uses scoped fleet access without requesting full master-sync permission',async()=>{
+ const calls=[];
+ const service=createPulseMasterSync({sharedSignIn:{async request(action,payload,actor){
+  calls.push({action,payload,actor});
+  if(action==='masters')throw Object.assign(Error('Your Pulse account is not authorised to sync all four masters.'),{status:403});
+  assert.equal(action,'fleet');assert.equal(actor,'ordinary-mis');
+  if(payload.site!=='Jayant OB')throw Object.assign(Error('Site access denied'),{status:403});
+  return snapshot('TPC35 - 01150');
+ }}});
+ assert.equal((await service.readEquipmentMasters('ordinary-mis','Jayant OB'))[0].door,'TPC35 - 01150');
+ await assert.rejects(service.readEquipmentMasters('ordinary-mis','Other site'),e=>e.status===403);
+ assert.ok(calls.every(c=>c.action==='fleet'));
+});
+test('simultaneous fleet reads for different sites never share authorization results',async()=>{
+ const calls=[];const service=createPulseMasterSync({sharedSignIn:{request(action,payload,actor){const p=deferred();calls.push({action,payload,actor,...p});return p.promise;}}});
+ const first=service.readEquipmentMasters('mis','Jayant OB'),other=service.readEquipmentMasters('mis','Majri OC');
+ assert.equal(calls.length,2);assert.deepEqual(calls.map(c=>c.payload.site),['Jayant OB','Majri OC']);
+ calls[0].resolve(snapshot('JAYANT'));calls[1].reject(Object.assign(Error('Site access denied'),{status:403}));
+ assert.equal((await first)[0].door,'JAYANT');await assert.rejects(other,e=>e.status===403);
+});

@@ -37,3 +37,12 @@ test('an unavailable Oracle connection does not hide the automatic Pulse connect
  assert.equal(result.masters.some(row=>row.name==='Region master'),false);
  assert.equal(result.masters.find(row=>row.source==='Pulse').connected,true);assert.match(result.masters.find(row=>row.source==='Oracle').error,/Oracle connection/);
 });
+
+test('ordinary ELB-only MIS session can request fleet verification using only its own grant',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE auth_sessions(token TEXT PRIMARY KEY,login_name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),permissions JSONB);CREATE TABLE mis_credential_sessions(session_token TEXT,grant_token TEXT);');
+ await db.query('INSERT INTO auth_sessions(token,login_name,permissions) VALUES($1,$2,$3)',['elb','ordinary-elb',JSON.stringify({misDesktopAccess:['Equipment Log Book']})]);
+ await db.query("INSERT INTO mis_credential_sessions VALUES('elb','elb-grant')");
+ const bridge=createPulseSignInBridge({pool:db,fetchImpl:async(_url,options)=>{const body=JSON.parse(options.body);assert.deepEqual(body,{grant:'elb-grant',action:'fleet',site:'Jayant OB'});return Response.json({'Equipment master':[{door:'TPC35'}]});}});
+ await bridge.request('fleet',{site:'Jayant OB'},'ordinary-elb');
+ await assert.rejects(bridge.request('fleet',{site:'Jayant OB'},'other-user'),e=>e.status===401);
+});
