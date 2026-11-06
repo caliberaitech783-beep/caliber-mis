@@ -54,7 +54,8 @@ test('full tests keep prerequisites, isolated PostgreSQL and all three workers',
   assert.match(full,/max-parallel: 3/);
   assert.match(full,/shard: \[1, 2, 3\]/);
   assert.match(full,/services:\n\s+startup-postgres:\n\s+image: postgres:16/);
-  assert.match(full,/DELETION_TEST_DATABASE_URL: postgres:\/\/release_check:release_check@127.0.0.1:54320\/caliber_mis/);
+  assert.ok(full.includes("ports: ['5432']"));
+  assert.ok(full.includes('DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:${{ job.services.startup-postgres.ports[5432] }}/caliber_mis'));
   assert.match(full,/npm test -- --test-concurrency=4 --test-shard=\$\{\{ matrix.shard \}\}\/3/);
   assert.doesNotMatch(full,/continue-on-error|test-name-pattern|test-skip-pattern/);
   const steps=['Install exact locked dependencies','Verify pinned handwriting model','Build complete UI','Run full test suite'];
