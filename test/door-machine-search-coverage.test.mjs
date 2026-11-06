@@ -26,7 +26,7 @@ test('machine-wise summary binds both scanned and manual equipment choices to ma
  const start=scan.indexOf('{(draft.scanMachineSummary||[]).map((row,i)=>');
  const summary=scan.slice(start,scan.indexOf('Add machine row',start));
  assert.match(summary,/selected=tripEquipmentSelectionValue\(row,/);
- assert.match(summary,/value=\{selected\}.*selectTripEquipment\(item,/);
+ assert.match(summary,/value=\{selected\}.*correctEquipment\('scanMachineSummary',i,e\.target\.value\)/);
  assert.match(summary,/value=\{String\(asset\.id\)\}/);
  assert.match(summary,/!selected&&row\.equipmentName/);
 });

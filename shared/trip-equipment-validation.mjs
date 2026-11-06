@@ -2,12 +2,13 @@ import {assetBookKind} from './equipment-kind.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
 const clean=v=>String(v??'').trim(),key=v=>clean(v).toUpperCase().replace(/[ ._-]/g,'');
-const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc',DE:'Demo',DEMO:'Demo'};
+const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc'};
+const machinePrefix=value=>{const prefix=key(value);return prefix==='DE'?'DEMO':prefix;};
 // Parse before removing separators: the trailing serial is not part of the door number.
-const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:key(m[1]||''),number:String(Number(m[2]))}:null;};
+const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:machinePrefix(m[1]),number:String(Number(m[2]))}:null;};
 // When the card includes the master serial suffix, use it to distinguish machines
 // that intentionally share the same short code (for example TPC63).
-const serialIdentity=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)[ ._\/-]*([0-9]+)\s*[-·–—(/]\s*([^\r\n]+)$/);if(!m)return '';const prefix=key(m[1]),family=families[prefix]||prefix,suffix=key(m[3]);return suffix?key(family)+String(Number(m[2]))+'#'+suffix:'';};
+const serialIdentity=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)[ ._\/-]*([0-9]+)\s*[-·–—(/]\s*([^\r\n]+)$/);if(!m)return '';const prefix=machinePrefix(m[1]),family=families[prefix]||prefix,suffix=key(m[3]);return suffix?key(family)+String(Number(m[2]))+'#'+suffix:'';};
 const labels=r=>[r.door,r.doorNo,r.equipmentName,r.equipment,r.name].filter(Boolean);
 // Matching also accepts approved card aliases; display labels stay the real master label.
 const matchLabels=r=>[...labels(r),...(Array.isArray(r.cardAliases)?r.cardAliases.filter(Boolean):[])];
