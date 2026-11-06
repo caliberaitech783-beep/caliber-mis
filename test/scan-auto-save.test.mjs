@@ -45,7 +45,7 @@ test('complete cards post independently without approval; retries, validation an
  assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
  assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);
- const excess=await call(second,2);assert.equal(excess.status,409);assert.match(excess.data.error,/second scanned card cannot be saved/i);
+ const excess=await call(second,2);assert.equal(excess.status,409);assert.match(excess.data.error,/second scanned card for the same driver cannot be saved/i);
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=3 WHERE id=$2',[JSON.stringify({...vehicle(7),aFormNo:'76',openingHmr:6,closingHmr:8,openingKmr:20,closingKmr:40}),second]);
  const concurrent=await Promise.all([call(second,3),call(second,3)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
  const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
