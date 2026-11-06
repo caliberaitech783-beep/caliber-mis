@@ -65,3 +65,20 @@ test('previous-shift inference does not refill a manually cleared equipment sele
  const records=[{id:'previous',data:{bookDate:'2026-11-01',cardShift:'I',trips:[{equipmentName:'VPC3',loadingTime:'08:00'}]}}];
  assert.equal(completePreviousShiftMachines(input,records).trips[0].equipmentName,'');
 });
+
+test('reopened Majri OB summary rows resolve handwritten and saved equipment labels to master IDs',()=>{
+ const site='majri ob';
+ const numbers=['89','28','108','16','07'];
+ const roster=numbers.map((number,index)=>({
+  id:'loader-'+number,door:'VPC'+Number(number)+' - '+(76100+index),kind:'equipment',site,
+ }));
+ const rows=numbers.map((number,index)=>({equipmentName:'V'+number,tripCount:[1,5,1,2,2][index]}));
+ const input={location:site,machineNotationRuleVersion:1,trips:[],scanMachineSummary:rows};
+ const saved=validateTripEquipment(normalizeScanEquipmentRows(input,roster),roster);
+ assert.deepEqual(saved.issues,{});
+ for(const summary of [rows,JSON.parse(JSON.stringify(saved.draft.scanMachineSummary))]){
+  assert.deepEqual(summary.map(row=>tripEquipmentSelectionValue(row,roster,site)),roster.map(asset=>asset.id));
+  assert.deepEqual(summary.map(row=>row.tripCount),[1,5,1,2,2]);
+ }
+ assert.equal(tripEquipmentSelectionValue(rows[0],roster.slice(1),site),'');
+});
