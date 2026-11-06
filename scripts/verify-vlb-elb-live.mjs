@@ -67,13 +67,13 @@ if(process.argv.includes('--azure')){
   const {rows}=await pool.query("SELECT b.id,b.name,count(*) FILTER (WHERE c.status='posted')::int AS saved,count(*) FILTER (WHERE c.status='rejected')::int AS rejected FROM mis_scan_batches b JOIN mis_scan_cards c ON c.batch_id=b.id AND c.duplicate_of IS NULL WHERE b.kind='vehicle' AND b.expected_context->>'bookDate'='2026-11-01' AND lower(trim(b.expected_context->>'location'))='majri ob' AND b.expected_context->>'cardShift' IN ('I','S1','1') GROUP BY b.id ORDER BY saved");
   const candidates=rows.filter(row=>row.saved===25);
   assert.ok(candidates.length,'No Majri OB Shift I scan entry with 25 saved cards');
-  const sessions=(await pool.query("SELECT token FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days' AND (lower(employee_name)='anoop paul' OR lower(role) IN ('admin','administrator')) ORDER BY (lower(employee_name)='anoop paul') DESC NULLS LAST,last_seen_at DESC LIMIT 80")).rows;
+  const sessions=(await pool.query("SELECT token FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days' AND (lower(employee_name)='anoop paul' OR lower(role) IN ('super','admin','administrator') AND permissions->>'separateMisCredentials'='true') ORDER BY (lower(employee_name)='anoop paul') DESC NULLS LAST,last_seen_at DESC LIMIT 80")).rows;
   let verified=0;
   for(const candidate of candidates){
    const stored=(await pool.query("SELECT ordinal,status,draft,raw_fields,review_note,(image IS NOT NULL OR image_blob_key IS NOT NULL) AS has_image FROM mis_scan_cards WHERE batch_id=$1 AND duplicate_of IS NULL ORDER BY ordinal",[candidate.id])).rows;
    const deletedInDb=stored.filter(c=>c.raw_fields?.manualDeletion||c.review_note.startsWith('Card deleted manually by user'));
    const remaining=stored.filter(c=>!deletedInDb.includes(c)&&c.review_note!=='Removed from batch: wrong date, site or shift');
-   const summarize=c=>({ordinal:c.ordinal,hasImage:c.has_image});
+   const summarize=c=>({ordinal:c.ordinal,hasImage:c.has_image,deletedAt:c.raw_fields?.manualDeletion?.deletedAt||null,wasVisible:c.review_note!=='Card deleted manually by user. Upload again if needed.'});
    const database={batch:candidate.name,total:remaining.length,saved:candidate.saved,deleted:deletedInDb.map(summarize),blank:remaining.filter(c=>cardDisplayGroup(c,'vehicle')==='red').map(summarize)};
    emit({database});
    verified++;
