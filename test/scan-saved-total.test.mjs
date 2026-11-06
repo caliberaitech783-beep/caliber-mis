@@ -28,14 +28,14 @@ test('valid cards save in order across separate passes, even with a card missing
   const id=calls.length,scanCardId=path.split('/')[3];
   return {record:{id,book_no:'BOOK-'+id,data:{scanCardId,scanBatchId:'batch',totalTrips:1}}};
  };
- const scope={reviewPage:false,activeRef:{current:'batch'},contextBlocked:false,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},bdFetchUnavailable:{current:true},cards:rows,card:rows[0],bdFallbackMissing:true,kind:'vehicle',canAutoSaveScanCard:()=>true,autoSaveAttempts:{current:new Set()},setBusy:()=>{},setProgress:()=>{},api,setCards:fn=>{rows=fn(rows);},applySavedScanCard,setResults:()=>{},setArchiveResult:()=>{},setNotice:()=>{},load:async id=>{calls.push('load '+id);},list:async()=>{calls.push('list');},selectedCardRef:{current:'blocked'},setPulseHours:()=>{},setPulseHoursError:()=>{},setAutoSaveError:()=>{}};
+ const scope={reviewPage:false,activeRef:{current:'batch'},contextBlocked:false,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},bdFetchUnavailable:{current:true},cards:rows,card:rows[0],bdFallbackMissing:true,kind:'vehicle',canAutoSaveScanCard:()=>true,autoSaveAttempts:{current:new Set()},autoSavingRef:{current:null},setAutoSaving:()=>{},api,setCards:fn=>{rows=fn(rows);},applySavedScanCard,setResults:()=>{},setArchiveResult:()=>{},setNotice:()=>{},load:async id=>{calls.push('load '+id);},list:async()=>{calls.push('list');},selectedCardRef:{current:'blocked'},setPulseHours:()=>{},setPulseHoursError:()=>{},setAutoSaveError:()=>{}};
  new Function(...Object.keys(scope),body)(...Object.values(scope));
  await new Promise(resolve=>setImmediate(resolve));
- assert.deepEqual(calls,['/api/scan-cards/okay/auto-save','list'],'first pass yields after one card');
+ assert.deepEqual(calls,['/api/scan-cards/okay/auto-save'],'first pass yields after one card');
  scope.cards=rows;
  new Function(...Object.keys(scope),body)(...Object.values(scope));
  await new Promise(resolve=>setImmediate(resolve));
- assert.deepEqual(calls,['/api/scan-cards/okay/auto-save','list','/api/scan-cards/also-okay/auto-save','list']);
+ assert.deepEqual(calls,['/api/scan-cards/okay/auto-save','/api/scan-cards/also-okay/auto-save']);
  assert.deepEqual(rows.map(row=>row.status),['review','posted','posted']);
  assert.equal(scanBatchReport(batch,rows).counts.saved,2);
 });

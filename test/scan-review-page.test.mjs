@@ -159,7 +159,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.equal(total[0].props.children[0].props.children,'Scan entries:');
  assert.equal(total[0].props.children.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
  assert.deepEqual(total[0].props.children[4].props.children,[7,' scan card','s']);
- assert.deepEqual(total[1].props.children,['Total Trips: ',24]);
+ assert.deepEqual(total[1].props.children,['Total Trips: ',16],'active entry uses loaded cards and other entries use their fetched totals');
  app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  app.testCapture.setFailureTick(n=>n+1);
  tree=app.render({vlbBatch:{id:'vlb-1'}});
