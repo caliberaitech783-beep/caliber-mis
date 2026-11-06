@@ -219,12 +219,12 @@ test('Scan and Upload require complete setup and activate only the selected inpu
 });
 
 test('Delete PDF sits left of Scan and selects only cards from the chosen uploaded PDF',()=>{
- const app=harness();app.render();app.testCapture.setBatch({id:'batch-1',kind:'vehicle'});app.testCapture.activeRef.current='batch-1';app.testCapture.setCards([
+ const app=harness();let tree=app.render(),alwaysAvailable=nodes(tree,n=>n.type==='button'&&React.Children.toArray(n.props.children).includes('Delete PDF'))[0];assert.equal(alwaysAvailable.props.disabled,false);alwaysAvailable.props.onClick();tree=app.render();assert.ok(nodes(tree,n=>n.props['aria-labelledby']==='scan-pdf-deletion-title')[0]);nodes(tree,n=>n.type==='button'&&n.props.children==='Cancel')[0].props.onClick();app.testCapture.setBatch({id:'batch-1',kind:'vehicle'});app.testCapture.activeRef.current='batch-1';app.testCapture.setCards([
   {id:'wrong-1',batch_id:'batch-1',ordinal:1,revision:1,status:'review',filename:'Wrong cards.pdf · page 1',draft:{},raw_fields:{}},
   {id:'right-1',batch_id:'batch-1',ordinal:2,revision:1,status:'review',filename:'Correct cards.pdf · page 1',draft:{},raw_fields:{}},
   {id:'wrong-2',batch_id:'batch-1',ordinal:3,revision:1,status:'error',filename:'Wrong cards.pdf · page 2',draft:{},raw_fields:{}}
  ]);
- let tree=app.render(),workflow=nodes(tree,n=>n.props['aria-label']==='Scanning workflow')[0],buttons=nodes(workflow,n=>n.type==='button');
+ tree=app.render();const workflow=nodes(tree,n=>n.props['aria-label']==='Scanning workflow')[0],buttons=nodes(workflow,n=>n.type==='button');
  const deletePdf=buttons.find(n=>React.Children.toArray(n.props.children).includes('Delete PDF')),scan=buttons.find(n=>n.props.children==='Scan');
  assert.ok(deletePdf);assert.equal(deletePdf.props.disabled,false);assert.equal(buttons.indexOf(deletePdf)+1,buttons.indexOf(scan));
  deletePdf.props.onClick();tree=app.render();
