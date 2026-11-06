@@ -1,4 +1,4 @@
-import {assertCombinedShiftHmr} from './log-book-shift-hmr.mjs';
+import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
@@ -166,7 +166,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(nonWorking){data.breakdownHours=status==='breakdown'?hours:data.breakdownHours;data.availabilityHours=0;data.runningHours=0;data.idleHours=status==='breakdown'?0:hours-(Number(data.breakdownHours)||0);}
  let record;
  if(row.logbook_id){
-  await assertCombinedShiftHmr(client,'equipment',data,row.logbook_id);
+  await assertCombinedShiftMeters(client,'equipment',data,row.logbook_id);
   const result=await client.query('UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL RETURNING id,book_no,book_type,book_date::text,site,asset_id,data,revision,created_at,updated_at',[JSON.stringify(data),row.logbook_id]);
   record=result.rows[0];
  }

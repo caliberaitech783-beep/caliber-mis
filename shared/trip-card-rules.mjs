@@ -4,13 +4,14 @@ export function kmrMeterReplaced({openingKmr,closingKmr}={}){
  return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
   && Number(closingKmr)<Number(openingKmr);
 }
+export const VLB_SHIFT_KMR_LIMIT=250;
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
  if(![8,12].includes(hours))return issues;
  for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
-  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:250;
+  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:VLB_SHIFT_KMR_LIMIT;
   const replaced=meter==='Kmr'&&kmrMeterReplaced(draft);
   if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<0||(!replaced&&closing<opening))continue;
   const field=replaced?'replacementKmr':'closing'+meter;

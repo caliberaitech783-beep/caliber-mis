@@ -46,14 +46,21 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  const relief={...input,employeeId:6,openingHmr:106,closingHmr:108,duplicateReason:'Relief driver took over mid-shift'};
  const over=await call('/api/log-books/vehicle','POST',{...relief,closingHmr:108.001,requestKey:randomUUID()});
  assert.equal(over.status,409);assert.equal(over.data.code,'shift_hmr_limit');assert.match(over.data.error,/8\.001 hours.*limit is 8 hours/);
- const extra=await call('/api/log-books/vehicle','POST',{...relief,requestKey:randomUUID()});
+ const replaced={...relief,openingKmr:50,closingKmr:40,replacementKmr:240};
+ const overKmr=await call('/api/log-books/vehicle','POST',{...replaced,replacementKmr:240.001,requestKey:randomUUID()});
+ assert.equal(overKmr.status,409);assert.equal(overKmr.data.code,'shift_kmr_limit');
+ assert.match(overKmr.data.error,/250\.001 km.*limit is 250 km/);
+ const extra=await call('/api/log-books/vehicle','POST',{...replaced,requestKey:randomUUID()});
  assert.equal(extra.status,201,JSON.stringify(extra.data));assert.equal(extra.data.data.duplicateReason,relief.duplicateReason);assert.deepEqual(extra.data.data.duplicateOf,[first.data.book_no]);
  assert.equal(String(extra.data.data.employeeId),'6');
  assert.equal(extra.data.data.assetId,first.data.data.assetId);
  assert.notEqual(extra.data.book_no,first.data.book_no);
  const audit=(await db.query("SELECT detail FROM mis_vlb_batch_audit WHERE action='card_added_duplicate'")).rows;assert.equal(audit.length,1);assert.deepEqual(audit[0].detail.existing,[first.data.book_no]);
- // editing either card does not trip the rule against itself; the extra card keeps its reason
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:1012,revision:first.data.revision})).status,200);
+ assert.equal(extra.data.data.totalRunningKmr,240);
+ const overKmrEdit=await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:1012,revision:first.data.revision});
+ assert.equal(overKmrEdit.status,409);assert.equal(overKmrEdit.data.code,'shift_kmr_limit');
+ // editing either card does not count that card twice; the extra card keeps its reason
+ assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,revision:first.data.revision})).status,200);
  const rejectedEdit=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingHmr:109,revision:extra.data.revision});
  assert.equal(rejectedEdit.status,409);assert.equal(rejectedEdit.data.code,'shift_hmr_limit');
  const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:1014,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
