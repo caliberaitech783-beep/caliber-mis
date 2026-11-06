@@ -23,18 +23,27 @@ export function createPdfUploadSession(open){
 // Sends start in page order; the caller assigns ordinals in that order so
 // responses may finish in any order. After a failure no further card starts,
 // but requests already in flight are awaited so their results are known.
-export async function transferScanGroups(groups,{prepare,send,signal,concurrency=1}){
+export async function transferScanGroups(groups,{prepare,send,signal,concurrency=1,preflightFirst=false}){
  if(!Number.isInteger(concurrency)||concurrency<1)throw Error('Upload concurrency must be a positive integer.');
  const iterator=groups[Symbol.asyncIterator]();
  const check=()=>{if(signal?.aborted)throw abortError();};
+ const isPdfFirst=group=>Array.isArray(group)&&group.some(page=>/\.pdf\s*·\s*page 1\b/i.test(String(page?.name||'')));
  const next=async()=>{try{check();const item=await iterator.next();if(item.done)return {done:true};check();return {group:item.value,body:await prepare(item.value)};}catch(error){return {error};}};
  const inflight=new Set();let failure;
  let pending=next();
  try{
+  const first=await pending;
+  if(first.error)throw first.error;if(first.done)return;
+  const pdfFirst=isPdfFirst(first.group);
+  if(preflightFirst||pdfFirst){check();await send(first.group,first.body);pending=next();}
+  else pending=Promise.resolve(first);
   for(;;){
    while(inflight.size>=concurrency&&!failure)await Promise.race(inflight);
    if(failure)break;
    const item=await pending;if(failure)break;if(item.error){failure=item.error;break;}if(item.done)break;
+   if(isPdfFirst(item.group)){
+    await Promise.all(inflight);if(failure)break;check();await send(item.group,item.body);pending=next();continue;
+   }
    pending=next();check();
    const task=send(item.group,item.body).then(()=>inflight.delete(task),error=>{inflight.delete(task);failure??=error;});
    inflight.add(task);

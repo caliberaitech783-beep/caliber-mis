@@ -42,6 +42,10 @@ test('rescanned cards are skipped at upload across entries for the same date, si
  // Same file again: exact bytes.
  const exact=await upload(b02.id,drawCard({seed:1,writing:'S1'}),1);
  assert.equal(exact.status,200);assert.equal(exact.data.duplicateSkipped,true);assert.equal(exact.data.reason,'exact');assert.equal(exact.data.original.cardId,originals[0]);assert.equal(exact.data.original.entryName,b01.name);assert.equal(exact.data.original.ordinal,1);
+ const beforePdf=Number((await db.query('SELECT count(*) n FROM mis_scan_cards WHERE batch_id=$1',[b02.id])).rows[0].n);
+ const rejectedPdf=await call('/api/scan-batches/'+b02.id+'/cards','POST',{uploadKey:randomUUID(),filename:'cards.pdf · page 1',entrySource:'upload',base64:drawCard({seed:1,writing:'S1'}).toString('base64'),ordinal:9});
+ assert.equal(rejectedPdf.status,409);assert.match(rejectedPdf.data.error,/PDF was already uploaded.*first card matches.*upload was cancelled/i);
+ assert.equal(Number((await db.query('SELECT count(*) n FROM mis_scan_cards WHERE batch_id=$1',[b02.id])).rows[0].n),beforePdf,'the rejected PDF preflight stores no card');
  // Same paper fed again: shifted, brighter, noisy.
  const rescan=await upload(b02.id,drawCard({seed:2,writing:'S2',shiftX:9,shiftY:-5,brightness:.05,noise:12}),2);
  assert.equal(rescan.status,200,JSON.stringify(rescan));assert.equal(rescan.data.duplicateSkipped,true);assert.equal(rescan.data.reason,'fingerprint');assert.equal(rescan.data.original.cardId,originals[1]);

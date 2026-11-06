@@ -96,3 +96,20 @@ test('invalid upload concurrency rejects before any card is prepared',async()=>{
   await assert.rejects(transferScanGroups(groups(),{concurrency,prepare:()=>assert.fail(),send:()=>assert.fail()}),/positive integer/);
  }
 });
+
+test('a PDF first card finishes before any later card transfer starts',async()=>{
+ const started=[];let releaseFirst;
+ async function* groups(){yield [{name:'cards.pdf · page 1'}];yield [{name:'cards.pdf · page 2'}];yield [{name:'cards.pdf · page 3'}]}
+ const run=transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0].name,send:async(group,name)=>{started.push(name);if(started.length===1)await new Promise(resolve=>{releaseFirst=resolve})}});
+ await new Promise(resolve=>setTimeout(resolve,10));assert.deepEqual(started,['cards.pdf · page 1']);
+ releaseFirst();await run;assert.deepEqual(started,['cards.pdf · page 1','cards.pdf · page 2','cards.pdf · page 3']);
+});
+
+test('each selected PDF waits for its own first-card duplicate check',async()=>{
+ const started=[];let releaseSecondPdf;
+ async function* groups(){yield [{name:'first.pdf · page 1'}];yield [{name:'first.pdf · page 2'}];yield [{name:'second.pdf · page 1'}];yield [{name:'second.pdf · page 2'}]}
+ const run=transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0].name,send:async(group,name)=>{started.push(name);if(name==='second.pdf · page 1')await new Promise(resolve=>{releaseSecondPdf=resolve})}});
+ while(!releaseSecondPdf)await new Promise(resolve=>setTimeout(resolve,1));
+ assert.equal(started.includes('second.pdf · page 2'),false);
+ releaseSecondPdf();await run;assert.equal(started.at(-1),'second.pdf · page 2');
+});
