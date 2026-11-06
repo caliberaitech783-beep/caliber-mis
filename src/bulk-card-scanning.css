@@ -116,7 +116,7 @@
 .scan-review-panel-toggle{display:none!important}
 @media(min-width:0px){
  .app.erp-shell:has(.scan-review-compact)>aside.erp-sidebar,.app.erp-shell:has(.scan-review-compact)>main.content>.top{visibility:hidden!important}
- .scan-review-compact{position:fixed;inset:0;z-index:1200;box-sizing:border-box;padding:8px;background:var(--bg,#f6f4fa);display:flex;flex-direction:column;gap:8px;overflow:hidden}
+ .scan-review-compact{position:fixed;inset:var(--scan-review-top,0px) var(--scan-review-right,0px) var(--scan-review-bottom,0px) var(--scan-review-left,0px);z-index:1200;box-sizing:border-box;padding:8px;background:var(--bg,#f6f4fa);display:flex;flex-direction:column;gap:8px;overflow:hidden}
  .scan-review-compact>.scan-review-controls{flex-shrink:0;margin:0}
  .scan-review-compact>.scan-error,.scan-review-compact>.scan-success,.scan-review-compact>p{flex-shrink:0;margin:0;max-height:12dvh;overflow:auto}
  .scan-review-compact>.scan-success{position:absolute;top:8px;right:8px;max-width:calc(100% - 330px);max-height:32px;padding:4px 8px;font-size:12px}
@@ -368,19 +368,17 @@
 
 /* Touch review has one vertical scroll owner, including gestures outside fields.
    Desktop keeps its independent form/scan panes. */
-@media (max-width: 899px), (hover: none) and (pointer: coarse) {
-  .scan-review-compact { overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; }
-  .scan-review-compact > .scan-review-workspace { flex: none; display: block; }
-  .scan-review-compact .scan-selected-card { display: flex; flex-direction: column; }
-  .scan-review-compact .scan-selected-card > .scan-draft { overflow: visible; }
-  .scan-review-compact .scan-draft-sheet { height: auto; }
-  .scan-review-compact .scan-draft-sheet fieldset { flex: none; overflow: visible; }
-  .scan-review-compact .scan-draft-heading { max-height: none; overflow: visible; }
-  .scan-review-compact .scan-selected-card > .scan-source { min-height: 320px; }
-  .scan-review-compact .scan-preview-viewport.scan-preview-fit { height: auto; min-height: 300px; }
-  .scan-review-compact .scan-preview-fit > .scan-preview-image { height: auto; }
-  .scan-review-compact .scan-source .scan-preview-fit .scan-preview-image img { height: auto; object-fit: contain; }
-}
+.scan-review-compact.scan-review-stacked { overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; }
+.scan-review-compact.scan-review-stacked > .scan-review-workspace { flex: none; display: block; }
+.scan-review-compact.scan-review-stacked .scan-selected-card { display: flex; flex-direction: column; }
+.scan-review-compact.scan-review-stacked .scan-selected-card > .scan-draft { overflow: visible; }
+.scan-review-compact.scan-review-stacked .scan-draft-sheet { height: auto; }
+.scan-review-compact.scan-review-stacked .scan-draft-sheet fieldset { flex: none; overflow: visible; }
+.scan-review-compact.scan-review-stacked .scan-draft-heading { max-height: none; overflow: visible; }
+.scan-review-compact.scan-review-stacked .scan-selected-card > .scan-source { min-height: 320px; }
+.scan-review-compact.scan-review-stacked .scan-preview-viewport.scan-preview-fit { height: auto; min-height: 300px; }
+.scan-review-compact.scan-review-stacked .scan-preview-fit > .scan-preview-image { height: auto; }
+.scan-review-compact.scan-review-stacked .scan-source .scan-preview-fit .scan-preview-image img { height: auto; object-fit: contain; }
 
 .scan-page .scan-correction-status.scan-review-working{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid #a98acb;border-radius:8px;background:#f3ebff;color:#402367;line-height:1.4}
 .scan-review-spinner{flex:none;width:1.2em;height:1.2em;border:2px solid #cbb5e5;border-top-color:#542d83;border-radius:50%;animation:scan-review-spin .8s linear infinite}
