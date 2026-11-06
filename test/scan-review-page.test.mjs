@@ -124,7 +124,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
  app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
  app.testCapture.setCards([okay(1),okay(2),saved]);
- app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1,tripCount:11},{id:'batch-2',name:'B2',cards:4,posted:1,tripCount:13}]);
+ app.testCapture.setBatches([{id:'batch-1',name:'B1',cards:3,posted:1,tripCount:11},{id:'batch-2',name:'B2',cards:4,posted:1,tripCount:13},{id:'empty',name:'Deleted PDF batch',cards:0,posted:0,tripCount:0}]);
  let tree=app.render({vlbBatch:{id:'vlb-1'}});
  const tile=id=>nodes(tree,n=>n.type==='button'&&n.props.className==='scan-group-button scan-group-'+id)[0];
  const count=id=>nodes(tile(id),n=>n.type==='strong')[0].props.children.join('');
@@ -133,6 +133,7 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.deepEqual(nodes(tile('orange'),n=>n.type==='small')[0].props.children,'1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B1'),n=>n.type==='span')[0].props.children[0],'3 cards · 1 saved · 2 waiting to save');
  assert.equal(nodes(chip('B2'),n=>n.type==='span')[0].props.children[0],'4 cards · 1 saved · 3 unsaved','other entries keep the server counts');
+ assert.equal(chip('Deleted PDF batch'),undefined,'an entry left with zero cards after permanent PDF deletion is not shown');
  const headline=()=>nodes(tree,n=>n.props['aria-label']==='Total cards in this batch')[0];
  const text=node=>Array.isArray(node)?node.map(text).join(''):React.isValidElement(node)?text(node.props.children):node==null?'':String(node);
  assert.match(text(headline()),/Loading current batch total/,'never replace an unavailable saved total with raw scan counts');
