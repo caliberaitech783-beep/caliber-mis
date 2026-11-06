@@ -1,21 +1,11 @@
 import {execFileSync} from 'node:child_process';
-const resource='https://management.azure.com/subscriptions/58ca09cf-ab5d-47a8-a438-e1fb2a40d030/resourceGroups/coalmine-fleet-maintenance-rg/providers/Microsoft.Web/sites/caliber-mis-783';
-const token=JSON.parse(execFileSync('az',['account','get-access-token','--resource','https://management.azure.com/','--output','json'],{encoding:'utf8'})).accessToken;
-const headers={Authorization:'Bearer '+token};
-const response=await fetch(resource+'?api-version=2023-12-01',{headers});
-if(!response.ok)throw Error('Site read: '+response.status);
-const app=await response.json();
-const scm=app.properties.enabledHostNames.find(host=>host.includes('.scm.'));
-console.log({scm});
-for(const route of ['/api/zip/site/wwwroot/dist/app-assets/','/api/vfs/site/wwwroot/dist/index.html','/api/vfs/site/wwwroot/dist/app-version.txt','/api/vfs/site/wwwroot/DEPLOYMENT_SHA','/api/vfs/site/wwwroot/src/reports-workspace.css']){
- try {
-  const started=Date.now();
-  const result=await fetch('https://'+scm+route,{headers:{...headers,'If-Match':'*'},redirect:'error',signal:AbortSignal.timeout(60000)});
-  const bytes=Buffer.from(await result.arrayBuffer());
-  console.log({route,status:result.status,bytes:bytes.length,zip:bytes.subarray(0,4).toString('hex'),seconds:(Date.now()-started)/1000,type:result.headers.get('content-type')});
- }catch(error){console.log({route,error:error.message});}
-}
-for(const route of ['/api/health','/api/app-version']){
- const info=await(await fetch('https://pulse-ll.cmll.in'+route+'?probe='+Date.now())).json();
- console.log({route,status:info.status,database:info.database,commit:info.commit,version:info.version,scheduledJobsEnabled:info.scheduledJobsEnabled});
-}
+const token=execFileSync('az',['account','get-access-token','--resource','https://management.azure.com/','--query','accessToken','-o','tsv'],{encoding:'utf8'}).trim();
+const source="import {createRequire} from 'node:module';\nimport {misDatabaseConfig} from './server/rules/mis-database-config.mjs';\nimport {decodeScanRow} from './server/rules/scan-text-storage.mjs';\nimport {scanFleetIssues} from './shared/scan-fleet-assignment.mjs';\nconst {Pool}=createRequire(import.meta.url)('pg');\nconst pool=new Pool({...misDatabaseConfig(),connectionTimeoutMillis:12000,max:1});\nconst c=await pool.connect();\ntry {\n await c.query('BEGIN READ ONLY');\n const {rows}=await c.query(\"SELECT c.id,c.ordinal,c.draft,c.raw_fields,c.status,c.revision,c.logbook_id,b.expected_context,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id WHERE b.kind='vehicle' AND b.expected_context->>'bookDate'=$1 AND lower(b.expected_context->>'location') LIKE 'majri%' AND c.duplicate_of IS NULL\",['2026-11-01']);\n const cards=rows.map(decodeScanRow).filter(r=>String(r.draft?.aFormNo||'').replace(/[^0-9]/g,'')==='1746');\n const {rows:masters}=await c.query(\"SELECT record_data FROM master_records WHERE master_name='Equipment master'\");\n const fleet=masters.map(r=>r.record_data).filter(r=>!r.sourceMissing);\n console.log(JSON.stringify({candidates:rows.length,cards:cards.map(({draft,raw_fields,...r})=>{let issues;try{issues=scanFleetIssues(fleet,{...draft,location:r.expected_context.location});}catch(e){issues=e.message}return {id:r.id,ordinal:r.ordinal,status:r.status,revision:r.revision,bookNo:r.book_no,fleetReviewError:raw_fields?.fleetReview?.error,draftMachineLabels:[...new Set([...(draft.trips||[]),...(draft.scanMachineSummary||[])].map(x=>x.equipmentName))],localMasterCheck:issues};}),v29:fleet.filter(r=>/^(?:VPC|V) *0?29(?:$|\\s|-)/i.test(r.door||r.doorNo||r.equipmentName||'')).map(r=>({door:r.door||r.doorNo||r.equipmentName,category:r.category||r.equipmentCategory||r.kind,group:r.group||r.equipmentGroup,aliases:r.cardAliases,location:r.currentLocation||r.site||r.location}))}));\n}finally{await c.query('ROLLBACK');c.release();await pool.end();}\n";
+const payload=Buffer.from(source).toString('base64');
+const command='/bin/bash -c "printf %s '+payload+' | base64 -d | NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node --input-type=module"';
+const res=await fetch('https://caliber-mis-783-gebxgedygkaba9db.scm.centralindia-01.azurewebsites.net/api/command',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({dir:'/home/site/wwwroot',command}),signal:AbortSignal.timeout(90000)});
+if(!res.ok)throw Error('Azure production diagnostic returned HTTP '+res.status);
+const data=await res.json();
+console.log(data.Output||'');
+if(data.ExitCode){console.error((data.Error||'').slice(0,500));process.exitCode=1;}
+
