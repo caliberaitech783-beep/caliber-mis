@@ -11,7 +11,7 @@ test('cross-shift cards close once, preserve driver credits and literal missing 
  assert.equal(start.data.trips[0].tripStatus,'closed');assert.equal(end.data.trips[0].tripStatus,'closed');
  assert.equal(start.data.openingTrips,1);assert.equal(start.data.endingTrips,0);
  assert.equal(end.data.openingTrips,0);assert.equal(end.data.endingTrips,1);
- assert.equal(start.data.totalTrips+end.data.totalTrips,1);
+ assert.equal(start.data.totalTrips,1);assert.equal(end.data.totalTrips,0);
  assert.equal(end.data.trips[0].handoverLinks[0].durationMinutes,20);
  assert.equal(start.data.trips[0].unloadingTime,'');assert.equal(end.data.trips[0].loadingTime,'');
  assert.equal(start.data.trips[0].handoverLinks[0].counterpart.driverName,'Next');
@@ -24,14 +24,14 @@ test('site and door isolate handovers; driver, shift, equipment and date do not'
   const result=linkVlbTripHandovers([start,card(2,'2026-12-29','Next',[unloading()],patch)]);
   assert.equal(result[0].data.trips[0].tripStatus,'open');assert.equal(result[1].data.totalTrips,0);
  }
- assert.equal(linkVlbTripHandovers([start,card(2,'2026-12-29','Next',[unloading()])])[1].data.totalTrips,1);
+ assert.equal(linkVlbTripHandovers([start,card(2,'2026-12-29','Next',[unloading()])])[1].data.trips[0].tripStatus,'closed');
 });
 test('one-to-one chronological matching, leftovers, corrections and removed cards',()=>{
  const a=card(1,'2026-12-28','First',[loading('21:10'),loading('22:10')]);
  const b=card(2,'2026-12-28','Next',[unloading('23:00')]);
  const [start,end]=linkVlbTripHandovers([a,b]);
- assert.equal(start.data.trips[0].tripStatus,'closed');assert.equal(start.data.trips[1].tripStatus,'open');assert.equal(end.data.totalTrips,1);
- assert.equal(linkVlbTripHandovers([a])[0].data.trips[0].tripStatus,'open');
+ assert.equal(start.data.trips[0].tripStatus,'closed');assert.equal(start.data.trips[1].tripStatus,'open');assert.equal(start.data.totalTrips,2);assert.equal(end.data.totalTrips,0);
+ assert.equal(linkVlbTripHandovers([a])[0].data.totalTrips,2);
  assert.equal(linkVlbTripHandovers([b])[0].data.trips[0].tripStatus,'awaiting-loading');
  assert.equal(linkVlbTripHandovers([card(1,'2026-12-30','First',[loading()]),b])[1].data.totalTrips,0);
 });
@@ -41,4 +41,14 @@ test('full trips and without-time rows remain closed; blank or invalid timed row
  assert.equal(validTripTimes({loadingTime:'25:00',unloadingTime:'10:00'}),false);
  const result=linkVlbTripHandovers([card(1,'2026-12-28','First',[{...loading(),unloadingTime:'23:59'}]),card(2,'2026-12-28','Next',[{equipmentName:'L1',tripCount:3}],{timeMode:'without'})]);
  assert.equal(result[0].data.totalTrips,1);assert.equal(result[1].data.totalTrips,3);
+});
+
+test('estimated loading time does not credit the unloading shift',()=>{
+ const a=card(1,'2026-12-28','First',[loading()]);
+ const row={...unloading(),loadingTime:'00:05',timeEstimates:{loadingTime:{value:'00:05',anchorField:'unloadingTime',anchorValue:'00:10'}}};
+ const b=card(2,'2026-12-29','Next',[row],{masterShiftStart:'00:00:00'});
+ const [start,end]=linkVlbTripHandovers([a,b]);
+ assert.equal(start.data.totalTrips,1);
+ assert.equal(end.data.totalTrips,0);
+ assert.equal(end.data.trips[0].handoverLinks[0].role,'unloading');
 });

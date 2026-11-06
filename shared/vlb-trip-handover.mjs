@@ -1,11 +1,13 @@
 import {operationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
+import {isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
 
 export const validTripTime=value=>/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value||'');
 export function validTripTimes(row){
  return Boolean(row.loadingTime||row.unloadingTime)&&['loadingTime','unloadingTime'].every(key=>!row[key]||validTripTime(row[key]));
 }
+export const vlbCountedTrips=(row,timeMode)=>timeMode==='without'||validTripTime(row.loadingTime)&&!isUnloadingOnlyTrip(row)?Number(row.tripCount)||0:0;
 const keyFor=data=>JSON.stringify([canonicalSiteName(data.location),fleetDoorKey(data.door)]);
 const seconds=value=>String(value).split(':').reduce((n,v,i)=>n+Number(v)*[3600,60,1][i],0);
 function eventTime(data,time){
@@ -23,10 +25,10 @@ export function linkVlbTripHandovers(records){
  for(const record of output){
   const data=record.data;data.openingTrips=0;data.endingTrips=0;data.completedTrips=0;
   for(const [index,row] of data.trips.entries()){
-   const count=Number(row.tripCount)||0,loading=Boolean(row.loadingTime),unloading=Boolean(row.unloadingTime);
+   const count=Number(row.tripCount)||0,loading=Boolean(row.loadingTime)&&!isUnloadingOnlyTrip(row),unloading=Boolean(row.unloadingTime);
    data.openingTrips+=loading?count:0;data.endingTrips+=unloading?count:0;
-   row.completedTrips=0;
-   if(data.timeMode==='without'||loading&&unloading){row.tripStatus='closed';row.completedTrips=count;data.completedTrips+=count;continue;}
+   row.completedTrips=vlbCountedTrips(row,data.timeMode);data.completedTrips+=row.completedTrips;
+   if(data.timeMode==='without'||loading&&unloading){row.tripStatus='closed';continue;}
    row.tripStatus=loading?'open':'awaiting-loading';row.unmatchedTrips=count;
    if(!validTripTimes(row)||!data.door||!data.location)continue;
    const key=keyFor(data);if(!groups.has(key))groups.set(key,[]);
@@ -46,7 +48,6 @@ export function linkVlbTripHandovers(records){
     start.row.handoverLinks.push({tripId,role:'loading',tripCount:count,loadingTime:start.row.loadingTime,unloadingTime:end.row.unloadingTime,durationMinutes,counterpart:reference(end.record,end.index)});
     end.row.handoverLinks.push({tripId,role:'unloading',tripCount:count,loadingTime:start.row.loadingTime,unloadingTime:end.row.unloadingTime,durationMinutes,counterpart:reference(start.record,start.index)});
     start.remaining-=count;end.remaining-=count;start.row.unmatchedTrips=start.remaining;end.row.unmatchedTrips=end.remaining;
-    end.row.completedTrips+=count;end.record.data.completedTrips+=count;
     start.row.tripStatus=start.remaining?'partly-closed':'closed';end.row.tripStatus=end.remaining?'partly-closed':'closed';
     if(!start.remaining)open.shift();
    }
@@ -61,7 +62,8 @@ export async function withVlbTripHandovers(client,records,permittedSites=null){
  const partial=(await client.query(`SELECT id,book_no,book_type,data FROM mis_log_books
  WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR site=ANY($1::text[]))
  AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'trips') AS trip
- WHERE (COALESCE(trip->>'loadingTime','')='') <> (COALESCE(trip->>'unloadingTime','')=''))`,[permittedSites])).rows;
+ WHERE (COALESCE(trip->>'loadingTime','')='') <> (COALESCE(trip->>'unloadingTime','')='')
+ OR trip->'timeEstimates'->'loadingTime' IS NOT NULL)`,[permittedSites])).rows;
  const all=new Map(partial.map(row=>[String(row.id),row]));for(const row of records)all.set(String(row.id),row);
  const linked=new Map(linkVlbTripHandovers([...all.values()]).map(row=>[String(row.id),row]));
  return records.map(row=>linked.get(String(row.id)));

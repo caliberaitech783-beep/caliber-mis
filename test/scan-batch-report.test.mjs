@@ -28,13 +28,13 @@ test('Excel has summary, card details, individual trips and machine totals scope
  const pdf=scanBatchExportTables(r,{pdf:true});assert.ok(pdf[1].columns.length<tables[1].columns.length);assert.equal(pdf[1].rows.length,1);assert.equal(pdf[2].rows.length,1);
 });
 
-test('linked handover legs retain driver credits and count one completed trip in reports',()=>{
- const loading=card('loading',1,{saved_data:{...data,scanCardId:'loading',scanBatchId:batch.id,openingTrips:1,endingTrips:0,totalTrips:0,trips:[{equipmentName:'D19',loadingTime:'12:30',unloadingTime:'',tripCount:1,completedTrips:0}]}});
- const unloading=card('unloading',2,{saved_data:{...data,scanCardId:'unloading',scanBatchId:batch.id,openingTrips:0,endingTrips:1,totalTrips:1,trips:[{equipmentName:'D19',loadingTime:'',unloadingTime:'13:30',tripCount:1,completedTrips:1}]}});
+test('linked handover legs retain driver credits and count one trip on the loading card in reports',()=>{
+ const loading=card('loading',1,{saved_data:{...data,scanCardId:'loading',scanBatchId:batch.id,openingTrips:1,endingTrips:0,totalTrips:1,trips:[{equipmentName:'D19',loadingTime:'12:30',unloadingTime:'',tripCount:1,completedTrips:1}]}});
+ const unloading=card('unloading',2,{saved_data:{...data,scanCardId:'unloading',scanBatchId:batch.id,openingTrips:0,endingTrips:1,totalTrips:0,trips:[{equipmentName:'D19',loadingTime:'',unloadingTime:'13:30',tripCount:1,completedTrips:0,handoverLinks:[{role:'unloading',tripCount:1}]}]}});
  const report=scanBatchReport(batch,[loading,unloading]);assert.equal(report.totals.trips,1);assert.equal(report.machineRows[0].trips,1);
  assert.deepEqual(report.tripBreakdown,{completed:1,machineLoading:1,handover:1});
  assert.equal(report.rows[0].openingTrips,1);assert.equal(report.rows[1].endingTrips,1);
- assert.equal(scanBatchReport(batch,[loading]).totals.trips,0);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,1);
+ assert.equal(scanBatchReport(batch,[loading]).totals.trips,1);assert.equal(scanBatchReport(batch,[unloading]).totals.trips,0);
 });
 
 test('selected scan context keeps wrong-saved, removed and unresolved cards out of Excel; a corrected handwritten header is exported',async()=>{
