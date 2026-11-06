@@ -48,6 +48,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const [form,setForm]=useState(fresh),[saved,setSaved]=useState(null),[options,setOptions]=useState(null),[records,setRecords]=useState([]),[nextCursor,setNextCursor]=useState(null),[query,setQuery]=useState(''),[error,setError]=useState(''),[success,setSuccess]=useState(''),[working,setWorking]=useState(false),[loading,setLoading]=useState(true);
 
  const [hours,setHours]=useState(null),[hoursError,setHoursError]=useState(''),[hoursLoading,setHoursLoading]=useState(false);
+ const [hoursRefresh,setHoursRefresh]=useState(0);
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
  const initialLocationFocused=useRef(false);
  const [registerOpen,setRegisterOpen]=useState(false);
@@ -103,7 +104,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const equipmentValidation=vehicle?validateTripEquipment({...form,trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))},options?.assets||[]):{draft:form,issues:{}};
  const kmr=delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
 
- useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,hmr,session.token]);
+ useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,hmr,session.token,hoursRefresh]);
 
  useEffect(()=>{if(saved)return;if(vlbBatch){setForm(current=>({...current,...vlbEntryFields(vlbBatch,options)}));return;}const location=options?.accountLocation||'';setForm(current=>current.location===location?current:{...current,location,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options,vlbBatch?.id]);
 
@@ -116,6 +117,20 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
  const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
  const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||'',...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setSuccess('');setError('');};
+
+ const startHandover=keepDriver=>{
+  const {bookDate,bookDateSource,location,shiftId,shiftHours,cardShift,bookShiftCode,assetId,employeeId}=saved.data;
+  setForm({...fresh(),bookDate,bookDateSource,location,shiftId:String(shiftId),shiftHours,cardShift,bookShiftCode,
+   ...(keepDriver?{employeeId:String(employeeId)}:{assetId:String(assetId)})});
+  setHours(null);
+  setSaved(null);
+  setEditing(true);
+  setError('');
+  setSuccess(keepDriver?'Select the replacement vehicle and record its trips on this new card.':'Select the next driver and record their trips on this new card.');
+ };
+
+ const pulseBreakdowns=hours?.breakdowns||[];
+ const vehicleInMaintenance=pulseBreakdowns.some(request=>request.ongoing);
 
  const openEntry=async row=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setEditing(false);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
@@ -198,6 +213,15 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
      {vehicle&&!editing&&saved&&<div className="logbook-trip-totals"><span>Opening trips (loaded): <strong>{saved.data.openingTrips??0}</strong></span><span>Ending trips (unloaded): <strong>{saved.data.endingTrips??0}</strong></span><span>Completed trips: <strong>{saved.data.completedTrips??saved.data.totalTrips}</strong></span></div>}
      {vehicle&&<details className="logbook-section logbook-machine-details"><summary>Machine-wise summary · {machineTripTotal(form.trips)} trips</summary><div className="logbook-section-title"><h2>Machine-wise summary</h2><span>Calculated from trip details</span></div><table className="logbook-table"><thead><tr><th>Equipment name</th><th>Total trips</th></tr></thead><tbody>{machineSummary(equipmentValidation.draft.trips).map(row=><tr key={row.equipmentName}><td>{row.equipmentName}</td><td>{row.tripCount}</td></tr>)}</tbody><tfoot><tr><th scope="row">Total trips</th><td>{machineTripTotal(form.trips)}</td></tr></tfoot></table></details>}
      <ManualLogBookDetails form={form} update={update} vehicle={vehicle} editing={editing&&!working} setWorking={setWorking} onError={setError}/>
+     {vehicle&&form.assetId&&form.location&&form.bookDate&&form.shiftId&&<section className="logbook-section" aria-label="Pulse maintenance">
+      <div className="logbook-section-title"><h2>Pulse maintenance</h2><button type="button" disabled={working||hoursLoading} onClick={()=>setHoursRefresh(value=>value+1)}>Refresh Pulse status</button></div>
+      <p role="status">{hoursLoading?'Checking Pulse maintenance status…':!hours?'Pulse maintenance status unavailable.':vehicleInMaintenance?'Vehicle in maintenance in Pulse.':pulseBreakdowns.length?'Pulse shows the vehicle was restored.':'Pulse shows no downtime for this vehicle in the selected shift.'}</p>
+      {!hoursLoading&&pulseBreakdowns.length>0&&<ul>{pulseBreakdowns.map(request=><li key={request.reference||request.start}>{request.reference&&<strong>{request.reference} · </strong>}{request.description} · {request.ongoing?'Open':'Restored'}</li>)}</ul>}
+      {!hoursLoading&&pulseBreakdowns.length>0&&(!saved||editing?<p>Save the trips and meter readings for this driver and vehicle before starting another card.</p>:<div className="logbook-header-actions">
+       <button type="button" disabled={working} onClick={()=>startHandover(true)}>New card for same driver</button>
+       {!vehicleInMaintenance&&<button type="button" disabled={working} onClick={()=>startHandover(false)}>New card for next driver</button>}
+      </div>)}
+     </section>}
      {<section className="logbook-section logbook-hours-summary"><div className="logbook-section-title"><h2>Hours summary</h2><span>{hoursLoading?'Fetching Pulse BD hours…':hours?.breakdownHours!=null?'Source: Pulse · selected location / door / date / shift':hoursError||hours?'Pulse unavailable · manual BD entry available':`Select ${vehicle?'vehicle':'equipment'}, date and shift`}</span></div><div className="logbook-fields"><Field label="Availability HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="Running HRS" hint="Closing HMR − opening HMR"><output>{fixed(hmr)}</output></Field><Field label="BD HRS"><BreakdownHoursField pulse={hours} loading={hoursLoading} error={hoursError} ready={Boolean(form.assetId&&form.shiftId&&form.bookDate&&form.location)} manualValue={form.manualBreakdownHours} savedValue={saved?.data.breakdownHours} shiftHours={form.shiftHours} disabled={!editing||working} readOnly={!editing} onChange={value=>update('manualBreakdownHours',value)}/></Field><Field label="Idle HRS" hint="Shift hours − working HMR"><output>{fixed(hmr==null?null:Number(form.shiftHours)-hmr)}</output></Field></div>{hoursError&&<p className="logbook-message">{hoursError} Enter BD hours manually in the field above if needed. Availability and idle calculations still use the meter readings.</p>}{hours?.warnings?.filter(w=>!/Working hours exceed the selected shift/.test(w)).map(w=><p key={w} className="logbook-message error">{w}</p>)}<p className="logbook-note">Breakdown intervals are restricted to the selected shift and overlapping requests are counted once. If Pulse is unavailable, BD hours can be entered manually. A zero returned by Pulse is kept as zero.</p></section>}
      {vehicle&&fleetReconciliation&&<details className="scan-fleet-reconciliation"><summary>Site fleet · VLB, breakdown and idle details</summary>{fleetReconciliation}</details>}
 

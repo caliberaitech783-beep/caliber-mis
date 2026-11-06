@@ -47,6 +47,9 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  assert.equal(over.status,409);assert.equal(over.data.code,'shift_hmr_limit');assert.match(over.data.error,/8\.001 hours.*limit is 8 hours/);
  const extra=await call('/api/log-books/vehicle','POST',{...relief,requestKey:randomUUID()});
  assert.equal(extra.status,201,JSON.stringify(extra.data));assert.equal(extra.data.data.duplicateReason,relief.duplicateReason);assert.deepEqual(extra.data.data.duplicateOf,[first.data.book_no]);
+ assert.equal(String(extra.data.data.employeeId),'6');
+ assert.equal(extra.data.data.assetId,first.data.data.assetId);
+ assert.notEqual(extra.data.book_no,first.data.book_no);
  const audit=(await db.query("SELECT detail FROM mis_vlb_batch_audit WHERE action='card_added_duplicate'")).rows;assert.equal(audit.length,1);assert.deepEqual(audit[0].detail.existing,[first.data.book_no]);
  // editing either card does not trip the rule against itself; the extra card keeps its reason
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:12,revision:first.data.revision})).status,200);
@@ -55,6 +58,8 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:14,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
  // the first card without a reason cannot be edited into a different tipper that already has a card
  const other=await call('/api/log-books/vehicle','POST',{...input,assetId:5,requestKey:randomUUID()});assert.equal(other.status,201);
+ assert.equal(other.data.data.employeeId,first.data.data.employeeId);
+ assert.notEqual(other.data.book_no,first.data.book_no);
  assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,assetId:1,revision:other.data.revision})).status,409);
  // a different shift or site is a different card
  await prepareVlbFixture(db,{...input,cardShift:'II'},'alice');
