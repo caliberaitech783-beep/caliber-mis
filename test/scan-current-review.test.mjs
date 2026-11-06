@@ -24,6 +24,18 @@ test('scan review accepts a reset KMR below HMR',async()=>{
  assert.equal(result.data.totalRunningKmr,40);
  assert.equal(result.data.totalWorkingHmr,6);
 });
+test('scan save excludes a borrowed opening loader and counts a final load without an unload',async()=>{
+ const trips=[
+  {rowNumber:1,equipmentName:'D19',equipmentSource:'previous-shift',equipmentNotation:{original:'',resolved:'D19'},loadingTime:'08:40',unloadingTime:'08:55',tripCount:1},
+  {...draft.trips[0],rowNumber:2},
+  {...draft.trips[0],rowNumber:3,loadingTime:'12:45',unloadingTime:''}
+ ];
+ const result=await checkScanCard(client,'vehicle',card,{...draft,trips,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});
+ assert.deepEqual(result.errors,[]);
+ assert.equal(result.data.totalTrips,2);
+ assert.equal(result.data.trips[0].loadingTime,'');
+ assert.equal(result.data.trips[2].unloadingTime,'');
+});
 test('genuinely missing values, invalid readings, summaries and missing pages still need correction',async()=>{
  const missing=await checkScanCard(client,'vehicle',card,{...draft,shiftHours:''});assert.ok(missing.errors.some(s=>/Shift hours/.test(s)));
  const invalid=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:-1});assert.deepEqual(invalid.errors,[]);assert.match(invalid.data.meterRuleErrors.closingHmr,/below opening/);

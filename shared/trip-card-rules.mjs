@@ -56,10 +56,20 @@ export function isUnloadingOnlyTrip(row){
 export function ignoreScanLoadingWithoutEquipment(draft){
  if(draft?.timeMode==='without'||!Array.isArray(draft?.trips))return draft;
  let changed=false;
- const trips=draft.trips.map(row=>{
+ const trips=draft.trips.map((row,index)=>{
   const estimate=row?.timeEstimates?.unloadingTime;
   const estimatedUnload=estimate?.anchorField==='loadingTime'&&estimate.value===row.unloadingTime;
-  if(!row?.loadingTime||String(row.equipmentName??'').trim()||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;
+  if(!row||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;
+  const blankLoader=!String(row.equipmentName??'').trim();
+  // Older drafts could borrow a loader for the first row even when its paper loader cell was blank.
+  const borrowedOpeningLoader=index===0&&Number(row.rowNumber||1)===1&&row.equipmentSource==='previous-shift'
+   &&!String(row.equipmentNotation?.original??row.originalEquipmentName??'').trim();
+  if(borrowedOpeningLoader){
+   changed=true;
+   const {equipmentId,equipmentSite,equipmentSource,equipmentNotation,equipmentProvenance,timeEstimates,...trip}=row;
+   return {...trip,equipmentName:'',loadingTime:''};
+  }
+  if(!row.loadingTime||!blankLoader)return row;
   changed=true;
   const {timeEstimates,...trip}=row;
   return {...trip,loadingTime:''};

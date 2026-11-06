@@ -43,6 +43,17 @@ test('scanned trips with a blank loader keep the recorded unload and discard the
  assert.equal(ignoreScanLoadingWithoutEquipment(onlyLoading),onlyLoading);
 });
 
+test('an old inferred first row is excluded while the final loading-only row counts',()=>{
+ const opening={...unload,loadingTime:'12:06',unloadingTime:'12:15',equipmentName:'V90',equipmentId:'90',equipmentSource:'previous-shift',equipmentNotation:{original:'',resolved:'V90'},equipmentProvenance:{value:'V90'}};
+ const trips=[opening,...Array.from({length:11},(_,i)=>({rowNumber:i+2,equipmentName:i<6?'V90':'V37',loadingTime:'13:00',unloadingTime:i===10?'':'13:20',tripCount:1}))];
+ const printed=[{equipmentName:'V90',tripCount:6},{equipmentName:'V37',tripCount:5}];
+ const result=completeScanTripDetails({...valid,trips,scanMachineSummary:printed},{gemini:{trips:{r:[[12,'V37','13:00','']]}}});
+ assert.equal(result.trips[0].loadingTime,'');
+ assert.equal(result.trips[0].unloadingTime,'12:15');
+ assert.equal(result.trips[0].equipmentName,'');
+ assert.deepEqual(machineSummary(result.trips),printed);
+ assert.deepEqual(completeScanTripDetails(result),result);
+});
 test('missing machines still flag actual loads and aggregate entries; bad times are retained',()=>{
  for(const patch of [{trips:[{...load,equipmentName:''}]},{timeMode:'without',trips:[{...unload,equipmentName:''}]},{trips:[{...unload,unloadingTime:''}]}]){
   const draft={...valid,...patch};
