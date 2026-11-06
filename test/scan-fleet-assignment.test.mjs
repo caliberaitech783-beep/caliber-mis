@@ -42,6 +42,20 @@ test('repeated TPC22 trips and summary use the unique equipment at the batch sit
  assert.equal(issue.reason,'transfer-required');
  assert.deepEqual(issue.fields,['trips.0.equipmentName','trips.1.equipmentName','scanMachineSummary.0.equipmentName']);
 });
+test('Majri VPC29 trips ignore the separate V29 vehicle at the same site',()=>{
+ const vehicle={id:29,door:'V29',category:'Vehicle',currentLocation:'Majri OB'};
+ const loader={id:129,door:'VPC29',category:'Equipment',currentLocation:'Majri OC'};
+ const draft={doorText:'V29',location:'majri ob',trips:[{equipmentName:'VPC29'},{equipmentName:'VPC29'}],scanMachineSummary:[{equipmentName:'VPC29',tripCount:2}]};
+ assert.deepEqual(scanFleetIssues([vehicle,loader],draft),[]);
+ const [issue]=scanFleetIssues([vehicle],draft);
+ assert.equal(issue.reason,'unknown-machine');
+ assert.deepEqual(issue.fields,['trips.0.equipmentName','trips.1.equipmentName','scanMachineSummary.0.equipmentName']);
+ assert.throws(()=>scanFleetIssues([vehicle,loader,{...loader,id:130}],draft),/duplicate.*VPC29/);
+});
+test('changing the selected equipment serial invalidates the previous fleet check',()=>{
+ const draft={location:'Majri OB',trips:[{equipmentName:'VPC29 - 111'}]};
+ assert.notEqual(scanFleetSignature(draft),scanFleetSignature({...draft,trips:[{equipmentName:'VPC29 - 222'}]}));
+});
 test('fleet detection retains the original scan and draft until the user chooses a disposition',async()=>{
  const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  const fn=source.slice(source.indexOf('async function enforceFleet('),source.indexOf(' function queueFleetCheck('));

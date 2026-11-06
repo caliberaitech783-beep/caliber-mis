@@ -14,7 +14,12 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehi
  const aliasKeys=row=>(Array.isArray(row.cardAliases)?row.cardAliases:[]).flatMap(alias=>[fleetDoorKey(alias,kind),cardMachineKey(alias,'equipment')]).filter(Boolean);
  const identifiers=row=>[row.door,row.doorNo,row.equipmentDoorNo,equipmentDoorNumber(row),...(Array.isArray(row.cardAliases)?row.cardAliases:[])].filter(Boolean);
  const exactKey=value=>String(value||'').trim().toUpperCase().replace(/\b(?:TATA|TA|T)\s*(?=\d)/,'TPC').replace(/\s+/g,'').replace(/[·–—(/]/g,'-').replace(/-+/g,'-');
- const broadMatches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key||aliasKeys(row).includes(key));
+ const broadMatches=rows.filter(row=>{
+  const category=String(row.category||row.equipmentCategory||row.kind||'').trim().toLowerCase();
+  // V29 on a trip can mean VPC29, but a V29 vehicle is a separate asset.
+  if(kind==='equipment'&&['vehicle','vehicles'].includes(category))return false;
+  return fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key||aliasKeys(row).includes(key);
+ });
  const requestedExact=exactKey(door),hasSuffix=/^[A-Z]+\d+-[^-]+$/.test(requestedExact);
  const exactMatches=hasSuffix?broadMatches.filter(row=>identifiers(row).some(value=>exactKey(value)===requestedExact)):[];
  const candidates=hasSuffix?exactMatches:broadMatches;
@@ -30,7 +35,9 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehi
  return {door,selectedSite:site,pulseSite:matches.length?current||'Unassigned':'Not registered',reason:matches.length?'transfer-required':'unknown-machine',message:'Card kept for review: machine '+door+' is '+(matches.length?'assigned in Pulse to '+(current||'no site'):'not registered in Pulse')+'; selected mine: '+site+'. '+(matches.length?'Complete its transfer':'Register the machine and assign it')+' in Pulse, then recheck this card. The original scan and draft are retained.'};
 }
 
-export function scanFleetSignature(draft={}){return JSON.stringify([fleetDoorKey(draft.doorText||''),canonicalSiteName(tripCardLocation(draft.location||'')),(draft.trips||[]).map(row=>tripEquipmentRequired(row,draft.timeMode)?fleetDoorKey(row.equipmentName||'','equipment'):null),(draft.scanMachineSummary||[]).map(row=>fleetDoorKey(row.equipmentName||'','equipment'))]);}
+// Include the full label so a correction to the serial triggers a new check.
+const fleetReviewLabel=value=>String(value||'').trim().toUpperCase();
+export function scanFleetSignature(draft={}){return JSON.stringify([2,fleetReviewLabel(draft.doorText),canonicalSiteName(tripCardLocation(draft.location||'')),(draft.trips||[]).map(row=>tripEquipmentRequired(row,draft.timeMode)?fleetReviewLabel(row.equipmentName):null),(draft.scanMachineSummary||[]).map(row=>fleetReviewLabel(row.equipmentName))]);}
 export function scanFleetIssues(rows,draft={},raw={},localDoor=''){
  const entries=[{door:draft.doorText||localDoor||raw.door,field:'doorText',kind:'vehicle'},...(draft.trips||[]).flatMap((row,i)=>tripEquipmentRequired(row,draft.timeMode)?[{door:row.equipmentName,field:'trips.'+i+'.equipmentName',kind:'equipment'}]:[]),...(draft.scanMachineSummary||[]).map((row,i)=>({door:row.equipmentName,field:'scanMachineSummary.'+i+'.equipmentName',kind:'equipment'}))];
  const issues=new Map();for(const entry of entries){if(!String(entry.door||'').trim())continue;const issue=scanFleetAssignment(rows,{doorText:entry.door,location:draft.location},{},'',entry.kind);if(!issue)continue;const key=fleetDoorKey(entry.door,entry.kind);if(!issues.has(key))issues.set(key,{...issue,key,fields:[]});issues.get(key).fields.push(entry.field);}
