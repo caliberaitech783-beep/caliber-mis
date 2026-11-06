@@ -3,9 +3,10 @@ import {SavedLogBookDetails} from './saved-log-books.jsx';
 import LogBookForm from './log-book-form.jsx';
 import PulseTripVerification from './pulse-trip-verification.jsx';
 
-export default function VlbBatchCardDetails({session,batch,record,ReportSection,canEdit,onChanged}){
+export default function VlbBatchCardDetails({session,batch,record,ReportSection,canEdit,onChanged,onClose}){
  const [image,setImage]=useState(''),[error,setError]=useState(''),[editing,setEditing]=useState(false);
  const current=batch.records.find(row=>String(row.id)===String(record.id));
+ useEffect(()=>{const node=document.getElementById('vlb-selected-card-details');node?.scrollIntoView({block:'start'});node?.focus({preventScroll:true});},[current?.id,record.viewKey]);
  useEffect(()=>{
   setImage('');setError('');if(!current?.data?.scanCardId)return;
   const controller=new AbortController();let url;
@@ -13,7 +14,8 @@ export default function VlbBatchCardDetails({session,batch,record,ReportSection,
   return()=>{controller.abort();if(url)URL.revokeObjectURL(url)};
  },[current?.id,current?.data?.scanCardId,session.token]);
  if(!current)return null;
- return <section className="logbook-section"><h2>Batch {batch.name} · {current.book_no}</h2>
+ return <section id="vlb-selected-card-details" className="logbook-section vlb-selected-card-details" tabIndex={-1} aria-label={'Saved VLB '+current.book_no}><h2>Batch {batch.name} · {current.book_no}</h2>
+  {onClose&&<button type="button" onClick={onClose}>Back to batch report</button>}
   {canEdit&&<button type="button" onClick={()=>setEditing(value=>!value)}>{editing?'Back to saved details':'Edit this VLB'}</button>}
   {editing&&canEdit?<LogBookForm key={current.id} kind="vehicle" session={session} vlbBatch={batch} initialRecord={current} onExit={()=>setEditing(false)} onSaved={()=>{setEditing(false);onChanged?.()}}/>:<><SavedLogBookDetails record={current} kind="vehicle" imageUrl={image} imageError={error} ReportSection={ReportSection}/><PulseTripVerification session={session} logbookId={current.id}/></>}
  </section>;

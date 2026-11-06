@@ -20,3 +20,15 @@ test('batch details only show a member snapshot and gate its editor',async()=>{
  editing=true;tree=Component({session:{},batch,record,canEdit:true});const editor=tree.props.children.find(child=>child?.type===Editor);assert.equal(editor.props.initialRecord,record);assert.equal(editor.props.vlbBatch,batch);
  editing=true;tree=Component({session:{},batch,record,canEdit:false});assert.equal(tree.props.children.some(child=>child?.type===Editor),false);
 });
+
+test('viewing a batch card reveals and focuses its details with a return action',async()=>{
+ const effects=[],calls=[];
+ const node={scrollIntoView:options=>calls.push(['scroll',options]),focus:options=>calls.push(['focus',options])};
+ const Component=await compile('vlb-batch-card-details.jsx','VlbBatchCardDetails',{React,useEffect:fn=>effects.push(fn),useState:initial=>[initial,()=>{}],document:{getElementById:id=>id==='vlb-selected-card-details'?node:null},SavedLogBookDetails:()=>null,LogBookForm:()=>null,PulseTripVerification:()=>null});
+ const record={id:7,book_no:'VLB7',data:{}},batch={name:'SITE/B01',records:[record]};let closed=false;
+ const tree=Component({session:{},batch,record,onClose:()=>closed=true});
+ effects[0]();
+ assert.deepEqual(calls,[['scroll',{block:'start'}],['focus',{preventScroll:true}]]);
+ assert.equal(tree.props.tabIndex,-1);
+ tree.props.children.find(child=>child?.type==='button').props.onClick();assert.equal(closed,true);
+});
