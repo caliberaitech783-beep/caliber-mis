@@ -4,6 +4,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {registerLogBooks} from '../server/routes/log-book.mjs';
+import {assertSingleVlbCardPerShift} from '../server/rules/vlb-duplicate-card.mjs';
 import {prepareVlbFixture} from './operational-fixture.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0';
@@ -64,4 +65,17 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  // a different shift or site is a different card
  await prepareVlbFixture(db,{...input,cardShift:'II'},'alice');
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,shiftId:4,cardShift:'II',requestKey:randomUUID()})).status,201);
+});
+
+test('a scanned card cannot create a second saved record for the same tipper and shift',async t=>{
+ const {db,call}=await harness(t);
+ assert.equal((await call('/api/log-books/options')).status,200);
+ await prepareVlbFixture(db,input,'alice');
+ const first=await call('/api/log-books/vehicle','POST',{...input,requestKey:randomUUID()});
+ assert.equal(first.status,201,JSON.stringify(first.data));
+ const scan={...first.data.data,scanCardId:randomUUID(),duplicateReason:'Another user uploaded the same PDF'};
+ await assert.rejects(
+  ()=>assertSingleVlbCardPerShift(db,scan),
+  error=>error.status===409&&error.details?.code==='duplicate_card'&&error.details.existing[0].bookNo===first.data.book_no&&/second scanned card cannot be saved/i.test(error.message)
+ );
 });
