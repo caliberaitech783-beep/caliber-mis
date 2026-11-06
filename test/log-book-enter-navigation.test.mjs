@@ -60,7 +60,7 @@ test('unresolved dropdown stays focused; highlighted and already selected option
 }));
 
 test('an exact typed combobox match commits and advances to the next field',()=>withFrames(flush=>{
-  const input=control('Door',{dataset:{enterCommitted:'true'},getAttribute:name=>({role:'combobox','aria-expanded':'true'})[name]});
+  const input=control('Door',{dataset:{enterCommitted:'true',enterEmptyTrip:'true'},getAttribute:name=>({role:'combobox','aria-expanded':'true'})[name]});
   const next=control('Work order'),form={querySelectorAll:()=>[input,next]};
   advanceLogBookField(event(input,form,{defaultPrevented:true}));flush();
   assert.equal(next.focused,true);assert.equal(input.dataset.enterCommitted,undefined);

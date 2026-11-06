@@ -39,14 +39,14 @@ export function advanceLogBookField(event) {
   event.preventDefault();
   if (event.repeat) return;
   const form = event.currentTarget;
-  if (input.dataset.enterEmptyTrip === 'true') {
+  const committed = combobox && input.dataset.enterCommitted === 'true';
+  if (committed) delete input.dataset.enterCommitted;
+  if (!committed && input.dataset.enterEmptyTrip === 'true') {
     form.querySelector('[data-enter-action="save"]')?.focus();
     return;
   }
   if (combobox && input.getAttribute('aria-expanded') === 'true') {
-    if (input.dataset.enterCommitted === 'true') {
-      delete input.dataset.enterCommitted;
-    } else {
+    if (!committed) {
     const list = form.ownerDocument.getElementById(input.getAttribute('aria-controls'));
     const choices = [...(list?.querySelectorAll('[role="option"]') || [])];
     const selected = choices.find(option => option.getAttribute('aria-selected') === 'true');
