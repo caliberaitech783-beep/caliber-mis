@@ -12,7 +12,7 @@ export default function ScanBatchReport({batch,cards,token,ReportSection,context
  const tables=scanBatchReportTables(report);
  const cardTable=tables.find(table=>table.name==='Cards');
  const cardStatus=new Map(report.rows.map(row=>[row.id,scanReportCardStatus(cards.find(card=>card.id===row.id),batch.kind,options,batch.expected_context,row)]));
- const deletedCards=report.vehicle?(batch.deletedCards||[]):[];
+ const deletedCards=report.vehicle?(batch.deletedCards??cards.filter(card=>card.batch_id===batch.id&&card.raw_fields?.manualDeletion).map(card=>({id:card.id,ordinal:card.ordinal,vehicle:card.raw_fields.manualDeletion.vehicle})).sort((a,b)=>a.ordinal-b.ordinal)):[];
  const cellValue=(row,column)=>display(column.value(row)),cellText=(row,column)=>cellValue(row,column).toLowerCase();
  const issuesValue=row=>{const status=cardStatus.get(row.id);return [status.label,...status.badges.map(issue=>issue.label),...status.messages].join(' · ')},issuesText=row=>issuesValue(row).toLowerCase();
  const filterColumns=[...cardTable.columns.map(column=>({...column,value:row=>cellValue(row,column)})),{key:'issues',label:'Issues',value:issuesValue}];
