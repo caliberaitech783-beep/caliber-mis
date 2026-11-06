@@ -15,6 +15,7 @@ import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
+import {assertCombinedShiftHmr} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
@@ -132,6 +133,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
  requireOperationalDate(data.bookDate);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy,undefined,{adding:true});await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}else await assertElbBatchWrite(client,data,{adding:true});
+       await assertCombinedShiftHmr(client,kind,data);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
@@ -228,7 +230,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
-     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');if(kind==='vehicle')await lockVlbBatchWrites(client);
+     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
      Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
      await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
@@ -240,6 +242,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        else {if(prior)await assertElbBatchWrite(client,prior);await assertElbBatchWrite(client,data);}
+       await assertCombinedShiftHmr(client,kind,data,req.params.id);
        const revision=number(req.body.revision,'Revision',{integer:true});
        result=await client.query('UPDATE mis_log_books SET book_date=$1,site=$2,asset_id=$3,data=$4::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$5 AND book_type=$6 AND revision=$7 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[data.bookDate,data.location,data.assetId,JSON.stringify(data),req.params.id,kind,revision]);
        if(!result.rowCount)throw Object.assign(new Error('This log book changed or is unavailable. Reload it before saving.'),{status:409});

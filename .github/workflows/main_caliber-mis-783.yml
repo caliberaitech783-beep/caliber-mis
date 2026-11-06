@@ -94,7 +94,7 @@ jobs:
           POSTGRES_USER: release_check
           POSTGRES_PASSWORD: release_check
           POSTGRES_DB: caliber_mis
-        ports: ['54320:5432']
+        ports: ['5432']
         options: >-
           --health-cmd "pg_isready -U release_check -d caliber_mis"
           --health-interval 5s --health-timeout 5s --health-retries 10
@@ -148,7 +148,7 @@ jobs:
 
       - name: Run full test suite for sensitive or unknown changes
         env:
-          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:${{ job.services.startup-postgres.ports[5432] }}/caliber_mis
         # Native Node sharding partitions the same automatic test discovery.
         # No test list or exclusion filter is introduced; all three must pass.
         run: npm test -- --test-concurrency=4 --test-shard=${{ matrix.shard }}/3
@@ -169,7 +169,7 @@ jobs:
           POSTGRES_USER: release_check
           POSTGRES_PASSWORD: release_check
           POSTGRES_DB: caliber_mis
-        ports: ['54320:5432']
+        ports: ['5432']
         options: >-
           --health-cmd "pg_isready -U release_check -d caliber_mis"
           --health-interval 5s --health-timeout 5s --health-retries 10
@@ -248,7 +248,7 @@ jobs:
       - name: Run focused tests for approved UI/report changes
         if: steps.test-plan.outputs.lane == 'fast'
         env:
-          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+          DELETION_TEST_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:${{ job.services.startup-postgres.ports[5432] }}/caliber_mis
         run: node --test ${{ steps.test-plan.outputs.tests }}
 
       - name: Verify built release identity
@@ -258,7 +258,7 @@ jobs:
 
       - name: Verify complete deployment runtime
         env:
-          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:54320/caliber_mis
+          RELEASE_CHECK_DATABASE_URL: postgres://release_check:release_check@127.0.0.1:${{ job.services.startup-postgres.ports[5432] }}/caliber_mis
         run: |
           node --check server.mjs
           node scripts/verify-server-start.mjs

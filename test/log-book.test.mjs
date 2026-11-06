@@ -64,7 +64,12 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),shiftId:5})).status,400);
  assert.equal((await call('/api/log-books/equipment','POST',{...body,requestKey:randomUUID()})).status,400);
  const equipment=await call('/api/log-books/equipment','POST',{...body,assetId:4,requestKey:randomUUID()});assert.equal(equipment.status,201);assert.match(equipment.data.book_no,/^CAL\/ELB\/18-12-26\/001$/);assert.equal(equipment.data.data.breakdownHours,0);assert.equal(equipment.data.data.hoursSource.runningHours,6.5);assert.equal(equipment.data.data.idleHours,1.5);
- assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,requestKey:randomUUID(),duplicateReason:'Test fixture: continuation card for the same tipper'});assert.equal(second.data.book_no,'VLB_M/18TH-DEC26/S1/002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-12-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'VLB_M/19TH-DEC26/S1/001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
+ assert.equal((await call('/api/log-books/equipment')).data.records.length,1);const second=await call('/api/log-books/vehicle','POST',{...body,openingHmr:206.5,closingHmr:208,requestKey:randomUUID(),duplicateReason:'Test fixture: continuation card for the same tipper'});assert.equal(second.data.book_no,'VLB_M/18TH-DEC26/S1/002');const nextDay=await call('/api/log-books/vehicle','POST',{...body,bookDate:'2026-12-19',requestKey:randomUUID()});assert.equal(nextDay.data.book_no,'VLB_M/19TH-DEC26/S1/001');assert.equal((await call('/api/log-books/vehicle','POST',{...body,workOrderId:5,requestKey:randomUUID()})).status,400);
+ const reliefEquipment={...body,assetId:4,openingHmr:206.5,jobCardNo:'RELIEF-TEST'};
+ const overEquipment=await call('/api/log-books/equipment','POST',{...reliefEquipment,closingHmr:209,requestKey:randomUUID()});
+ assert.equal(overEquipment.status,409);assert.equal(overEquipment.data.code,'shift_hmr_limit');
+ const secondEquipment=await call('/api/log-books/equipment','POST',{...reliefEquipment,closingHmr:208,requestKey:randomUUID()});
+ assert.equal(secondEquipment.status,201,JSON.stringify(secondEquipment.data));
  assert.equal((await call('/api/log-books/vehicle?first=1')).data.records[0].id,first.data.id);const last=await call('/api/log-books/vehicle?last=1');assert.equal(last.data.records.length,1);assert.equal(last.data.records[0].id,nextDay.data.id);
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'DELETE',{revision:1})).status,409);
  await db.query("UPDATE mis_vlb_batches SET closed_at=NOW() WHERE book_date='2026-12-18'");
@@ -88,7 +93,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const retained=(await call('/api/log-books/vehicle')).data.records.find(r=>r.id===closing.data.id);
  assert.equal(retained.id,closing.data.id);assert.equal(retained.data.totalTrips,0);
  for(const kind of ['vehicle','equipment']){
-  pulseAvailable=false;const fallbackBody={...body,assetId:kind==='vehicle'?1:4,manualBreakdownHours:'1.25',requestKey:randomUUID(),duplicateReason:'Test fixture: repeated card for the same tipper'};
+  pulseAvailable=false;const fallbackBody={...body,bookDate:'2026-12-22',assetId:kind==='vehicle'?1:4,manualBreakdownHours:'1.25',requestKey:randomUUID(),duplicateReason:'Test fixture: repeated card for the same tipper'};
   const fallback=await call('/api/log-books/'+kind,'POST',fallbackBody);assert.equal(fallback.status,201);assert.equal(fallback.data.data.breakdownHours,1.25);assert.equal(fallback.data.data.breakdownHoursSource,'manual');
   pulseAvailable=true;const recovered=await call('/api/log-books/'+kind+'/'+fallback.data.id,'PUT',{...fallbackBody,revision:1});assert.equal(recovered.status,200);assert.equal(recovered.data.data.breakdownHours,0);assert.equal(recovered.data.data.breakdownHoursSource,'pulse');assert.equal(recovered.data.data.manualBreakdownHours,null);
  }
@@ -98,7 +103,7 @@ test('database-backed log books enforce access, persist both forms, generate num
  const pdf='data:application/pdf;base64,'+Buffer.from('%PDF-1.4\nmanual test').toString('base64');
  const extra={breakdownDetails:[{detail:'Hose leak',startTime:'08:00',endTime:'08:20',actionTaken:'Replaced',mechanic:'Test',tmExecution:'Done',remark:'Checked'},{detail:'',startTime:'',endTime:'',actionTaken:'',mechanic:'',tmExecution:'',remark:''}],manualAttributes:[{name:'Material',value:'Coal'}],manualAttachments:[{name:'manual.pdf',data:pdf}],projectName:'Manual project'};
  for(const kind of ['vehicle','equipment']){
-  const payload={...body,...extra,assetId:kind==='vehicle'?1:4,requestKey:randomUUID(),...(kind==='vehicle'?{trips:[{...body.trips[0],jobType:'Coal haulage',remark:'Trip checked'}],scanMachineSummary:body.scanMachineSummary.slice(0,1)}:{jobDetails:[{jobType:'Loading',tripCount:18,uom:'Trips',startDate:'2026-12-18',startTime:'08:00',endDate:'2026-12-18',endTime:'09:00',remark:'Job checked'}]})};
+  const payload={...body,...extra,bookDate:'2026-12-23',assetId:kind==='vehicle'?1:4,requestKey:randomUUID(),...(kind==='vehicle'?{trips:[{...body.trips[0],jobType:'Coal haulage',remark:'Trip checked'}],scanMachineSummary:body.scanMachineSummary.slice(0,1)}:{jobDetails:[{jobType:'Loading',tripCount:18,uom:'Trips',startDate:'2026-12-18',startTime:'08:00',endDate:'2026-12-18',endTime:'09:00',remark:'Job checked'}]})};
   const made=await call('/api/log-books/'+kind,'POST',payload);assert.equal(made.status,201,JSON.stringify(made.data));assert.equal(made.data.data.breakdownDetails.length,1);assert.equal(made.data.data.breakdownDetails[0].remark,'Checked');assert.equal(made.data.data.manualAttachments[0].data,pdf);
   if(kind==='equipment')assert.equal(made.data.data.jobDetails[0].durationHours,1);else assert.equal(made.data.data.trips[0].remark,'Trip checked');
   const list=(await call('/api/log-books/'+kind)).data.records;const listed=list.find(row=>row.id===made.data.id);assert.equal(listed.data.manualAttachments[0].data,undefined,'register excludes attachment bodies');
