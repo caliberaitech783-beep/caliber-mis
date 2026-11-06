@@ -15,6 +15,7 @@ async function harness(t){
   [1,'Equipment master',{category:'Vehicle',door:'V07',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   [5,'Equipment master',{category:'Vehicle',door:'V08',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   [2,'C-Dir Employee master',{employee:'Driver',employeeId:'EMP1',site:'Sasti OC'}],
+  [6,'C-Dir Employee master',{employee:'Relief driver',employeeId:'EMP2',site:'Sasti OC'}],
   [3,'Shift Master',{site:'Sasti OC',shiftName:'Shift A',shiftCode:'I'}],
   [4,'Shift Master',{site:'Sasti OC',shiftName:'Shift B',shiftCode:'II'}],
   [10,'Users & employees',{login:'alice',userType:'Mobile User',userGroup:'MIS User',site:'Sasti OC'}],
@@ -41,12 +42,17 @@ test('a second manual card for the same tipper and shift needs a reason, is audi
  const second=await call('/api/log-books/vehicle','POST',{...input,requestKey:randomUUID()});
  assert.equal(second.status,409);assert.equal(second.data.code,'duplicate_card');assert.equal(second.data.existing[0].bookNo,first.data.book_no);assert.match(second.data.error,new RegExp(first.data.book_no));
  const short=await call('/api/log-books/vehicle','POST',{...input,requestKey:randomUUID(),duplicateReason:'short'});assert.equal(short.status,409,'a reason under ten characters is not accepted');
- const extra=await call('/api/log-books/vehicle','POST',{...input,requestKey:randomUUID(),duplicateReason:'Card full, continuation card for second half of shift'});
- assert.equal(extra.status,201,JSON.stringify(extra.data));assert.equal(extra.data.data.duplicateReason,'Card full, continuation card for second half of shift');assert.deepEqual(extra.data.data.duplicateOf,[first.data.book_no]);
+ const relief={...input,employeeId:6,openingHmr:106,closingHmr:108,duplicateReason:'Relief driver took over mid-shift'};
+ const over=await call('/api/log-books/vehicle','POST',{...relief,closingHmr:108.001,requestKey:randomUUID()});
+ assert.equal(over.status,409);assert.equal(over.data.code,'shift_hmr_limit');assert.match(over.data.error,/8\.001 hours.*limit is 8 hours/);
+ const extra=await call('/api/log-books/vehicle','POST',{...relief,requestKey:randomUUID()});
+ assert.equal(extra.status,201,JSON.stringify(extra.data));assert.equal(extra.data.data.duplicateReason,relief.duplicateReason);assert.deepEqual(extra.data.data.duplicateOf,[first.data.book_no]);
  const audit=(await db.query("SELECT detail FROM mis_vlb_batch_audit WHERE action='card_added_duplicate'")).rows;assert.equal(audit.length,1);assert.deepEqual(audit[0].detail.existing,[first.data.book_no]);
  // editing either card does not trip the rule against itself; the extra card keeps its reason
- assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:1012,revision:first.data.revision})).status,200);
- const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...input,closingKmr:1014,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,'Card full, continuation card for second half of shift');
+ assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,closingKmr:12,revision:first.data.revision})).status,200);
+ const rejectedEdit=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingHmr:109,revision:extra.data.revision});
+ assert.equal(rejectedEdit.status,409);assert.equal(rejectedEdit.data.code,'shift_hmr_limit');
+ const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:14,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
  // the first card without a reason cannot be edited into a different tipper that already has a card
  const other=await call('/api/log-books/vehicle','POST',{...input,assetId:5,requestKey:randomUUID()});assert.equal(other.status,201);
  assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,assetId:1,revision:other.data.revision})).status,409);
