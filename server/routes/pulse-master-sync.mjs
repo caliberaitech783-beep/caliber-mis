@@ -109,20 +109,20 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  };
  return {
    status,
-   async readEquipmentMasters(actor){
+   async readEquipmentMasters(actor,site){
      // Share simultaneous reads only. A later save/recheck always starts a new
      // authorized request, and different users or source sessions never share.
-     const sourceToken=token,key=JSON.stringify([sourceToken?'manual':'shared',sourceToken,actor||null]);
-     let request=fleetReadsInFlight.get(key);
-     if(!request){
-       request=(async()=>{
-         const snapshot=!sourceToken&&sharedSignIn?await sharedSignIn.request('masters',{},actor):await fetchMasters(sourceToken);
+     const sourceToken=token,key=JSON.stringify([sourceToken?'manual':'shared',sourceToken,actor||null,site||null]);
+     let pending=fleetReadsInFlight.get(key);
+     if(!pending){
+       pending=(async()=>{
+         const snapshot=!sourceToken&&sharedSignIn?await sharedSignIn.request('fleet',{site},actor):await request('/api/masters?names=Equipment%20master',{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}});
          if(!Array.isArray(snapshot?.['Equipment master'])||!snapshot['Equipment master'].length)throw Error('Pulse returned no fleet records. Reconnect Pulse before saving scanned cards.');
          return snapshot['Equipment master'];
-       })().finally(()=>{if(fleetReadsInFlight.get(key)===request)fleetReadsInFlight.delete(key);});
-       fleetReadsInFlight.set(key,request);
+       })().finally(()=>{if(fleetReadsInFlight.get(key)===pending)fleetReadsInFlight.delete(key);});
+       fleetReadsInFlight.set(key,pending);
      }
-     return structuredClone(await request);
+     return structuredClone(await pending);
    },
    async readBreakdownRequests({fresh=false,actor}={}){if(!token&&sharedSignIn)return sharedSignIn.request('requests',{},actor);if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
    forActor(actor){return sharedSignIn?{readBreakdownRequests:()=>sharedSignIn.request('requests',{},actor),verifyTripCard:(reference,payload)=>sharedSignIn.request('verify',{reference,payload},actor)}:null;},

@@ -131,7 +131,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT}){
  if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>5)throw Error('Scan concurrency must be between 1 and 5.');
  // Pulse fleet rows carry the saved card aliases of their linked local record, so an aliased written label is not held as "not registered".
- if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async actor=>withEquipmentAliases(pool,await readSourceFleet(actor),{by:'source'});}
+ if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async (actor,site)=>withEquipmentAliases(pool,await readSourceFleet(actor,site),{by:'source'});}
  let workers=0,timer,stopped=false;const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{
  req.logBookScope=await getSiteScope(req.session);
  if(req.logBookScope.sites!==null&&!req.logBookScope.sites.length)return res.status(403).json({error:'Assign a site or region to this MIS login before scanning.'});
@@ -172,7 +172,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   // The batch site is the card's site: the fleet check always runs against it.
   draft={...draft,location:expected?.location||draft.location};
   const signature=scanFleetSignature(draft);let issues=[],error='';
-  try{const fleet=await readPulseFleet(actor);const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
+  try{const fleet=await readPulseFleet(actor,draft.location);const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
   const prior=raw?.fleetReview;
   const review={signature,issues,error,checkedAt:new Date().toISOString(),decision:issues.length&&prior?.signature===signature&&prior.decision==='transfer-pending'?'transfer-pending':'unresolved'};
   await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||jsonb_build_object('fleetReview',$2::jsonb) WHERE id=$1 AND revision=$3 AND status IN('review','approved','error')",[card.id,JSON.stringify(encodeScanJson(review)),card.revision]);

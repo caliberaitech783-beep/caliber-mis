@@ -6,9 +6,9 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 const snapshot=door=>({'Equipment master':[{id:1,door}],'Region master':[],'Shift Master':[],'Users & employees':[]});
 
 test('simultaneous fleet reads share only the same actor and later reads fetch fresh data',async()=>{
- const calls=[],sharedSignIn={request(action,payload,actor){const pending=deferred();calls.push({action,actor,...pending});return pending.promise;}},service=createPulseMasterSync({sharedSignIn});
+ const calls=[],sharedSignIn={request(action,payload,actor){const pending=deferred();calls.push({action,payload,actor,...pending});return pending.promise;}},service=createPulseMasterSync({sharedSignIn});
  const first=service.readEquipmentMasters('admin-a'),same=service.readEquipmentMasters('admin-a'),other=service.readEquipmentMasters('admin-b');
- assert.deepEqual(calls.map(c=>c.actor),['admin-a','admin-b']);
+ assert.deepEqual(calls.map(c=>[c.action,c.actor]),[['fleet','admin-a'],['fleet','admin-b']]);
  calls[0].resolve(snapshot('V1'));calls[1].resolve(snapshot('V2'));
  const [a,b,c]=await Promise.all([first,same,other]);assert.deepEqual(a,b);assert.equal(c[0].door,'V2');
  a[0].door='changed locally';assert.equal(b[0].door,'V1');
