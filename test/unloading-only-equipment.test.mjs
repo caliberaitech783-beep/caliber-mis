@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tripEquipmentRequired,machineSummary} from '../shared/trip-card-rules.mjs';
+import {tripEquipmentRequired,machineSummary,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
 import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
 import {scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
@@ -29,6 +29,18 @@ test('unloading-only rows need no machine, including missing numbers and estimat
  assert.equal(tripEquipmentRequired({...estimated,loadingTime:'07:55'}),true);
  assert.equal(tripEquipmentRequired(unload,'without'),true);
  assert.equal(tripEquipmentRequired({...unload,unloadingTime:''}),true);
+});
+
+test('scanned trips with a blank loader keep the recorded unload and discard the loading time',()=>{
+ const row={...unload,loadingTime:'07:50'};
+ const draft={...valid,trips:[row,load]};
+ assert.deepEqual(manualScanIssues(draft,'vehicle',{},options),{});
+ assert.equal(completeScanTripDetails(draft).trips[0].loadingTime,'');
+ assert.deepEqual(ignoreScanLoadingWithoutEquipment(draft).trips,[unload,load]);
+ assert.equal(draft.trips[0].loadingTime,'07:50');
+ const estimated={...row,timeEstimates:{unloadingTime:{value:row.unloadingTime,anchorField:'loadingTime'}}};
+ const onlyLoading={...draft,trips:[estimated]};
+ assert.equal(ignoreScanLoadingWithoutEquipment(onlyLoading),onlyLoading);
 });
 
 test('missing machines still flag actual loads and aggregate entries; bad times are retained',()=>{

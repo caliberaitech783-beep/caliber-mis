@@ -1,5 +1,5 @@
 import {estimateMissingTripTimes} from './scan-trip-estimates.mjs';
-import {machineSummary,machineLabel,isUnloadingOnlyTrip,tripEquipmentRequired} from './trip-card-rules.mjs';
+import {machineSummary,machineLabel,isUnloadingOnlyTrip,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from './trip-card-rules.mjs';
 import {activeResponseRecoveryIssues} from './scan-response-recovery.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 const blank=value=>value==null||String(value).trim()==='';
@@ -22,7 +22,7 @@ export function completeScanTripDetails(input={},raw={}){
  raw=raw||{};
  if(activeResponseRecoveryIssues(raw,input).length)return input; // Recovered loading cells still require literal review.
  const evidence=raw.gemini||raw.hybrid||{},originalRows=evidence.trips?.r||[],summaryEvidence=evidence.fields?.machineSummary||[];
- const trips=completeMachinesFromSummary((input.trips||[]).map(row=>({...row})),input.scanMachineSummary||[],summaryEvidence,input.scanMachineSummarySource);
+ let trips=completeMachinesFromSummary((input.trips||[]).map(row=>({...row})),input.scanMachineSummary||[],summaryEvidence,input.scanMachineSummarySource);
  let previous='',previousNumber=0,previousNotation=null;
  for(const [i,row] of trips.entries()){
   const number=row.rowNumber||i+1,source=originalRows.find(r=>r[0]===number);
@@ -39,6 +39,7 @@ export function completeScanTripDetails(input={},raw={}){
   if(blank(row.tripCount)&&populated){row.tripCount=1;row.tripCountSource='individual-trip-row';}
   previousNumber=number;
  }
+ trips=ignoreScanLoadingWithoutEquipment({...input,trips}).trips;
  const complete=trips.length>0&&trips.every((r,i)=>(!tripEquipmentRequired(r,input.timeMode)||!blank(r.equipmentName))&&Number.isSafeInteger(Number(r.tripCount))&&Number(r.tripCount)>0&&(i===0||(r.rowNumber||i+1)===(trips[i-1].rowNumber||i)+1));
  const calculated=complete?machineSummary(trips).map(row=>{
   const notation=trips.find(trip=>machineLabel(trip.equipmentName)===row.equipmentName)?.equipmentNotation;
@@ -59,7 +60,7 @@ export function completeScanTripDetails(input={},raw={}){
    return next;
   });
  }
- return estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})},raw);
+ return ignoreScanLoadingWithoutEquipment(estimateMissingTripTimes({...input,trips,scanMachineSummary:summary,...(summarySource?{scanMachineSummarySource:summarySource}:{})},raw));
 }
 
 

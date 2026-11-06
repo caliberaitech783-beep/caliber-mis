@@ -66,12 +66,16 @@ try{
    const visible=e=>e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0;
    const round=v=>Math.round(v*100)/100;
    const issues=[];
+   // Main's desktop-only one-page VLB form deliberately uses 10px/12px text.
+   // Scan review, mobile manual entry and ELB retain the existing larger floors.
+   const compactManualVlb=mode==='manual-vlb'&&width>=1000;
+   const minimumLabel=compactManualVlb?10:16,minimumValue=compactManualVlb?12:20;
    if(document.documentElement.scrollWidth>width+2)issues.push('Page overflow '+document.documentElement.scrollWidth+' > '+width);
    const labels=[...document.querySelectorAll('#scan-entry-fields label > span,#logbook-entry-form .logbook-field > span,.saved-logbook-values dt')].filter(visible);
    if(labels.length<5)issues.push('Expected visible form/detail labels, found '+labels.length);
-   for(const e of labels){const s=getComputedStyle(e);if(parseFloat(s.fontSize)<16||Number(s.fontWeight)<700)issues.push('Small/nonbold label '+e.textContent+' '+s.fontSize+'/'+s.fontWeight);}
+   for(const e of labels){const s=getComputedStyle(e);if(parseFloat(s.fontSize)<minimumLabel||Number(s.fontWeight)<700)issues.push('Small/nonbold label '+e.textContent+' '+s.fontSize+'/'+s.fontWeight);}
    for(const e of [...document.querySelectorAll('#scan-entry-fields input,#scan-entry-fields output,#logbook-entry-form .logbook-field input')].filter(visible)){
-    const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<20)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
+    const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<minimumValue)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
     if(box.right>width+2||box.left< -2)issues.push('Field outside viewport');
     if(e.type==='time'&&box.width<168)issues.push('Native time too narrow: '+box.width);
     if(e.closest('.scan-trip-entry')&&e.tagName==='INPUT'&&parseFloat(s.fontSize)!==20)issues.push('Trip value must use its bounded 20px font: '+s.fontSize);

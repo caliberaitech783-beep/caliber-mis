@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setDraft=setDraft;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -24,6 +24,21 @@ function harness(search='',kind='vehicle'){
  const render=(props={})=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
  return {render,window,listeners,effects,slots,testCapture};
 }
+test('Wrong door review isolates door checks without changing full-card validation',()=>{
+ const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
+ const draft={doorText:'',assetId:'',bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[],openingHmr:'',closingHmr:''};
+ const card={id:'door-card',batch_id:'batch1',ordinal:1,status:'review',draft,raw_fields:{},checks:{errors:['Enter door number.','Driver / operator is required.','Closing HMR is missing.'],warnings:['Batch values applied. Card shows Date: 2026-11-02; batch 2026-11-01.']}};
+ app.testCapture.setCards([card]);app.testCapture.setSelected(card.id);app.testCapture.setOptions({assets:[],employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});app.testCapture.setDraft(draft);
+ const tree=app.render();
+ const status=nodes(tree,n=>n.type===scope.ScanCorrectionStatus&&n.props.errors)[0];assert.ok(status);
+ assert.ok(status.props.errors.some(message=>/door/i.test(message)));
+ assert.ok(!status.props.errors.some(message=>/HMR|driver|summary|date/i.test(message)));
+ assert.deepEqual(status.props.warnings,[]);
+ assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['doorText','assetId']);
+ assert.ok(nodes(tree,n=>n.props['data-review-section']==='trips').every(n=>n.props.hidden));
+ assert.equal(nodes(tree,n=>n.type==='h2'&&n.props.children==='Ready for automatic saving').length,0,'hidden issues continue blocking final save');
+});
+
 test('VLB overview keeps compact input panels separate from corrections; attention opens a separate URL and Back restores overview',()=>{
  const app=harness();let tree=app.render();
  assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);

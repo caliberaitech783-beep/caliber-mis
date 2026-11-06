@@ -2,11 +2,12 @@ import {meterRuleIssues} from '../shared/trip-card-rules.mjs';
 import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
-import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
+import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
 export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
+ if(kind==='vehicle')input=ignoreScanLoadingWithoutEquipment(input);
  const draft=normalizeScanEquipmentRows({...withScannedDoor(input,raw,kind),...(raw?.machineNotation?.version===1?{machineNotationRuleVersion:1}:{}),trips:scanTripTimeInputs(input.trips)},options?.assets||[]);
  // A generic "check extracted handwriting" marker does not mean a value needs
  // typing. Keep actual missing/invalid values and specific conflicts visible.

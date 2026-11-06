@@ -1,4 +1,4 @@
-import {normalizeScannedTime} from './scan-clock.mjs';
+import {normalizeScannedTime,validScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
@@ -40,6 +40,20 @@ export function isUnloadingOnlyTrip(row){
  const loading=value(row.loadingTime),unloading=value(row.unloadingTime),estimate=row.timeEstimates?.loadingTime;
  const estimatedLoading=estimate&&loading===value(estimate.value)&&estimate.anchorField==='unloadingTime'&&unloading===value(estimate.anchorValue);
  return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
+}
+// A blank loader with a recorded unload is an unloading handover on scanned cards.
+export function ignoreScanLoadingWithoutEquipment(draft){
+ if(draft?.timeMode==='without'||!Array.isArray(draft?.trips))return draft;
+ let changed=false;
+ const trips=draft.trips.map(row=>{
+  const estimate=row?.timeEstimates?.unloadingTime;
+  const estimatedUnload=estimate?.anchorField==='loadingTime'&&estimate.value===row.unloadingTime;
+  if(!row?.loadingTime||String(row.equipmentName??'').trim()||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;
+  changed=true;
+  const {timeEstimates,...trip}=row;
+  return {...trip,loadingTime:''};
+ });
+ return changed?{...draft,trips}:draft;
 }
 // A previous load can finish on this card without identifying a new loader.
 // Untimed aggregate rows and rows that record loading still require equipment.

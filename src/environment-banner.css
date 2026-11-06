@@ -11,7 +11,7 @@ html[data-mis-environment] .app.erp-shell>aside.erp-sidebar{top:var(--mis-enviro
 html[data-mis-environment] .top{top:calc(var(--navigation-header-height,76px) + var(--mis-environment-banner-height))}
 html[data-mis-environment] .app.erp-shell .top{top:var(--mis-environment-banner-height)!important}
 html[data-mis-environment] .normal>header{top:var(--mis-environment-banner-height)}
-html[data-mis-environment] .scan-review-compact{top:var(--mis-environment-banner-height)}
+html[data-mis-environment] .scan-review-compact{top:max(var(--mis-environment-banner-height),var(--scan-review-top,0px))}
 html[data-mis-environment] .app,html[data-mis-environment] .normal,html[data-mis-environment] .login{min-height:calc(100vh - var(--mis-environment-banner-height))}
 @media (max-width:900px){html[data-mis-environment] .normal:not(.embedded-workspace):has(.mobile-workspace){height:calc(100dvh - var(--mis-environment-banner-height))}}
 /* Toasts pinned near the top edge keep clear of the bar. */

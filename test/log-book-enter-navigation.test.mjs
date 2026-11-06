@@ -59,6 +59,13 @@ test('unresolved dropdown stays focused; highlighted and already selected option
   next.focused=false;active=null;selected=true;input.value='Chosen';advanceLogBookField(event(input,form,{defaultPrevented:true}));flush();assert.equal(next.focused,true);
 }));
 
+test('an exact typed combobox match commits and advances to the next field',()=>withFrames(flush=>{
+  const input=control('Door',{dataset:{enterCommitted:'true'},getAttribute:name=>({role:'combobox','aria-expanded':'true'})[name]});
+  const next=control('Work order'),form={querySelectorAll:()=>[input,next]};
+  advanceLogBookField(event(input,form,{defaultPrevented:true}));flush();
+  assert.equal(next.focused,true);assert.equal(input.dataset.enterCommitted,undefined);
+}));
+
 test('invalid fields block advancement; IME, modifiers, held Enter and employee-owned actions do not double-advance',()=>withFrames(flush=>{
   const field=control('Date',{checkValidity:()=>false}),next=control('Door'),form={querySelectorAll:()=>[field,next]};
   advanceLogBookField(event(field,form));flush();assert.equal(field.reported,true);assert.equal(next.focused,undefined);

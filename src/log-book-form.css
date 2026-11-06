@@ -120,3 +120,21 @@
 .logbook-vehicle .logbook-header-actions{flex-wrap:nowrap;overflow-x:auto}
 .logbook-vehicle-trips .logbook-table th,
 .logbook-vehicle .logbook-breakdown-details .logbook-table th{font-size:13px;font-weight:800}
+
+/* VLB manual is a single desktop work sheet. Its compact controls intentionally
+   override the shared large-form readability rules so the complete default
+   card (details, five trips, breakdowns, attributes and hours) stays on screen. */
+@media screen and (min-width:1000px){
+ .logbook-vehicle #logbook-entry-form .logbook-field{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:3px 5px}
+ .logbook-vehicle #logbook-entry-form .logbook-field>span{font-size:10px!important;line-height:1.15;text-align:right}
+ .logbook-vehicle #logbook-entry-form .logbook-field>small{font-size:9px!important;line-height:1.15}
+ .logbook-vehicle #logbook-entry-form .logbook-field :is(input:not([type=checkbox]):not([type=radio]),select,textarea,output){min-height:25px!important;height:25px!important;padding:3px 6px;font-size:12px!important;line-height:1.2}
+ .logbook-vehicle #logbook-entry-form :is(h2,h3,summary){font-size:11px!important;line-height:1.2}
+ .logbook-vehicle #logbook-entry-form .logbook-section{padding:4px;margin-bottom:0}
+ .logbook-vehicle #logbook-entry-form .logbook-section-title{margin-bottom:3px}
+ .logbook-vehicle #logbook-entry-form .logbook-table-wrap{max-height:151px}
+ .logbook-vehicle #logbook-entry-form .logbook-breakdown-details .logbook-table-wrap{max-height:76px}
+ .logbook-vehicle #logbook-entry-form .logbook-table :is(th,td){padding:2px 4px;font-size:10px!important}
+ .logbook-vehicle #logbook-entry-form .logbook-table :is(input,select,output){min-height:23px!important;height:23px!important;padding:2px 4px;font-size:11px!important}
+ .logbook-vehicle #logbook-entry-form .logbook-save-bar{display:none}
+}

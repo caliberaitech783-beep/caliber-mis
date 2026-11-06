@@ -4,25 +4,30 @@ import {canonicalSiteName} from './site-location.mjs';
 import {tripCardLocation} from './scan-site-match.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
-export function scanFleetAssignment(rows,draft={},raw={},localDoor=''){
+export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehicle'){
  if(!Array.isArray(rows)||!rows.length)throw Error('Pulse fleet verification unavailable. The scan is retained; reconnect Pulse and retry.');
  const door=String(draft.doorText||localDoor||raw.door||'').trim();
  const site=String(draft.location||'').trim();
  if(!door||!site||!/[0-9]/.test(door))throw Error('Enter a readable machine door number and site before Pulse fleet verification. The scan is retained.');
- const key=fleetDoorKey(door);
+ const key=fleetDoorKey(door,kind);
  // An approved card alias on the Pulse record answers for the written label in either notation.
- const aliasKeys=row=>(Array.isArray(row.cardAliases)?row.cardAliases:[]).flatMap(alias=>[fleetDoorKey(alias),cardMachineKey(alias,'equipment')]).filter(Boolean);
- const matches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row))===key||aliasKeys(row).includes(key));
+ const aliasKeys=row=>(Array.isArray(row.cardAliases)?row.cardAliases:[]).flatMap(alias=>[fleetDoorKey(alias,kind),cardMachineKey(alias,'equipment')]).filter(Boolean);
+ const identifiers=row=>[row.door,row.doorNo,row.equipmentDoorNo,equipmentDoorNumber(row),...(Array.isArray(row.cardAliases)?row.cardAliases:[])].filter(Boolean);
+ const exactKey=value=>String(value||'').trim().toUpperCase().replace(/\b(?:TATA|TA|T)\s*(?=\d)/,'TPC').replace(/\s+/g,'').replace(/[·–—(/]/g,'-').replace(/-+/g,'-');
+ const broadMatches=rows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key||aliasKeys(row).includes(key));
+ const requestedExact=exactKey(door),hasSuffix=/^[A-Z]+\d+-[^-]+$/.test(requestedExact);
+ const exactMatches=hasSuffix?broadMatches.filter(row=>identifiers(row).some(value=>exactKey(value)===requestedExact)):[];
+ const matches=hasSuffix?exactMatches:broadMatches;
  if(matches.length>1)throw Error('Pulse has duplicate machine identifiers for '+door+'. Resolve the Equipment Master duplicates before saving. The scan is retained.');
  const current=matches[0]?.currentLocation||matches[0]?.location||matches[0]?.site||'';
  if(matches.length&&canonicalSiteName(tripCardLocation(current))===canonicalSiteName(tripCardLocation(site)))return null;
  return {door,selectedSite:site,pulseSite:matches.length?current||'Unassigned':'Not registered',reason:matches.length?'transfer-required':'unknown-machine',message:'Card kept for review: machine '+door+' is '+(matches.length?'assigned in Pulse to '+(current||'no site'):'not registered in Pulse')+'; selected mine: '+site+'. '+(matches.length?'Complete its transfer':'Register the machine and assign it')+' in Pulse, then recheck this card. The original scan and draft are retained.'};
 }
 
-export function scanFleetSignature(draft={}){return JSON.stringify([fleetDoorKey(draft.doorText||''),canonicalSiteName(tripCardLocation(draft.location||'')),(draft.trips||[]).map(row=>tripEquipmentRequired(row,draft.timeMode)?fleetDoorKey(row.equipmentName||''):null),(draft.scanMachineSummary||[]).map(row=>fleetDoorKey(row.equipmentName||''))]);}
+export function scanFleetSignature(draft={}){return JSON.stringify([fleetDoorKey(draft.doorText||''),canonicalSiteName(tripCardLocation(draft.location||'')),(draft.trips||[]).map(row=>tripEquipmentRequired(row,draft.timeMode)?fleetDoorKey(row.equipmentName||'','equipment'):null),(draft.scanMachineSummary||[]).map(row=>fleetDoorKey(row.equipmentName||'','equipment'))]);}
 export function scanFleetIssues(rows,draft={},raw={},localDoor=''){
- const entries=[{door:draft.doorText||localDoor||raw.door,field:'doorText'},...(draft.trips||[]).flatMap((row,i)=>tripEquipmentRequired(row,draft.timeMode)?[{door:row.equipmentName,field:'trips.'+i+'.equipmentName'}]:[]),...(draft.scanMachineSummary||[]).map((row,i)=>({door:row.equipmentName,field:'scanMachineSummary.'+i+'.equipmentName'}))];
- const issues=new Map();for(const entry of entries){if(!String(entry.door||'').trim())continue;const issue=scanFleetAssignment(rows,{doorText:entry.door,location:draft.location});if(!issue)continue;const key=fleetDoorKey(entry.door);if(!issues.has(key))issues.set(key,{...issue,key,fields:[]});issues.get(key).fields.push(entry.field);}
+ const entries=[{door:draft.doorText||localDoor||raw.door,field:'doorText',kind:'vehicle'},...(draft.trips||[]).flatMap((row,i)=>tripEquipmentRequired(row,draft.timeMode)?[{door:row.equipmentName,field:'trips.'+i+'.equipmentName',kind:'equipment'}]:[]),...(draft.scanMachineSummary||[]).map((row,i)=>({door:row.equipmentName,field:'scanMachineSummary.'+i+'.equipmentName',kind:'equipment'}))];
+ const issues=new Map();for(const entry of entries){if(!String(entry.door||'').trim())continue;const issue=scanFleetAssignment(rows,{doorText:entry.door,location:draft.location},{},'',entry.kind);if(!issue)continue;const key=fleetDoorKey(entry.door,entry.kind);if(!issues.has(key))issues.set(key,{...issue,key,fields:[]});issues.get(key).fields.push(entry.field);}
  return [...issues.values()];
 }
 export function scanFleetBlockingMessage(card){

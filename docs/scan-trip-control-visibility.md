@@ -1,6 +1,6 @@
 # Scan trip controls during correction
 
-The trip editor always keeps the printed serial, loading equipment, trip count
+When the Trips section is displayed, the editor keeps the printed serial, loading equipment, trip count
 and row delete control together. Header correction filtering does not decide
 which trip rows or trip controls are displayed. When the draft uses With time,
 loading time, unloading time and the derived read-only GAP are visible in both
@@ -15,6 +15,9 @@ Removing trip-level hidden attributes makes their visibility independent of the
 header filter, including older/restrictive correction-filter behavior. Saved
 records, scan extraction, equipment matching, permissions, validation and autosave
 handlers are unchanged.
+
+Issue-specific review tiles keep their current scope: non-trip tiles can hide the
+entire Trips section, while trip/machine-summary review shows its complete rows.
 
 Correction rows use the same responsive timed grid, including GAP. The restored
 time selector does not inherit the old horizontal flex basis as a 220px vertical
