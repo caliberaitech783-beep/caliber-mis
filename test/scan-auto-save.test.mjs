@@ -18,6 +18,8 @@ test('complete cards post independently without approval; retries, validation an
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const masters=[[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E1',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]];
  masters.push([6,'Equipment master',{category:'Equipment',door:'D19',currentLocation:'Sasti OC'}]);
+ for(const id of [7,8,9,10])masters.push([id,'Equipment master',{category:'Vehicle',door:'V32'+id,currentLocation:'Sasti OC'}]);
+ const vehicle=id=>({...valid,assetId:String(id),doorText:'V32'+id});
  for(const [id,name,data]of masters)await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
  let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
  const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
@@ -43,21 +45,23 @@ test('complete cards post independently without approval; retries, validation an
  assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
  assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);
- const concurrent=await Promise.all([call(second,2),call(second,2)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
+ const excess=await call(second,2);assert.equal(excess.status,409);assert.match(excess.data.error,/Combined working HMR.*12 hours.*limit is 8 hours/);
+ await db.query('UPDATE mis_scan_cards SET draft=$1,revision=3 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76',openingHmr:6,closingHmr:8,openingKmr:20,closingKmr:40}),second]);
+ const concurrent=await Promise.all([call(second,3),call(second,3)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
  const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
- const warning=await add(4,{...valid,aFormNo:'77',closingHmr:9});
- const corrected=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+warning,{method:'PUT',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'save',draft:{...valid,aFormNo:'77',meterCorrectionHistory:[]}})});assert.equal(corrected.status,200,await corrected.text());
+ const warning=await add(4,{...vehicle(7),aFormNo:'77',closingHmr:9});
+ const corrected=await fetch('http://127.0.0.1:'+server.address().port+'/api/scan-cards/'+warning,{method:'PUT',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'save',draft:{...vehicle(7),aFormNo:'77',meterCorrectionHistory:[]}})});assert.equal(corrected.status,200,await corrected.text());
  const fixed=await call(warning,2);assert.equal(fixed.status,200,JSON.stringify(fixed));
  const audit=fixed.data.record.data.meterCorrectionHistory;assert.equal(audit.length,1);assert.equal(audit[0].before.closingHmr,9);assert.equal(audit[0].after.closingHmr,6);assert.match(audit[0].issues.closingHmr,/maximum.*8/);assert.equal(audit[0].by,'test-admin');
  const persisted=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[fixed.data.record.id])).rows[0].data;assert.deepEqual(persisted.meterCorrectionHistory,audit);
  const correctedReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const cardsTable=correctedReport.tables.find(table=>table.name==='Cards');const errorIndex=cardsTable.columns.findIndex(column=>column.tone==='error'),fixedIndex=cardsTable.columns.findIndex(column=>column.tone==='corrected');assert.ok(errorIndex>0);assert.ok(cardsTable.rows.some(row=>/9 hours/.test(row[errorIndex])&&/6 hours/.test(row[fixedIndex])));
 
- const breached=await add(40,{...valid,aFormNo:'77A',closingHmr:9,closingKmr:251});const breachedSave=await call(breached);assert.equal(breachedSave.status,200,JSON.stringify(breachedSave));assert.match(breachedSave.data.record.data.meterRuleErrors.closingHmr,/Exceeds limit/);assert.match(breachedSave.data.record.data.meterRuleErrors.closingKmr,/Exceeds limit/);
+ const breached=await add(40,{...vehicle(8),aFormNo:'77A',closingHmr:9,closingKmr:251});const breachedSave=await call(breached);assert.equal(breachedSave.status,200,JSON.stringify(breachedSave));assert.match(breachedSave.data.record.data.meterRuleErrors.closingHmr,/Exceeds limit/);assert.match(breachedSave.data.record.data.meterRuleErrors.closingKmr,/Exceeds limit/);
  const errorReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const errorTable=errorReport.tables.find(t=>t.name==='Cards'),errorColumn=errorTable.columns.findIndex(c=>c.tone==='error');assert.ok(errorTable.rows.some(r=>String(r[errorColumn]).includes(breachedSave.data.record.data.employeeName)&&String(r[errorColumn]).includes(breachedSave.data.record.data.caliberId)&&/251 km/.test(r[errorColumn])));
  const rejected=await add(5,{...valid,aFormNo:'78'});await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[rejected]);assert.equal((await call(rejected)).status,409);
  pulseAvailable=false;
- const fallback=await add(6,{...valid,aFormNo:'79'});const missing=await call(fallback);assert.equal(missing.status,409);assert.match(missing.data.error,/Enter BD hours manually/);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[fallback])).rows[0].status,'review');
- await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'79',manualBreakdownHours:'1.5'}),fallback]);
+ const fallback=await add(6,{...vehicle(9),aFormNo:'79'});const missing=await call(fallback);assert.equal(missing.status,409);assert.match(missing.data.error,/Enter BD hours manually/);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[fallback])).rows[0].status,'review');
+ await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...vehicle(9),aFormNo:'79',manualBreakdownHours:'1.5'}),fallback]);
  const manual=await call(fallback,2);assert.equal(manual.status,200);const manualData=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[manual.data.record.id])).rows[0].data;assert.equal(manualData.breakdownHours,1.5);assert.equal(manualData.breakdownHoursSource,'manual');assert.equal(manualData.hoursSource.enteredBy,'test-admin');
  pulseAvailable=true;
  const equipmentBatch=randomUUID(),equipmentId=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[equipmentBatch,'equipment','Equipment','test-admin']);await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,1,'job.png',$3,$4,$5,'review')",[equipmentId,equipmentBatch,Buffer.from('job image'),randomUUID(),JSON.stringify({...valid,doorText:'E1',assetId:'4',trips:[],scanMachineSummary:[]})]);assert.equal((await call(equipmentId)).status,200);
@@ -65,7 +69,7 @@ test('complete cards post independently without approval; retries, validation an
  // No printed card number and no Work Order master must still save. Null card
  // numbers allow distinct unnumbered scans without colliding in the unique index.
  await db.query("DELETE FROM master_records WHERE id=5");
- const unnumbered={...valid,aFormNo:'',jobCardNo:'',workOrderId:''};
+ const unnumbered={...vehicle(10),closingHmr:2,aFormNo:'',jobCardNo:'',workOrderId:''};
  for(const ordinal of [7,8]){
   const id=await add(ordinal,unnumbered);
   const result=await call(id);
