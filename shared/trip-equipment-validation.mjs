@@ -2,7 +2,7 @@ import {assetBookKind} from './equipment-kind.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
 const clean=v=>String(v??'').trim(),key=v=>clean(v).toUpperCase().replace(/[ ._-]/g,'');
-const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc'};
+const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc',DE:'Demo',DEMO:'Demo'};
 // Parse before removing separators: the trailing serial is not part of the door number.
 const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:key(m[1]||''),number:String(Number(m[2]))}:null;};
 // When the card includes the master serial suffix, use it to distinguish machines

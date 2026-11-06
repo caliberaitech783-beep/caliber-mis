@@ -15,6 +15,7 @@ export const EQUIPMENT_MACHINE_RULES=[
  {code:'TPC',label:'TPC',aliases:['T','TA','TATA','TPC','EICHER']},
  {code:'SPC',label:'SPC',aliases:['S','SPC','SCANIA']},
  {code:'LPC',label:'LPC',aliases:['L','LPC','HAULPAK','HAULPAK DUMPER']},
+ {code:'DEMO',label:'DEMO',aliases:['DE','DEMO']},
  {code:'D',label:'Dozer',aliases:['D','DOZER']},
  {code:'G',label:'Grader',aliases:['G','GRADER']},
  {code:'PL',label:'Pay Loader',aliases:['PL','PAY LOADER','PAYLOADER']},
@@ -90,6 +91,21 @@ export function selectTripEquipment(row={},equipmentId='',assets=[],site=''){
  const resolved=asset?resolvedMachineName(asset):'';
  return {...row,equipmentId:asset?String(asset.id):'',equipmentName:resolved,equipmentSource:'master-selection',originalEquipmentName:original,equipmentNotation:{original,resolved}};
 }
+// A correction to an OCR label applies to the same uncorrected label throughout
+// this card, including its printed summary. Explicit choices and counts stay intact.
+export function correctMatchingTripEquipment(draft,collection,index,equipmentId,assets=[]){
+ const source=draft[collection]?.[index];if(!source)return draft;
+ const chosen=selectTripEquipment(source,equipmentId,assets,draft.location);
+ const original=source.originalEquipmentName||source.equipmentNotation?.original||source.equipmentName||'';
+ const key=cardMachineKey(original,'equipment');
+ const replace=(row,i,name)=>{
+  if(name===collection&&i===index)return chosen;
+  if(!chosen.equipmentId||row.equipmentSource==='master-selection')return row;
+  const label=row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName||'';
+  return key&&cardMachineKey(label,'equipment')===key?selectTripEquipment(row,equipmentId,assets,draft.location):row;
+ };
+ return {...draft,trips:(draft.trips||[]).map((row,i)=>replace(row,i,'trips')),scanMachineSummary:(draft.scanMachineSummary||[]).map((row,i)=>replace(row,i,'scanMachineSummary'))};
+}
 export function tripEquipmentSelectionValue(row={},assets=[],site='',version=2){
  const available=siteEquipmentOptions(assets,site);
  if(row.equipmentSource==='master-selection')return available.some(asset=>String(asset.id)===String(row.equipmentId))?String(row.equipmentId):'';
@@ -158,5 +174,5 @@ export function aliasMachineHint(row={}){
 }
 // A derived parsing aid only. The original OCR text and field values stay intact.
 export function compactScanEquipmentReferences(line){
- return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|[VETSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^HYDRA$/i.test(prefix)?'Hydra'+number:/^[VETSLH]$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
+ return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|DEMO|DE|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|[VETSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^HYDRA$/i.test(prefix)?'Hydra'+number:/^[VETSLH]$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
 }

@@ -24,6 +24,19 @@ function harness(search='',kind='vehicle'){
  const render=(props={})=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
  return {render,window,listeners,effects,slots,testCapture};
 }
+test('manual DC to DEMO correction updates every matching trip and summary through the review controls',()=>{
+ const app=harness('&scanView=review');app.render();
+ const assets=[{id:'demo25',door:'DEMO25-49001',kind:'equipment',site:'Sasti OC'}];
+ const draft={location:'Sasti OC',machineNotationRuleVersion:1,trips:[{equipmentName:'DC25',tripCount:2},{equipmentName:'DC25',tripCount:4}],scanMachineSummary:[{equipmentName:'DC25',tripCount:6}]};
+ const card={id:'demo-card',batch_id:'batch1',ordinal:1,status:'review',draft,raw_fields:{},checks:{errors:[]}};
+ app.testCapture.setCards([card]);app.testCapture.setSelected(card.id);app.testCapture.setOptions({assets,employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});app.testCapture.setDraft(draft);
+ const tree=app.render();
+ nodes(tree,n=>n.props['data-trip-equipment']===0)[0].props.onChange({target:{value:'demo25'}});
+ const corrected=app.render();
+ assert.deepEqual(nodes(corrected,n=>n.props['data-trip-equipment']!==undefined).map(n=>n.props.value),['demo25','demo25']);
+ assert.equal(nodes(corrected,n=>n.props['aria-label']==='Machine-wise summary equipment row 1')[0].props.value,'demo25');
+});
+
 test('Wrong door review isolates door checks without changing full-card validation',()=>{
  const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
  const draft={doorText:'',assetId:'',bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[],openingHmr:'',closingHmr:''};

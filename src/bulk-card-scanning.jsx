@@ -20,7 +20,7 @@ import {createPdfUploadSession,transferScanGroups} from './scan-upload-pipeline.
 import ScanBatchMismatchDialog from './scan-batch-mismatch-dialog.jsx';
 import {scanContextReady,scanContextSelectionChanged} from '../shared/scan-batch-context.mjs';
 import {scanReviewHelp,scanReviewFieldSection} from './scan-review-layout.mjs';
-import {cardMachineHint,aliasMachineHint,selectTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../shared/scan-machine-rules.mjs';
+import {cardMachineHint,aliasMachineHint,correctMatchingTripEquipment,tripEquipmentSelectionValue,normalizeScanEquipmentRows,resolvedMachineName,siteEquipmentOptions} from '../shared/scan-machine-rules.mjs';
 import {aliasForSelection,attachEquipmentAliases} from '../shared/equipment-alias-rules.mjs';
 import ScanAliasMismatchDialog from './scan-alias-mismatch-dialog.jsx';
 import {mismatchPairCount} from './scan-alias-mismatch.mjs';
@@ -140,7 +140,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,fl
  const fleetErrorCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.error);
  const fleetDialogCard=fleetCards.find(card=>card.id===fleetOpenId);
  // A dropdown choice for a written machine that no Pulse door matches (L21 → DEMO21-00179) is saved once as an alias on that asset and applied to every later card and batch.
- const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;if(result.otpRequired){setNotice('Pair applied to this card. Approve the alias '+result.alias.writtenText+' by OTP in Equipment mapping to make it permanent.');if(batch?.id){await refreshAliasMismatches(batch.id);setAliasOpen(true);}return;}setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
+ const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));if(/^DC[ ._/-]*\d+$/i.test(row.originalEquipmentName||'')&&/^DEMO[ ._/-]*\d+/i.test(asset?resolvedMachineName(asset):''))return;const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;if(result.otpRequired){setNotice('Pair applied to this card. Approve the alias '+result.alias.writtenText+' by OTP in Equipment mapping to make it permanent.');if(batch?.id){await refreshAliasMismatches(batch.id);setAliasOpen(true);}return;}setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
  const [abortTargets,setAbortTargets]=useState(null);
  const [deletionTarget,setDeletionTarget]=useState(null),[deletionTargets,setDeletionTargets]=useState(null),[permanentPdfDeletion,setPermanentPdfDeletion]=useState(false),[pdfDeleteOpen,setPdfDeleteOpen]=useState(false);
  const abortReviewCards=targets=>{if((busy&&!uploading)||dirty||savingRef.current||abortTargets||!targets.length||targets.some(card=>!isAbortableScanCard(card)||card.batch_id!==batch?.id))return;setAbortTargets(targets.map(card=>({...card,draft:{...card.draft}})));setBusy(true);setError('')};
@@ -267,6 +267,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  useEffect(()=>{let active=true;api('/api/equipment-aliases/settings').then(data=>{if(active)setAliasSettings(data)}).catch(()=>{});return()=>{active=false}},[token]);
  const recoveryIssues=activeResponseRecoveryIssues(card?.raw_fields||{},draft);
  const scanMatchingPending=!options||card?.validationPending||['queued','reading'].includes(card?.status);
+ const correctEquipment=(collection,index,id)=>{const assets=options?.assets||[],next=correctMatchingTripEquipment(draft,collection,index,id,assets);update('trips',next.trips);update('scanMachineSummary',next.scanMachineSummary);setNotice('Selected machine applied to matching trip and summary rows on this card.');if(collection==='trips')void learnEquipmentAlias(next.trips[index],assets);};
  const allFieldIssues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:(draft.meterReviewFields||[]).filter(key=>Boolean(draft.meterReviewMessages?.[key]))},kind,card?.raw_fields,options);
  const reviewErrors=(scanMatchingPending?[]:card?.checks?.errors||[]).filter(message=>message!=='Confirm or correct the highlighted meter readings against the original reading table before approval.');
  const focusedIssue=isScanIssueFocus(groupFilter);
@@ -440,7 +441,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
           aria-label={l+' row '+(i+1)}
           data-trip-equipment={i}
           value={tripEquipmentSelectionValue(r,options?.assets||[],draft.location,draft.tripBodyRuleVersion||1)}
-          onChange={e=>{const assets=options?.assets||[],chosen=selectTripEquipment(r,e.target.value,assets,draft.location);update('trips',draft.trips.map((row,n)=>n===i?chosen:row));void learnEquipmentAlias(chosen,assets);}}
+          onChange={e=>correctEquipment('trips',i,e.target.value)}
          >
           <option value="">Select equipment registered at {draft.location||'this site'}</option>
           {tripEquipmentOptions.map(asset=>{
@@ -471,7 +472,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
    <label>Equipment name
     <SmartSelect searchable required disabled={!draft.location} showOverflowValue
      aria-label={'Machine-wise summary equipment row '+(i+1)} aria-invalid={Boolean(equipmentValidation.issues[field])}
-     value={selected} onChange={e=>update('scanMachineSummary',draft.scanMachineSummary.map((item,index)=>index===i?selectTripEquipment(item,e.target.value,assets,draft.location):item))}>
+     value={selected} onChange={e=>correctEquipment('scanMachineSummary',i,e.target.value)}>
      <option value="">Select equipment registered at {draft.location||'this site'}</option>
      {tripEquipmentOptions.map(asset=>{
       const value=resolvedMachineName(asset);
