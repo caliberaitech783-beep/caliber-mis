@@ -61,6 +61,7 @@ if(process.argv.includes('--azure')){
   const candidates=rows.filter(row=>row.saved===25);
   assert.ok(candidates.length,'No Majri OB Shift I scan entry with 25 saved cards');
   const sessions=(await pool.query("SELECT token FROM auth_sessions WHERE created_at>NOW()-INTERVAL '30 days' ORDER BY (lower(employee_name)='anoop paul') DESC NULLS LAST,last_seen_at DESC LIMIT 30")).rows;
+  let verified=0;
   for(const candidate of candidates){
    for(const {token} of sessions){
     const headers={Authorization:'Bearer '+token};
@@ -77,9 +78,11 @@ if(process.argv.includes('--azure')){
     }
     console.log(JSON.stringify({batch:candidate.name,total:summary.total,saved:summary.saved,blank:summary.red,deleted:deleted.length,checks}));
     assert.equal(data.cards.some(card=>deleted.some(row=>row.id===card.id)),false);
+    verified++;
     break;
    }
   }
+  assert.ok(verified>0,"No authorized session could read the matching scan entry");
  }finally{await pool.end()}
 }
 }
