@@ -25,6 +25,8 @@ test('actual Vite output embeds the release version while the source stays uncha
 test('compiled version marker supports direct and minified bindings and rejects ambiguous values',()=>{
   assert.equal(embeddedUiVersion('document.documentElement.dataset.caliberUiVersion="'+current+'"'),current);
   assert.equal(embeddedUiVersion('const qS=`'+current+'`;document.documentElement.dataset.caliberUiVersion=qS'),current);
+  assert.equal(embeddedUiVersion('var $k=`'+current+'`;document.documentElement.dataset.caliberUiVersion=$k'),current);
+  assert.equal(embeddedUiVersion('var other$k=`'+current+'`;document.documentElement.dataset.caliberUiVersion=$k'),'');
   assert.equal(embeddedUiVersion('const qS="'+current+'";function x(){let qS="'+stale+'";}document.documentElement.dataset.caliberUiVersion=qS'),'');
 });
 
