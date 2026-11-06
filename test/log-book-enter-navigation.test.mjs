@@ -212,6 +212,9 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
  const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
+ assert.equal(equipment.props.showOverflowValue,undefined);
+ assert.equal(choices[0].props['data-display-label'],'EX1');
+ assert.deepEqual(React.Children.toArray(choices[0].props.children),['Excavator',' · EX1']);
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
 });
 
