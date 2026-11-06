@@ -73,17 +73,20 @@ test('Surface Miner ELB shows the saved operator split and its combined HMR',asy
  assert.match(html,/First operator 4.00 h · Second operator 4.00 h · Combined HMR 8.00 h/);
 });
 
-test('embedded ELB form stays directly below the selected equipment row',async()=>{
+test('Dudhicau West PL82 opens in a stable editor outside the machine table',async()=>{
  const h=hooks();
  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
- const batch={id:'batch1',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
+ const machines=fleet.map(item=>item.door==='G-08'?{...item,door:'PL82',equipmentName:'Wheel Loader'}:item);
+ const batch={id:'batch1',site:'Dudhicau West',report_date:'2026-11-02',shift:'S1',fleet:machines,statuses};
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[]},embedded:true})};
  let tree=render(),html=renderToStaticMarkup(tree);
- assert.match(html,/aria-selected="true"[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
- assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+ assert.match(html,/<\/table><\/div><\/section><section class="vlb-fleet-machine-editor"/);
  button(tree,'Enter ELB').props.onClick();tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/aria-selected="true"><td>G-08[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
- assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+ assert.match(html,/aria-selected="true"><td>PL82/);
+ assert.match(html,/<\/table><\/div><\/section><section class="vlb-fleet-machine-editor"[\s\S]*?id="vlb-fleet-stepper-title">PL82/);
+ const search=nodes(tree,node=>node.type==='input'&&node.props.type==='search')[0];
+ search.props.onChange({target:{value:'No matching equipment'}});
+ assert.match(renderToStaticMarkup(render()),/id="vlb-fleet-stepper-title">PL82/);
 });
 
 test('switching machines ignores late Pulse responses and failed lookups show retry instead of zero',async()=>{
