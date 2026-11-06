@@ -1,4 +1,4 @@
-import {meterRuleIssues} from '../shared/trip-card-rules.mjs';
+import {meterRuleIssues,shiftMeterIssues} from '../shared/trip-card-rules.mjs';
 import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
@@ -28,6 +28,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
   }
  }
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
+ if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,kind));
  return issues;
 }
 

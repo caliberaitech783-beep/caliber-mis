@@ -9,24 +9,35 @@ export function meterPlacementIssues(draft={},kind='vehicle'){
   openingKmr:'Opening KMR must be greater than Opening HMR. Check whether the HMR and KMR readings are entered in the wrong boxes.'
  };
 }
+export function kmrMeterReplaced({openingKmr,closingKmr}={}){
+ return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
+  && Number(closingKmr)<Number(openingKmr);
+}
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={...meterPlacementIssues(draft,kind)},hours=Number(draft.shiftHours);
  if(![8,12].includes(hours))return issues;
  for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
-  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:hours===8?250:350;
-  if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<opening)continue;
-  const difference=closing-opening;
-  if(difference-limit>Number.EPSILON*Math.max(1,Math.abs(opening),Math.abs(closing))*4){
+  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:250;
+  const replaced=meter==='Kmr'&&kmrMeterReplaced(draft);
+  if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<0||(!replaced&&closing<opening))continue;
+  const field=replaced?'replacementKmr':'closing'+meter;
+  const actual=draft.replacementKmr;
+  if(replaced&&(!['string','number'].includes(typeof actual)||String(actual).trim()===''||!Number.isFinite(Number(actual))||Number(actual)<0)){
+   issues[field]='Enter the actual distance travelled in km for the KMR replacement.';
+   continue;
+  }
+  const difference=replaced?Number(actual):closing-opening;
+  if(difference-limit>Number.EPSILON*(replaced?limit:Math.max(1,Math.abs(opening),Math.abs(closing)))*4){
    const format=n=>Number(n.toFixed(3)),unit=meter==='Hmr'?'hours':'km';
-   issues['closing'+meter]=`${meter.toUpperCase()} difference (closing - opening) is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
+   const label=replaced?'Actual KMR distance':meter.toUpperCase()+' difference (closing - opening)';
+   issues[field]=`${label} is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
   }
  }
  return issues;
 }
-// Meter rule breaches are reported after saving; missing/non-numeric inputs
-// still need a usable reading before a card can be saved.
+// Include historical meter discrepancies for review and reports.
 export function meterRuleIssues(draft={},kind='vehicle'){
  const issues={...shiftMeterIssues(draft,kind)};
  for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
@@ -35,7 +46,7 @@ export function meterRuleIssues(draft={},kind='vehicle'){
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
   }
   const a=draft['opening'+meter],b=draft['closing'+meter];
-  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&kmrMeterReplaced(draft)))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
  }
  return issues;
 }

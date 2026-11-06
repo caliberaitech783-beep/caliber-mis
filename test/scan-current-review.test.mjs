@@ -24,6 +24,6 @@ test('genuinely missing values, invalid readings, summaries and missing pages st
  const invalid=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:-1});assert.deepEqual(invalid.errors,[]);assert.match(invalid.data.meterRuleErrors.closingHmr,/below opening/);
  const summary=await checkScanCard(client,'vehicle',card,{...draft,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});assert.ok(summary.errors.some(s=>/summary mismatch/.test(s)));
  const back=await checkScanCard(client,'vehicle',{...card,expected_pages:2});assert.ok(back.errors.some(s=>/back page/.test(s)));
- const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.deepEqual(hours.errors,[]);assert.deepEqual(hours.warnings,[]);assert.match(hours.data.meterRuleErrors.closingHmr,/Exceeds limit/);
- const kmr=await checkScanCard(client,'vehicle',card,{...draft,closingKmr:351});assert.deepEqual(kmr.errors,[]);assert.match(kmr.data.meterRuleErrors.closingKmr,/Exceeds limit/);
+ const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.match(hours.errors.join(' '),/HMR.*Exceeds limit/);
+ const kmr=await checkScanCard(client,'vehicle',card,{...draft,closingKmr:351});assert.match(kmr.errors.join(' '),/KMR.*Exceeds limit/);
 });

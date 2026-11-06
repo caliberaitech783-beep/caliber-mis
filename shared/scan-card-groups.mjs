@@ -63,7 +63,7 @@ export function cardIssueGroups(card,kind,options=null){
  if(issues.doorText||issues.assetId||/door number|linked equipment|vehicle.*not.*found/i.test(errors)||(card.raw_fields?.fleetReview?.issues||[]).some(issue=>issue.fields?.includes('doorText')))groups.push('wrong-door');
  if(issues.employeeId||/caliber|employee|driver|operator/i.test(errors))groups.push('wrong-caliber');
  if(issues.openingHmr||issues.closingHmr||/\bHMR\b/i.test(errors))groups.push('wrong-hmr');
- if(kind==='vehicle'&&(issues.openingKmr||issues.closingKmr||/\bKMR\b/i.test(errors)))groups.push('wrong-kmr');
+ if(kind==='vehicle'&&(issues.openingKmr||issues.closingKmr||issues.replacementKmr||/\bKMR\b/i.test(errors)))groups.push('wrong-kmr');
  if(kind==='vehicle'&&machineDiscrepancies(draft.trips||[],draft.scanMachineSummary||[]).length)groups.push('mws-ted');
  return groups;
 }
