@@ -54,17 +54,18 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const [registerOpen,setRegisterOpen]=useState(false);
  // Manual entry: a machine written on the card that no Pulse door matches is paired to a Pulse record here (same alias rules and OTP as scanning).
  const [aliasWritten,setAliasWritten]=useState('');
+ const [showSaveConfirm,setShowSaveConfirm]=useState(false);
 
  useEffect(()=>{
    const saveShortcut=event=>{
      if(!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=='s'||event.altKey)return;
      event.preventDefault();
-     if(event.repeat||event.isComposing||!editing||working||loading||showDelete)return;
+     if(event.repeat||event.isComposing||!editing||working||loading||showDelete||showSaveConfirm)return;
      document.getElementById('logbook-entry-form')?.requestSubmit();
    };
    window.addEventListener('keydown',saveShortcut);
    return()=>window.removeEventListener('keydown',saveShortcut);
- },[editing,working,loading,showDelete]);
+ },[editing,working,loading,showDelete||showSaveConfirm]);
 
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'Could not reach the log book service.'),{details:body});return body;};
 
@@ -116,7 +117,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
 
  const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
- const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||'',...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setSuccess('');setError('');};
+ const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||'',...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setShowSaveConfirm(false);setSuccess('');setError('');};
 
  const startHandover=keepDriver=>{
   const {bookDate,bookDateSource,location,shiftId,shiftHours,cardShift,bookShiftCode,assetId,employeeId}=saved.data;
@@ -140,7 +141,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const submit=async(duplicateReason='')=>{setWorking(true);setError('');setSuccess('');try{const result=await api(`/api/log-books/${kind}${saved?'/'+saved.id:''}`,{method:saved?'PUT':'POST',body:JSON.stringify({...equipmentValidation.draft,revision:saved?.revision,...(duplicateReason?{duplicateReason}:{})})});setSaved(result);setForm(current=>({...current,manualBreakdownHours:result.data?.manualBreakdownHours??''}));setEditing(false);setSuccess(`${result.book_no} saved successfully.`);await loadRegister();onSaved?.(result);}catch(e){
   if(e.details?.code==='duplicate_card'&&!duplicateReason){setWorking(false);const reason=window.prompt(e.message+'\n\nTo save an additional card for this tipper, enter the reason (at least 10 characters). Leave empty to cancel.','');if(reason&&reason.trim().length>=10)return submit(reason.trim());setError(e.message);return;}
   setError(e.message)}finally{setWorking(false)}};
- const save=async event=>{event.preventDefault();if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}await submit();};
+ const save=async event=>{event.preventDefault();if(vlbBatch&&!sameVlbEntryContext(vlbBatch,form)){setError('This entry must use the selected batch site, date and shift.');return;}if(Object.keys(equipmentValidation.issues).length){setError(Object.values(equipmentValidation.issues).join(' '));return;}if(vehicle){setShowSaveConfirm(true);return;}await submit();};
+ const confirmSave=async()=>{setShowSaveConfirm(false);await submit();};
 
  const filtered=records.filter(row=>`${row.book_no} ${row.data.door} ${row.data.employeeName} ${row.data.location} ${row.data.bookDate}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -170,7 +172,9 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
    {showDelete&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Delete log book"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setShowDelete(false)} disabled={working} aria-label="Close window">× Close</button></div><h2>Delete this log book?</h2><p>{saved?.book_no} will be removed from the active register.</p><button type="button" onClick={deleteRecord} disabled={working}>Delete record</button><button type="button" onClick={()=>setShowDelete(false)} disabled={working}>Keep record</button></section></div>}
 
-   <form id="logbook-entry-form" className="logbook-form" onSubmit={save} onKeyDown={advanceLogBookField}>
+   {showSaveConfirm&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Save VLB entry"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setShowSaveConfirm(false)} disabled={working} aria-label="Close window">× Close</button></div><h2>Save this entry?</h2><p>Confirm that the VLB details are complete and correct.</p><button type="button" className="primary" onClick={confirmSave} disabled={working}>Save entry</button><button type="button" onClick={()=>setShowSaveConfirm(false)} disabled={working}>Cancel</button></section></div>}
+
+   <form id="logbook-entry-form" className="logbook-form" data-enter-confirm-save={vehicle||undefined} onSubmit={save} onKeyDown={advanceLogBookField}>
 
     <fieldset className="logbook-edit-fields" disabled={!editing||working}>
 
@@ -192,7 +196,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 <Field label="Closing KMR"><input type="number" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
 </>}<Field label="Opening HMR"><input type="number" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
 <Field label="Closing HMR"><input type="number" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
-{vehicle&&<><Field label="R engine opening (HMR)"><input type="number" min="0" step="0.001" value={form.openingEngineHmr??''} onChange={e=>update('openingEngineHmr',e.target.value)}/></Field><Field label="R engine closing (HMR)"><input type="number" min="0" step="0.001" value={form.closingEngineHmr??''} onChange={e=>update('closingEngineHmr',e.target.value)}/></Field></>}<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR"><output>{fixed(hmr)}</output></Field>
+<Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR"><output>{fixed(hmr)}</output></Field>
      </div></section>
 
      {assetMessage&&<div className="logbook-message logbook-master-help" role="status"><p>{assetMessage}</p><a href="?page=master-sync" target="_blank" rel="noopener noreferrer">Open master sync</a></div>}

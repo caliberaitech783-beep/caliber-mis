@@ -42,7 +42,9 @@ export function advanceLogBookField(event) {
   const committed = combobox && input.dataset.enterCommitted === 'true';
   if (committed) delete input.dataset.enterCommitted;
   if (!committed && input.dataset.enterEmptyTrip === 'true') {
-    form.querySelector('[data-enter-action="save"]')?.focus();
+    const saveButton=form.querySelector('[data-enter-action="save"]');
+    if(form.dataset?.enterConfirmSave==='true')saveButton?.click();
+    else saveButton?.focus();
     return;
   }
   if (combobox && input.getAttribute('aria-expanded') === 'true') {

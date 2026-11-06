@@ -81,6 +81,14 @@ test('Enter on untouched next row focuses Save, while partial rows are retained 
   for(const patch of [{equipmentName:'V12'},{loadingTime:'08:00'},{unloadingTime:'08:20'},{tripCount:2},{tripCount:''}])assert.equal(isEmptyTripPlaceholder({...blankTrip(),...patch}),false);
 });
 
+test('final Enter requests VLB save confirmation instead of only focusing Save',()=>{
+  const save=control('Save',{click(){this.clicked=true}}),input=control('Equipment',{value:'',dataset:{enterEmptyTrip:'true'}});
+  const form={dataset:{enterConfirmSave:'true'},querySelector:()=>save};
+  advanceLogBookField(event(input,form));
+  assert.equal(save.clicked,true);
+  assert.equal(save.focused,undefined);
+});
+
 // Exercise the actual JSX handlers/state and submitted payload without live records.
 const source=readFileSync(new URL('../src/log-book-form.jsx',import.meta.url),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'log-book-form.jsx',{jsx:{runtime:'classic'}});
@@ -136,9 +144,9 @@ test('ELB shares VLB keyboard flow and controls while retaining equipment fields
 test('rendered VLB header follows the requested sequence and driver is explicitly skipped',()=>{
   const tree=harness().render();
   const fields=all(tree,node=>node.props.label&&node.props.children);
-  assert.deepEqual(fields.slice(0,19).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
+  assert.deepEqual(fields.slice(0,17).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
     'Location','Book date','Project name','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
-    'Opening KMR','Closing KMR','Opening HMR','Closing HMR','R engine opening (HMR)','R engine closing (HMR)','Remark',
+    'Opening KMR','Closing KMR','Opening HMR','Closing HMR','Remark',
   ]);
   assert.equal(fields.find(node=>node.props.label==='Driver name').props.skipEnter,true);
   for(const label of ['Shift hour','Shift']) {
@@ -185,6 +193,10 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
     assert.equal(empty.props.required,false);assert.equal(empty.props['data-enter-empty-trip'],true);
     const entry=all(tree,node=>node.type==='form')[0];
     await entry.props.onSubmit({preventDefault(){}});
+    tree=app.render();
+    const confirm=all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('Save entry'))[0];
+    assert.ok(confirm,'VLB save confirmation is shown');
+    await confirm.props.onClick();
     const payload=requests.find(r=>r.body)?.body;
     assert.equal(payload.trips.length,1);assert.deepEqual(payload.trips[0],{...app.slots[0].trips[0],equipmentName:'Vpc 12',equipmentId:'12',originalEquipmentName:'V12'});
     assert.equal(app.slots[0].trips.length,2,'draft is not erased');
