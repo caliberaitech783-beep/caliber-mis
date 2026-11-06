@@ -18,9 +18,14 @@ test('complete current values clear historical OCR warnings without requiring a 
  assert.deepEqual(result.errors,[]);assert.deepEqual(result.warnings,[]);
  assert.ok(result.data);assert.deepEqual(card.draft.extractionReviewFields,['shiftHours']);
 });
+test('scan review accepts a reset KMR below HMR',async()=>{
+ const result=await checkScanCard(client,'vehicle',card,{...draft,openingHmr:200,closingHmr:206,openingKmr:0,closingKmr:40});
+ assert.deepEqual(result.errors,[]);
+ assert.equal(result.data.totalRunningKmr,40);
+ assert.equal(result.data.totalWorkingHmr,6);
+});
 test('genuinely missing values, invalid readings, summaries and missing pages still need correction',async()=>{
  const missing=await checkScanCard(client,'vehicle',card,{...draft,shiftHours:''});assert.ok(missing.errors.some(s=>/Shift hours/.test(s)));
- const swapped=await checkScanCard(client,'vehicle',card,{...draft,openingHmr:200,closingHmr:206,openingKmr:100,closingKmr:140});assert.ok(swapped.errors.some(s=>/Opening KMR must be greater/));
  const invalid=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:-1});assert.deepEqual(invalid.errors,[]);assert.match(invalid.data.meterRuleErrors.closingHmr,/below opening/);
  const summary=await checkScanCard(client,'vehicle',card,{...draft,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});assert.ok(summary.errors.some(s=>/summary mismatch/.test(s)));
  const back=await checkScanCard(client,'vehicle',{...card,expected_pages:2});assert.ok(back.errors.some(s=>/back page/.test(s)));

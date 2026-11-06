@@ -22,18 +22,17 @@ test('changing readings or shift clears limit errors; equipment checks HMR only'
  assert.equal(Object.keys(shiftMeterIssues(draft,'equipment')).length,1);
  assert.deepEqual(shiftMeterIssues({...base,closingHmr:'',closingKmr:'bad'}),{});
 });
-test('vehicle opening KMR must exceed opening HMR in manual and scanned entry',()=>{
- for(const openingKmr of [100.1,50]){
+test('opening KMR can be lower than or equal to HMR in manual and scanned entry',()=>{
+ for(const openingKmr of [0,50,100.1,100.101]){
   const draft={...base,openingKmr,closingKmr:200};
-  const issues=shiftMeterIssues(draft);
-  assert.match(issues.openingHmr,/wrong boxes/);assert.match(issues.openingKmr,/greater than Opening HMR/);
-  assert.match(scanFieldIssues(draft).openingKmr,/greater than Opening HMR/);
-  assert.throws(()=>normalizeLogBook('vehicle',draft),/Opening KMR must be greater/);
+  assert.deepEqual(shiftMeterIssues(draft),{});
+  const scanIssues=scanFieldIssues(draft);
+  assert.equal(scanIssues.openingKmr,undefined);
+  assert.equal(scanIssues.openingHmr,undefined);
+  const saved=normalizeLogBook('vehicle',draft);
+  assert.equal(saved.openingKmr,openingKmr);
+  assert.equal(saved.openingHmr,base.openingHmr);
  }
- assert.deepEqual(shiftMeterIssues({...base,openingKmr:100.101,closingKmr:200}),{});
- assert.doesNotThrow(()=>normalizeLogBook('vehicle',{...base,openingKmr:100.101,closingKmr:200}));
- assert.deepEqual(shiftMeterIssues({...base,openingHmr:0,closingHmr:0,openingKmr:0,closingKmr:0}),{});
- assert.deepEqual(shiftMeterIssues({...base,openingKmr:0},'equipment'),{});
 });
 test('a replacement meter preserves both readings and requires actual distance within 250 km',()=>{
  const draft={...base,closingKmr:900};

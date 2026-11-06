@@ -29,7 +29,7 @@ import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from '../../shared/log-book-access.mjs';
-import {meterPlacementIssues,meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
+import {meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -66,7 +66,6 @@ export function normalizeLogBook(kind,input={}){
  if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
  const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
 const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR',{signed:true}):null;
-const placementIssues=meterPlacementIssues({openingHmr,openingKmr},kind);if(placementIssues.openingKmr)fail(placementIssues.openingKmr);
 if(kind==='vehicle'){const limits=Object.values(shiftMeterIssues(input,kind));if(limits.length)fail(limits.join(' '));}
 const replacementKmr=kind==='vehicle'&&kmrMeterReplaced(input)?number(input.replacementKmr,'Actual KMR distance'):null;
 const timeMode=input.timeMode==='without'?'without':'with';

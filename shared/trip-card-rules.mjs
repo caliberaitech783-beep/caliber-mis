@@ -1,20 +1,11 @@
 import {normalizeScannedTime,validScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-export function meterPlacementIssues(draft={},kind='vehicle'){
- if(kind!=='vehicle')return {};
- const hmr=draft.openingHmr,kmr=draft.openingKmr;
- if(hmr==null||kmr==null||String(hmr).trim()===''||String(kmr).trim()===''||!Number.isFinite(Number(hmr))||!Number.isFinite(Number(kmr))||Number(hmr)<0||Number(kmr)<0||Number(kmr)>Number(hmr)||Number(hmr)===0&&Number(kmr)===0)return {};
- return {
-  openingHmr:'Opening HMR must be lower than Opening KMR. Check whether the HMR and KMR readings are entered in the wrong boxes.',
-  openingKmr:'Opening KMR must be greater than Opening HMR. Check whether the HMR and KMR readings are entered in the wrong boxes.'
- };
-}
 export function kmrMeterReplaced({openingKmr,closingKmr}={}){
  return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
   && Number(closingKmr)<Number(openingKmr);
 }
 export function shiftMeterIssues(draft={},kind='vehicle'){
- const issues={...meterPlacementIssues(draft,kind)},hours=Number(draft.shiftHours);
+ const issues={},hours=Number(draft.shiftHours);
  if(![8,12].includes(hours))return issues;
  for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
   const a=draft['opening'+meter],b=draft['closing'+meter];
