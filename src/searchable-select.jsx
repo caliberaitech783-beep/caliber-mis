@@ -2,6 +2,7 @@ import React,{useEffect,useId,useMemo,useRef,useState} from 'react';
 import {ChevronDown,Search} from 'lucide-react';
 import './searchable-select.css';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
+import {exactTypedOption} from '../shared/typed-option-selection.mjs';
 
 const normalize=(value)=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const normalizedOption=(option)=>typeof option==='string'
@@ -75,8 +76,8 @@ export default function SearchableSelect({
       event.preventDefault();setOpen(true);
       setActive((current)=>!visibleOptions.length?-1:event.key==='ArrowDown'?Math.min(current+1,visibleOptions.length-1):current<0?visibleOptions.length-1:Math.max(current-1,0));
     }else if(event.key==='Enter'&&expanded){
-      event.preventDefault();
-      if(activeOption)choose(activeOption);else if(visibleOptions.length===1)choose(visibleOptions[0]);
+      const option=activeOption||exactTypedOption(query,visibleOptions)||(visibleOptions.length===1?visibleOptions[0]:null);
+      if(option){event.preventDefault();if(event.currentTarget)event.currentTarget.dataset.enterCommitted='true';choose(option)}
     }else if(event.key==='Escape'&&expanded){
       event.preventDefault();event.stopPropagation();setOpen(false);setActive(-1);
     }

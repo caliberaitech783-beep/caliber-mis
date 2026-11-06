@@ -44,6 +44,9 @@ export function advanceLogBookField(event) {
     return;
   }
   if (combobox && input.getAttribute('aria-expanded') === 'true') {
+    if (input.dataset.enterCommitted === 'true') {
+      delete input.dataset.enterCommitted;
+    } else {
     const list = form.ownerDocument.getElementById(input.getAttribute('aria-controls'));
     const choices = [...(list?.querySelectorAll('[role="option"]') || [])];
     const selected = choices.find(option => option.getAttribute('aria-selected') === 'true');
@@ -52,6 +55,7 @@ export function advanceLogBookField(event) {
     // A highlighted/unique choice is committed by the dropdown's own handler.
     // Without one, keep focus when the user still needs to choose an option.
     if (!active && choices.length !== 1 && input.value.trim() !== label?.trim()) return;
+    }
   }
   requestAnimationFrame(() => {
     if (input.isConnected === false) return;

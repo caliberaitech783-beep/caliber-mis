@@ -4,6 +4,7 @@ export function doorLabel(asset){const label=String(asset.door||asset.registrati
 export function searchSiteDoors(records,kind,location,query=''){
  if(!location)return [];
  const site=canonicalSiteName(location),prefix=fleetDoorKey(query,kind);
- return records.filter(r=>r.kind===kind&&r.site&&canonicalSiteName(r.site)===site&&fleetDoorKey(r.door||r.name||r.registration,kind).startsWith(prefix))
+ const numeric=/^\d+$/.test(String(query||'').trim());
+ return records.filter(r=>{const key=fleetDoorKey(r.door||r.name||r.registration,kind);return r.kind===kind&&r.site&&canonicalSiteName(r.site)===site&&(key.startsWith(prefix)||numeric&&key.match(/\d+/g)?.some(part=>part.startsWith(prefix)))})
   .sort((a,b)=>doorLabel(a).localeCompare(doorLabel(b),undefined,{numeric:true,sensitivity:'base'}));
 }

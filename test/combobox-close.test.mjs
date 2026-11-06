@@ -5,6 +5,7 @@ import React from 'react';
 import {transformWithOxc} from 'vite';
 import {searchSiteDoors,doorLabel} from '../src/door-search.mjs';
 import * as equipment from '../shared/request-equipment.mjs';
+import {exactTypedOption} from '../shared/typed-option-selection.mjs';
 
 const find=(node,predicate)=>!React.isValidElement(node)?[]:[...(predicate(node)?[node]:[]),...React.Children.toArray(node.props.children).flatMap(child=>find(child,predicate))];
 const records=[{id:'s12',door:'S12',kind:'vehicle',site:'Dhoptala OC',equipmentName:'Scania'}];
@@ -20,7 +21,7 @@ for(const [file,name,initialProps,selectionValue] of [
     const state=[],refs=[],frames=[];let cursor=0,refCursor=0,tree,value='';
     const input=()=>find(tree,n=>n.props.role==='combobox')[0];
     // Model a mouse/touch option taking focus, so restoring input focus fires onFocus.
-    const scope={SmartSelect: "select",React,ChevronDown:()=>null,Search:()=>null,searchSiteDoors,doorLabel,...equipment,
+    const scope={SmartSelect: "select",React,ChevronDown:()=>null,Search:()=>null,searchSiteDoors,doorLabel,exactTypedOption,...equipment,
       requestAnimationFrame:fn=>frames.push(fn),useId:()=>name,
       useMemo:fn=>fn(),useEffect:()=>{},
       useRef:()=>{const i=refCursor++;return refs[i]??= {current:{focus(){input().props.onFocus({currentTarget:{select(){}}})},setCustomValidity(){},querySelector(){return null}}}},
