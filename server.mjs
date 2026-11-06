@@ -7930,7 +7930,7 @@ app.post('/api/master-sync/connections',requireSession,requireAdministrator,asyn
  res.set('Cache-Control','no-store').json({saved:true,pulseConnected:pulseMasterSync.status().connected,oracleConfigured:Boolean(await savedOracleConfig())});
 }catch(e){res.status(400).json({error:e.code?'Connection failed ('+e.code+'). Saved working credentials were retained.':'Connection could not be verified. Check the source account and connectivity.'})}});
 const erpMasters=registerErpMasters(app,{pool,config:savedOracleConfig,requireSession,requireAdministrator});
-registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,config:savedOracleConfig,requireSession,requireAdministrator});
+registerMasterSync(app,{pool,pulse:pulseMasterSync,erp:erpMasters,requireSession,requireAdministrator});
 app.get('/api/masters',requireSession,async(req,res,next)=>{
   try{
     const requestedMasters=[...new Set(String(req.query?.names||'').split('|').map(value=>value.trim()).filter(Boolean))];
