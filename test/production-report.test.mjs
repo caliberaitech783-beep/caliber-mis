@@ -42,3 +42,26 @@ test('production credits the loading shift and accepts a carry-over without a ma
 test('ELB inconsistency is visible without changing HMR or combining employee hours',()=>{
  const f=fixture();f.records.find(r=>r.book_type==='equipment').data.breakdownHours=8;f.records.find(r=>r.book_type==='equipment').data.idleHours=2;const r=buildProductionReport(f);assert.equal(r.ready,true);assert.equal(r.warnings.length,1);assert.equal(r.machineRows[0].S1Hours,6);assert.ok(!('combinedHours' in r.machineRows[0]));
 });
+
+test('production combines relief cards into one row per vehicle or machine and enforces shift HMR',()=>{
+ const f=fixture();
+ f.filters={site,date,mode:'shift',shift:'S1'};
+ for(const card of [f.records[0],f.records[2]]){
+  f.records.push({...card,id:card.id+'-relief',book_no:card.book_no+' relief',data:{
+   ...card.data,employeeId:'relief',employeeName:'Relief operator',openingHmr:16,closingHmr:18,
+  }});
+ }
+ const report=buildProductionReport(f);
+ assert.equal(report.ready,true,JSON.stringify(report.issues));
+ assert.equal(report.doorRows.length,2);
+ assert.equal(report.machineRows.length,1);
+ assert.equal(report.doorRows[0].S1Hours,8);
+ assert.equal(report.doorRows[0].totalTrips,2);
+ assert.equal(report.machineRows[0].S1Hours,8);
+ assert.equal(report.machineRows[0].S1Trips,3);
+ assert.match(report.machineRows[0].S1Driver,/Relief operator/);
+ f.records.at(-1).data.closingHmr=18.001;
+ const blocked=buildProductionReport(f);
+ assert.equal(blocked.ready,false);
+ assert.match(blocked.issues.find(issue=>issue.code==='hmr').message,/8\.001 hours.*limit is 8/);
+});

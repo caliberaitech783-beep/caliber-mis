@@ -1,3 +1,4 @@
+import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
@@ -49,11 +50,24 @@ export async function stageDetails(client,batch,{assets}={}){
  // Extend existing open batches too, without changing any saved ELB or closed snapshot.
  if(stage==='elb_open')for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO NOTHING',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
  const fleet=stage==='vlb_open'?[]:await fleetRows(client,batch);
+ const report=stage==='vlb_open'?null:machineReportRows(fleet,elb);
+ const shiftSummaries=new Map([...(report?.loaders||[]),...(report?.others||[])].map(row=>[row.assetId,row]));
+ for(const row of fleet)row.shiftSummary=shiftSummaries.get(row.assetId);
  const progress=fleetProgress(fleet);
  const duplicates=duplicateElb(elb);
- return {twoStage:true,stage,holds,machines,fleet,fleetProgress:progress,elbRecords:elb,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:stage==='vlb_open'?null:machineReportRows(fleet,elb),statuses:FLEET_STATUSES};
+ return {twoStage:true,stage,holds,machines,fleet,fleetProgress:progress,elbRecords:elb,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:report,statuses:FLEET_STATUSES};
 }
-const duplicateElb=records=>{const seen=new Map();for(const r of records){const key=String(r.asset_id||r.data?.assetId);seen.set(key,(seen.get(key)||0)+1);}return [...seen].filter(([,n])=>n>1).map(([key])=>records.find(r=>String(r.asset_id||r.data?.assetId)===key)?.data?.door||key);};
+function duplicateElb(records){
+ const byAsset=new Map(),duplicates=new Set();
+ for(const record of records){
+  const data=record.data||{},key=String(record.asset_id||data.assetId);
+  const peers=byAsset.get(key)||[];
+  if(peers.some(peer=>shareCardOperator(data,peer)))duplicates.add(data.door||key);
+  peers.push(data);
+  byAsset.set(key,peers);
+ }
+ return [...duplicates];
+}
 
 // Late cards update derived trip totals without reopening batches or editing saved cards.
 export async function refreshLateVlbTrips(client,batch){
@@ -127,7 +141,9 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(batchStage(batch)!=='elb_open')fail('Machine entry is available only while ELB is open for this batch.',409);
  const row=(await client.query('SELECT * FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2 FOR UPDATE',[batch.id,assetId])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
- if(row.logbook_id){
+ const additional=input.additionalCard===true;
+ if(additional&&!row.logbook_id)fail('Save the first ELB card before adding a relief operator.',409);
+ if(row.logbook_id&&!additional){
   if(!ops.allowEditSaved)fail('Only an MIS administrator can edit a saved ELB.',403);
   const prior=(await client.query('SELECT revision FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[row.logbook_id])).rows[0];
   if(!prior)fail('This ELB is unavailable. Reload the batch.',409);
@@ -164,8 +180,18 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
  if(pulse){Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
  if(nonWorking){data.breakdownHours=status==='breakdown'?hours:data.breakdownHours;data.availabilityHours=0;data.runningHours=0;data.idleHours=status==='breakdown'?0:hours-(Number(data.breakdownHours)||0);}
+ if(additional){
+  const cards=(await batchElbRecords(client,batch)).filter(record=>String(record.asset_id)===String(assetId));
+  const retry=input.requestKey&&(await client.query('SELECT id FROM mis_log_books WHERE request_key=$1',[input.requestKey])).rows[0];
+  if(retry){
+   const prior=cards.find(card=>String(card.id)===String(retry.id));
+   if(prior)return prior;
+   fail('This save reference already belongs to another card.',409);
+  }
+  if(!(cardWorkingHmr(data)>0)||cards.some(card=>shareCardOperator(data,card.data)))fail('Enter positive working HMR and an operator who has no card for this machine and shift.',409);
+ }
  let record;
- if(row.logbook_id){
+ if(row.logbook_id&&!additional){
   await assertCombinedShiftMeters(client,'equipment',data,row.logbook_id);
   const result=await client.query('UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL RETURNING id,book_no,book_type,book_date::text,site,asset_id,data,revision,created_at,updated_at',[JSON.stringify(data),row.logbook_id]);
   record=result.rows[0];
@@ -173,7 +199,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(!record)record=await ops.insert(client,'equipment',data,input.requestKey||crypto.randomUUID(),batchLogin(actor));
  await client.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
  await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$3,logbook_id=$4,saved_at=NOW(),saved_by=$5,draft=NULL,skipped=FALSE WHERE batch_id=$1 AND asset_id=$2',[batch.id,assetId,status,record.id,batchLogin(actor)]);
- await auditVlbBatch(client,batch,actor,row.logbook_id?'machine_updated':'machine_saved',{assetId:String(assetId),door:row.door,status,trips:row.trips,logbookId:record.id});
+ await auditVlbBatch(client,batch,actor,row.logbook_id&&!additional?'machine_updated':'machine_saved',{assetId:String(assetId),door:row.door,status,trips:row.trips,logbookId:record.id});
  return record;
 }
 

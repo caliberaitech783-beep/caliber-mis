@@ -288,7 +288,11 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
      await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
      await client.query('DELETE FROM '+links+' WHERE logbook_id=$1',[id]);
-     if(kind==='equipment')await client.query('UPDATE mis_vlb_batch_fleet SET logbook_id=NULL,shift_status=NULL,saved_at=NULL,saved_by=NULL WHERE batch_id=$1 AND logbook_id=$2',[batch.id,id]);
+     if(kind==='equipment')await client.query(`UPDATE mis_vlb_batch_fleet SET (logbook_id,shift_status,saved_at,saved_by)=(
+      SELECT l.id,COALESCE(NULLIF(l.data->>'shiftStatus',''),'working'),l.updated_at,l.created_by
+      FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+      WHERE e.batch_id=$1 AND l.asset_id=$3 AND l.deleted_at IS NULL ORDER BY l.id DESC LIMIT 1
+     ) WHERE batch_id=$1 AND logbook_id=$2`,[batch.id,id,record.asset_id]);
      await client.query('DELETE FROM mis_pulse_trip_verifications WHERE logbook_id=$1',[id]);
      await auditVlbBatch(client,batch,actor,'card_deleted',{kind,logbookId:id,revision:record.revision});
      await client.query('COMMIT');

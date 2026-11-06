@@ -1,6 +1,12 @@
-## One manual VLB card per tipper per shift, late batch alerts, meter continuity report, Pending in Pulse
+## Shared shifts in VLB and ELB
 
-A manual VLB save or edit is refused with 409 (`code: duplicate_card`) when another active vehicle card exists for the same site, date, shift and tipper; the message names the existing card. The form then asks for a reason of at least ten characters and resubmits with `duplicateReason`; the server keeps it on the card with `duplicateOf` and writes `card_added_duplicate` to `mis_vlb_batch_audit`. The batch report shows an **Additional card** column only when a batch contains one. Scanned cards are not covered by this rule; they keep their unique index on the printed card number. `server/rules/vlb-duplicate-card.mjs` holds the rule.
+Save a separate trip card for each driver or operator who worked on the same vehicle or equipment during a shift. In ELB Manual, select **Add relief card** on the saved machine row. The opening HMR defaults to the previous card's closing HMR.
+
+MIS adds the cards' working HMR for the same asset, site, date and shift. It refuses saves above 8 HMR for shifts I, II and III or 12 HMR for Day and Night. Production reports show one row per asset with the combined shift HMR, operators and trip totals. Each source card remains available under its own card number.
+
+The manual VLB override for a repeated card with the same driver still requires a reason of at least ten characters and records it in the batch audit. Scan duplicate checks continue to identify repeat uploads and printed card numbers.
+
+## Late batch alerts, meter continuity report and Pending in Pulse
 
 `server/routes/vlb-batch-alerts.mjs` runs a minute worker (disable with `VLB_BATCH_ALERTS=0`). For every Shift Master row in force today and yesterday it computes the shift end in India time and sends a Telegram message through the MIS outbox when no batch exists two hours after shift end, or the batch is still open six hours after shift end, repeating every two hours until the condition clears. Recipients are the site Project Managers (same lookup as the express OTPs) plus the production head logins from the settings; with neither configured, the site's MIS users. Offsets, reminder interval, production head logins and Pulse administrator logins live in `app_settings` under `vlb_batch_alerts` and are edited on the Telegram Integration page (`/api/vlb-batch-alerts/settings`, `/state`, `/run`). State per alert is kept in `mis_vlb_batch_alert_state`.
 

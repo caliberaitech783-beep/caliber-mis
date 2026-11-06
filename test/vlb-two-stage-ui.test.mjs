@@ -328,3 +328,21 @@ test('machine report headers toggle numeric sorting and keep missing values last
  button(tree,'Trips').props.onClick();tree=render();assert.deepEqual(doors(tree),['V10','V2','V3','D10','D2']);
  button(tree,'Door').props.onClick();tree=render();assert.deepEqual(doors(tree),['V2','V3','V10','D2','D10']);assert.equal(report.loaders[0].door,'V10');assert.match(renderToStaticMarkup(tree),/Totals · 5 machines/);
 });
+
+test('a batch owner can start an additional ELB card from the same machine row',async()=>{
+ const h=hooks(),calls=[];
+ const savedFleet=fleet.map(item=>item.assetId==='7'?{...item,logbook_revision:4,logbook:{employeeId:'1',openingHmr:100,closingHmr:104}}:item);
+ const fetch=async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>({fleet:savedFleet})}};
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'relief-key'}},['VlbFleetStepper']);
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',stage:'elb_open',fleet:savedFleet,statuses,canEnterFleet:true},options:{employees:[]},embedded:true})};
+ button(render(),'Add relief card').props.onClick();
+ h.slots[9]={key:'batch1:7:::',loading:false,data:{breakdownHours:0,breakdowns:[],shiftHours:8},error:''};
+ const tree=render();
+ assert.ok(nodes(tree,n=>n.type==='input'&&n.props.value==='104').length,'the prior closing HMR pre-fills the opening HMR');
+ await button(tree,'Save relief card').props.onClick();
+ assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');
+ assert.equal(calls[0].body.additionalCard,true);
+ assert.equal(calls[0].body.employeeId,'');
+ assert.equal(calls[0].body.revision,undefined);
+ assert.equal(calls[0].body.requestKey,'relief-key');
+});

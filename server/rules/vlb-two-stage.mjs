@@ -1,3 +1,4 @@
+import {cardWorkingHmr} from '../../shared/log-book-shared-shift.mjs';
 import {canonicalSiteName,equipmentSiteName} from '../../shared/site-location.mjs';
 import {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
@@ -159,7 +160,7 @@ export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
  const missing=fleet.filter(needsElb).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));
  if(missing.length)blockers.push('Machines without a saved ELB: '+missing.map(row=>`${row.door} loaded ${row.trips} trips, no ELB saved`).join('; ')+'.');
- if(duplicates.length)blockers.push('Duplicate ELB cards for the same machine: '+duplicates.join(', ')+'. Review before closing.');
+ if(duplicates.length)blockers.push('Duplicate ELB cards for the same machine and operator: '+duplicates.join(', ')+'. Review before closing.');
  return blockers;
 }
 
@@ -180,13 +181,23 @@ export function fleetProgress(fleet=[]){
 
 // Machine-wise shift report: trips from VLB, hours from ELB, trips per hour.
 export function machineReportRows(fleet=[],elbRecords=[]){
- const byAsset=new Map(elbRecords.map(record=>[String(record.asset_id||record.data?.assetId),record]));
+ const byAsset=new Map();
+ for(const record of elbRecords){
+  const key=String(record.asset_id||record.data?.assetId);
+  if(!byAsset.has(key))byAsset.set(key,[]);
+  byAsset.get(key).push(record);
+ }
  const rows=fleet.map(row=>{
-  const record=byAsset.get(String(row.assetId||row.asset_id)),data=record?.data||{};
-  const opening=num(data.openingHmr),closing=num(data.closingHmr),hours=opening!==null&&closing!==null&&closing>=opening?round(closing-opening):null;
+  const records=byAsset.get(String(row.assetId||row.asset_id))||[],data=records.at(-1)?.data||{};
+  const cards=records.map(record=>record.data||{});
+  const openings=cards.map(card=>num(card.openingHmr)).filter(value=>value!==null);
+  const closings=cards.map(card=>num(card.closingHmr)).filter(value=>value!==null);
+  const totals=cards.map(cardWorkingHmr).filter(value=>value!==null);
+  const opening=openings.length?Math.min(...openings):null,closing=closings.length?Math.max(...closings):null;
+  const hours=totals.length?round(totals.reduce((sum,value)=>sum+value,0)):null;
   const trips=Number(row.trips)||0;
   return {assetId:String(row.assetId||row.asset_id),door:row.door,equipmentName:row.equipmentName||row.equipment_name||'',status:row.shift_status||row.shiftStatus||'',statusLabel:FLEET_STATUSES[row.shift_status||row.shiftStatus]?.label||'',trips,sourceCards:Number(row.sourceCards||row.source_cards)||0,
-   operator:text(data.employeeName),openingHmr:opening,closingHmr:closing,hours,tripsPerHour:hours?round(trips/hours):null,breakdownHours:num(data.breakdownHours),idleHours:num(data.idleHours),bookNo:record?.book_no||'',remark:text(data.statusReason||data.remark),transferred:Boolean(data.transferredThisShift)};
+   operator:[...new Set(cards.flatMap(card=>[text(card.employeeName),text(card.operatorSplit?.secondOperatorName)]).filter(Boolean))].join(', '),openingHmr:opening,closingHmr:closing,hours,tripsPerHour:hours?round(trips/hours):null,breakdownHours:num(data.breakdownHours),idleHours:num(data.idleHours),bookNo:records.map(record=>record.book_no).filter(Boolean).join(', '),remark:text(data.statusReason||data.remark),transferred:Boolean(data.transferredThisShift)};
  });
  const loaders=rows.filter(r=>r.trips>0),others=rows.filter(r=>!r.trips);
  const totals={machines:rows.length,trips:rows.reduce((s,r)=>s+r.trips,0),hours:round(rows.reduce((s,r)=>s+(r.hours||0),0)),working:rows.filter(r=>FLEET_STATUSES[r.status]?.allowsTrips).length,down:rows.filter(r=>['breakdown','maintenance'].includes(r.status)).length,idle:rows.filter(r=>['no_operator','not_in_use'].includes(r.status)).length};

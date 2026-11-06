@@ -1,9 +1,10 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {CARD_SHIFTS,normalizeCardShift,VLB_SHIFT_KMR_LIMIT} from '../../shared/trip-card-rules.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
+import {cardWorkingHmr} from '../../shared/log-book-shared-shift.mjs';
 
 const meterUnits=value=>Math.max(0,Math.round(Number(value)*1000)||0);
-const hmrUnits=data=>meterUnits(data.totalWorkingHmr??(data.closingHmr-data.openingHmr));
+const hmrUnits=data=>meterUnits(cardWorkingHmr(data));
 const kmrUnits=data=>meterUnits(data.totalRunningKmr??data.replacementKmr??(data.closingKmr-data.openingKmr));
 
 // Writers must hold the log-book transaction locks through validation and save.

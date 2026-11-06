@@ -1,6 +1,7 @@
 import {operationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-import {bookShiftCode,selectedMasterShift} from './trip-card-rules.mjs';
+import {cardWorkingHmr,shareCardOperator} from './log-book-shared-shift.mjs';
+import {bookShiftCode,selectedMasterShift,CARD_SHIFTS,normalizeCardShift} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
@@ -82,7 +83,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  const atSite=assets.filter(a=>sameSite(a.currentLocation||a.site||a.location,f.site)&&!a.sourceMissing&&text(a.status).toLowerCase()!=='inactive');
  // Include fleet rows, but distinguish an absent card from an explicit zero-trip card.
  for(const a of atSite)if(assetBookKind(a)==='vehicle')createRow(rowGroups,a);else createRow(machineGroups,a);
- const duplicates=new Set(),machineIndex=new Map();
+ const shiftCards=new Map(),machineIndex=new Map();
  for(const a of assets.filter(a=>assetBookKind(a)==='equipment'&&(atSite.includes(a)||equipment.some(r=>String(r.asset_id||r.data.assetId)===String(a.id))))){
   for(const alias of unique([door(a),a.equipmentName,...(Array.isArray(a.cardAliases)?a.cardAliases:[])].map(fleetDoorKey))){if(!machineIndex.has(alias))machineIndex.set(alias,[]);machineIndex.get(alias).push(a);}
  }
@@ -93,14 +94,21 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  const driver=d=>d.employeeId?`${text(d.employeeName)||'Name missing'} (${text(d.caliberId)||d.employeeId})`:'Unresolved driver / operator';
  for(const r of [...vehicles,...equipment]){
   const d=r.data,s=recordShift(r),a=assetMap.get(String(r.asset_id||d.assetId)),identity=[r.book_type,r.asset_id||d.assetId,s].join(':');
-  if(duplicates.has(identity))issue('duplicate','Multiple cards for the same asset and shift need review before totals can be generated.',r.book_no);duplicates.add(identity);
+  const peers=shiftCards.get(identity)||[];
+  if(peers.some(peer=>shareCardOperator(d,peer)))issue('duplicate','Multiple cards for the same asset, shift and driver or operator need review before totals can be generated.',r.book_no);
+  peers.push(d);
+  shiftCards.set(identity,peers);
   if(!a){issue('asset','Equipment master identity is missing.',r.book_no);continue;}
   if(d.bookDate!==f.date||!sameSite(d.location,f.site)){issue('metadata','Saved card date/site conflicts with its record.',r.book_no);continue;}
   const row=createRow(r.book_type==='vehicle'?rowGroups:machineGroups,a),cell=row.cells[s];cell.drivers.add(driver(d));cell.cards.push(r.book_no);
+  if(d.operatorSplit?.secondOperatorId)cell.drivers.add(driver({employeeId:d.operatorSplit.secondOperatorId,employeeName:d.operatorSplit.secondOperatorName,caliberId:d.operatorSplit.secondOperatorCaliberId}));
+  const hours=cardWorkingHmr(d);
+  if(hours!==null)cell.hours=round((cell.hours??0)+hours);
+  const limit=CARD_SHIFTS[normalizeCardShift(s)]?.hours;
+  if(limit&&cell.hours>limit)issue('hmr',`Combined working HMR for ${row.door} in ${s} is ${cell.hours} hours. The limit is ${limit} hours.`,r.book_no);
   if(!d.employeeId)warnings.push({message:'Driver / operator ID is missing.',reference:r.book_no});
   if(r.book_type==='equipment'){
-   const start=num(d.openingHmr),end=num(d.closingHmr),hours=start!==null&&end!==null&&start>=0&&end>=start?round(end-start):null;
-   if(hours===null)issue('hmr','ELB opening and closing HMR need correction.',r.book_no);else cell.hours=hours;
+   if(hours===null)issue('hmr','ELB opening and closing HMR need correction.',r.book_no);
    const scheduled=num(d.shiftHours),bd=num(d.breakdownHours),idle=num(d.idleHours);
    if(hours!==null&&scheduled!==null&&(hours>scheduled||bd!==null&&idle!==null&&hours+bd+idle>scheduled+0.01))warnings.push({message:'ELB HMR / breakdown / idle hours do not reconcile to scheduled hours. HMR difference is shown; source values were not changed.',reference:r.book_no});
    continue;
@@ -128,5 +136,5 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  });
  const doorRows=finish(rowGroups,false),machineRows=finish(machineGroups,true),totalTrips=doorRows.reduce((n,r)=>n+r.totalTrips,0),totalQuantity=round(doorRows.reduce((n,r)=>n+r.totalQuantity,0));
  if(machineRows.reduce((n,r)=>n+r.totalTrips,0)!==totalTrips||Math.abs(machineRows.reduce((n,r)=>n+r.totalQuantity,0)-totalQuantity)>0.01){issue('reconciliation','Door and machine totals do not match.');return blocked();}
- return {ready:true,filters:f,shifts:selected,status,issues,warnings,doorRows,machineRows,totalTrips,totalQuantity,capacityVersions:[...capacityUsed.values()].map(v=>({id:v.id,location:v.location||'',jobType:v.jobType||'',make:v.make,model:v.model,capacity:Number(v.capacity),effectiveFrom:v.effectiveFrom})),notes:['Quantity (CUM) = approved tipper capacity × counted trips. This is capacity-based volume, not a measured weighbridge quantity.','Trips and volume belong to the loading shift.','Machine hours come from saved ELB HMR differences, once per machine and shift. They are not employee attendance or OT hours.','A dash means no card; zero means a saved card explicitly recorded no counted trips. Fleet coverage lists missing cards.','Processed means the existing Save & lock batch checkpoint. Reopening blocks fresh report generation until the batch is locked again.']};
+ return {ready:true,filters:f,shifts:selected,status,issues,warnings,doorRows,machineRows,totalTrips,totalQuantity,capacityVersions:[...capacityUsed.values()].map(v=>({id:v.id,location:v.location||'',jobType:v.jobType||'',make:v.make,model:v.model,capacity:Number(v.capacity),effectiveFrom:v.effectiveFrom})),notes:['Quantity (CUM) = approved tipper capacity × counted trips. This is capacity-based volume, not a measured weighbridge quantity.','Trips and volume belong to the loading shift.','Working HMR is summed across saved driver or operator cards for each asset and shift.','A dash means no card; zero means a saved card explicitly recorded no counted trips. Fleet coverage lists missing cards.','Processed means the existing Save & lock batch checkpoint. Reopening blocks fresh report generation until the batch is locked again.']};
 }
