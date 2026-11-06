@@ -41,6 +41,12 @@ test('scan review and repeated detail/summary normalization keep TA35 as Tpc 35'
 test('different serials with the same door number require review instead of choosing one',()=>{
  assert.match(resolveTripEquipment({equipmentName:'TA35'},[...suffixedAssets,{id:'duplicate',kind:'equipment',door:'TPC35 - 99999',site:'Jayant OC'}],'Jayant').error,/Multiple equipment/);
 });
+test('an explicit serial suffix selects the matching record among duplicate short codes',()=>{
+ const master=[...suffixedAssets,{id:'other-tpc35',kind:'equipment',door:'TPC35 - 99999',site:'Jayant OC'}];
+ const result=resolveTripEquipment({equipmentName:'T35 - 01150'},master,'Jayant');
+ assert.equal(result.error,undefined);assert.equal(result.equipmentId,'tpc35');assert.equal(result.equipmentName,'Tpc 35');
+ assert.match(resolveTripEquipment({equipmentName:'T35 - 12345'},suffixedAssets,'Jayant').error,/not assigned/);
+});
 
 const upRegistrationAssets=[...suffixedAssets,
  {id:'up-jayant',door:'UP64AT9857',equipmentName:'UP64AT9857',category:'VEHICLE',site:'Jayant OC'},

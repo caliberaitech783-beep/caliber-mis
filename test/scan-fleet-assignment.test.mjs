@@ -22,6 +22,15 @@ test('unavailable, unreadable and ambiguous fleet checks block without authorizi
  assert.throws(()=>scanFleetAssignment(fleet,{doorText:'V',location:'Sasti OC'}),/readable/);
  assert.throws(()=>scanFleetAssignment([...fleet,fleet[0]],{doorText:'V1',location:'Sasti OC'}),/duplicate/);
 });
+test('a serial suffix distinguishes duplicate TPC short codes',()=>{
+ const rows=[
+  {door:'TPC63 - 05017',kind:'equipment',currentLocation:'Jayant OB'},
+  {door:'TPC63 - 99999',kind:'equipment',currentLocation:'Other OB'},
+ ];
+ assert.equal(scanFleetAssignment(rows,{doorText:'T63 - 05017',location:'Jayant OB'},{},'','equipment'),null);
+ assert.throws(()=>scanFleetAssignment(rows,{doorText:'T63',location:'Jayant OB'},{},'','equipment'),/duplicate/);
+ assert.equal(scanFleetAssignment(rows.slice(0,1),{doorText:'T63 - 12345',location:'Jayant OB'},{},'','equipment').reason,'unknown-machine');
+});
 test('fleet detection retains the original scan and draft until the user chooses a disposition',async()=>{
  const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
  const fn=source.slice(source.indexOf('async function enforceFleet('),source.indexOf(' function queueFleetCheck('));
