@@ -36,6 +36,18 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.deepEqual(scanEntries.map(id=>before.data.records.filter(r=>r.data.scanBatchId===id).length),[40,40,40,10]);
  assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
  const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,131);
+ const countsPath='/'+created.data.id+'/card-counts';
+ assert.deepEqual((await call(countsPath)).data,{batchId:created.data.id,entry_count:131,manual_count:1,scan_count:130});
+ assert.equal((await call(countsPath,'GET',undefined,'restricted')).status,404,'count endpoint retains site authorization');
+ assert.equal((await call(countsPath,'GET',undefined,'')).status,401);
+ assert.equal((await call('/not-a-batch/card-counts')).status,400);
+ await db.query('UPDATE mis_log_books SET deleted_at=NOW() WHERE id=$1',[ids[0]]);
+ assert.equal((await call('')).data.batches.find(b=>b.id===created.data.id).entry_count,130,'list omits deleted saved records');
+ assert.equal((await call(countsPath)).data.entry_count,130,'scan headline uses the same active saved total');
+ assert.equal((await call('/'+created.data.id)).data.entry_count,130,'detail agrees with list/count endpoint');
+ assert.equal((await db.query('SELECT count(*)::int AS count FROM mis_vlb_batch_entries WHERE batch_id=$1',[created.data.id])).rows[0].count,131,'retained membership snapshots are never deleted by counting');
+ await db.query('UPDATE mis_log_books SET deleted_at=NULL WHERE id=$1',[ids[0]]);
+ assert.equal((await call(countsPath)).data.entry_count,131,'restoring a record restores its count');
  const otherScopePreview=await call('/preview?'+new URLSearchParams({...selection,date:'2026-12-29',shift:'S2'}));assert.equal(otherScopePreview.data.siteOpenBatch.id,created.data.id);
  assert.equal((await call('','POST',{...selection,date:'2026-12-29',shift:'S2',requestKey:randomUUID()},'bob')).status,409,'another user cannot create a different date or shift while this site is open');
  assert.equal((await call(preview)).data.records.length,0);

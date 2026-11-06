@@ -14,10 +14,11 @@ import VlbEntryWorkspace,{rememberVlbEntryBatch} from '../src/vlb-entry-workspac
 import LogBookForm from '../src/log-book-form.jsx';
 import BulkCardScanning from '../src/bulk-card-scanning.jsx';
 const session={login:'handoff-test',token:'synthetic',role:'super'};
-const batch={id:'selected-batch',name:'Dudhichua test batch',site:'Dudhichua OC',report_date:'2026-11-01',shift:'S1',records:[],entry_count:0,closed_at:null,twoStage:true,stage:'vlb_open',created_by:session.login};
+const batch={id:'selected-batch',name:'Dudhichua test batch',site:'Dudhichua OC',report_date:'2026-11-01',shift:'S1',records:[],entry_count:121,closed_at:null,twoStage:true,stage:'vlb_open',created_by:session.login};
 const other={...batch,id:'different-batch',name:'Other site batch',site:'Jayant OC'};
 const options={sites:['Dudhichua OC','Jayant OC'],assets:[],employees:[],shifts:[{id:'1',site:'Dudhichua OC',name:'Shift A',shiftCode:'I',startTime:'05:00',endTime:'13:00'}],workOrders:[]};
 window.requests=[];
+window.batchCounts={batchId:batch.id,entry_count:121,manual_count:2,scan_count:119};
 const scenario=new URLSearchParams(location.search);
 window.fetch=async(input,init={})=>{
  const url=new URL(String(input),location.href);window.requests.push({path:url.pathname,method:init.method||'GET'});
@@ -27,9 +28,10 @@ window.fetch=async(input,init={})=>{
   await new Promise(resolve=>setTimeout(resolve,scenario.get('order')==='options-last'?180:10));data=options;
  }else if(url.pathname==='/api/vlb-batches'){
   await new Promise(resolve=>setTimeout(resolve,scenario.get('order')==='options-last'?10:180));
-  data={batches:[other,batch],actor:{login:session.login,mis:true,admin:true},twoStage:true};
+  data={batches:[other,{...batch,entry_count:window.batchCounts.entry_count}],actor:{login:session.login,mis:true,admin:true},twoStage:true};
  }else if(url.pathname==='/api/vlb-batches/preview')data={records:[],name:batch.name};
  else if(url.pathname==='/api/vlb-batches/approvals')data={requests:[]};
+ else if(url.pathname==='/api/vlb-batches/selected-batch/card-counts')data=window.batchCounts;
  else if(url.pathname==='/api/vlb-batches/selected-batch')data=batch;
  else if(url.pathname==='/api/vlb-batches/different-batch')data=other;
  else if(url.pathname==='/api/scan-batches')data={batches:[]};
@@ -55,6 +57,7 @@ try{
   page.on('pageerror',error=>{errors.push(error.message);console.error(error.message)});
   await page.goto('http://127.0.0.1:'+server.httpServer.address().port+'/layout-checks/batch-entry.html?order='+order);
   const row=page.locator('tr').filter({hasText:'Dudhichua test batch'});
+  assert.match(await row.innerText(),/121/);
   await row.getByRole('button',{name:'View report',exact:true}).click();
   // The simplified toolbar keeps entry navigation under Batch permissions.
   // Exercise those real controls, then choose Scan/Upload in the scanner itself.
@@ -70,6 +73,13 @@ try{
    await page.locator(action==='Scan'?'.scan-scanner-card':'.scan-upload-panel').waitFor({state:'visible'});
    assert.equal(await page.locator('.scan-workflow-tabs').getByRole('button',{name:action==='Scan'?'Scan':'Upload files',exact:true}).getAttribute('aria-pressed'),'true');
    assert.equal(await page.getByLabel('Card date',{exact:true}).inputValue(),'2026-11-01');
+   const total=page.getByRole('status',{name:'Total cards in this batch'});
+   await total.getByText('121',{exact:true}).waitFor();
+   assert.match(await total.innerText(),/Manual: 2.*Scan\/PDF: 119/);
+   if(order==='options-last'&&action==='Scan'){
+    await page.evaluate(()=>{window.batchCounts={...window.batchCounts,entry_count:119,manual_count:0}});
+    await total.getByText('119',{exact:true}).waitFor({timeout:10000});
+   }
   }
   const requests=await page.evaluate(()=>window.requests);
   assert.ok(requests.some(r=>r.path==='/api/vlb-batches/selected-batch'));

@@ -385,3 +385,5 @@
 .scan-page .scan-correction-status.scan-review-advisory{padding:12px 16px;background:#f5f1fb;color:#402367;border-radius:8px}
 @keyframes scan-review-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.scan-review-spinner{animation:none}}
+
+.scan-entry-breakdown{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:8px 12px;border:1px solid #ded3e8;border-radius:6px;background:var(--panel,#fff);font-size:16px;line-height:1.5}

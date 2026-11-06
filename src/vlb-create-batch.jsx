@@ -51,9 +51,12 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   }).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false)}});
   return()=>controller.abort();
  },[session.token]);
- useEffect(()=>{const controller=new AbortController();
-  read('/api/vlb-batches',{signal:controller.signal}).then(data=>{setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true)}).catch(e=>{if(!controller.signal.aborted){setBatchStatusReady(false);setError(e.message)}});
-  return()=>controller.abort();
+ useEffect(()=>{const controller=new AbortController();let pending=false;
+  const load=()=>{if(pending)return;pending=true;
+   return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true)}).catch(e=>{if(!controller.signal.aborted){setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false});
+  };
+  void load();const timer=setInterval(load,4000);
+  return()=>{controller.abort();clearInterval(timer)};
  },[session.token,refresh]);
  // A report entry action already chose a batch. Restore its site only after
  // both authorized lists arrive, then let the normal picker fetch its details.
