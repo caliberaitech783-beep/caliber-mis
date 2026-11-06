@@ -189,7 +189,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,fl
  // Without an entry in the address (refresh, crash recovery, server update) the
  // entry this browser last worked in for the VLB batch, or the newest entry with
  // unsaved cards, reopens on its own. Cards are never lost by reloading.
- void list().then(rows=>{if(initial||!vlbBatch||activeRef.current)return;const entry=chooseScanEntry(rows,{remembered:recallScanEntry(localStorage,kind,vlbBatch.id)});if(entry)void selectBatch(entry.id);}).catch(e=>setError(e.message));void api('/api/log-books/options?scan=1').then(setOptions).catch(e=>setError(e.message));const t=setInterval(()=>{if(activeRef.current)void load(activeRef.current,false).catch(e=>setConnectionError(e.message))},4000);return()=>clearInterval(t)},[kind,token]);
+ void list().then(rows=>{if(initial||!vlbBatch||activeRef.current)return;const entry=chooseScanEntry(rows,{remembered:recallScanEntry(localStorage,kind,vlbBatch.id)});if(entry)void selectBatch(entry.id);}).catch(e=>setError(e.message));void api('/api/log-books/options?scan=1').then(setOptions).catch(e=>setError(e.message));const t=setInterval(()=>{if(activeRef.current)void load(activeRef.current,false).catch(e=>setConnectionError(e.message))},4000);return()=>{clearInterval(t);activeRef.current=null}},[kind,token]);
  const card=cards.find(c=>c.id===selected);
  const groupSummary=reviewGroupSummary(cards,kind,options,contextGate?.context);const uploadedCount=uploadSent;
 
@@ -250,14 +250,38 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const reviewComplete=Boolean(!scanMatchingPending&&!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
   if(!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked)return;
-  const next=cards.find(c=>!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
-  if(!next)return;const key=next.id+':'+next.revision;autoSaveAttempts.current.add(key);setBusy(true);setProgress('Saving complete card '+next.ordinal+' automatically…');
+  const ready=cards.filter(c=>!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
+  if(!ready.length)return;
+  setBusy(true);
   void (async()=>{try{
-   const result=await api('/api/scan-cards/'+next.id+'/auto-save',{method:'POST',body:JSON.stringify({revision:next.revision})});
-   setCards(rows=>rows.map(c=>c.id===next.id?applySavedScanCard(c,result.record):c));
-   setResults(rows=>[...rows.filter(r=>String(r.id)!==String(result.record.id)),result.record]);if(result.archive)setArchiveResult(result.archive);
-   setNotice('Card '+next.ordinal+' saved automatically as '+result.record.book_no+'.');await load(next.batch_id);await list();
-  }catch(e){if(e.message.startsWith('Pulse BD hours unavailable')){autoSaveFailures.current.set(key,e.message);setFailureTick(n=>n+1);bdFetchUnavailable.current=true;setNotice('Card '+next.ordinal+': '+e.message);if(next.id===selectedCardRef.current){setPulseHours(null);setPulseHoursError(e.message);}}else{autoSaveFailures.current.set(key,e.message);setFailureTick(n=>n+1);setAutoSaveError({ordinal:next.ordinal,message:e.message});}await load(next.batch_id).catch(()=>{});}finally{setBusy(false);setProgress('');}})();
+   let savedAny=false;
+   for(const next of ready){
+    if(activeRef.current!==next.batch_id)return;
+    const key=next.id+':'+next.revision;
+    autoSaveAttempts.current.add(key);
+    setProgress('Saving complete card '+next.ordinal+' automatically…');
+    try{
+     const result=await api('/api/scan-cards/'+next.id+'/auto-save',{method:'POST',body:JSON.stringify({revision:next.revision})});
+     savedAny=true;
+     setCards(rows=>rows.map(c=>c.id===next.id?applySavedScanCard(c,result.record):c));
+     setResults(rows=>[...rows.filter(r=>String(r.id)!==String(result.record.id)),result.record]);if(result.archive)setArchiveResult(result.archive);
+     setNotice('Card '+next.ordinal+' saved automatically as '+result.record.book_no+'.');
+    }catch(e){
+     autoSaveFailures.current.set(key,e.message);
+     setFailureTick(n=>n+1);
+     if(e.message.startsWith('Pulse BD hours unavailable')){
+      bdFetchUnavailable.current=true;
+      setNotice('Card '+next.ordinal+': '+e.message);
+      if(next.id===selectedCardRef.current){setPulseHours(null);setPulseHoursError(e.message);}
+     }else setAutoSaveError({ordinal:next.ordinal,message:e.message});
+     break;
+    }
+   }
+   // Each save returns the posted record. Refresh once after this pass, or after a refusal.
+   if(activeRef.current!==ready[0].batch_id)return;
+   await load(ready[0].batch_id).catch(e=>setConnectionError(e.message));
+   if(savedAny)await list().catch(e=>setError(e.message));
+  }finally{setBusy(false);setProgress('');}})();
  },[cards,kind,options,dirty,busy,fleetBusy,connectionError,saveTick,bdFallbackMissing,pulseHours?.breakdownHours,contextBlocked]);
  useEffect(()=>{
   if(!card||!options||!draft.location||['queued','reading','posted'].includes(card.status)||draft.assetId||(kind==='vehicle'&&!dirtyRef.current))return;
