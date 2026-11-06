@@ -70,3 +70,15 @@ test('fleet detection retains the original scan and draft until the user chooses
 test('all off-site trip and printed summary occurrences are highlighted once per equipment',()=>{
  const draft={doorText:'V1',location:'Sasti OC',trips:[{equipmentName:'V12'},{equipmentName:'V12'},{equipmentName:'V2'}],scanMachineSummary:[{equipmentName:'V12'}]};const issues=scanFleetIssues(fleet,draft);assert.equal(issues.length,1);assert.deepEqual(issues[0].fields,['trips.0.equipmentName','trips.1.equipmentName','scanMachineSummary.0.equipmentName']);assert.equal(issues[0].reason,'unknown-machine');
 });
+
+test('duplicate equipment review identifies the card row and matching Pulse records',()=>{
+ const rows=[
+  {id:21,door:'VPC28 - 111',currentLocation:'Majri OB'},
+  {id:42,door:'VPC28 - 222',currentLocation:'Majri OC'},
+ ];
+ const draft={location:'Majri OB',scanMachineSummary:[{equipmentName:'VPC28'}]};
+ assert.throws(()=>scanFleetIssues(rows,draft),/Machine-wise summary, row 1.*VPC28.*VPC28 - 111 \(Majri OB, record 21\).*VPC28 - 222 \(Majri OC, record 42\)/);
+ const corrected={...draft,scanMachineSummary:[{equipmentName:'VPC28 - 111'}]};
+ assert.notEqual(scanFleetSignature(draft),scanFleetSignature(corrected));
+ assert.deepEqual(scanFleetIssues(rows,corrected),[]);
+});
