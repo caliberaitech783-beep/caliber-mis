@@ -52,8 +52,7 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const app=express();app.use(express.json());
   const requireSession=(req,res,next)=>{req.session={role:'super',login:req.headers.authorization,permissions:{adminLevel:'Admin',separateMisCredentials:true},...profiles[req.headers.authorization]};if(['admin','assignedAdmin'].includes(req.headers.authorization))req.session.permissions={adminLevel:'Admin'};next()};
   const requireAdministrator=(req,res,next)=>next();
-  let oracleReads=0;
-  registerErpEmployees(app,{pool,config:{},requireSession,requireAdministrator,readSource:async()=>{oracleReads++;return {employeeId:'CMPL3333',name:'Remote employee',site:'Jayant OC'}}});
+  registerErpEmployees(app,{pool,requireSession,requireAdministrator});
   registerLogBooks(app,{pool,requireSession,requireAdministrator});
   registerBulkCardScanning(app,{pool,requireSession,requireAdministrator,getSiteScope:async session=>logBookSiteScope(session),ocr:{recognize:async()=>({}),close(){}}});
   app.use((err,req,res,next)=>res.status(err.status||500).json({error:err.message}));
@@ -93,8 +92,8 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL1111',location:'Sasti OB'})).status,200);
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Sasti OC'})).status,403);
   assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL2222',location:'Jayant OC'})).status,403);
-  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL3333',location:'Sasti OC'})).status,403);
-  assert.equal(oracleReads,1);assert.equal((await db.query("SELECT count(*) AS n FROM master_records WHERE master_name='ERP Employee master'")).rows[0].n,0,'out-of-scope ERP employee is never cached');
+  assert.equal((await call('/api/log-books/employee-lookup','POST',{caliberId:'CMPL3333',location:'Sasti OC'})).status,404);
+  assert.equal((await db.query("SELECT count(*) AS n FROM master_records WHERE master_name='ERP Employee master'")).rows[0].n,0,'lookup never creates an ERP employee record');
   assert.equal((await call('/api/log-books/equipment','POST',{...body,assetId:ids.equipment})).status,201);
   const scans={};
   for(const [key,site,owner] of [['local','Sasti OC','other'],['remote','Jayant OC','other'],['ownWrongSite','Jayant OC','site']]){

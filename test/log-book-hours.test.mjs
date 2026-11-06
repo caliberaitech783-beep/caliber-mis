@@ -3,6 +3,17 @@ const input={date:'2026-10-16',site:'Sasti OC',asset:{door:'V321'},shift:{startT
 test('Pulse BD is clipped to the shift, merged across overlapping requests, and ignores another vehicle/site and idle requests',()=>{const rows=[{ref:'A',site:'Sasti OC',door:'V321',start:'2026-10-16 19:00:00',closedAt:'2026-10-16 21:00:00'},{ref:'B',site:'Sasti OC',door:'V321',start:'2026-10-16 20:30:00',closedAt:'2026-10-16 22:00:00'},{site:'Sasti OC',door:'V999',start:'2026-10-16 20:00:00',closedAt:'2026-10-17 04:00:00'},{site:'Sasti OC',door:'V321',vehicleIdle:true,start:'2026-10-16 20:00:00',closedAt:'2026-10-17 04:00:00'}];const h=summarizePulseHours({...input,rows});assert.equal(h.breakdownHours,2);assert.equal(h.availabilityHours,5);assert.equal(h.idleHours,3);});
 test('no matching breakdowns is zero only after a valid response; inconsistent totals stay visible',()=>{assert.equal(summarizePulseHours({...input,rows:[]}).idleHours,3);const h=summarizePulseHours({...input,runningHours:9,rows:[]});assert.equal(h.idleHours,-1);assert.equal(h.warnings.length,1);assert.throws(()=>summarizePulseHours({...input,shift:{},rows:[]}));});
 
+test('a shared vehicle model name cannot identify the vehicle in maintenance',()=>{
+ const asset={...input.asset,category:'Vehicle',equipmentName:'Volvo Tipper'};
+ const request={site:input.site,equipment:'Volvo Tipper',start:'2026-10-16 20:30:00'};
+ const result=summarizePulseHours({...input,asset,rows:[
+  {...request,ref:'OTHER',door:'V322'},
+  {...request,ref:'MATCH',door:'V321',closedAt:'2026-10-16 21:30:00'},
+ ]});
+ assert.deepEqual(result.references,['MATCH']);
+ assert.equal(result.breakdowns[0].ongoing,false);
+});
+
 test('Pulse event details preserve actual times and count carry-over and ongoing time only within the shift',()=>{
  const now=Date.parse('2026-10-17T00:00:00+05:30');
  const rows=[{ref:'A',complaint:'Hydraulic leak',site:'Sasti OC',door:'V321',start:'2026-10-16 19:00:00',closedAt:'2026-10-16 21:00:00'},{ref:'B',complaint:'Engine fault',site:'Sasti OC',door:'V321',start:'2026-10-16 20:30:00'},{ref:'OTHER',site:'Other site',door:'V321',start:'2026-10-16 20:00:00'}];

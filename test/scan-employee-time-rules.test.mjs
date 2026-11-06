@@ -53,12 +53,12 @@ test('numeric IDs in driver/operator boxes fill the correct master record for VL
 test('lookup resolves numeric IDs from the selected location locally without ERP access, rejects duplicates and wrong sites',async t=>{
  const db=new PGlite();await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)');
  for(const record of records)await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',[record.master_name,JSON.stringify(record.record_data)]);
- let erpReads=0;const app=express();app.use(express.json());registerErpEmployees(app,{pool:{query:(...args)=>db.query(...args)},config:null,requireSession:(req,res,next)=>{req.session={};next()},requireAdministrator:(req,res,next)=>next(),getSiteScope:async()=>userSiteScope({site:person.site}),readSource:async()=>{erpReads++;throw Error('Unexpected ERP access')}});
+ const app=express();app.use(express.json());registerErpEmployees(app,{pool:{query:(...args)=>db.query(...args)},requireSession:(req,res,next)=>{req.session={};next()},requireAdministrator:(req,res,next)=>next(),getSiteScope:async()=>userSiteScope({site:person.site})});
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));t.after(async()=>{await new Promise(resolve=>server.close(resolve));await db.close()});
  const lookup=async(code,location=person.site)=>{const response=await fetch('http://127.0.0.1:'+server.address().port+'/api/log-books/employee-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({caliberId:code,location})});return {status:response.status,body:await response.json()}};
  for(const code of ['3228','CMPL3228','CMLL3228']){const result=await lookup(code);assert.equal(result.status,200);assert.equal(result.body.name,person.name);assert.equal(result.body.employeeId,'CMPL3228');assert.equal(result.body.caliberCode,'CMLL3228');}
  assert.equal((await lookup('5311')).body.name,'Operator 5311');assert.equal((await lookup('3228','Jayant OC')).status,403);
- assert.equal((await lookup('9998')).status,503);assert.equal(erpReads,0);
+ assert.equal((await lookup('9998')).status,404);
  await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Employee master',JSON.stringify({...person,caliberId:'CMPL7777',employeeId:'CMPL7777',caliberCode:'CMLL3228'})]);
  assert.equal((await lookup('3228')).status,409);assert.equal((await lookup('CMPL3228')).status,200);
  const original=(await db.query('SELECT record_data FROM master_records WHERE id=1')).rows[0].record_data;assert.deepEqual(original,person);
