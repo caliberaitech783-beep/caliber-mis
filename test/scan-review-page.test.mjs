@@ -218,6 +218,23 @@ test('Scan and Upload require complete setup and activate only the selected inpu
  assert.equal(button(tree,'Choose scan files').props.disabled,false);
 });
 
+test('Delete PDF sits left of Scan and selects only cards from the chosen uploaded PDF',()=>{
+ const app=harness();app.render();app.testCapture.setBatch({id:'batch-1',kind:'vehicle'});app.testCapture.activeRef.current='batch-1';app.testCapture.setCards([
+  {id:'wrong-1',batch_id:'batch-1',ordinal:1,revision:1,status:'review',filename:'Wrong cards.pdf · page 1',draft:{},raw_fields:{}},
+  {id:'right-1',batch_id:'batch-1',ordinal:2,revision:1,status:'review',filename:'Correct cards.pdf · page 1',draft:{},raw_fields:{}},
+  {id:'wrong-2',batch_id:'batch-1',ordinal:3,revision:1,status:'error',filename:'Wrong cards.pdf · page 2',draft:{},raw_fields:{}}
+ ]);
+ let tree=app.render(),workflow=nodes(tree,n=>n.props['aria-label']==='Scanning workflow')[0],buttons=nodes(workflow,n=>n.type==='button');
+ const deletePdf=buttons.find(n=>React.Children.toArray(n.props.children).includes('Delete PDF')),scan=buttons.find(n=>n.props.children==='Scan');
+ assert.ok(deletePdf);assert.equal(deletePdf.props.disabled,false);assert.equal(buttons.indexOf(deletePdf)+1,buttons.indexOf(scan));
+ deletePdf.props.onClick();tree=app.render();
+ const chooser=nodes(tree,n=>n.props['aria-labelledby']==='scan-pdf-deletion-title')[0];assert.ok(chooser);
+ assert.deepEqual(nodes(chooser,n=>n.type==='strong').map(n=>n.props.children),['Wrong cards.pdf','Correct cards.pdf']);
+ nodes(chooser,n=>n.type==='button'&&n.props.children==='Delete this PDF')[0].props.onClick();tree=app.render();
+ const deletion=nodes(tree,n=>typeof n.type==='function'&&n.type.name==='ScanCardDeletionDialog')[0];
+ assert.deepEqual(deletion.props.targets.map(card=>card.id),['wrong-1','wrong-2']);assert.ok(!deletion.props.targets.some(card=>card.id==='right-1'));
+});
+
 test('scan setup fills its single read-only Site from the Pulse account options',()=>{
  const app=harness();app.render();app.testCapture.setOptions({accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});let tree=app.render();
  const site=nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Site')[0];
