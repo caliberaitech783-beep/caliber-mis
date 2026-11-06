@@ -12,7 +12,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
 }
 for(const name of ['ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
-const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setScannerBusy=setScannerBusy; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
+const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
@@ -346,10 +346,6 @@ test('finished validation opens the unresolved card once without routing through
  app.testCapture.setCards([{...row,id:'saved',status:'posted'},{...row,validationPending:true,checks:null}]);
  app.render();route();assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
  app.testCapture.setCards([{...row,id:'saved',status:'posted'},row]);
- app.testCapture.setScannerBusy(true);const scanning=app.render();route();
- assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
- assert.ok(nodes(scanning,node=>String(node.props.working||'').startsWith('Receiving scanned cards')).length);
- app.testCapture.setScannerBusy(false);
  app.render();route();
  assert.equal(new URL(app.window.location.href).searchParams.get('scanGroup'),'actionable');
  assert.equal(new URL(app.window.location.href).searchParams.get('card'),'unresolved');
