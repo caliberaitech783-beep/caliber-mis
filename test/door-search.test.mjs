@@ -7,7 +7,7 @@ test('door prefix search is site-specific, case-insensitive and naturally sorted
  assert.deepEqual(searchSiteDoors(rows,'vehicle','Dhoptala OC','V').map(r=>r.id),['v12']);
  assert.deepEqual(searchSiteDoors(rows,'equipment','Dhoptala OC','S').map(r=>r.id),['eq']);
  assert.deepEqual(searchSiteDoors(rows,'vehicle','','S'),[]);assert.deepEqual(searchSiteDoors(rows,'vehicle','Sasti OC','S').map(r=>r.id),['other']);
- assert.deepEqual(searchSiteDoors(rows,'vehicle','Dhoptala OC','12'),[]);
+ assert.deepEqual(searchSiteDoors(rows,'vehicle','Dhoptala OC','12').map(r=>r.id),['s12','v12']);
 });
 test('door labels avoid repeating identical equipment names',()=>{assert.equal(doorLabel({door:'S12-MH123',name:'S12-MH123'}),'S12-MH123');});
 
