@@ -200,7 +200,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');
   await lockVlbBatchWrites(client);
  };
- registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp:sendCardDeletionOtp,openDeletion,lockOpenDeletion});
+ registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,getCard,sendOtp:sendCardDeletionOtp,openDeletion,lockOpenDeletion,imageStorage});
  const deletable=card=>{if(!isDeletableScanCard(card))fail('Only unsaved cards can be deleted here.',409);};
  const deletionActor=req=>String(req.session.login||req.session.name||'');
  const deletionPhrase=card=>`Approve deletion of card ${card.id} revision ${card.revision}`;
