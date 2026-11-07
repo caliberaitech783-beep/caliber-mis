@@ -90,3 +90,42 @@
 .vlb-fleet-machine-exports button{display:inline-flex;align-items:center;gap:6px}
 .vlb-fleet-machine-exports svg{width:16px;height:16px}
 .vlb-fleet-machine-count{margin:8px 0;font-size:.85rem}
+
+.vlb-create-batch :is(.reports-detail-table, .logbook-table-wrap):has(> table > tbody > .batch-inline-editor-row) {
+ container-type: inline-size;
+}
+.vlb-create-batch :is(th,td).batch-edit-action {
+ position: sticky;
+ left: 0;
+ z-index: 2;
+ background: var(--panel,#fff);
+ white-space: nowrap;
+}
+.vlb-create-batch th.batch-edit-action { z-index: 3; }
+.vlb-create-batch .batch-edit-field {
+ padding: 3px 5px;
+ border-color: transparent;
+ background: transparent;
+ text-decoration: underline;
+ text-underline-offset: 3px;
+}
+.vlb-create-batch .batch-inline-editor-row > td { padding: 0; }
+.vlb-create-batch .batch-inline-editor {
+ position: sticky;
+ left: 0;
+ box-sizing: border-box;
+ width: min(100cqw, 72rem);
+ padding: 12px;
+ background: var(--panel,#fff);
+ border-block: 2px solid #dfd3e8;
+ text-align: left;
+ white-space: normal;
+}
+.vlb-create-batch .batch-inline-editor .logbook-page-header p,
+.vlb-create-batch .batch-inline-editor .logbook-eyebrow { display: none; }
+.vlb-create-batch .batch-inline-editor .logbook-page-header h1 { font-size: 16px; }
+.vlb-create-batch .batch-inline-editor #logbook-entry-form .logbook-save-bar { display: flex; }
+.vlb-create-batch .batch-inline-editor .logbook-save-bar > span { margin-right: auto; }
+.vlb-create-batch .batch-inline-editor .logbook-save-bar button[type="button"] {
+ background: var(--panel,#fff);
+}

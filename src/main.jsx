@@ -4241,7 +4241,7 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true }) {
+function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4336,7 +4336,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
     <>
       {toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
       <table className="report-filter-table">
-        <thead><tr>{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
+        <thead><tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
@@ -4356,11 +4356,13 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
         ))}</tr></thead>
         <tbody>
           {pagedRows.length ? pagedRows.map((row, index) => (
-            <tr key={rowKey?.(row, index) ?? index} className={rowClassName?.(row, index) || ""}>
-              {displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
+            <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={rowClassName?.(row, index) || ""}>
+              {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
               {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={column.key === "complaint" || column.wrap ? "report-complaint-cell" : undefined}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
             </tr>
-          )) : <tr><td colSpan={displayedColumns.length + 1} className="empty-state">{emptyMessage}</td></tr>}
+            {rowEditor?.(row, displayedColumns.length + 1 + Number(Boolean(rowAction)))}
+            </React.Fragment>
+          )) : <tr><td colSpan={displayedColumns.length + 1 + Number(Boolean(rowAction))} className="empty-state">{emptyMessage}</td></tr>}
         </tbody>
       </table>
       <div className="report-table-pagination"><span>{firstVisibleRow}-{lastVisibleRow} of {sortedRows.length.toLocaleString("en-IN")}</span><div><button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={currentPage === 0} aria-label="Previous report page" title="Previous page"><ChevronLeft /></button><b>{currentPage + 1} / {pageCount}</b><button type="button" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next report page" title="Next page"><ChevronRight /></button></div></div>
@@ -7374,7 +7376,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7411,6 +7413,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rows={rows}
             rowKey={rowKey}
             rowClassName={rowClassName}
+            rowAction={rowAction} rowEditor={rowEditor}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}

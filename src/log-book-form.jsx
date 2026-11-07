@@ -43,7 +43,7 @@ function Field({label,children,hint,wide=false,skipEnter=false,enterOrder,issue}
 
 
 
-export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,initialRecord,onSaved,fleetReconciliation=null}){
+export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,initialRecord,onSaved,inlineEdit=false,focusField,fleetReconciliation=null}){
 
  const vehicle=kind==='vehicle',title=vehicle?'Vehicle Log Book':'Equipment Log Book';
 
@@ -54,6 +54,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const [editing,setEditing]=useState(true),[showDelete,setShowDelete]=useState(false),[showStatus,setShowStatus]=useState(false);
  const initialLocationFocused=useRef(false);
  const [registerOpen,setRegisterOpen]=useState(false);
+ const formRef=useRef(null);
  // Manual entry: a machine written on the card that no Pulse door matches is paired to a Pulse record here (same alias rules and OTP as scanning).
  const [aliasWritten,setAliasWritten]=useState('');
  const [showSaveConfirm,setShowSaveConfirm]=useState(false);
@@ -73,7 +74,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
  const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords(batch.records||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords(list.records);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
 
  useEffect(()=>{void load()},[kind,session.token]);
 
@@ -89,6 +90,15 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
    return()=>cancelAnimationFrame(frame);
  },[vehicle,loading,options,editing,saved]);
 
+ useEffect(()=>{
+   if(!inlineEdit||!editing||loading||!options)return;
+   const formNode=formRef.current;
+   const field=focusField==='trips'?formNode?.querySelector('.logbook-vehicle-trips'):
+     [...(formNode?.querySelectorAll('.logbook-field > span[title]')||[])].find(label=>label.title===focusField)?.parentElement;
+   const target=field?.querySelector('input:not([readonly]):not([type="hidden"]),select,textarea,[role="combobox"]')||formNode;
+   target?.focus();
+ },[inlineEdit,editing,loading,options,focusField]);
+
  const update=(key,value)=>{if(vlbBatch&&['location','bookDate'].includes(key))return;setForm(current=>({...current,[key]:value,...(key==='manualShift'&&['day','night'].includes(value)?{shiftHours:12}:{}),...(key==='bookDate'?{bookDateSource:'manual'}:{}),...(['bookDate','assetId','location','shiftId','shiftHours','manualShift'].includes(key)?{manualBreakdownHours:''}:{})}));setSuccess('');};
 
  const assetMessage=missingAssetMessage(options,kind,form.location);
@@ -100,7 +110,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const shiftTimeHint=selectedShift?manualTimeValue(selectedShift.startTime)+'–'+manualTimeValue(selectedShift.endTime):'';
 
  const eligibleWorkOrders=matchingWorkOrders(options?.workOrders||[],form.location,form.bookDate);
- useEffect(()=>{if(!editing)return;setForm(current=>{const latest=latestWorkOrder(options?.workOrders||[],current.location,current.bookDate);const id=latest?latest.id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle]);
+ useEffect(()=>{if(!editing||inlineEdit)return;setForm(current=>{const latest=latestWorkOrder(options?.workOrders||[],current.location,current.bookDate);const id=latest?latest.id:eligibleWorkOrders.some(r=>r.id===String(current.workOrderId))?current.workOrderId:'';return id===current.workOrderId?current:{...current,workOrderId:id};});},[form.location,form.bookDate,options,editing,vehicle,inlineEdit]);
  const employee=options?.employees.find(row=>row.id===String(form.employeeId));
 
  const asset=options?.assets.find(row=>row.id===String(form.assetId));
@@ -138,7 +148,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const pulseBreakdowns=hours?.breakdowns||[];
  const vehicleInMaintenance=pulseBreakdowns.some(request=>request.ongoing);
 
- const openEntry=async (row,edit=false)=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setEditing(edit);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
+ const openEntry=async (row,edit=false)=>{if(row.data.manualAttachments?.some(file=>!file.data)){setWorking(true);try{const result=await api(`/api/log-books/${kind}/${row.id}/manual-attachments`);row={...row,data:{...row.data,manualAttachments:result.attachments}};}catch(error){setError(error.message);return;}finally{setWorking(false)}}setEditing(edit);setSaved(row);setForm({...fresh(),...row.data,assetId:String(row.data.assetId),employeeId:String(row.data.employeeId),shiftId:String(row.data.shiftId),openingKmr:row.data.openingKmr??'',closingKmr:row.data.closingKmr??'',trips:padManualRows(row.data.trips,5,blankTrip),jobDetails:padManualRows(row.data.jobDetails,2,blankJob),breakdownDetails:padManualRows(row.data.breakdownDetails,2,blankBreakdown)});setSuccess('');setError('');if(!inlineEdit)document.querySelector('.logbook-form')?.scrollIntoView({behavior:'smooth',block:'start'});};
 
  useEffect(()=>{if(initialRecord)void openEntry(initialRecord,true)},[initialRecord?.id]);
  // A second manual card for the same tipper in the same shift is refused by the server
@@ -179,7 +189,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
    {showSaveConfirm&&<div className="logbook-dialog-backdrop"><section className="logbook-dialog" role="alertdialog" aria-modal="true" aria-label="Save VLB entry"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={()=>setShowSaveConfirm(false)} disabled={working} aria-label="Close window">× Close</button></div><h2>Save this entry?</h2><p>Confirm that the VLB details are complete and correct.</p><button type="button" className="primary" onClick={confirmSave} disabled={working}>Save entry</button><button type="button" onClick={()=>setShowSaveConfirm(false)} disabled={working}>Cancel</button></section></div>}
 
-   <form id="logbook-entry-form" className="logbook-form" data-enter-confirm-save={vehicle||undefined} onSubmit={save} onKeyDown={advanceLogBookField}>
+   <form ref={formRef} tabIndex={inlineEdit?-1:undefined} id="logbook-entry-form" className="logbook-form" data-enter-confirm-save={vehicle||undefined} onSubmit={save} onKeyDown={advanceLogBookField}>
 
     <fieldset className="logbook-edit-fields" disabled={!editing||working}>
 
@@ -236,7 +246,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
      {vehicle&&fleetReconciliation&&<details className="scan-fleet-reconciliation"><summary>Site fleet · VLB, breakdown and idle details</summary>{fleetReconciliation}</details>}
 
 
-     </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:'Book number will be generated on save.'}</span><button className="primary" data-enter-action="save" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?'Saving…':saved?'Save changes':'Save log book'}</button></footer>
+     </fieldset><footer className="logbook-save-bar"><span>{saved?`${saved.book_no} · Revision ${saved.revision}`:'Book number will be generated on save.'}</span>{inlineEdit&&<button type="button" disabled={working} onClick={onExit}>Cancel</button>}<button className="primary" data-enter-action="save" type="submit" disabled={!editing||working||loading||!options}><Save size={16}/>{working?'Saving…':saved?'Save changes':'Save log book'}</button></footer>
 
    </form>
 

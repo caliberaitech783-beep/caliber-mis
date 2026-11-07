@@ -135,3 +135,49 @@ test('opened batch search and shared export controls use only its saved snapshot
  table.props.onExportViewChange({sourceRows:records,columns:[vlbBatchColumns[0]],rows:[records[1]]});
  cursor=0;tree=shared(report.props);const menu=nodes(tree,n=>n.type===ExportMenu)[0];assert.deepEqual(menu.props.rows,[records[1]]);assert.deepEqual(menu.props.columns,[vlbBatchColumns[0]]);assert.equal(menu.props.label,'Generate');
 });
+
+test('Create Batch edits VLB and ELB from the selected row and respects their lock stages',async()=>{
+ const slots=[];
+ let cursor=0;
+ const useState=initial=>{
+  const index=cursor++;
+  if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
+  return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
+ };
+ const stub=()=>null,Report=()=>null,Editor=()=>null;
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
+  React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
+  canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
+  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor
+ },['VlbCreateBatch']);
+ const vehicle={id:1,book_no:'VLB-1',data:{openingKmr:10}};
+ const equipment={id:1,book_no:'ELB-1',data:{openingHmr:20}};
+ const batch={id:'b1',name:'Batch 1',twoStage:true,stage:'vlb_open',canEditSavedFleet:true,records:[vehicle],elbRecords:[equipment]};
+ const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
+ const report=tree=>nodes(tree,node=>node.type===Report)[0].props;
+ const button=(tree,label)=>nodes(tree,node=>node.type==='button'&&node.props['aria-label']===label)[0];
+ render();
+ slots[5]=batch;slots[8]=false;slots[14]={login:'admin',admin:true};
+ assert.equal(report(render()).rowAction(vehicle).props.children,'Edit');
+ report(render()).renderField(vehicle,'Opening KMR',10).props.onClick();
+ let editor=nodes(report(render()).rowEditor(vehicle,8),node=>node.type===Editor)[0];
+ assert.equal(editor.props.initialRecord,vehicle);
+ assert.equal(editor.props.focusField,'Opening KMR');
+ editor.props.onExit();
+ assert.equal(report(render()).rowEditor(vehicle,8),false);
+
+ slots[5]={...batch,stage:'elb_open'};
+ assert.equal(report(render()).rowAction(vehicle).props.children,'Locked');
+ button(render(),'Edit Opening HMR for ELB-1').props.onClick();
+ editor=nodes(render(),node=>node.type===Editor)[0];
+ assert.equal(editor.props.kind,'equipment');
+ assert.equal(editor.props.initialRecord,equipment);
+ assert.equal(editor.props.focusField,'Opening HMR');
+ editor.props.onSaved();
+ assert.equal(nodes(render(),node=>node.type===Editor).length,0);
+ assert.equal(slots[9],1,'saving refreshes batch details');
+
+ slots[5]={...batch,stage:'closed',closed_at:'closed'};
+ assert.equal(button(render(),'Edit ELB-1'),undefined);
+ assert.equal(report(render()).rowAction(vehicle).props.children,'Locked');
+});
