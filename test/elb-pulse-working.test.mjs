@@ -4,7 +4,7 @@ import {saveFleetEntry,readFleetBreakdowns} from '../server/rules/vlb-batch-stag
 import {resolveLogBookData} from '../server/routes/log-book.mjs';
 
 const batch={id:'batch',site:'Sasti OC',report_date:'2026-11-02',shift:'S1',stage:'elb_open'};
-function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='Sasti OC'}={}){
+function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='Sasti OC',shiftHours=8}={}){
  const row={asset_id:'19',door:surfaceMiner?'SM1':'EX19',trips,logbook_id:null};
  const shift={site:'Sasti OC',shiftCode:'I',startTime:'06:00',endTime:'14:00'};
  const writes=[];
@@ -22,13 +22,13 @@ function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='
   writes.push({sql,args});return {rows:[]};
  }};
  const pulse={breakdownHours:bd,breakdowns:bd?[{reference:'BD-1',description:'Engine fault',hours:bd}]:[],source:'https://pulse.cmll.in'};
- const ops={async readHours(input){assert.equal(input.assetId,'19');assert.equal(input.bookDate,'2026-11-02');assert.equal(input.location,'Sasti OC');assert.equal(input.shiftHours,8);if(unavailable)throw Error('Pulse disconnected');return pulse;},resolve:async(c,k,input)=>({...input}),insert:async(c,k,data)=>({id:1,book_no:'ELB1',data})};
+ const ops={async readHours(input){assert.equal(input.assetId,'19');assert.equal(input.bookDate,'2026-11-02');assert.equal(input.location,'Sasti OC');assert.equal(input.shiftHours,shiftHours);if(unavailable)throw Error('Pulse disconnected');return pulse;},resolve:async(c,k,input)=>({...input}),insert:async(c,k,data)=>({id:1,book_no:'ELB1',data})};
  return {client,ops,writes,pulse};
 }
 test('Working-only saves use authoritative Pulse hours and preserve event details without trusting manual BD totals',async()=>{
- const f=fixture({bd:2,trips:5});
+ const f=fixture({bd:2,trips:5,shiftHours:12});
  const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',shiftStatus:'working',employeeId:'7',openingHmr:100,closingHmr:105,manualBreakdownHours:99,shiftHours:12,requestKey:'test'},'mis',f.ops);
- assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,8);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
+ assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,12);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
 });
 
 test('Surface Miner operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
