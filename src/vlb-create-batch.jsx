@@ -52,9 +52,14 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   if(inlineCard&&!editingCard(record,kind)&&!window.confirm('Discard unsaved changes and edit this card?'))return;
   setInlineCard({batchId:viewed.id,id:record.id,kind,field});
  };
- const action=(record,kind)=>canEditCard(record,kind)
-  ? <button type="button" aria-label={'Edit '+record.book_no} aria-expanded={editingCard(record,kind)} onClick={()=>editCard(record,kind)}>Edit</button>
-  : <span>{(kind==='equipment'?elbLocked:vlbLocked)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>;
+ const canDeleteCard=(record,kind)=>!(kind==='equipment'?elbLocked:vlbLocked)&&
+  (actor?.mis||actor?.admin)&&Number.isInteger(record.revision)&&
+  (!viewed.amendment_by||viewed.amendment_by.toLowerCase()===actor.login?.toLowerCase());
+ const action=(record,kind)=><div className="vlb-batch-actions">
+  {canEditCard(record,kind)? <button type="button" aria-label={'Edit '+record.book_no} aria-expanded={editingCard(record,kind)} onClick={()=>editCard(record,kind)}>Edit</button>
+  : <span>{(kind==='equipment'?elbLocked:vlbLocked)?'Locked':kind==='equipment'&&record.data?.operatorSplit?'ELB Manual':'View only'}</span>}
+  {canDeleteCard(record,kind)&&<button type="button" className="danger" aria-label={'Delete '+record.book_no} disabled={busy||Boolean(inlineCard)} onClick={()=>deleteCard(record,kind)}>Delete</button>}
+ </div>;
  const fieldCell=(record,kind,field,value)=>canEditCard(record,kind)
   ? <button type="button" className="batch-edit-field" aria-label={'Edit '+(field==='trips'?'trips':field)+' for '+record.book_no} onClick={()=>editCard(record,kind,field)}>{shown(value)}</button>
   : shown(value);
@@ -122,6 +127,16 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   if(autoOpenedEntryBatch.current===batch.id)return;
   autoOpenedEntryBatch.current=batch.id;view(batch,true);
  },[entryMode,selection.site,batchStatusReady,batches]);
+ const deleteCard=async(record,kind)=>{
+  if(busy||inlineCard||!canDeleteCard(record,kind))return;
+  if(!window.confirm('Delete '+record.book_no+' from '+viewed.name+'? Only this saved card will be removed.'))return;
+  setBusy(true);setError('');
+  try{
+   await read('/api/log-books/'+kind+'/'+record.id,{method:'DELETE',body:{revision:record.revision}});
+   setSelectedCard(current=>current?.kind===kind&&String(current.id)===String(record.id)?null:current);
+  }catch(error){setError(error.message)}
+  finally{setRefresh(n=>n+1);setBusy(false)}
+ };
  const create=async()=>{setBusy(true);setError('');try{
   const batch=await read('/api/vlb-batches',{method:'POST',body:{...selection,requestKey:requestKey.current}});
   ++detailRequest.current;setDetailLoading(false);setViewed(batch);requestKey.current=crypto.randomUUID();setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1);if(!batch.closed_at)onSelected?.(batch);

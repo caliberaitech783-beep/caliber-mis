@@ -145,20 +145,22 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
   return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
  };
  const stub=()=>null,Report=()=>null,Editor=()=>null;
+ const deletions=[];let approve=false;
  const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
   React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
   canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
-  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor
+  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
+  fetch:async(url,request)=>{deletions.push([url,request.method,JSON.parse(request.body)]);return {ok:true,json:async()=>({deleted:true})}}
  },['VlbCreateBatch']);
- const vehicle={id:1,book_no:'VLB-1',data:{openingKmr:10}};
- const equipment={id:1,book_no:'ELB-1',data:{openingHmr:20}};
+ const vehicle={id:1,book_no:'VLB-1',revision:2,data:{openingKmr:10}};
+ const equipment={id:1,book_no:'ELB-1',revision:3,data:{openingHmr:20}};
  const batch={id:'b1',name:'Batch 1',twoStage:true,stage:'vlb_open',canEditSavedFleet:true,records:[vehicle],elbRecords:[equipment]};
  const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
  const report=tree=>nodes(tree,node=>node.type===Report)[0].props;
  const button=(tree,label)=>nodes(tree,node=>node.type==='button'&&node.props['aria-label']===label)[0];
  render();
  slots[5]=batch;slots[8]=false;slots[14]={login:'admin',admin:true};
- assert.equal(report(render()).rowAction(vehicle).props.children,'Edit');
+ assert.ok(button(report(render()).rowAction(vehicle),'Edit VLB-1'));
  report(render()).renderField(vehicle,'Opening KMR',10).props.onClick();
  let editor=nodes(report(render()).rowEditor(vehicle,8),node=>node.type===Editor)[0];
  assert.equal(editor.props.initialRecord,vehicle);
@@ -166,8 +168,15 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  editor.props.onExit();
  assert.equal(report(render()).rowEditor(vehicle,8),false);
 
+ const deleteVlb=button(report(render()).rowAction(vehicle),'Delete VLB-1');
+ await deleteVlb.props.onClick();
+ assert.equal(deletions.length,0);
+ approve=true;
+ await deleteVlb.props.onClick();
+ assert.deepEqual(deletions,[['/api/log-books/vehicle/1','DELETE',{revision:2}]]);
+
  slots[5]={...batch,stage:'elb_open'};
- assert.equal(report(render()).rowAction(vehicle).props.children,'Locked');
+ assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
  button(render(),'Edit Opening HMR for ELB-1').props.onClick();
  editor=nodes(render(),node=>node.type===Editor)[0];
  assert.equal(editor.props.kind,'equipment');
@@ -175,9 +184,12 @@ test('Create Batch edits VLB and ELB from the selected row and respects their lo
  assert.equal(editor.props.focusField,'Opening HMR');
  editor.props.onSaved();
  assert.equal(nodes(render(),node=>node.type===Editor).length,0);
- assert.equal(slots[9],1,'saving refreshes batch details');
+ assert.equal(slots[9],2,'saving refreshes batch details');
+ await button(render(),'Delete ELB-1').props.onClick();
+ assert.deepEqual(deletions[1],['/api/log-books/equipment/1','DELETE',{revision:3}]);
 
  slots[5]={...batch,stage:'closed',closed_at:'closed'};
  assert.equal(button(render(),'Edit ELB-1'),undefined);
- assert.equal(report(render()).rowAction(vehicle).props.children,'Locked');
+ assert.equal(button(render(),'Delete ELB-1'),undefined);
+ assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
 });
