@@ -28,6 +28,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const [recovery,setRecovery]=useState(null),[showDeleted,setShowDeleted]=useState(false);
  const [selectedCard,setSelectedCard]=useState(null);
  useEffect(()=>setSelectedCard(null),[viewed?.id]);
+ const viewCard=(record,kind)=>setSelectedCard({id:record.id,kind,viewKey:crypto.randomUUID()});
+ const selectedElb=selectedCard?.kind==='equipment'&&viewed?.elbRecords?.find(record=>String(record.id)===String(selectedCard.id));
 
  const autoOpenedEntryBatch=useRef('');
  // Two-stage (VLB -> ELB) state. Declared after the existing hooks so hook order stays unchanged.
@@ -149,12 +151,19 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
      </>}
     {stage==='closed'&&viewed.canUnlockVlb&&<div className="vlb-batch-actions"><button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button></div>}
     {newEquipment&&stage==='vlb_open'&&<NewEquipmentRequest key={viewed.id} session={session} batch={viewed} onDismiss={()=>setNewEquipment(false)} onCreated={()=>setRefresh(n=>n+1)}/>}
+    {viewed.elbRecords?.length>0&&<section aria-label="Saved ELB cards">
+     <h3>Saved ELB cards</h3>
+     <div className="logbook-table-wrap"><table className="logbook-table">
+      <thead><tr><th>Book number</th><th>Equipment / Door</th><th>Operator</th><th>Details</th></tr></thead>
+      <tbody>{viewed.elbRecords.map(record=><tr key={record.id}><td>{record.book_no}</td><td>{shown(record.data?.door||record.data?.assetName)}</td><td>{shown(record.data?.employeeName)}</td><td><button type="button" onClick={()=>viewCard(record,'equipment')}>View ELB</button></td></tr>)}</tbody>
+     </table></div>
+    </section>}
     <VlbBatchHolds session={session} batch={viewed} onChanged={()=>setRefresh(n=>n+1)}/>
    </div>}
-   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={viewed} ReportSection={ReportSection} onView={record=>setSelectedCard({...record,viewKey:crypto.randomUUID()})} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Trip card</th><th>Vehicle</th><th>Driver</th><th>Source</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
+   {loading||detailLoading?<p role="status">Loading entries…</p>:viewed?<VlbBatchReport key={viewed.id} batch={viewed} ReportSection={ReportSection} onView={record=>viewCard(record,'vehicle')} entryType={entryFilter}/>:<><p>{records.length} cards · {manual} Manual + {records.length-manual} Scan · All included automatically. Each scan entry holds up to 40 cards; this final batch includes all matching saved entries and can exceed 40 cards.</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Book number</th><th>Trip card</th><th>Vehicle</th><th>Driver</th><th>Source</th></tr></thead><tbody>{records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.data.aFormNo||'—'}</td><td>{r.data.door||'—'}</td><td>{r.data.employeeName||'—'}</td><td>{vlbRecordSource(r)}</td></tr>)}{!records.length&&<tr><td colSpan={5}>{selection.site&&selection.date&&selection.shift?'No saved, unbatched entries match this selection.':'Select site, date and shift to load saved entries.'}</td></tr>}</tbody></table></div></>}
   </section>}
 
-  {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.id+":"+selectedCard.viewKey} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection} canEdit={batchTab==='edit'&&!viewed.closed_at&&(actor?.mis||actor?.admin)} onChanged={()=>setRefresh(n=>n+1)}/> }
+  {viewed&&selectedCard&&<VlbBatchCardDetails key={viewed.id+":"+selectedCard.viewKey} kind={selectedCard.kind} onClose={()=>{setSelectedCard(null);document.querySelector(".vlb-active-batch-panel")?.scrollIntoView({block:"start"})}} session={session} batch={viewed} record={selectedCard} ReportSection={ReportSection} canEdit={selectedCard.kind==='equipment'?Boolean(selectedElb&&stage==='elb_open'&&!viewed.closed_at&&viewed.canEditSavedFleet===true&&!selectedElb.data?.operatorSplit):batchTab==='edit'&&!viewed.closed_at&&(actor?.mis||actor?.admin)} onChanged={()=>setRefresh(n=>n+1)}/> }
   <VlbBatchGovernance session={session} batch={viewed} actor={actor} refresh={refresh} onChanged={changed} onManual={twoStage&&stage!=='vlb_open'?undefined:onManual} onScan={twoStage&&stage!=='vlb_open'?undefined:onScan} onRequestReopen={()=>setShowApproval(true)} onApprovals={onApprovals}/>
   {unlockOtp&&viewed&&stage==='elb_open'&&<VlbUnlockOtpDialog key={viewed.id} session={session} batch={viewed} onChanged={async batch=>{++detailRequest.current;setDetailLoading(false);setViewed(batch);setOpenBatch(batch.closed_at?null:batch);setRefresh(n=>n+1)}} onDismiss={()=>setUnlockOtp(false)}/>}
   {showApproval&&viewed?.closed_at&&<VlbReopenDialog key={viewed.id+':'+viewed.closure_revision} session={session} batch={viewed} actor={actor} onChanged={changed} onDismiss={()=>setShowApproval(false)}/>}
