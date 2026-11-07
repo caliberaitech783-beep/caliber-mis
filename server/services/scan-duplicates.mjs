@@ -37,7 +37,7 @@ const liveCardSql=alias=>`${operationalScanSql(alias)} AND ${alias}.duplicate_of
 // Scan entries that share this entry's card date, site and shift (the entry itself included).
 export async function sameContextBatches(client,batch){
  const context=batch.expected_context;if(!context?.bookDate)return [batch];
- const rows=(await client.query("SELECT id,name,kind,expected_context FROM mis_scan_batches WHERE kind=$1 AND expected_context->>'bookDate'=$2 AND COALESCE(expected_context->>'cardShift','')=COALESCE($3,'') AND NOT(expected_context ? 'deletedVlbBatch')",[batch.kind,context.bookDate,context.cardShift||''])).rows;
+ const rows=(await client.query("SELECT id,name,kind,expected_context FROM mis_scan_batches WHERE kind=$1 AND expected_context->>'bookDate'=$2 AND COALESCE(expected_context->>'cardShift','')=COALESCE($3,'') AND NOT(expected_context ?| ARRAY['deletedVlbBatch','deletedScanEntry'])",[batch.kind,context.bookDate,context.cardShift||''])).rows;
  const site=canonicalSiteName(context.location);
  return rows.filter(row=>row.id===batch.id||canonicalSiteName(row.expected_context?.location)===site);
 }

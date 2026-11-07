@@ -388,3 +388,6 @@
 @media(prefers-reduced-motion:reduce){.scan-review-spinner{animation:none}}
 
 .scan-entry-breakdown{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:8px 12px;border:1px solid #ded3e8;border-radius:6px;background:var(--panel,#fff);font-size:16px;line-height:1.5}
+
+.scan-entry-list .scan-entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scan-entry-list .scan-delete-entry { color: #a83250; border-color: #e4adb9; }
