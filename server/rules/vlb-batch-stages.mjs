@@ -225,6 +225,11 @@ export async function syncElbBatchRecord(client,record,actor){
  const linked=(await client.query('SELECT logbook_id FROM mis_elb_batch_entries WHERE logbook_id=$1',[record.id])).rows[0];
  const batch=await assertElbBatchWrite(client,data,{adding:!linked});
  await client.query('INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3::jsonb) ON CONFLICT(logbook_id) DO UPDATE SET snapshot=EXCLUDED.snapshot',[batch.id,record.id,JSON.stringify(record)]);
+ if(linked)await client.query(`UPDATE mis_vlb_batch_fleet f SET (logbook_id,shift_status,saved_at,saved_by)=(
+  SELECT l.id,COALESCE(NULLIF(l.data->>'shiftStatus',''),'working'),l.updated_at,l.created_by
+  FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+  WHERE e.batch_id=f.batch_id AND l.asset_id=f.asset_id AND l.deleted_at IS NULL ORDER BY l.id DESC LIMIT 1
+ ) WHERE f.batch_id=$1 AND f.logbook_id=$2 AND f.asset_id<>$3`,[batch.id,record.id,record.asset_id||data.assetId]);
  const status=FLEET_STATUSES[data.shiftStatus]?data.shiftStatus:'working';
  const updated=await client.query('UPDATE mis_vlb_batch_fleet SET shift_status=$3,logbook_id=$4,saved_at=NOW(),saved_by=$5,draft=NULL,skipped=FALSE WHERE batch_id=$1 AND asset_id=$2 RETURNING asset_id',[batch.id,record.asset_id||data.assetId,status,record.id,batchLogin(actor)]);
  if(!updated.rowCount)await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards,shift_status,logbook_id,saved_at,saved_by) VALUES($1,$2,$3,$4,'',0,0,$5,$6,NOW(),$7) ON CONFLICT DO NOTHING`,[batch.id,record.asset_id||data.assetId,text(data.door),text(data.assetName),status,record.id,batchLogin(actor)]);
