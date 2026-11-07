@@ -1,4 +1,4 @@
-import {employeeIdentity} from '../../shared/employee-identity.mjs';
+import {employeeIdentity,employeeReferenceVariants} from '../../shared/employee-identity.mjs';
 import {EMPLOYEE_FIELDS} from '../../shared/employee-master-fields.mjs';
 export function normalizeEmployee(input){if(!input||typeof input!=='object'||Array.isArray(input))throw Object.assign(new Error('Invalid employee record.'),{status:400});const data=employeeIdentity(Object.fromEntries(EMPLOYEE_FIELDS.map(([k])=>[k,String(input[k]??(k==='caliberId'?input.employeeId:'')??'').trim().slice(0,4000)])));data.caliberId=data.caliberId.toUpperCase();if(!data.caliberId||!data.name)throw Object.assign(new Error('Employee ID and Employee Name are required.'),{status:400});data.employeeId=data.caliberId;data.site=data.currentLocation||data.locationName;return data;}
 export async function importEmployees(pool,records){const normalized=records.map(normalizeEmployee),ids=new Set();for(const r of normalized){if(ids.has(r.caliberId))throw new Error('Duplicate Employee ID: '+r.caliberId);ids.add(r.caliberId)}const c=await pool.connect();let added=0,updated=0;try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const existing=(await c.query("SELECT id,master_name,record_data FROM master_records WHERE master_name IN('Employee master','ERP Employee master')")).rows;const byId=new Map(existing.map(r=>[String(r.record_data.caliberId||r.record_data.employeeId||'').toUpperCase(),r]));for(const d of normalized){const prev=byId.get(d.caliberId);
@@ -9,6 +9,49 @@ export async function importEmployees(pool,records){const normalized=records.map
   }
   const record={...prev?.record_data,...d,source:'Employee Master Report.xlsx',importedAt:new Date().toISOString(),employeeMasterRevision:Number(prev?.record_data?.employeeMasterRevision||0)+1};if(prev){await c.query("UPDATE master_records SET master_name='Employee master',record_data=$1::jsonb WHERE id=$2",[JSON.stringify(record),prev.id]);updated++}else{await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb)",[JSON.stringify(record)]);added++}}await c.query('COMMIT');return {added,updated,total:normalized.length}}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
 export function registerEmployeeMaster(app,{pool,requireSession,requireAdministrator}){const protect=[requireSession,requireAdministrator];const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
+
+ const locationRecord=({id,record_data:record})=>{
+   const {employeeId,name,currentLocation,employeeMasterRevision}=employeeIdentity(record);
+   return {id:String(id),employeeId,name,currentLocation:currentLocation||'',revision:employeeMasterRevision??0};
+ };
+ app.get('/api/employee-master/location',requireSession,wrap(async(req,res)=>{
+   const reference=String(req.query.employeeId||'').trim();
+   if(!reference||reference.length>100)return res.status(400).json({error:'Enter an Employee ID.'});
+   const {rows}=await pool.query(`
+     SELECT id,record_data FROM master_records WHERE master_name='Employee master'
+     AND (upper(COALESCE(NULLIF(record_data->>'caliberId',''),record_data->>'employeeId'))=ANY($1)
+       OR upper(record_data->>'caliberCode')=ANY($1)) LIMIT 2
+   `,[employeeReferenceVariants(reference)]);
+   if(!rows.length)return res.status(404).json({error:'Employee not found.'});
+   if(rows.length>1)return res.status(409).json({error:'Multiple employees match. Enter the full Employee ID.'});
+   res.set('Cache-Control','no-store').json(locationRecord(rows[0]));
+ }));
+ app.put('/api/employee-master/location/:id',requireSession,wrap(async(req,res)=>{
+   const {currentLocation,revision}=req.body||{};
+   if(!/^\d{1,18}$/.test(req.params.id)||typeof currentLocation!=='string'||currentLocation.length>4000||!Number.isSafeInteger(revision)||revision<0)
+     return res.status(400).json({error:'Invalid employee location update.'});
+   const location=currentLocation.trim();
+   const client=await pool.connect();
+   let row;
+   try{
+     await client.query('BEGIN');
+     await client.query('SELECT pg_advisory_xact_lock(709224109)');
+     ({rows:[row]}=await client.query(`
+       UPDATE master_records SET record_data=record_data||jsonb_build_object(
+         'currentLocation',$2::text,'site',COALESCE(NULLIF($2::text,''),record_data->>'locationName',''),
+         'employeeMasterRevision',$3::bigint+1,'updatedAt',$4::text)
+       WHERE id=$1 AND master_name='Employee master'
+         AND COALESCE((record_data->>'employeeMasterRevision')::bigint,0)=$3::bigint
+       RETURNING id,record_data
+     `,[req.params.id,location,revision,new Date().toISOString()]));
+     await client.query('COMMIT');
+   }catch(error){
+     await client.query('ROLLBACK');
+     throw error;
+   }finally{client.release();}
+   if(!row)return res.status(409).json({error:'Employee changed. Search again before saving.'});
+   res.json(locationRecord(row));
+ }));
  app.get('/api/employee-master',...protect,wrap(async(req,res)=>{const q=String(req.query.q||'').trim().slice(0,150),site=String(req.query.site||''),page=Math.max(0,Math.min(10000,parseInt(req.query.page)||0)),all=req.query.export==='1',where="master_name='Employee master' AND ($1='' OR record_data->>'caliberId' ILIKE $2 OR record_data->>'caliberCode' ILIKE $2 OR ('CMLL'||substring(record_data->>'caliberId' from '[0-9]+$')) ILIKE $2 OR record_data->>'name' ILIKE $2 OR record_data->>'employeeCode' ILIKE $2 OR record_data->>'currentDepartmentName' ILIKE $2 OR record_data->>'currentDesignationName' ILIKE $2) AND ($3='' OR record_data->>'site'=$3)",args=[q,'%'+q+'%',site];const total=Number((await pool.query('SELECT count(*) n FROM master_records WHERE '+where,args)).rows[0].n);const rows=(await pool.query('SELECT id,record_data FROM master_records WHERE '+where+` ORDER BY record_data->>'name',id LIMIT ${all?25000:50} OFFSET ${all?0:page*50}`,args)).rows;const sites=(await pool.query("SELECT DISTINCT record_data->>'site' site FROM master_records WHERE master_name='Employee master' ORDER BY site")).rows.map(r=>r.site).filter(Boolean);res.set('Cache-Control','no-store').json({records:rows.map(r=>({...employeeIdentity(r.record_data),id:String(r.id)})),total,page,sites});}));
  const save=async(req,res)=>{const data=normalizeEmployee(req.body);const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const duplicate=await c.query("SELECT id FROM master_records WHERE master_name='Employee master' AND upper(record_data->>'caliberId')=$1 AND id<>COALESCE($2::bigint,0)",[data.caliberId,req.params.id||null]);if(duplicate.rowCount)throw Object.assign(new Error('Employee ID already exists.'),{status:409});let row;if(req.params.id){const prior=(await c.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;if(!prior||prior.employeeMasterRevision!==req.body.employeeMasterRevision)throw Object.assign(new Error('Employee changed. Reload before editing.'),{status:409});row=(await c.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 RETURNING id,record_data',[JSON.stringify({...prior,...data,employeeMasterRevision:prior.employeeMasterRevision+1,updatedAt:new Date().toISOString()}),req.params.id])).rows[0]}else row=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb) RETURNING id,record_data",[JSON.stringify({...data,source:'Local entry',employeeMasterRevision:1})])).rows[0];await c.query('COMMIT');res.json({...employeeIdentity(row.record_data),id:String(row.id)})}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}};
  app.post('/api/employee-master',...protect,wrap(save));app.put('/api/employee-master/:id',...protect,wrap(async(req,res)=>{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid employee.'});await save(req,res)}));

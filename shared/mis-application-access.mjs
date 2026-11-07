@@ -38,6 +38,8 @@ export function misRequestAllowed(session,req){
  if(route==='/api/saved-reports')return (read||req.method==='POST')&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(/^\/api\/saved-reports\/[^/]+$/.test(route))return req.method==='DELETE'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(route.startsWith('/api/masters/'))return allowed(decodeURIComponent(req.params?.master||route.split('/')[3]||''));
+ if(route==='/api/employee-master/location')return req.method==='GET';
+ if(/^\/api\/employee-master\/location\/\d{1,18}$/.test(route))return req.method==='PUT';
  if(route.startsWith('/api/employee-master')||route.startsWith('/api/erp-employees'))return allowed('Employee master');
  if(route==='/api/erp-masters/status')return read&&['Work Order master','Financial Year master','Company master','Pulse Master Sync'].some(allowed);
  if(route==='/api/erp-masters/sync')return allowed('Pulse Master Sync');

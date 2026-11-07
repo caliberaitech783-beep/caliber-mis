@@ -21,3 +21,48 @@ export default function EmployeeMaster({session,ExportMenu,PrintButton,parseCsv}
  {current&&<section className="employee-profile" ref={profile}><header><div><h2>{current.name||'New employee'}</h2><p>Employee ID: <strong>{current.caliberId||'Enter Employee ID'}</strong> · Caliber ID: <strong>{current.caliberCode||suggestedCaliberId(current.caliberId)||'—'}</strong> · {current.currentDesignationName||current.designationName||''} · {current.site||''}</p></div><div className="employee-actions">{!draft&&<><button onClick={()=>setDraft({...selected})}>Edit employee</button><PrintButton title={'Employee Master — '+current.name} columns={[{label:'Field',value:r=>r.label},{label:'Details',value:r=>r.value}]} rows={EMPLOYEE_FIELDS.map(([key,label])=>({label,value:current[key]||'—'}))} smartPrintItem/></>}<button onClick={()=>{setSelected(null);setDraft(null)}}>Close</button></div></header><nav>{[...Object.keys(labelGroups),'Other details'].map(t=><button className={tab===t?'active':''} key={t} onClick={()=>setTab(t)}>{t}</button>)}</nav><form onSubmit={save}><div className="employee-fields">{visible.map(([key,label])=><label key={key}><span>{label}</span>{draft?<input value={draft[key]||''} onChange={e=>setDraft(d=>({...d,[key]:e.target.value,...(key==='caliberId'&&(!d.caliberCode||d.caliberCode===suggestedCaliberId(d.caliberId))?{caliberCode:suggestedCaliberId(e.target.value)}:{})}))} required={['caliberId','name'].includes(key)}/>:<output>{current[key]||'—'}</output>}</label>)}</div>{draft&&<footer><button disabled={busy} type="submit">{busy?'Saving…':'Save employee'}</button><button type="button" onClick={()=>setDraft(null)}>Cancel</button></footer>}</form></section>}
  </section>
 }
+
+export function EmployeeCurrentLocation({session}){
+ const [employeeId,setEmployeeId]=useState(''),[employee,setEmployee]=useState(null),[location,setLocation]=useState('');
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ async function request(path,options){
+   const response=await fetch('/api/employee-master/location'+path,{
+     ...options,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'}
+   });
+   const data=await response.json();
+   if(!response.ok)throw new Error(data.error||'Employee location unavailable.');
+   return data;
+ }
+ async function search(event){
+   event.preventDefault();
+   setBusy(true);setError('');setNotice('');setEmployee(null);
+   try{
+     const result=await request('?employeeId='+encodeURIComponent(employeeId.trim()));
+     setEmployee(result);setLocation(result.currentLocation);
+   }catch(error){setError(error.message);}
+   finally{setBusy(false);}
+ }
+ async function save(event){
+   event.preventDefault();
+   setBusy(true);setError('');setNotice('');
+   try{
+     const result=await request('/'+employee.id,{method:'PUT',body:JSON.stringify({currentLocation:location,revision:employee.revision})});
+     setEmployee(result);setLocation(result.currentLocation);setNotice('Current Location saved.');
+   }catch(error){setError(error.message);}
+   finally{setBusy(false);}
+ }
+ return <section className="employee-master">
+   <h1>Employee Current Location</h1>
+   <form className="employee-search" onSubmit={search}>
+     <label>Employee ID<input required maxLength={100} value={employeeId} disabled={busy} onChange={event=>{setEmployeeId(event.target.value);setEmployee(null);setNotice('');}}/></label>
+     <button disabled={busy}>Find employee</button>
+   </form>
+   {error&&<p className="employee-error" role="alert">{error}</p>}
+   {notice&&<p role="status">{notice}</p>}
+   {employee&&<form className="employee-search" onSubmit={save}>
+     <strong>{employee.name} ({employee.employeeId})</strong>
+     <label>Current Location<input value={location} maxLength={4000} disabled={busy} onChange={event=>setLocation(event.target.value)}/></label>
+     <button disabled={busy||location.trim()===employee.currentLocation}>Save Current Location</button>
+   </form>}
+ </section>;
+}
