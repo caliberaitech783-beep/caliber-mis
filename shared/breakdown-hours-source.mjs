@@ -18,3 +18,15 @@ export async function applyBreakdownHours(data,{readHours,actor='',now=()=>new D
  }
  return data;
 }
+
+// The Pulse breakdown feed is fetched once, before any advisory lock is taken, so
+// the remote call never runs while other users queue behind that lock. Inside the
+// lock, readHours reuses the rows, or repeats the fetch failure, without a call.
+export async function prefetchBreakdownRows(readBreakdownRows,actor){
+ if(typeof readBreakdownRows!=='function')return null;
+ try{return {rows:await readBreakdownRows(actor)}}catch(error){return {error}}
+}
+export function lockedReadHours(readHours,prefetched){
+ if(!prefetched||typeof readHours!=='function')return readHours;
+ return async input=>{if(prefetched.error)throw prefetched.error;return readHours({...input,breakdownRows:prefetched.rows})};
+}

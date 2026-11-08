@@ -77,3 +77,32 @@ reduces upload time rather than model latency. The synthetic 300 dpi page
 measured 7.75 MB as colour PNG and 174 KB as grayscale WebP; real paper has less
 noise and compresses further. These are local measurements, not production
 accuracy results; human review remains required.
+
+## Locks, Pulse reads and the progress poll (8 November 2026)
+
+Automatic saving, Save all and the manual log-book form read the Pulse breakdown
+feed once before taking any advisory lock. Inside the lock the saved feed answers
+without a remote call, and the master reads use the transaction's own connection
+instead of a second pool connection. Automatic saving and Save all hold the scan
+lock (709224102) shared, as the manual form already did; deletions still take it
+exclusively and so still wait for every writer.
+
+Batch writers lock one site, date and shift (`lockVlbBatchScope`) instead of the
+whole `mis_vlb_saved_batches` table, so six sites save, lock and close at the same
+time while a save and a close of the same batch still queue behind each other.
+Batch deletions and restores keep the whole-table lock, which the scoped writers
+hold shared. The scope key is the canonical site, the ISO book date and the shift
+code, the same for a saved record and for its batch row.
+
+`GET /api/scan-batches/:id?progress=1` returns identity, status, revision, the
+fleet check, the extraction stage and a trip total for each card: a few KB instead
+of every draft and extraction text, with no re-validation, draft rewrite or
+duplicate scan. The browser reloads the full entry only when that list differs
+from the cards on screen. `GET /api/vlb-batches/:id` sends an ETag and answers 304
+to the batch board's If-None-Match when the batch has not changed.
+
+The Gemini start gate defaults to 1000 ms (60 starts a minute, which five workers
+at about 5 s a card can just use); `MIS_GEMINI_MIN_INTERVAL_MS` overrides it. On
+349 production cards read on 8 November 2026 the model took 4.8 s a card at the
+median, so the earlier 2000 ms gate, not the model, held the whole company to 30
+cards a minute.
