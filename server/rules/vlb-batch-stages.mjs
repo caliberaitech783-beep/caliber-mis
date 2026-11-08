@@ -6,7 +6,7 @@ import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../../shared/surface-miner-hmr.mjs';
-import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch} from './vlb-batch-policy.mjs';
+import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch,lockVlbBatchScope,vlbRecordScope} from './vlb-batch-policy.mjs';
 import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
@@ -208,6 +208,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
 // Closed batches accept new cards while existing cards still require reopening.
 export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(!twoStageEnabled())return null;
+ await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,{location:data.location,bookDate:data.bookDate,bookShiftCode:data.bookShiftCode,cardShift:data.cardShift,shiftName:data.shiftName});
  if(!batch)fail('Create the VLB batch for this site, date and shift and lock VLB before saving ELB cards. Standalone ELB saving is discontinued.',409);
  if(batch.archived_at||batch.deleted_at)fail('This batch is unavailable. Open an active site/date/shift batch before saving.',409);

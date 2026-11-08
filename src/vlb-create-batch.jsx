@@ -101,7 +101,17 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   setSelection({site,date:batch.report_date,shift:batch.shift});
  },[entryMode,options,batchStatusReady,batches,session.login,session.name]);
  useEffect(()=>{const timer=setInterval(()=>setRefresh(n=>n+1),10000);return()=>clearInterval(timer)},[]);
- useEffect(()=>{if(!viewed?.id)return;const controller=new AbortController();const generation=detailRequest.current;read('/api/vlb-batches/'+viewed.id,{signal:controller.signal}).then(data=>{if(!controller.signal.aborted&&generation===detailRequest.current)setViewed(data)}).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>controller.abort()},[viewed?.id,refresh,session.token]);
+ // The board re-reads the open batch every 10 s. It sends the last ETag it saw, and a
+ // 304 keeps the batch on screen as it is instead of downloading every record again.
+ const detailCache=useRef({id:'',etag:'',data:null});
+ const readDetail=async(id,signal)=>{
+  const cached=detailCache.current.id===id?detailCache.current:null;
+  const response=await fetch('/api/vlb-batches/'+id,{signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(cached?.etag?{'If-None-Match':cached.etag}:{})}});
+  if(response.status===304&&cached?.data)return cached.data;
+  const data=await response.json();if(!response.ok)throw Error(data.error||'Could not read VLB batches.');
+  detailCache.current={id,etag:response.headers.get('etag')||'',data};return data;
+ };
+ useEffect(()=>{if(!viewed?.id)return;const controller=new AbortController();const generation=detailRequest.current;readDetail(viewed.id,controller.signal).then(data=>{if(!controller.signal.aborted&&generation===detailRequest.current)setViewed(data)}).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>controller.abort()},[viewed?.id,refresh,session.token]);
  useEffect(()=>{const controller=new AbortController();setPreview(null);
   if(!selection.site||!selection.date||!selection.shift){setLoading(false);return()=>controller.abort()}
   setLoading(!viewed);setError('');

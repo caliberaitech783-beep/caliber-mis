@@ -15,14 +15,14 @@ import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
-import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
+import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from '../../shared/vlb-card-number.mjs';
 import {registerLogBookDeletion} from '../rules/log-book-deletion.mjs';
-import {manualBreakdownHours,applyBreakdownHours} from '../../shared/breakdown-hours-source.mjs';
+import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {validTripTimes,vlbCountedTrips,withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
@@ -158,7 +158,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
- registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
+ registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
@@ -198,7 +198,10 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),bookNumberCounters,vehicleCardCounters,assets:(await withEquipmentAliases(pool,assets)).filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:(req.query?.scan==='1'?REGION_DATA.flatMap(region=>region.sites):displaySiteSelection([...sites])).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
- const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,baseShift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data,shift=input.manualEntry||input.manualShiftOverride||isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,['day','night'].includes(input.manualShift)?(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[]):baseShift;if(!asset||!baseShift||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests({actor:input.actor}),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
+ // input.breakdownRows carries a feed read before the caller's advisory lock, and input.client
+ // the caller's transaction connection, so a save holds no second pool connection while locked.
+ const readBreakdownRows=async actor=>{if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');return pulseMasterSync.readBreakdownRequests({actor})};
+ const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const db=input.client||pool;const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await db.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,baseShift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data,shift=input.manualEntry||input.manualShiftOverride||isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,['day','night'].includes(input.manualShift)?(await db.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[]):baseShift;if(!asset||!baseShift||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:input.breakdownRows??await readBreakdownRows(input.actor),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
  app.post('/api/log-books/hours',...protect,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
    try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
@@ -236,10 +239,15 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
-     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);
-     if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
+     // Pulse is read before any lock, so the remote call never runs while other users queue.
+     const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);
+     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');
      Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true}));
-     await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
+     // The site, date and shift scope is locked before the record row, the same order the
+     // batch routes use, so a batch action and a card edit never wait on each other.
+     await lockVlbBatchScope(client,vlbRecordScope(data));
+     if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
+     await applyBreakdownHours(data,{readHours:lockedReadHours(input=>readHours({...input,client}),prefetched),actor});
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
@@ -313,7 +321,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      res.json({deleted:true});
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
  });
- return {initialize:ensure,readHours};
+ return {initialize:ensure,readHours,readBreakdownRows};
 }
 
 

@@ -46,10 +46,15 @@ export function parseCardResponse(raw,kind){
  validateA(recovered.fields,kind);validateB(recovered.trips,kind);
  return recovered;
 }
+// The shared start gate caps extraction starts a minute across every worker.
+// 1000 ms allows 60 starts a minute, which five workers at about 5 s a card can
+// just use; the earlier 2000 ms gate held the whole company to 30 cards a minute
+// however many workers were idle. MIS_GEMINI_MIN_INTERVAL_MS overrides it.
+export function geminiMinIntervalMs(env=process.env){const value=Number(env.MIS_GEMINI_MIN_INTERVAL_MS);return Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):1000;}
 // Limit native decoding/encoding across readers; API calls remain concurrent.
 // Five cards each preparing six canvases at once can otherwise crowd uploads.
 let imagePreparation=Promise.resolve();
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=2000,maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
  let pending=0,active=0,last=0,gate=Promise.resolve();const queue=[],inFlight=new Map();
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>5)throw Error('Gemini concurrency must be between 1 and 5.');
  // Share a start gate across all workers, including retries. Faster starts are

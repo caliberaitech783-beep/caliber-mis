@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPdfUploadSession,transferScanGroups} from '../src/scan-upload-pipeline.mjs';
 import {scanValidationClient} from '../server/rules/scan-validation-cache.mjs';
+import {scanProgressChanged,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
 import {readFileSync} from 'node:fs';
 
 test('the counted PDF is reused for rendering and retained documents are bounded and cleaned up',async()=>{
@@ -58,10 +59,12 @@ test('overlapping background batch polls coalesce; an explicit refresh reads aft
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  assert.ok(line);
  let requests=0,release,rows=[];const gate=new Promise(resolve=>release=resolve),noop=()=>{};
- const scope={SmartSelect: "select",kind:'equipment',vlbBatch:undefined,batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
+ const scope={SmartSelect: "select",kind:'equipment',vlbBatch:undefined,scanProgressChanged,mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
  const first=load('batch',false),same=load('batch',false),fresh=load('batch');
- assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,2);assert.equal(rows[0].revision,2);
+ // The gated progress poll finds a card the page does not show yet, so it reads the full
+ // entry once; the overlapping poll reuses it, and the explicit refresh reads after both.
+ assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,3);assert.equal(rows[0].revision,3);
 });
 
 test('concurrent uploads start in page order, overlap, and stop launching after a failure',{timeout:2000},async()=>{
