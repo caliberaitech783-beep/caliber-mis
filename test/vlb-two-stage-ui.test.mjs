@@ -44,7 +44,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5',site:'Jayant OC'},{id:'6',name:'Other site employee',caliberId:'C6',site:'Sasti OC'}]},onChanged(){},onDismiss(){}})};
  let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
  await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
- assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)']]);
+ assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)'],'Previous ELB entries']);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
  assert.match(html,/Caliber ID/);assert.match(html,/Select Caliber ID/);assert.match(html,/C5 · Ramesh/);assert.doesNotMatch(html,/C6|Other site employee/);
  assert.match(html,/1.500/);assert.match(html,/Hydraulic leak/);assert.match(html,/BD-1/);

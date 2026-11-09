@@ -1,4 +1,5 @@
 import React,{useState,useEffect} from 'react';
+import PreviousElbEntries from './previous-elb-entries.jsx';
 import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
@@ -54,7 +55,7 @@ const machineColumns=[
 ];
 const machineCollator=new Intl.Collator('en-IN',{numeric:true,sensitivity:'base'});
 
-export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu}){
+export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu,canDeleteElb}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
@@ -151,6 +152,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <nav className="vlb-status-buttons" role="tablist" aria-label="ELB entry tabs">
    <button type="button" id="elb-working-tab" role="tab" aria-selected={activeTab==='working'} aria-controls="elb-working-panel" onClick={()=>setActiveTab('working')}>Working</button>
    <button type="button" id="elb-breakdown-tab" role="tab" aria-selected={activeTab==='breakdowns'} aria-controls="elb-breakdown-panel" onClick={()=>setActiveTab('breakdowns')}>Breakdown details{pulse?' ('+(pulse.breakdowns?.length||0)+')':''}</button>
+   <button type="button" id="elb-previous-tab" role="tab" aria-selected={activeTab==='previous'} aria-controls="elb-previous-panel" onClick={()=>setActiveTab('previous')}>Previous ELB entries</button>
   </nav>
   <p className="logbook-message">{batch.site} · {batch.report_date} · {batch.shift} · {row.door}</p>
   <div className="logbook-fields"><label className="logbook-field"><span>Shift</span><SmartSelect aria-label="Manual ELB Shift" disabled={busy} value={form.manualShift||''} onChange={event=>{const manualShift=event.target.value;setForm(current=>({...current,manualShift,shiftHours:['day','night'].includes(manualShift)?12:(current.shiftHours||pulse?.shiftHours||8)}));setDirty(true);setError('');}}><option value="">Batch shift · {batch.shift}</option><option value="day">Day</option><option value="night">Night</option></SmartSelect></label><label className="logbook-field"><span>Shift Hrs</span><SmartSelect aria-label="Manual ELB Shift Hrs" disabled={busy} value={form.shiftHours||pulse?.shiftHours||8} onChange={event=>update('shiftHours',Number(event.target.value))}><option value={8}>8 Hrs</option><option value={12}>12 Hrs</option></SmartSelect></label></div><p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
@@ -187,6 +189,16 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
    {pulse&&!(pulse.breakdowns||[]).length&&<p>No breakdown found for this equipment in the selected site, date and shift.</p>}
    {pulse&&(pulse.breakdowns||[]).length>0&&<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Pulse reference</th><th>Breakdown description</th><th>Start · IST</th><th>End · IST</th><th>Status</th><th>Hours in shift</th></tr></thead><tbody>{pulse.breakdowns.map((event,i)=><tr key={(event.reference||'event')+':'+i}><td>{event.reference||'—'}</td><td>{event.description}</td><td>{new Date(event.start).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</td><td>{event.end?new Date(event.end).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Ongoing'}</td><td>{event.status}</td><td>{Number(event.hours).toFixed(3)}</td></tr>)}</tbody></table></div>}
    {pulse&&<p><small>Only time within this shift is counted. Overlapping events are counted once in the total. Source: pulse.cmll.in · Updated {new Date(pulse.fetchedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small> <button type="button" disabled={busy||pulseLoading} onClick={()=>setPulseTick(n=>n+1)}>Refresh Pulse</button></p>}
+  </section>
+  <section id="elb-previous-panel" role="tabpanel" aria-labelledby="elb-previous-tab" hidden={activeTab!=='previous'} className="logbook-section">
+   {activeTab==='previous'&&<PreviousElbEntries key={lookupKey} session={session} batch={batch} assetId={row.assetId} canDelete={canDeleteElb} onDeleted={async record=>{
+    setBusy(true);setError('');
+    try{
+     const result=await api('/api/vlb-batches/'+batch.id+'/fleet','GET');
+     setFleet(result.fleet);onChanged?.(result);
+     if(!dirty&&String(record.id)===String(row.logbook_id))setForm(fleetDraftFields(result.fleet.find(machine=>machine.assetId===row.assetId)));
+    }catch(e){setError(e.message)}finally{setBusy(false)}
+   }}/>}
   </section>
   <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved&&!additional} onClick={next}>{busy?'Saving…':additional?'Save relief card':row.saved_at?'Save changes':'Next'}</button>{additional&&<button type="button" disabled={busy} onClick={()=>{setReliefRequestKey('');setForm(fleetDraftFields(row));setDirty(false);setError('')}}>Cancel relief card</button>}{dirty&&<span className="vlb-draft-indicator" role="status">{additional?'Relief card has unsaved changes':'Not saved · select Next to save this ELB'}</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}

@@ -1,3 +1,5 @@
+import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {vlbBatchSelection,vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {discoverDeletionScope,bindLocalFiles,scopeHash,stableJson,deletionError} from '../services/log-book-deletion-scope.mjs';
 export const DELETION_PHONE='919925565281';
@@ -77,7 +79,18 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
  }
  app.get('/api/log-book-deletions/entries',...protect,wrap(async(req,res)=>{
   const before=String(req.query.before||''),id=String(req.query.id||'');if((before&&!/^\d+$/.test(before))||(id&&!/^\d+$/.test(id)))deletionError('Invalid record ID or page cursor.',400);
-  const sites=await permittedSites(req),rows=(await pool.query('SELECT id,book_no,book_type,data,revision,created_at FROM mis_log_books WHERE deleted_at IS NULL AND ($1::bigint IS NULL OR id<$1::bigint) AND ($2::bigint IS NULL OR id=$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) ORDER BY id DESC LIMIT 101',[before||null,id||null,sites])).rows;
+  const sites=await permittedSites(req);
+  if(req.query.site!==undefined||req.query.date!==undefined||req.query.shift!==undefined){
+   const scope=vlbBatchSelection(req.query);
+   const {rows}=await pool.query(`SELECT id,book_no,book_type,site,data,revision,created_at FROM mis_log_books
+    WHERE deleted_at IS NULL AND book_type='equipment' AND book_date=$1
+      AND ($2::bigint IS NULL OR id<$2::bigint)
+      AND ($3::text[] IS NULL OR site=ANY($3::text[]))
+      AND COALESCE(data->>'scanCardId','')='' ORDER BY id DESC`,[scope.date,before||null,sites]);
+   const matches=rows.filter(row=>canonicalSiteName(row.site)===scope.site&&vlbRecordShift(row.data)===scope.shift);
+   return res.set('Cache-Control','no-store').json({records:matches.slice(0,500),nextCursor:matches.length>500?String(matches[499].id):null});
+  }
+  const rows=(await pool.query('SELECT id,book_no,book_type,data,revision,created_at FROM mis_log_books WHERE deleted_at IS NULL AND ($1::bigint IS NULL OR id<$1::bigint) AND ($2::bigint IS NULL OR id=$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) ORDER BY id DESC LIMIT 101',[before||null,id||null,sites])).rows;
   res.set('Cache-Control','no-store').json({records:rows.slice(0,100),nextCursor:rows.length>100?String(rows[99].id):null});
  }));
  app.get('/api/log-book-deletions/pending',...protect,wrap(async(req,res)=>{

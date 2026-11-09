@@ -44,6 +44,13 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal((await api('entries',undefined,'')).status,401);assert.equal((await api('entries',undefined,'normal')).status,403);
  assert.equal((await api('entries')).data.records.length,3);
  assert.equal((await api('entries',undefined,'restricted')).data.records.length,0);
+ const manual=await seed(4,'equipment'),otherShift=await seed(5,'equipment');
+ await db.query("UPDATE mis_log_books SET data=data || jsonb_build_object('shiftName', CASE WHEN id=$1 THEN 'II' ELSE 'I' END) WHERE id IN ($1,$2,$3,$4)",[otherShift.id,manual.id,a.id,b.id]);
+ const scoped=await api('entries?site=Sasti&date=2026-12-28&shift=S1');
+ assert.equal(scoped.status,200);
+ assert.deepEqual(scoped.data.records.map(row=>String(row.id)),[String(manual.id)]);
+ assert.deepEqual((await api('entries?site=Sasti&date=2026-12-28&shift=S1',undefined,'restricted')).data.records,[]);
+ await db.query('DELETE FROM mis_log_books WHERE id IN ($1,$2)',[manual.id,otherShift.id]);
  assert.equal((await api('preview',{records:[a],reason:''})).status,400);
  assert.equal((await api('preview',{records:[a,a],reason:'duplicate'})).status,400);
  assert.equal((await api('preview',{records:[{...a,revision:0}],reason:'duplicate'})).status,409);

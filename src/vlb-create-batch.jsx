@@ -2,6 +2,7 @@ import VlbBatchDeletion,{DeletedVlbBatches} from './vlb-batch-deletion.jsx';
 import VlbBatchCardDetails from './vlb-batch-card-details.jsx';
 import LogBookForm from './log-book-form.jsx';
 import SmartSelect from './smart-select.jsx';
+import LogBookDeletion from './log-book-deletion.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
@@ -15,7 +16,7 @@ import VlbBatchHolds,{NewEquipmentRequest} from './vlb-batch-holds.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
 
-export default function VlbCreateBatch({session,onExit,ReportSection,onManual,onScan,onApprovals,onSelected,entryMode,entryKind='vehicle',onElbEntry,onEquipmentElb}){
+export default function VlbCreateBatch({session,onExit,ReportSection,onManual,onScan,onApprovals,onSelected,entryMode,entryKind='vehicle',onElbEntry,onEquipmentElb,canDeleteManualElb}){
  const [options,setOptions]=useState(null),[selection,setSelection]=useState({site:'',date:systemBookDate(),shift:''});
  const [preview,setPreview]=useState(null),[batches,setBatches]=useState([]),[openBatch,setOpenBatch]=useState(null),[viewed,setViewed]=useState(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
@@ -104,6 +105,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  // The board re-reads the open batch every 10 s. It sends the last ETag it saw, and a
  // 304 keeps the batch on screen as it is instead of downloading every record again.
  const detailCache=useRef({id:'',etag:'',data:null});
+ const [deleteBatchId,setDeleteBatchId]=useState(null);
  const readDetail=async(id,signal)=>{
   const cached=detailCache.current.id===id?detailCache.current:null;
   const response=await fetch('/api/vlb-batches/'+id,{signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(cached?.etag?{'If-None-Match':cached.etag}:{})}});
@@ -191,7 +193,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
    </div>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
     {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={lockVlb}>Lock VLB</button><button type="button" disabled title="Lock VLB first">ELB entry · Lock VLB first</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{viewed.lockBlockers?.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {viewed.lockBlockers.join(' ')}</p>}</>}
-    {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}{viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button></div>
+    {stage==='elb_open'&&<><div className="vlb-batch-actions">{onEquipmentElb&&!equipmentElbHidden&&<button type="button" className="vlb-approval-primary vlb-open-elb-button" disabled={busy||viewed.canEnterFleet===false} onClick={()=>onEquipmentElb(viewed)}>Process Equipment ELB</button>}<button type="button" aria-expanded={!equipmentElbHidden} aria-controls="vlb-equipment-elb-details" onClick={()=>setEquipmentElbHidden(v=>!v)}>{equipmentElbHidden?'Show Equipment ELB':'Hide Equipment ELB'}</button>{viewed.canUnlockVlb&&<button type="button" disabled={busy} onClick={unlockVlb}>Unlock VLB</button>}{viewed.canRequestUnlockOtp&&<button type="button" disabled={busy} onClick={()=>setUnlockOtp(true)}>Unlock VLB (PM OTP)</button>}<button type="button" disabled={busy||detailLoading||!viewed.canClose} onClick={()=>close(viewed)}>Close &amp; lock ELB</button>{canDeleteManualElb&&<button type="button" disabled={busy||detailLoading} aria-expanded={deleteBatchId===viewed.id} onClick={()=>setDeleteBatchId(id=>id===viewed.id?null:viewed.id)}>Delete manual ELBs</button>}</div>
+    {canDeleteManualElb&&deleteBatchId===viewed.id&&<LogBookDeletion key={viewed.id} session={session} context={{manualElbScope:{site:viewed.site,date:viewed.report_date,shift:viewed.shift}}}/>}
      {viewed.canClose===false&&<p role="status">The batch owner or an MIS administrator can close and lock this ELB.</p>}
      <div id="vlb-equipment-elb-details" hidden={equipmentElbHidden}>
      {viewed.fleetProgress&&<p role="status">ELBs saved: {viewed.fleetProgress.saved} · Required remaining: {viewed.fleetProgress.remaining}{viewed.fleetProgress.optionalUnsaved?' · '+viewed.fleetProgress.optionalUnsaved+' optional with no saved ELB':''}{viewed.fleetProgress.skipped?' · '+viewed.fleetProgress.skipped+' skipped':''}{viewed.fleetProgress.drafts?' · '+viewed.fleetProgress.drafts+' draft'+(viewed.fleetProgress.drafts===1?'':'s'):''}{viewed.fleetProgress.loaders?' · '+viewed.fleetProgress.loaders+' loading machine'+(viewed.fleetProgress.loaders===1?'':'s'):''}</p>}
