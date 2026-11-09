@@ -13,7 +13,7 @@ import EnvironmentBanner from './environment-banner.jsx';
 import OperationsReports from './operations-reports.jsx';
 import CapacityMaster from './capacity-master.jsx';
 import {operationReports} from './operations-report-model.mjs';
-import ScanBatchReports from './scan-batch-reports.jsx';
+import VlbBatchReports from './vlb-batch-reports.jsx';
 import ElbBatchReports from './elb-batch-reports.jsx';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
@@ -12024,7 +12024,7 @@ function App() {
     <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
   ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
-  ) : renderedActive==='VLB Reports' ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind="vehicle" session={session}/>
+  ) : renderedActive==='VLB Reports' ? (<VlbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
   ) : renderedActive==='ELB Reports' ? (<ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
   ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
