@@ -125,7 +125,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const tripEquipmentValues=new Set(tripEquipmentOptions.map(asset=>machineLabel(asset.door||asset.name)));
  const equipmentValidation=vehicle?validateTripEquipment({...form,trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))},options?.assets||[]):{draft:form,issues:{}};
  const replacedKmr=vehicle&&kmrMeterReplaced(form);
- const meterIssues=vehicle?shiftMeterIssues(form,'vehicle'):{};
+ const meterIssues=vehicle?shiftMeterIssues(form,kind):{};
  const kmr=replacedKmr?delta(0,form.replacementKmr??''):delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
 
  useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours||CARD_SHIFTS[form.cardShift]?.hours||8,manualEntry:true,manualShift:form.manualShift,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,form.manualShift,hmr,session.token,hoursRefresh]);
@@ -219,8 +219,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 {vehicle&&<><Field label="Opening KMR"><input type="number" step="0.001" required value={form.openingKmr} onChange={e=>update('openingKmr',e.target.value)}/></Field>
 <Field label="Closing KMR"><input type="number" step="0.001" required value={form.closingKmr} onChange={e=>update('closingKmr',e.target.value)}/></Field>
 {replacedKmr&&<Field label="Actual distance (km)" hint="KMR meter replaced during the shift"><input type="number" min="0" max="250" step="0.001" required value={form.replacementKmr??''} onChange={e=>update('replacementKmr',e.target.value)}/></Field>}
-</>}<Field label="Opening HMR"><input type="number" step="0.001" required value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
-<Field label="Closing HMR"><input type="number" step="0.001" required value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
+</>}<Field label="Opening HMR"><input type="number" step="0.001" required={!lmv} value={form.openingHmr} onChange={e=>update('openingHmr',e.target.value)}/></Field>
+<Field label="Closing HMR"><input type="number" step="0.001" required={!lmv} value={form.closingHmr} onChange={e=>update('closingHmr',e.target.value)}/></Field>
 <Field label="Remark"><textarea rows={2} maxLength={4000} value={form.remark} onChange={e=>update('remark',e.target.value)}/></Field>{vehicle&&<><Field label="Total running KMR"><output>{fixed(kmr)}</output></Field><div className="logbook-sheet-spacer"/></>}<Field label="Total working HMR"><output>{fixed(hmr)}</output></Field>
      </div></section>
 

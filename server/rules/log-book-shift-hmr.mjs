@@ -19,14 +19,16 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null){
   return shift&&otherShift?shift===otherShift:String(row.data.shiftId)===String(data.shiftId);
  });
  if(!peers.length)return;
- const limit=data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
-  data.shiftHours,...peers.map(row=>Number(row.data.shiftHours)).filter(hours=>hours===8||hours===12)
- );
- const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);
- const total=saved+hmrUnits(data);
- if(total>limit*1000){
-  throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved). The limit is ${limit} hours. Check the opening and closing HMR on the cards.`),
-   {status:409,details:{code:'shift_hmr_limit'}});
+ if(kind!=='lmv'||!data.manualShiftOverride){
+  const limit=data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
+   data.shiftHours,...peers.map(row=>Number(row.data.shiftHours)).filter(hours=>hours===8||hours===12)
+  );
+  const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);
+  const total=saved+hmrUnits(data);
+  if(total>limit*1000){
+   throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved). The limit is ${limit} hours. Check the opening and closing HMR on the cards.`),
+    {status:409,details:{code:'shift_hmr_limit'}});
+  }
  }
  if(kind!=='vehicle'&&kind!=='lmv')return;
  const savedKmr=peers.reduce((sum,row)=>sum+kmrUnits(row.data),0);

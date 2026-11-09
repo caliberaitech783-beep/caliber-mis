@@ -8,7 +8,7 @@ export const VLB_SHIFT_KMR_LIMIT=250;
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
  if(![8,12].includes(hours))return issues;
- for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+ for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
   const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:VLB_SHIFT_KMR_LIMIT;
@@ -32,7 +32,7 @@ export function shiftMeterIssues(draft={},kind='vehicle'){
 // Include historical meter discrepancies for review and reports.
 export function meterRuleIssues(draft={},kind='vehicle'){
  const issues={...shiftMeterIssues(draft,kind)};
- for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+ for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   for(const prefix of ['opening','closing']){
    const key=prefix+meter,value=draft[key];
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;

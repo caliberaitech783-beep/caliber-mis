@@ -68,7 +68,7 @@ export function timeGapMinutes(start,end){
 }
 export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  if(!['vehicle','equipment','lmv'].includes(kind))fail('Invalid log book type.');
- const vehicle=kind==='vehicle'||kind==='lmv',meterKind=vehicle?'vehicle':'equipment';
+ const vehicle=kind==='vehicle'||kind==='lmv',optionalHmr=kind==='lmv'&&manualEntry,meterKind=optionalHmr?'lmv':vehicle?'vehicle':'equipment';
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
  const optionalShift=manualEntry&&vehicle&&!input.scanCardId;
@@ -76,7 +76,7 @@ export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
  const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true,optional:optionalShift});
  if(!assetId||!employeeId&&!nonWorking||!shiftId&&!optionalShift)fail('Select an asset, employee and shift from their masters.');
- const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
+ const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:0),closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:openingHmr);
 const openingKmr=vehicle?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=vehicle?number(input.closingKmr,'Closing KMR',{signed:true}):null;
 if(vehicle){const limits=Object.values(shiftMeterIssues(input,meterKind));if(limits.length)fail(limits.join(' '));}
 const replacementKmr=vehicle&&kmrMeterReplaced(input)?number(input.replacementKmr,'Actual KMR distance'):null;
@@ -92,13 +92,13 @@ const timeMode=input.timeMode==='without'?'without':'with';
    return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
- const workingHmr=rounded(closingHmr-openingHmr);
+ const workingHmr=openingHmr===null||closingHmr===null?null:rounded(closingHmr-openingHmr);
  return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,...(manualEntry?{manualShift:isManualShift(input.manualShift)?input.manualShift:'',manualShiftOverride:true}:{}),docType:kind==='lmv'?'LMV':vehicle?'VLB':'QLB',
    meterRuleErrors:meterRuleIssues(input,meterKind),openingKmr,closingKmr,openingHmr,closingHmr,...(replacementKmr!==null?{replacementKmr}:{}),totalRunningKmr:vehicle?rounded(replacementKmr??(closingKmr-openingKmr)):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:vehicle?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
    totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+vlbCountedTrips(row,timeMode),0),
-   workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
+   workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:workingHmr===null?null:rounded(shiftHours-workingHmr)};
 }
 
 const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
