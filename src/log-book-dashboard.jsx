@@ -4,7 +4,7 @@ import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
 export const LOGBOOK_COLOURS={vehicle:'#56309A',equipment:'#F34856'};
 const number=n=>Number(n||0).toLocaleString('en-IN');
-export function initialLogbookRange(){const to=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),d=new Date(to+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-6);return {from:[d.toISOString().slice(0,10),'2026-11-01'].sort().at(-1),to,location:'',shift:''};}
+export function initialLogbookRange(){const to=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});return {from:to,to,location:'',shift:''};}
 const query=filters=>new URLSearchParams(Object.entries(filters).filter(([,v])=>v)).toString();
 const dateLabel=value=>new Date(value+'T00:00:00Z').toLocaleDateString('en-IN',{day:'2-digit',month:'short',timeZone:'UTC'});
 function Legend(){return <div className="lb-legend"><span><i className="lb-purple"/>VLB · Vehicle</span><span><i className="lb-coral"/>ELB · Equipment</span></div>}

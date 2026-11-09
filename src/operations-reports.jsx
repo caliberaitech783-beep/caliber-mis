@@ -15,7 +15,7 @@ export default function OperationsReports(props){
  return <SavedOperationReports {...props}/>;
 }
 function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportSection}){
- const [filters,setFilters]=useState(()=>({from:today().slice(0,7)+'-01',to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
+ const [filters,setFilters]=useState(()=>({from:today(),to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),[monthly,setMonthly]=useState(false);
  const id=operationReports.some(r=>r.id===reportId)?reportId:'daily',definition=operationReports.find(r=>r.id===id);
  const valid=filters.from&&filters.to&&filters.from>='2026-11-01'&&filters.to>='2026-11-01'&&filters.from<=filters.to&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<=365;
@@ -29,7 +29,7 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const options=(key,label)=>[...new Map(optionRows.filter(r=>!filters.site||r.location===filters.site).map(r=>[String(r[key]||''),r[label]||r[key]])).entries()].filter(([v])=>v).sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
  const field=(key,label,choices)=> <label>{label}<SmartSelect value={filters[key]} onChange={e=>set(key,e.target.value)} disabled={id==='missing'&&['employee','workOrder'].includes(key)}><option value="">All</option>{choices.map(([value,text])=><option key={value} value={value}>{text}</option>)}</SmartSelect></label>;
  const canExport=Boolean(data)&&!busy&&!error&&valid&&data.reportRange===filters.from+'|'+filters.to;
- const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||today().slice(0,7)+'-01',to:range?.to||today()}));}};
+ const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||today(),to:range?.to||today()}));}};
  return <section className="operations-reports">
   <header><div><small>MIS / REPORTS / {definition.group}</small><h1>{definition.title}</h1><p>Saved operational records · {filters.from} to {filters.to}</p></div><div className="op-actions"><button onClick={()=>setReload(v=>v+1)} disabled={busy}>Refresh</button></div></header>
   <div className="op-report-picker"><label>Report<SmartSelect value={id} onChange={e=>onSelect(e.target.value)}>{[...new Set(operationReports.map(r=>r.group))].map(group=><optgroup label={group} key={group}>{operationReports.filter(r=>r.group===group).map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</optgroup>)}</SmartSelect></label></div>
