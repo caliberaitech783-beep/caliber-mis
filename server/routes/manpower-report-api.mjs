@@ -61,7 +61,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
      (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])) AS data,
      '[]'::jsonb AS batches
-     FROM mis_log_books l WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
+     FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
      AND l.book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR l.site=ANY($3::text[]))
      ORDER BY l.book_date,l.id LIMIT 50001`,[range.contextFrom,range.contextTo,sites,HISTORY_CARD_FIELDS]);
     if(rows.length>50000)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});

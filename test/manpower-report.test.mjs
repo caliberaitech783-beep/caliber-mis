@@ -143,6 +143,7 @@ test('history API reads only earlier dates within scope and returns one repeat p
  assert.equal(r.result.historyFrom,'2026-11-01');assert.equal(r.result.historyTo,'2026-11-11');
  assert.deepEqual(r.result.drivers.map(d=>[d.red,d.orange,d.redDates]),[[1,0,[date]]]);
  const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));assert.equal(reads.length,2);assert.deepEqual(reads[0].args.slice(0,3),['2026-11-01','2026-11-08',[site]]);assert.ok(reads.every(c=>c.args[3].includes('employeeId')&&!c.args[3].includes('trips')));
+ assert.ok(reads.every(c=>c.sql.includes("l.book_type IN ('vehicle','equipment')")),'LMV log books are left out, as in the main report');
  const first=await h.run({from:'2026-11-01',to:'2026-11-01'},path);assert.equal(first.result.historyFrom,null);assert.deepEqual(first.result.drivers,[]);
  assert.equal((await h.run({from:date,to:date,site:'Jayant OC'},path)).status,403);
 });
