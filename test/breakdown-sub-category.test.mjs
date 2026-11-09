@@ -51,7 +51,7 @@ test('it is a Masters sub menu that administrators can add to, edit and delete, 
 test('the create request form no longer loads, shows, prefills, or submits a breakdown sub-category',()=>{
   assert.doesNotMatch(client,/import \{ breakdownSubCategoryNames \} from "\.\.\/server\/rules\/breakdown-sub-category\.mjs";/);
   assert.doesNotMatch(client,/useMasterRecords\("Breakdown Sub-Category"/,'the request page does not load this master');
-  const form=client.slice(client.indexOf('function MaintenanceForm('),client.indexOf('function Subsidiaries('));
+  const form=client.slice(client.indexOf('function MaintenanceForm('),client.indexOf('function Generic('));
   assert.doesNotMatch(form,/subCategory|sub-category/i);
   assert.match(form,/<SpeechComplaint \/>/,'the complaint remains an independent required field');
   const createRoute=server.slice(server.indexOf("app.post('/api/requests',"),server.indexOf("app.patch('/api/requests/",server.indexOf("app.post('/api/requests',")));
