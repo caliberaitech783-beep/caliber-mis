@@ -87,7 +87,10 @@ test('full Pulse snapshots leave previously linked regions and local site edits 
  await db.query("INSERT INTO pulse_master_links VALUES('Region master','7',$1)",[id]);
  for(const source of [snapshot(),{...snapshot(),'Region master':[]}])await applyPulseSnapshot(pool,source);
  assert.deepEqual((await db.query("SELECT id,record_data FROM master_records WHERE master_name='Region master'")).rows,[{id,record_data:local}]);
- await assert.rejects(applyPulseSnapshot(pool,snapshot(),['Region master']),/Invalid Pulse master/);
+ await assert.rejects(applyPulseSnapshot(pool,{},['Region master']),/did not return/);
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Region master','{\"name\":\"Stale\"}')");
+ await applyPulseSnapshot(pool,snapshot(),['Region master']);
+ assert.deepEqual((await db.query("SELECT id,record_data FROM master_records WHERE master_name='Region master'")).rows,[{id,record_data:{name:'West',code:'WCL'}}]);
 });
 test('a failed transaction rolls back changes across all three masters',async t=>{
  const {db,pool}=await fixture(t);await applyPulseSnapshot(pool,snapshot());

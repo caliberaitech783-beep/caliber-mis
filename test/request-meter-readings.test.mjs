@@ -35,7 +35,7 @@ test("meter readings and evidence files are validated", () => {
 });
 
 test("request edit captures opening KMR/HMR evidence but leaves closing evidence to the close workflow", () => {
-  const createForm = source.slice(source.indexOf("function MaintenanceForm"), source.indexOf("function Subsidiaries"));
+  const createForm = source.slice(source.indexOf("function MaintenanceForm"), source.indexOf("function Generic("));
   const editForm = source.slice(source.indexOf("function RequestEditForm"), source.indexOf("function CloseRequestForm"));
   const closeForm = source.slice(source.indexOf("function CloseRequestForm"), source.indexOf("function VerifyRequestForm"));
 

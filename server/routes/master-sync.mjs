@@ -1,6 +1,6 @@
-import {PULSE_LMV_MASTER} from './pulse-master-sync.mjs';
+import {PULSE_LMV_MASTER,PULSE_REGION_MASTER} from './pulse-master-sync.mjs';
 
-export const MASTER_SYNC_ROWS=[{name:'Users & employees',label:'Login Details',source:'Pulse'},{name:'Equipment master',label:'Equipment Master',source:'Pulse'},{name:PULSE_LMV_MASTER,label:'LMV Master',source:'Pulse'},{name:'Shift Master',label:'Shift Master',source:'Pulse'},{name:'Work Order master',label:'Work Contract Master',source:'Oracle'},{name:'Financial Year master',label:'Financial Year Master',source:'Oracle'},{name:'Company master',label:'Company Master',source:'Oracle'}];
+export const MASTER_SYNC_ROWS=[{name:'Users & employees',label:'Login Details',source:'Pulse'},{name:'Equipment master',label:'Equipment Master',source:'Pulse'},{name:PULSE_LMV_MASTER,label:'LMV Master',source:'Pulse'},{name:PULSE_REGION_MASTER,label:'Region / Site Master',source:'Pulse'},{name:'Shift Master',label:'Shift Master',source:'Pulse'},{name:'Work Order master',label:'Work Contract Master',source:'Oracle'},{name:'Financial Year master',label:'Financial Year Master',source:'Oracle'},{name:'Company master',label:'Company Master',source:'Oracle'}];
 export function registerMasterSync(app,{pool,pulse,erp,requireSession,requireAdministrator}){let busy=false;const protect=[requireSession,requireAdministrator];const ensure=()=>pool.query('CREATE TABLE IF NOT EXISTS mis_master_sync_state(master_name TEXT PRIMARY KEY,last_success TIMESTAMPTZ,error TEXT NOT NULL DEFAULT \'\')');
  const status=async()=>{
   await ensure();
@@ -15,6 +15,7 @@ export function registerMasterSync(app,{pool,pulse,erp,requireSession,requireAdm
    const event=events.find(entry=>entry.master_name===row.name);
    const count=Number(counts.find(entry=>entry.master_name===row.name)?.n||0);
    if(row.name===PULSE_LMV_MASTER)return {...row,count,connected:Boolean(p.lmv?.connected),lastSuccess:p.lmv?.lastSuccess||event?.last_success,error:p.lmv?.error||''};
+   if(row.name===PULSE_REGION_MASTER)return {...row,count,connected:p.connected,lastSuccess:p.region?.lastSuccess||event?.last_success,error:p.region?.error||''};
    return {...row,count,connected:row.source==='Pulse'?p.connected:e.configured,lastSuccess:event?.last_success||(row.source==='Pulse'?p.lastSuccess:e.last_success),error:event?.error||(row.source==='Oracle'?e.error:'')||''};
   });
   return {busy:busy||p.busy||e.busy,masters};

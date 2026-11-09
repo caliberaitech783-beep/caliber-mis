@@ -34,7 +34,7 @@ test('real session selection requires the card owner and a relevant assigned MIS
 test('an unavailable Oracle connection does not hide the automatic Pulse connection',async()=>{
  const routes=new Map();registerMasterSync({get:(url,...handlers)=>routes.set(url,handlers.at(-1)),post(){}},{pool:{query:async()=>({rows:[]})},pulse:{status:()=>({connected:true})},erp:{status:async()=>{throw Error('unavailable')}},requireSession(){},requireAdministrator(){}});
  let result;await routes.get('/api/master-sync')({}, {set(){return this},json(data){result=data}},error=>{throw error});
- assert.equal(result.masters.some(row=>row.name==='Region master'),false);
+ assert.equal(result.masters.find(row=>row.name==='Region master')?.source,'Pulse');
  assert.equal(result.masters.find(row=>row.source==='Pulse').connected,true);assert.match(result.masters.find(row=>row.source==='Oracle').error,/Oracle connection/);
 });
 

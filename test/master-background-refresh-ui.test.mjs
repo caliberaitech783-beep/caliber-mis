@@ -10,20 +10,20 @@ const Null = () => null;
 const MasterLoadError = () => null, MasterLoader = () => null;
 const definitions = [
   ["Equipment", "Equipment = function EquipmentWithData(", "const OriginalGeneric"],
-  ["Generic", "Generic = function GenericWithMasters(", "const OriginalSubsidiaries"],
-  ["Subsidiaries", "Subsidiaries = function SubsidiariesWithImport(", "function Modal("],
+  ["Generic", "Generic = function GenericWithMasters(", "function RegionSiteMaster("],
+  ["RegionSiteMaster", "function RegionSiteMaster(", "function InfoPulseTimelineModal("],
 ];
 for (const [name, start, end] of definitions) {
   const text = source.slice(source.indexOf(start), source.indexOf(end));
-  const {code} = await transformWithOxc(`let ${name};\n${text}`, `${name}-refresh.jsx`, {jsx: {runtime: "classic"}});
+  const {code} = await transformWithOxc(`${name === "RegionSiteMaster" ? "" : "let " + name + ";"}\n${text}`, `${name}-refresh.jsx`, {jsx: {runtime: "classic"}});
   test(`${name}: a transient background refresh never replaces an existing master page with a loading/error screen`, () => {
     const fixture = [{id: "fixture", door: "D-01"}];
     for (const [loaded, error, expectedScreen] of [[true, "", null], [true, "Connection interrupted", null], [false, "", MasterLoader], [false, "Connection interrupted", MasterLoadError]]) {
       const scope = {SmartSelect: "select",
         React, CDIR_MASTERS, useMasterRecords: () => [fixture, Null, loaded, Null, Null, Null, error, Null], vehicles: [],
-        useState: initial => [initial, Null], regionSites: () => [], regionMasterTitle: "Region / Site Master",
+        useState: initial => [initial, Null], displaySiteSelection: () => [], regionMasterTitle: "Region / Site Master",
         MasterLoadError, MasterLoader, OriginalEquipment: Null, OriginalGeneric: Null,
-        masterFields: {"OEM master": [["oem", "OEM name"]]}, MasterPage: Null, RegionMasterPage: Null,
+        masterFields: {"OEM master": [["oem", "OEM name"]]}, MasterPage: Null,
         normalizeEquipmentRecord: value => value,
       };
       const Component = new Function(...Object.keys(scope), `${code}; return ${name};`)(...Object.values(scope));
@@ -33,7 +33,7 @@ for (const [name, start, end] of definitions) {
         assert.notEqual(tree.type, MasterLoadError);
         assert.notEqual(tree.type, MasterLoader);
         const master = name === "Equipment" ? tree.props.children.find(child => child?.type === Null) : tree;
-        assert.deepEqual(master.props.records, name === "Subsidiaries" ? [{...fixture[0], code:"", sites:""}] : fixture);
+        assert.deepEqual(master.props.records, name === "RegionSiteMaster" ? [{...fixture[0], code:"", sites:""}] : fixture);
       }
     }
   });

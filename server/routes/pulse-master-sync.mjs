@@ -8,6 +8,7 @@ import {randomBytes} from 'node:crypto';
 
 export const PULSE_MASTER_NAMES=['Equipment master','Shift Master','Users & employees'];
 export const PULSE_LMV_MASTER='LMV master';
+export const PULSE_REGION_MASTER='Region master';
 const SOURCE='https://pulse.cmll.in';
 export function validatePulseSnapshot(data,names=PULSE_MASTER_NAMES){
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Pulse returned an invalid master response.');
@@ -32,6 +33,7 @@ function lmvSnapshot(data){
  return snapshot;
 }
 function recordKey(master,row){
+ if(master===PULSE_REGION_MASTER)return String(row.code||row.shortName||row.name||'').trim().toLowerCase();
  if(master==='Shift Master')return `${shiftIdentity({...row,shiftName:row.shiftName||row.name||row.shift})}|${String(row.effectiveFrom||'').trim()}`;
  if(master==='Users & employees')return String(row.login||row.empId||row.employeeId||row.employee||'').trim().toLowerCase();
  if(master===PULSE_LMV_MASTER)return String(row.chassisNo||row.chassis||row.registration||row.reg||row.door||'').trim().toLowerCase();
@@ -39,10 +41,15 @@ function recordKey(master,row){
  return String(value||'').trim().toLowerCase();
 }
 export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_NAMES){
- if(selectedNames.some(n=>n!==PULSE_LMV_MASTER&&!PULSE_MASTER_NAMES.includes(n)))throw new Error('Invalid Pulse master.');
- const regularNames=selectedNames.filter(name=>name!==PULSE_LMV_MASTER);
+ if(selectedNames.some(n=>n!==PULSE_LMV_MASTER&&n!==PULSE_REGION_MASTER&&!PULSE_MASTER_NAMES.includes(n)))throw new Error('Invalid Pulse master.');
+ const regularNames=selectedNames.filter(name=>name!==PULSE_LMV_MASTER&&name!==PULSE_REGION_MASTER);
  const snapshot=regularNames.length?validatePulseSnapshot(input):{};
  if(selectedNames.includes(PULSE_LMV_MASTER))Object.assign(snapshot,lmvSnapshot(input));
+ if(selectedNames.includes(PULSE_REGION_MASTER)){
+   if(!Array.isArray(input?.[PULSE_REGION_MASTER]))throw new Error('Pulse did not return its Region / Site Master. Existing regions and sites were retained.');
+   Object.assign(snapshot,validatePulseSnapshot(input,[PULSE_REGION_MASTER]));
+   if(snapshot[PULSE_REGION_MASTER].some(row=>typeof row.name!=='string'||!row.name.trim()))throw new Error('Pulse returned an unnamed region. Existing regions and sites were retained.');
+ }
  const client=await pool.connect(),counts={};
  try{
    await client.query('BEGIN');
@@ -84,6 +91,10 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
        await client.query('DELETE FROM pulse_master_links WHERE master_name=$1 AND source_id=$2',[name,row.source_id]);
        await client.query('DELETE FROM master_records WHERE id=$1 AND master_name=$2',[row.local_id,target]);
      }
+     if(name===PULSE_REGION_MASTER)await client.query(
+       'DELETE FROM master_records WHERE master_name=$1 AND NOT EXISTS (SELECT 1 FROM pulse_master_links WHERE master_name=$1 AND local_id=master_records.id)',
+       [name],
+     );
      counts[name]=snapshot[name].length;
    }
    await client.query('COMMIT');return counts;
@@ -97,6 +108,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  const fleetReadsInFlight=new Map();
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  let lmvLastSuccess=null,lmvError='';
+ let regionLastSuccess=null,regionError='';
  const request=async(route,options={})=>{
    let response;
    try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. The connection will retry automatically.');}
@@ -105,7 +117,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
- const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES,lmv:{connected:Boolean(token),lastSuccess:lmvLastSuccess,error:lmvError}});
+ const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES,region:{lastSuccess:regionLastSuccess,error:regionError},lmv:{connected:Boolean(token),lastSuccess:lmvLastSuccess,error:lmvError}});
  const save=async(sourceToken,sourceUsername)=>{
    if(credentialStore){await credentialStore.write('pulse-session',{token:sourceToken,username:sourceUsername});return;}if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
    await mkdir(path.dirname(stateFile),{recursive:true});
@@ -120,8 +132,20 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  };
  const sync=async(master,actor)=>{
    const lmv=master===PULSE_LMV_MASTER;
-   if(master&&!lmv&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
+   const region=master===PULSE_REGION_MASTER;
+   if(master&&!lmv&&!region&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
+   if(region){
+     busy=true;
+     try{
+       const snapshot=token
+         ?await authorizedRequest(`/api/masters?names=${encodeURIComponent(PULSE_REGION_MASTER)}`)
+         :await sharedSignIn?.request('masters',{names:[PULSE_REGION_MASTER]},actor);
+       counts={...counts,...await applyPulseSnapshot(pool,snapshot,[PULSE_REGION_MASTER])};
+       regionLastSuccess=new Date().toISOString();regionError='';
+       return {...status(),busy:false};
+     }catch(cause){regionError=cause.message;throw cause;}finally{busy=false;}
+   }
    if(lmv){
      if(!token)throw new Error('Connect a Pulse service account to sync LMV Master.');
      busy=true;
@@ -141,6 +165,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    if(busy)return;
    if(token)await sync(PULSE_LMV_MASTER).catch(()=>{});
    await sync().catch(()=>{});
+   if(token||sharedSignIn?.status().connected)await sync(PULSE_REGION_MASTER).catch(()=>{});
  };
  return {
    status,
@@ -201,7 +226,7 @@ export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,shar
  });
  app.use('/api/masters/:master',(req,res,next)=>{
    if(req.params.master==='Users & employees'&&/^\/\d+\/password\/?$/.test(req.path))return next();
-   if(!['GET','HEAD'].includes(req.method)&&service.status().connected&&PULSE_MASTER_NAMES.includes(req.params.master))return res.status(409).json({error:'This master is synced from Pulse. Make changes in Pulse; Nexus refreshes automatically.'});
+   if(!['GET','HEAD'].includes(req.method)&&(req.params.master===PULSE_REGION_MASTER||(service.status().connected&&PULSE_MASTER_NAMES.includes(req.params.master))))return res.status(409).json({error:'This master is synced from Pulse. Make changes in Pulse; Nexus refreshes automatically.'});
    next();
  });
  return service;
