@@ -99,6 +99,7 @@ export async function matchingVlbBatch(client,data){
 }
 export async function isOpenBatchForDeletion(client,batch,kind,actor){
  if(!batch||batch.deleted_at||batch.archived_at||batch.closed_at)return false;
+ if(twoStageEnabled()&&batch.stage==='lmv_open')return false;
  if(twoStageEnabled()&&(batch.stage==='elb_open')!==(kind==='equipment'))return false;
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))return false;
  return !batch.trial_reopened_until||!(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired;
@@ -115,7 +116,7 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  requireOperationalDate(batch.report_date);
  if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
  if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
- if(twoStageEnabled()&&batch.stage==='elb_open'&&!adding)batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before changing existing tipper cards.');
+ if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before changing existing tipper cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
