@@ -5199,7 +5199,8 @@ function Equipment({
     [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
   // ALIAS column: written card labels mapped to this record (Pulse-II overlay keyed by equipment id), with revoke by the same OTP routes.
   const aliasSession = { token: authToken }, aliasData = useEquipmentAliases(authToken), [aliasRevoke, setAliasRevoke] = useState(null), aliasAdmin = isMisAdministrator(storedSession) || (storedSession?.role === 'super' && storedSession?.permissions?.adminLevel !== 'Manager');
-  const equipmentColumns = [
+  const isLmvView = pageTitle === "LMV Master";
+  const standardColumns = [
       ["currentLocation", "Current location"], ["equipmentName", "Equipment name"],
       ["category", "Equipment category"], ["group", "Equipment group"],
       ["itemName", "Item name"], ["itemSpecification", "Item specification name"],
@@ -5207,6 +5208,11 @@ function Equipment({
       ["manufacturerSerialNo", "Manufacturer serial no."], ["engineNo", "Engine no."],
       ["chassisNo", "Chassis no."], ["documentStatus", "Document status"], ["status", "Fleet status"],
     ],
+    equipmentColumns = isLmvView
+      ? [["status", "Equipment status (saved)"], ["acquisitionDate", "Acquisition date"],
+         ...standardColumns.filter(([key]) => !["status", "acquisitionDate"].includes(key)),
+         ["assetNo", "Asset no."]]
+      : standardColumns,
     equipmentValue = (record, key) => {
       if (key === "group") return equipmentGroupValue(record);
       if (key === "currentLocation") return record.currentLocation || record.location;
@@ -5344,6 +5350,7 @@ function Equipment({
         <ActionsTable toolbarTarget={actionsToolbarTarget} toolbarPortal>
           <thead>
             <tr>
+              {isLmvView && <th>Sr. No.</th>}
               {equipmentColumns.map(([key, label]) => (
                 <FilterableHeader
                   key={key}
@@ -5358,7 +5365,7 @@ function Equipment({
                   onFilterChange={(value) => updateColumnFilter(key, value)}
                 />
               ))}
-              <th>Alias</th>
+              {!isLmvView && <th>Alias</th>}
               <th>Actions</th>
             </tr>
           </thead>
@@ -5378,12 +5385,17 @@ function Equipment({
                   aria-label={`View details for ${v.equipmentName || v.door || "equipment"}`}
                   className="click"
                 >
+                  {isLmvView && <>
+                    <td>{i + 1}</td>
+                    <td><Status>{v.status || "Status not set"}</Status></td>
+                    <td>{v.acquisitionDate || v.acquired}</td>
+                  </>}
                   <td>
                     <MapPin /> {v.currentLocation || v.location}
                   </td>
                   <td>
                     <b>{v.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openVehicleRepairHistory(v); }} aria-label={`View repair history for door number ${v.door}`} title="View breakdown and repair history">{v.equipmentName || v.door}</a> : v.equipmentName || "—"}</b>
-                    <small>{v.reg}</small>
+                    <small>{isLmvView ? v.registration || v.reg : v.reg}</small>
                   </td>
                   <td>
                     {v.category}
@@ -5391,15 +5403,15 @@ function Equipment({
                   <td>{equipmentGroupValue(v)}</td>
                   <td>{v.itemName}</td>
                   <td>{v.itemSpecification}</td>
-                  <td>{v.acquisitionDate || v.acquired}</td>
+                  {!isLmvView && <td>{v.acquisitionDate || v.acquired}</td>}
                   <td>{v.make}</td>
                   <td>{v.model}</td>
                   <td>{v.manufacturerSerialNo}</td>
                   <td>{v.engineNo}</td>
                   <td>{v.chassisNo}</td>
                   <td>{v.documentStatus}</td>
-                  <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>
-                  <EquipmentAliasCell aliases={aliasData.aliases} record={v} canRevoke={aliasAdmin} onRevoke={setAliasRevoke} />
+                  {isLmvView ? <td>{v.assetNo}</td> : <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>}
+                  {!isLmvView && <EquipmentAliasCell aliases={aliasData.aliases} record={v} canRevoke={aliasAdmin} onRevoke={setAliasRevoke} />}
                   <td className="row-actions" onClick={(event) => event.stopPropagation()}>
                     {v.id ? (
                       <>
@@ -5416,7 +5428,7 @@ function Equipment({
               ))
             ) : (
               <tr>
-                <td colSpan="16" className="empty-state">
+                <td colSpan={equipmentColumns.length + 2} className="empty-state">
                   No equipment or vehicle records for this selection
                 </td>
               </tr>
