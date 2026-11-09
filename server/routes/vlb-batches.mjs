@@ -8,11 +8,11 @@ import {randomUUID} from 'node:crypto';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {requireLogBookSite,siteAllowed} from '../../shared/log-book-access.mjs';
 import {vlbBatchSelection,vlbBatchName,vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
-import {VLB_BATCH_SCHEMA,batchLogin,batchFail,lockVlbBatchWrites,lockVlbBatchScope,auditVlbBatch,matchingVlbBatch,syncVlbBatchRecord} from '../rules/vlb-batch-policy.mjs';
+import {VLB_BATCH_SCHEMA,batchLogin,batchFail,lockVlbBatchWrites,lockVlbBatchScope,vlbRecordScope,auditVlbBatch,matchingVlbBatch,syncVlbBatchRecord} from '../rules/vlb-batch-policy.mjs';
 import {prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {jsonEntityTag,requestEtagMatches} from '../services/response-etag.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
-import {readFleetBreakdowns,stageDetails,lockVlb,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
+import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {APPROVAL_PURPOSES,issueApprovalOtp,consumeApprovalOtp,liveApprovalOtps,publicApprovalOtp} from '../services/vlb-approval-otp.mjs';
 export {VLB_BATCH_SCHEMA} from '../rules/vlb-batch-policy.mjs';
@@ -57,7 +57,10 @@ async function details(client,batch,req){
  const grantValid=grant?batchPmAtSite(await req.batchGetActor({login:grant.decided_by},client),batch.site):false;
  const stageInfo=await stageDetails(client,batch);
  const owner=isOwner(batch,req.batchActor);
- return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&stageInfo.stage==='elb_open'&&(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin),canRequestUnlockOtp:stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin)&&(owner||req.batchActor.mis),canEnterFleet:stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
+ const lmvRecords=stageInfo.stage==='lmv_open'?(await client.query(
+  "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
+  [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift):[];
+ return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,lmvRecords,canLockLmv:stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin),canRequestUnlockOtp:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&!(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin)&&(owner||req.batchActor.mis),canEnterFleet:stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
 }
 export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ensureBooks,sendOtp,imageStorage,logBookOps=null,approvalOtp={},getActor=(session,client)=>vlbBatchActor(client,session)}){
  let ready;
@@ -130,7 +133,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    const archivedRows=(await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND shift=$2 AND archived_at IS NOT NULL AND deleted_at IS NULL FOR UPDATE',[selection.date,selection.shift])).rows;
    const archived=archivedRows.find(batch=>canonicalSiteName(batch.site)===selection.site);
    if(archived){
-    const restored=(await client.query("UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3,stage='vlb_open',vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$4 RETURNING *,book_date::text AS report_date",[req.body.requestKey,user,null,archived.id])).rows[0];
+    const restored=(await client.query("UPDATE mis_vlb_batches SET archived_at=NULL,closed_at=NULL,amendment_by=NULL,request_key=$1,creator_login=$2,created_by=$3,stage='vlb_open',lmv_locked_at=NULL,vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$4 RETURNING *,book_date::text AS report_date",[req.body.requestKey,user,null,archived.id])).rows[0];
     await client.query('INSERT INTO mis_vlb_batch_entries(batch_id,logbook_id,snapshot) SELECT $1,(r->>\'id\')::bigint,r FROM jsonb_array_elements($2::jsonb) r ON CONFLICT(logbook_id) DO NOTHING',[restored.id,JSON.stringify(records)]);
     await auditVlbBatch(client,restored,user,'restored_to_batch_list',{logbookIdsAdded:records.map(r=>r.id)});
     return details(client,restored,req);
@@ -154,6 +157,11 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can lock VLB for this batch.',403);
   if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The VLB reopening trial has expired for this batch.',403);
   return details(client,await lockVlb(client,batch,req.batchActor.login),req);
+ }))));
+ app.post('/api/vlb-batches/:id/lock-lmv',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
+  if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner or an MIS administrator can lock LMV.',403);
+  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',403);
+  return details(client,await lockLmv(client,batch,req.batchActor.login),req);
  }))));
  app.post('/api/vlb-batches/:id/unlock-vlb',...protect,handle(async(req,res)=>res.json(await batchTransaction(req,async(client,batch)=>{
   if(!batchPmAtSite(req.batchActor,batch.site)&&!req.batchActor.admin)fail('Only the site Project Manager or an MIS administrator can unlock VLB.',403);
@@ -245,7 +253,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
     if((await vlbPmTrial(client)).active)fail('PM approval is paused during the VLB trial. Reopen the batch directly.',409);
     requestId=(await ensureReopenRequest(client,batch,req,reason)).id;
    }else{
-    if(!twoStageEnabled()||batchStage(batch)!=='elb_open')fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
+    if(!twoStageEnabled()||!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
     if(!isOwner(batch,req.batchActor)&&!req.batchActor.mis&&!req.batchActor.admin)fail('Only the batch owner or an MIS user can ask the site PM to unlock VLB.',403);
    }
    const row=await issueApprovalOtp(client,{batch,purpose,reason,requestId,requestedBy:req.batchActor.login,requesterName:req.session?.name||req.batchActor.login,pmLogins,deliver});
@@ -265,7 +273,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
     await auditVlbBatch(client,batch,req.batchActor.login,'reopen_approved',{requestId:request.id,requestedBy:request.requested_by,via:'otp',otpId:row.id,sentTo:row.sent_to,note});
     return {purpose:'reopen'};
    }
-   if(batchStage(batch)!=='elb_open')fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
+   if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
    const opened=await unlockVlb(client,batch,req.batchActor.login,{reason:row.reason,approvedBy:row.sent_to,via:'otp'});
    return {purpose:'unlock_vlb',batch:await details(client,opened,req)};
   });

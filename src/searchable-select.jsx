@@ -87,7 +87,11 @@ export default function SearchableSelect({
     if(!event.currentTarget.contains(event.relatedTarget)){setOpen(false);setActive(-1);setQuery(null)}
   }}>
     {label&&<label htmlFor={inputProps.id||id}>{label}{required?' *':''}</label>}
-    <div className="searchable-select-control">
+    <div className="searchable-select-control" onClick={event=>{
+      if(disabled||event.target===input.current)return;
+      input.current?.focus();
+      setOpen(true);
+    }}>
       <Search aria-hidden="true" />
       <input {...inputProps} id={inputProps.id||id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}

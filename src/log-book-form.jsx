@@ -77,9 +77,9 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
   return lmv?withLmvEntrySite(masters,session,api):masters;
  };
 
- const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords(batch.records||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
+ const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords((kind==='lmv'?batch.lmvRecords:batch.records)||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([loadOptions(),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords(list.records);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([loadOptions(),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords((vlbBatch&&kind==='lmv'?list.lmvRecords:list.records)||[]);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
 
  useEffect(()=>{void load()},[kind,session.token]);
 
@@ -204,7 +204,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
      <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
 
-<Field label="Location" hint={vlbBatch?'Fixed by the selected VLB batch':lmv&&options?.canSelectSite?'Choose a site':options?.accountLocation?'From your account':lmv&&entryLocation?'Site filled automatically':'Assign one location to your account to enter this log book'}>{lmv&&options?.canSelectSite?<SmartSelect searchable name="location" required value={form.location} onChange={e=>selectLocation(e.target.value)}><option value="">Select a site</option>{options.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect>:<input name="location" readOnly required value={form.location} aria-label="Location"/>}</Field>
+<Field label="Location" hint={vlbBatch?'Fixed by the selected VLB batch':lmv&&options?.canSelectSite?'Choose a site':options?.accountLocation?'From your account':lmv&&entryLocation?'Site filled automatically':'Assign one location to your account to enter this log book'}>{!vlbBatch&&lmv&&options?.canSelectSite?<SmartSelect searchable name="location" required value={form.location} onChange={e=>selectLocation(e.target.value)}><option value="">Select a site</option>{options.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect>:<input name="location" readOnly required value={form.location} aria-label="Location"/>}</Field>
 <Field label="Doc type"><input readOnly value={lmv?'LMV':vehicle?'VLB':'Equipment Log Book'}/></Field>
 <Field label="Book date">{vlbBatch?<input aria-label="Book date" readOnly value={form.bookDate}/>:<ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/>}</Field>
 <Field label="Book no." hint={lmv?'CAL/LMV/DD-MM-YY/001 · Assigned on save':vehicle?'VLB_M/DDTH-MMMYY/{S1|S2|S3|D|N}/001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><output className="logbook-book-number">{saved?.book_no||'AUTO'}</output></Field>

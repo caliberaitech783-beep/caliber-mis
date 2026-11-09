@@ -17,11 +17,11 @@ import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendanc
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
-import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
+import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
+import {assertLmvBatchWrite,assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from '../../shared/vlb-card-number.mjs';
 import {registerLogBookDeletion} from '../rules/log-book-deletion.mjs';
 import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
@@ -151,7 +151,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
  requireOperationalDate(data.bookDate);
-       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy,undefined,{adding:true});await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}else if(kind==='equipment')await assertElbBatchWrite(client,data,{adding:true});
+       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy,undefined,{adding:true});await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}else if(kind==='equipment')await assertElbBatchWrite(client,data,{adding:true});else if(kind==='lmv')await assertLmvBatchWrite(client,data);
        await assertCombinedShiftMeters(client,kind,data);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
@@ -290,7 +290,10 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
-       else if(kind==='equipment'){
+       else if(kind==='lmv'){
+         if(twoStageEnabled()&&prior&&vlbBatchScope(vlbRecordScope(prior))!==vlbBatchScope(vlbRecordScope(data)))fail('An existing LMV must stay in its original batch.',409);
+         await assertLmvBatchWrite(client,data);
+       }else if(kind==='equipment'){
          const priorBatch=prior&&await assertElbBatchWrite(client,prior);
          const batch=await assertElbBatchWrite(client,data);
          if(priorBatch&&batch&&priorBatch.id!==batch.id)fail('An existing ELB must stay in its original batch.',409);
@@ -340,6 +343,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const actor=req.session.login||req.session.name;
      if(kind==='lmv'){
        if(!isMisAdministrator(req.session))fail('Only an MIS administrator can delete LMV entries.',403);
+       await assertLmvBatchWrite(client,record.data);
        if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
        await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
        await client.query('COMMIT');

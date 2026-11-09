@@ -38,12 +38,7 @@ const DateInput = forwardRef(function DateInput({ type = "date", className, valu
     "data-empty": display ? undefined : "true",
     ...(controlled ? { value } : { defaultValue }),
     onChange: (event) => { if (!controlled) setUncontrolledValue(event.target.value); onChange?.(event); },
-    onClick: (event) => {
-      onClick?.(event);
-      const input = event.currentTarget;
-      if (event.defaultPrevented || input.disabled || input.readOnly) return;
-      try { input.showPicker?.(); } catch { /* the picker needs a user gesture; ignore */ }
-    },
+    onClick,
   });
 });
 

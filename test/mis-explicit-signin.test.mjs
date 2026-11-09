@@ -31,7 +31,7 @@ test('only a completed shared-sign-in callback exchanges the server-held handoff
 });
 
 test('a fresh MIS page shows sign-in even when browser storage contains a previous session',async()=>{
-  const entry=readFileSync(new URL('../src/mis-entry.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/createRoot\([\s\S]*$/,'');
+  const entry=readFileSync(new URL('../src/mis-entry.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/enableCalendarFieldClicks\(document\);[\s\S]*$/,'');
   const {code}=await transformWithOxc(entry,'mis-entry.jsx',{jsx:{runtime:'classic'}});
   const Login=()=>null,Workspace=()=>null;
   let options;

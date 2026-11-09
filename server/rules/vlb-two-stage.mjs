@@ -1,6 +1,6 @@
 import {cardWorkingHmr} from '../../shared/log-book-shared-shift.mjs';
 import {canonicalSiteName,equipmentSiteName} from '../../shared/site-location.mjs';
-import {assetBookKind,allowsLogBookKind} from '../../shared/equipment-kind.mjs';
+import {assetBookKind,isLmv} from '../../shared/equipment-kind.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {resolveTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {isUnloadingOnlyTrip} from '../../shared/trip-card-rules.mjs';
@@ -10,8 +10,8 @@ import {isUnloadingOnlyTrip} from '../../shared/trip-card-rules.mjs';
 export const twoStageEnabled=(env=process.env)=>!['0','false','off','no'].includes(String(env.VLB_TWO_STAGE_BATCHES||'').trim().toLowerCase());
 
 export const BATCH_STAGES=Object.freeze(['vlb_open','elb_open','closed']);
-export const batchStage=batch=>batch?.closed_at?'closed':batch?.stage==='elb_open'?'elb_open':'vlb_open';
-export const stageLabel=stage=>({vlb_open:'VLB open',elb_open:'ELB open',closed:'Closed'})[stage]||stage;
+export const batchStage=batch=>batch?.closed_at?'closed':['lmv_open','elb_open'].includes(batch?.stage)?batch.stage:'vlb_open';
+export const stageLabel=stage=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open',closed:'Closed'})[stage]||stage;
 
 export const FLEET_STATUSES=Object.freeze({
  working:{label:'Working',allowsTrips:true,needsOperator:true,needsHours:true},
@@ -24,6 +24,7 @@ export const FLEET_STATUSES=Object.freeze({
 export const NON_WORKING_STATUSES=Object.freeze(Object.keys(FLEET_STATUSES).filter(key=>!FLEET_STATUSES[key].allowsTrips));
 
 export const VLB_TWO_STAGE_SCHEMA=`
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS lmv_locked_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'vlb_open';
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS vlb_locked_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS vlb_locked_by TEXT;
@@ -110,7 +111,7 @@ export function buildMachineSnapshot(records,assets,site){
 // Keep every site machine available for ELB entry, including machines with no VLB trips.
 // Retain resolved loading machines and their trip totals alongside the site roster.
 export function buildFleetList(assets,site,machines=[]){
- const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>allowsLogBookKind(asset,'equipment')&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
+ const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>!isLmv(asset)&&assetBookKind(asset)==='equipment'&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
  const rows=new Map();
  for(const machine of machines){
   const asset=byId.get(String(machine.assetId));if(!asset)continue;
@@ -159,7 +160,7 @@ const needsElb=row=>elbTripCount(row)>0&&!hasSavedElb(row);
 // Closure requires saved ELBs for machines that loaded trips.
 export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
  const blockers=[];
- if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB before closing the batch.');
+ if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB and LMV before closing the batch.');
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
  const missing=fleet.filter(needsElb).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));
  if(missing.length)blockers.push('Machines without a saved ELB: '+missing.map(row=>`${row.door} loaded ${row.trips} trips, no ELB saved`).join('; ')+'.');

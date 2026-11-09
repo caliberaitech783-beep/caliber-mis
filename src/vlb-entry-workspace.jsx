@@ -11,13 +11,15 @@ export function rememberVlbEntryBatch(session,batch){if(batch?.id)try{const user
 export const elbEntryBlocker=(kind,batch)=>{
  if(!batch)return '';
  if(kind==='vehicle')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='vlb_open')?'VLB batch '+batch.name+' is locked. Unlock or reopen the batch before adding Manual, Scan or Upload entries.':'';
- return batch.twoStage!==true||['elb_open','closed'].includes(batch.stage)?'':'Lock VLB in batch '+batch.name+' before entering ELB cards. The ELB stage opens once every tipper card is saved and VLB is locked.';
+ if(kind==='equipment'&&batch.closed_at&&batch.lmv_locked_at)return 'Reopen this batch before entering ELB cards.';
+ if(kind==='lmv')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='lmv_open')?'Select a batch with LMV open.':'';
+ return batch.twoStage!==true||['elb_open','closed'].includes(batch.stage)?'':'Lock VLB and LMV in batch '+batch.name+' before entering ELB cards.';
 };
 export default function VlbEntryWorkspace({kind,session,mode,ReportSection,ExportMenu,children,onExit,canDeleteElb}){
  const [selected,setSelected]=useState(null),[error,setError]=useState('');
  const [attendanceOpen,setAttendanceOpen]=useState(false);
  const blocker=elbEntryBlocker(kind,selected);
- const attendanceEntry=mode==='manual'&&(attendanceOpen?<ShiftAttendance kind={kind} session={session} batch={selected} onClose={()=>setAttendanceOpen(false)}/>:<button type="button" onClick={()=>setAttendanceOpen(true)}>Present — 0 trips</button>);
+ const attendanceEntry=kind!=='lmv'&&mode==='manual'&&(attendanceOpen?<ShiftAttendance kind={kind} session={session} batch={selected} onClose={()=>setAttendanceOpen(false)}/>:<button type="button" onClick={()=>setAttendanceOpen(true)}>Present — 0 trips</button>);
  const roster=selected&&!blocker?<FleetReconciliation key={selected.id+':fleet:'+kind} session={session} context={selected} kind={kind}/>:null;
  const siteFleet=roster&&<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary>{roster}</details>;
  const key='vlb-entry-batch:'+String(session.login||session.name||'');
@@ -25,6 +27,6 @@ export default function VlbEntryWorkspace({kind,session,mode,ReportSection,Expor
  // again (a refresh, a crash recovery, a server update); they are cleared only
  // when the operator moves to another batch, because they belong to the old one.
  const select=batch=>{setSelected(batch||null);setError('');let previous='';try{previous=sessionStorage.getItem(key)||''}catch{}try{if(batch?.id)sessionStorage.setItem(key,batch.id);else sessionStorage.removeItem(key)}catch{};if(batch?.id&&batch.id===previous)return;const url=new URL(window.location.href);for(const name of ['batch','card','scanView','scanGroup','scanEquipment','scanReviewReturn'])url.searchParams.delete(name);window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
- if(['manual','scan'].includes(mode))return <section className="logbook-page vlb-entry-workspace">{error&&<p role="alert" className="logbook-message error">{error}</p>}{attendanceEntry}<VlbCreateBatch session={session} ReportSection={ReportSection} entryMode={mode} entryKind={kind} onSelected={select} onExit={onExit}/>{selected&&!blocker?(kind==='equipment'&&mode==='manual'&&selected.twoStage===true&&selected.stage==='elb_open'?<ElbBatchManual canDeleteElb={canDeleteElb} ExportMenu={ExportMenu} key={selected.id} session={session} batch={selected} onExit={()=>select(null)}/>:React.cloneElement(children,{key:selected.id,vlbBatch:selected,...(kind==='vehicle'?{fleetReconciliation:roster}:{})})):<p role="status">{blocker||(kind==='vehicle'?'Select or create a site batch to enter VLB cards.':'Select a site batch to enter ELB cards. ELB opens after VLB is locked in that batch.')}</p>}{kind==='equipment'&&siteFleet}</section>;
+ if(['manual','scan'].includes(mode))return <section className="logbook-page vlb-entry-workspace">{error&&<p role="alert" className="logbook-message error">{error}</p>}{attendanceEntry}<VlbCreateBatch session={session} ReportSection={ReportSection} entryMode={mode} entryKind={kind} onSelected={select} onExit={onExit}/>{selected&&!blocker?(kind==='equipment'&&mode==='manual'&&selected.twoStage===true&&selected.stage==='elb_open'?<ElbBatchManual canDeleteElb={canDeleteElb} ExportMenu={ExportMenu} key={selected.id} session={session} batch={selected} onExit={()=>select(null)}/>:React.cloneElement(children,{key:selected.id,vlbBatch:selected,...(kind==='vehicle'?{fleetReconciliation:roster}:{})})):<p role="status">{blocker||(kind==='vehicle'?'Select or create a site batch to enter VLB cards.':kind==='lmv'?'Select a site batch with LMV open.':'Select a site batch with ELB open.')}</p>}{kind==='equipment'&&siteFleet}</section>;
  return <section className="logbook-page vlb-entry-workspace">{error&&<p role="alert" className="logbook-message error">{error}</p>}{selected?React.cloneElement(children,{key:selected.id,vlbBatch:selected}):<VlbCreateBatch session={session} ReportSection={ReportSection} entryMode={mode} onSelected={select} onExit={onExit}/>}</section>;
 }

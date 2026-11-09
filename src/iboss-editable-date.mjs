@@ -1,3 +1,4 @@
+import {openCalendarPicker} from './calendar-field-click.mjs';
 import React from 'react';
 const months=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 export function parseTypedDate(value){
@@ -17,8 +18,10 @@ export function typedDateRange(draft){
  return {from,to};
 }
 export default function EditableDateInput({value,onChange,label}){
- return React.createElement('span',{className:'iboss-editable-date'},
+ return React.createElement('span',{className:'iboss-editable-date',onClick:event=>{
+  if(event.target.type==='text')openCalendarPicker(event,event.currentTarget.querySelector('input[type=date]'));
+ }},
   React.createElement('input',{type:'text',value:typedDateDisplay(value),onChange,placeholder:'dd-mm-yyyy',maxLength:11,'aria-label':label,autoComplete:'off'}),
-  React.createElement('input',{type:'date',value:parseTypedDate(value),onChange,'aria-label':`Choose ${label} from calendar`,className:'iboss-date-calendar',onClick:event=>{try{event.currentTarget.showPicker?.();}catch{}}})
+  React.createElement('input',{type:'date',value:parseTypedDate(value),onChange,'aria-label':`Choose ${label} from calendar`,className:'iboss-date-calendar'})
  );
 }

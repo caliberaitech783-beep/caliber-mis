@@ -160,18 +160,28 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  const vlbStage={...base,twoStage:true,stage:'vlb_open',canLockVlb:false,lockBlockers:['Awaiting transfer: VPC-019 from NIGAHI (2 cards, 17 trips).'],holds:[],fleet:[]};
  h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[23]=true;
  tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 ELB open<\/li><li>3 ELB locked · Batch closed<\/li><\/ol>/);
+ assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 LMV open<\/li><li>3 ELB open<\/li><li>4 ELB locked · Batch closed<\/li><\/ol>/);
  assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);assert.match(html,/Lock VLB first/);
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Close batch'),undefined);assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>VLB open<\/td>/);assert.ok(button(nodes(tree,n=>n.type==='tr')[1],'Open batch'));
  assert.equal(nodes(tree,n=>n.type===Holds).length,1);assert.equal(nodes(tree,n=>n.type===Equipment).length,0);
  button(tree,'Create new equipment').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Equipment).length,1);assert.equal(nodes(tree,n=>n.type===Equipment)[0].props.batch,vlbStage);
  button(tree,'Hide new equipment form').props.onClick();
  h.slots[5]={...vlbStage,canLockVlb:true,lockBlockers:[]};tree=render();assert.equal(button(tree,'Lock VLB').props.disabled,false);await button(tree,'Lock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-vlb');assert.equal(calls.at(-1).method,'POST');
+ const lmvStage={...base,twoStage:true,stage:'lmv_open',canLockLmv:true,lmvRecords:[
+  {id:1,data:{}},{id:2,data:{scanCardId:'scan',scanEntrySource:'scan'}},{id:3,data:{scanCardId:'pdf',scanEntrySource:'upload'}},
+ ]};
+ h.slots[5]=lmvStage;
+ tree=render();html=renderToStaticMarkup(tree);
+ assert.match(html,/<li aria-current="step" class="current">2 LMV open<\/li>/);
+ for(const label of ['Manual (1)','Scan (1)','PDF (1)'])assert.ok(button(tree,label));
+ assert.equal(button(tree,'ELB entry · Lock LMV first').props.disabled,true);
+ await button(tree,'Lock LMV').props.onClick();
+ assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-lmv');
  // ELB stage: the batch remains visible, while entry moves to ELB Manual instead of opening a second stepper here.
  const elbStage={...base,twoStage:true,stage:'elb_open',canEnterFleet:true,canClose:false,canUnlockVlb:true,closeBlockers:['Machines without a saved ELB: VPC-019 loaded 42 trips, no ELB saved.'],holds:[],statuses,fleetProgress:{total:3,saved:1,remaining:1,optionalUnsaved:1,skipped:0,drafts:0,loaders:1},fleet:[{assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:42,saved_at:null,draft:null},{assetId:'7',door:'D-07',equipmentName:'Dozer',trips:0,saved_at:'2026-11-01T03:00:00Z',shift_status:'maintenance',book_no:'ELB-1',logbook:{employeeName:'Ramesh',caliberId:'C5',openingHmr:120,closingHmr:124,totalWorkingHmr:4,breakdownHours:1,idleHours:3,availabilityHours:4,jobCardNo:'JC-9',remark:'Service',bookDate:'2026-11-01',location:'Jayant OC',shiftName:'Shift A'}}]};
  h.slots[3]=[{...base,stage:'elb_open',created_by:'bob'}];h.slots[4]={...base,stage:'elb_open',canClose:false};h.slots[5]=elbStage;
  tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/<li>1 VLB open<\/li><li aria-current="step" class="current">2 ELB open<\/li>/);
+ assert.match(html,/<li>1 VLB open<\/li><li>2 LMV open<\/li><li aria-current="step" class="current">3 ELB open<\/li>/);
  assert.equal(button(tree,'Continue ELB entries'),undefined);assert.equal(button(tree,'Start ELB entries'),undefined);
  assert.match(html,/ELBs saved: 1 · Required remaining: 1 · 1 optional with no saved ELB · 1 loading machine/);assert.doesNotMatch(html,/1 draft/);
  assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
