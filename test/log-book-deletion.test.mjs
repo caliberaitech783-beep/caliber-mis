@@ -83,7 +83,13 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
  assert.equal((await db.query('SELECT id FROM mis_scan_cards WHERE id=$1',[scanId])).rows.length,1);
  await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");
- p=await preview([a,updated]);assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
+ const elbBatchId='60000000-0000-4000-8000-000000000001';
+ await db.query("INSERT INTO mis_elb_batch_entries(batch_id,logbook_id,snapshot) VALUES($1,$2,$3)",[elbBatchId,b.id,JSON.stringify(updated)]);
+ await db.query("INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,logbook_id,shift_status,saved_at) VALUES($1,1,'EQ-1',$2,'working',NOW())",[elbBatchId,b.id]);
+ p=await preview([a,updated]);
+ assert.equal(p.manifest.elbLinks.length,1);
+ assert.equal(p.manifest.fleetLinks.length,1);
+ assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);
  failDeletion=true;
  assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,500);
  failDeletion=false;
@@ -94,6 +100,8 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  assert.equal((await api(p.id+'/confirm',{approval:p.approval,otp:sent.at(-1).otp,files:p.manifest.localFiles})).status,409);
  assert.equal((await db.query('SELECT * FROM mis_log_books WHERE id=$1',[b.id])).rows.length,0);
  assert.equal((await db.query('SELECT * FROM mis_scan_cards WHERE id=$1',[scanId])).rows.length,0);
+ assert.equal((await db.query('SELECT count(*)::int AS count FROM mis_elb_batch_entries')).rows[0].count,0);
+ assert.deepEqual((await db.query('SELECT logbook_id,shift_status,saved_at FROM mis_vlb_batch_fleet')).rows,[{logbook_id:null,shift_status:null,saved_at:null}]);
  assert.deepEqual((await db.query('SELECT logbook_id FROM mis_pulse_trip_verifications')).rows.map(r=>String(r.logbook_id)),[String(c.id)]);
  assert.deepEqual((await db.query('SELECT logbook_id FROM mis_vlb_batch_entries')).rows.map(r=>String(r.logbook_id)),[String(c.id)]);
  assert.deepEqual((await db.query('SELECT metadata FROM mis_scan_backup_items WHERE card_id=$1',[scanId])).rows[0].metadata,{cardId:scanId,permanentlyDeleted:true});

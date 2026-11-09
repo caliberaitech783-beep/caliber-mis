@@ -132,6 +132,13 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
    const scanIds=m.scans.map(s=>s.id),ids=r.snapshot.map(s=>s.id);
    if(scanIds.length){const result=await c.query('DELETE FROM mis_scan_cards WHERE id=ANY($1::uuid[]) RETURNING id',[scanIds]);if(result.rowCount!==scanIds.length)deletionError('Duplicate scan selection changed. Cleanup rolled back.');}
    if(m.batchLinks.length)await c.query('DELETE FROM mis_vlb_batch_entries WHERE logbook_id=ANY($1::bigint[])',[ids]);
+   if(m.elbLinks?.length)await c.query('DELETE FROM mis_elb_batch_entries WHERE logbook_id=ANY($1::bigint[])',[ids]);
+   if(m.fleetLinks?.length)await c.query(`UPDATE mis_vlb_batch_fleet f SET (logbook_id,shift_status,saved_at,saved_by)=(
+    SELECT l.id,COALESCE(NULLIF(l.data->>'shiftStatus',''),'working'),l.updated_at,l.created_by
+    FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+    WHERE e.batch_id=f.batch_id AND l.asset_id=f.asset_id AND l.deleted_at IS NULL
+    ORDER BY l.id DESC LIMIT 1
+   ) WHERE f.logbook_id=ANY($1::bigint[])`,[ids]);
    if(m.verification.length)await c.query('DELETE FROM mis_pulse_trip_verifications WHERE logbook_id=ANY($1::bigint[])',[ids]);
    if(m.backups.length)await c.query("UPDATE mis_scan_backup_items i SET metadata=jsonb_build_object('permanentlyDeleted',true,'cardId',i.card_id) FROM jsonb_to_recordset($1::jsonb) AS t(backup_id uuid,card_id uuid) WHERE i.backup_id=t.backup_id AND i.card_id=t.card_id",[JSON.stringify(m.backups.map(({backup_id,card_id})=>({backup_id,card_id})))]);
    const deleted=await c.query('DELETE FROM mis_log_books WHERE id=ANY($1::bigint[]) AND deleted_at IS NULL RETURNING id',[ids]);if(deleted.rowCount!==ids.length)deletionError('Record selection changed. Cleanup rolled back.');
