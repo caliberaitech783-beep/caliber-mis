@@ -7,7 +7,6 @@ import './meter-continuity-report.css';
 // Meter continuity: opening KMR/HMR of each tipper card against the previous card's closing.
 // A report only; entry and scanning are untouched. Three tabs: card by card, by driver, by tipper.
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const daysAgo=n=>new Date(Date.parse(today()+'T00:00:00Z')-n*86400000).toISOString().slice(0,10);
 const request=async(url,token,signal)=>{const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'Unable to load report.');return data;};
 const column=(key,label,value)=>({key,label,value:value||(r=>r[key]===null||r[key]===undefined||r[key]===''?'—':r[key])});
 const SHIFT_LABELS={S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'};
@@ -20,7 +19,7 @@ export const cardColumns=[column('date','Date'),column('shift','Shift',r=>SHIFT_
 export const summaryColumns=label=>[column('label',label),column('cards','Cards'),column('compared','Compared'),column('matches','Match'),column('tolerance','Within tolerance'),column('negatives','Below previous'),column('jumps','Jumps'),column('issueRate','Issue %'),column('averageAbsKmGap','Avg. KM gap'),column('averageAbsHourGap','Avg. HMR gap')];
 
 export default function MeterContinuityReport({session,ReportSection,onSelect,reportId}){
- const [filters,setFilters]=useState({site:'',from:daysAgo(7)<OPERATIONAL_START?OPERATIONAL_START:daysAgo(7),to:today(),kmTolerance:DEFAULT_TOLERANCE.kmTolerance,hourTolerance:DEFAULT_TOLERANCE.hourTolerance});
+ const [filters,setFilters]=useState({site:'',from:today(),to:today(),kmTolerance:DEFAULT_TOLERANCE.kmTolerance,hourTolerance:DEFAULT_TOLERANCE.hourTolerance});
  const [sites,setSites]=useState([]),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[run,setRun]=useState(null),[tab,setTab]=useState('cards');
  const query=useMemo(()=>new URLSearchParams(filters).toString(),[filters]);
  useEffect(()=>{const c=new AbortController();request('/api/reports/production/options',session.token,c.signal).then(o=>setSites(o.sites||[])).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>c.abort();},[session.token]);

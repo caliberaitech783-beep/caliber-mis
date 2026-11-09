@@ -7506,10 +7506,10 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
   const [breakdownMonth, setBreakdownMonth] = useState(() => indiaDateTimeInputValue(new Date()).slice(0, 7));
   const [breakdownRegion, setBreakdownRegion] = useState("all");
   const [breakdownSite, setBreakdownSite] = useState("");
-  const [reportZipFrom, setReportZipFrom] = useState(() => indiaDateTimeInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+  const [reportZipFrom, setReportZipFrom] = useState(() => `${indiaDateTimeInputValue(new Date()).slice(0,10)}T00:00`);
   const [reportZipTo, setReportZipTo] = useState(() => indiaDateTimeInputValue(new Date(Date.now() + 60 * 1000)));
   const reportGeneratedAt = useMemo(() => indiaDateTimeInputValue(new Date()), []);
-  const [availabilityFrom, setAvailabilityFrom] = useState(() => `${indiaDateTimeInputValue(new Date()).slice(0,7)}-01`);
+  const [availabilityFrom, setAvailabilityFrom] = useState(() => indiaDateTimeInputValue(new Date()).slice(0,10));
   const [reportFrom, setReportFrom] = useState("");
   const [reportTo, setReportTo] = useState("");
   const [selectedReportShift, setSelectedReportShift] = useState(ALL_SHIFTS_KEY);
