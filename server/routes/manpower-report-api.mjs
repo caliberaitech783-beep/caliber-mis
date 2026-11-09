@@ -19,7 +19,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'closed_at',b.closed_at))
      FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id
      WHERE e.logbook_id=l.id AND b.archived_at IS NULL AND b.deleted_at IS NULL),'[]'::jsonb) AS batches
-    FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
+    FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
     AND l.book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR l.site=ANY($3::text[]))
     ORDER BY l.book_date,l.id LIMIT 50001`,[filters.contextFrom,filters.contextTo,sites]);
    if(rows.length>50000)throw Object.assign(new Error('This range contains too many saved cards. Select a shorter date range.'),{status:400});
@@ -41,7 +41,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
   finally{client?.release();}
  });
  // Earlier red / orange repeats per driver, read only when someone asks for them.
- // Only the card fields that decide a duty are read, one week at a time.
+ // Only the card fields that decide a duty are read, one week at a time, from all three log books.
  app.get('/api/reports/manpower/ot-history',...protect,async(req,res,next)=>{
   let client;
   try{
@@ -61,7 +61,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
      (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])) AS data,
      '[]'::jsonb AS batches
-     FROM mis_log_books l WHERE l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
+     FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
      AND l.book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR l.site=ANY($3::text[]))
      ORDER BY l.book_date,l.id LIMIT 50001`,[range.contextFrom,range.contextTo,sites,HISTORY_CARD_FIELDS]);
     if(rows.length>50000)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});

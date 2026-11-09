@@ -16,45 +16,58 @@ const classification=[['category','Category'],['group','Equipment group'],['make
 const detailColumns=columns([...context,['door','Door / equipment'],...classification,...person,['assignment','Assignment'],['batches','Source batches'],['batchStatus','Batch status'],['book','Saved card'],['remarks','Remarks / review']]);
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
 const performanceColumns=columns([...context,...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
-const otColumns=columns([['reason','OT flag / reason'],...person,['category','Driver category'],['equipment','Equipment worked'],['site','Site'],['dates','Duty dates'],['shifts','Shifts worked'],['shiftHours','Each shift’s HMR hours'],['combinedHours','Combined HMR performance hours'],['schedule','Scheduled start / end (IST)'],['gaps','Scheduled gap between duties'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]).map(c=>c.key==='reason'?{...c,render:r=><strong className={`mp-flag mp-flag-${r.severity}`}>{r.reason}</strong>}:c);
-const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['batches','Source batches'],['reason','Review reason']]);
+const otColumns=columns([['reason','OT flag / reason'],['logBook','Log book'],...person,['category','Driver category'],['equipment','Equipment worked'],['site','Site'],['dates','Duty dates'],['shifts','Shifts worked'],['shiftHours','Each shift’s HMR hours'],['combinedHours','Combined HMR performance hours'],['schedule','Scheduled start / end (IST)'],['gaps','Scheduled gap between duties'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]).map(c=>c.key==='reason'?{...c,render:r=><strong className={`mp-flag mp-flag-${r.severity}`}>{r.reason}</strong>}:c);
+const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','Review reason']]);
 
-const historyColumns=(label,since)=>columns([...person,['site','Site'],['category','Driver category'],['now',label+' in selected dates'],['nowDates','Selected duty dates'],['pastRed','Earlier RED'+since],['pastOrange','Earlier ORANGE'+since],['total','Total '+label+' so far'],['pastDates','Earlier dates']]);
+const historyColumns=(label,since)=>columns([...person,['site','Site'],['logBook','Log book'],['category','Driver category'],['now',label+' in selected dates'],['nowDates','Selected duty dates'],['pastRed','Earlier RED'+since],['pastOrange','Earlier ORANGE'+since],['total','Total '+label+' so far'],['pastDates','Earlier dates']]);
 const severities=[['red','RED','Consecutive shifts / all three shifts'],['orange','ORANGE','Shift 1 + Shift 3 with a gap'],['review','REVIEW','Missing or inconsistent schedule']];
+const logBooks=[['VLB','Vehicle Log Book'],['ELB','Equipment Log Book'],['LMV','LMV Log Book']];
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
 const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
 
-// Sites first, then one site's drivers. Plain render function: its state lives in ManpowerReports.
-function otOverview({report,filters,query,selectSite,description,ReportSection,severity,setSeverity,history,historyKey}){
+// Sites first, then one site's drivers, each split by log book (VLB, ELB, LMV).
+// Plain render function: its state lives in ManpowerReports.
+function otOverview({report,filters,query,selectSite,description,ReportSection,severity,setSeverity,logBook,setLogBook,history,historyKey}){
  const siteKey=canonicalSiteName(filters.site),site=report.otSites.find(s=>s.siteKey===siteKey);
- const rows=siteKey?report.ot.filter(r=>r.siteKey===siteKey):report.ot;
- const count=level=>rows.filter(r=>r.severity===level).length;
+ const siteRows=siteKey?report.ot.filter(r=>r.siteKey===siteKey):report.ot;
+ // A duty saved in two log books belongs to both, so it is listed under each.
+ const inBook=(r,code)=>!code||(r.logBooks||[]).includes(code);
+ const rows=siteRows.filter(r=>inBook(r,logBook));
+ const count=(code,level)=>siteRows.filter(r=>inBook(r,code)&&r.severity===level).length;
  const loaded=history.key===historyKey,past=loaded?history.data:null;
  const label=severities.find(([id])=>id===severity)?.[1]||'';
  const historyRows=(()=>{
   if(!severity)return [];
   const earlier=new Map((past?.drivers||[]).map(d=>[d.employeeKey+'|'+d.siteKey,d])),drivers=new Map(),pending=loaded?'Unavailable':'Checking…';
-  for(const r of rows.filter(r=>r.severity===severity)){const id=r.employeeKey+'|'+r.siteKey,row=drivers.get(id)||{id,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,site:r.site,category:r.category,now:0,dates:[]};row.now++;row.dates.push(r.dates);drivers.set(id,row);}
-  return [...drivers.values()].map(({dates,...row})=>{const p=earlier.get(row.id);
-   return {...row,nowDates:dates.join('; '),pastRed:past?p?.red||0:pending,pastOrange:past?p?.orange||0:pending,total:past?row.now+(p?.[severity]||0):pending,pastDates:past?[...(p?.redDates||[]).map(d=>d+' RED'),...(p?.orangeDates||[]).map(d=>d+' ORANGE')].sort().join('; ')||'None':pending};
+  for(const r of rows.filter(r=>r.severity===severity)){const id=r.employeeKey+'|'+r.siteKey,row=drivers.get(id)||{id,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,site:r.site,category:r.category,now:0,dates:[],books:new Set()};row.now++;row.dates.push(r.dates);for(const code of r.logBooks||[])row.books.add(code);drivers.set(id,row);}
+  return [...drivers.values()].map(({dates,books,...row})=>{const p=earlier.get(row.id);
+   return {...row,logBook:logBooks.map(([code])=>code).filter(code=>books.has(code)).join(' + '),nowDates:dates.join('; '),pastRed:past?p?.red||0:pending,pastOrange:past?p?.orange||0:pending,total:past?row.now+(p?.[severity]||0):pending,pastDates:past?[...(p?.redDates||[]).map(d=>d+' RED'),...(p?.orangeDates||[]).map(d=>d+' ORANGE')].sort().join('; ')||'None':pending};
   }).sort((a,b)=>(Number(b.total)||b.now)-(Number(a.total)||a.now)||a.employeeName.localeCompare(b.employeeName));
  })();
  const categories=(()=>{const out=new Map();for(const r of rows){const c=out.get(r.category)||{category:r.category,red:0,orange:0,review:0,drivers:new Set()};c[r.severity]++;c.drivers.add(r.employeeKey);out.set(r.category,c);}return [...out.values()].sort((a,b)=>b.red-a.red||b.orange-a.orange||a.category.localeCompare(b.category));})();
  const since=past?.historyFrom?' (since '+past.historyFrom+')':'';
  return <>
-  <div className="mp-ot-summary" role="group" aria-label="Flag summary">
+  <div className="mp-ot-summary" role="group" aria-label="Flag summary by log book">
    <div><small>{site?'SITE':'ALL SITES'}</small><strong>{site?site.site:report.otSites.length+' sites'}</strong>{site&&<button type="button" onClick={()=>selectSite('')}>← All sites</button>}</div>
-   {severities.map(([id,name,meaning])=><button key={id} type="button" className={'mp-ot-count mp-flag-'+id} aria-pressed={severity===id} onClick={()=>setSeverity(severity===id?'':id)}><strong>{count(id)}</strong><span>{name}</span><small>{meaning}</small></button>)}
+   <table className="mp-ot-matrix">
+    <thead><tr><th scope="col">Log book</th>{severities.map(([id,name,meaning])=><th key={id} scope="col">{name}<small>{meaning}</small></th>)}</tr></thead>
+    <tbody>{[['','All log books'],...logBooks].map(([code,name])=><tr key={code||'all'} className={logBook===code?'mp-on':undefined}>
+     <th scope="row"><button type="button" className="mp-ot-book" aria-pressed={logBook===code} onClick={()=>setLogBook(code)}><b>{code||'All'}</b><small>{name}</small></button></th>
+     {severities.map(([id,label])=><td key={id}><button type="button" className={'mp-ot-count mp-flag-'+id} aria-pressed={logBook===code&&severity===id} aria-label={count(code,id)+' '+label+' · '+name} onClick={()=>{const open=logBook===code&&severity===id;setLogBook(code);setSeverity(open?'':id);}}><strong>{count(code,id)}</strong></button></td>)}
+    </tr>)}</tbody>
+   </table>
   </div>
-  <div className="mp-site-cards" aria-label="Sites">{report.otSites.map(s=><button key={s.siteKey} type="button" className="mp-site-card" aria-pressed={s.siteKey===siteKey} onClick={()=>selectSite(s.siteKey===siteKey?'':s.site)}><strong>{s.site}</strong><span><b className="mp-flag mp-flag-red">{s.red} red</b><b className="mp-flag mp-flag-orange">{s.orange} orange</b>{s.review>0&&<b className="mp-flag mp-flag-review">{s.review} review</b>}</span></button>)}{!report.otSites.length&&<p className="mp-notice">No site is available for these selections.</p>}</div>
+  <div className="mp-site-cards" aria-label="Sites">{report.otSites.map(s=><button key={s.siteKey} type="button" className="mp-site-card" aria-pressed={s.siteKey===siteKey} onClick={()=>selectSite(s.siteKey===siteKey?'':s.site)}><strong>{s.site}</strong>
+   <span className="mp-site-books"><span className="mp-site-head"><i>Log book</i><i>Red</i><i>Orange</i><i>Review</i></span>{logBooks.map(([code])=>{const n=s.books?.[code]||{red:0,orange:0,review:0};return <span key={code} className={logBook===code?'mp-on':undefined}><b>{code}</b>{severities.map(([id])=><b key={id} className={n[id]?'mp-flag mp-flag-'+id:'mp-zero'}>{n[id]}</b>)}</span>;})}</span>
+  </button>)}{!report.otSites.length&&<p className="mp-notice">No site is available for these selections.</p>}</div>
   {severity&&<>
    {!loaded&&<p role="status">Checking earlier duties of these drivers…</p>}{loaded&&history.error&&<p role="alert">{history.error}</p>}
    {past&&<p className="mp-notice">{past.historyFrom?'Earlier duties checked from '+past.historyFrom+' to '+past.historyTo+' (up to '+past.historyDays+' days before the selected dates).':'The selected dates start on the first day of records, so there are no earlier duties to compare.'}</p>}
-   <ReportSection key={'history-'+severity+'-'+query+'-'+siteKey+'-'+(past?'ready':'wait')} title={label+' drivers and their earlier repeats'} category="manpower-ot-history" description={description+' · '+(site?site.site:'All sites')} rows={historyRows} columns={historyColumns(label,since)} rowKey={r=>r.id} emptyMessage={'No '+label+' driver in this selection.'}/>
+   <ReportSection key={'history-'+severity+'-'+logBook+'-'+query+'-'+siteKey+'-'+(past?'ready':'wait')} title={label+' drivers'+(logBook?' on '+logBook:'')+' and their earlier repeats'} category="manpower-ot-history" description={description+' · '+(site?site.site:'All sites')+' · '+(logBook||'VLB, ELB and LMV')+' · Earlier counts cover all three log books'} rows={historyRows} columns={historyColumns(label,since)} rowKey={r=>r.id} emptyMessage={'No '+label+' driver in this selection.'}/>
   </>}
   {site?<>
-   <div className="mp-category"><h2>{site.site} · flagged drivers by category</h2>{categories.length?<table><thead><tr><th>Driver category</th><th>Red</th><th>Orange</th><th>Review</th><th>Drivers</th></tr></thead><tbody>{categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.red}</td><td>{c.orange}</td><td>{c.review}</td><td>{c.drivers.size}</td></tr>)}</tbody></table>:<p>No flagged driver at this site in the selected dates.</p>}</div>
-   <ReportSection key={'ot-'+query+'-'+siteKey+'-'+severity} title={'OT & Multiple Duties · '+site.site+(label?' · '+label+' only':'')} category="manpower-ot" description={description+' · Scheduled times in IST; HMR performance hours, not payable OT'} rows={severity?rows.filter(r=>r.severity===severity):rows} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} emptyMessage="No matching multiple-duty pattern in the saved records."/>
+   <div className="mp-category"><h2>{site.site}{logBook?' · '+logBook:''} · flagged drivers by driver category</h2>{categories.length?<table><thead><tr><th>Driver category</th><th>Red</th><th>Orange</th><th>Review</th><th>Drivers</th></tr></thead><tbody>{categories.map(c=><tr key={c.category}><td>{c.category}</td><td>{c.red}</td><td>{c.orange}</td><td>{c.review}</td><td>{c.drivers.size}</td></tr>)}</tbody></table>:<p>No flagged driver at this site{logBook?' on '+logBook:''} in the selected dates.</p>}</div>
+   <ReportSection key={'ot-'+query+'-'+siteKey+'-'+logBook+'-'+severity} title={'OT & Multiple Duties · '+site.site+(logBook?' · '+logBook:'')+(label?' · '+label+' only':'')} category="manpower-ot" description={description+' · Scheduled times in IST; HMR performance hours, not payable OT'} rows={severity?rows.filter(r=>r.severity===severity):rows} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} emptyMessage="No matching multiple-duty pattern in the saved records."/>
   </>:<p className="mp-notice">Select a site above to see its drivers, their categories and the duty details.</p>}
  </>;
 }
@@ -63,7 +76,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [filters,setFilters]=useState(()=>{const date=today();return {from:date,to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null);
- const [severity,setSeverity]=useState(''),[history,setHistory]=useState({key:'',data:null,error:''});
+ const [severity,setSeverity]=useState(''),[history,setHistory]=useState({key:'',data:null,error:''}),[logBook,setLogBook]=useState('');
  // The OT view always loads every assigned site; the Site selection there opens one site.
  const query=useMemo(()=>new URLSearchParams(reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId]);
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
@@ -90,7 +103,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const description=`${filters.from} to ${filters.to} · ${filters.site||'All assigned sites'} · ${filters.shift||'All shifts'} · Saved records only`;
  const showFilters=!autoHide||filtersOpen,chosen=['batch','employee','asset'].filter(field=>filters[field]).length;
  const leaveFilters=()=>{if(!filterBox.current?.contains(document.activeElement))setFiltersOpen(false);};
- const siteKey=canonicalSiteName(filters.site),exceptions=report&&reportId==='ot'&&siteKey?report.exceptions.filter(e=>e.siteKey===siteKey):report?.exceptions;
+ // LMV cards are part of the OT view only, so their review items stay off the other views.
+ const siteKey=canonicalSiteName(filters.site),exceptions=!report?undefined:reportId!=='ot'?report.exceptions.filter(e=>e.logBook!=='LMV'):siteKey?report.exceptions.filter(e=>e.siteKey===siteKey):report.exceptions;
  return <section className="mp-reports" aria-label="Manpower and OT reports">
   <header className="mp-heading"><div><small>REPORTS / MANPOWER & OT</small><h1>{title}</h1><p>Saved duties, clear assignments and shift-by-shift performance.</p></div><button type="button" disabled={busy} onClick={()=>setRefresh(v=>v+1)}>Refresh reports</button></header>
   <nav className="mp-tabs" aria-label="Manpower report views">{views.map(([id,label])=><button key={id} type="button" aria-current={reportId===id?'page':undefined} onClick={()=>onSelect(id)}>{label}</button>)}</nav>
@@ -110,7 +124,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
     <p className="mp-notice">{report.shiftAttendance.length} present shifts. Each employee counts once per date and shift, including when trips are entered later.</p>
     <ReportSection key={'attendance-'+query} title="Shift Attendance" category="shift-attendance" description={description} rows={report.shiftAttendance} columns={attendanceColumns} rowKey={r=>r.id} emptyMessage="No attendance matches these selections."/>
    </>:reportId==='ot'?<>
-    {otOverview({report,filters,query,selectSite:site=>set('site',site),description,ReportSection,severity,setSeverity,history,historyKey})}
+    {otOverview({report,filters,query,selectSite:site=>set('site',site),description,ReportSection,severity,setSeverity,logBook,setLogBook,history,historyKey})}
    </>:reportId==='employee'?<>
     <p className="mp-notice">One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.</p>
     <ReportSection key={'performance-'+query} title="Shift Performance" category="manpower-performance" description={description+' · Each shift is separate; HMR is machine performance'} rows={report.performance} columns={performanceColumns} rowKey={r=>r.id} emptyMessage="No saved duties with a resolved employee identity match these selections."/>

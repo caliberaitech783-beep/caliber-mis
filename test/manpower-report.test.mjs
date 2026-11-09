@@ -108,7 +108,7 @@ function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
- const h=apiHarness(),r=await h.run();assert.equal(r.status,200);assert.equal(r.result.totals.assets,1);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.released,true);assert.match(h.calls[0].sql,/REPEATABLE READ READ ONLY/);const query=h.calls.find(c=>c.sql.includes('SELECT l.id'));assert.deepEqual(query.args[2],[site]);assert.match(query.sql,/l.deleted_at IS NULL/);assert.match(query.sql,/b.deleted_at IS NULL/);assert.equal(h.calls.at(-1).sql,'COMMIT');assert.ok(!JSON.stringify(r.result).includes('record_data'));
+ const h=apiHarness(),r=await h.run();assert.equal(r.status,200);assert.equal(r.result.totals.assets,1);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.released,true);assert.match(h.calls[0].sql,/REPEATABLE READ READ ONLY/);const query=h.calls.find(c=>c.sql.includes('SELECT l.id'));assert.deepEqual(query.args[2],[site]);assert.match(query.sql,/l.deleted_at IS NULL/);assert.match(query.sql,/b.deleted_at IS NULL/);assert.ok(query.sql.includes("l.book_type IN ('vehicle','equipment','lmv')"),'LMV books are read for the OT view');assert.equal(h.calls.at(-1).sql,'COMMIT');assert.ok(!JSON.stringify(r.result).includes('record_data'));
 });
 test('API rejects unassigned sites and malformed dates before reading records',async()=>{
  const h=apiHarness();assert.equal((await h.run({from:date,to:date,site:'Jayant OC'})).status,403);assert.equal((await h.run({from:'bad',to:date})).status,400);assert.equal(h.calls.length,0);
@@ -125,7 +125,26 @@ test('flagged duties carry the driver category and every known site gets a count
  const r=report([card(1,1),card(2,2),card(3,1,{employeeId:22,caliberId:'102',assetId:2,door:'V2'}),card(4,3,{employeeId:22,caliberId:'102',assetId:2,door:'V2'})],{employees:staff,shifts:[...shifts,{id:'50',site:'Jayant OC',shiftCode:'A',startTime:'05:00',endTime:'13:00'}]});
  assert.deepEqual(r.ot.map(e=>[e.severity,e.category]),[['red','Volvo Driver'],['orange','Category not in Employee master']]);
  assert.equal(r.ot[0].equipment,'Tipper / Volvo');assert.equal(r.ot[0].siteKey,'sasti ob');assert.deepEqual(r.ot[0].dutyDates,[date]);
- assert.deepEqual(r.otSites,[{site:'Jayant OC',siteKey:'jayant ob',red:0,orange:0,review:0},{site,siteKey:'sasti ob',red:1,orange:1,review:0}]);
+ const none={red:0,orange:0,review:0};
+ assert.deepEqual(r.otSites,[{site:'Jayant OC',siteKey:'jayant ob',...none,books:{VLB:none,ELB:none,LMV:none}},{site,siteKey:'sasti ob',red:1,orange:1,review:0,books:{VLB:{red:1,orange:1,review:0},ELB:none,LMV:none}}]);
+ assert.deepEqual(r.ot.map(e=>[e.logBook,e.logBooks]),[['VLB',['VLB']],['VLB',['VLB']]]);
+});
+test('LMV log books count in OT, under each log book the duty was saved in, and nowhere else',()=>{
+ const lmv=card(2,2,{assetId:2,door:'V2'},{book_type:'lmv'}),elb=card(3,3,{assetId:3,door:'V3'},{book_type:'equipment'});
+ assert.equal(report([card(1,1)]).ot.length,0,'one VLB shift alone is not OT');
+ const r=report([card(1,1),lmv]);
+ assert.deepEqual(r.ot.map(e=>[e.severity,e.logBook,e.logBooks]),[['red','VLB + LMV',['VLB','LMV']]],'an LMV shift after a VLB shift is back-to-back OT');
+ const none={red:0,orange:0,review:0},one={red:1,orange:0,review:0};
+ assert.deepEqual(r.otSites,[{site,siteKey:'sasti ob',...one,books:{VLB:one,ELB:none,LMV:one}}],'the duty is listed under both log books and once in the site total');
+ assert.deepEqual([r.details.length,r.summary.length,r.performance.length,r.shiftAttendance.length,r.totals.savedRecords,r.totals.duties],[1,1,1,1,1,1],'the other manpower tables stay VLB and ELB only');
+ assert.ok(r.details.every(d=>d.book==='CARD-1'));
+ const all=report([card(1,1),lmv,elb]);
+ assert.deepEqual(all.ot.map(e=>e.logBook),['VLB + ELB + LMV']);assert.deepEqual(all.otSites[0].books,{VLB:one,ELB:one,LMV:one});
+ const review=report([card(1,1),{...lmv,asset_id:999,data:{...lmv.data,assetId:999}}]);
+ assert.deepEqual(review.exceptions.map(e=>[e.logBook,e.reason]),[['LMV','Equipment master match is missing.']]);assert.equal(review.totals.exceptions,0,'LMV review items are not counted on the VLB and ELB views');
+ const blank=report([card(1,1),{...lmv,data:{...lmv.data,openingHmr:null,closingHmr:null}}]);
+ assert.deepEqual([blank.ot.map(e=>e.severity),blank.exceptions.length,blank.ot[0].combinedHours],[['red'],0,null],'an LMV card saved without HMR still counts as a duty and is not a review item');
+ assert.match(report([card(1,1),{...lmv,data:{...lmv.data,openingHmr:200,closingHmr:150}}]).exceptions[0].reason,/Invalid or excessive HMR/);
 });
 test('earlier repeats look back at most 90 days, never before the first day of records',()=>{
  assert.deepEqual(otHistoryWindows('2026-11-01'),[]);
@@ -143,6 +162,7 @@ test('history API reads only earlier dates within scope and returns one repeat p
  assert.equal(r.result.historyFrom,'2026-11-01');assert.equal(r.result.historyTo,'2026-11-11');
  assert.deepEqual(r.result.drivers.map(d=>[d.red,d.orange,d.redDates]),[[1,0,[date]]]);
  const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));assert.equal(reads.length,2);assert.deepEqual(reads[0].args.slice(0,3),['2026-11-01','2026-11-08',[site]]);assert.ok(reads.every(c=>c.args[3].includes('employeeId')&&!c.args[3].includes('trips')));
+ assert.ok(reads.every(c=>c.sql.includes("l.book_type IN ('vehicle','equipment','lmv')")&&c.sql.includes('l.deleted_at IS NULL')),'earlier duties read the same three log books as the OT list');
  const first=await h.run({from:'2026-11-01',to:'2026-11-01'},path);assert.equal(first.result.historyFrom,null);assert.deepEqual(first.result.drivers,[]);
  assert.equal((await h.run({from:date,to:date,site:'Jayant OC'},path)).status,403);
 });
