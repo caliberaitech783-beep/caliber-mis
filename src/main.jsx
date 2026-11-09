@@ -4243,7 +4243,9 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
+// A click on a control inside the row (button, link, field) or a text selection is not a row click.
+const plainRowClick = (event) => !event.target.closest?.("button,a,input,select,textarea,label") && !window.getSelection?.().toString();
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4358,7 +4360,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
         ))}</tr></thead>
         <tbody>
           {pagedRows.length ? pagedRows.map((row, index) => (
-            <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={rowClassName?.(row, index) || ""}>
+            <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
               {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
               {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={column.key === "complaint" || column.wrap ? "report-complaint-cell" : undefined}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
             </tr>
@@ -7390,7 +7392,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7427,7 +7429,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rows={rows}
             rowKey={rowKey}
             rowClassName={rowClassName}
-            rowAction={rowAction} rowEditor={rowEditor}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
