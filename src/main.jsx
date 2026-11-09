@@ -1,3 +1,5 @@
+import {isLmv} from '../shared/equipment-kind.mjs';
+import LmvImport from './lmv-import.jsx';
 import {browserSessionRequestInit} from './browser-session-transport.mjs';
 import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
@@ -9255,6 +9257,7 @@ Breakdown = function BreakdownWithMasterEntry({ requests = [] }) {
 };
 const OriginalEquipment = Equipment;
 Equipment = function EquipmentWithData(props) {
+  const [lmvTab, setLmvTab] = useState(false);
   const [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad, onDeleteSelected] = useMasterRecords("Equipment master", vehicles);
   if (loadError && !loaded) return <MasterLoadError name="Equipment master" error={loadError} retry={retryLoad} />;
   if (!loaded) return <MasterLoader name="Equipment master" />;
@@ -9262,17 +9265,26 @@ Equipment = function EquipmentWithData(props) {
     onAdd(
       incoming.map(normalizeEquipmentRecord),
     );
-  return (
+  const showTabs = !props.pageTitle && (!props.initialCategory || props.initialCategory === "all");
+  const showLmv = showTabs && lmvTab;
+  return (<>
+    {showTabs && <div className="role-category-tabs" role="group" aria-label="Equipment master views">
+      <button type="button" aria-pressed={!showLmv} onClick={() => setLmvTab(false)}>Equipment Master</button>
+      <button type="button" aria-pressed={showLmv} onClick={() => setLmvTab(true)}>LMV Master</button>
+    </div>}
+    {showLmv && <LmvImport token={authToken} onImported={retryLoad} />}
     <OriginalEquipment
+      key={showLmv ? "lmv" : "equipment"}
       {...props}
-      records={records}
+      pageTitle={showLmv ? "LMV Master" : props.pageTitle}
+      records={showLmv ? records.filter(isLmv) : records}
       onAdd={addEquipment}
       onEdit={(id, record) => onEdit(id, normalizeEquipmentRecord(record))}
       onDelete={onDelete}
-      onDeleteAll={onDeleteAll}
+      onDeleteAll={showLmv ? undefined : onDeleteAll}
       onDeleteSelected={onDeleteSelected}
     />
-  );
+  </>);
 };
 const OriginalGeneric = Generic;
 function PrivilegeMasterPage(props) {

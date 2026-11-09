@@ -6,7 +6,7 @@ import {registerFleetReconciliation} from './fleet-reconciliation-api.mjs';
 import {withEquipmentAliases,aliasOtpEnabled} from '../../shared/equipment-aliases.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate} from '../../shared/operational-start.mjs';
-import {assetBookKind} from '../../shared/equipment-kind.mjs';
+import {assetBookKind,allowsLogBookKind,isLmv} from '../../shared/equipment-kind.mjs';
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
@@ -124,7 +124,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      const masterShift=normalizeCardShift(shift.shiftCode)||normalizeCardShift(shift.shiftName||shift.name||shift.shift);
      if(!manualEntry&&kind==='vehicle'&&masterShift&&data.shiftHours!==CARD_SHIFTS[masterShift].hours)fail('The selected shift requires '+CARD_SHIFTS[masterShift].hours+' hours.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
-     if(assetBookKind(asset)!==kind)fail('Select an asset from the correct log book category.');
+     if(!allowsLogBookKind(asset,kind))fail('Select an asset from the correct log book category.');
      const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift.site||shift.siteName);
      const siteHolds=[];
      if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location)){if(!twoStageEnabled())fail('The selected asset is assigned to a different location.');siteHolds.push({role:kind==='vehicle'?'vlb_door':'elb_door',assetId:String(data.assetId),assetSite,label:text(asset.door||asset.doorNo||equipmentDoorNumber(asset))});}
@@ -195,7 +195,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set();const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
-       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),site});}
+       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),site});}
        if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.designation||r.userGroup)});
        if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);if(site)sites.add(site);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});

@@ -1,6 +1,6 @@
 import {cardWorkingHmr} from '../../shared/log-book-shared-shift.mjs';
 import {canonicalSiteName,equipmentSiteName} from '../../shared/site-location.mjs';
-import {assetBookKind} from '../../shared/equipment-kind.mjs';
+import {assetBookKind,allowsLogBookKind} from '../../shared/equipment-kind.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {resolveTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {isUnloadingOnlyTrip} from '../../shared/trip-card-rules.mjs';
@@ -110,7 +110,7 @@ export function buildMachineSnapshot(records,assets,site){
 // Keep every site machine available for ELB entry, including machines with no VLB trips.
 // Retain resolved loading machines and their trip totals alongside the site roster.
 export function buildFleetList(assets,site,machines=[]){
- const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>assetBookKind(asset)==='equipment'&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
+ const canonical=canonicalSiteName(site),byId=new Map(assets.filter(asset=>allowsLogBookKind(asset,'equipment')&&!asset.sourceMissing).map(asset=>[machineKey(asset),asset]));
  const rows=new Map();
  for(const machine of machines){
   const asset=byId.get(String(machine.assetId));if(!asset)continue;

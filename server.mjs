@@ -1,3 +1,4 @@
+import {registerLmvImport} from './server/routes/lmv-import.mjs';
 import {assertProductionSecurityConfig,legacyPasswordRouteGuard} from './server/services/production-security-config.mjs';
 import {operationalScanSql} from './shared/operational-start.mjs';
 import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
@@ -7894,6 +7895,7 @@ const groqScanSettings=registerGroqScanSettings(app,{store:integrationSecrets,re
 const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
 // After every Pulse snapshot: retire aliases Pulse now carries as real doors, suspend aliases a real door now shadows (Telegram to the approver and the MIS managers).
 const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
+registerLmvImport(app,{pool,requireSession,requireAdministrator});
 const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
