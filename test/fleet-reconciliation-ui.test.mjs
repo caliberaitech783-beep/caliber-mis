@@ -25,8 +25,10 @@ test('all assets, unused reasons, and zero-card summary rows stay available in t
  assert.match(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.doesNotMatch(html,/E1/);assert.match(html,/All assets/);
  assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.id),['fleet-tab-vehicle','fleet-tab-lmv','fleet-tab-equipment']);
  assert.match(html,/1 total = 1 used in LMV/);
+ assert.match(html,/<summary>Fleet details[^<]+<strong class="fleet-grand-total">Total fleet 4<\/strong><\/summary>/);
  nodes(tree,n=>n.type==='select'&&n.props['aria-label']==='Assets to report')[0].props.onChange({target:{value:'unused'}});
  tree=render();html=renderToStaticMarkup(tree);assert.doesNotMatch(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.match(html,/Reason pending/);assert.match(html,/1 of 2 assets shown/);
+ assert.match(html,/Total fleet 4/);
  nodes(tree,n=>n.type==='select'&&n.props.value==='detail')[0].props.onChange({target:{value:'summary'}});
  html=renderToStaticMarkup(render());assert.match(html,/V2/);assert.doesNotMatch(html,/E1/);assert.match(html,/1 machines/);
  tree=render();nodes(tree,n=>n.props.id==='fleet-tab-lmv')[0].props.onClick();
