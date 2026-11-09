@@ -79,7 +79,9 @@ export default function FleetReconciliation({session,context,kind='',fetcher=fet
     const next=(index+directions[event.key]+availableKinds.length)%availableKinds.length;
     event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.click();
     event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
-   }}>{fleetBookLabels[tabKind]} details</button>)}
+   }}>
+    {fleetBookLabels[tabKind]} details (<strong>{data.summary[tabKind].total.toLocaleString('en-IN')}</strong>)
+   </button>)}
  </div>
  <div id="fleet-detail-panel" role="tabpanel" aria-labelledby={'fleet-tab-'+activeKind}>
  <div className="fleet-toolbar"><label>Assets to report<select aria-label="Assets to report" value={population} onChange={e=>setPopulation(e.target.value)}>{fleetViews.map(item=><option key={item.key} value={item.key}>{item.label} ({allRows.filter(item.match).length})</option>)}</select></label><label>Report rows <select value={view} onChange={e=>{setView(e.target.value);setSortKey('door')}}><option value="detail">Detail</option><option value="summary">Summary</option></select></label><span>{view==='summary'?`${summaryRows.length} machines · ${scannedCardTotal} ${cardLabel} cards`:`${rows.length} of ${allRows.length} assets shown`}</span><button type="button" aria-expanded={actionsOpen} aria-controls="fleet-table-actions" onClick={()=>setActionsOpen(open=>!open)}>Actions</button><button type="button" onClick={exportExcel}>Download Excel</button><button type="button" onClick={e=>printFleetReconciliation(e.currentTarget.closest('.fleet-reconciliation'))}>Smart Print</button></div>

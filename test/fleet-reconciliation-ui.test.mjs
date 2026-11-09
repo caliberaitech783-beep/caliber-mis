@@ -26,6 +26,9 @@ test('all assets, unused reasons, and zero-card summary rows stay available in t
  assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.id),['fleet-tab-vehicle','fleet-tab-lmv','fleet-tab-equipment']);
  assert.match(html,/1 total = 1 used in LMV/);
  assert.match(html,/<summary>Fleet details[^<]+<strong class="fleet-grand-total">Total fleet 4<\/strong><\/summary>/);
+ for(const [label,total] of [['VLB',2],['LMV',1],['ELB',1]]){
+  assert.ok(html.includes(`${label} details (<strong>${total}</strong>)`));
+ }
  nodes(tree,n=>n.type==='select'&&n.props['aria-label']==='Assets to report')[0].props.onChange({target:{value:'unused'}});
  tree=render();html=renderToStaticMarkup(tree);assert.doesNotMatch(html,/VLB-1/);assert.match(html,/Driver unavailable/);assert.match(html,/Reason pending/);assert.match(html,/1 of 2 assets shown/);
  assert.match(html,/Total fleet 4/);
