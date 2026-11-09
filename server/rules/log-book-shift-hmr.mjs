@@ -28,7 +28,7 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null){
   throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved). The limit is ${limit} hours. Check the opening and closing HMR on the cards.`),
    {status:409,details:{code:'shift_hmr_limit'}});
  }
- if(kind!=='vehicle')return;
+ if(kind!=='vehicle'&&kind!=='lmv')return;
  const savedKmr=peers.reduce((sum,row)=>sum+kmrUnits(row.data),0);
  const totalKmr=savedKmr+kmrUnits(data);
  if(totalKmr>VLB_SHIFT_KMR_LIMIT*1000){

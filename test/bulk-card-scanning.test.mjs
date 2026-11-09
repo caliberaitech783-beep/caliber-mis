@@ -50,3 +50,45 @@ test('matching after applying the batch site fills only unambiguous door and dri
  const duplicate={...masters[1],id:90};assert.equal(matchScanDraft(draft,raw,'vehicle',[...masters,duplicate]).employeeId,'');
  const corrected={...draft,assetId:'33',employeeId:'44'};assert.equal(matchScanDraft(corrected,raw,'vehicle',masters),corrected);
 });
+
+test('LMV uses VLB-style manual and scan entry without adding cards to a VLB batch',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ const legacyBookTable=LOG_BOOK_SCHEMA.slice(0,LOG_BOOK_SCHEMA.indexOf(' DO $lmv_book_type$')).replace(",'lmv'","");
+ await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+legacyBookTable+LOG_BOOK_SCHEMA);
+ for(const master of [...masters.slice(0,3),{id:7,master_name:'Equipment master',record_data:{category:'LMV',door:'LMV7',currentLocation:'Sasti OC'}}]){
+  await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[master.id,master.master_name,JSON.stringify(master.record_data)]);
+ }
+ const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+ const pool={query,connect:async()=>({query,release(){}})};
+ const app=express();app.use(express.json());
+ const auth=(req,res,next)=>{req.session={role:'super',login:'admin',permissions:{adminLevel:'Admin'}};next()};
+ registerLogBooks(app,{pool,requireSession:auth,requireAdministrator:auth,getSiteScope:async()=>({sites:null})});
+ const scans=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,getSiteScope:async()=>({sites:null}),readPulseFleet:async()=>{throw Error('LMVs use their separate synced master')},ocr:{close(){}}});
+ await scans.start();await scans.stop();
+ app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ t.after(()=>{server.closeAllConnections();server.close()});
+ const call=async(route,method='GET',body)=>{
+  const response=await fetch('http://127.0.0.1:'+server.address().port+route,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  return {status:response.status,data:await response.json()};
+ };
+ const draft={bookDate:'2026-12-22',location:'Sasti OC',cardShift:'I',assetId:7,employeeId:2,shiftId:3,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:0,closingHmr:2,trips:[]};
+ assert.equal((await call('/api/log-books/lmv','POST',{...draft,assetId:1})).status,400);
+ const manual=await call('/api/log-books/lmv','POST',draft);
+ assert.equal(manual.status,201,JSON.stringify(manual.data));
+ assert.match(manual.data.book_no,/^CAL\/LMV/);
+ const batch=await call('/api/scan-batches','POST',{kind:'vehicle',expectedContext:{...draft,logBookKind:'lmv'}});
+ assert.equal(batch.status,201);
+ assert.match(batch.data.name,/^CMLL\/LMV/);
+ assert.equal((await call('/api/scan-batches')).data.batches.length,0);
+ assert.equal((await call('/api/scan-batches?logBookKind=lmv')).data.batches[0].id,batch.data.id);
+ const card=randomUUID(),scanDraft={...draft,openingHmr:2,closingHmr:4,doorText:'LMV7',aFormNo:'LMV-1'};
+ await db.query("UPDATE mis_scan_batches SET expected_context=expected_context||'{\"confirmed\":true}'::jsonb WHERE id=$1",[batch.data.id]);
+ await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image_hash,draft,status,checked_by) VALUES($1,$2,1,'lmv.png',$3,$4,'approved','admin')",[card,batch.data.id,randomUUID(),JSON.stringify(scanDraft)]);
+ const posted=await call('/api/scan-batches/'+batch.data.id+'/post','POST',{cards:[{id:card,revision:1}]});
+ assert.equal(posted.status,200,JSON.stringify(posted.data));
+ assert.match(posted.data.records[0].book_no,/^CAL\/LMV/);
+ assert.equal((await call('/api/log-books/lmv')).data.records.length,2);
+ assert.deepEqual((await call('/api/log-books/vehicle')).data.records,[]);
+ assert.equal((await db.query('SELECT * FROM mis_vlb_batch_entries')).rows.length,0);
+});

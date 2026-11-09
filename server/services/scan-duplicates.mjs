@@ -39,7 +39,7 @@ export async function sameContextBatches(client,batch){
  const context=batch.expected_context;if(!context?.bookDate)return [batch];
  const rows=(await client.query("SELECT id,name,kind,expected_context FROM mis_scan_batches WHERE kind=$1 AND expected_context->>'bookDate'=$2 AND COALESCE(expected_context->>'cardShift','')=COALESCE($3,'') AND NOT(expected_context ?| ARRAY['deletedVlbBatch','deletedScanEntry'])",[batch.kind,context.bookDate,context.cardShift||''])).rows;
  const site=canonicalSiteName(context.location);
- return rows.filter(row=>row.id===batch.id||canonicalSiteName(row.expected_context?.location)===site);
+ return rows.filter(row=>row.id===batch.id||(row.expected_context?.logBookKind||'')===(context.logBookKind||'')&&canonicalSiteName(row.expected_context?.location)===site);
 }
 
 export function originalSummary(row){return {cardId:row.id,batchId:row.batch_id,entryName:row.batch_name||null,ordinal:row.ordinal,bookNo:row.book_no||null};}
@@ -96,7 +96,7 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,asse
  const batches=await sameContextBatches(client,batch);
  const sibling=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.id<>$2 AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND c.draft->>'bookDate'=$3 AND c.draft->>'assetId'=$4 AND regexp_replace(upper(COALESCE(NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo','')),'[^A-Z0-9]','','g')=$5 AND (c.created_at<$6 OR (c.created_at=$6 AND c.id<$2)) ORDER BY c.created_at,c.id LIMIT 1`,[batches.map(b=>b.id),card.id,bookDate,String(assetId),number,card.created_at])).rows[0];
  if(sibling)return {kind:'card',...originalSummary(sibling)};
- const saved=(await client.query("SELECT l.id,l.book_no,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.asset_id=$3 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND COALESCE(l.data->>'scanCardId','')<>$5 LIMIT 1",[kind,bookDate,assetId,number,card.id])).rows[0];
+ const saved=(await client.query("SELECT l.id,l.book_no,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.asset_id=$3 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND COALESCE(l.data->>'scanCardId','')<>$5 LIMIT 1",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,assetId,number,card.id])).rows[0];
  if(saved){const origin=saved.scan_card_id?(await client.query('SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1',[saved.scan_card_id])).rows[0]:null;return {kind:'logbook',cardId:origin?.id||null,batchId:origin?.batch_id||null,entryName:origin?.batch_name||null,ordinal:origin?.ordinal||null,bookNo:saved.book_no};}
  return null;
 }

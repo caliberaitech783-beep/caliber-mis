@@ -6,7 +6,7 @@ export function parseScanContext(value){
  const {bookDate,location,cardShift}=value||{};
  if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate||'')||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate||typeof location!=='string'||!location.trim()||location.length>200||!Object.hasOwn(CARD_SHIFTS,cardShift))throw new Error('Choose a valid card date, site and shift before scanning or uploading.');
  requireOperationalDate(bookDate);
- return {bookDate,location:location.trim(),cardShift,confirmed:false,cancelled:false};
+ return {bookDate,location:location.trim(),cardShift,confirmed:false,cancelled:false,...(value?.logBookKind==='lmv'?{logBookKind:'lmv'}:{})};
 }
 export function scanContextReady(value){try{parseScanContext(value);return true}catch{return false}}
 export function scanContextIssues(context,draft={}){
@@ -51,6 +51,7 @@ export function scanContextGate(context,cards=[]){
  return {context,waiting,mismatches:[],blocked:Boolean(context.cancelled||!context.confirmed||waiting)};
 }
 export function requireScanUploadContext(kind,value){
+ if(kind!=='vehicle'&&value?.logBookKind==='lmv')throw new Error('LMV scanning uses the Trip Card format.');
  if(kind==='vehicle'||value!==undefined)return parseScanContext(value);
  return null;
 }

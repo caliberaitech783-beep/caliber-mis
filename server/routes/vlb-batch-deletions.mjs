@@ -34,7 +34,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   const ids=records.map(r=>String(r.id)),linked=records.map(r=>r.data?.scanCardId).filter(Boolean);
   let scans=[],scanBatches=[];
   if(await exists(c,'mis_scan_cards')){
-   const candidates=(await c.query("SELECT * FROM mis_scan_batches WHERE kind='vehicle' AND NOT(COALESCE(expected_context,'{}'::jsonb) ? 'deletedVlbBatch') ORDER BY id")).rows;
+   const candidates=(await c.query("SELECT * FROM mis_scan_batches WHERE kind='vehicle' AND COALESCE(expected_context->>'logBookKind','')<>'lmv' AND NOT(COALESCE(expected_context,'{}'::jsonb) ? 'deletedVlbBatch') ORDER BY id")).rows;
    const contextual=candidates.filter(s=>sameScope(b,s.expected_context)).map(s=>s.id);
    scans=(await c.query("SELECT c.id,c.batch_id,c.ordinal,c.filename,c.status,c.revision,c.logbook_id,c.image_hash,c.image_blob_key,c.draft,md5((to_jsonb(c)-'image')::text) AS fingerprint FROM mis_scan_cards c WHERE c.batch_id=ANY($1::uuid[]) OR c.logbook_id=ANY($2::bigint[]) OR c.id::text=ANY($3::text[]) ORDER BY c.id FOR UPDATE",[contextual,ids,linked])).rows;
    // Include duplicate image copies only when no other saved batch owns them.
