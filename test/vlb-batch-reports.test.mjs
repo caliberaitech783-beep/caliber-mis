@@ -66,3 +66,16 @@ test('the Reports menu opens the shift batch page for VLB Reports',()=>{
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
  assert.match(main,/renderedActive==='VLB Reports' \? \(<VlbBatchReports /);assert.match(main,/import VlbBatchReports from '\.\/vlb-batch-reports\.jsx'/);
 });
+
+test('clicking a report row opens that card, while controls and text selection inside the row do not',async()=>{
+ const app=harness(batches);let tree=await app.flush();
+ const report=nodes(tree,app.VlbBatchReport)[0];assert.equal(typeof report.props.onRowClick,'function');
+ report.props.onRowClick({id:7});tree=app.render();assert.equal(nodes(tree,app.VlbBatchCardDetails)[0].props.record.id,7);
+ const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ const plainRowClick=new Function('window','return '+main.match(/const plainRowClick = (.*);/)[1]);
+ const click=(inControl,selected='')=>plainRowClick({getSelection:()=>({toString:()=>selected})})({target:{closest:()=>inControl?{}:null}});
+ assert.equal(click(false),true);assert.equal(click(true),false,'buttons and fields keep their own click');assert.equal(click(false,'VLB_S/1ST'),false,'selecting text to copy does not open the card');
+ assert.match(main,/onClick=\{onRowClick \? \(event\) => \{ if \(plainRowClick\(event\)\) onRowClick\(row\); \}/);
+ const shared=readFileSync(new URL('../src/vlb-batch-report.jsx',import.meta.url),'utf8'),elbPage=readFileSync(new URL('../src/elb-batch-reports.jsx',import.meta.url),'utf8');
+ assert.match(shared,/onRowClick=\{onRowClick\}/);assert.match(elbPage,/onRowClick=\{row=>setSelectedCard/);
+});

@@ -34,14 +34,16 @@ export default function VlbBatchReports({session,ReportSection}){
  const tabs=<nav className="scan-workflow-tabs" aria-label="VLB report source"><button type="button" className={view==='shift'?'selected':''} aria-pressed={view==='shift'} onClick={()=>{setNotice('');setView('shift')}}>Shift batches</button><button type="button" className={view==='scan'?'selected':''} aria-pressed={view==='scan'} onClick={()=>setView('scan')}>Scan / upload batches</button></nav>;
  if(view==='scan')return <>{tabs}{notice&&<p role="status">{notice}</p>}<ScanBatchReports kind="vehicle" session={session} ReportSection={ReportSection}/></>;
  const record=batch?.records?.find(row=>row.id===selectedCard?.id);
- return <section className="logbook-page scan-page"><header className="logbook-page-header"><div><h1>VLB Reports</h1><p>Every VLB card saved in a site, date and shift batch, whether it was scanned, uploaded or entered by hand.</p></div></header>
+ // Clicking anywhere on a row opens that card's details, the same as its View VLB button.
+ const openCard=row=>setSelectedCard({id:row.id,viewKey:crypto.randomUUID()});
+ return <section className="logbook-page scan-page"><header className="logbook-page-header"><div><h1>VLB Reports</h1><p>Every VLB card saved in a site, date and shift batch, whether it was scanned, uploaded or entered by hand. Click a card to see its details.</p></div></header>
   {tabs}
   <section className="logbook-section"><div className="scan-settings"><label>Find batch<input type="search" placeholder="Batch, site, date or shift" value={search} onChange={event=>setSearch(event.target.value)}/></label><label>Shift batch<SmartSelect aria-label="Shift batch" value={selected} onChange={event=>{setSelectedCard(null);setSelected(event.target.value)}}><option value="">Choose a batch</option>{batch&&!visible.some(row=>row.id===batch.id)&&<option value={batch.id}>{batch.name}</option>}{visible.map(row=><option key={row.id} value={row.id}>{row.name} · {row.entry_count||0} VLB · {vlbBatchStatus(row)}</option>)}</SmartSelect></label><button type="button" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reports</button></div>
    {loading&&<p role="status">Loading VLB batch report…</p>}{error&&<p className="scan-error" role="alert">{error}</p>}
    {listed&&!batches.length&&!error&&<p>No shift batches yet. A report appears here as soon as a VLB batch is created for a site, date and shift.</p>}
    {batch&&!batch.records?.length&&<p>No VLB card has been saved in this batch yet.</p>}
   </section>
-  {batch&&<VlbBatchReport key={batch.id} batch={batch} ReportSection={ReportSection} onView={row=>setSelectedCard({id:row.id,viewKey:crypto.randomUUID()})}/>}
+  {batch&&<VlbBatchReport key={batch.id} batch={batch} ReportSection={ReportSection} onView={openCard} onRowClick={openCard}/>}
   {record&&<VlbBatchCardDetails key={selectedCard.viewKey} kind="vehicle" session={session} batch={batch} record={selectedCard} ReportSection={ReportSection} canEdit={false} onClose={()=>setSelectedCard(null)}/>}
  </section>;
 }
