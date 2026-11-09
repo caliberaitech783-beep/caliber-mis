@@ -53,6 +53,16 @@ test('database-backed log books enforce access, persist both forms, generate num
  const call=async(route,method='GET',body,auth='admin')=>{if(body&&['POST','PUT'].includes(method)&&route.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch(base+route,{method,headers:{...(auth?{Authorization:auth}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
  assert.equal((await call('/api/log-books/vehicle','GET',undefined,'')).status,401);assert.equal((await call('/api/log-books/vehicle','GET',undefined,'normal')).status,403);
  for(const name of ['Dudhicua East OC','Dudhichua East OC','Dudhichua East OB'])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Site master',JSON.stringify({name})]);
+ const lmvAsset=(await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',['Equipment master',JSON.stringify({category:'LMV',door:'BUS-TEST',currentLocation:'Sasti OC'})])).rows[0].id;
+ const lmvBody={...input(),assetId:lmvAsset,employeeId:7,shiftId:'',manualShift:'day',shiftHours:12,trips:[],requestKey:randomUUID()};
+ const lmv=await call('/api/log-books/lmv','POST',lmvBody);
+ assert.equal(lmv.status,201,JSON.stringify(lmv.data));
+ assert.equal(lmv.data.data.shiftId,null);
+ assert.equal(lmv.data.data.shiftName,'Day');
+ const cleared=await call('/api/log-books/lmv/'+lmv.data.id,'PUT',{...lmvBody,manualShift:'',bookShiftCode:lmv.data.data.bookShiftCode,revision:1});
+ assert.equal(cleared.status,200,JSON.stringify(cleared.data));
+ assert.equal(cleared.data.data.shiftId,null);
+ assert.equal(cleared.data.data.bookShiftCode,'');
  const options=await call('/api/log-books/options');assert.deepEqual(options.data.sites.filter(site=>/east/i.test(site)),['Dudhichua East OC']);assert.equal(options.status,200);assert.equal(options.data.employees[0].caliberId,'EMP-123');assert.ok(!JSON.stringify(options.data).includes('private-not-exposed'));
  assert.equal(options.data.workOrders[0].number,'WO-TEST');const body={...input(),employeeId:7,workOrderId:6,duplicateReason:'Test fixture: repeated cards for the same tipper',trips:[{...input().trips[0],equipmentName:'TA35'},{...input().trips[0],equipmentName:'U49'}],scanMachineSummary:[{equipmentName:'T35',tripCount:1},{equipmentName:'U49',tripCount:1}],requestKey:randomUUID()};const first=await call('/api/log-books/vehicle','POST',body);assert.equal(first.status,201);assert.match(first.data.book_no,/^VLB_M\/18TH-DEC26\/S1\/001$/);assert.equal(first.data.data.totalRunningKmr,50);assert.equal(first.data.data.caliberId,'EMP-123');assert.equal(first.data.data.workOrderContract,'WO-TEST');
  assert.equal(first.data.data.trips[0].equipmentName,'Tpc 35');assert.equal(first.data.data.trips[0].originalEquipmentName,'TA35');assert.equal(first.data.data.scanMachineSummary[0].equipmentName,'Tpc 35');assert.equal(first.data.data.trips[1].equipmentName,'Vpc 49');assert.equal(first.data.data.trips[1].originalEquipmentName,'U49');assert.equal(first.data.data.scanMachineSummary[1].equipmentName,'Vpc 49');
