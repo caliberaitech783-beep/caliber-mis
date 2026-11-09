@@ -5,7 +5,7 @@ import test from "node:test";
 test("hierarchy master renders report-wise and site-wise tick matrix", () => {
   const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  const hierarchySource = source.slice(source.indexOf("function HierarchyMasterPage"), source.indexOf("function RegionMasterPage"));
+  const hierarchySource = source.slice(source.indexOf("function HierarchyMasterPage"), source.indexOf("Generic = function GenericWithMasters"));
 
   assert.match(source, /function HierarchyMasterPage\(/);
   assert.match(source, /<HierarchyMasterPage records=\{records\}/);

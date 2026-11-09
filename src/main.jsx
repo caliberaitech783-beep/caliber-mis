@@ -3166,7 +3166,7 @@ const masterFields = {
     ["name", "Region name"],
     ["code", "Short name"],
     ["state", "State code"],
-    ["sites", "Sites (separate with |)"],
+    ["sites", "Sites"],
   ],
   "Hierarchy master": [
     ["section", "Section"],
@@ -4914,15 +4914,15 @@ function MasterActions({ name, onLmvImported, records = [], onAdd, onDeleteAll, 
             <Save /> Save all
           </button>
         )}
-        <button className="secondary" onClick={() => setMode("import")}>
+        {name !== "Region master" && <button className="secondary" onClick={() => setMode("import")}>
           <Upload />
           Import
-        </button>
+        </button>}
         <ExportMenu title={name==='Users & employees'?'Login Details':name} columns={exportColumns} rows={records} />
-        <button className="primary" onClick={() => setMode("manual")}>
+        {name !== "Region master" && <button className="primary" onClick={() => setMode("manual")}>
           <Plus />
           Add record
-        </button>
+        </button>}
       </div>
       {mode === "delete-selected" && (
         <Modal title={`Review ${selectedRecordCount} selected equipment record${selectedRecordCount === 1 ? "" : "s"}`} close={() => !deletingSelected && setMode(null)} className="delete-selected-modal">
@@ -6232,141 +6232,6 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
         </footer>
       </form>
     </Modal>
-  );
-}
-function Subsidiaries({ gotoEquipment }) {
-  const [open, setOpen] = useState(null),
-    [q, setQ] = useState("");
-  const data = subsidiaryData.filter((x) => matchesSmartSearch(q, x.name, x.code, x.sites));
-  return (
-    <section className="panel pagepanel generic">
-      <header>
-        <div>
-          <h1>Region master</h1>
-          <p>
-            Click a region, then select Total, On Road, Off Road or Idle for any
-            site
-          </p>
-        </div>
-        <button className="primary">
-          <Plus />
-          Add record
-        </button>
-      </header>
-      <div className="toolbar">
-        <div>
-          <Search />
-          <input
-            data-smart-search
-            type="search"
-            placeholder="Search regions or sites"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="emptytable">
-        <ActionsTable>
-          <thead>
-            <tr>
-              <th>Region name</th>
-              <th>Short name</th>
-              <th>State code</th>
-              <th>Sites</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((s) => (
-              <React.Fragment key={s.code}>
-                <tr
-                  className="click drill-parent"
-                  onClick={() => setOpen(open === s.code ? null : s.code)}
-                >
-                  <td>
-                    <b>{s.name}</b>
-                  </td>
-                  <td>{s.code}</td>
-                  <td>{s.state}</td>
-                  <td>{s.sites.length} sites</td>
-                  <td>
-                    <ChevronRight
-                      className={open === s.code ? "drill-open" : ""}
-                    />
-                  </td>
-                </tr>
-                {open === s.code && (
-                  <tr className="drill-row">
-                    <td colSpan="5">
-                      <div className="site-drill">
-                        <div>
-                          <Building2 />
-                          <span>
-                            <b>{s.code} sites</b>
-                            <small>
-                              Equipment and vehicle road status by site
-                            </small>
-                          </span>
-                        </div>
-                        <div className="site-linked-list">
-                          {s.sites.map((site) => {
-                            const list = vehicles.filter(
-                                (v) => (v.currentLocation || v.location) === site,
-                              ),
-                              metrics=equipmentMetrics(list),
-                              on=metrics.onRoad,
-                              off=metrics.offRoad,
-                              idle=metrics.idle;
-                            return (
-                              <div className="site-linked" key={site}>
-                                <button
-                                  className="site-title"
-                                  onClick={() => gotoEquipment("all", site)}
-                                >
-                                  <MapPin />
-                                  {site}
-                                </button>
-                                <button
-                                  onClick={() => gotoEquipment("all", site)}
-                                >
-                                  <strong>{list.length}</strong>
-                                  <span>Total</span>
-                                </button>
-                                <button
-                                  className="on"
-                                  onClick={() => gotoEquipment("onroad", site)}
-                                >
-                                  <strong>{on}</strong>
-                                  <span>On Road</span>
-                                </button>
-                                <button
-                                  className="off"
-                                  onClick={() => gotoEquipment("offroad", site)}
-                                >
-                                  <strong>{off}</strong>
-                                  <span>Off Road</span>
-                                </button>
-                                <button
-                                  className="idle"
-                                  onClick={() => gotoEquipment("idle", site)}
-                                >
-                                  <strong>{idle}</strong>
-                                  <span>Idle</span>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </ActionsTable>
-      </div>
-    </section>
   );
 }
 function Generic({ name, requests = [] }) {
@@ -8159,7 +8024,7 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
   const fields = masterFields[name],
     editFields = name === "Users & employees" ? [...fields, ...userPrivilegeFields, ...userSubmenuFields] : fields,
     displayFields = name === "Privilege" ? fields.slice(0, 2) : fields,
-    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master" || name === "Region master",
+    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master",
     masterValue = (record, key) => {
       if (name === "Users & employees" && key === "site") return userMasterLocation(record);
       const type = fields.find(([field]) => field === key)?.[2];
@@ -9353,9 +9218,6 @@ function PrivilegeMasterPage(props) {
   if (missingUsers.length && failedSync !== syncKey) return <MasterLoader name="Privilege" />;
   return <MasterPage {...props} userOptions={userOptions} siteOptions={privilegeSiteOptions} />;
 }
-// One tab per site: stored Region master rows that still list a merged legacy
-// name (e.g. "Jayant OB 2nd") collapse onto the single display name.
-const regionSites = (record = {}) => displaySiteSelection(record.sites);
 const splitPipeValues = (value = "") => String(value || "").split(/\s*\|\s*/).map((item) => item.trim()).filter(Boolean);
 
 function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenReportSettings }) {
@@ -9616,111 +9478,6 @@ function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenR
   </>);
 }
 
-function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, gotoEquipment, onManage }) {
-  const normalizedRegions = records.map((record, index) => ({
-    ...record,
-    code: String(record.code || record.shortName || "").trim() || `REG-${index + 1}`,
-    sitesList: regionSites(record),
-  }));
-  const [activeRegionId, setActiveRegionId] = useState(() => normalizedRegions[0]?.id);
-  const activeRegion = normalizedRegions.find((region) => region.id === activeRegionId) || normalizedRegions[0];
-  const [activeSite, setActiveSite] = useState("");
-  const [query, setQuery] = useState("");
-  const [equipmentRecords] = useMasterRecords("Equipment master", vehicles);
-  const visibleSites = (activeRegion?.sitesList || []).filter((site) => matchesSmartSearch(query, activeRegion?.name, activeRegion?.code, site));
-  useEffect(() => {
-    const nextSite = visibleSites.includes(activeSite) ? activeSite : visibleSites[0] || "";
-    if (nextSite !== activeSite) setActiveSite(nextSite);
-  }, [activeRegionId, activeSite, visibleSites.join("|")]);
-  const siteMetrics = (site) => {
-    const siteRecords = equipmentRecords.filter((record) => recordBelongsToSite(record, site));
-    const siteRequests = requests.filter((record) => recordBelongsToSite(record, site));
-    const metrics = liveEquipmentMetrics(siteRecords, siteRequests);
-    return { total: siteRecords.length, onRoad: metrics.onRoad, offRoad: metrics.offRoad, idle: metrics.idle };
-  };
-  const regionEquipment = equipmentRecords.filter((record) => (activeRegion?.sitesList || []).some((site) => recordBelongsToSite(record, site)));
-  const regionTotals = liveEquipmentMetrics(regionEquipment, requests);
-  const selectedSiteMetrics = activeSite ? siteMetrics(activeSite) : { total: 0, onRoad: 0, offRoad: 0, idle: 0 };
-  const openEquipment = (road = "all", site = activeSite) => {
-    if (site && gotoEquipment) gotoEquipment(road, site);
-  };
-  const openRegionEquipment = (road) => {
-    if (activeRegion?.sitesList.length && gotoEquipment) gotoEquipment(road, "", "all", activeRegion.sitesList);
-  };
-  return (
-    <section className="region-master-page panel pagepanel">
-      <header>
-        <div>
-          <h1>{regionMasterTitle}</h1>
-          <p>{normalizedRegions.length} regions configured · Managed in Pulse‑II</p>
-          <button className="secondary" type="button" onClick={onManage}>Manage regions and sites</button>
-        </div>
-        <MasterActions name="Region master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} />
-      </header>
-      <div className="region-master-toolbar">
-        <div className="region-main-tabs" role="tablist" aria-label="Region tabs">
-          {normalizedRegions.map((region) => (
-            <button key={region.id} type="button" role="tab" aria-selected={activeRegion?.id === region.id} className={activeRegion?.id === region.id ? "active" : ""} onClick={() => setActiveRegionId(region.id)}>
-              <Building2 />
-              <span><b>{region.code}</b><small>{region.name}</small></span>
-            </button>
-          ))}
-        </div>
-        <label className="region-search"><Search /><input data-smart-search type="search" placeholder="Search sites" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      </div>
-      {activeRegion ? (
-        <>
-          <div className="region-hero">
-            <div>
-              <span>{activeRegion.code}</span>
-              <h2>{activeRegion.name}</h2>
-              <p>{activeRegion.state || "State not assigned"} · {activeRegion.sitesList.length} sites</p>
-            </div>
-            <div className="region-summary-strip">
-              <button type="button" onClick={() => openRegionEquipment("all")}><strong>{regionTotals.total}</strong><span>Total</span></button>
-              <button type="button" onClick={() => openRegionEquipment("onroad")}><strong>{regionTotals.onRoad}</strong><span>On Road</span></button>
-              <button type="button" onClick={() => openRegionEquipment("offroad")}><strong>{regionTotals.offRoad}</strong><span>Off Road</span></button>
-              <button type="button" onClick={() => openRegionEquipment("idle")}><strong>{regionTotals.idle}</strong><span>Idle</span></button>
-            </div>
-          </div>
-          <div className="region-site-tabs" role="tablist" aria-label={`${activeRegion.code} site tabs`}>
-            {visibleSites.map((site) => (
-              <button key={site} type="button" role="tab" aria-selected={activeSite === site} className={activeSite === site ? "active" : ""} onClick={() => setActiveSite(site)}>
-                <MapPin />
-                <span>{site}</span>
-              </button>
-            ))}
-          </div>
-          {activeSite ? (
-            <div className="region-site-panel">
-              <header>
-                <div>
-                  <span>Selected site</span>
-                  <h3>{activeSite}</h3>
-                </div>
-                <button className="secondary" type="button" onClick={() => openEquipment("all", activeSite)}>Open equipment <ChevronRight /></button>
-              </header>
-              <div className="region-site-metrics">
-                {[
-                  ["all", "Total equipment / vehicle", selectedSiteMetrics.total, Gauge],
-                  ["onroad", "On Road", selectedSiteMetrics.onRoad, CheckCircle2],
-                  ["offroad", "Off Road", selectedSiteMetrics.offRoad, AlertTriangle],
-                  ["idle", "Idle", selectedSiteMetrics.idle, Clock],
-                ].map(([road, label, value, Icon]) => (
-                  <button key={road} type="button" className={`region-metric ${road}`} onClick={() => openEquipment(road, activeSite)}>
-                    <Icon />
-                    <span>{label}</span>
-                    <strong>{Number(value).toLocaleString("en-IN")}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : <p className="empty-state">No sites match this search.</p>}
-        </>
-      ) : <p className="empty-state">No regions configured.</p>}
-    </section>
-  );
-}
 Generic = function GenericWithMasters(props) {
   const name = props.name,
     [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(name);
@@ -9744,16 +9501,18 @@ Generic = function GenericWithMasters(props) {
     <OriginalGeneric {...props} />
   );
 };
-const OriginalSubsidiaries = Subsidiaries;
-Subsidiaries = function SubsidiariesWithImport({ gotoEquipment, requests = [] } = {}) {
-  const [managing, setManaging] = useState(false);
-  const [storedRecords, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords("Region master");
+function RegionSiteMaster() {
+  const [storedRecords, , loaded, , , , loadError, retryLoad] = useMasterRecords("Region master");
   if (loadError && !loaded) return <MasterLoadError name={regionMasterTitle} error={loadError} retry={retryLoad} />;
   if (!loaded) return <MasterLoader name={regionMasterTitle} />;
-  const records = storedRecords.map(record => ({...record, code: record.code || record.shortName || "", sites: regionSites(record).join(" | ")}));
-  if (managing) return <MasterPage name="Region master" records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onDeleteAll={onDeleteAll} headerControl={<button className="secondary" type="button" onClick={() => setManaging(false)}>Back to region overview</button>} />;
-  return <RegionMasterPage records={records} requests={requests} onAdd={onAdd} onDeleteAll={onDeleteAll} gotoEquipment={gotoEquipment} onManage={() => setManaging(true)} />;
-};
+  const records = storedRecords.map(record => ({
+    ...record,
+    code: record.code || record.shortName || "",
+    sites: displaySiteSelection(record.sites).join(" | "),
+  }));
+  return <MasterPage name="Region master" records={records} headerControl={<p>Source: pulse.cmll.in</p>} />;
+}
+
 function InfoPulseTimelineModal({ overlayClassName = "", ...props }) {
   // Escape animated pulse rows so the lifecycle is neither clipped nor covered by sibling cards.
   return createPortal(<Modal {...props} overlayClassName={`${overlayClassName} pulse-timeline-overlay`} />, document.body);
@@ -12105,7 +11864,7 @@ function App() {
   ) : renderedActive === "Breakdown master" ? (
     renderedBreakdownFleetFilter ? <Equipment initialFilter={renderedBreakdownFleetFilter} pageTitle="Breakdown master" statusRequests={requests} allowedLocations={renderedBreakdownFleetSites} /> : <Breakdown requests={requests} />
   ) : renderedActive === "Region master" ? (
-    <Subsidiaries gotoEquipment={gotoEquipment} requests={requests} />
+    <RegionSiteMaster />
   ) : ORGANISATION_PAGE_NAMES.includes(renderedActive) ? (
     <OrganisationChartPage view={Object.keys(ORGANISATION_PAGES).find((key) => ORGANISATION_PAGES[key] === renderedActive)} />
   ) : renderedActive === "Meta API setup" ? (

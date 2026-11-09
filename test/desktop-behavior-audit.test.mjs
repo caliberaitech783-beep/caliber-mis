@@ -31,14 +31,6 @@ test("same-count request updates refresh the operational dashboard data", () => 
   assert.doesNotMatch(normal, /\},\[session\?\.token,requests\.length\]\)/);
 });
 
-test("Region Master search reconciles the selected site with visible tabs", () => {
-  const region = source.slice(source.indexOf("function RegionMasterPage"), source.indexOf("Generic = function GenericWithMasters"));
-  assert.match(region, /const visibleSites = .*filter\(\(site\) => matchesSmartSearch/);
-  assert.match(region, /const nextSite = visibleSites\.includes\(activeSite\) \? activeSite : visibleSites\[0\] \|\| ""/);
-  assert.match(region, /if \(nextSite !== activeSite\) setActiveSite\(nextSite\)/);
-  assert.match(region, /visibleSites\.join\("\|"\)/);
-});
-
 test("shared modal traps focus, supports Escape, locks scrolling and restores focus", () => {
   const modal = source.slice(source.indexOf("function Modal("), source.indexOf("function requestStartParts"));
   assert.match(modal, /const dialogRef = useRef\(null\)/);
