@@ -1,3 +1,4 @@
+import {enableCalendarFieldClicks} from './calendar-field-click.mjs';
 import {isLmv} from '../shared/equipment-kind.mjs';
 import {lmvCsvFields,readLmvExport,saveLmvExport} from './lmv-import.mjs';
 import {browserSessionRequestInit} from './browser-session-transport.mjs';
@@ -12247,6 +12248,7 @@ function App() {
 }
 document.documentElement.dataset.caliberUiVersion = APP_VERSION;
 
+enableCalendarFieldClicks(document);
 createRoot(document.getElementById("root")).render(
   <ApplicationErrorBoundary>
     <EnvironmentBanner />

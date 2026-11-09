@@ -87,14 +87,18 @@ export default function SearchableSelect({
     if(!event.currentTarget.contains(event.relatedTarget)){setOpen(false);setActive(-1);setQuery(null)}
   }}>
     {label&&<label htmlFor={inputProps.id||id}>{label}{required?' *':''}</label>}
-    <div className="searchable-select-control">
+    <div className="searchable-select-control" onClick={()=>{
+      if(disabled)return;
+      input.current?.focus();
+      setOpen(true);
+    }}>
       <Search aria-hidden="true" />
       <input {...inputProps} id={inputProps.id||id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
         aria-describedby={[hint?`${id}-hint`:'',showOverflowValue&&valueOverflows?`${id}-value`:''].filter(Boolean).join(' ')||undefined} aria-busy={loading} disabled={disabled}
         value={query??selectedText} placeholder={loading?'Loading…':placeholder}
-        onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onClick={()=>setOpen(true)} onKeyDown={keyDown}
+        onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onKeyDown={keyDown}
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
       <ChevronDown aria-hidden="true" />
     </div>
