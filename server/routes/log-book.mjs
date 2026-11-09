@@ -71,10 +71,11 @@ export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  const vehicle=kind==='vehicle'||kind==='lmv',meterKind=vehicle?'vehicle':'equipment';
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
- const shiftHours=manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
+ const optionalShift=manualEntry&&kind==='vehicle'&&!input.scanCardId;
+ const shiftHours=optionalShift&&(input.shiftHours==null||input.shiftHours==='')?(CARD_SHIFTS[normalizeCardShift(input.cardShift||input.bookShiftCode)]?.hours||8):manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
- const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true});
- if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
+ const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true,optional:optionalShift});
+ if(!assetId||!employeeId&&!nonWorking||!shiftId&&!optionalShift)fail('Select an asset, employee and shift from their masters.');
  const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
 const openingKmr=vehicle?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=vehicle?number(input.closingKmr,'Closing KMR',{signed:true}):null;
 if(vehicle){const limits=Object.values(shiftMeterIssues(input,meterKind));if(limits.length)fail(limits.join(' '));}
@@ -111,6 +112,7 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
  const data=normalizeLogBook(kind,input,{manualEntry});
+ const optionalShift=manualEntry&&kind==='vehicle'&&!input.scanCardId;
      const masterIds=[data.assetId,data.employeeId,data.shiftId];
      if(operatorSplit)masterIds.push(operatorSplit.secondOperatorId);
      if(input.workOrderId)masterIds.push(number(input.workOrderId,'Work Order',{integer:true}));
@@ -125,22 +127,22 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      }
      const baseShift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
      const manualShifts=manualEntry&&['day','night'].includes(input.manualShift)?(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[];
-     const shift=manualEntry&&isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,manualShifts):baseShift;
+     const shift=manualEntry&&isManualShift(input.manualShift)&&baseShift?manualShiftWindow({...input,shiftHours:data.shiftHours},baseShift,manualShifts):baseShift;
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
-     if(!asset||!employee&&!employeeOptional||!baseShift||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
-     const masterShift=normalizeCardShift(shift.shiftCode)||normalizeCardShift(shift.shiftName||shift.name||shift.shift);
+     if(!asset||!employee&&!employeeOptional||(!optionalShift||data.shiftId)&&(!baseShift||!shift))fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     const masterShift=normalizeCardShift(shift?.shiftCode)||normalizeCardShift(shift?.shiftName||shift?.name||shift?.shift);
      if(!manualEntry&&kind==='vehicle'&&masterShift&&data.shiftHours!==CARD_SHIFTS[masterShift].hours)fail('The selected shift requires '+CARD_SHIFTS[masterShift].hours+' hours.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(!allowsLogBookKind(asset,kind))fail('Select an asset from the correct log book category.');
-     const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift.site||shift.siteName);
+     const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift?.site||shift?.siteName);
      const siteHolds=[];
      if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location)){if(kind==='lmv'||!twoStageEnabled())fail('The selected asset is assigned to a different location.');siteHolds.push({role:kind==='vehicle'?'vlb_door':'elb_door',assetId:String(data.assetId),assetSite,label:text(asset.door||asset.doorNo||equipmentDoorNumber(asset))});}
      if(kind==='vehicle'&&twoStageEnabled())for(const row of data.trips)if(row.equipmentSite&&canonicalSiteName(row.equipmentSite)!==canonicalSiteName(data.location))siteHolds.push({role:'vlb_loader',assetId:String(row.equipmentId),assetSite:row.equipmentSite,label:row.equipmentName,trips:row.tripCount});
      data.siteHolds=siteHolds;
      if(shiftSite&&canonicalSiteName(shiftSite)!==canonicalSiteName(data.location))fail('The selected shift is assigned to a different location.');
-     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
- if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
+     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift?.shiftName||shift?.name||shift?.shift),masterShiftStart:text(shift?.startTime||shift?.start)});
+ if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||(optionalShift?bookShiftCode(input.bookShiftCode):'')||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
  else data.bookShiftCode=bookShiftCode(input.bookShiftCode)||bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName)||'';
  data.chassis=text(asset.chassis||asset.chassisNo);
  const capacityPair=assetCapacityPair(asset);data.assetMake=capacityPair.make;data.assetModel=capacityPair.model;
