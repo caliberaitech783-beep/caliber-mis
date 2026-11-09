@@ -87,8 +87,8 @@ export default function SearchableSelect({
     if(!event.currentTarget.contains(event.relatedTarget)){setOpen(false);setActive(-1);setQuery(null)}
   }}>
     {label&&<label htmlFor={inputProps.id||id}>{label}{required?' *':''}</label>}
-    <div className="searchable-select-control" onClick={()=>{
-      if(disabled)return;
+    <div className="searchable-select-control" onClick={event=>{
+      if(disabled||event.target===input.current)return;
       input.current?.focus();
       setOpen(true);
     }}>
@@ -98,7 +98,7 @@ export default function SearchableSelect({
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
         aria-describedby={[hint?`${id}-hint`:'',showOverflowValue&&valueOverflows?`${id}-value`:''].filter(Boolean).join(' ')||undefined} aria-busy={loading} disabled={disabled}
         value={query??selectedText} placeholder={loading?'Loading…':placeholder}
-        onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onKeyDown={keyDown}
+        onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onClick={()=>setOpen(true)} onKeyDown={keyDown}
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
       <ChevronDown aria-hidden="true" />
     </div>
