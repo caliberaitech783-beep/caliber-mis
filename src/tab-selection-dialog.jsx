@@ -7,13 +7,17 @@ function openDialog(dialog) {
   dialog.querySelector('input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled])')?.focus();
 }
 
-export default function TabSelectionDialog({ title, openKey = true, enabled = true, onSubmit, children }) {
+export default function TabSelectionDialog({ title, openKey = true, enabled = true, closeKey, onSubmit, children }) {
   const dialogRef = useRef(null);
   const titleId = useId();
 
   useEffect(() => {
     if (enabled && openKey) openDialog(dialogRef.current);
   }, [enabled, openKey]);
+
+  useEffect(() => {
+    if (closeKey && dialogRef.current?.open) dialogRef.current.close();
+  }, [closeKey]);
 
   const submit = onSubmit && (event => {
     event.preventDefault();

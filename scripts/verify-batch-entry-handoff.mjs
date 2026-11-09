@@ -56,6 +56,8 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
   page.on('pageerror',error=>{errors.push(error.message);console.error(error.message)});
   await page.goto('http://127.0.0.1:'+server.httpServer.address().port+'/layout-checks/batch-entry.html?order='+order);
+  const setup=page.getByRole('dialog',{name:'Batch options'});
+  await setup.getByRole('button',{name:'Close',exact:true}).click();
   const row=page.locator('tr').filter({hasText:'Dudhichua test batch'});
   assert.match(await row.innerText(),/121/);
   await row.getByRole('button',{name:'View report',exact:true}).click();
@@ -66,6 +68,7 @@ try{
   const site=page.locator('.vlb-entry-batch-picker select');
   await page.waitForFunction(()=>document.querySelector('.vlb-entry-batch-picker select')?.value==='Dudhichua OC');
   assert.equal(await site.inputValue(),'Dudhichua OC');
+  await page.getByRole('dialog',{name:'Select batch',exact:true}).waitFor({state:'hidden'});
   if(action==='Manual'){
    await page.locator('#logbook-entry-form').waitFor({state:'visible'});
    await page.waitForFunction(()=>[...document.querySelectorAll('#logbook-entry-form input')].some(input=>['01-11-2026','2026-11-01','01/11/2026'].includes(input.value)));
