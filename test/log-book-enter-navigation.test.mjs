@@ -227,7 +227,7 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  const location=all(tree,node=>node.props['aria-label']==='Location')[0];assert.equal(location.type,'input');assert.equal(location.props.readOnly,true);
  const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
- const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node?.props?.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
  assert.equal(equipment.props.showOverflowValue,undefined);
  assert.equal(choices[0].props['data-display-label'],'EX1');
  assert.deepEqual(React.Children.toArray(choices[0].props.children),['Excavator',' · EX1']);
@@ -248,3 +248,14 @@ test('changing a shift or asset clears the prior manual BD fallback',()=>{
 });
 
 
+
+test('VLB trip selector displays a saved equipment label that differs from the master option',()=>{
+ const app=harness();
+ app.slots[2]={...app.slots[2],accountLocation:'Sasti OC',assets:[{id:'e1',kind:'equipment',site:'Sasti OC',door:'TPC-29',name:'Excavator'}]};
+ app.render();app.runAccountLocation();
+ app.slots[0].trips=[{...blankTrip(),equipmentId:'e1',equipmentName:'Tpc 29'}];
+ const equipment=all(app.render(),node=>node.props['aria-label']==='Equipment name row 1')[0];
+ assert.equal(equipment.props.value,'Tpc 29');
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node?.props?.value);
+ assert.deepEqual(choices.map(node=>node.props.value),['Tpc 29','TPC-29']);
+});
