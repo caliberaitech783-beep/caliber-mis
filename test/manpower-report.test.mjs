@@ -242,3 +242,40 @@ test('a zero-trip entry beside a saved card adds its reason, not a second machin
  assert.deepEqual(r.attendanceSites,[{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}]);
  assert.ok(r.notes.some(note=>/^Shift Attendance Equipment Wise:/.test(note)));
 });
+
+// Batches behind each shift, site names and the driver history (10 Nov 2026)
+test('each site, date and shift reports its batch: missing once the shift has ended, open, or closed',()=>{
+ const at=clock=>Date.parse(clock+'+05:30'),batch=(shift,patch={})=>({id:'b'+shift,name:'BATCH-'+shift,site:'sasti ob',report_date:date,shift,closed_at:null,stage:'vlb_open',...patch});
+ const states=(batches,now,filters={from:date,to:date})=>buildManpowerReport({records:[],assets,employees,shifts,batches,filters,now}).attendanceShifts.map(b=>[b.date,b.shift,b.state,b.batch]);
+ // 10 Nov, 14:00: Shift 1 (05:00 to 13:00) has ended, Shift 2 is running, Shift 3 has not started.
+ assert.deepEqual(states([],at('2026-11-10T14:00:00')),[[date,'S1','none',''],[date,'S2','not_due',''],[date,'S3','not_due','']],'the running shift is not reported as missing');
+ assert.deepEqual(states([],at('2026-11-11T05:00:00')).map(b=>b[2]),['none','none','none'],'Shift 3 is due when it ends at 05:00 the next morning');
+ assert.deepEqual(states([batch('S1',{closed_at:'2026-11-10T15:00:00Z',stage:'closed'}),batch('S2',{stage:'elb_open'}),batch('S3')],at('2026-11-11T09:00:00')),
+  [[date,'S1','closed','BATCH-S1'],[date,'S2','elb_open','BATCH-S2'],[date,'S3','vlb_open','BATCH-S3']]);
+ assert.deepEqual(states([batch('S2',{closed_at:'2026-11-10T22:00:00Z'}),batch('S2',{id:'again',name:'BATCH-S2-2'})],at('2026-11-10T14:00:00'))[1],[date,'S2','vlb_open','BATCH-S2-2'],'a reopened or second batch keeps the shift open');
+ assert.deepEqual(states([],at('2026-11-12T09:00:00'),{from:date,to:'2026-11-11',shift:'S2'}).map(b=>b.slice(0,3)),[[date,'S2','none'],['2026-11-11','S2','none']],'one row per day; the Shift selection narrows the shifts');
+ // A site lists the shifts its Shift Master holds; a site without any is expected to run Shift 1 to 3, due after the day ends.
+ const twoShift=shifts.slice(0,2),bare=buildManpowerReport({records:[],assets,employees,shifts:twoShift,batches:[{id:'x',name:'OTHER',site:'Majri OC',report_date:date,shift:'S1',closed_at:null,stage:'vlb_open'}],filters:{from:date,to:date},now:at('2026-11-10T23:00:00')});
+ assert.deepEqual(bare.attendanceShifts.map(b=>[b.siteKey,b.shift,b.state]),[['majri ob','S1','vlb_open'],['majri ob','S2','not_due'],['majri ob','S3','not_due'],['sasti ob','S1','none'],['sasti ob','S2','none']]);
+});
+test('a site is shown under one properly written name, never its stored lower-case key',()=>{
+ const attendance=[{date,site:'sasti ob',shift:'S3',employee_id:22,asset_id:2,reason:'Rain',remarks:''}];
+ const lower=card(1,1,{},{site:'sasti ob'}),second=card(2,2,{location:'sasti ob'},{site:'sasti ob'});
+ const r=buildManpowerReport({records:[lower,second,card(3,1,{location:'gauri pauni ob 2nd',assetId:99},{site:'gauri pauni ob 2nd'})],attendance,assets,employees,shifts,batches:[{id:'b',name:'B',site:'sasti ob',report_date:date,shift:'S1',closed_at:null,stage:'vlb_open'}],filters:{from:date,to:date}});
+ assert.deepEqual(r.attendanceSites,[{siteKey:'gauri pauni ob 2nd',site:'gauri pauni ob 2nd'},{siteKey:'sasti ob',site:'Sasti OC'}],'the Shift Master spelling wins; a site known only by its key keeps it');
+ assert.deepEqual(r.otSites.map(s=>s.site),['gauri pauni ob 2nd','Sasti OC']);
+ assert.deepEqual(r.options.sites,['Sasti OC','gauri pauni ob 2nd'],'the Site selector lists each site once');
+ assert.deepEqual([...new Set(r.details.map(d=>d.site))].sort(),['Sasti OC','gauri pauni ob 2nd']);assert.deepEqual(r.ot.map(e=>[e.severity,e.site]),[['red','Sasti OC']]);
+ assert.deepEqual([...new Set(r.exceptions.map(e=>e.site))],['gauri pauni ob 2nd']);
+ assert.deepEqual([...new Set(r.attendanceEquipment.map(x=>x.site))].sort(),['Sasti OC','gauri pauni ob 2nd']);
+});
+test('driver history counts actual duties month by month for every driver, beside the OT counts',()=>{
+ const range={yearFrom:'2026-11-01',yearTo:'2026-12-31',monthFrom:'2026-12-01',monthTo:'2026-12-31'};
+ const event=(id,dutyDate,severity)=>({id,employeeKey:'A',siteKey:'sasti ob',dutyDates:[dutyDate],dates:dutyDate,severity,reason:severity,shifts:'',logBook:'VLB',equipment:'',combinedHours:15,books:''});
+ const duty=(employeeKey,day)=>({employeeKey,siteKey:'sasti ob',date:day});
+ const tally=otDriverTally([event('1','2026-11-05','red'),event('2','2026-12-02','orange')],range,[duty('A','2026-11-05'),duty('A','2026-11-06'),duty('A','2026-12-02'),duty('B','2026-12-03'),duty('B','2026-10-30')]);
+ assert.deepEqual(tally.map(d=>[d.employeeKey,d.duties,d.year.total,d.month.total,d.events.length]),[['A',{'2026-11':2,'2026-12':1},2,1,2],['B',{'2026-12':1},0,0,0]],'a driver with duties and no OT is listed; duties outside the year are left out');
+ assert.deepEqual(otDriverTally([event('1','2026-11-05','red')],range).map(d=>d.duties),[{}]);
+ // The attendance rows carry the driver key that joins them to this history.
+ const rows=report([card(1,1),card(2,2)]).attendanceEquipment;assert.deepEqual(rows.map(x=>x.employeeKey),[rows[0].employeeKey,rows[0].employeeKey]);assert.ok(rows[0].employeeKey);
+});

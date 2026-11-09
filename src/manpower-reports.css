@@ -14,13 +14,7 @@
 .mp-filter-current{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:9px 14px;border:1px solid #ddd1ea;border-radius:9px;background:var(--card,#fff);color:inherit;text-align:left;cursor:pointer}.mp-reports .mp-filter-current:disabled{opacity:1;cursor:default}.mp-filter-current span{font-size:13px;color:var(--muted,#665e75)}
 .mp-autohide{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;cursor:pointer}.mp-autohide input{width:17px;height:17px}
 
-/* OT overview: flag totals by log book, one card per site, then one site's drivers. */
-.mp-ot-summary{display:grid;grid-template-columns:minmax(150px,1fr) minmax(0,3fr);gap:12px}.mp-ot-summary>div{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;padding:14px 18px;border:1px solid #dfd6e9;border-radius:12px;background:var(--card,#fff)}.mp-ot-summary>div small{font-weight:750;letter-spacing:.1em;color:#6b42a1}.mp-ot-summary>div strong{font-size:20px}.mp-ot-summary>div button{padding:6px 10px;border:1px solid #c7b5dd;border-radius:8px;background:transparent;color:inherit;cursor:pointer}
-.mp-ot-matrix{width:100%;padding:6px;border:1px solid #dfd6e9;border-radius:12px;border-collapse:separate;border-spacing:6px;background:var(--card,#fff)}.mp-ot-matrix th{padding:2px 6px;font-size:12px;font-weight:800;letter-spacing:.06em;text-align:center}.mp-ot-matrix thead th:first-child{text-align:left}.mp-ot-matrix thead small,.mp-ot-book small{display:block;font-size:11px;font-weight:500;letter-spacing:0;color:var(--muted,#665e75)}.mp-ot-matrix th[scope=row],.mp-ot-matrix td{padding:0}
-.mp-ot-book{display:block;width:100%;padding:7px 10px;border:2px solid transparent;border-radius:9px;background:transparent;color:inherit;font-size:14px;text-align:left;cursor:pointer}.mp-ot-book b{display:block;font-size:15px;color:var(--text,#242137)}.mp-ot-book[aria-pressed=true]{border-color:#59338b;background:color-mix(in srgb,#59338b 12%,transparent)}
-.mp-ot-count{display:block;width:100%;padding:8px 10px;border:2px solid transparent;border-radius:9px;text-align:center;cursor:pointer}.mp-ot-count strong{font-size:22px;line-height:1}.mp-ot-count[aria-pressed=true]{border-color:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent)}
-.mp-site-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.mp-site-card{display:grid;gap:10px;padding:14px 16px;border:1px solid #dfd6e9;border-radius:12px;background:var(--card,#fff);color:inherit;text-align:left;cursor:pointer}.mp-site-card strong{font-size:16px}.mp-site-card[aria-pressed=true]{border-color:#59338b;box-shadow:0 0 0 2px #59338b}
-.mp-site-books{display:grid;gap:4px;font-size:13px}.mp-site-books>span{display:grid;grid-template-columns:minmax(48px,1.3fr) repeat(3,minmax(0,1fr));align-items:center;gap:6px;padding:2px 4px;border-radius:7px}.mp-site-books>span.mp-on{background:color-mix(in srgb,#59338b 12%,transparent)}.mp-site-books i{font-style:normal;font-size:11px;font-weight:700;text-align:center;color:var(--muted,#665e75)}.mp-site-books b{text-align:center}.mp-site-books i:first-child,.mp-site-books b:first-child{text-align:left}.mp-site-books .mp-flag{padding:2px 6px}.mp-site-books .mp-zero{font-weight:500;color:var(--muted,#8a8496)}
+/* Summary tables: sites, categories and equipment share one block style. */
 .mp-category{padding:14px 18px;border:1px solid #dfd6e9;border-radius:12px;background:var(--card,#fff);overflow-x:auto}.mp-category h2{margin:0 0 10px;font-size:16px}.mp-category p{margin:0}.mp-category table{width:100%;border-collapse:collapse;font-size:14px}.mp-category th,.mp-category td{padding:8px 10px;border-bottom:1px solid #e6dff0;text-align:right}.mp-category th:first-child,.mp-category td:first-child{text-align:left}
 /* Drill-down: a category name or one of its numbers lists those drivers and duties under the table. */
 .mp-category .mp-category-hint{margin:0 0 10px;font-size:13px;color:var(--muted,#665e75)}.mp-category-hint strong{color:var(--text,#242137)}.mp-category-hint button{margin-left:8px;padding:4px 10px;border:1px solid #c7b5dd;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
@@ -29,8 +23,7 @@
 /* A driver's name opens his OT history for the year. */
 .mp-driver-open{padding:2px 6px;margin-left:-6px;border:2px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;font-weight:700;text-align:left;text-decoration:underline;text-decoration-color:#c7b5dd;text-underline-offset:3px;cursor:pointer}.mp-driver-open:hover{border-color:#c7b5dd}.mp-driver-open[aria-pressed=true]{border-color:#59338b;background:color-mix(in srgb,#59338b 12%,transparent)}
 .mp-driver-history tr.mp-total td{font-weight:800;border-top:2px solid #c7b5dd}
-@media(max-width:640px){.mp-ot-summary{grid-template-columns:1fr}}
-@media print{.mp-filter-bar,.mp-site-cards{display:none}}
+@media print{.mp-filter-bar,.mp-book-pick{display:none}}
 
 /* Shift Attendance Equipment Wise: sites by shift, then equipment, then the drivers. Rows: red, orange, brown (review), blue (zero trips). */
 .mp-att th[scope=row]{font-weight:700}.mp-att thead th{font-size:12px;letter-spacing:.04em}.mp-att .mp-zero{color:var(--muted,#8a8496)}
@@ -40,3 +33,22 @@
 .mp-reports tr.mp-duty-red>td{background:color-mix(in srgb,#c92c2c 17%,var(--card,#fff))}.mp-reports tr.mp-duty-orange>td{background:color-mix(in srgb,#e67e00 21%,var(--card,#fff))}.mp-reports tr.mp-duty-review>td{background:color-mix(in srgb,#8b4513 32%,var(--card,#fff))}.mp-reports tr.mp-duty-zero>td{background:color-mix(in srgb,#2563c8 16%,var(--card,#fff))}
 .mp-reports tr.mp-duty-red>td:first-child{border-left:5px solid #c92c2c}.mp-reports tr.mp-duty-orange>td:first-child{border-left:5px solid #d97100}.mp-reports tr.mp-duty-review>td:first-child{border-left:5px solid #8b4513}.mp-reports tr.mp-duty-zero>td:first-child{border-left:5px solid #2563c8}
 @media print{.mp-reports tr[class*="mp-duty-"]>td{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+
+/* Shift boxes: the whole box is red while the batch of that site and shift is missing, outlined orange while it is open. */
+.mp-att-count small{display:block;margin-top:2px;font-size:11px;font-weight:600;line-height:1.2}
+.mp-att-count.mp-att-none{background:#c92c2c;border-color:#a31f20;color:#fff}.mp-att-count.mp-att-none:hover{border-color:#6f1414}.mp-att-count.mp-att-open{border:2px solid #d97100}.mp-att-count.mp-att-open small{color:#984800}
+.mp-att-count[aria-pressed=true].mp-att-none{background:#8f1d1d;border-color:#59338b;box-shadow:0 0 0 3px color-mix(in srgb,#59338b 35%,transparent)}.mp-att-count[aria-pressed=true].mp-att-open{border-color:#d97100}.mp-att-count[aria-pressed=true].mp-att-open small{color:#ffe1bd}
+.mp-category .mp-att-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;font-size:13px;color:var(--muted,#665e75)}
+.mp-flag.mp-att-none{background:#c92c2c;border-color:#a31f20;color:#fff}.mp-flag.mp-att-open{background:transparent;border:2px solid #d97100;color:#984800}
+.mp-category .mp-att-batch{margin:0 0 8px;padding:8px 12px;border-radius:8px;font-size:13px;line-height:1.5}.mp-att-batch-none{background:color-mix(in srgb,#c92c2c 14%,var(--card,#fff));border-left:5px solid #c92c2c}.mp-att-batch-open{background:color-mix(in srgb,#e67e00 14%,var(--card,#fff));border-left:5px solid #d97100}
+/* A table heading may carry a second line that says what the number counts. */
+.mp-category thead th small{display:block;font-size:11px;font-weight:500;letter-spacing:0;color:var(--muted,#665e75)}
+/* Log book: one small selector instead of a split in every block. */
+.mp-book-pick{display:flex;flex-wrap:wrap;gap:8px}.mp-book-pick button{padding:7px 14px;border:1px solid #c7b5dd;border-radius:999px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:700;cursor:pointer}.mp-book-pick button[aria-pressed=true]{background:#59338b;border-color:#59338b;color:#fff}
+/* Cards to correct stay behind one line on the attendance and OT pages. */
+.mp-review>summary{font-weight:700}.mp-review[open]>summary{margin-bottom:12px}
+/* A coloured row keeps its colour under the pointer; the shared report table whitens hovered rows. */
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-red:hover>td{background:color-mix(in srgb,#c92c2c 26%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-orange:hover>td{background:color-mix(in srgb,#e67e00 30%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-review:hover>td{background:color-mix(in srgb,#8b4513 40%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-zero:hover>td{background:color-mix(in srgb,#2563c8 24%,var(--card,#fff));color:inherit}
