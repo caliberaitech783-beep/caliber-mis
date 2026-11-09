@@ -22,12 +22,17 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     ORDER BY l.book_date,l.id LIMIT 50001`,[filters.contextFrom,filters.contextTo,sites]);
    if(rows.length>50000)throw Object.assign(new Error('This range contains too many saved cards. Select a shorter date range.'),{status:400});
    const visible=rows.filter(r=>siteAllowed(req.logBookScope,r.site));
+   const {rows:attendance}=await client.query(`SELECT book_date::text AS date,site,shift,employee_id,asset_id,reason,remarks
+    FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
+    ORDER BY book_date,site,shift,employee_id LIMIT 50001`,
+   [filters.from,filters.to,filters.site?[canonicalSiteName(filters.site)]:req.logBookScope.sites]);
+   if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
    const linked=await withHandovers(client,visible.filter(r=>r.book_type==='vehicle'),sites);
    const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees']])).rows;
    const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
-   const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
+   const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
    await client.query('COMMIT');
    res.set('Cache-Control','private, no-store').json({...report,generatedAt:new Date().toISOString()});
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error);}

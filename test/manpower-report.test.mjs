@@ -12,6 +12,22 @@ function card(id=1,shift=1,patch={},extra={}){
  return {id,book_no:'CARD-'+id,book_type:'vehicle',book_date:data.bookDate,site:data.location,asset_id:data.assetId,data,batches:[{id:'b'+shift,name:'BATCH-S'+shift,closed_at:'2026-11-11'}],...extra};
 }
 const report=(records,extra={})=>buildManpowerReport({records,assets,employees,shifts,filters:{from:date,to:date},...extra});
+test('unassigned zero-trip attendance counts once after VLB or ELB cards arrive',()=>{
+ const entry={date,site:'sasti ob',shift:'S1',employee_id:21,asset_id:null,reason:'Rain',remarks:''};
+ const attendance=[entry,{...entry,reason:'No work'}];
+ const zero=report([],{attendance});
+ assert.equal(zero.shiftAttendance.length,1);
+ assert.equal(zero.shiftAttendance[0].status,'Present — 0 trips');
+ assert.equal(zero.shiftAttendance[0].trips,0);
+ assert.equal(zero.totals.savedRecords,0);
+ const elb=card(3,1,{fleetTrips:5},{book_type:'equipment'});
+ const both=report([card(),card(2,2),elb],{attendance});
+ assert.equal(both.shiftAttendance.length,2);
+ assert.equal(both.shiftAttendance[0].status,'Present — with trips');
+ assert.equal(both.shiftAttendance[0].trips,5);
+ assert.match(both.shiftAttendance[0].reason,/Rain/);
+ assert.equal(report([elb],{attendance}).shiftAttendance[0].status,'Present — with trips');
+});
 test('ten Volvo vehicles count once each despite trip rows and repeated records',()=>{
  const records=assets.map((a,i)=>card(i+1,1,{assetId:a.id,door:a.door,employeeId:i%2?22:21,caliberId:i%2?'102':'101'}));
  const r=report([...records,records[0],card(100,1)]);

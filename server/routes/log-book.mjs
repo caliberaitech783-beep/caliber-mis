@@ -1,5 +1,6 @@
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
+import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {registerLogBookDashboard} from './log-book-dashboard.mjs';
 import {registerFleetReconciliation} from './fleet-reconciliation-api.mjs';
 import {withEquipmentAliases,aliasOtpEnabled} from '../../shared/equipment-aliases.mjs';
@@ -12,6 +13,7 @@ import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
 import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
+import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
@@ -150,12 +152,19 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
 }
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
- const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
+ const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
  const batchScope=protect[2];
  registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
+ const attendanceAccess=(req,res,next)=>{
+  const kind=req.method==='POST'?req.body?.kind:req.query?.kind;
+  const page=kind==='vehicle'?'Vehicle Log Book':kind==='equipment'?'Equipment Log Book':'';
+  if(page&&misPageAllowed(req.session,page))return next();
+  return requireAdministrator(req,res,next);
+ };
+ registerShiftAttendance(app,{pool,protect:[requireSession,attendanceAccess,batchScope],ensureBooks:ensure});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
@@ -181,7 +190,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      res.set('Cache-Control','no-store').json({records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),cards,scanConnected:Boolean(exists?.cards&&exists?.batches)});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
- app.get('/api/log-books/options',...protect,async(req,res,next)=>{
+ app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
    try{await ensure();
      const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set();const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
@@ -192,6 +201,15 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
        if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
        if(row.master_name==='Region master')for(const site of Array.isArray(r.sites)?r.sites:String(r.sites||'').split('|'))if(text(site))sites.add(text(site));
+     }
+     if(req.path==='/api/shift-attendance'){
+       const allowed=site=>siteAllowed(req.logBookScope,site);
+       return res.set('Cache-Control','private, no-store').json({
+        accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),
+        assets:assets.filter(r=>r.kind===req.query.kind&&allowed(r.site)),
+        employees:employees.filter(r=>displaySiteSelection(r.site).some(allowed)),
+        shifts:shifts.filter(r=>allowed(r.site)),sites:displaySiteSelection([...sites]).filter(allowed).sort()
+       });
      }
      const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters WHERE book_date>=$$2026-11-01$$ UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment' AND book_date>=$$2026-11-01$$")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
      const vehicleCardCounters={M:{},S:{}};for(const r of (await pool.query('SELECT book_date::text AS book_day,shift,source,last_number FROM mis_vlb_card_counters WHERE book_date>=$$2026-11-01$$')).rows)vehicleCardCounters[r.source][r.book_day+'/'+r.shift]=Number(r.last_number);

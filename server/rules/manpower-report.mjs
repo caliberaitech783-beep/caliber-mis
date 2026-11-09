@@ -45,7 +45,7 @@ const meter=(data,kind)=>{const a=number(data['opening'+kind]),b=number(data['cl
 const sourceLabel=r=>r.batchNames.join('; ')||`Saved ${r.kind==='vehicle'?'VLB':'ELB'} (no site batch)`;
 const rowMatches=(r,f,{dates=true}={})=>(!dates||r.date>=f.from&&r.date<=f.to)&&(!f.site||canonicalSiteName(r.site)===canonicalSiteName(f.site))&&(!f.shift||r.shift===f.shift)&&(!f.batch||r.batchIds.includes(f.batch))&&(!f.employee||r.employeeKey===f.employee)&&(!f.asset||r.assetKey===f.asset);
 
-export function buildManpowerReport({records=[],assets=[],employees=[],shifts=[],batches=[],filters}){
+export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters}){
  const f=manpowerFilters(filters),exceptions=[],rows=[],resolveEmployee=identityIndex(employees),assetMap=new Map(assets.map(a=>[String(a.id),a]));
  const addIssue=(r,reason)=>{r.issues.push(reason);exceptions.push({id:`${r.id}:${r.issues.length}`,date:r.date,site:r.site,shift:r.shift,door:r.door,employeeId:r.employeeId||r.savedEmployeeId,employeeName:r.employeeName,book:r.book,batches:sourceLabel(r),reason,record:r});};
  const assetDoors=new Map();
@@ -107,7 +107,39 @@ export function buildManpowerReport({records=[],assets=[],employees=[],shifts=[]
  const ot=buildOt(duties,f);
  const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>e);
  const visibleBatches=batches.filter(b=>b.report_date>=f.from&&b.report_date<=f.to);
- return {filters:f,summary,details,performance,ot,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.length},options:{sites:unique([...rows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(rows.map(r=>r.shift)).sort(),assets:unique(rows.map(r=>r.assetKey)).map(value=>({value,label:rows.find(r=>r.assetKey===value).door})),employees:unique(rows.map(r=>r.employeeKey)).map(value=>{const r=rows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.']};
+ const attendanceSources=[];
+ const sitesByKey=new Map([...shifts,...batches,...rows].map(r=>[canonicalSiteName(r.site||r.siteName),r.site||r.siteName]));
+ for(const r of deduped.filter(r=>r.eligible&&r.shift)){
+  const trips=r.kind==='vehicle'?r.trips:null;
+  const hasTrips=trips>0||r.kind==='equipment'&&number(r.data.fleetTrips)>0;
+  if(r.employeeKey)attendanceSources.push({...r,trips,hasTrips,card:true});
+  const split=r.data.operatorSplit;
+  if(split?.secondOperatorId){
+   const person=resolveEmployee({employeeId:split.secondOperatorId,caliberId:split.secondOperatorCaliberId});
+   if(!person.error)attendanceSources.push({...r,employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:null,hasTrips,card:true});
+  }
+ }
+ for(const entry of attendance){
+  const person=resolveEmployee({employeeId:entry.employee_id});
+  if(person.error)continue;
+  const asset=assetMap.get(String(entry.asset_id));
+  const door=asset?text(asset.door||asset.doorNo||equipmentDoorNumber(asset)):'';
+  const site=sitesByKey.get(entry.site)||entry.site;
+  attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0});
+ }
+ const shiftAttendance=group(attendanceSources,r=>JSON.stringify([r.employeeKey,r.date,r.shift]))
+  .filter(sources=>sources.some(r=>rowMatches(r,f)))
+  .map(sources=>{
+   const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card);
+   const trips=cards.filter(c=>c.trips!==null).map(c=>c.trips);
+   return {id:JSON.stringify([r.employeeKey,r.date,r.shift]),date:r.date,shift:r.shift,site:unique(sources.map(s=>s.site)).join('; '),
+    employeeId:r.employeeId,employeeName:r.employeeName,caliberCode:r.caliberCode,
+    status:cards.some(c=>c.hasTrips)?'Present — with trips':zero.length?'Present — 0 trips':'Present',
+    trips:trips.length?sum(trips):cards.length?null:0,doors:unique(sources.map(s=>s.door)).join('; '),
+    reason:unique(zero.map(s=>s.reason)).join('; '),remarks:unique(zero.map(s=>s.remarks)).join('; ')};
+  }).sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName));
+ const optionRows=[...rows,...attendanceSources];
+ return {filters:f,summary,details,performance,shiftAttendance,ot,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.length},options:{sites:unique([...optionRows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(optionRows.map(r=>r.shift)).sort(),assets:unique(optionRows.map(r=>r.assetKey)).map(value=>({value,label:optionRows.find(r=>r.assetKey===value).door})),employees:unique(optionRows.map(r=>r.employeeKey)).map(value=>{const r=optionRows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.']};
 }
 
 function buildOt(duties,filters){

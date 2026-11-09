@@ -51,6 +51,10 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/scan-backups'))return allowed('Scan Backup');
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
+ if(route==='/api/shift-attendance'){
+  const kind=read?req.query?.kind:req.body?.kind;
+  return (read||req.method==='POST')&&(kind==='vehicle'?allowed('Vehicle Log Book'):kind==='equipment'&&allowed('Equipment Log Book'));
+ }
  if(/^\/api\/vlb-batch-deletions(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
  if(/^\/api\/vlb-batches(?:\/|$)/.test(route)){
   if(allowed('Batch reopening approvals')&&(read&&route==='/api/vlb-batches/approvals'||req.method==='POST'&&/^\/api\/vlb-batches\/[0-9a-f-]{36}\/reopen-decision$/i.test(route)))return true;

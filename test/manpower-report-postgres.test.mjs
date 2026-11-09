@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
+import {SHIFT_ATTENDANCE_SCHEMA} from '../server/routes/shift-attendance.mjs';
 
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('manpower HTTP report reads scoped saved books and batches from PostgreSQL',{skip:!connectionString},async t=>{
@@ -14,7 +15,7 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  await pool.query(`CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);
   CREATE TABLE mis_log_books(id BIGINT PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,asset_id BIGINT,data JSONB,deleted_at TIMESTAMPTZ);
   CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT,site TEXT,book_date DATE,closed_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
-  CREATE TABLE mis_vlb_batch_entries(batch_id UUID,logbook_id BIGINT);`);
+  CREATE TABLE mis_vlb_batch_entries(batch_id UUID,logbook_id BIGINT);`+SHIFT_ATTENDANCE_SCHEMA);
  for(const [id,master_name,record_data] of [[1,'Equipment master',{door:'V1',site:'Sasti OC',category:'Vehicle',group:'Tipper',make:'Volvo',model:'FMX'}],[21,'Employee master',{caliberId:'101',caliberCode:'CMLL101',name:'Example Driver'}],[31,'Shift Master',{site:'Sasti OC',shiftCode:'A',startTime:'05:00',endTime:'13:00'}],[32,'Shift Master',{site:'Sasti OC',shiftCode:'B',startTime:'13:00',endTime:'21:00'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,master_name,record_data]);
  const batchId=randomUUID();await pool.query("INSERT INTO mis_vlb_batches VALUES($1,'TEST BATCH','Sasti OC','2026-11-10',NOW(),NULL,NULL)",[batchId]);
  for(const [id,shift,site,deleted] of [[1,1,'Sasti OC',null],[2,2,'Sasti OC',null],[3,1,'Jayant OC',null],[4,1,'Sasti OC','2026-11-11']]){

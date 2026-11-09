@@ -8,6 +8,10 @@ test('MIS API permissions fail closed and follow assigned masters and working me
  assert.equal(misRequestAllowed(session,{path:'/api/erp-masters/Company%20master',method:'GET'}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/log-books/equipment',method:'POST'}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/log-books/vehicle',method:'POST'}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'GET',query:{kind:'vehicle'}}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'POST',body:{kind:'vehicle'}}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'POST',body:{kind:'equipment'}}),false);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'DELETE',body:{kind:'vehicle'}}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/unknown-new-feature',method:'GET'}),false);
  assert.equal(misPageAllowed(session,'Employee master','mobile'),false);assert.equal(misPageAllowed(session,'Employee master','desktop'),true);
 });
