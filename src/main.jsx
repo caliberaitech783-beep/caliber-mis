@@ -11586,6 +11586,8 @@ function App() {
     [requestState, setRequestState] = useState({ token: "", loaded: false, error: "", updatedAt: 0 }),
     [menu, setMenu] = useState(false),
     [sidebarHidden,setSidebarHidden]=useState(()=>{try{return localStorage.getItem("caliberSidebarHidden")==="true";}catch{return false;}}),
+    [sidebarAuto,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
+    [sidebarPeek,setSidebarPeek]=useState(false),
     [canGoBack, setCanGoBack] = useState(false),
     [theme, setTheme] = useState(() => {
       const saved = localStorage.getItem("nerveCenterTheme");
@@ -11597,6 +11599,9 @@ function App() {
     [employeeLocationOpen,setEmployeeLocationOpen]=useState(false),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
+  // Auto-hide: the menu stays closed and opens only while the pointer is at the left edge or inside it.
+  const sidebarClosed=sidebarAuto?!sidebarPeek:sidebarHidden;
+  const changeSidebarAuto=on=>{setSidebarAuto(on);setSidebarPeek(true);if(!on)changeSidebarHidden(false);try{localStorage.setItem("caliberSidebarAutoHide",String(on));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
@@ -12159,12 +12164,16 @@ function App() {
       </RequestShiftProvider>
     );
   return (
-    <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarHidden?" sidebar-hidden":""}`}>
+    <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarClosed||sidebarAuto?" sidebar-hidden":""}`}>
+      {sidebarAuto&&!sidebarPeek&&<div className="erp-sidebar-edge" aria-hidden="true" onMouseEnter={()=>setSidebarPeek(true)}/>}
 
 
       <ErpSidebar
-        hidden={sidebarHidden}
-        onHide={()=>{changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
+        hidden={sidebarClosed}
+        autoHide={sidebarAuto}
+        onAutoHide={()=>changeSidebarAuto(!sidebarAuto)}
+        onPointerInside={inside=>{if(sidebarAuto&&(inside||document.activeElement?.getAttribute("aria-label")!=="Search menu"))setSidebarPeek(inside);}}
+        onHide={()=>{if(sidebarAuto)setSidebarPeek(false);else changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
           {name:'Masters',pages:[...['Users & employees','Employee master','Employee Current Location','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
@@ -12198,8 +12207,8 @@ function App() {
       />
       <main className="content">
         <div className="top">
-          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarHidden?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarHidden} aria-controls="admin-primary-navigation" onClick={()=>changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarHidden?"Show menu":"Hide menu"}</span></button>
-          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
+          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
+          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarAuto)setSidebarPeek(true);else if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />
           </button>
           <div className="crumb">

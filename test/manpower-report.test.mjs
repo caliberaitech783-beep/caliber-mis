@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 
 const site='Sasti OC',date='2026-11-10';
@@ -102,10 +102,10 @@ test('range validation includes calendar dates, cutoff, length and query types',
  assert.equal(manpowerFilters({from:'2026-11-01',to:'2026-11-30'}).contextFrom,'2026-11-01');
 });
 
-function apiHarness(scope={sites:['sasti ob']}){
- let handler;const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:[card()]};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
- const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){assert.equal(path,'/api/reports/manpower');assert.deepEqual(steps.slice(0,3),protect);handler=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows});
- return {calls,async run(query={from:date,to:date}){let result,status=200;const headers={};await handler({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
+function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
+ const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
+ const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows});
+ return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
  const h=apiHarness(),r=await h.run();assert.equal(r.status,200);assert.equal(r.result.totals.assets,1);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.released,true);assert.match(h.calls[0].sql,/REPEATABLE READ READ ONLY/);const query=h.calls.find(c=>c.sql.includes('SELECT l.id'));assert.deepEqual(query.args[2],[site]);assert.match(query.sql,/l.deleted_at IS NULL/);assert.match(query.sql,/b.deleted_at IS NULL/);assert.equal(h.calls.at(-1).sql,'COMMIT');assert.ok(!JSON.stringify(r.result).includes('record_data'));
@@ -119,4 +119,30 @@ test('two employee IDs sharing one Caliber ID are ambiguous, not one person',()=
 });
 test('duplicate equipment master door identities are not arbitrarily counted',()=>{
  const r=report([card()],{assets:[assets[0],{...assets[0],id:'999'}]});assert.equal(r.totals.assets,0);assert.match(r.exceptions[0].reason,/multiple equipment/);
+});
+test('flagged duties carry the driver category and every known site gets a count',()=>{
+ const staff=[{...employees[0],currentDesignationName:'Volvo Driver'},employees[1]];
+ const r=report([card(1,1),card(2,2),card(3,1,{employeeId:22,caliberId:'102',assetId:2,door:'V2'}),card(4,3,{employeeId:22,caliberId:'102',assetId:2,door:'V2'})],{employees:staff,shifts:[...shifts,{id:'50',site:'Jayant OC',shiftCode:'A',startTime:'05:00',endTime:'13:00'}]});
+ assert.deepEqual(r.ot.map(e=>[e.severity,e.category]),[['red','Volvo Driver'],['orange','Category not in Employee master']]);
+ assert.equal(r.ot[0].equipment,'Tipper / Volvo');assert.equal(r.ot[0].siteKey,'sasti ob');assert.deepEqual(r.ot[0].dutyDates,[date]);
+ assert.deepEqual(r.otSites,[{site:'Jayant OC',siteKey:'jayant ob',red:0,orange:0,review:0},{site,siteKey:'sasti ob',red:1,orange:1,review:0}]);
+});
+test('earlier repeats look back at most 90 days, never before the first day of records',()=>{
+ assert.deepEqual(otHistoryWindows('2026-11-01'),[]);
+ assert.deepEqual(otHistoryWindows('2026-11-10'),[{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-09'}]);
+ const far=otHistoryWindows('2027-06-01');assert.equal(far[0].from,'2027-03-03');assert.equal(far.at(-1).to,'2027-05-31');assert.equal(far.length,13);
+});
+test('earlier repeats count each event once and leave out events inside the selected dates',()=>{
+ const event=(id,severity,...dutyDates)=>({id,severity,employeeKey:'E1',siteKey:'sasti ob',dutyDates});
+ const drivers=otHistorySummary([event('a','red','2026-11-03'),event('a','red','2026-11-03'),event('b','orange','2026-11-05'),event('c','red','2026-11-09','2026-11-10'),{...event('d','red','2026-11-04'),employeeKey:'E2'}],'2026-11-10');
+ assert.deepEqual(drivers,[{employeeKey:'E1',siteKey:'sasti ob',red:1,orange:1,review:0,redDates:['2026-11-03'],orangeDates:['2026-11-05']},{employeeKey:'E2',siteKey:'sasti ob',red:1,orange:0,review:0,redDates:['2026-11-04'],orangeDates:[]}]);
+});
+test('history API reads only earlier dates within scope and returns one repeat per event',async()=>{
+ const h=apiHarness({sites:['sasti ob']},[card(1,1),card(2,2)]),path='/api/reports/manpower/ot-history';
+ const r=await h.run({from:'2026-11-12',to:'2026-11-12'},path);assert.equal(r.status,200);assert.equal(r.released,true);
+ assert.equal(r.result.historyFrom,'2026-11-01');assert.equal(r.result.historyTo,'2026-11-11');
+ assert.deepEqual(r.result.drivers.map(d=>[d.red,d.orange,d.redDates]),[[1,0,[date]]]);
+ const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));assert.equal(reads.length,2);assert.deepEqual(reads[0].args.slice(0,3),['2026-11-01','2026-11-08',[site]]);assert.ok(reads.every(c=>c.args[3].includes('employeeId')&&!c.args[3].includes('trips')));
+ const first=await h.run({from:'2026-11-01',to:'2026-11-01'},path);assert.equal(first.result.historyFrom,null);assert.deepEqual(first.result.drivers,[]);
+ assert.equal((await h.run({from:date,to:date,site:'Jayant OC'},path)).status,403);
 });

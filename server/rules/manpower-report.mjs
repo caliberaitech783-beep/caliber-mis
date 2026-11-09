@@ -29,7 +29,7 @@ function identityIndex(employees){
  const byId=new Map(),aliases=new Map(),caliberMappings=new Map();
  for(const e of employees){const identity=employeeIdentity(e),employeeId=text(identity.employeeId||e.empId||e.employeeCode),caliberCode=text(identity.caliberCode),identityKey=key(suggestedCaliberId(employeeId)||employeeId||caliberCode);
   if(!caliberMappings.has(identityKey))caliberMappings.set(identityKey,new Set());if(caliberCode)caliberMappings.get(identityKey).add(key(caliberCode));
-  const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),identityKey};byId.set(String(e.id),{...person,source:e});
+  const person={id:String(e.id),employeeId,caliberCode,name:text(e.name||e.employee||e.login),designation:text(e.currentDesignationName||e.designationName||e.designation),identityKey};byId.set(String(e.id),{...person,source:e});
   for(const token of unique([employeeId,caliberCode,e.empId,e.employeeCode].map(key))){if(!aliases.has(token))aliases.set(token,new Set());aliases.get(token).add(identityKey);}
  }
  return data=>{
@@ -54,11 +54,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  for(const record of records){
   const d=record.data||{},date=record.book_date||d.bookDate,site=record.site||d.location;
   if(record.deleted_at||!operationalDate(date)||date<f.contextFrom||date>f.contextTo)continue;
-  const r={id:String(record.id),book:record.book_no,date,site,kind:record.book_type,shift:bookShiftCode(d.bookShiftCode||d.cardShift||d.shiftName),door:text(d.door),savedEmployeeId:text(d.caliberId),employeeId:'',employeeName:text(d.employeeName),employeeKey:'',caliberCode:'',assetKey:'',category:'Unresolved category',group:'Unresolved group',make:'Unresolved make',model:'Unresolved model',batchIds:(record.batches||[]).map(b=>String(b.id)),batchNames:(record.batches||[]).map(b=>b.name),batchStatus:unique((record.batches||[]).map(b=>b.closed_at?'Closed':'Open')).join('; '),issues:[],data:d,performanceValid:true,eligible:true};
+  const r={id:String(record.id),book:record.book_no,date,site,kind:record.book_type,shift:bookShiftCode(d.bookShiftCode||d.cardShift||d.shiftName),door:text(d.door),savedEmployeeId:text(d.caliberId),employeeId:'',employeeName:text(d.employeeName),employeeKey:'',caliberCode:'',designation:'',assetKey:'',category:'Unresolved category',group:'Unresolved group',make:'Unresolved make',model:'Unresolved model',batchIds:(record.batches||[]).map(b=>String(b.id)),batchNames:(record.batches||[]).map(b=>b.name),batchStatus:unique((record.batches||[]).map(b=>b.closed_at?'Closed':'Open')).join('; '),issues:[],data:d,performanceValid:true,eligible:true};
   if(!r.batchIds.length&&d.scanBatchId){r.batchIds=[String(d.scanBatchId)];r.batchNames=[record.scan_batch_name||String(d.scanBatchId)];r.batchStatus='Saved scan';}
   if(seenIds.has(r.id)){addIssue(r,'Repeated saved record omitted from totals.');continue;}seenIds.add(r.id);
   if(date!==d.bookDate||canonicalSiteName(site)!==canonicalSiteName(d.location)){r.eligible=false;addIssue(r,'Saved date/site metadata conflicts with the logbook; excluded from totals.');}
-  const person=resolveEmployee(d);if(person.error)addIssue(r,person.error);else Object.assign(r,{employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,employeeKey:person.identityKey});
+  const person=resolveEmployee(d);if(person.error)addIssue(r,person.error);else Object.assign(r,{employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,designation:person.designation,employeeKey:person.identityKey});
   const asset=assetMap.get(String(record.asset_id||d.assetId));
   if(!asset)addIssue(r,'Equipment master match is missing.');
   else{
@@ -98,17 +98,17 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const r=cards[0],hours=sum(cards.map(c=>c.performanceValid?c.hours:null));
   const issue=hours!==null&&r.schedule&&hours>r.schedule.hours;
   if(issue)for(const card of cards)addIssue(card,'Combined card HMR exceeds this duty’s scheduled hours; review assignments.');
-  return {key:JSON.stringify([r.employeeKey,canonicalSiteName(r.site),r.date,r.shift]),date:r.date,site:r.site,shift:r.shift,employeeKey:r.employeeKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,schedule:cards.some(c=>c.issues.some(s=>/shift start differs/.test(s)))?null:r.schedule,cards,hours:issue?null:hours,trips:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.trips:null)),km:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.km:null))};
+  return {key:JSON.stringify([r.employeeKey,canonicalSiteName(r.site),r.date,r.shift]),date:r.date,site:r.site,shift:r.shift,employeeKey:r.employeeKey,employeeId:r.employeeId,caliberCode:r.caliberCode,designation:r.designation,employeeName:r.employeeName,schedule:cards.some(c=>c.issues.some(s=>/shift start differs/.test(s)))?null:r.schedule,cards,hours:issue?null:hours,trips:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.trips:null)),km:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.km:null))};
  });
  const selected=deduped.filter(r=>rowMatches(r,f));
  const details=selected.map(r=>({id:r.id,date:r.date,site:r.site,shift:r.shift||'Unresolved',door:r.door,category:r.category,group:r.group,make:r.make,model:r.model,employeeId:r.employeeId||r.savedEmployeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,assignment:!r.eligible?'Needs record review':r.employeeKey?'Matched employee ID':'Needs identity review',book:r.book,batches:sourceLabel(r),batchStatus:r.batchStatus||'Saved',remarks:unique([...r.issues,text(r.data.remark)]).join('; ')}));
  const summary=group(selected.filter(r=>r.eligible&&r.assetKey),r=>JSON.stringify([r.date,canonicalSiteName(r.site),r.shift,r.category,r.group,r.make,r.model])).map(cards=>{const r=cards[0];return {date:r.date,site:r.site,shift:r.shift,category:r.category,group:r.group,make:r.make,model:r.model,assets:unique(cards.map(c=>c.assetKey)).length,employees:unique(cards.map(c=>c.employeeKey)).length,unresolved:cards.filter(c=>!c.employeeKey).length,doors:unique(cards.map(c=>c.door)).join('; '),batches:unique(cards.flatMap(c=>c.batchNames)).join('; ')};});
  const performance=duties.filter(d=>d.cards.some(r=>rowMatches(r,f))).map(d=>({id:d.key,date:d.date,site:d.site,shift:d.shift,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,doors:unique(d.cards.map(r=>r.door)).join('; '),equipment:unique(d.cards.map(r=>`${r.door}: ${r.group} / ${r.make} / ${r.model}`)).join('; '),hours:d.hours,trips:d.trips,km:d.km,start:d.schedule?.startLabel||'',end:d.schedule?.endLabel||'',batches:unique(d.cards.flatMap(r=>r.batchNames)).join('; '),books:d.cards.map(r=>r.book).join('; '),remarks:unique(d.cards.flatMap(r=>r.issues)).join('; ')}));
  const ot=buildOt(duties,f);
- const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>e);
+ const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>({...e,siteKey:canonicalSiteName(e.site)}));
  const visibleBatches=batches.filter(b=>b.report_date>=f.from&&b.report_date<=f.to);
  const attendanceSources=[];
- const sitesByKey=new Map([...shifts,...batches,...rows].map(r=>[canonicalSiteName(r.site||r.siteName),r.site||r.siteName]));
+ const sitesByKey=new Map([...shifts.filter(s=>!s.sourceMissing&&text(s.status).toLowerCase()!=='inactive'),...batches,...rows].map(r=>[canonicalSiteName(r.site||r.siteName),r.site||r.siteName]));
  for(const r of deduped.filter(r=>r.eligible&&r.shift)){
   const trips=r.kind==='vehicle'?r.trips:null;
   const hasTrips=trips>0||r.kind==='equipment'&&number(r.data.fleetTrips)>0;
@@ -138,8 +138,11 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     trips:trips.length?sum(trips):cards.length?null:0,doors:unique(sources.map(s=>s.door)).join('; '),
     reason:unique(zero.map(s=>s.reason)).join('; '),remarks:unique(zero.map(s=>s.remarks)).join('; ')};
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName));
+ // Every known site is listed, including those with no flagged driver, so an
+ // empty card means "checked, nothing found" rather than "not loaded".
+ const otSites=[...sitesByKey].filter(([siteKey])=>siteKey&&(!f.site||siteKey===canonicalSiteName(f.site))).map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey),count=severity=>events.filter(e=>e.severity===severity).length;return {site,siteKey,red:count('red'),orange:count('orange'),review:count('review')};}).sort((a,b)=>a.site.localeCompare(b.site));
  const optionRows=[...rows,...attendanceSources];
- return {filters:f,summary,details,performance,shiftAttendance,ot,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.length},options:{sites:unique([...optionRows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(optionRows.map(r=>r.shift)).sort(),assets:unique(optionRows.map(r=>r.assetKey)).map(value=>({value,label:optionRows.find(r=>r.assetKey===value).door})),employees:unique(optionRows.map(r=>r.employeeKey)).map(value=>{const r=optionRows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.']};
+ return {filters:f,summary,details,performance,shiftAttendance,ot,otSites,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.length},options:{sites:unique([...optionRows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(optionRows.map(r=>r.shift)).sort(),assets:unique(optionRows.map(r=>r.assetKey)).map(value=>({value,label:optionRows.find(r=>r.assetKey===value).door})),employees:unique(optionRows.map(r=>r.employeeKey)).map(value=>{const r=optionRows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable. A duty can appear in both a same-day and an overnight event, so event hours must not be added together. Driver category is the current designation in the Employee master. Earlier repeats count the same driver at the same site, up to 90 days before the selected dates.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.']};
 }
 
 function buildOt(duties,filters){
@@ -149,7 +152,7 @@ function buildOt(duties,filters){
   const add=(set,reason,severity)=>{if(!set.some(d=>d.cards.some(r=>rowMatches(r,filters))))return;
    const ordered=[...set].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)),first=ordered[0];
    const gaps=ordered.slice(1).map((d,i)=>d.schedule&&ordered[i].schedule?round((d.schedule.start-ordered[i].schedule.end)/3600000):null);
-   events.push({id:ordered.map(d=>d.key).join('|'),severity,reason,employeeId:first.employeeId,caliberCode:first.caliberCode,employeeName:first.employeeName,site:first.site,dates:unique(ordered.map(d=>d.date)).join('; '),shifts:ordered.map(d=>`${d.date} ${d.shift}`).join('; '),shiftHours:ordered.map(d=>`${d.date} ${d.shift}: ${d.hours??'Unavailable'}`).join('; '),combinedHours:sum(ordered.map(d=>d.hours)),schedule:ordered.map(d=>`${d.date} ${d.shift}: ${d.schedule?d.schedule.startLabel+' → '+d.schedule.endLabel:'Unavailable'}`).join('; '),gaps:gaps.map(g=>g===null?'Unavailable':`${g} h`).join('; '),batches:unique(ordered.flatMap(d=>d.cards.flatMap(r=>r.batchNames))).join('; '),books:unique(ordered.flatMap(d=>d.cards.map(r=>r.book))).join('; '),remarks:unique(ordered.flatMap(d=>d.cards.flatMap(r=>r.issues))).join('; ')});
+   events.push({id:ordered.map(d=>d.key).join('|'),severity,reason,employeeKey:first.employeeKey,siteKey:canonicalSiteName(first.site),dutyDates:unique(ordered.map(d=>d.date)),category:first.designation||'Category not in Employee master',equipment:unique(ordered.flatMap(d=>d.cards.map(r=>`${r.group} / ${r.make}`))).join('; '),employeeId:first.employeeId,caliberCode:first.caliberCode,employeeName:first.employeeName,site:first.site,dates:unique(ordered.map(d=>d.date)).join('; '),shifts:ordered.map(d=>`${d.date} ${d.shift}`).join('; '),shiftHours:ordered.map(d=>`${d.date} ${d.shift}: ${d.hours??'Unavailable'}`).join('; '),combinedHours:sum(ordered.map(d=>d.hours)),schedule:ordered.map(d=>`${d.date} ${d.shift}: ${d.schedule?d.schedule.startLabel+' → '+d.schedule.endLabel:'Unavailable'}`).join('; '),gaps:gaps.map(g=>g===null?'Unavailable':`${g} h`).join('; '),batches:unique(ordered.flatMap(d=>d.cards.flatMap(r=>r.batchNames))).join('; '),books:unique(ordered.flatMap(d=>d.cards.map(r=>r.book))).join('; '),remarks:unique(ordered.flatMap(d=>d.cards.flatMap(r=>r.issues))).join('; ')});
   };
   for(const day of byDay){if(day.length<2)continue;const codes=new Set(day.map(d=>d.shift)),s=n=>day.find(d=>d.shift==='S'+n),adjacent=(a,b)=>a?.schedule&&b?.schedule&&a.schedule.end===b.schedule.start;
    if([1,2,3].every(n=>codes.has('S'+n)))add(day,'RED — All three shifts; red takes priority','red');
@@ -160,4 +163,20 @@ function buildOt(duties,filters){
   for(const third of person.filter(d=>d.shift==='S3')){const first=person.find(d=>d.date===nextReportDate(third.date)&&d.shift==='S1');if(!first)continue;const adjacent=third.schedule&&first.schedule&&third.schedule.end===first.schedule.start;add([third,first],adjacent?'RED — Shift 3 followed by next day’s Shift 1':'REVIEW — Overnight duties; schedule continuity is unconfirmed',adjacent?'red':'review');}
  }
  return events.sort((a,b)=>a.dates.localeCompare(b.dates)||a.employeeId.localeCompare(b.employeeId));
+}
+
+// Earlier repeats are looked up only on request. The look-back is bounded so a
+// click cannot read the whole logbook history.
+export const OT_HISTORY_DAYS=90;
+export function otHistoryWindows(from,days=7){
+ if(!operationalDate(from)||from<=OPERATIONAL_START)return [];
+ const last=nextReportDate(from,-1),earliest=nextReportDate(from,-OT_HISTORY_DAYS),first=earliest<OPERATIONAL_START?OPERATIONAL_START:earliest,windows=[];
+ for(let start=first;start<=last;start=nextReportDate(start,days)){const end=nextReportDate(start,days-1);windows.push({from:start,to:end>last?last:end});}
+ return windows;
+}
+// An event that reaches into the selected dates belongs to the current report, not to history.
+export function otHistorySummary(events,from){
+ const past=[...new Map(events.map(e=>[e.id,e])).values()].filter(e=>e.dutyDates.every(date=>date<from));
+ return group(past,e=>e.employeeKey+'|'+e.siteKey).map(list=>{const dates=severity=>list.filter(e=>e.severity===severity).map(e=>e.dutyDates[0]).sort();
+  return {employeeKey:list[0].employeeKey,siteKey:list[0].siteKey,red:dates('red').length,orange:dates('orange').length,review:dates('review').length,redDates:dates('red'),orangeDates:dates('orange')};});
 }

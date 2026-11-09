@@ -3,7 +3,7 @@ import React, {useState} from 'react';
 import './erp-layout.css';
 import {ChevronDown, ChevronRight, LayoutDashboard, Search, PanelLeftClose, LogOut, FileText} from 'lucide-react';
 
-export default function ErpSidebar({active,setActive,logout,open,hidden=false,onHide,session,groups=[],activeReportCategory='general',announcements=null}) {
+export default function ErpSidebar({active,setActive,logout,open,hidden=false,onHide,autoHide=false,onAutoHide,onPointerInside,session,groups=[],activeReportCategory='general',announcements=null}) {
   const [expanded,setExpanded]=useState('MIS');
   const [query,setQuery]=useState('');
   const select=page=>setActive(page);
@@ -17,9 +17,10 @@ export default function ErpSidebar({active,setActive,logout,open,hidden=false,on
     const selected=(active===page||item.activePages?.includes(active))&&(!item.reportCategory||activeReportCategory===item.reportCategory);
     return <button key={name} className={`erp-page${selected?' selected':''}`} aria-current={selected?'page':undefined} onClick={()=>select(typeof item==='string'?item:{page,reportCategory:item.reportCategory})}><FileText size={14}/><span>{name}</span></button>;
   };
-  return <aside id="admin-primary-navigation" hidden={hidden} inert={hidden||undefined} className={`erp-sidebar pinned${open?' open':''}`} aria-label="Primary navigation">
+  return <aside id="admin-primary-navigation" hidden={hidden} inert={hidden||undefined} className={`erp-sidebar pinned${open?' open':''}`} aria-label="Primary navigation" onMouseEnter={()=>onPointerInside?.(true)} onMouseLeave={()=>onPointerInside?.(false)}>
     <a className="erp-sidebar-brand" href="#" onClick={e=>{e.preventDefault();select('Dashboard')}}><span className="erp-brand-icon"><img src="/pulse-ii-icon.png" alt="Caliber Pulse-II"/></span><span className="erp-brand-copy"><strong>Caliber Pulse-II</strong></span></a>
     <button type="button" className="erp-pin" aria-label="Hide sidebar" onClick={onHide}><PanelLeftClose size={15}/>Hide sidebar</button>
+    {onAutoHide&&<button type="button" className="erp-pin erp-autohide" aria-pressed={autoHide} title="When on, the menu stays out of the way and opens when the pointer touches the left edge of the screen." onClick={onAutoHide}>Auto-hide menu: {autoHide?'On':'Off'}</button>}
     <label className="erp-menu-search"><Search size={14}/><input aria-label="Search menu" placeholder="Search pages…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
     <nav aria-label="ERP modules">
       {matches('Dashboard')&&<button className={`erp-page${active==='Dashboard'?' selected':''}`} onClick={()=>select('Dashboard')}><LayoutDashboard size={16}/>Dashboard</button>}
