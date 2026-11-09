@@ -71,8 +71,10 @@ test('lazy screens cannot replace the entire workspace with a blank page',()=>{
   assert.match(lazyFeature,/window\.location\.replace\(nextUrl\.toString\(\)\)/);
   assert.match(lazyFeature,/Refresh application/);
   assert.match(indexHtml,/id="boot-status"/);
-  assert.match(indexHtml,/Caliber Pulse-II could not finish loading/);
-  assert.match(indexHtml,/unhandledrejection/);
+  assert.match(indexHtml,/<script src="\/mis-boot\.js"><\/script>/);
+  const boot=readFileSync(new URL('../public/mis-boot.js',import.meta.url),'utf8');
+  assert.match(boot,/Caliber Pulse-II could not finish loading/);
+  assert.match(boot,/unhandledrejection/);
 });
 
 test('deployment keeps App Service warm and disables the unsafe static route',{skip:!workflow||!azure?'Pulse Front Door deployment does not apply to MIS':false},()=>{
