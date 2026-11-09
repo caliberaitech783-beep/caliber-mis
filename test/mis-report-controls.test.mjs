@@ -150,8 +150,11 @@ test('manpower views route to their dedicated report with shared export controls
 
 test('manpower reports export complete selected data, separate shift hours, and retain OT colours and reasons',async()=>{
  const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
- const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeKey:'E'+id,siteKey:'sasti ob',category:id%2?'Volvo Driver':'Dumper Operator',dates:filters.from,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15}));
- const sites=[{site:'Jayant OC',siteKey:'jayant ob',red:0,orange:0,review:0},{site:'Sasti OC',siteKey:'sasti ob',red:137,orange:0,review:0}];
+ const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeKey:'E'+id,siteKey:'sasti ob',category:id%2?'Volvo Driver':'Dumper Operator',dates:filters.from,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15,
+  // Log books rotate VLB, ELB, LMV; the first driver worked on two: 46 VLB, 47 ELB and 45 LMV duties from 137 events.
+  logBooks:id?[['VLB','ELB','LMV'][id%3]]:['VLB','ELB'],logBook:id?['VLB','ELB','LMV'][id%3]:'VLB + ELB'}));
+ const none={red:0,orange:0,review:0},reds=red=>({...none,red});
+ const sites=[{site:'Jayant OC',siteKey:'jayant ob',...none,books:{VLB:none,ELB:none,LMV:none}},{site:'Sasti OC',siteKey:'sasti ob',...reds(137),books:{VLB:reds(46),ELB:reds(47),LMV:reds(45)}}];
  const payload={summary:rows,details:rows,performance:rows,ot:rows,otSites:sites,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
  const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]);
  for(const reportId of ['manpower','employee']){
@@ -160,14 +163,22 @@ test('manpower reports export complete selected data, separate shift hours, and 
   if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
  }
  // OT view: every site is loaded and shown first; duty details appear only after a site is opened.
- const ot=async(site,severity='',history={key:'',data:null,error:''})=>{const chosen={...filters,site},view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query,payload},'',false,0,{},false,false,severity,history]);return view({session:{token:'test'},reportId:'ot',onSelect:()=>{}});};
+ const ot=async(site,severity='',history={key:'',data:null,error:''},logBook='')=>{const chosen={...filters,site},view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query,payload},'',false,0,{},false,false,severity,history,logBook]);return view({session:{token:'test'},reportId:'ot',onSelect:()=>{}});};
  const overview=await ot('');assert.deepEqual(nodes(overview,ReportSection).map(n=>n.props.category),['manpower-review'],'no duty table before a site is opened');
  assert.deepEqual(nodes(overview,'button').filter(n=>n.props.className==='mp-site-card').map(n=>nodes(n,'strong')[0].props.children),['Jayant OC','Sasti OC']);
- assert.deepEqual(nodes(overview,'button').filter(n=>/mp-ot-count/.test(n.props.className)).map(n=>nodes(n,'strong')[0].props.children),[137,0,0]);
+ // Flag totals: one row for all log books, then VLB, ELB and LMV; each row is red, orange, review.
+ const counts=tree=>nodes(tree,'button').filter(n=>/mp-ot-count/.test(n.props.className)).map(n=>nodes(n,'strong')[0].props.children);
+ assert.deepEqual(counts(overview),[137,0,0,46,0,0,47,0,0,45,0,0]);
+ assert.deepEqual(nodes(overview,'button').filter(n=>n.props.className==='mp-ot-book').map(n=>nodes(n,'b')[0].props.children),['All','VLB','ELB','LMV']);
+ assert.deepEqual(nodes(nodes(overview,'button').filter(n=>n.props.className==='mp-site-card')[1],'b').map(n=>n.props.children),['VLB',46,0,0,'ELB',47,0,0,'LMV',45,0,0],'each site card lists the three log books');
  assert.equal(nodes(overview,'div').filter(n=>n.props.className==='mp-metrics'||n.props.className==='mp-legend').length,0,'old summary panel is gone');
  const drilled=await ot('Sasti OC'),sections=nodes(drilled,ReportSection);assert.deepEqual(sections.map(n=>n.props.category),['manpower-ot','manpower-review']);assert.equal(sections[0].props.rows.length,137,'export receives every matching row');
  {const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);assert.equal(cols.find(c=>c.key==='category').value(rows[1]),'Volvo Driver');const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(sections[0].props.rowClassName(rows[0]),'mp-ot-red');}
- assert.deepEqual(nodes(drilled,'tbody')[0].props.children.map(row=>row.props.children.map(cell=>cell.props.children)),[['Dumper Operator',69,0,0,69],['Volvo Driver',68,0,0,68]]);
+ assert.deepEqual(nodes(drilled,'tbody')[1].props.children.map(row=>row.props.children.map(cell=>cell.props.children)),[['Dumper Operator',69,0,0,69],['Volvo Driver',68,0,0,68]]);
+ assert.equal(sections[0].props.columns.find(c=>c.key==='logBook').value(rows[0]),'VLB + ELB');
+ // Choosing a log book narrows the site's duty list to it; a duty saved in two log books shows under both.
+ for(const [book,expected] of [['VLB',46],['ELB',47],['LMV',45]]){const view=await ot('Sasti OC','',undefined,book),list=nodes(view,ReportSection)[0];assert.equal(list.props.rows.length,expected,book);assert.match(list.props.title,new RegExp('Sasti OC · '+book));assert.equal(list.props.rows.some(r=>r.employeeId==='E0'),book!=='LMV',book);assert.deepEqual(counts(view),[137,0,0,46,0,0,47,0,0,45,0,0],'the totals keep showing every log book');}
+ {const lmvReds=nodes(await ot('Sasti OC','red',undefined,'LMV'),ReportSection)[0];assert.equal(lmvReds.props.category,'manpower-ot-history');assert.equal(lmvReds.props.rows.length,45);assert.match(lmvReds.props.title,/RED drivers on LMV/);assert.equal(lmvReds.props.columns.find(c=>c.key==='logBook').value(lmvReds.props.rows[0]),'LMV');}
  assert.equal(nodes(await ot('Jayant OC'),ReportSection)[0].props.rows.length,0,'another site never shows this site’s drivers');
  const earlier={historyFrom:'2026-11-01',historyTo:'2026-11-09',historyDays:90,drivers:[{employeeKey:'E5',siteKey:'sasti ob',red:3,orange:1,review:0,redDates:['2026-11-02','2026-11-04','2026-11-06'],orangeDates:['2026-11-08']}]};
  const repeats=nodes(await ot('Sasti OC','red',{key:filters.from+'|'+filters.to+'|sasti ob',data:earlier,error:''}),ReportSection)[0];assert.equal(repeats.props.category,'manpower-ot-history');assert.equal(repeats.props.rows.length,137);

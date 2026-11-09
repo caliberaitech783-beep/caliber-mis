@@ -29,3 +29,12 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 - Pressing a colour lists the drivers with that flag and their earlier repeats at the same site. Earlier repeats come from `GET /api/reports/manpower/ot-history`, which reads only when asked, one week at a time, up to 90 days before the selected dates and never before 1 November 2026. It uses the same duty rules as the report but skips trip-handover linking, which does not affect shift patterns.
 - The old count cards, colour legend and HMR notice were removed from this view; the calculation notes remain under "Sources and calculation rules".
 - Filters on all Manpower & OT views have an "Auto-hide filters" option and a "Today" button. The current From–To dates stay visible when the filters are tucked away. The side menu has its own "Auto-hide menu" option. Both choices are remembered per browser.
+
+
+## OT by log book: VLB, ELB and LMV (9 Nov 2026)
+
+- The OT view reads all three log books. Saved LMV log books count as duties, so an LMV shift next to a VLB or ELB shift is flagged like any other pattern. The other Manpower views (category, shift performance, attendance) stay VLB and ELB only, and LMV review items are shown on the OT view only.
+- Every flagged duty carries the log books it was saved in (`logBooks`, shown as the "Log book" column, for example "VLB + LMV"). A duty saved in two log books is listed under both, so the VLB, ELB and LMV rows can add up to more than the "All" row.
+- The flag summary is a grid: one row for all log books and one each for VLB, ELB and LMV, with RED / ORANGE / REVIEW counts. Pressing a row narrows the page to that log book; pressing a count also lists those drivers with their earlier repeats.
+- Each site card lists the three log books with their red, orange and review counts (`otSites[].books`).
+- Earlier repeats read the same three log books and count the driver across all of them.
