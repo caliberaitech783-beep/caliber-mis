@@ -2,15 +2,17 @@ import {readFile,writeFile,mkdir,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {masterAccessAllows} from '../../shared/admin-access.mjs';
 import {shiftIdentity} from '../../shared/shift-master.mjs';
+import {isLmv} from '../../shared/equipment-kind.mjs';
 import {hashPassword} from '../services/password-auth.mjs';
 import {randomBytes} from 'node:crypto';
 
 export const PULSE_MASTER_NAMES=['Equipment master','Shift Master','Users & employees'];
+export const PULSE_LMV_MASTER='LMV master';
 const SOURCE='https://pulse.cmll.in';
-export function validatePulseSnapshot(data){
+export function validatePulseSnapshot(data,names=PULSE_MASTER_NAMES){
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Pulse returned an invalid master response.');
- if(!PULSE_MASTER_NAMES.some(name=>Object.hasOwn(data,name)))throw new Error('Pulse returned no recognized master groups. Existing local masters are unchanged.');
- return Object.fromEntries(PULSE_MASTER_NAMES.map(name=>{
+ if(!names.some(name=>Object.hasOwn(data,name)))throw new Error('Pulse returned no recognized master groups. Existing local masters are unchanged.');
+ return Object.fromEntries(names.map(name=>{
    const rows=data[name]??[];
    if(!Array.isArray(rows))throw new Error(`Invalid ${name} response.`);
    const seen=new Set();
@@ -21,29 +23,45 @@ export function validatePulseSnapshot(data){
    return [name,rows];
  }));
 }
+function lmvSnapshot(data){
+ if(!Array.isArray(data?.[PULSE_LMV_MASTER]))throw new Error('Pulse did not return its LMV Master. Existing LMV records were retained.');
+ const snapshot=validatePulseSnapshot(data,[PULSE_LMV_MASTER]);
+ snapshot[PULSE_LMV_MASTER]=snapshot[PULSE_LMV_MASTER]
+   .filter(row=>row.demo!==true&&!/^DEMO-LMV-/i.test(String(row.door||row.equipmentName||'').trim()))
+   .map(row=>({...row,category:'LMV',registration:row.registration||row.reg,assetNo:row.assetNo||row.asset}));
+ return snapshot;
+}
 function recordKey(master,row){
  if(master==='Shift Master')return `${shiftIdentity({...row,shiftName:row.shiftName||row.name||row.shift})}|${String(row.effectiveFrom||'').trim()}`;
  if(master==='Users & employees')return String(row.login||row.empId||row.employeeId||row.employee||'').trim().toLowerCase();
+ if(master===PULSE_LMV_MASTER)return String(row.chassisNo||row.chassis||row.registration||row.reg||row.door||'').trim().toLowerCase();
  const value=master==='Equipment master'?(row.chassis||row.door||row.registration):(row.name||row.shiftName||row.shift);
  return String(value||'').trim().toLowerCase();
 }
 export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_NAMES){
- if(selectedNames.some(n=>!PULSE_MASTER_NAMES.includes(n)))throw new Error('Invalid Pulse master.');
- const snapshot=validatePulseSnapshot(input),client=await pool.connect(),counts={};
+ if(selectedNames.some(n=>n!==PULSE_LMV_MASTER&&!PULSE_MASTER_NAMES.includes(n)))throw new Error('Invalid Pulse master.');
+ const regularNames=selectedNames.filter(name=>name!==PULSE_LMV_MASTER);
+ const snapshot=regularNames.length?validatePulseSnapshot(input):{};
+ if(selectedNames.includes(PULSE_LMV_MASTER))Object.assign(snapshot,lmvSnapshot(input));
+ const client=await pool.connect(),counts={};
  try{
    await client.query('BEGIN');
    await client.query('SELECT pg_advisory_xact_lock(783,42)');
    for(const name of selectedNames){
-     const {rows:links}=await client.query('SELECT source_id,local_id FROM pulse_master_links WHERE master_name=$1',[name]);
+     const target=name===PULSE_LMV_MASTER?'Equipment master':name;
+     const sourceNames=target==='Equipment master'?['Equipment master',PULSE_LMV_MASTER]:[name];
+     const {rows:targetLinks}=await client.query('SELECT master_name,source_id,local_id FROM pulse_master_links WHERE master_name=ANY($1::text[])',[sourceNames]);
+     const links=targetLinks.filter(row=>row.master_name===name);
      const mapped=new Map(links.map(r=>[String(r.source_id),r.local_id]));
-     const {rows:locals}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=$1',[name]);
-     const linkedIds=new Set(links.map(r=>String(r.local_id)));
+     const {rows:locals}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=$1',[target]);
+     const linkedIds=new Set(targetLinks.map(r=>String(r.local_id)));
      const incomingIds=new Set(snapshot[name].map(r=>String(r.id)));
      for(const row of snapshot[name]){
        const {id:sourceId,passwordHash:sourcePasswordHash,mustChangePassword:sourcePasswordChange,...sourceData}=row;
        const data={...sourceData};let localId=mapped.get(String(sourceId));
        if(!localId){
-         const key=recordKey(name,data),matches=key?locals.filter(r=>!linkedIds.has(String(r.id))&&recordKey(name,r.record_data)===key):[];
+         const key=recordKey(name,data),matches=key?locals.filter(r=>!linkedIds.has(String(r.id))
+           &&(name!==PULSE_LMV_MASTER||isLmv(r.record_data))&&recordKey(name,r.record_data)===key):[];
          if(matches.length>1)throw new Error(`Multiple local records match a Pulse ${name} record. Reconcile duplicates before syncing.`);
          localId=matches[0]?.id;
          if(name==='Users & employees'){
@@ -51,7 +69,7 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
            data.passwordHash=previous?.passwordHash||hashPassword(randomBytes(32).toString('hex'));
            data.mustChangePassword=previous?.mustChangePassword===true;
          }
-         if(!localId)localId=(await client.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2::jsonb) RETURNING id',[name,JSON.stringify(data)])).rows[0].id;
+         if(!localId)localId=(await client.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2::jsonb) RETURNING id',[target,JSON.stringify(data)])).rows[0].id;
          linkedIds.add(String(localId));
          await client.query('INSERT INTO pulse_master_links(master_name,source_id,local_id) VALUES($1,$2,$3)',[name,String(sourceId),localId]);
        }
@@ -60,11 +78,11 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
          data.passwordHash=previous?.passwordHash||hashPassword(randomBytes(32).toString('hex'));
          data.mustChangePassword=previous?.mustChangePassword===true;
        }
-       await client.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name=$3 AND record_data IS DISTINCT FROM $1::jsonb',[JSON.stringify(data),localId,name]);
+       await client.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name=$3 AND record_data IS DISTINCT FROM $1::jsonb',[JSON.stringify(data),localId,target]);
      }
      for(const row of links)if(!incomingIds.has(String(row.source_id))){
        await client.query('DELETE FROM pulse_master_links WHERE master_name=$1 AND source_id=$2',[name,row.source_id]);
-       await client.query('DELETE FROM master_records WHERE id=$1 AND master_name=$2',[row.local_id,name]);
+       await client.query('DELETE FROM master_records WHERE id=$1 AND master_name=$2',[row.local_id,target]);
      }
      counts[name]=snapshot[name].length;
    }
@@ -78,6 +96,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
  let breakdownCache=null;
  const fleetReadsInFlight=new Map();
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
+ let lmvLastSuccess=null,lmvError='';
  const request=async(route,options={})=>{
    let response;
    try{response=await fetchImpl(SOURCE+route,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw new Error('Could not reach pulse.cmll.in. The connection will retry automatically.');}
@@ -86,7 +105,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
- const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES});
+ const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES,lmv:{connected:Boolean(token),lastSuccess:lmvLastSuccess,error:lmvError}});
  const save=async(sourceToken,sourceUsername)=>{
    if(credentialStore){await credentialStore.write('pulse-session',{token:sourceToken,username:sourceUsername});return;}if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
    await mkdir(path.dirname(stateFile),{recursive:true});
@@ -100,12 +119,28 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
   try{return await send();}catch(error){if(error.status!==401||!credentialStore)throw error;await reconnect();return send();}
  };
  const sync=async(master,actor)=>{
-   if(master&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
+   const lmv=master===PULSE_LMV_MASTER;
+   if(master&&!lmv&&!PULSE_MASTER_NAMES.includes(master))throw new Error('Invalid Pulse master.');
    if(busy)throw new Error('A master sync is already running.');
+   if(lmv){
+     if(!token)throw new Error('Connect a Pulse service account to sync LMV Master.');
+     busy=true;
+     try{
+       const snapshot=await authorizedRequest(`/api/masters?names=${encodeURIComponent(PULSE_LMV_MASTER)}`);
+       counts={...counts,...await applyPulseSnapshot(pool,snapshot,[PULSE_LMV_MASTER])};
+       lmvLastSuccess=new Date().toISOString();lmvError='';
+       return {...status(),busy:false};
+     }catch(cause){lmvError=cause.message;throw cause;}finally{busy=false;}
+   }
    if(!token&&!sharedSignIn?.status().connected)throw new Error('Sign in to Pulse II to connect Pulse automatically.');
    busy=true;lastAttempt=new Date().toISOString();
    try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};await afterSnapshot();lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
+ };
+ const refresh=async()=>{
+   if(busy)return;
+   if(token)await sync(PULSE_LMV_MASTER).catch(()=>{});
+   await sync().catch(()=>{});
  };
  return {
    status,
@@ -151,8 +186,8 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      await pool.query('ALTER TABLE pulse_master_links ALTER COLUMN local_id TYPE BIGINT');
      try{const saved=await credentialStore?.read('pulse-session')||(stateFile?JSON.parse(await readFile(stateFile,'utf8')):{});token=String(saved.token||'');username=String(saved.username||'');}catch(e){if(e.code!=='ENOENT')error='Saved Pulse connection could not be read. Reconnect Pulse.';}
      let hasSavedCredentials=false;try{hasSavedCredentials=Boolean(await credentialStore?.read('pulse'))}catch{error='Saved legacy Pulse credentials could not be read. Normal Pulse sign-in can reconnect automatically.';}
-     if(token||hasSavedCredentials||sharedSignIn?.status().connected)void sync().catch(()=>{});
-     timer=setInterval(()=>{if((token||credentialStore)&&!busy)void sync().catch(()=>{});},60000);timer.unref?.();
+     if(token||hasSavedCredentials||sharedSignIn?.status().connected)void refresh();
+     timer=setInterval(()=>{if(token||credentialStore)void refresh();},60000);timer.unref?.();
    },
    stop(){clearInterval(timer);sharedSignIn?.stop();},
  };
