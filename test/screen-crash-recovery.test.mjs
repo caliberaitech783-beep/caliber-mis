@@ -57,8 +57,8 @@ test('the application error boundary reports every render failure and panels rec
 
 test('the scan page reopens the entry after a refresh, lists the entries of the VLB batch, retries card uploads through a restart and fences each panel',()=>{
  const page=read('src/bulk-card-scanning.jsx');
- assert.match(page,/chooseScanEntry\(rows,\{remembered:recallScanEntry\(localStorage,kind,vlbBatch\.id\)\}\);if\(entry\)void selectBatch\(entry\.id\)/);
- assert.match(page,/rememberScanEntry\(localStorage,kind,vlbBatch\.id,d\.batch\.id\)/);
+ assert.match(page,/chooseScanEntry\(rows,\{remembered:recallScanEntry\(localStorage,logBookKind,vlbBatch\.id\)\}\);if\(entry\)void selectBatch\(entry\.id\)/);
+ assert.match(page,/rememberScanEntry\(localStorage,logBookKind,vlbBatch\.id,d\.batch\.id\)/);
  assert.match(page,/className="scan-entry-list" aria-label="Scan entries for this batch"/);
  assert.match(page,/if\(Array\.isArray\(d\.duplicates\)\)setDuplicates\(d\.duplicates\);if\(!Array\.isArray\(d\.cards\)\)d\.cards=\[\]/);
  assert.match(page,/uploadWithRetry\(\(\)=>api\('\/api\/scan-batches\/'\+entryId\+'\/cards'/);
