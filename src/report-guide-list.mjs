@@ -3,7 +3,7 @@
 export const REPORT_GUIDE_IDS=[
  'daily','vehicle','equipment','site','trends',
  'door-production','machine-production','meter-continuity','vehicle-trips','loading','shift','timing',
- // The four Manpower & OT tabs ('manpower','employee','attendance','ot') are being rewritten for the screen as changed on 9 Nov 2026; add them back with their PDFs.
+ 'manpower','employee','attendance','ot',
  'utilisation','breakdown','meters','missing','scans',
  'tonnage','fuel','cost','targets','billing',
  'vlb-reports','elb-reports'];

@@ -68,7 +68,7 @@ export async function genericGuide({root,outDir,id,lang}){
  for(const key of ['purpose','row','filters','screen','columns','notes','checklist','faq'])if(c?.[key]==null)throw Error(id+' ('+lang+'): missing '+key);
  const screen=await sharedScreen(root,id),pairs=(rows,a,b,cls='')=>rows.length?'<table class="plain'+cls+'"><tr><th>'+a+'</th><th>'+b+'</th></tr>'+rows.map(([x,y])=>'<tr><td>'+esc(x)+'</td><td>'+esc(y)+'</td></tr>').join('')+'</table>':'';
  let n=0;const heading=i=>'<h2>'+(++n)+'. '+t.h[i]+'</h2>';
- const body='<header class="cover"><p class="kicker">CALIBER MINING AND LOGISTICS LIMITED · PULSE-II · '+esc(content.group).toUpperCase()+'</p><h1>'+esc(content.title)+'</h1><p class="sub">'+t.manual+'</p><p class="meta">'+t.who+' · '+t.asOf+(screen?' · '+t.sample:'')+'</p></header>'
+ const body='<header class="cover"><p class="kicker">CALIBER MINING AND LOGISTICS LIMITED · PULSE-II · '+esc(content.group).toUpperCase()+'</p><h1>'+esc(content.title)+'</h1><p class="sub">'+t.manual+'</p><p class="meta">'+t.who+' · '+esc(content.asOf?.[lang]||t.asOf)+(screen?' · '+t.sample:'')+'</p></header>'
   +'<section>'+heading(0)+'<p>'+esc(c.purpose)+'</p><p class="note"><b>'+t.oneRow+'.</b> '+esc(c.row)+'</p></section>'
   +'<section>'+heading(1)+'<p>'+t.open(content.menu)+' '+t.choose+'</p>'+pairs(c.filters,t.selector,t.does)+'</section>'
   +'<section>'+heading(2)+(screen?'<figure><div class="frame" data-fig="screen"></div><figcaption><b>'+t.picture+'</b> '+t.caption+' <i>'+t.sampleData+'</i></figcaption></figure>':'')+pairs(c.screen,t.part,t.shows)+'</section>'

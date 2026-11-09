@@ -3,6 +3,7 @@
   "group": "Manpower & OT",
   "title": "Shift Performance",
   "menu": "Reports → Manpower & OT → Shift Performance",
+  "asOf": {"en": "Matches the system as of 10 November 2026", "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"},
   "en": {
     "purpose": "Shows the work of each employee shift by shift: the doors worked, HMR hours, completed trips and kilometres from the saved VLB and ELB cards, with the scheduled shift start and end from the Shift Master. A site in-charge or MIS clerk uses it to check one driver’s or operator’s shift and to find duties whose meter or trip figures need review.",
     "row": "One row is one employee at one site on one duty date in one shift, that is, one duty. All cards and vehicles of that employee in the same shift stay in the same row.",
@@ -31,7 +32,7 @@
       ["Review items", "Count card. Number of rows in the “Manpower Data Review” table at the bottom."],
       ["One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.", "The notice above the table. It states what one row stands for and that a Door / equipment or Saved batch selection still shows the whole duty."],
       ["Shift Performance", "The table. The line under its title repeats the selections and adds “Each shift is separate; HMR is machine performance”. If nothing matches it says “No saved duties with a resolved employee identity match these selections.”"],
-      ["Manpower Data Review", "The table at the bottom. It lists every problem found on the selected cards, one row for each problem, so that it can be corrected. If there is none it says “No data-review items for these selections.”"],
+      ["Manpower Data Review", "The table at the bottom. It lists every problem found on the selected cards, one row for each problem, so that it can be corrected. If there is none it says “No card needs correction in these selections.”"],
       ["Sources and calculation rules", "Press to open the written rules the report follows. The last line says that manpower requirements, shortages and relief availability are reserved for a later phase."]
     ],
     "columns": [
@@ -60,7 +61,7 @@
       ["Manpower Data Review · Saved card", "Book number of the card. Use it to find the card."],
       ["Manpower Data Review · Log book", "VLB or ELB. LMV items are shown only on OT & Multiple Duties."],
       ["Manpower Data Review · Source batches", "Names of the batches holding the card, or “Saved VLB (no site batch)” / “Saved ELB (no site batch)”."],
-      ["Manpower Data Review · Review reason", "The problem in words. Examples: “Invalid or excessive HMR hours; performance totals unavailable.”, “Missing or invalid kilometre / completed-trip values; performance totals unavailable.”, “Overlapping HMR intervals on this asset/shift; performance totals unavailable.”, “Effective site shift schedule is missing or ambiguous; timing requires review.”"]
+      ["Manpower Data Review · What to correct", "The problem in words. Examples: “Invalid or excessive HMR hours; performance totals unavailable.”, “Missing or invalid kilometre / completed-trip values; performance totals unavailable.”, “Overlapping HMR intervals on this asset/shift; performance totals unavailable.”, “Effective site shift schedule is missing or ambiguous; timing requires review.”"]
     ],
     "notes": [
       "Only saved VLB and ELB log books dated 1 November 2026 or later are read. Pending scans and deleted records are excluded. LMV log books are used only by OT & Multiple Duties.",
@@ -113,7 +114,7 @@
       ["Review items", "गिनती का कार्ड। सबसे नीचे की “Manpower Data Review” टेबल में कितनी लाइनें हैं।"],
       ["One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.", "टेबल के ऊपर की सूचना। यह बताती है कि एक लाइन का क्या मतलब है, और यह कि Door / equipment या Saved batch चुनने पर भी पूरी ड्यूटी दिखती है।"],
       ["Shift Performance", "टेबल। इसके नाम के नीचे की लाइन में चुनाव दोबारा लिखे रहते हैं और साथ में “Each shift is separate; HMR is machine performance”। कुछ न मिलने पर लिखा आता है “No saved duties with a resolved employee identity match these selections.”"],
-      ["Manpower Data Review", "सबसे नीचे की टेबल। चुने हुए कार्डों में जो भी गड़बड़ी मिली है वह यहाँ दिखती है, हर गड़बड़ी की एक लाइन, ताकि उसे ठीक किया जा सके। कोई गड़बड़ी न हो तो लिखा आता है “No data-review items for these selections.”"],
+      ["Manpower Data Review", "सबसे नीचे की टेबल। चुने हुए कार्डों में जो भी गड़बड़ी मिली है वह यहाँ दिखती है, हर गड़बड़ी की एक लाइन, ताकि उसे ठीक किया जा सके। कोई गड़बड़ी न हो तो लिखा आता है “No card needs correction in these selections.”"],
       ["Sources and calculation rules", "दबाने पर वे लिखे हुए नियम खुलते हैं जिन पर रिपोर्ट चलती है। आख़िरी लाइन बताती है कि manpower की ज़रूरत, कमी और relief की उपलब्धता बाद के चरण के लिए रखी गई है।"]
     ],
     "columns": [
@@ -142,7 +143,7 @@
       ["Manpower Data Review · Saved card", "कार्ड का बुक नंबर। इसी से कार्ड ढूँढें।"],
       ["Manpower Data Review · Log book", "VLB या ELB। LMV की लाइनें सिर्फ़ OT & Multiple Duties में दिखती हैं।"],
       ["Manpower Data Review · Source batches", "जिन बैच में कार्ड है उनके नाम, या “Saved VLB (no site batch)” / “Saved ELB (no site batch)”।"],
-      ["Manpower Data Review · Review reason", "गड़बड़ी शब्दों में। उदाहरण: “Invalid or excessive HMR hours; performance totals unavailable.”, “Missing or invalid kilometre / completed-trip values; performance totals unavailable.”, “Overlapping HMR intervals on this asset/shift; performance totals unavailable.”, “Effective site shift schedule is missing or ambiguous; timing requires review.”"]
+      ["Manpower Data Review · What to correct", "गड़बड़ी शब्दों में। उदाहरण: “Invalid or excessive HMR hours; performance totals unavailable.”, “Missing or invalid kilometre / completed-trip values; performance totals unavailable.”, “Overlapping HMR intervals on this asset/shift; performance totals unavailable.”, “Effective site shift schedule is missing or ambiguous; timing requires review.”"]
     ],
     "notes": [
       "सिर्फ़ 1 November 2026 या उसके बाद की तारीख वाली सेव की हुई VLB और ELB लॉग बुक पढ़ी जाती हैं। पेंडिंग स्कैन और डिलीट किए गए रिकॉर्ड शामिल नहीं हैं। LMV लॉग बुक सिर्फ़ OT & Multiple Duties में काम आती हैं।",
