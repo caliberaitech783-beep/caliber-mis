@@ -39,3 +39,9 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 - Each site card lists the three log books with their red, orange and review counts (`otSites[].books`).
 - Earlier repeats read the same three log books and count the driver across all of them.
 - HMR is optional on an LMV card. A card saved without it still counts as a duty; its hours show as unavailable and it is not listed for review.
+
+## Driver category drill-down (9 Nov 2026)
+
+- In an opened site, the "flagged drivers by driver category" table is clickable. Pressing a category name or its driver count lists that category; pressing a red, orange or review number lists only that colour within it. Pressing the same choice again shows every category.
+- The choice adds a drivers table (one row per driver: red, orange and review duties, log book, duty dates, shifts and equipment) and narrows the duty table under it. It does not change the totals, the site cards or the earlier-repeats list above.
+- A colour pressed in the category table takes priority over a colour pressed in the totals grid for the two lists under the table.
