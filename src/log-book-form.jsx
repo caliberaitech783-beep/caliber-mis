@@ -2,7 +2,7 @@ import {MANUAL_SHIFTS,manualShiftWindow} from '../shared/manual-shift.mjs';
 import './log-book-readability.css';
 import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
 import {resolveTripEquipment,validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
-import {vlbEntryFields,sameVlbEntryContext} from './vlb-entry-context.mjs';
+import {vlbEntryFields,sameVlbEntryContext,withLmvEntrySite} from './vlb-entry-context.mjs';
 import ManualLogBookDetails from './manual-log-book-details.jsx';
 import {blankJob,blankBreakdown,padManualRows} from '../shared/manual-log-book-details.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
@@ -72,9 +72,14 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
  const api=async(url,config={})=>{const response=await fetch(url,{...config,headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json',...config.headers}});const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'Could not reach the log book service.'),{details:body});return body;};
 
+ const loadOptions=async()=>{
+  const masters=await api('/api/log-books/options');
+  return lmv?withLmvEntrySite(masters,session,api):masters;
+ };
+
  const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords(batch.records||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords(list.records);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([loadOptions(),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords(list.records);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
 
  useEffect(()=>{void load()},[kind,session.token]);
 
@@ -102,7 +107,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const update=(key,value)=>{if(vlbBatch&&['location','bookDate'].includes(key))return;setForm(current=>({...current,[key]:value,...(key==='manualShift'&&['day','night'].includes(value)?{shiftHours:12}:{}),...(key==='bookDate'?{bookDateSource:'manual'}:{}),...(['bookDate','assetId','location','shiftId','shiftHours','manualShift'].includes(key)?{manualBreakdownHours:''}:{})}));setSuccess('');};
 
  const assetMessage=missingAssetMessage(options,kind,form.location);
- const reloadDoors=async()=>{setWorking(true);setError('');try{setOptions(await api('/api/log-books/options'));setSuccess('Equipment Master reloaded. Your entry has been kept.')}catch(e){setError(e.message)}finally{setWorking(false)}};
+ const reloadDoors=async()=>{setWorking(true);setError('');try{setOptions(await loadOptions());setSuccess('Equipment Master reloaded. Your entry has been kept.')}catch(e){setError(e.message)}finally{setWorking(false)}};
 
  const shifts=(options?.shifts||[]).filter(shift=>!form.location||!shift.site||canonicalSiteName(shift.site)===canonicalSiteName(form.location));
  const baseShift=shifts.find(shift=>String(shift.id)===String(form.shiftId));
@@ -125,7 +130,8 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
  useEffect(()=>{let stale=false;setHours(null);setHoursError('');if(!form.bookDate||!form.assetId||!form.shiftId||!form.location){setHoursLoading(false);return;}setHoursLoading(true);const timer=setTimeout(()=>{api('/api/log-books/hours',{method:'POST',body:JSON.stringify({bookDate:form.bookDate,assetId:form.assetId,shiftId:form.shiftId,location:form.location,shiftHours:form.shiftHours||CARD_SHIFTS[form.cardShift]?.hours||8,manualEntry:true,manualShift:form.manualShift,runningHours:hmr})}).then(value=>{if(!stale)setHours(value)}).catch(e=>{if(!stale)setHoursError(e.message)}).finally(()=>{if(!stale)setHoursLoading(false)});},500);return ()=>{stale=true;clearTimeout(timer)};},[vehicle,form.bookDate,form.assetId,form.shiftId,form.location,form.shiftHours,form.manualShift,hmr,session.token,hoursRefresh]);
 
- useEffect(()=>{if(saved)return;if(vlbBatch){setForm(current=>({...current,...vlbEntryFields(vlbBatch,options)}));return;}const location=options?.accountLocation||'';setForm(current=>current.location===location?current:{...current,location,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options,vlbBatch?.id]);
+ const entryLocation=(lmv&&options?.lmvEntrySite)||options?.accountLocation||'';
+ useEffect(()=>{if(saved)return;if(vlbBatch){setForm(current=>({...current,...vlbEntryFields(vlbBatch,options)}));return;}setForm(current=>current.location===entryLocation||lmv&&options?.canSelectSite&&current.location?current:{...current,location:entryLocation,assetId:'',employeeId:'',shiftId:'',workOrderId:'',manualBreakdownHours:''});},[vehicle,saved,options,vlbBatch?.id]);
 
 
  const selectAsset=id=>{const row=options?.assets.find(asset=>asset.id===id);setForm(current=>({...current,assetId:id,manualBreakdownHours:'',...(!current.location&&row?.site?{location:row.site,shiftId:''}:{})}));setSuccess('');};
@@ -135,7 +141,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const setTrip=(index,key,value)=>setForm(current=>({...current,trips:current.trips.map((row,i)=>i===index?{...row,[key]:value}:row)}));
 
  const viewSource=async()=>{try{const r=await fetch('/api/scan-cards/'+saved.data.scanCardId+'/image',{headers:{Authorization:`Bearer ${session.token}`}});if(!r.ok)throw new Error('Source scan unavailable.');const url=URL.createObjectURL(await r.blob());window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setError(e.message)}};
- const newEntry=()=>{setForm({...fresh(),location:options?.accountLocation||'',...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setShowSaveConfirm(false);setSuccess('');setError('');};
+ const newEntry=()=>{setForm({...fresh(),location:entryLocation,...(vlbBatch?vlbEntryFields(vlbBatch,options):{})});setSaved(null);setEditing(true);setShowSaveConfirm(false);setSuccess('');setError('');};
 
  const startHandover=keepDriver=>{
   const {bookDate,bookDateSource,location,shiftId,shiftHours,manualShift,cardShift,bookShiftCode,assetId,employeeId}=saved.data;
@@ -198,7 +204,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
      <section className="logbook-section"><div className="logbook-section-title"><h2>Book details</h2><span>{saved?.book_no||'New log book'}</span></div><div className="logbook-fields">
 
-<Field label="Location" hint={vlbBatch?'Fixed by the selected VLB batch':lmv&&options?.canSelectSite?'Choose a site':options?.accountLocation?'From your account':'Assign one location to your account to enter this log book'}>{lmv&&options?.canSelectSite?<SmartSelect searchable name="location" required value={form.location} onChange={e=>selectLocation(e.target.value)}><option value="">Select a site</option>{options.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect>:<input name="location" readOnly required value={form.location} aria-label="Location"/>}</Field>
+<Field label="Location" hint={vlbBatch?'Fixed by the selected VLB batch':lmv&&options?.canSelectSite?'Choose a site':options?.accountLocation?'From your account':lmv&&entryLocation?'Site filled automatically':'Assign one location to your account to enter this log book'}>{lmv&&options?.canSelectSite?<SmartSelect searchable name="location" required value={form.location} onChange={e=>selectLocation(e.target.value)}><option value="">Select a site</option>{options.sites.map(site=><option key={site}>{site}</option>)}</SmartSelect>:<input name="location" readOnly required value={form.location} aria-label="Location"/>}</Field>
 <Field label="Doc type"><input readOnly value={lmv?'LMV':vehicle?'VLB':'Equipment Log Book'}/></Field>
 <Field label="Book date">{vlbBatch?<input aria-label="Book date" readOnly value={form.bookDate}/>:<ManualBookDate value={form.bookDate} onChange={value=>update('bookDate',value)}/>}</Field>
 <Field label="Book no." hint={lmv?'CAL/LMV/DD-MM-YY/001 · Assigned on save':vehicle?'VLB_M/DDTH-MMMYY/{S1|S2|S3|D|N}/001 · Assigned on save':'CAL/ELB/DD-MM-YY/001 · Assigned on save'}><output className="logbook-book-number">{saved?.book_no||'AUTO'}</output></Field>

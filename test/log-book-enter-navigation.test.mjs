@@ -122,6 +122,16 @@ test('VLB and ELB focus the first editable field once after masters load without
   } finally {globalThis.document=previous}
 }));
 
+test('LMV manual fills the default site without setting the shift',()=>{
+ const app=harness(),date=app.slots[0].bookDate;
+ app.slots[2]={...app.slots[2],canSelectSite:true,lmvEntrySite:'Sasti OC',sites:['Sasti OC','Jayant OC']};
+ app.render('lmv');app.runAccountLocation();
+ const tree=app.render('lmv');
+ assert.equal(all(tree,node=>node.props.name==='location')[0].props.value,'Sasti OC');
+ assert.equal(app.slots[0].bookDate,date);
+ assert.equal(app.slots[0].shiftId,'');
+});
+
 test('manual VLB and ELB allow Day, Night and 12 hours even with a selected batch',()=>{
  for(const kind of ['vehicle','equipment']){
   const app=harness(),props={vlbBatch:{id:'b1',site:'Jayant OC',report_date:'2026-11-01',shift:'S1'}};

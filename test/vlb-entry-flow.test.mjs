@@ -5,7 +5,21 @@ import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {syncVlbBatchRecord} from '../server/rules/vlb-batch-policy.mjs';
-import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext} from '../src/vlb-entry-context.mjs';
+import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext,withLmvEntrySite} from '../src/vlb-entry-context.mjs';
+
+test('LMV defaults to the assigned site or a previously selected authorized VLB or ELB batch site',async()=>{
+ const options={sites:['Sasti OC','Jayant OC']};
+ const storage={getItem:key=>key==='vlb-entry-batch:operator'?'selected-batch':null};
+ const session={login:'operator'};
+ const read=async path=>{
+  assert.equal(path,'/api/vlb-batches');
+  return {batches:[{id:'selected-batch',site:'Sasti OB'}]};
+ };
+ assert.equal((await withLmvEntrySite(options,session,read,storage)).lmvEntrySite,'Sasti OC');
+ assert.equal((await withLmvEntrySite({...options,accountLocation:'Jayant OC'},session,read,storage)).lmvEntrySite,'Jayant OC');
+ assert.equal((await withLmvEntrySite({sites:['Jayant OC']},session,read,storage)).lmvEntrySite,'Jayant OC');
+ assert.equal((await withLmvEntrySite({...options,sites:['Jayant OC','Majri OC']},session,read,storage)).lmvEntrySite,undefined);
+});
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('selected batch fixes manual and scan context with the effective site shift',()=>{

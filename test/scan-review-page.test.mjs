@@ -276,6 +276,18 @@ test('all-site administrators can select any authorized scan site while keeping 
  nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true);
 });
 
+test('LMV scan fills the default site without choosing a date or shift',()=>{
+ const app=harness(),props={logBookKind:'lmv'};
+ app.render(props);
+ app.testCapture.setOptions({canSelectSite:true,lmvEntrySite:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});
+ app.render(props);
+ app.effects.find(fn=>/accountSite/.test(String(fn))&&/current.location/.test(String(fn)))();
+ const tree=app.render(props);
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Site')[0].props.value,'Sasti OC');
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Card date')[0].props.value,'');
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.value,'');
+});
+
 test('opening a site batch keeps its own site ahead of the account default',()=>{
  const app=harness(),vlbBatch={id:'selected',site:'Jayant OC',report_date:'2026-11-01',shift:'S1'};app.render({vlbBatch});
  app.testCapture.setOptions({canSelectSite:true,accountLocation:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});const tree=app.render({vlbBatch});
