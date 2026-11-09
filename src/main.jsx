@@ -728,8 +728,8 @@ function Login({ onLogin, theme, toggleTheme }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
       body: JSON.stringify({ preferredLanguage, secondaryLanguage }),
     }).catch(() => {});
-    sessionStorage.setItem("nerveCenterSession", session);
-    localStorage.removeItem("nerveCenterSession");
+    localStorage.setItem("nerveCenterSession", session);
+    sessionStorage.removeItem("nerveCenterSession");
     onLogin(JSON.parse(session));
   };
   const signIn = async () => {
@@ -11582,7 +11582,7 @@ function App() {
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
-      sessionStorage.setItem('nerveCenterSession',JSON.stringify(value));localStorage.removeItem('nerveCenterSession');
+      localStorage.setItem('nerveCenterSession',JSON.stringify(value));sessionStorage.removeItem('nerveCenterSession');
       setSharedSignedOut(false);setActive(LOGIN_LANDING_PAGE);setSession(value);
     };
     window.addEventListener('mis-shared-signin',receive);return()=>window.removeEventListener('mis-shared-signin',receive);

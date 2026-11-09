@@ -1,20 +1,6 @@
-import {sessionLimitForLogin} from './session-concurrency.mjs';
-
-const DEFAULT_SESSION_MAX_AGE_DAYS = 30;
-
-export function createSessionStore(pool, {
-  maxAgeDays = DEFAULT_SESSION_MAX_AGE_DAYS,
-  sessionLimit = sessionLimitForLogin,
-} = {}) {
-  const boundedMaxAgeDays = Math.max(1, Math.floor(Number(maxAgeDays) || DEFAULT_SESSION_MAX_AGE_DAYS));
-  const pruneExpired = () => pool.query(
-    `DELETE FROM auth_sessions
-     WHERE created_at <= NOW() - make_interval(days => $1::int)`,
-    [boundedMaxAgeDays]
-  );
+export function createSessionStore(pool) {
   return {
     async create({token, role, name, login = "", userType = "", assignedRole = "", permissions = {}}) {
-      await pruneExpired().catch(() => {});
       await pool.query(
         `INSERT INTO auth_sessions (token, role, employee_name, login_name, user_type, assigned_role, permissions)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
@@ -24,27 +10,6 @@ export function createSessionStore(pool, {
              last_seen_at = NOW()`,
         [token, role, name, login, userType, assignedRole, JSON.stringify(permissions)]
       );
-      // One live session per login and application: a new sign-in replaces the
-      // oldest one beyond the login's allowance, so an ID signed in on another
-      // device is signed out there. Logins named in SESSION_LIMIT_EXCEPTIONS keep
-      // more. Only this login's rows in the same application are touched; the
-      // session just created is always kept.
-      const limit = Number(sessionLimit(login)) || 0;
-      if (limit > 0 && String(login || "").trim()) {
-        await pool.query(
-          `DELETE FROM auth_sessions
-           WHERE lower(login_name) = lower($1)
-             AND COALESCE(permissions->>'application', 'BDMS') = COALESCE($3::jsonb->>'application', 'BDMS')
-             AND token <> $2
-             AND token NOT IN (
-               SELECT token FROM auth_sessions
-               WHERE lower(login_name) = lower($1)
-                 AND COALESCE(permissions->>'application', 'BDMS') = COALESCE($3::jsonb->>'application', 'BDMS')
-               ORDER BY (token = $2) DESC, created_at DESC
-               LIMIT $4::int)`,
-          [login, token, JSON.stringify(permissions), limit]
-        );
-      }
     },
 
     async get(token) {
@@ -54,9 +19,8 @@ export function createSessionStore(pool, {
                 assigned_role AS "assignedRole", permissions, created_at,
                 session_public_id AS "sessionId"
          FROM auth_sessions
-         WHERE token = $1
-           AND created_at > NOW() - make_interval(days => $2::int)`,
-        [token, boundedMaxAgeDays]
+         WHERE token = $1`,
+        [token]
       );
       // Tender tracking credentials never authorize a BDMS application request.
       if(rows[0]?.permissions?.application==='Tender')return null;
@@ -78,8 +42,7 @@ export function createSessionStore(pool, {
     },
 
     async pruneExpired() {
-      const result = await pruneExpired();
-      return Number(result.rowCount || 0);
+      return 0;
     },
   };
 }

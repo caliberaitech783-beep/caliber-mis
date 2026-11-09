@@ -2557,9 +2557,8 @@ async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token))return null;
   const local=await sessionStore.get(token);
-  const session=local?.permissions?.separateMisCredentials?await misCredentialClient.validateSession(token,local):(process.env.MIS_SSO_MODE==='off')?local:process.env.MIS_LEGACY_SSO_ENABLED==='true'?await misSharedSignIn.validateSession(token,local):null;
-  req.securitySession=session;
-  return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
+  req.securitySession=local;
+  return local&&(process.env.MIS_SSO_MODE||'client')==='client'?{...local,sharedPulseIdentity:true}:local;
 }
 
 function sessionActivityDetails(req){
