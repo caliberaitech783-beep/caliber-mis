@@ -28,15 +28,15 @@ test('no report manual is older than its report tab or its own text',async()=>{
  assert.deepEqual(Object.keys(manifest).filter(id=>!REPORT_GUIDE_IDS.includes(id)),[],'manifest.json lists a manual that is not in src/report-guide-list.mjs');
 });
 test('a report tab gets its own two manual addresses; an unknown tab gets none',()=>{
- assert.deepEqual(reportGuide('ot'),{en:'/guides/ot-en.pdf',hi:'/guides/ot-hi.pdf'});
+ assert.deepEqual(reportGuide('daily'),{en:'/guides/daily-en.pdf',hi:'/guides/daily-hi.pdf'});
  assert.equal(reportGuide('not-a-report'),null);assert.equal(reportGuide(undefined),null);
 });
 test('the manual bar offers both downloads and stays off screens without a manual',async()=>{
  const source=readFileSync(new URL('../src/report-guide.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
  const {code}=await transformWithOxc(source,'report-guide.jsx',{jsx:{runtime:'classic'}});
  const ReportGuide=new Function('React','reportGuide',code+';return ReportGuide')(React,reportGuide);
- const html=renderToStaticMarkup(React.createElement(ReportGuide,{id:'ot'}));
- assert.match(html,/href="\/guides\/ot-en\.pdf" download=""/);assert.match(html,/href="\/guides\/ot-hi\.pdf" download=""/);assert.match(html,/Operating manual/);
+ const html=renderToStaticMarkup(React.createElement(ReportGuide,{id:'daily'}));
+ assert.match(html,/href="\/guides\/daily-en\.pdf" download=""/);assert.match(html,/href="\/guides\/daily-hi\.pdf" download=""/);assert.match(html,/Operating manual/);
  assert.equal(renderToStaticMarkup(React.createElement(ReportGuide,{id:'not-a-report'})),'');
 });
 test('the manual bar sits above the operations report tabs and the VLB and ELB report pages',()=>{
