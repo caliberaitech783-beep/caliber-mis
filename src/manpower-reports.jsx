@@ -20,7 +20,11 @@ const otColumns=columns([['reason','OT flag / reason'],['logBook','Log book'],..
 const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','Review reason']]);
 
 const historyColumns=(label,since)=>columns([...person,['site','Site'],['logBook','Log book'],['category','Driver category'],['now',label+' in selected dates'],['nowDates','Selected duty dates'],['pastRed','Earlier RED'+since],['pastOrange','Earlier ORANGE'+since],['total','Total '+label+' so far'],['pastDates','Earlier dates']]);
-const driverColumns=columns([...person,['category','Driver category'],['logBook','Log book'],['red','RED duties'],['orange','ORANGE duties'],['review','REVIEW duties'],['total','Flagged duties'],['dutyDates','Duty dates'],['shifts','Shifts worked'],['equipment','Equipment worked']]);
+const monthName=month=>new Date(month+'-01T00:00:00Z').toLocaleString('en-IN',{month:'short',year:'numeric',timeZone:'UTC'});
+// The driver's name opens his OT history; the two counts beside it cover the month and the calendar year of the To date.
+const driverColumns=(month,year,opened,openDriver)=>columns([...person,['otMonth','OT in '+monthName(month)],['otYear','OT in '+year],['category','Driver category'],['logBook','Log book'],['red','RED duties'],['orange','ORANGE duties'],['review','REVIEW duties'],['total','Flagged duties'],['dutyDates','Duty dates'],['shifts','Shifts worked'],['equipment','Equipment worked']])
+ .map(c=>c.key==='employeeName'?{...c,render:r=><button type="button" className="mp-driver-open" aria-pressed={opened===r.id} aria-label={'OT history of '+r.employeeName} onClick={()=>openDriver(opened===r.id?'':r.id)}>{r.employeeName}</button>}:c);
+const driverHistoryColumns=columns([['date','Duty date'],['reason','OT flag / reason'],['shifts','Shifts worked'],['logBook','Log book'],['equipment','Equipment worked'],['combinedHours','Combined HMR performance hours'],['books','Saved cards']]).map(c=>c.key==='reason'?{...c,render:r=><strong className={`mp-flag mp-flag-${r.severity}`}>{r.reason}</strong>}:c);
 const noDrill={category:'',severity:''};
 const severities=[['red','RED','Consecutive shifts / all three shifts'],['orange','ORANGE','Shift 1 + Shift 3 with a gap'],['review','REVIEW','Missing or inconsistent schedule']];
 const logBooks=[['VLB','Vehicle Log Book'],['ELB','Equipment Log Book'],['LMV','LMV Log Book']];
@@ -29,7 +33,7 @@ const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{
 
 // Sites first, then one site's drivers, each split by log book (VLB, ELB, LMV).
 // Plain render function: its state lives in ManpowerReports.
-function otOverview({report,filters,query,selectSite,description,ReportSection,severity,setSeverity,logBook,setLogBook,drill,setDrill,history,historyKey}){
+function otOverview({report,filters,query,selectSite,description,ReportSection,severity,setSeverity,logBook,setLogBook,drill,setDrill,history,historyKey,tally,tallyKey,driverOpen,setDriverOpen}){
  const siteKey=canonicalSiteName(filters.site),site=report.otSites.find(s=>s.siteKey===siteKey);
  const siteRows=siteKey?report.ot.filter(r=>r.siteKey===siteKey):report.ot;
  // A duty saved in two log books belongs to both, so it is listed under each.
@@ -52,14 +56,21 @@ function otOverview({report,filters,query,selectSite,description,ReportSection,s
  const active=categories.some(c=>c.category===drill.category)?drill.category:'',drillSeverity=active?drill.severity:'',listSeverity=drillSeverity||severity;
  const listLabel=severities.find(([id])=>id===listSeverity)?.[1]||'';
  const dutyRows=rows.filter(r=>(!active||r.category===active)&&(!listSeverity||r.severity===listSeverity));
+ // Month and year counts arrive separately; until then the cells say so instead of showing a zero.
+ const counted=tally.key===tallyKey,yearData=counted?tally.data:null,yearDrivers=new Map((yearData?.drivers||[]).map(d=>[d.employeeKey+'|'+d.siteKey,d]));
+ const otMonth=filters.to.slice(0,7),otYear=filters.to.slice(0,4);
+ const otCount=(id,span)=>yearData?yearDrivers.get(id+'|'+siteKey)?.[span].total||0:counted?'Unavailable':'Checking…';
  const driverRows=(()=>{
   if(!active)return [];
   const drivers=new Map();
   for(const r of dutyRows){const row=drivers.get(r.employeeKey)||{id:r.employeeKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,category:r.category,red:0,orange:0,review:0,total:0,books:new Set(),dates:new Set(),shifts:[],equipment:new Set()};
    row[r.severity]++;row.total++;for(const code of r.logBooks||[])row.books.add(code);for(const date of String(r.dates||'').split('; '))if(date)row.dates.add(date);if(r.shifts)row.shifts.push(r.shifts);for(const item of String(r.equipment||'').split('; '))if(item)row.equipment.add(item);drivers.set(r.employeeKey,row);}
-  return [...drivers.values()].map(({books,dates,shifts,equipment,...row})=>({...row,logBook:logBooks.map(([code])=>code).filter(code=>books.has(code)).join(' + '),dutyDates:[...dates].sort().join('; '),shifts:shifts.join(' | '),equipment:[...equipment].join('; ')}))
+  return [...drivers.values()].map(({books,dates,shifts,equipment,...row})=>({...row,otMonth:otCount(row.id,'month'),otYear:otCount(row.id,'year'),logBook:logBooks.map(([code])=>code).filter(code=>books.has(code)).join(' + '),dutyDates:[...dates].sort().join('; '),shifts:shifts.join(' | '),equipment:[...equipment].join('; ')}))
    .sort((a,b)=>b.red-a.red||b.orange-a.orange||b.total-a.total||String(a.employeeName).localeCompare(String(b.employeeName)));
  })();
+ // One driver's OT history for the year, opened from his name: a month-wise count, then every flagged duty.
+ const opened=driverRows.find(r=>r.id===driverOpen),openedYear=opened&&yearData?yearDrivers.get(opened.id+'|'+siteKey):null,openedEvents=openedYear?.events||[];
+ const openedMonths=[...new Set(openedEvents.map(e=>e.date.slice(0,7)))].sort().map(month=>{const list=openedEvents.filter(e=>e.date.slice(0,7)===month),n=level=>list.filter(e=>e.severity===level).length;return {month,red:n('red'),orange:n('orange'),review:n('review'),total:list.length};});
  const pick=(category,level)=>setDrill(active===category&&drillSeverity===level?noDrill:{category,severity:level});
  return <>
   <div className="mp-ot-summary" role="group" aria-label="Flag summary by log book">
@@ -88,7 +99,15 @@ function otOverview({report,filters,query,selectSite,description,ReportSection,s
      {severities.map(([id,name])=><td key={id}>{c[id]?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={active===c.category&&drillSeverity===id} aria-label={c[id]+' '+name+' · '+c.category} onClick={()=>pick(c.category,id)}>{c[id]}</button>:0}</td>)}
      <td><button type="button" className="mp-cat-count" aria-pressed={active===c.category&&!drillSeverity} aria-label={c.drivers.size+' drivers · '+c.category} onClick={()=>pick(c.category,'')}>{c.drivers.size}</button></td>
     </tr>)}</tbody></table></>:<p>No flagged driver at this site{logBook?' on '+logBook:''} in the selected dates.</p>}</div>
-   {active&&<ReportSection key={'drivers-'+query+'-'+siteKey+'-'+logBook+'-'+active+'-'+listSeverity} title={site.site+' · '+active+(listLabel?' · '+listLabel+' only':'')+' · drivers'} category="manpower-ot-drivers" description={description+' · '+(logBook||'VLB, ELB and LMV')+' · One row per driver'} rows={driverRows} columns={driverColumns} rowKey={r=>r.id} emptyMessage="No flagged driver in this selection."/>}
+   {active&&<ReportSection key={'drivers-'+query+'-'+siteKey+'-'+logBook+'-'+active+'-'+listSeverity} title={site.site+' · '+active+(listLabel?' · '+listLabel+' only':'')+' · drivers'} category="manpower-ot-drivers" description={description+' · '+(logBook||'VLB, ELB and LMV')+' · One row per driver'} rows={driverRows} columns={driverColumns(otMonth,otYear,opened?.id||'',setDriverOpen)} rowKey={r=>r.id} emptyMessage="No flagged driver in this selection."/>}
+   {active&&counted&&tally.error&&<p role="alert">{tally.error}</p>}
+   {opened&&<>
+    <div className="mp-category mp-driver-history"><h2>{opened.employeeName} · OT history {otYear}</h2>
+     <p className="mp-category-hint">{opened.employeeId} · {opened.category} · {site.site}{yearData?' · '+yearData.yearFrom+' to '+yearData.yearTo:''} · Each flagged duty (red, orange or review) counts as one OT. <button type="button" onClick={()=>setDriverOpen('')}>Close history</button></p>
+     {yearData?<table><thead><tr><th>Month</th><th>Red</th><th>Orange</th><th>Review</th><th>OT times</th></tr></thead><tbody>{openedMonths.map(m=><tr key={m.month}><td>{monthName(m.month)}</td><td>{m.red}</td><td>{m.orange}</td><td>{m.review}</td><td>{m.total}</td></tr>)}<tr className="mp-total"><td>Year {otYear}</td><td>{openedYear?.year.red||0}</td><td>{openedYear?.year.orange||0}</td><td>{openedYear?.year.review||0}</td><td>{openedYear?.year.total||0}</td></tr></tbody></table>:<p role={counted?'alert':'status'}>{counted?'The history could not be read. Press Refresh reports and try again.':'Reading this driver’s history…'}</p>}
+    </div>
+    {yearData&&<ReportSection key={'driver-history-'+query+'-'+siteKey+'-'+opened.id} title={opened.employeeName+' · flagged duties in '+otYear} category="manpower-ot-driver-history" description={site.site+' · '+yearData.yearFrom+' to '+yearData.yearTo+' · Newest first'} rows={openedEvents} columns={driverHistoryColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} emptyMessage="No flagged duty for this driver in this year."/>}
+   </>}
    <ReportSection key={'ot-'+query+'-'+siteKey+'-'+logBook+'-'+active+'-'+listSeverity} title={'OT & Multiple Duties · '+site.site+(logBook?' · '+logBook:'')+(active?' · '+active:'')+(listLabel?' · '+listLabel+' only':'')} category="manpower-ot" description={description+' · Scheduled times in IST; HMR performance hours, not payable OT'} rows={dutyRows} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} emptyMessage="No matching multiple-duty pattern in the saved records."/>
   </>:<p className="mp-notice">Select a site above to see its drivers, their categories and the duty details.</p>}
  </>;
@@ -99,6 +118,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null);
  const [severity,setSeverity]=useState(''),[history,setHistory]=useState({key:'',data:null,error:''}),[logBook,setLogBook]=useState(''),[drill,setDrill]=useState(noDrill);
+ const [tally,setTally]=useState({key:'',data:null,error:''}),[driverOpen,setDriverOpen]=useState('');
  // The OT view always loads every assigned site; the Site selection there opens one site.
  const query=useMemo(()=>new URLSearchParams(reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId]);
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
@@ -118,6 +138,17 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    .catch(e=>{if(!controller.signal.aborted)setHistory({key:historyKey,data:null,error:e.message});});
   return()=>controller.abort();
  },[wanted,historyKey,session.token]);
+ // Month and year OT counts per driver: read once per site and month, only while a drivers list is open.
+ const tallyKey=canonicalSiteName(filters.site)+'|'+filters.to.slice(0,7)+'|'+refresh,tallyWanted=reportId==='ot'&&valid&&Boolean(filters.site)&&Boolean(drill.category);
+ useEffect(()=>{
+  if(!tallyWanted||tally.key===tallyKey&&tally.data)return;
+  const controller=new AbortController();setTally({key:'',data:null,error:''});
+  fetch('/api/reports/manpower/ot-drivers?'+new URLSearchParams({site:filters.site,to:filters.to}),{headers:{Authorization:'Bearer '+session.token},signal:controller.signal})
+   .then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load month and year OT counts.');return payload;})
+   .then(data=>{if(!controller.signal.aborted)setTally({key:tallyKey,data,error:''});})
+   .catch(e=>{if(!controller.signal.aborted)setTally({key:tallyKey,data:null,error:e.message});});
+  return()=>controller.abort();
+ },[tallyWanted,tallyKey,session.token]);
  const ready=data?.query===query&&valid&&!busy&&!error,report=ready?data.payload:null;
  const set=(field,value)=>setFilters(current=>({...current,[field]:value,...(field==='site'?{batch:'',asset:''}:{})}));
  const title=views.find(([id])=>id===reportId)?.[1]||views[0][1];
@@ -146,7 +177,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
     <p className="mp-notice">{report.shiftAttendance.length} present shifts. Each employee counts once per date and shift, including when trips are entered later.</p>
     <ReportSection key={'attendance-'+query} title="Shift Attendance" category="shift-attendance" description={description} rows={report.shiftAttendance} columns={attendanceColumns} rowKey={r=>r.id} emptyMessage="No attendance matches these selections."/>
    </>:reportId==='ot'?<>
-    {otOverview({report,filters,query,selectSite:site=>set('site',site),description,ReportSection,severity,setSeverity,logBook,setLogBook,drill,setDrill,history,historyKey})}
+    {otOverview({report,filters,query,selectSite:site=>set('site',site),description,ReportSection,severity,setSeverity,logBook,setLogBook,drill,setDrill,history,historyKey,tally,tallyKey,driverOpen,setDriverOpen})}
    </>:reportId==='employee'?<>
     <p className="mp-notice">One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.</p>
     <ReportSection key={'performance-'+query} title="Shift Performance" category="manpower-performance" description={description+' · Each shift is separate; HMR is machine performance'} rows={report.performance} columns={performanceColumns} rowKey={r=>r.id} emptyMessage="No saved duties with a resolved employee identity match these selections."/>

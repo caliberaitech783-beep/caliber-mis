@@ -26,5 +26,8 @@
 .mp-category .mp-category-hint{margin:0 0 10px;font-size:13px;color:var(--muted,#665e75)}.mp-category-hint strong{color:var(--text,#242137)}.mp-category-hint button{margin-left:8px;padding:4px 10px;border:1px solid #c7b5dd;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
 .mp-cat-open,.mp-cat-count{border:2px solid transparent;border-radius:8px;font:inherit;cursor:pointer}.mp-cat-open,.mp-cat-count:not([class*="mp-flag-"]){background:transparent;color:inherit}.mp-cat-open{padding:4px 8px;margin-left:-8px;text-align:left;font-weight:700;text-decoration:underline;text-decoration-color:#c7b5dd;text-underline-offset:3px}.mp-cat-count{min-width:46px;padding:4px 10px;text-align:center;font-weight:700}
 .mp-cat-open:hover,.mp-cat-count:hover{border-color:#c7b5dd}.mp-cat-open[aria-pressed=true],.mp-cat-count[aria-pressed=true]{border-color:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent)}.mp-category tr.mp-on td{background:color-mix(in srgb,#59338b 8%,transparent)}
+/* A driver's name opens his OT history for the year. */
+.mp-driver-open{padding:2px 6px;margin-left:-6px;border:2px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;font-weight:700;text-align:left;text-decoration:underline;text-decoration-color:#c7b5dd;text-underline-offset:3px;cursor:pointer}.mp-driver-open:hover{border-color:#c7b5dd}.mp-driver-open[aria-pressed=true]{border-color:#59338b;background:color-mix(in srgb,#59338b 12%,transparent)}
+.mp-driver-history tr.mp-total td{font-weight:800;border-top:2px solid #c7b5dd}
 @media(max-width:640px){.mp-ot-summary{grid-template-columns:1fr}}
 @media print{.mp-filter-bar,.mp-site-cards{display:none}}
