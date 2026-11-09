@@ -50,7 +50,7 @@ const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severit
 const sourceLabel=r=>r.batchNames.join('; ')||`Saved ${logBookCode(r.kind)} (no site batch)`;
 // Shift Attendance Equipment Wise names a duty after the machine's group in the Equipment master.
 // Spelling differences ("Water Tanker" / "WATER TANKER") become one name; the master is never rewritten.
-export const NO_EQUIPMENT_GROUP='Group missing in master',NO_EQUIPMENT_ASSIGNED='No equipment assigned';
+const NO_EQUIPMENT_GROUP='Group missing in master',NO_EQUIPMENT_ASSIGNED='No equipment assigned';
 const equipmentName=value=>{const name=normalizeEquipmentGroup(value);return !name||name.startsWith('UNRESOLVED ')?NO_EQUIPMENT_GROUP:name.toLowerCase().replace(/[a-z]+/g,word=>/[aeiouy]/.test(word)?word[0].toUpperCase()+word.slice(1):word.toUpperCase());};
 const makeModelName=s=>[/^Unresolved /.test(s.make)?'Make not named':text(s.make),/^Unresolved /.test(s.model)?'':text(s.model)].filter(Boolean).join(' ');
 const assetClass=asset=>{
@@ -172,14 +172,14 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const lines=group(cards.length?cards:zero,s=>JSON.stringify([siteOf(s),equipmentOf(s)])).map(list=>({list,siteKey:siteOf(list[0]),site:sitesByKey.get(siteOf(list[0]))||list[0].site,equipment:equipmentOf(list[0]),doors:unique(list.map(s=>s.door)).join('; '),hours:list.reduce((total,s)=>total+(s.card&&s.hours>0?s.hours:0),0)}));
   let main=lines[0];for(const line of lines)if(line.hours>main.hours)main=line;
   const withTrips=cards.some(c=>c.hasTrips),zeroTrips=!withTrips&&!cards.some(c=>c.kind==='equipment')&&(zero.length>0||cards.some(c=>c.zeroCard));
-  const status=withTrips?'Present — with trips':zeroTrips?'Present — 0 trips':'Present',dutyId=JSON.stringify([r.employeeKey,r.date,r.shift]);
+  const status=withTrips?'Present — with trips':zeroTrips?'Present — 0 trips':'Present';
   const twoSites=unique(lines.map(l=>l.siteKey)).length>1,where=line=>`${line.doors||'no door number'} (${line.equipment}${twoSites?', '+line.site:''})`;
   const reason=unique(zero.map(s=>s.reason)).join('; '),remarks=unique(zero.map(s=>s.remarks)).join('; ');
   return lines.map(line=>{
    const mark=otMarks.get(JSON.stringify([r.employeeKey,line.siteKey,r.date,r.shift])),trips=line.list.filter(s=>s.card&&s.trips!==null).map(s=>s.trips);
    const others=mark?unique([...mark.others].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)).map(o=>o.date===r.date?o.shift:`${o.shift} on ${shortDate(o.date)}`)):[];
    const machines=line===main?lines.filter(l=>l!==line).map(l=>'Also worked on '+where(l)).join('; '):'Second machine in this shift; actual duty counted on '+where(main);
-   return {id:JSON.stringify([r.employeeKey,r.date,r.shift,line.siteKey,line.equipment]),dutyId,date:r.date,shift:r.shift,site:line.site,siteKey:line.siteKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,
+   return {id:JSON.stringify([r.employeeKey,r.date,r.shift,line.siteKey,line.equipment]),date:r.date,shift:r.shift,site:line.site,siteKey:line.siteKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,
     equipment:line.equipment,doors:line.doors,makeModel:unique(line.list.map(s=>s.noMachine?'':makeModelName(s))).join('; '),status,trips:trips.length?sum(trips):line.list.some(s=>s.card)?null:0,
     actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
     flag:mark?.severity||(zeroTrips?'zero':'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':'Normal duty',
