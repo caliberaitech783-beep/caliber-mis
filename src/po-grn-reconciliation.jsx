@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {FileBarChart,RefreshCw} from 'lucide-react';
@@ -33,18 +34,21 @@ export default function PoGrnReconciliation({token,ReportSection}) {
  const receiptRows=useMemo(()=>data.receipts.filter(row=>!vendor||row.vendor===vendor),[data.receipts,vendor]);
  const unmatchedRows=useMemo(()=>data.unmatched.filter(row=>!vendor||row.vendor===vendor),[data.unmatched,vendor]);
  const vendors=useMemo(()=>[...new Set([...data.rows,...data.receipts].map(row=>row.vendor))].filter(Boolean).sort(),[data.rows,data.receipts]);
- const load=event=>{event.preventDefault();try{purchaseOrderRange(draft.from,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);}};
+ const load=()=>{try{purchaseOrderRange(draft.from,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);return false;}};
  const choose=(nextFilter,nextTab='items')=>{setVendor('');setFilter(nextFilter);setTab(nextTab);};
  const cards=[['orders','Purchase orders','all'],['pendingItems','Pending PO items','pending'],['overdueItems','Overdue PO items','overdue'],['noReceiptItems','PO items with no GRN','no-receipt'],['rejectedItems','Items with rejection','rejected'],['unmatchedLines','Unlinked GRN lines','all','unmatched']];
  const view=tab==='vendors'?{title:'Vendor Follow-up',rows:data.vendors.filter(row=>!vendor||row.vendor===vendor),columns:vendorColumns}:tab==='unmatched'?{title:'Unlinked GRNs',rows:unmatchedRows,columns:receiptColumns}:tab==='receipts'?{title:'GRN Detail',rows:receiptRows,columns:receiptColumns}:{title:'PO Fulfilment',rows:itemRows,columns:itemColumns};
  return <section className="reports-workspace stock-statement po-grn-reconciliation">
   <h1><FileBarChart aria-hidden="true"/> PO-GRN Reconciliation</h1>
   <p>Compare purchase orders with goods received and identify supplier follow-up.</p>
-  <form className="stock-statement-filters" onSubmit={load}>
+  <TabSelectionDialog title="PO-GRN reconciliation dates" onSubmit={load}>
+   <form className="stock-statement-filters">
    <label>PO date from<DateInput value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})}/></label>
    <label>PO date to / receipts through<DateInput value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})}/></label>
    <button disabled={data.loading} type="submit"><RefreshCw/>{data.loading?'Loading…':'Merge / Refresh'}</button>
   </form>
+   {validation&&<p role="alert">{validation}</p>}
+   </TabSelectionDialog>
   {validation&&<p role="alert">{validation}</p>}
   {data.loading?<p role="status">Merging Oracle PO and GRN records…</p>:data.error?<p role="alert">{data.error}</p>:<>
    <div className="po-grn-summary">{cards.map(([key,label,nextFilter,nextTab])=><button key={key} type="button" onClick={()=>choose(nextFilter,nextTab)}><strong>{Number(data.summary[key]||0).toLocaleString('en-IN')}</strong><span>{label}</span></button>)}</div>

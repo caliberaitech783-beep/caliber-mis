@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {UsersRound,SlidersHorizontal,RotateCcw,FilterX} from 'lucide-react';
@@ -60,7 +61,8 @@ export default function EmployeeTenureReport({token, ReportSection}) {
       </div>;
   return <section className="reports-workspace employee-tenure-report">
     <h1><UsersRound aria-hidden="true"/> Employee Tenure Report</h1>
-    <div className="employee-tenure-filters">
+    <TabSelectionDialog title={"Employee tenure options"} onSubmit={()=>Boolean(asOf)}>
+      <form><div className="employee-tenure-filters">
       <div className="employee-tenure-filter-heading"><SlidersHorizontal aria-hidden="true"/><strong>Filter employees</strong></div>
       <label>Counted through <DateInput aria-label="Employee tenure counted through" value={asOf} max={today} onChange={event => {if (event.target.value && event.target.value <= today) setAsOf(event.target.value);}} /></label>
       <label>Minimum completed service <SmartSelect aria-label="Minimum completed service" value={minimum} onChange={event => setMinimum(Number(event.target.value))}>{TENURE_MONTHS.map(months => <option value={months} key={months}>{months}+ months</option>)}</SmartSelect></label>
@@ -74,6 +76,8 @@ export default function EmployeeTenureReport({token, ReportSection}) {
         <button type="button" onClick={() => setAttempt(value => value + 1)}><RotateCcw aria-hidden="true"/>Refresh</button>
       </div>
     </div>
+      <button type="submit" disabled={!(Boolean(asOf))}>Show report</button></form>
+    </TabSelectionDialog>
     {data.loading || data.token !== token ? <p role="status">Loading employee records…</p> : data.error ? <p role="alert">{data.error} Use Refresh to retry.</p> : <>
 
       {view === 'excluded' && <label className="employee-tenure-reason">Exclusion reason <SmartSelect aria-label="Exclusion reason" value={reason} onChange={event => setReason(event.target.value)}>

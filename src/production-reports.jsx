@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {productionShifts} from '../shared/production-report.mjs';
@@ -24,13 +25,17 @@ export default function ProductionReports({session,reportId,onSelect,ReportSecti
  if(report?.ready)for(const key of ['totalTrips','totalQuantity','totalHours',...report.shifts.flatMap(s=>[s+'Trips',s+'Hours',...(machine?[s+'Quantity']:[])])]){const values=rows.map(r=>r[key]).filter(v=>v!==null&&v!==undefined);totals[key]=values.length?Math.round(values.reduce((n,v)=>n+v,0)*1000)/1000:null;}
  return <section className="production-reports"><header><small>REPORTS / TRIPS & PRODUCTIVITY</small><h1>{title}</h1><p>Completed trips, approved capacities and saved machine hours.</p></header>
   <nav className="production-tabs" aria-label="Production reports">{[['door-production','Door number'],['machine-production','Machine number']].map(([id,label])=><button key={id} type="button" aria-current={reportId===id?'page':undefined} onClick={()=>onSelect(id)}>{label}</button>)}</nav>
-  <form className="production-filters" onSubmit={e=>{e.preventDefault();if(valid)setRun({query,at:Date.now()});}}>
+  <TabSelectionDialog title={title} openKey={reportId} onSubmit={()=>{if(!valid||busy)return false;setRun({query,at:Date.now()});}}>
+  <form className="production-filters">
    <label>1. Site<select value={filters.site} required onChange={e=>set('site',e.target.value)}><option value="">Select site</option>{options.sites.map(s=><option key={s}>{s}</option>)}</select></label>
    <label>2. Date<input type="date" required min={OPERATIONAL_START} value={filters.date} onChange={e=>set('date',e.target.value)}/></label>
    <label>3. Report type<select value={filters.mode} onChange={e=>set('mode',e.target.value)}><option value="shift">Shift-wise</option><option value="day">Day-wise</option></select></label>
    {filters.mode==='shift'?<label>Shift<select required value={filters.shift} onChange={e=>set('shift',e.target.value)}><option value="">Select shift</option>{shifts.map(s=><option key={s} value={s}>{labels[s]}</option>)}</select></label>:mixed&&<label>Applicable schedule<select required value={filters.schedule} onChange={e=>set('schedule',e.target.value)}><option value="">Select schedule</option><option value="three">Shift 1 / 2 / 3</option><option value="daynight">Day / Night</option></select></label>}
    <button type="submit" disabled={!valid||busy}>{busy?'Checking batches…':'Show report'}</button>
   </form>
+  {filters.site&&!shifts.length&&<p role="status">No active, unambiguous Shift Master schedule is available for this site and date.</p>}
+  {error&&<p className="production-error" role="alert">{error}</p>}
+  </TabSelectionDialog>
   {error&&<p className="production-error" role="alert">{error}</p>}
   {filters.site&&!shifts.length&&<p role="status">No active, unambiguous Shift Master schedule is available for this site and date.</p>}
   {report&&<><div className="production-checkpoints">{report.status.map(s=><div key={s.shift} className={s.state==='Processed'?'processed':'pending'}><strong>{labels[s.shift]} · {s.state}</strong><span>{s.cards} saved VLB cards</span><small>{s.batch||'Batch not created'}</small></div>)}</div>

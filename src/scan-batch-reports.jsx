@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import React,{useEffect,useState} from 'react';
 import ScanBatchReport from './scan-batch-report.jsx';
 import CardReportGallery,{filterCardBatches} from './card-reports.jsx';
@@ -31,7 +32,10 @@ export default function ScanBatchReports({kind,session,ReportSection}){
  const visible=filterCardBatches(batches,kind,search);
  const choose=id=>{setSelected(id);setBatch(null);setCards([]);setError('')};
  return <section className="scan-page logbook-page"><header className="logbook-page-header"><div><h1>{code} Reports</h1><p>Open the report for any of your scan/upload batches. View the data report or original scanned cards for that batch.</p></div></header>
-  <section className="logbook-section"><div className="scan-settings"><label>Find batch<input type="search" placeholder="Batch name or scan date" value={search} onChange={e=>setSearch(e.target.value)}/></label><label>Report batch<SmartSelect aria-label="Report batch" value={selected} onChange={e=>choose(e.target.value)}><option value="">Choose a batch</option>{batch&&!visible.some(b=>b.id===batch.id)&&<option value={batch.id}>{batch.name} · {cards.length} cards</option>}{visible.map(b=><option key={b.id} value={b.id}>{b.name} · {b.cards} cards · {new Date(b.created_at).toLocaleDateString('en-IN')}</option>)}</SmartSelect></label><button type="button" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh reports</button>{nextOffset!=null&&<button type="button" disabled={moreLoading} onClick={older}>{moreLoading?'Loading…':'Load older batches'}</button>}</div>
+  <section className="logbook-section"><TabSelectionDialog title="Scan report batch" openKey={!selected} onSubmit={()=>Boolean(selected)}>
+   <form><div className="scan-settings"><label>Find batch<input type="search" placeholder="Batch name or scan date" value={search} onChange={e=>setSearch(e.target.value)}/></label><label>Report batch<SmartSelect aria-label="Report batch" value={selected} onChange={e=>choose(e.target.value)}><option value="">Choose a batch</option>{batch&&!visible.some(b=>b.id===batch.id)&&<option value={batch.id}>{batch.name} · {cards.length} cards</option>}{visible.map(b=><option key={b.id} value={b.id}>{b.name} · {b.cards} cards · {new Date(b.created_at).toLocaleDateString('en-IN')}</option>)}</SmartSelect></label><button type="button" onClick={()=>setRefresh(n=>n+1)} disabled={loading}>Refresh reports</button>{nextOffset!=null&&<button type="button" disabled={moreLoading} onClick={older}>{moreLoading?'Loading…':'Load older batches'}</button>}</div><button type="submit" disabled={!selected}>Show report</button></form>
+   {loading&&<p role="status">Loading batches…</p>}{error&&<p role="alert">{error}</p>}
+  </TabSelectionDialog>
    {loading&&<p role="status">Loading batch report…</p>}{error&&<p className="scan-error" role="alert">{error}</p>}
    {listed&&!batches.length&&!selected&&!error&&<p>No scan/upload batches yet. Your batch reports will appear here after you scan or upload cards.</p>}
    {batch&&!cards.length&&<p>This batch has no cards yet. The report will appear as its cards arrive.</p>}

@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import {recordCountLabel} from './iboss-record-count.mjs';
 import {createAccountPageLoader} from './iboss-account-loader.mjs';
 import React,{useEffect,useMemo,useState,useRef} from 'react';
@@ -45,7 +46,7 @@ export default function IbossAccounts({token,ReportSection,initialSection='dashb
   if(key==='day-book'){const today=indiaDateTimeInputValue().slice(0,10);const currentDay={from:today,to:today};setRange(currentDay);setDraft(currentDay);}
   setData({rows:[],loading:true,error:''});setValidation('');setView(key);
  };
- const refresh=event=>{event.preventDefault();try{if(definition.dated)purchaseOrderRange(draft.from,draft.to);if(definition.asOf)purchaseOrderRange(draft.to,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);}};
+ const refresh=()=>{try{if(definition.dated)purchaseOrderRange(draft.from,draft.to);if(definition.asOf)purchaseOrderRange(draft.to,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);return false;}};
  const changeSection=(next,focus=false)=>{if(!visibleSections.some(([key])=>key===next))return;setSection(next);setView('');setValidation('');if(focus)queueMicrotask(()=>document.getElementById(`accounts-tab-${next}`)?.focus());};
  const sectionKeyDown=event=>{if(!visibleSections.length||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const index=visibleSections.findIndex(([key])=>key===section),last=visibleSections.length-1;changeSection(visibleSections[event.key==='Home'?0:event.key==='End'?last:event.key==='ArrowLeft'?(index+last)%visibleSections.length:(index+1)%visibleSections.length][0],true);};
  if(!visibleSections.length)return <section className="iboss-accounts"><h1>Accounts</h1><p>No Accounts privileges are assigned. Contact your administrator.</p></section>;
@@ -59,13 +60,15 @@ export default function IbossAccounts({token,ReportSection,initialSection='dashb
   {SECTIONS.filter(([key])=>key!==section).map(([key])=><div key={key} hidden role="tabpanel" id={`accounts-panel-${key}`} aria-labelledby={`accounts-tab-${key}`}/>)}
   {definition&&<>
    {range.company&&<p>Company: {range.companyName||range.company} · Shared ERP master records remain available.</p>}
-   <form className="stock-statement-filters" onSubmit={refresh}>
+   <TabSelectionDialog title={definition.title} enabled={Boolean(definition.dated||definition.asOf)} openKey={view} onSubmit={refresh}>
+   <form className="stock-statement-filters">
     <button type="button" onClick={()=>{setView('');setValidation('');}}><ArrowLeft/>All Accounts menus</button>
     {definition.dated&&<><label>From<DateInput value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})}/></label><label>To<DateInput value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})}/></label></>}
     {definition.asOf&&<label>Stored balances on / before<DateInput value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})}/></label>}
     <button type="submit" disabled={data.loading}><RefreshCw/>{data.loading?'Loading…':'Refresh'}</button>
    </form>
    {validation&&<p role="alert">{validation}</p>}
+   </TabSelectionDialog>
    {data.loading?<p role="status">Loading {definition.title} from Oracle…</p>:data.error&&!data.rows.length?<p role="alert">{data.error}<button type="button" onClick={()=>pageLoader.current?.loadMore()}>Retry</button></p>:<>
     <p>{definition.note||'Current records from the connected Oracle database.'}</p>
     <p role="status">{recordCountLabel(data)} Search, filters, sorting and Generate apply to the loaded records.</p>

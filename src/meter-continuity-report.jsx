@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {CLASS_LABELS,DEFAULT_TOLERANCE} from '../shared/meter-continuity-report.mjs';
@@ -37,7 +38,8 @@ export default function MeterContinuityReport({session,ReportSection,onSelect,re
  const columns=tab==='cards'?cardColumns:summaryColumns(tab==='drivers'?'Driver':'Tipper');
  return <section className="production-reports meter-continuity-report"><header><small>REPORTS / TRIPS & PRODUCTIVITY</small><h1>Meter Continuity Report</h1><p>Opening KMR and HMR of every tipper card against the closing readings of that tipper's previous card, by date and shift order. Cards save exactly as written; this report only shows where readings do not follow on.</p></header>
   {onSelect&&<nav className="production-tabs" aria-label="Report"><button type="button" aria-current="page">Meter continuity</button></nav>}
-  <form className="production-filters" onSubmit={e=>{e.preventDefault();if(valid)setRun({query,at:Date.now()});}}>
+  <TabSelectionDialog title="Meter continuity options" openKey={tab} onSubmit={()=>{if(!valid||busy)return false;setRun({query,at:Date.now()});}}>
+  <form className="production-filters">
    <label>1. Site<select value={filters.site} required onChange={e=>set('site',e.target.value)}><option value="">Select site</option>{sites.map(s=><option key={s}>{s}</option>)}</select></label>
    <label>2. From<input type="date" required min={OPERATIONAL_START} value={filters.from} onChange={e=>set('from',e.target.value)}/></label>
    <label>3. To<input type="date" required min={filters.from||OPERATIONAL_START} value={filters.to} onChange={e=>set('to',e.target.value)}/></label>
@@ -45,6 +47,8 @@ export default function MeterContinuityReport({session,ReportSection,onSelect,re
    <label>5. HMR tolerance<input type="number" min="0" max="24" step="0.25" value={filters.hourTolerance} onChange={e=>set('hourTolerance',e.target.value)}/></label>
    <button type="submit" disabled={!valid||busy}>{busy?'Running…':'Run report'}</button>
   </form>
+  {error&&<p role="alert" className="production-error">{error}</p>}
+  </TabSelectionDialog>
   {error&&<p role="alert" className="production-error">{error}</p>}
   <nav className="production-tabs meter-tabs" aria-label="Meter continuity views">{tabs.map(([id,label])=><button key={id} type="button" aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}>{label}</button>)}</nav>
   <p className="meter-legend">{Object.entries(CLASS_LABELS).map(([key,label])=><span key={key} className={'meter-status meter-status-'+key}>{label}</span>)}</p>

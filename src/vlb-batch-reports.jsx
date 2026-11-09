@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import ScanBatchReports from './scan-batch-reports.jsx';
 import VlbBatchReport from './vlb-batch-report.jsx';
@@ -38,7 +39,10 @@ export default function VlbBatchReports({session,ReportSection}){
  const openCard=row=>setSelectedCard({id:row.id,viewKey:crypto.randomUUID()});
  return <section className="logbook-page scan-page"><header className="logbook-page-header"><div><h1>VLB Reports</h1><p>Every VLB card saved in a site, date and shift batch, whether it was scanned, uploaded or entered by hand. Click a card to see its details.</p></div></header>
   {tabs}
-  <section className="logbook-section"><div className="scan-settings"><label>Find batch<input type="search" placeholder="Batch, site, date or shift" value={search} onChange={event=>setSearch(event.target.value)}/></label><label>Shift batch<SmartSelect aria-label="Shift batch" value={selected} onChange={event=>{setSelectedCard(null);setSelected(event.target.value)}}><option value="">Choose a batch</option>{batch&&!visible.some(row=>row.id===batch.id)&&<option value={batch.id}>{batch.name}</option>}{visible.map(row=><option key={row.id} value={row.id}>{row.name} · {row.entry_count||0} VLB · {vlbBatchStatus(row)}</option>)}</SmartSelect></label><button type="button" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reports</button></div>
+  <section className="logbook-section"><TabSelectionDialog title="VLB report batch" openKey={!selected} onSubmit={()=>Boolean(selected)}>
+   <form><div className="scan-settings"><label>Find batch<input type="search" placeholder="Batch, site, date or shift" value={search} onChange={event=>setSearch(event.target.value)}/></label><label>Shift batch<SmartSelect aria-label="Shift batch" value={selected} onChange={event=>{setSelectedCard(null);setSelected(event.target.value)}}><option value="">Choose a batch</option>{batch&&!visible.some(row=>row.id===batch.id)&&<option value={batch.id}>{batch.name}</option>}{visible.map(row=><option key={row.id} value={row.id}>{row.name} · {row.entry_count||0} VLB · {vlbBatchStatus(row)}</option>)}</SmartSelect></label><button type="button" disabled={loading} onClick={()=>setRefresh(value=>value+1)}>Refresh reports</button></div><button type="submit" disabled={!selected}>Show report</button></form>
+   {loading&&<p role="status">Loading batches…</p>}{error&&<p role="alert">{error}</p>}
+  </TabSelectionDialog>
    {loading&&<p role="status">Loading VLB batch report…</p>}{error&&<p className="scan-error" role="alert">{error}</p>}
    {listed&&!batches.length&&!error&&<p>No shift batches yet. A report appears here as soon as a VLB batch is created for a site, date and shift.</p>}
    {batch&&!batch.records?.length&&<p>No VLB card has been saved in this batch yet.</p>}

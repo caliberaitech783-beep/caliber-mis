@@ -7,7 +7,7 @@ const nodes=(tree,type)=>{const rows=[];const visit=node=>{if(Array.isArray(node
 function harness(batches,search='',older=[]){
  const slots=[],effects=[],calls=[],urls=[];let cursor=0,effectCursor=0,pending=[];
  const SmartSelect=props=>React.createElement('select',props),ScanBatchReport=()=>null,CardReportGallery=()=>null,filterCardBatches=(rows,kind,search)=>rows.filter(b=>b.kind===kind&&b.name.toLowerCase().includes(search.toLowerCase()));
- const scope={React,SmartSelect,ScanBatchReport,CardReportGallery,filterCardBatches,window:{location:{search,href:'https://pulse-ll.cmll.in/'+search},history:{replaceState:(a,b,url)=>urls.push(url)}},
+ const scope={React,TabSelectionDialog:({children})=>children,SmartSelect,ScanBatchReport,CardReportGallery,filterCardBatches,window:{location:{search,href:'https://pulse-ll.cmll.in/'+search},history:{replaceState:(a,b,url)=>urls.push(url)}},
   useState:initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},
   useEffect:(fn,deps)=>{const i=effectCursor++,prior=effects[i];if(!prior||deps.some((v,n)=>v!==prior.deps[n]))pending.push(()=>{prior?.cleanup?.();effects[i]={deps,cleanup:fn()}})},setInterval:()=>1,clearInterval:()=>{},
   fetch:async(url,options)=>{calls.push({url,options});const body=url==='/api/scan-batches'?{batches,nextOffset:older.length?100:null}:url.includes('?offset=')?{batches:older,nextOffset:null}:{batch:[...batches,...older].find(b=>b.id===url.split('/').at(-1)),cards:[{id:'card',batch_id:url.split('/').at(-1)}]};return {ok:true,json:async()=>body}}};

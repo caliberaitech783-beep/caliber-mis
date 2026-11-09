@@ -1,3 +1,4 @@
+import TabSelectionDialog from './tab-selection-dialog.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {Combine,RefreshCw,Lock,Link2,CheckSquare} from 'lucide-react';
 import {MERGE_CHAINS,MAX_MERGE_STEPS,resolveSelection} from '../shared/iboss-report-merge.mjs';
@@ -37,10 +38,10 @@ export default function IbossReportMerge({token,ReportSection,embedded=false,ini
   try{resolveSelection(chainKey,next);setPicked(next);}
   catch{setValidation(`Select at most ${MAX_MERGE_STEPS} reports in one merge. Untick a report first.`);}
  };
- const generate=event=>{
-  event.preventDefault();
+ const generate=()=>{
+  if(!chain)return false;
   try{purchaseOrderRange(draft.from,draft.to);setValidation('');setRange({...draft});setRequest({chain:chainKey,steps:selection.steps,range:{...draft},at:Date.now()});}
-  catch(error){setValidation(error.message);}
+  catch(error){setValidation(error.message);return false;}
  };
  const columns=useMemo(()=>(data.columns||[]).map(column=>({...column,
   value:row=>show(column.type,row[column.key]),sortValue:row=>Array.isArray(row[column.key])?row[column.key].length:row[column.key],
@@ -53,6 +54,7 @@ export default function IbossReportMerge({token,ReportSection,embedded=false,ini
  return <Wrapper className={embedded?'iboss-report-merge':'reports-workspace stock-statement iboss-accounts iboss-report-merge'}>
   {range.company&&<p>Company: {range.companyName||range.company} · Shared master records remain available.</p>}
   {!embedded&&<h1><Combine aria-hidden="true"/> Accounts · Report Merge</h1>}
+  <TabSelectionDialog title="Report merge options" onSubmit={generate}>
   <div className="iboss-accounts-panel" role="region" aria-labelledby="merge-process-heading">
    <h2 id="merge-process-heading">1. Choose a process</h2>
    <div className="merge-process-grid">{Object.entries(MERGE_CHAINS).filter(([,entry])=>!entry.drillOnly).map(([key,entry])=><button type="button" key={key} aria-pressed={chainKey===key} onClick={()=>choose(key)}><b>{entry.title}</b><span>{entry.description}</span><small>{entry.steps.length} linked reports</small></button>)}</div>
@@ -68,7 +70,7 @@ export default function IbossReportMerge({token,ReportSection,embedded=false,ini
      <span className="merge-check" aria-hidden="true">{on?'✓':''}</span><span>{step.title}</span>
      {required&&<small><Lock aria-hidden="true"/>Required · main record</small>}{auto&&<small><Link2 aria-hidden="true"/>Auto-added for linking</small>}
     </button></li>;})}</ol>
-   <form className="stock-statement-filters" onSubmit={generate}>
+   <form className="stock-statement-filters">
     <label>From<DateInput value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})}/></label>
     <label>To<DateInput value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})}/></label>
     <span className="merge-date-hint">Filters on: {chain.dateLabel}</span>
@@ -76,6 +78,7 @@ export default function IbossReportMerge({token,ReportSection,embedded=false,ini
    </form>
    {validation&&<p role="alert">{validation}</p>}
   </div>}
+  </TabSelectionDialog>
   {ran&&(data.loading?<p role="status">Merging {request.steps.length} reports from Oracle…</p>:data.error?<p role="alert">{data.error}</p>:<>
    <p>Click any document number to trace it back to its origin or forward to completion. Shared columns appear once; child reports are summarised per {ran.rowLabel}.</p>
    <ReportSection key={`${request.chain}-${request.at}`} title={`${ran.title} · Merged`} category="iboss-accounts" description={`${formatDisplayDate(request.range.from)} to ${formatDisplayDate(request.range.to)} · ${request.steps.length} reports · Total: ${(data.rows||[]).length.toLocaleString('en-IN')} records${data.checkedAt?` · Checked ${new Date(data.checkedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}`:''}`} rows={data.rows||[]} columns={columns} rowKey={(row,index)=>`${row.ID}-${index}`} emptyMessage="No Oracle records match this process and date range."/>

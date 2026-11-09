@@ -12,7 +12,7 @@ test('all assets, unused reasons, and zero-card summary rows stay available in t
  const {code}=await transformWithOxc(source,'fleet-reconciliation.jsx',{jsx:{runtime:'classic'}});
  const slots=[];let cursor=0;
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return[slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
- const scope={React,useState,useEffect:()=>{},useRef:()=>({current:0}),fleetMachineSummary,fleetScannedCardTotal,canonicalSiteName};
+ const scope={React,TabSelectionDialog:({children})=>children,useState,useEffect:()=>{},useRef:()=>({current:0}),fleetMachineSummary,fleetScannedCardTotal,canonicalSiteName};
  const Component=new Function(...Object.keys(scope),code+';return FleetReconciliation')(...Object.values(scope));
  const nodes=(tree,predicate)=>{const result=[];const walk=n=>{if(Array.isArray(n))return n.forEach(walk);if(!React.isValidElement(n))return;if(predicate(n))result.push(n);walk(n.props.children)};walk(tree);return result};
  const render=()=>{cursor=0;return Component({session:{token:'test'}})};render();
