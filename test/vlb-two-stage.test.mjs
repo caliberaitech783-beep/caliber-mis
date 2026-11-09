@@ -207,3 +207,15 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call(batch)).data.stage,'elb_open');
 
 });
+
+test('LDM drills with legacy trip counts do not block ELB closure at any site', () => {
+ const fleet=[
+  {door:'LDM10 - 1243',site:'Sasti',trips:1},
+  {door:'DR-08',equipment_name:'ldm 08',site:'Jayant',trips:2},
+  {door:'VPC43 - 80069',site:'Sasti',trips:3},
+ ];
+ assert.deepEqual(closureBlockers({stage:'elb_open',fleet:fleet.slice(0,2)}),[]);
+ assert.match(closureBlockers({stage:'elb_open',fleet})[0],/VPC43.*3 trips/);
+ assert.equal(fleetProgress(fleet).remaining,1);
+ assert.equal(machineReportRows(fleet).totals.trips,3);
+});

@@ -150,8 +150,11 @@ export function validateFleetEntry(input={},{trips=0,shiftHours=8}={}){
  return {errors,status,hours,breakdownHours:rule.needsBreakdown==='full'?Number(shiftHours):breakdown};
 }
 
+export const isLdmDrill=row=>[row.door,row.equipmentName,row.equipment_name].some(value=>/^LDM(?=\d|\W|$)/i.test(text(value)));
+export const elbTripCount=row=>isLdmDrill(row)?0:Number(row.trips)||0;
+
 const hasSavedElb=row=>Boolean(row.saved_at&&row.shift_status);
-const needsElb=row=>Number(row.trips)>0&&!hasSavedElb(row);
+const needsElb=row=>elbTripCount(row)>0&&!hasSavedElb(row);
 
 // Closure requires saved ELBs for machines that loaded trips.
 export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
@@ -176,7 +179,7 @@ export function lockBlockers({stage,records=[],holds=[],unresolved=[]}){
 export function fleetProgress(fleet=[]){
  const saved=fleet.filter(hasSavedElb).length,skipped=fleet.filter(row=>row.skipped&&!row.saved_at).length,drafts=fleet.filter(row=>row.draft&&!row.saved_at).length;
  const remaining=fleet.filter(needsElb).length;
- return {total:fleet.length,saved,remaining,optionalUnsaved:fleet.length-saved-remaining,skipped,drafts,loaders:fleet.filter(row=>row.trips>0).length};
+ return {total:fleet.length,saved,remaining,optionalUnsaved:fleet.length-saved-remaining,skipped,drafts,loaders:fleet.filter(row=>elbTripCount(row)>0).length};
 }
 
 // Machine-wise shift report: trips from VLB, hours from ELB, trips per hour.
@@ -195,7 +198,7 @@ export function machineReportRows(fleet=[],elbRecords=[]){
   const totals=cards.map(cardWorkingHmr).filter(value=>value!==null);
   const opening=openings.length?Math.min(...openings):null,closing=closings.length?Math.max(...closings):null;
   const hours=totals.length?round(totals.reduce((sum,value)=>sum+value,0)):null;
-  const trips=Number(row.trips)||0;
+  const trips=elbTripCount(row);
   return {assetId:String(row.assetId||row.asset_id),door:row.door,equipmentName:row.equipmentName||row.equipment_name||'',status:row.shift_status||row.shiftStatus||'',statusLabel:FLEET_STATUSES[row.shift_status||row.shiftStatus]?.label||'',trips,sourceCards:Number(row.sourceCards||row.source_cards)||0,
    operator:[...new Set(cards.flatMap(card=>[text(card.employeeName),text(card.operatorSplit?.secondOperatorName)]).filter(Boolean))].join(', '),openingHmr:opening,closingHmr:closing,hours,tripsPerHour:hours?round(trips/hours):null,breakdownHours:num(data.breakdownHours),idleHours:num(data.idleHours),bookNo:records.map(record=>record.book_no).filter(Boolean).join(', '),remark:text(data.statusReason||data.remark),transferred:Boolean(data.transferredThisShift)};
  });

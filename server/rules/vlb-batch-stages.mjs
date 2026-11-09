@@ -7,7 +7,7 @@ import {displaySiteName} from '../../shared/region-scope.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../../shared/surface-miner-hmr.mjs';
 import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch,lockVlbBatchScope,vlbRecordScope} from './vlb-batch-policy.mjs';
-import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
+import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,isLdmDrill,elbTripCount,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
 const fail=batchFail;
@@ -34,7 +34,7 @@ export async function batchElbRecords(client,batch){
 export async function fleetRows(client,batch){
  const {rows}=await client.query(`SELECT f.*,f.asset_id::text AS "assetId",f.equipment_name AS "equipmentName",f.equipment_group AS "equipmentGroup",f.source_cards AS "sourceCards",f.shift_status AS "shiftStatus",
   l.book_no,l.data AS logbook,l.revision AS logbook_revision FROM mis_vlb_batch_fleet f LEFT JOIN mis_log_books l ON l.id=f.logbook_id AND l.deleted_at IS NULL WHERE f.batch_id=$1 ORDER BY f.trips DESC,f.door`,[batch.id]);
- return rows.map(row=>({...row,source_cards:row.sourceCards,saved_at:row.logbook_id&&!row.book_no?null:row.saved_at}));
+ return rows.map(row=>({...row,trips:elbTripCount(row),tripExempt:isLdmDrill(row),source_cards:row.sourceCards,saved_at:row.logbook_id&&!row.book_no?null:row.saved_at}));
 }
 async function machineRows(client,batch){
  return (await client.query('SELECT asset_id::text AS "assetId",machine_label AS label,door,trips,source_cards AS "sourceCards" FROM mis_vlb_batch_machines WHERE batch_id=$1 ORDER BY trips DESC,machine_label',[batch.id])).rows;
@@ -164,20 +164,20 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(input.entryMode==='working-only'){
   pulse=await readFleetBreakdowns(client,batch,assetId,ops.readHours,actor,{...input,shiftHours:hours});
   const actualHours=num(input.openingHmr)!==null&&num(input.closingHmr)!==null?num(input.closingHmr)-num(input.openingHmr):null;
-  const bd=Number(pulse.breakdownHours),zero=actualHours===0&&Number(row.trips)===0;
+  const bd=Number(pulse.breakdownHours),zero=actualHours===0&&elbTripCount(row)===0;
   const shiftStatus=zero?(bd>=hours?'breakdown':'not_in_use'):bd>0&&bd<hours?'working_partial_breakdown':'working';
   input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||(pulse.breakdowns||[]).map(item=>item.description).filter(Boolean).join('; ').slice(0,2000)};
  }
- const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:row.trips,shiftHours:hours});
+ const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:elbTripCount(row),shiftHours:hours});
  if(Object.keys(errors).length)throw Object.assign(new Error(Object.values(errors).join(' ')),{status:400,fields:errors});
  const nonWorking=NON_WORKING_STATUSES.includes(status);
  const opening=num(input.openingHmr),closing=num(input.closingHmr);
  const body={bookDate:batch.report_date,bookDateSource:'batch',location:displaySiteName(batch.site),assetId:String(assetId),employeeId:nonWorking&&!text(input.employeeId)?null:text(input.employeeId),shiftId:shift.id,shiftHours:hours,manualShift:input.manualShift,
   openingHmr:opening??(nonWorking?0:''),closingHmr:closing??(nonWorking?(opening??0):''),jobCardNo:text(input.jobCardNo),remark:text(input.remark),timeMode:'without',
   manualBreakdownHours:breakdownHours??'',shiftStatus:status,statusReason:text(input.statusReason),breakdownDetails:Array.isArray(input.breakdownDetails)?input.breakdownDetails:undefined,
-  idleHoursEntered:num(input.idleHours),batchId:batch.id,fleetTrips:row.trips,bookShiftCode:batch.shift};
+  idleHoursEntered:num(input.idleHours),batchId:batch.id,fleetTrips:elbTripCount(row),bookShiftCode:batch.shift};
  const data=await ops.resolve(client,'equipment',body,{...(operatorSplit?{operatorSplit,enforceEmployeeSite:true}:{}),manualEntry:true});
- Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:row.trips,batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
+ Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:elbTripCount(row),batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
  if(pulse){Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
  if(nonWorking){data.breakdownHours=status==='breakdown'?hours:data.breakdownHours;data.availabilityHours=0;data.runningHours=0;data.idleHours=status==='breakdown'?0:hours-(Number(data.breakdownHours)||0);}
