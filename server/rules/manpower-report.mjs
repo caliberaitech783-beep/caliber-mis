@@ -189,3 +189,22 @@ export function otHistorySummary(events,from){
  return group(past,e=>e.employeeKey+'|'+e.siteKey).map(list=>{const dates=severity=>list.filter(e=>e.severity===severity).map(e=>e.dutyDates[0]).sort();
   return {employeeKey:list[0].employeeKey,siteKey:list[0].siteKey,red:dates('red').length,orange:dates('orange').length,review:dates('review').length,redDates:dates('red'),orangeDates:dates('orange')};});
 }
+
+// Month and year OT counts per driver. The year and month are the calendar ones of the report's
+// To date, never before the first day of records and never after today. Read one month at a time.
+export function otYearWindows(to,today=to){
+ if(!operationalDate(to)||!operationalDate(today))return null;
+ const year=to.slice(0,4),month=to.slice(0,7),floor=date=>date<OPERATIONAL_START?OPERATIONAL_START:date,cap=date=>date>today?today:date;
+ const monthEnd=m=>{const [y,n]=m.split('-').map(Number);return new Date(Date.UTC(y,n,0)).toISOString().slice(0,10);};
+ const nextMonth=m=>{const [y,n]=m.split('-').map(Number);return n===12?`${y+1}-01`:`${y}-${String(n+1).padStart(2,'0')}`;};
+ const yearFrom=floor(year+'-01-01'),yearTo=cap(year+'-12-31'),monthFrom=floor(month+'-01'),monthTo=cap(monthEnd(month)),windows=[];
+ for(let m=yearFrom.slice(0,7);m<=yearTo.slice(0,7);m=nextMonth(m)){const from=floor(m+'-01'),end=cap(monthEnd(m));if(from<=end)windows.push({from,to:end});}
+ return {year,month,yearFrom,yearTo,monthFrom,monthTo,windows};
+}
+// An event belongs to the day of its first duty, so an overnight pair is counted once, in the month it started.
+export function otDriverTally(events,range){
+ const within=(e,from,to)=>e.dutyDates[0]>=from&&e.dutyDates[0]<=to,tally=list=>({...flagTally(list),total:list.length});
+ const year=[...new Map(events.map(e=>[e.id,e])).values()].filter(e=>within(e,range.yearFrom,range.yearTo));
+ return group(year,e=>e.employeeKey+'|'+e.siteKey).map(list=>({employeeKey:list[0].employeeKey,siteKey:list[0].siteKey,month:tally(list.filter(e=>within(e,range.monthFrom,range.monthTo))),year:tally(list),
+  events:[...list].sort((a,b)=>b.dutyDates[0].localeCompare(a.dutyDates[0])).map(e=>({id:e.id,date:e.dutyDates[0],dates:e.dates,severity:e.severity,reason:e.reason,shifts:e.shifts,logBook:e.logBook,equipment:e.equipment,combinedHours:e.combinedHours,books:e.books}))}));
+}
