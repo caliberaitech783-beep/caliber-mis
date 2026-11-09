@@ -12,7 +12,8 @@ const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
 const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employeeName','Driver / operator']];
 const EVERY='*';
 const shiftName=code=>({S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'})[code]||code;
-const stageName=state=>({vlb_open:'VLB open',elb_open:'ELB open'})[state]||'Open';
+const stageName=state=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open'})[state]||'Open';
+const batchOpen=b=>/_open$/.test(b.state);
 const shortDate=date=>date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4);
 const monthName=month=>new Date(month+'-01T00:00:00Z').toLocaleString('en-IN',{month:'short',year:'numeric',timeZone:'UTC'});
 const many=(n,word)=>n+' '+word+(n===1?'':'s');
@@ -118,7 +119,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  const within=(site,code)=>rows.filter(r=>(site===EVERY||r.siteKey===site)&&(!code||r.shift===code));
  // The batch behind a site and shift: missing ("none"), still open, closed, or not yet due.
  const batchesOf=(site,code)=>batches.filter(b=>(site===EVERY||b.siteKey===site)&&(!code||b.shift===code));
- const waiting=list=>({none:list.filter(b=>b.state==='none').length,open:list.filter(b=>b.state==='vlb_open'||b.state==='elb_open').length});
+ const waiting=list=>({none:list.filter(b=>b.state==='none').length,open:list.filter(batchOpen).length});
  // An actual duty is one driver in one shift on one date; a second machine in the same shift is not another one.
  const actual=list=>list.filter(r=>r.actual).length;
  const siteKey=openSite(sites,pick.siteKey);
@@ -138,7 +139,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  // the total boxes only carry the note.
  const box=(site,code,label)=>{
   const n=actual(within(site,code)),held=batchesOf(site,code),w=waiting(held),one=site!==EVERY&&Boolean(code),state=w.none?'none':w.open?'open':'';
-  const note=one&&!days?(w.none?'No batch':w.open?stageName(held.find(b=>b.state==='vlb_open'||b.state==='elb_open')?.state):''):[w.none&&many(w.none,one?'day':'shift')+' no batch',w.open&&w.open+' open'].filter(Boolean).join(' · ');
+  const note=one&&!days?(w.none?'No batch':w.open?stageName(held.find(batchOpen)?.state):''):[w.none&&many(w.none,one?'day':'shift')+' no batch',w.open&&w.open+' open'].filter(Boolean).join(' · ');
   if(!n&&!state)return <span className="mp-zero">0</span>;
   return <button type="button" className={'mp-att-count'+(one&&state?' mp-att-'+state:'')} aria-pressed={siteKey===site&&shift===code} aria-label={[dutyCount(n,'actual'),label,note].filter(Boolean).join(' · ')} onClick={()=>choose(site,code)}>{n}{note&&<small>{note}</small>}</button>;
  };
@@ -152,7 +153,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  // Which batches are behind the open site and shift, in words: the missing ones first.
  const all=waiting(batches),here=siteKey?batchesOf(siteKey,shift):[];
  const where=b=>[siteKey===EVERY&&siteLabel(b.siteKey),days&&shortDate(b.date),!shift&&shiftName(b.shift)].filter(Boolean).join(' ');
- const missing=here.filter(b=>b.state==='none'),stillOpen=here.filter(b=>b.state==='vlb_open'||b.state==='elb_open');
+ const missing=here.filter(b=>b.state==='none'),stillOpen=here.filter(batchOpen);
  return <>
   <p className="mp-notice">{dutyCount(actual(rows),'actual')} · {dutyCount(rows.length,'equipment-wise')}. An actual duty is one driver in one shift on one date. A driver on two equipment types in one shift is counted on both machines and once in actual duties.</p>
   <div className="mp-category mp-att" role="group" aria-label="Actual duties by site and shift">

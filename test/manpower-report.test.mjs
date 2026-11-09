@@ -252,6 +252,7 @@ test('each site, date and shift reports its batch: missing once the shift has en
  assert.deepEqual(states([],at('2026-11-11T05:00:00')).map(b=>b[2]),['none','none','none'],'Shift 3 is due when it ends at 05:00 the next morning');
  assert.deepEqual(states([batch('S1',{closed_at:'2026-11-10T15:00:00Z',stage:'closed'}),batch('S2',{stage:'elb_open'}),batch('S3')],at('2026-11-11T09:00:00')),
   [[date,'S1','closed','BATCH-S1'],[date,'S2','elb_open','BATCH-S2'],[date,'S3','vlb_open','BATCH-S3']]);
+ assert.deepEqual(states([batch('S1',{stage:'lmv_open'})],at('2026-11-10T14:00:00'))[0],[date,'S1','lmv_open','BATCH-S1'],'the LMV stage between VLB and ELB is reported as it is');
  assert.deepEqual(states([batch('S2',{closed_at:'2026-11-10T22:00:00Z'}),batch('S2',{id:'again',name:'BATCH-S2-2'})],at('2026-11-10T14:00:00'))[1],[date,'S2','vlb_open','BATCH-S2-2'],'a reopened or second batch keeps the shift open');
  assert.deepEqual(states([],at('2026-11-12T09:00:00'),{from:date,to:'2026-11-11',shift:'S2'}).map(b=>b.slice(0,3)),[[date,'S2','none'],['2026-11-11','S2','none']],'one row per day; the Shift selection narrows the shifts');
  // A site lists the shifts its Shift Master holds; a site without any is expected to run Shift 1 to 3, due after the day ends.

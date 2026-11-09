@@ -226,7 +226,7 @@ test('shift attendance equipment wise opens sites by shift, then equipment, then
  const sites=[{siteKey:'dhoptala',site:'Dhoptala OC'},{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}];
  // The batch behind each site and shift: Dhoptala has none for the shift that ended, Jayant and Sasti each have one still open, Sasti misses Shift 3.
  const batch=(siteKey,shift,state,name='')=>({siteKey,date:filters.from,shift,state,batch:name});
- const shiftBatches=[batch('dhoptala','S1','none'),batch('dhoptala','S2','not_due'),batch('dhoptala','S3','not_due'),batch('jayant ob','S1','closed','J1'),batch('jayant ob','S2','closed','J2'),batch('jayant ob','S3','vlb_open','JAYANT-S3'),batch('sasti ob','S1','closed','S1'),batch('sasti ob','S2','elb_open','SASTI-S2'),batch('sasti ob','S3','none')];
+ const shiftBatches=[batch('dhoptala','S1','none'),batch('dhoptala','S2','not_due'),batch('dhoptala','S3','not_due'),batch('jayant ob','S1','closed','J1'),batch('jayant ob','S2','lmv_open','JAYANT-S2'),batch('jayant ob','S3','vlb_open','JAYANT-S3'),batch('sasti ob','S1','closed','S1'),batch('sasti ob','S2','elb_open','SASTI-S2'),batch('sasti ob','S3','none')];
  const payload=(attendanceSites=sites,attendanceShifts=shiftBatches)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment:rows,attendanceSites,attendanceShifts,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
  const blank={key:'',data:null,error:''};
  const mount=async({pick,chosen=filters,data=payload(),tally=blank,driverOpen=''}={})=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query:new URLSearchParams(chosen).toString(),payload:data},'',false,0,{},false,false,'',tally,driverOpen,...(pick?[pick]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
@@ -242,12 +242,12 @@ test('shift attendance equipment wise opens sites by shift, then equipment, then
  assert.deepEqual(nodes(first,'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Dhoptala OC','Jayant OC','Sasti OC','All sites']);
  assert.deepEqual(buttons(first,'mp-att-count').map(n=>n.props['aria-label']),[
   '0 actual duties · Dhoptala OC · Shift 1 · No batch','0 actual duties · Dhoptala OC · All shifts · 1 shift no batch',
-  '1 actual duty · Jayant OC · Shift 3 · VLB open','1 actual duty · Jayant OC · All shifts · 1 open',
+  '0 actual duties · Jayant OC · Shift 2 · LMV open','1 actual duty · Jayant OC · Shift 3 · VLB open','1 actual duty · Jayant OC · All shifts · 2 open',
   '4 actual duties · Sasti OC · Shift 1','1 actual duty · Sasti OC · Shift 2 · ELB open','0 actual duties · Sasti OC · Shift 3 · No batch','5 actual duties · Sasti OC · All shifts · 1 shift no batch · 1 open',
-  '4 actual duties · All sites · Shift 1 · 1 shift no batch','1 actual duty · All sites · Shift 2 · 1 open','1 actual duty · All sites · Shift 3 · 1 shift no batch · 1 open','6 actual duties · All sites · All shifts · 2 shifts no batch · 2 open'],'the second machine of one driver is not another actual duty');
+  '4 actual duties · All sites · Shift 1 · 1 shift no batch','1 actual duty · All sites · Shift 2 · 2 open','1 actual duty · All sites · Shift 3 · 1 shift no batch · 1 open','6 actual duties · All sites · All shifts · 2 shifts no batch · 3 open'],'the second machine of one driver is not another actual duty');
  assert.deepEqual(buttons(first,'mp-att-none').map(n=>n.props['aria-label'].split(' · ').slice(1,3).join(' ')),['Dhoptala OC Shift 1','Sasti OC Shift 3'],'only the box of one site and shift is painted red');
- assert.deepEqual(buttons(first,'mp-att-open').map(n=>n.props['aria-label'].split(' · ').slice(1,3).join(' ')),['Jayant OC Shift 3','Sasti OC Shift 2']);
- assert.deepEqual(nodes(nodes(first,'p').find(n=>n.props.className==='mp-att-status'),'span').slice(0,2).map(n=>[].concat(n.props.children).join('')),['2 shifts without a batch','2 batches open']);
+ assert.deepEqual(buttons(first,'mp-att-open').map(n=>n.props['aria-label'].split(' · ').slice(1,3).join(' ')),['Jayant OC Shift 2','Jayant OC Shift 3','Sasti OC Shift 2']);
+ assert.deepEqual(nodes(nodes(first,'p').find(n=>n.props.className==='mp-att-status'),'span').slice(0,2).map(n=>[].concat(n.props.children).join('')),['2 shifts without a batch','3 batches open']);
  assert.deepEqual(categories(first),[],'no driver list before a site and shift are chosen');
  assert.equal(buttons(first,'mp-cat-open').length,0);
 
