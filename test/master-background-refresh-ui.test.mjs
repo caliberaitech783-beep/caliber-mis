@@ -32,7 +32,8 @@ for (const [name, start, end] of definitions) {
       else {
         assert.notEqual(tree.type, MasterLoadError);
         assert.notEqual(tree.type, MasterLoader);
-        assert.deepEqual(tree.props.records, name === "Subsidiaries" ? [{...fixture[0], code:"", sites:""}] : fixture);
+        const master = name === "Equipment" ? tree.props.children.find(child => child?.type === Null) : tree;
+        assert.deepEqual(master.props.records, name === "Subsidiaries" ? [{...fixture[0], code:"", sites:""}] : fixture);
       }
     }
   });
