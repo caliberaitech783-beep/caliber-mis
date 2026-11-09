@@ -50,11 +50,11 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const linked=await withHandovers(client,visible.filter(r=>r.book_type==='vehicle'),sites);
    const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees']])).rows;
    const fromMaster=names=>masters.filter(r=>names.includes(r.master_name)).map(r=>({...r.record_data,id:String(r.id)}));
-   const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at FROM mis_vlb_batches
+   const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
    await client.query('COMMIT');
-   res.set('Cache-Control','private, no-store').json({...report,otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),generatedAt:new Date().toISOString()});
+   res.set('Cache-Control','private, no-store').json({...report,otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()});
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error);}
   finally{client?.release();}
  });
@@ -95,12 +95,15 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    let sites=await filterLogBookSites(client,req.logBookScope);
    if(sites===null)sites=(await client.query('SELECT DISTINCT site FROM mis_log_books WHERE book_date BETWEEN $1 AND $2',[period.yearFrom,period.yearTo])).rows.map(r=>r.site);
    sites=sites.filter(name=>canonicalSiteName(name)===canonicalSiteName(site));
-   const masters=await reportMasters(client),events=[];
+   const masters=await reportMasters(client),events=[],duties=[];
    for(const window of windows){
     const filters=manpowerFilters({...window,site}),rows=await slimCards(client,filters,sites);
-    events.push(...buildManpowerReport({records:rows.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,filters}).ot);
+    const report=buildManpowerReport({records:rows.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,filters});
+    events.push(...report.ot);
+    // Actual duties from the same read: one per driver, date and shift, on saved VLB and ELB cards.
+    for(const r of report.attendanceEquipment)if(r.actual)duties.push({employeeKey:r.employeeKey,siteKey:r.siteKey,date:r.date});
    }
-   res.set('Cache-Control','private, no-store').json({...period,drivers:otDriverTally(events,period)});
+   res.set('Cache-Control','private, no-store').json({...period,drivers:otDriverTally(events,period,duties)});
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
   finally{client?.release();}
  });
