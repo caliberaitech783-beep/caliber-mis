@@ -191,3 +191,54 @@ test('history API reads only earlier dates within scope and returns one repeat p
  const first=await h.run({from:'2026-11-01',to:'2026-11-01'},path);assert.equal(first.result.historyFrom,null);assert.deepEqual(first.result.drivers,[]);
  assert.equal((await h.run({from:date,to:date,site:'Jayant OC'},path)).status,403);
 });
+
+// Shift Attendance Equipment Wise
+const crew=[...employees,...[23,24,25,26,27].map(n=>({id:String(n),caliberId:String(80+n),caliberCode:'CMLL'+(80+n),name:'Driver '+n}))];
+const fleet=[...assets,{id:'50',door:'G13',site,category:'Equipment',group:'GRADERS',make:'CASE',model:'865C'},{id:'51',door:'WT1',site,category:'Vehicle',group:'Water Tanker',make:'EICHER',model:'PRO'},{id:'52',door:'WT2',site,category:'Vehicle',group:'WATER  TANKER',make:'61',model:'PRO'},{id:'53',door:'X9',site,category:'Vehicle',make:'TATA',model:'LPK'}];
+const by=(n,patch={})=>({employeeId:n,caliberId:String(80+n),employeeName:'Driver '+n,...patch});
+const equipmentWise=(records,extra={})=>buildManpowerReport({records,assets:fleet,employees:crew,shifts,filters:{from:date,to:date},...extra});
+test('equipment-wise duties count a driver on each equipment group, actual duties once',()=>{
+ const tipper=card(1,1,{closingHmr:102}),grader=card(2,1,{assetId:50,door:'G13',openingHmr:200,closingHmr:205},{book_type:'equipment'});
+ const r=equipmentWise([tipper,grader]),rows=r.attendanceEquipment;
+ assert.deepEqual(rows.map(x=>[x.equipment,x.doors,x.actual,x.actualLabel]),[['Graders','G13',true,'Yes'],['Tipper','V1',false,'No — second machine']],'the machine with more HMR hours carries the actual duty');
+ assert.equal(rows.filter(x=>x.actual).length,r.shiftAttendance.length,'actual duties equal one per driver, date and shift');
+ assert.match(rows[0].note,/Also worked on V1 \(Tipper\)/);assert.match(rows[1].note,/Second machine in this shift; actual duty counted on G13 \(Graders\)/);
+ assert.equal(rows[0].makeModel,'CASE 865C');assert.equal(rows[1].trips,5);assert.equal(rows[0].trips,null);
+ const tie=equipmentWise([card(1,1,{closingHmr:105}),card(2,1,{assetId:50,door:'G13',openingHmr:200,closingHmr:205},{book_type:'equipment'})]).attendanceEquipment;
+ assert.deepEqual(tie.filter(x=>x.actual).map(x=>x.equipment),['Tipper'],'equal hours: the card saved first carries the actual duty');
+ const same=equipmentWise([card(1,1,{closingHmr:103}),card(2,1,{assetId:2,door:'V2',openingHmr:300,closingHmr:304})]).attendanceEquipment;
+ assert.equal(same.length,1,'two machines of one group in a shift are one equipment-wise duty');assert.equal(same[0].doors,'V1; V2');
+});
+test('equipment names follow the master group, merge spelling differences and report a missing group',()=>{
+ const rows=equipmentWise([card(1,1,{assetId:51,door:'WT1'}),card(2,2,{assetId:52,door:'WT2',...by(23)}),card(3,3,{assetId:53,door:'X9',...by(24)})]).attendanceEquipment;
+ assert.deepEqual(rows.map(x=>x.equipment).sort(),['Group missing in master','Water Tanker','Water Tanker']);
+ assert.equal(rows.find(x=>x.doors==='WT2').makeModel,'Make not named PRO');
+});
+test('rows are red, orange, brown for review, blue for zero trips, in that order of priority',()=>{
+ const attendance=[{date,site:'sasti ob',shift:'S1',employee_id:25,asset_id:3,reason:'Rain',remarks:'Road closed'},{date,site:'sasti ob',shift:'S2',employee_id:26,asset_id:null,reason:'No work',remarks:''}];
+ const records=[card(1,1),card(2,2),
+  card(3,1,{assetId:2,door:'V2',...by(22,{caliberId:'102',employeeName:'Driver One'})}),card(4,3,{assetId:2,door:'V2',...by(22,{caliberId:'102',employeeName:'Driver One'})}),
+  card(5,1,{assetId:4,door:'V4',masterShiftStart:'06:00',...by(23)}),card(6,2,{assetId:4,door:'V4',...by(23)}),
+  card(7,1,{assetId:5,door:'V5',totalTrips:0,...by(24)}),
+  card(8,3,{assetId:50,door:'G13',openingHmr:200,closingHmr:205,...by(27)},{book_type:'equipment'}),
+  card(9,2,{assetId:6,door:'V6',totalTrips:0,...by(27)})];
+ const r=equipmentWise(records,{attendance}),rows=r.attendanceEquipment,of=(name,shift)=>rows.find(x=>x.employeeName===name&&x.shift===shift&&(x.caliberCode!=='CMLL102'));
+ const one=rows.filter(x=>x.caliberCode==='CMLL101'),two=rows.filter(x=>x.caliberCode==='CMLL102');
+ assert.deepEqual(one.map(x=>[x.shift,x.flag,x.note]),[['S1','red','Also worked S2'],['S2','red','Also worked S1']]);assert.match(one[0].flagLabel,/^RED — Back-to-back/);
+ assert.deepEqual(two.map(x=>[x.shift,x.flag]),[['S1','orange'],['S3','orange']]);assert.match(two[0].flagLabel,/^ORANGE/);
+ assert.deepEqual([of('Driver 23','S1').flag,of('Driver 23','S2').flag],['review','review']);assert.match(of('Driver 23','S1').flagLabel,/^REVIEW/);
+ const zeroCard=of('Driver 24','S1');assert.deepEqual([zeroCard.flag,zeroCard.status,zeroCard.flagLabel],['zero','Present — 0 trips','BLUE — Present with 0 trips']);
+ const marked=of('Driver 25','S1');assert.deepEqual([marked.flag,marked.equipment,marked.doors,marked.reason,marked.remarks,marked.trips,marked.actual],['zero','Tipper','V3','Rain','Road closed',0,true]);
+ const unassigned=of('Driver 26','S2');assert.deepEqual([unassigned.flag,unassigned.equipment,unassigned.makeModel],['zero','No equipment assigned','']);
+ const operator=of('Driver 27','S3'),zeroThenWork=of('Driver 27','S2');
+ assert.equal(operator.status,'Present','an equipment operator with a saved card is measured in hours');
+ assert.deepEqual([zeroThenWork.flag,zeroThenWork.status],['red','Present — 0 trips'],'red wins over blue; the attendance column still says 0 trips');assert.equal(operator.flag,'red');
+ assert.equal(rows.filter(x=>x.flag==='normal').length,0);
+});
+test('a zero-trip entry beside a saved card adds its reason, not a second machine; every assigned site is listed',()=>{
+ const attendance=[{date,site:'sasti ob',shift:'S1',employee_id:21,asset_id:50,reason:'Breakdown',remarks:''}];
+ const r=equipmentWise([card()],{attendance,shifts:[...shifts,{id:'40',site:'Jayant OC',shiftCode:'A',shiftName:'Shift A',startTime:'05:00',endTime:'13:00',status:'Active'}]}),rows=r.attendanceEquipment;
+ assert.deepEqual(rows.map(x=>[x.equipment,x.actual,x.reason,x.flag,x.note,x.site,x.siteKey]),[['Tipper',true,'Breakdown','normal','','Sasti OC','sasti ob']]);
+ assert.deepEqual(r.attendanceSites,[{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}]);
+ assert.ok(r.notes.some(note=>/^Shift Attendance Equipment Wise:/.test(note)));
+});

@@ -3,6 +3,7 @@ import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {employeeIdentity,matchesEmployeeReference,suggestedCaliberId} from '../../shared/employee-identity.mjs';
 import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
+import {normalizeEquipmentGroup} from '../../shared/equipment-group.mjs';
 
 const text=v=>String(v??'').trim();
 const key=v=>text(v).toUpperCase().replace(/[\s/-]/g,'');
@@ -47,6 +48,18 @@ export const LOG_BOOKS=[['vehicle','VLB'],['equipment','ELB'],['lmv','LMV']];
 const logBookCode=kind=>LOG_BOOKS.find(([id])=>id===kind)?.[1]||'ELB';
 const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severity=>[severity,events.filter(e=>e.severity===severity).length]));
 const sourceLabel=r=>r.batchNames.join('; ')||`Saved ${logBookCode(r.kind)} (no site batch)`;
+// Shift Attendance Equipment Wise names a duty after the machine's group in the Equipment master.
+// Spelling differences ("Water Tanker" / "WATER TANKER") become one name; the master is never rewritten.
+const NO_EQUIPMENT_GROUP='Group missing in master',NO_EQUIPMENT_ASSIGNED='No equipment assigned';
+const equipmentName=value=>{const name=normalizeEquipmentGroup(value);return !name||name.startsWith('UNRESOLVED ')?NO_EQUIPMENT_GROUP:name.toLowerCase().replace(/[a-z]+/g,word=>/[aeiouy]/.test(word)?word[0].toUpperCase()+word.slice(1):word.toUpperCase());};
+const makeModelName=s=>[/^Unresolved /.test(s.make)?'Make not named':text(s.make),/^Unresolved /.test(s.model)?'':text(s.model)].filter(Boolean).join(' ');
+const assetClass=asset=>{
+ const out={group:'Unresolved group',make:'Unresolved make',model:'Unresolved model'};if(!asset)return out;
+ for(const [field,value] of Object.entries({group:asset.group||asset.equipmentGroup||asset.itemName,make:asset.makeName||asset.make,model:asset.modelName||asset.model||asset.modelNo}))if(text(value))out[field]=field!=='group'&&/^\d+$/.test(text(value))?`Unresolved ${field} code ${value}`:text(value);
+ return out;
+};
+const shortDate=date=>`${date.slice(8,10)}-${date.slice(5,7)}-${date.slice(2,4)}`;
+const FLAG_RANK={red:0,orange:1,review:2};
 const rowMatches=(r,f,{dates=true}={})=>(!dates||r.date>=f.from&&r.date<=f.to)&&(!f.site||canonicalSiteName(r.site)===canonicalSiteName(f.site))&&(!f.shift||r.shift===f.shift)&&(!f.batch||r.batchIds.includes(f.batch))&&(!f.employee||r.employeeKey===f.employee)&&(!f.asset||r.assetKey===f.asset);
 
 export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters}){
@@ -112,7 +125,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const details=selected.map(r=>({id:r.id,date:r.date,site:r.site,shift:r.shift||'Unresolved',door:r.door,category:r.category,group:r.group,make:r.make,model:r.model,employeeId:r.employeeId||r.savedEmployeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,assignment:!r.eligible?'Needs record review':r.employeeKey?'Matched employee ID':'Needs identity review',book:r.book,batches:sourceLabel(r),batchStatus:r.batchStatus||'Saved',remarks:unique([...r.issues,text(r.data.remark)]).join('; ')}));
  const summary=group(selected.filter(r=>r.eligible&&r.assetKey),r=>JSON.stringify([r.date,canonicalSiteName(r.site),r.shift,r.category,r.group,r.make,r.model])).map(cards=>{const r=cards[0];return {date:r.date,site:r.site,shift:r.shift,category:r.category,group:r.group,make:r.make,model:r.model,assets:unique(cards.map(c=>c.assetKey)).length,employees:unique(cards.map(c=>c.employeeKey)).length,unresolved:cards.filter(c=>!c.employeeKey).length,doors:unique(cards.map(c=>c.door)).join('; '),batches:unique(cards.flatMap(c=>c.batchNames)).join('; ')};});
  const performance=duties.filter(d=>d.cards.some(r=>rowMatches(r,f))).map(d=>({id:d.key,date:d.date,site:d.site,shift:d.shift,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,doors:unique(d.cards.map(r=>r.door)).join('; '),equipment:unique(d.cards.map(r=>`${r.door}: ${r.group} / ${r.make} / ${r.model}`)).join('; '),hours:d.hours,trips:d.trips,km:d.km,start:d.schedule?.startLabel||'',end:d.schedule?.endLabel||'',batches:unique(d.cards.flatMap(r=>r.batchNames)).join('; '),books:d.cards.map(r=>r.book).join('; '),remarks:unique(d.cards.flatMap(r=>r.issues)).join('; ')}));
- const ot=buildOt(otDuties,f);
+ const otMarks=new Map(),ot=buildOt(otDuties,f,otMarks);
  const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>({...e,siteKey:canonicalSiteName(e.site),logBook:logBookCode(record.kind)}));
  const visibleBatches=batches.filter(b=>b.report_date>=f.from&&b.report_date<=f.to);
  const attendanceSources=[];
@@ -120,11 +133,13 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  for(const r of core.filter(r=>r.eligible&&r.shift)){
   const trips=r.kind==='vehicle'?r.trips:null;
   const hasTrips=trips>0||r.kind==='equipment'&&number(r.data.fleetTrips)>0;
-  if(r.employeeKey)attendanceSources.push({...r,trips,hasTrips,card:true});
+  // A VLB card saved with 0 trips; an ELB card is measured in hours, so it is never a zero-trip duty.
+  const zeroCard=r.kind==='vehicle'&&trips===0;
+  if(r.employeeKey)attendanceSources.push({...r,trips,hasTrips,zeroCard,card:true});
   const split=r.data.operatorSplit;
   if(split?.secondOperatorId){
    const person=resolveEmployee({employeeId:split.secondOperatorId,caliberId:split.secondOperatorCaliberId});
-   if(!person.error)attendanceSources.push({...r,employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:null,hasTrips,card:true});
+   if(!person.error)attendanceSources.push({...r,employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:null,hasTrips,zeroCard,card:true});
   }
  }
  for(const entry of attendance){
@@ -133,10 +148,10 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const asset=assetMap.get(String(entry.asset_id));
   const door=asset?text(asset.door||asset.doorNo||equipmentDoorNumber(asset)):'';
   const site=sitesByKey.get(entry.site)||entry.site;
-  attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0});
+  attendanceSources.push({...entry,site,door,assetKey:door?entry.site+'|'+key(door):'',batchIds:[],employeeKey:person.identityKey,employeeId:person.employeeId,employeeName:person.name,caliberCode:person.caliberCode,trips:0,...assetClass(asset),noMachine:!asset});
  }
- const shiftAttendance=group(attendanceSources,r=>JSON.stringify([r.employeeKey,r.date,r.shift]))
-  .filter(sources=>sources.some(r=>rowMatches(r,f)))
+ const attendanceDuties=group(attendanceSources,r=>JSON.stringify([r.employeeKey,r.date,r.shift])).filter(sources=>sources.some(r=>rowMatches(r,f)));
+ const shiftAttendance=attendanceDuties
   .map(sources=>{
    const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card);
    const trips=cards.filter(c=>c.trips!==null).map(c=>c.trips);
@@ -146,18 +161,52 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
     trips:trips.length?sum(trips):cards.length?null:0,doors:unique(sources.map(s=>s.door)).join('; '),
     reason:unique(zero.map(s=>s.reason)).join('; '),remarks:unique(zero.map(s=>s.remarks)).join('; ')};
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName));
+ // Shift Attendance Equipment Wise: one row per driver, date, shift, site and equipment group.
+ // A driver who worked two equipment groups in one shift is listed on both ("equipment-wise duties"). The one
+ // actual duty per driver, date and shift sits on the machine with the most HMR hours, or on the card saved
+ // first when hours are missing or equal.
+ const siteOf=s=>canonicalSiteName(s.site),equipmentOf=s=>s.card||!s.noMachine?equipmentName(s.group):NO_EQUIPMENT_ASSIGNED;
+ const attendanceEquipment=attendanceDuties.flatMap(sources=>{
+  const r=sources[0],cards=sources.filter(s=>s.card),zero=sources.filter(s=>!s.card);
+  // A zero-trip entry names the equipment only when no card was saved; next to a card it adds its reason, not a second machine.
+  const lines=group(cards.length?cards:zero,s=>JSON.stringify([siteOf(s),equipmentOf(s)])).map(list=>({list,siteKey:siteOf(list[0]),site:sitesByKey.get(siteOf(list[0]))||list[0].site,equipment:equipmentOf(list[0]),doors:unique(list.map(s=>s.door)).join('; '),hours:list.reduce((total,s)=>total+(s.card&&s.hours>0?s.hours:0),0)}));
+  let main=lines[0];for(const line of lines)if(line.hours>main.hours)main=line;
+  const withTrips=cards.some(c=>c.hasTrips),zeroTrips=!withTrips&&!cards.some(c=>c.kind==='equipment')&&(zero.length>0||cards.some(c=>c.zeroCard));
+  const status=withTrips?'Present — with trips':zeroTrips?'Present — 0 trips':'Present';
+  const twoSites=unique(lines.map(l=>l.siteKey)).length>1,where=line=>`${line.doors||'no door number'} (${line.equipment}${twoSites?', '+line.site:''})`;
+  const reason=unique(zero.map(s=>s.reason)).join('; '),remarks=unique(zero.map(s=>s.remarks)).join('; ');
+  return lines.map(line=>{
+   const mark=otMarks.get(JSON.stringify([r.employeeKey,line.siteKey,r.date,r.shift])),trips=line.list.filter(s=>s.card&&s.trips!==null).map(s=>s.trips);
+   const others=mark?unique([...mark.others].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)).map(o=>o.date===r.date?o.shift:`${o.shift} on ${shortDate(o.date)}`)):[];
+   const machines=line===main?lines.filter(l=>l!==line).map(l=>'Also worked on '+where(l)).join('; '):'Second machine in this shift; actual duty counted on '+where(main);
+   return {id:JSON.stringify([r.employeeKey,r.date,r.shift,line.siteKey,line.equipment]),date:r.date,shift:r.shift,site:line.site,siteKey:line.siteKey,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,
+    equipment:line.equipment,doors:line.doors,makeModel:unique(line.list.map(s=>s.noMachine?'':makeModelName(s))).join('; '),status,trips:trips.length?sum(trips):line.list.some(s=>s.card)?null:0,
+    actual:line===main,actualLabel:line===main?'Yes':'No — second machine',
+    flag:mark?.severity||(zeroTrips?'zero':'normal'),flagLabel:mark?unique(mark.reasons).join('; '):zeroTrips?'BLUE — Present with 0 trips':'Normal duty',
+    note:[others.length?'Also worked '+others.join(', '):'',machines].filter(Boolean).join(' · '),reason,remarks};
+  });
+ }).sort((a,b)=>a.date.localeCompare(b.date)||a.site.localeCompare(b.site)||a.shift.localeCompare(b.shift)||a.employeeName.localeCompare(b.employeeName)||Number(b.actual)-Number(a.actual));
  // Every known site is listed, including those with no flagged driver, so an
  // empty card means "checked, nothing found" rather than "not loaded".
- const otSites=[...sitesByKey].filter(([siteKey])=>siteKey&&(!f.site||siteKey===canonicalSiteName(f.site))).map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey);return {site,siteKey,...flagTally(events),books:Object.fromEntries(LOG_BOOKS.map(([,code])=>[code,flagTally(events.filter(e=>e.logBooks.includes(code)))]))};}).sort((a,b)=>a.site.localeCompare(b.site));
+ const knownSites=[...sitesByKey].filter(([siteKey])=>siteKey&&(!f.site||siteKey===canonicalSiteName(f.site)));
+ const attendanceSites=[...new Map([...knownSites,...attendanceEquipment.map(r=>[r.siteKey,r.site])])].map(([siteKey,site])=>({siteKey,site})).sort((a,b)=>a.site.localeCompare(b.site));
+ const otSites=knownSites.map(([siteKey,site])=>{const events=ot.filter(e=>e.siteKey===siteKey);return {site,siteKey,...flagTally(events),books:Object.fromEntries(LOG_BOOKS.map(([,code])=>[code,flagTally(events.filter(e=>e.logBooks.includes(code)))]))};}).sort((a,b)=>a.site.localeCompare(b.site));
  const optionRows=[...rows,...attendanceSources];
- return {filters:f,summary,details,performance,shiftAttendance,ot,otSites,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.filter(e=>e.logBook!=='LMV').length},options:{sites:unique([...optionRows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(optionRows.map(r=>r.shift)).sort(),assets:unique(optionRows.map(r=>r.assetKey)).map(value=>({value,label:optionRows.find(r=>r.assetKey===value).door})),employees:unique(optionRows.map(r=>r.employeeKey)).map(value=>{const r=optionRows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only; the OT view also reads saved LMV log books. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable. A duty can appear in both a same-day and an overnight event, so event hours must not be added together. Driver category is the current designation in the Employee master. Earlier repeats count the same driver at the same site across all three log books, up to 90 days before the selected dates. Each flagged duty is listed under every log book (VLB, ELB, LMV) it was saved in, so a driver who worked on two log books is counted in both and the three rows can add up to more than the total.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.']};
+ return {filters:f,summary,details,performance,shiftAttendance,attendanceEquipment,attendanceSites,ot,otSites,exceptions:visibleExceptions,totals:{savedRecords:selected.length,assets:unique(selected.filter(r=>r.eligible).map(r=>r.assetKey)).length,employees:unique(selected.filter(r=>r.eligible).map(r=>r.employeeKey)).length,duties:performance.length,exceptions:visibleExceptions.filter(e=>e.logBook!=='LMV').length},options:{sites:unique([...optionRows.map(r=>r.site),...visibleBatches.map(b=>b.site)]).sort(),shifts:unique(optionRows.map(r=>r.shift)).sort(),assets:unique(optionRows.map(r=>r.assetKey)).map(value=>({value,label:optionRows.find(r=>r.assetKey===value).door})),employees:unique(optionRows.map(r=>r.employeeKey)).map(value=>{const r=optionRows.find(r=>r.employeeKey===value);return {value,label:`${r.employeeId} · ${r.employeeName}`};}),batches:unique([...visibleBatches.map(b=>String(b.id)),...rows.flatMap(r=>r.batchIds)]).map(value=>({value,label:visibleBatches.find(b=>String(b.id)===value)?.name||rows.find(r=>r.batchIds.includes(value))?.batchNames[0]||value}))},notes:['Saved VLB and ELB only; the OT view also reads saved LMV log books. Pending scans and deleted records are excluded. Open batches contain saved records and may change.','Category counts use distinct equipment identities. Employee and duty counts are distinct within their group; category counts are not additive when an employee changes equipment.','Shift performance includes the complete selected duty, including other cards/vehicles in that shift. HMR hours measure machine performance, not attendance or payable OT.','OT checks all shifts and one adjoining day on each side of the date range. Filters select matching duties; linked duties remain visible. Times and gaps are from effective Shift Master schedules (IST); actual employee attendance times are unavailable. A duty can appear in both a same-day and an overnight event, so event hours must not be added together. Driver category is the current designation in the Employee master. Earlier repeats count the same driver at the same site across all three log books, up to 90 days before the selected dates. Each flagged duty is listed under every log book (VLB, ELB, LMV) it was saved in, so a driver who worked on two log books is counted in both and the three rows can add up to more than the total.','Make/model classification uses the current synced Equipment master. Missing names and unresolved numeric codes are listed for review.','Shift Attendance Equipment Wise: actual duties count each driver once per date and shift, whatever number of machines were driven; equipment-wise duties count the driver once on every equipment group worked in that shift. The actual duty sits on the machine with the most HMR hours, or on the card saved first when hours are missing or equal. Equipment names are the group in the current Equipment master, with spelling differences merged. Red, orange and brown follow the OT & Multiple Duties rules; blue is a driver present with 0 trips (zero-trip attendance, or a VLB card saved with 0 trips), never an equipment operator with a saved card. A row has one colour, in the order red, orange, brown, blue.']};
 }
 
-function buildOt(duties,filters){
+// `marks` receives, for every duty in a flagged pattern, its strongest colour, the written reasons and the other shifts worked.
+function buildOt(duties,filters,marks=new Map()){
  const events=[];
  for(const person of group(duties,d=>JSON.stringify([d.employeeKey,canonicalSiteName(d.site)]))){
   const byDay=group(person,d=>d.date).sort((a,b)=>a[0].date.localeCompare(b[0].date));
-  const add=(set,reason,severity)=>{if(!set.some(d=>d.cards.some(r=>rowMatches(r,filters))))return;
+  const add=(set,reason,severity)=>{
+   for(const duty of set){
+    const others=set.filter(d=>d!==duty).map(d=>({date:d.date,shift:d.shift})),mark=marks.get(duty.key);
+    if(!mark||FLAG_RANK[severity]<FLAG_RANK[mark.severity])marks.set(duty.key,{severity,reasons:[reason],others});
+    else if(mark.severity===severity){mark.reasons.push(reason);mark.others.push(...others);}
+   }
+   if(!set.some(d=>d.cards.some(r=>rowMatches(r,filters))))return;
    const ordered=[...set].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift)),first=ordered[0];
    const gaps=ordered.slice(1).map((d,i)=>d.schedule&&ordered[i].schedule?round((d.schedule.start-ordered[i].schedule.end)/3600000):null);
    const logBooks=LOG_BOOKS.map(([,code])=>code).filter(code=>ordered.some(d=>d.cards.some(r=>logBookCode(r.kind)===code)));
