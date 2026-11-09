@@ -51,3 +51,8 @@
 #admin-primary-navigation footer{font-size:12px}
 @media(max-width:1100px){.app.erp-shell>main.content>.top{grid-template-columns:auto minmax(180px,1fr) auto;grid-template-rows:auto auto}.app.erp-shell .top>div:last-child{grid-column:3;grid-row:1}.app.erp-shell .top>.header-clock{position:static;left:auto;transform:none;grid-column:1/-1;grid-row:2}}
 @media(max-width:760px){.app.erp-shell>main.content>.top{padding:8px;column-gap:6px}.app.erp-shell .top>.header-clock{--header-clock-size:16px}}
+
+/* Auto-hide menu: a thin strip on the left edge opens it; it closes when the pointer leaves. */
+.erp-sidebar-edge{position:fixed;inset:0 auto 0 0;width:10px;z-index:1099}
+.erp-sidebar .erp-autohide{margin-top:-6px}.erp-sidebar .erp-autohide[aria-pressed=true]{background:#ffffff38;border-color:#ffffff8c}
+@media(max-width:760px){.erp-sidebar-edge,.erp-sidebar .erp-autohide{display:none}}

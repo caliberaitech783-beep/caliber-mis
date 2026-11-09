@@ -1,6 +1,7 @@
 import {isDeletableScanCard,isAbortableScanCard} from '../src/scan-card-deletion-selection.mjs';
 import {encodeDateRange,parseDateRange} from '../src/date-range-filter.mjs';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {scanReportCardStatus,CARD_STATUS_LEGEND} from '../src/scan-report-card-status.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ async function component(file,name,scope={},initial=[]){
   const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8');
   const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function'),file,{jsx:{runtime:'classic'}});
   const slots=[...initial];let cursor=0;
-  const environment={encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,SmartSelect: "select",React,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
+  const environment={encodeDateRange,parseDateRange,isDeletableScanCard,isAbortableScanCard,compactLogBookLabel,canonicalSiteName,SmartSelect: "select",React,useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},...scope};
   const render=new Function(...Object.keys(environment),code+';return '+name)(...Object.values(environment));
   return props=>{cursor=0;return render({...props,ReportSection})};
 }
@@ -149,15 +150,29 @@ test('manpower views route to their dedicated report with shared export controls
 
 test('manpower reports export complete selected data, separate shift hours, and retain OT colours and reasons',async()=>{
  const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
- const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15}));
- const payload={summary:rows,details:rows,performance:rows,ot:rows,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
+ const rows=Array.from({length:137},(_,id)=>({id,date:filters.from,site:'Sasti OC',shift:'S1',employeeId:'E'+id,employeeKey:'E'+id,siteKey:'sasti ob',category:id%2?'Volvo Driver':'Dumper Operator',dates:filters.from,employeeName:'Example',hours:0,trips:null,reason:'RED — Back-to-back OT',severity:'red',combinedHours:15}));
+ const sites=[{site:'Jayant OC',siteKey:'jayant ob',red:0,orange:0,review:0},{site:'Sasti OC',siteKey:'sasti ob',red:137,orange:0,review:0}];
+ const payload={summary:rows,details:rows,performance:rows,ot:rows,otSites:sites,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
  const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]);
- for(const reportId of ['manpower','employee','ot']){
+ for(const reportId of ['manpower','employee']){
   const tree=render({session:{token:'test'},reportId,onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,reportId==='manpower'?3:2);
   for(const section of sections.filter(n=>n.props.category!=='manpower-review'))assert.equal(section.props.rows.length,137,'export receives every matching row');
   if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
-  if(reportId==='ot'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(sections[0].props.rowClassName(rows[0]),'mp-ot-red');}
  }
+ // OT view: every site is loaded and shown first; duty details appear only after a site is opened.
+ const ot=async(site,severity='',history={key:'',data:null,error:''})=>{const chosen={...filters,site},view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query,payload},'',false,0,{},false,false,severity,history]);return view({session:{token:'test'},reportId:'ot',onSelect:()=>{}});};
+ const overview=await ot('');assert.deepEqual(nodes(overview,ReportSection).map(n=>n.props.category),['manpower-review'],'no duty table before a site is opened');
+ assert.deepEqual(nodes(overview,'button').filter(n=>n.props.className==='mp-site-card').map(n=>nodes(n,'strong')[0].props.children),['Jayant OC','Sasti OC']);
+ assert.deepEqual(nodes(overview,'button').filter(n=>/mp-ot-count/.test(n.props.className)).map(n=>nodes(n,'strong')[0].props.children),[137,0,0]);
+ assert.equal(nodes(overview,'div').filter(n=>n.props.className==='mp-metrics'||n.props.className==='mp-legend').length,0,'old summary panel is gone');
+ const drilled=await ot('Sasti OC'),sections=nodes(drilled,ReportSection);assert.deepEqual(sections.map(n=>n.props.category),['manpower-ot','manpower-review']);assert.equal(sections[0].props.rows.length,137,'export receives every matching row');
+ {const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);assert.equal(cols.find(c=>c.key==='category').value(rows[1]),'Volvo Driver');const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(sections[0].props.rowClassName(rows[0]),'mp-ot-red');}
+ assert.deepEqual(nodes(drilled,'tbody')[0].props.children.map(row=>row.props.children.map(cell=>cell.props.children)),[['Dumper Operator',69,0,0,69],['Volvo Driver',68,0,0,68]]);
+ assert.equal(nodes(await ot('Jayant OC'),ReportSection)[0].props.rows.length,0,'another site never shows this site’s drivers');
+ const earlier={historyFrom:'2026-11-01',historyTo:'2026-11-09',historyDays:90,drivers:[{employeeKey:'E5',siteKey:'sasti ob',red:3,orange:1,review:0,redDates:['2026-11-02','2026-11-04','2026-11-06'],orangeDates:['2026-11-08']}]};
+ const repeats=nodes(await ot('Sasti OC','red',{key:filters.from+'|'+filters.to+'|sasti ob',data:earlier,error:''}),ReportSection)[0];assert.equal(repeats.props.category,'manpower-ot-history');assert.equal(repeats.props.rows.length,137);
+ {const top=repeats.props.rows[0],value=key=>repeats.props.columns.find(c=>c.key===key).value(top);assert.equal(top.employeeId,'E5','most repeated driver is listed first');assert.deepEqual(['now','pastRed','pastOrange','total'].map(value),[1,3,1,4]);assert.match(value('pastDates'),/2026-11-02 RED.*2026-11-08 ORANGE/);assert.equal(repeats.props.columns.find(c=>c.key==='pastRed').value(repeats.props.rows[1]),0);}
+ const waiting=nodes(await ot('Sasti OC','red'),ReportSection)[0];assert.equal(waiting.props.rows[0].pastRed,'Checking…','earlier counts are never shown as zero before they load');
  const tree=render({session:{token:'test'},reportId:'employee',onSelect:()=>{}});nodes(tree,'input').find(n=>n.props.type==='date').props.onChange({target:{value:'2026-11-09'}});
  assert.equal(nodes(render({session:{token:'test'},reportId:'employee',onSelect:()=>{}}),ReportSection).length,0,'changed filters cannot export stale results');
 });
