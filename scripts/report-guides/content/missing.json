@@ -1,0 +1,114 @@
+{
+  "id": "missing",
+  "group": "Utilisation & Exceptions",
+  "title": "Missing / Duplicate Logbooks",
+  "menu": "Reports → Utilisation & Exceptions → Missing / Duplicate Logbooks",
+  "en": {
+    "purpose": "Finds two things in the chosen dates: a door and shift that has more than one saved log book (Duplicate), and a door and shift that has no saved log book at all (Potential missing). It compares the saved VLB and ELB log books with the current Equipment master and Shift Master. A site in-charge or MIS clerk uses it as a list of entries to verify against the operating roster.",
+    "row": "One row is either one date, site, door and shift that has two or more saved log books (Finding is \"Duplicate\"), or one date, door and shift for which no saved log book was found (Finding is \"Potential missing\").",
+    "filters": [
+      ["From", "First date to check. It opens on today's date (India time). Dates before 1 November 2026 are not accepted."],
+      ["To", "Last date to check. Every day from From to To is checked for every door and shift. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From and To back to today."],
+      ["Site", "Checks only log books of that site, and only doors whose current site in the Equipment master is that site. \"All\" means every site assigned to your login. Once a site is chosen, the Shift and Vehicle / equipment lists show only that site's entries."],
+      ["Shift", "Checks only that shift."],
+      ["Vehicle / equipment", "Checks only that door number."],
+      ["Driver / operator", "Disabled (greyed out) on this report. A choice made on another report is ignored here."],
+      ["Work order", "Disabled (greyed out) on this report. A choice made on another report is ignored here."]
+    ],
+    "screen": [
+      ["Report", "Picker at the top of the screen. It lists all reports under their groups; choosing a name opens that report."],
+      ["Refresh", "Loads the saved records for the chosen dates again. Press it after log books have been saved or deleted. Changing Site, Shift or Vehicle / equipment does not need Refresh."],
+      ["Filters:", "One line showing what is selected in Site, Shift and Vehicle / equipment, written as \"site: …\", \"shift: …\" and \"asset: …\". With nothing selected it reads \"All sites, assets, shifts and employees\". Site appears by name; Shift and Vehicle / equipment appear as the system's internal number. Driver / operator and Work order never appear here."],
+      ["logbooks", "Number of saved VLB and ELB log books that match the dates, Site, Shift and Vehicle / equipment."],
+      ["assets", "Number of different doors on those log books."],
+      ["trips", "Total trips on those log books."],
+      ["report rows", "Number of findings (Duplicate and Potential missing together). This is the number of rows in the table below."],
+      ["A potential missing logbook has no card, so no employee can be shown for it. Potential missing assumes every current asset should report on every current site shift, including non-working days. Historical transfers and operating rosters are unavailable. Employee and work-order filters do not apply to this report.", "Notice shown above the table on this report. It states what the Potential missing check assumes and what it cannot know."]
+    ],
+    "columns": [
+      ["Date", "Date of the duplicate log books, or the date for which no log book was found."],
+      ["Site", "Site of the log books. For Potential missing, the door's current site in the Equipment master."],
+      ["Door NO", "Door number."],
+      ["Shift", "Shift name."],
+      ["Caliber ID", "For Duplicate: Employee IDs of all people on the duplicate log books, each one once, separated by commas. Empty (\"—\") for Potential missing."],
+      ["Employee", "For Duplicate: names of the same people, in the same order as Caliber ID. Empty (\"—\") for Potential missing, because there is no card to take a name from."],
+      ["Finding", "\"Duplicate\" or \"Potential missing\"."],
+      ["Details", "For Duplicate: the book numbers of the log books, separated by commas. For Potential missing: \"Verify operating roster\"."]
+    ],
+    "notes": [
+      "Potential missing expects every door in the current Equipment master to have a log book on every day, for every shift listed for its site in the Shift Master. It does not know weekly offs, breakdowns, idle doors or which shift a door was planned for.",
+      "If a site has several shifts in the Shift Master, each door is checked against every one of them. A door that works only some of those shifts is listed as Potential missing for the others.",
+      "The door's site is its current location in the Equipment master. A door that moved sites during the period is checked against its present site for all dates.",
+      "LMV log books are not read by this screen, so a door entered only in the LMV Log Book is still listed as Potential missing.",
+      "Duplicate only means that more than one saved log book exists for the same date, site, door and shift. The report does not say which one is correct.",
+      "The list grows with days × doors × shifts. Choose one site and a short date range to keep it readable."
+    ],
+    "checklist": [
+      "Choose one Site and a short date range, for example one day.",
+      "Type \"Duplicate\" in Search this report. For each row, open the book numbers shown in Details in the Vehicle Logbook Register or Equipment Logbook Register and compare them.",
+      "Type \"Potential missing\" in Search this report. For each row, check the operating roster to see whether that door was working in that shift on that date.",
+      "Where a log book should exist, check in Scan Review & Reconciliation whether its card is still waiting or has failed.",
+      "After log books are saved or corrected, press Refresh and confirm that the row is gone."
+    ],
+    "faq": [
+      ["Why are Driver / operator and Work order greyed out?", "This report checks doors and shifts. A missing log book has no driver or work order, so the screen ignores these two selectors here."],
+      ["Why are Caliber ID and Employee empty on a Potential missing row?", "No log book exists for that row, so there is no card to take the employee from."],
+      ["A door that works only one shift is listed as missing for the other shift. Is that an error?", "The report does not know the roster. It lists every shift of the site for every door. Verify the row against the operating roster."],
+      ["Does Duplicate mean one of the log books is wrong?", "Not by itself. It only shows that more than one log book exists for the same date, site, door and shift. Compare the book numbers shown in Details."]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट चुनी हुई तारीखों में दो बातें ढूँढती है: वह डोर और Shift जिसकी एक से ज़्यादा सेव लॉग बुक हैं (Duplicate), और वह डोर और Shift जिसकी कोई सेव लॉग बुक नहीं है (Potential missing)। यह सेव VLB और ELB लॉग बुक को अभी के Equipment master और Shift Master से मिलाती है। साइट इंचार्ज या MIS क्लर्क इसे उन एंट्री की सूची की तरह इस्तेमाल करते हैं जिन्हें operating roster से मिलाकर जाँचना है।",
+    "row": "एक लाइन का मतलब है या तो एक तारीख, साइट, डोर और Shift जिसकी दो या ज़्यादा सेव लॉग बुक हैं (Finding में \"Duplicate\"), या एक तारीख, डोर और Shift जिसकी कोई सेव लॉग बुक नहीं मिली (Finding में \"Potential missing\")।",
+    "filters": [
+      ["From", "पहली तारीख जिसकी जाँच करनी है। स्क्रीन खुलने पर आज की तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
+      ["To", "आख़िरी तारीख जिसकी जाँच करनी है। From से To तक हर दिन को हर डोर और Shift के लिए जाँचा जाता है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From और To दोनों फिर से आज की तारीख हो जाती हैं।"],
+      ["Site", "सिर्फ़ उस साइट की लॉग बुक, और सिर्फ़ वे डोर जाँचता है जिनकी Equipment master में अभी की साइट वही है। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट। साइट चुनने के बाद Shift और Vehicle / equipment की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"],
+      ["Shift", "सिर्फ़ उस Shift की जाँच करता है।"],
+      ["Vehicle / equipment", "सिर्फ़ उस डोर नंबर की जाँच करता है।"],
+      ["Driver / operator", "इस रिपोर्ट में बंद (धुंधला) रहता है। किसी दूसरी रिपोर्ट में किया गया चुनाव यहाँ नहीं माना जाता।"],
+      ["Work order", "इस रिपोर्ट में बंद (धुंधला) रहता है। किसी दूसरी रिपोर्ट में किया गया चुनाव यहाँ नहीं माना जाता।"]
+    ],
+    "screen": [
+      ["Report", "स्क्रीन के ऊपर की सूची। इसमें सभी रिपोर्ट अपने-अपने ग्रुप के नीचे हैं; नाम चुनने पर वह रिपोर्ट खुल जाती है।"],
+      ["Refresh", "चुनी हुई तारीखों का सेव रिकॉर्ड दोबारा लाता है। लॉग बुक सेव या डिलीट होने के बाद इसे दबाएँ। Site, Shift या Vehicle / equipment बदलने पर Refresh दबाने की ज़रूरत नहीं।"],
+      ["Filters:", "एक लाइन जो बताती है कि Site, Shift और Vehicle / equipment में क्या चुना है। यह \"site: …\", \"shift: …\" और \"asset: …\" के रूप में लिखा आता है। कुछ न चुना हो तो \"All sites, assets, shifts and employees\" आता है। Site नाम से दिखती है; Shift और Vehicle / equipment सिस्टम के अंदरूनी नंबर से दिखते हैं। Driver / operator और Work order यहाँ कभी नहीं आते।"],
+      ["logbooks", "तारीखों, Site, Shift और Vehicle / equipment से मिलने वाली सेव की गई VLB और ELB लॉग बुक की गिनती।"],
+      ["assets", "उन लॉग बुक पर अलग-अलग डोर कितने हैं।"],
+      ["trips", "उन लॉग बुक पर कुल ट्रिप।"],
+      ["report rows", "कुल कितनी बातें मिलीं (Duplicate और Potential missing दोनों मिलाकर)। नीचे की टेबल में इतनी ही लाइनें हैं।"],
+      ["A potential missing logbook has no card, so no employee can be shown for it. Potential missing assumes every current asset should report on every current site shift, including non-working days. Historical transfers and operating rosters are unavailable. Employee and work-order filters do not apply to this report.", "इस रिपोर्ट में टेबल के ऊपर दिखने वाली सूचना। यह बताती है कि Potential missing की जाँच क्या मानकर चलती है और क्या नहीं जान सकती।"]
+    ],
+    "columns": [
+      ["Date", "Duplicate लॉग बुक की तारीख, या वह तारीख जिसकी कोई लॉग बुक नहीं मिली।"],
+      ["Site", "लॉग बुक की साइट। Potential missing में यह Equipment master में डोर की अभी की साइट है।"],
+      ["Door NO", "डोर नंबर।"],
+      ["Shift", "Shift का नाम।"],
+      ["Caliber ID", "Duplicate में: उन लॉग बुक के सभी लोगों की Employee ID, हर एक सिर्फ़ एक बार, कॉमा लगाकर। Potential missing में खाली (\"—\")।"],
+      ["Employee", "Duplicate में: उन्हीं लोगों के नाम, उसी क्रम में जिस क्रम में Caliber ID हैं। Potential missing में खाली (\"—\"), क्योंकि नाम लेने के लिए कोई कार्ड ही नहीं है।"],
+      ["Finding", "\"Duplicate\" या \"Potential missing\"।"],
+      ["Details", "Duplicate में: उन लॉग बुक के बुक नंबर, कॉमा लगाकर। Potential missing में: \"Verify operating roster\"।"]
+    ],
+    "notes": [
+      "Potential missing यह मानकर चलता है कि अभी के Equipment master के हर डोर की हर दिन लॉग बुक होनी चाहिए, उसकी साइट के लिए Shift Master में दर्ज हर Shift के लिए। इसे साप्ताहिक छुट्टी, ब्रेकडाउन, खड़े डोर या डोर किस Shift के लिए तय था, यह पता नहीं होता।",
+      "अगर किसी साइट के Shift Master में कई Shift हैं तो हर डोर को उन सबके सामने जाँचा जाता है। जो डोर उनमें से कुछ ही Shift में चलता है, वह बाक़ी Shift के लिए Potential missing में आता है।",
+      "डोर की साइट Equipment master में उसकी अभी की जगह है। जो डोर इस अवधि में दूसरी साइट पर गया, उसे सभी तारीखों के लिए उसकी आज की साइट के सामने जाँचा जाता है।",
+      "यह स्क्रीन LMV लॉग बुक नहीं पढ़ती, इसलिए जो डोर सिर्फ़ LMV Log Book में भरा गया है वह भी Potential missing में आता है।",
+      "Duplicate का मतलब सिर्फ़ इतना है कि एक ही तारीख, साइट, डोर और Shift की एक से ज़्यादा सेव लॉग बुक हैं। रिपोर्ट यह नहीं बताती कि कौन-सी सही है।",
+      "सूची दिन × डोर × Shift के हिसाब से बढ़ती है। इसे पढ़ने लायक रखने के लिए एक साइट और कम तारीखें चुनें।"
+    ],
+    "checklist": [
+      "एक Site और कम तारीखें चुनें, जैसे एक दिन।",
+      "Search this report में \"Duplicate\" लिखें। हर लाइन के लिए Details में दिए बुक नंबर Vehicle Logbook Register या Equipment Logbook Register में खोलें और उन्हें आपस में मिलाएँ।",
+      "Search this report में \"Potential missing\" लिखें। हर लाइन के लिए operating roster में देखें कि वह डोर उस तारीख को उस Shift में चल रहा था या नहीं।",
+      "जहाँ लॉग बुक होनी चाहिए, वहाँ Scan Review & Reconciliation में देखें कि उसका कार्ड अभी रुका हुआ है या फ़ेल हुआ है।",
+      "लॉग बुक सेव या ठीक होने के बाद Refresh दबाएँ और देखें कि वह लाइन हट गई है।"
+    ],
+    "faq": [
+      ["Driver / operator और Work order धुंधले क्यों हैं?", "यह रिपोर्ट डोर और Shift की जाँच करती है। जो लॉग बुक है ही नहीं उसका कोई ड्राइवर या work order नहीं होता, इसलिए स्क्रीन यहाँ इन दोनों फ़िल्टर को नहीं मानती।"],
+      ["Potential missing की लाइन में Caliber ID और Employee खाली क्यों हैं?", "उस लाइन की कोई लॉग बुक नहीं है, इसलिए कर्मचारी का नाम लेने के लिए कोई कार्ड नहीं है।"],
+      ["जो डोर सिर्फ़ एक Shift में चलता है, वह दूसरी Shift के लिए missing में दिख रहा है। क्या यह गलती है?", "रिपोर्ट को roster पता नहीं होता। वह हर डोर के लिए साइट की हर Shift दिखाती है। उस लाइन को operating roster से मिलाकर जाँचें।"],
+      ["क्या Duplicate का मतलब है कि कोई एक लॉग बुक गलत है?", "सिर्फ़ इससे नहीं। यह केवल दिखाता है कि एक ही तारीख, साइट, डोर और Shift की एक से ज़्यादा लॉग बुक हैं। Details में दिए बुक नंबर आपस में मिलाएँ।"]
+    ]
+  }
+}
