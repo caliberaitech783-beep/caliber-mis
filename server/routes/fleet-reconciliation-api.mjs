@@ -2,7 +2,7 @@ import {reconcileFleet,shiftForDate,validFleetDate,fleetShift,assetIdentity,IDLE
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
-import {assetBookKind} from '../../shared/equipment-kind.mjs';
+import {allowsLogBookKind,assetBookKind} from '../../shared/equipment-kind.mjs';
 
 export const FLEET_REASON_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_fleet_idle_reasons(site_key TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,asset_key TEXT NOT NULL,reason TEXT NOT NULL,remarks TEXT NOT NULL DEFAULT '',updated_by TEXT NOT NULL,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(site_key,book_date,shift,asset_key));
 CREATE TABLE IF NOT EXISTS mis_fleet_idle_reason_history(id BIGSERIAL PRIMARY KEY,site_key TEXT NOT NULL,book_date DATE NOT NULL,shift TEXT NOT NULL,asset_key TEXT NOT NULL,reason TEXT NOT NULL,remarks TEXT NOT NULL,updated_by TEXT NOT NULL,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`;
@@ -10,7 +10,17 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
  let ready;const ensure=async()=>{await ensureBooks();await(ready??=pool.query(FLEET_REASON_SCHEMA).catch(e=>{ready=null;throw e}));};
  const handle=fn=>async(req,res,next)=>{try{res.set('Cache-Control','no-store');await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const kindsFor=req=>['vehicle','equipment'].filter(k=>!req.session.permissions?.separateMisCredentials||[k==='vehicle'?'Vehicle Log Book':'Equipment Log Book',k==='vehicle'?'Trip Card Bulk Scan':'Job Card Bulk Scan'].some(page=>misPageAllowed(req.session,page)));
- const masters=async()=>{const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']]);return {assets:rows.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id)})),shifts:rows.filter(r=>r.master_name==='Shift Master').map(r=>({...r.record_data,id:String(r.id)}))}};
+ const masters=async()=>{
+  const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']]);
+  const assets=[],shifts=[],lmvIds=new Set();
+  for(const row of rows){
+   const record={...row.record_data,id:String(row.id)};
+   if(row.master_name==='Shift Master')shifts.push(record);
+   else if(allowsLogBookKind(record,'lmv'))lmvIds.add(record.id);
+   else assets.push(record);
+  }
+  return {assets,shifts,lmvIds};
+ };
  app.get('/api/reports/fleet-reconciliation/options',...protect,handle(async(req,res)=>{const data=await masters();res.json({sites:[...new Set(data.assets.map(a=>a.currentLocation||a.site||a.location).filter(s=>s&&siteAllowed(req.logBookScope,s)))].sort(),shifts:data.shifts.filter(s=>siteAllowed(req.logBookScope,s.site||s.siteName)).map(s=>({...s,code:fleetShift(s.shiftCode||s.shiftName||s.name||s.shift)})),kinds:kindsFor(req),reasons:IDLE_REASONS});}));
  const selection=async(req,input)=>{
   const date=String(input.date||''),site=String(input.site||''),shift=String(input.shift||''),kind=String(input.kind||'');
@@ -21,7 +31,7 @@ export function registerFleetReconciliation(app,{pool,protect,ensureBooks,pulseM
  app.get('/api/reports/fleet-reconciliation',...protect,handle(async(req,res)=>{
   const s=await selection(req,req.query);await ensure();
   let breakdowns;try{breakdowns=await pulseMasterSync.readBreakdownRequests({fresh:true,actor:req.session.login||req.session.name});if(!Array.isArray(breakdowns))throw Error('Invalid feed');}catch{throw Object.assign(Error('Pulse breakdown data is unavailable. Reconnect Pulse and retry; missing breakdown data is not treated as zero.'),{status:503});}
-  const books=(await pool.query('SELECT id,book_no,book_type,asset_id,site,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date=$1::date AND book_type=ANY($2::text[])',[s.date,s.kinds])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+  const books=(await pool.query('SELECT id,book_no,book_type,asset_id,site,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date=$1::date AND book_type=ANY($2::text[])',[s.date,s.kinds])).rows.filter(b=>siteAllowed(req.logBookScope,b.site)&&!s.lmvIds.has(String(b.asset_id||b.data?.assetId)));
   const reasons=(await pool.query('SELECT asset_key,reason,remarks,updated_at,updated_by FROM mis_fleet_idle_reasons WHERE site_key=$1 AND book_date=$2::date AND shift=$3',[canonicalSiteName(s.site),s.date,s.shift])).rows;
   const result=reconcileFleet({...s,assets:s.assets.filter(a=>s.kinds.includes(assetBookKind(a))),books,breakdowns,reasons});
   const sync=pulseMasterSync.status?.();
