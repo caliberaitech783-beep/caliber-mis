@@ -754,6 +754,9 @@ async function migrate(){
     CREATE INDEX IF NOT EXISTS master_records_user_employee_idx
       ON master_records ((lower(trim(record_data->>'employee'))))
       WHERE master_name='Users & employees';
+    CREATE INDEX IF NOT EXISTS master_records_user_first_name_idx
+      ON master_records ((lower(split_part(trim(record_data->>'employee'),' ',1))))
+      WHERE master_name='Users & employees';
     CREATE TABLE IF NOT EXISTS data_revisions (
       revision_key TEXT PRIMARY KEY,
       revision BIGINT NOT NULL DEFAULT 1,
@@ -2328,12 +2331,14 @@ app.post('/api/login',async(req,res,next)=>{
     const username=String(req.body?.username||'').trim().toLowerCase();
     const password=String(req.body?.password||'');
     if(!username||!password)return res.status(400).json({error:'User name and password are required.'});
-    const {rows:userRows}=await pool.query(`SELECT id,record_data FROM master_records WHERE master_name='Users & employees'`);
-    // Filter by the submitted login before verifying any password hashes. A
-    // scrypt verification is deliberately costly, so checking all employee
-    // records here makes login scale linearly with the entire master and can
-    // starve the single App Service worker.
-    const loginRows=loginRecordCandidates(userRows,username);
+    // Fetch only records that can match this sign-in. The two expressions have
+    // partial indexes created during startup, so concurrent logins no longer
+    // scan and transfer the complete employee master through the shared pool.
+    const {rows:loginRows}=await pool.query(`SELECT id,record_data FROM master_records
+      WHERE master_name='Users & employees' AND (
+        lower(trim(record_data->>'login'))=$1
+        OR lower(split_part(trim(record_data->>'employee'),' ',1))=$1
+      )`,[username]);
     const candidates=loginRows.filter(row=>{
       const record=row.record_data;
       const passwordMatches=record.passwordHash
