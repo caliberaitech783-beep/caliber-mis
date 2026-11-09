@@ -44,7 +44,7 @@ test('PDF buffers and documents are released on render failure, encoding failure
 test('background polls fetch validation for changed trip cards and retain unchanged checks',async()=>{
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  const paths=[],noop=()=>{},uploadingRef={current:true};let rows=[];
- const scope={kind:'vehicle',scanProgressNeedsValidation,scanProgressChanged,mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
+ const scope={kind:'vehicle',lmv:false,scanProgressNeedsValidation,scanProgressChanged,mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
   api:async path=>{paths.push(path);return {batch:{id:'batch'},cards:[{id:'card',status:'review',revision:1,checks:path.includes('?progress=1')?null:{errors:['Needs review']},draft:{},raw_fields:{}}]};},
   setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,
   chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};

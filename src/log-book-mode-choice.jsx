@@ -8,7 +8,7 @@ export default function LogBookModeChoice({kind,onManual,onScan,onBatches,canSca
     <div className="logbook-mode-cards">
       <button type="button" onClick={onManual}><Keyboard size={34}/><strong>{code} Manual</strong><span>Enter and save log book data manually.</span></button>
       <button type="button" onClick={onScan} disabled={!canScan}><ScanLine size={34}/><strong>{code} Scan</strong><span>Scan {vehicle?'Trip Cards':'Job Cards'} from the document scanner, check extracted data and save approved cards.</span>{!canScan&&<small>Scanner access requires an administrator.</small>}</button>
-      {onBatches&&<button type="button" onClick={onBatches}><BookOpen size={34}/><strong>Site batches</strong><span>{vehicle?'View VLB cards inside their operational batch.':'Open the batch after VLB lock, save ELB entries inside it, then close and lock ELB.'}</span></button>}
+      {!lmv&&<button type="button" onClick={onBatches}><BookOpen size={34}/><strong>Site batches</strong><span>{vehicle?'View VLB cards inside their operational batch.':'Open the batch after VLB lock, save ELB entries inside it, then close and lock ELB.'}</span></button>}
     </div>
   </section>;
 }
