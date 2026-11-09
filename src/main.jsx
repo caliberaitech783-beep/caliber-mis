@@ -1,5 +1,5 @@
 import {isLmv} from '../shared/equipment-kind.mjs';
-import LmvImport from './lmv-import.jsx';
+import {lmvCsvFields,readLmvExport,saveLmvExport} from './lmv-import.mjs';
 import {browserSessionRequestInit} from './browser-session-transport.mjs';
 import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
@@ -4736,7 +4736,7 @@ function CDirFieldInput({ name, label, type, defaultValue = "", required = false
     placeholder={`Search ${label.toLowerCase()}`} emptyText={`Not in the ${refMaster}. Add it there first.`} />;
 }
 
-function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelected, selectedRecords = [], onSaveAll, saveAllDisabled = false, userOptions = [], siteOptions = [], canCreateSuperAdmin = false }) {
+function MasterActions({ name, onLmvImported, records = [], onAdd, onDeleteAll, onDeleteSelected, selectedRecords = [], onSaveAll, saveAllDisabled = false, userOptions = [], siteOptions = [], canCreateSuperAdmin = false }) {
   const [mode, setMode] = useState(null),
     [selectedFile, setSelectedFile] = useState(null),
     [importing, setImporting] = useState(false),
@@ -4802,8 +4802,8 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
   };
   const chooseFile = (file) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      alert("Please select a CSV file.");
+    if (!/\.csv$/i.test(file.name) && !(onLmvImported && /\.xlsx$/i.test(file.name))) {
+      alert(onLmvImported ? "Please select a Pulse CSV or Excel export." : "Please select a CSV file.");
       return;
     }
     setSelectedFile(file);
@@ -4813,9 +4813,15 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
     if (!file || importing) return;
     setImporting(true);
     try {
-      const records = parseCsv(await file.text(), fields);
+      const records = onLmvImported ? await readLmvExport(file,parseCsv) : parseCsv(await file.text(), fields);
       if (!records.length) throw new Error("No usable rows were found.");
-      await onAdd(records);
+      if (onLmvImported) {
+        const result = await saveLmvExport(authToken,records);
+        onLmvImported();
+        alert(`Imported ${result.inserted}. Already present ${result.existing}. Conflicts ${result.conflicts}. Invalid rows ${result.invalid}.`);
+      } else {
+        await onAdd(records);
+      }
       setSelectedFile(null);
       setMode(null);
     } catch (error) {
@@ -4832,7 +4838,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
   };
   const template = () => runDownloadNotice('CSV template',() => {
     const csv =
-      fields
+      (onLmvImported ? lmvCsvFields : fields)
         .map(([, label]) => '"' + label.replaceAll('"', '""') + '"')
         .join(",") + "\n";
     const link = document.createElement("a");
@@ -5079,7 +5085,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
         </Modal>
       )}
       {mode === "import" && (
-        <Modal title={"Import " + name} close={closeImport}>
+        <Modal title={onLmvImported ? "Import LMV Master" : "Import " + name} close={closeImport}>
           <div className="import-dropbox">
             <div
               className={`import-dropzone${dragActive ? " drag-active" : ""}`}
@@ -5103,7 +5109,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                 <Upload />
                 <Download />
               </div>
-              <h3>Drop your CSV file here</h3>
+              <h3>{onLmvImported ? "Drop your Pulse LMV export here" : "Drop your CSV file here"}</h3>
               <p>
                 or{" "}
                 <button type="button" onClick={() => fileInput.current?.click()}>
@@ -5111,13 +5117,13 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                 </button>
               </p>
               <div className="import-file-notes">
-                <span>CSV files only</span>
-                <span>Uses the master template</span>
+                <span>{onLmvImported ? "CSV or Excel" : "CSV files only"}</span>
+                <span>{onLmvImported ? "Checks for existing LMVs" : "Uses the master template"}</span>
               </div>
               <input
                 ref={fileInput}
                 type="file"
-                accept=".csv,text/csv"
+                accept={onLmvImported ? ".csv,.xlsx" : ".csv,text/csv"}
                 onChange={(event) => chooseFile(event.target.files?.[0])}
               />
             </div>
@@ -5188,6 +5194,7 @@ function Equipment({
   onDelete,
   onDeleteAll,
   onDeleteSelected,
+  onLmvImported,
 }) {
   const [q, setQ] = useState(""),
     [road, setRoad] = useState(initialFilter),
@@ -5315,7 +5322,7 @@ function Equipment({
             · {rows.length} records shown
           </p>
         </div>
-        <MasterActions name="Equipment master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} onDeleteSelected={onDeleteSelected} selectedRecords={rows} />
+        <MasterActions name="Equipment master" onLmvImported={onLmvImported} records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} onDeleteSelected={onDeleteSelected} selectedRecords={rows} />
       </header>
       <div className="toolbar">
         <div>
@@ -9286,11 +9293,11 @@ Equipment = function EquipmentWithData(props) {
       <button type="button" aria-pressed={!showLmv} onClick={() => setLmvTab(false)}>Equipment Master</button>
       <button type="button" aria-pressed={showLmv} onClick={() => setLmvTab(true)}>LMV Master</button>
     </div>}
-    {showLmv && <LmvImport token={authToken} onImported={retryLoad} />}
     <OriginalEquipment
       key={showLmv ? "lmv" : "equipment"}
       {...props}
       pageTitle={showLmv ? "LMV Master" : props.pageTitle}
+      onLmvImported={showLmv ? retryLoad : undefined}
       records={showLmv ? records.filter(isLmv) : records}
       onAdd={addEquipment}
       onEdit={(id, record) => onEdit(id, normalizeEquipmentRecord(record))}
