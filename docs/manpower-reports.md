@@ -90,3 +90,33 @@ Row colours (one per row, in this order of priority):
 - Every row also carries the colour in words ("Duty flag") and the other shift or machine ("Duty note"), so exports and prints keep the meaning.
 
 Data: `GET /api/reports/manpower` adds `attendanceEquipment` (one row per driver, date, shift, site and equipment group, with `actual`, `flag`, `flagLabel`, `note`) and `attendanceSites`. `shiftAttendance` (one row per actual duty) is unchanged. LMV log books are not part of this report.
+
+## Missing batches, driver history and a simpler OT page (10 Nov 2026)
+
+Owner's review of the live screens on 9 Nov 2026. This section replaces the OT layout described above (log-book grid, site cards, driver category table, earlier repeats).
+
+Shift Attendance Equipment Wise:
+
+- **Batch behind each shift.** Every site-and-shift box takes a state from the batch for that site, date and shift (`attendanceShifts`): the whole box is **red** while no batch has been created, **outlined orange** while the batch is created but not closed ("VLB open", "LMV open" or "ELB open", the stage from the batch rules), plain once it is closed. A line above the table counts the shifts without a batch and the open batches.
+- A shift is reported as missing its batch only after it has ended by the Shift Master times, so the running shift is not red. A site is expected to run the shifts its Shift Master holds on that date (Shift 1 to 3 when it has none). A site with no work therefore stays red.
+- Over several dates the box says how many days are pending ("3 days no batch"), and the opened site and shift lists the dates. The All shifts and All sites boxes carry the note without being painted.
+- A red or orange box opens even when it has no duty, and says in words which batch is missing or open.
+- **Driver history.** The driver list has "OT in <month>" and "OT in <year>" beside the name, and the name opens the month-wise history: duties, red, orange, brown and OT times per month, then every flagged duty. In a list of every site, the counts are read for the site of the driver whose name is pressed.
+- A coloured row keeps its colour under the mouse pointer.
+
+OT & Multiple Duties, now in the same three steps:
+
+1. One line per site: red, orange, brown and drivers, plus All sites. The Site selection narrows the lines; one site opens by itself.
+2. Pressing a number lists those drivers, one row each (red, orange, brown, cases in the selected dates, OT in the month and year), with each case listed under them.
+3. Pressing a driver's name opens the same month-wise history.
+
+- Log book (VLB, ELB, LMV) is one selector at the top instead of a split in every block. A duty saved in two log books still counts under both.
+- Driver category is a column of the drivers list; the separate category table and the "earlier repeats" list are removed from the screen. `GET /api/reports/manpower/ot-history` remains but the page no longer calls it.
+
+All Manpower & OT pages:
+
+- The table's own From / To date bar is switched off (`recordDateFilter={false}`); the dates at the top of the page are the only date control.
+- **Manpower Data Review** lists saved cards with a data problem that affects the counts, for the MIS team to correct. On the attendance and OT pages it is one line ("31 saved cards need correction") that opens the list; on Manpower by Category and Shift Performance it stays in full.
+- A site is shown under one properly written name (Shift Master first, then batches, then cards). A stored lower-case key such as "jayant ob" appears only when no better spelling exists, and the Site selector lists each site once.
+
+Data: `GET /api/reports/manpower` adds `attendanceShifts` (`siteKey`, `date`, `shift`, `state` = `none` | `vlb_open` | `lmv_open` | `elb_open` | `closed` | `not_due`, `batch`) and `employeeKey` on `attendanceEquipment` rows; the batch read now includes `shift` and `stage`. `GET /api/reports/manpower/ot-drivers` adds `duties` (actual duties per month, saved VLB and ELB cards) and lists every driver of the site, not only flagged ones.
