@@ -4,11 +4,12 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
-const views=[['manpower','Manpower by Category'],['employee','Shift Performance'],['ot','OT & Multiple Duties']];
+const views=[['manpower','Manpower by Category'],['employee','Shift Performance'],['attendance','Shift Attendance'],['ot','OT & Multiple Duties']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
 const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employeeName','Driver / operator']];
+const attendanceColumns=columns([...context,...person,['status','Attendance'],['trips','Completed VLB trips'],['doors','Assigned vehicles / equipment'],['reason','Zero-trip reason'],['remarks','Remarks']]);
 const classification=[['category','Category'],['group','Equipment group'],['make','Make'],['model','Model']];
 const detailColumns=columns([...context,['door','Door / equipment'],...classification,...person,['assignment','Assignment'],['batches','Source batches'],['batchStatus','Batch status'],['book','Saved card'],['remarks','Remarks / review']]);
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
@@ -38,8 +39,11 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
   {!valid&&<p role="alert">Choose a valid range of up to 31 days, starting on or after 1 November 2026.</p>}{busy&&<p role="status">Loading saved records and checking shift patterns…</p>}{error&&<p role="alert">{error}</p>}
   {report&&<>
    <p className="mp-source">{description} · Updated {new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
-   <div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>
-   {reportId==='ot'?<>
+   {reportId!=='attendance'&&<div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>}
+   {reportId==='attendance'?<>
+    <p className="mp-notice">{report.shiftAttendance.length} present shifts. Each employee counts once per date and shift, including when trips are entered later.</p>
+    <ReportSection key={'attendance-'+query} title="Shift Attendance" category="shift-attendance" description={description} rows={report.shiftAttendance} columns={attendanceColumns} rowKey={r=>r.id} emptyMessage="No attendance matches these selections."/>
+   </>:reportId==='ot'?<>
     <div className="mp-legend"><span className="mp-flag mp-flag-red">RED · consecutive shifts / all three shifts</span><span className="mp-flag mp-flag-orange">ORANGE · Shift 1 + Shift 3 with a gap</span><span className="mp-flag mp-flag-review">REVIEW · missing or inconsistent schedule</span></div>
     <p className="mp-notice">Combined hours below are machine HMR performance hours. Actual employee attendance and payable OT hours are not calculated. Cross-midnight cases include the adjoining day. A duty can appear in both a same-day and overnight event; event hours must not be added together.</p>
     <ReportSection key={'ot-'+query} title="OT & Multiple Duties" category="manpower-ot" description={description+' · Scheduled times in IST; HMR performance hours, not payable OT'} rows={report.ot} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} emptyMessage="No matching multiple-duty pattern in the saved records."/>
