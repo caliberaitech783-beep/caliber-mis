@@ -46,6 +46,13 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 - The choice adds a drivers table (one row per driver: red, orange and review duties, log book, duty dates, shifts and equipment) and narrows the duty table under it. It does not change the totals, the site cards or the earlier-repeats list above.
 - A colour pressed in the category table takes priority over a colour pressed in the totals grid for the two lists under the table.
 
+## Driver OT counts and history (9 Nov 2026)
+
+- The drivers list has two columns right after the name: OT in the month and OT in the calendar year of the report's To date. One OT is one flagged duty (red, orange or review) at the opened site. An overnight pair counts once, on the day it started.
+- Pressing a driver's name opens his history for that year: a month-wise table (red, orange, review, OT times, with a year total) and every flagged duty, newest first. Pressing the name again, or "Close history", closes it.
+- The counts come from `GET /api/reports/manpower/ot-drivers?site=...&to=...` (same access chain and site scope as the report, site required). It reads the site one month at a time from the later of 1 January and 1 November 2026 up to today, using the slim card read of the earlier-repeats lookup, and holds no transaction open. The page asks once per site and month, only while a drivers list is open.
+- Cost grows through the year: by December the busiest site needs twelve monthly reads. If that becomes slow, store monthly counts instead of recomputing them.
+
 ## Shift Attendance Equipment Wise (9 Nov 2026)
 
 "Shift Attendance" is renamed **Shift Attendance Equipment Wise** in the side menu, the tab, the heading and the exported file. It opens in three steps instead of one flat list.

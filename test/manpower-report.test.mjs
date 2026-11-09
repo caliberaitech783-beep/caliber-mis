@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 
 const site='Sasti OC',date='2026-11-10';
@@ -104,7 +104,7 @@ test('range validation includes calendar dates, cutoff, length and query types',
 
 function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
  const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
- const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows});
+ const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
@@ -155,6 +155,31 @@ test('earlier repeats count each event once and leave out events inside the sele
  const event=(id,severity,...dutyDates)=>({id,severity,employeeKey:'E1',siteKey:'sasti ob',dutyDates});
  const drivers=otHistorySummary([event('a','red','2026-11-03'),event('a','red','2026-11-03'),event('b','orange','2026-11-05'),event('c','red','2026-11-09','2026-11-10'),{...event('d','red','2026-11-04'),employeeKey:'E2'}],'2026-11-10');
  assert.deepEqual(drivers,[{employeeKey:'E1',siteKey:'sasti ob',red:1,orange:1,review:0,redDates:['2026-11-03'],orangeDates:['2026-11-05']},{employeeKey:'E2',siteKey:'sasti ob',red:1,orange:0,review:0,redDates:['2026-11-04'],orangeDates:[]}]);
+});
+test('month and year OT counts cover the calendar month and year of the To date, never before records or after today',()=>{
+ assert.deepEqual(otYearWindows('2026-11-09','2026-11-09'),{year:'2026',month:'2026-11',yearFrom:'2026-11-01',yearTo:'2026-11-09',monthFrom:'2026-11-01',monthTo:'2026-11-09',windows:[{from:'2026-11-01',to:'2026-11-09'}]});
+ const mid=otYearWindows('2027-03-15','2027-06-20');assert.deepEqual([mid.yearFrom,mid.yearTo,mid.monthFrom,mid.monthTo],['2027-01-01','2027-06-20','2027-03-01','2027-03-31']);
+ assert.deepEqual(mid.windows.map(w=>w.from+'/'+w.to),['2027-01-01/2027-01-31','2027-02-01/2027-02-28','2027-03-01/2027-03-31','2027-04-01/2027-04-30','2027-05-01/2027-05-31','2027-06-01/2027-06-20']);
+ assert.equal(otYearWindows('2027-12-31','2027-12-31').windows.length,12);assert.ok(otYearWindows('2028-02-29','2028-12-31').windows.some(w=>w.to==='2028-02-29'));
+ assert.equal(otYearWindows('bad','2026-11-09'),null);assert.deepEqual(otYearWindows('2028-01-10','2027-12-20').windows,[],'a year that has not started has nothing to read');
+ for(const w of mid.windows)assert.doesNotThrow(()=>manpowerFilters(w),'every month fits one report read');
+});
+test('driver OT counts take each event once, by the day of its first duty',()=>{
+ const event=(id,severity,...dutyDates)=>({id,severity,reason:severity,employeeKey:'E1',siteKey:'sasti ob',dutyDates,dates:dutyDates.join('; '),shifts:'',logBook:'VLB',equipment:'',combinedHours:null,books:''});
+ const range={yearFrom:'2026-11-01',yearTo:'2026-12-31',monthFrom:'2026-12-01',monthTo:'2026-12-31'};
+ const drivers=otDriverTally([event('a','red','2026-11-03'),event('a','red','2026-11-03'),event('b','orange','2026-11-30','2026-12-01'),event('c','red','2026-12-05'),event('d','review','2026-12-09'),event('e','red','2027-01-01'),{...event('f','red','2026-12-02'),employeeKey:'E2'}],range);
+ assert.deepEqual(drivers.map(d=>[d.employeeKey,d.month,d.year]),[['E1',{red:1,orange:0,review:1,total:2},{red:2,orange:1,review:1,total:4}],['E2',{red:1,orange:0,review:0,total:1},{red:1,orange:0,review:0,total:1}]]);
+ assert.deepEqual(drivers[0].events.map(e=>e.date),['2026-12-09','2026-12-05','2026-11-30','2026-11-03'],'newest first; the overnight pair stays in the month it started; next year is left out');
+});
+test('driver OT API reads one site a month at a time within scope and without a long transaction',async()=>{
+ const h=apiHarness({sites:['sasti ob']},[card(1,1),card(2,2),card(3,1,{bookDate:'2026-11-04'}),card(4,2,{bookDate:'2026-11-04'})]),path='/api/reports/manpower/ot-drivers';
+ const r=await h.run({site,to:'2026-11-06'},path);assert.equal(r.status,200);assert.equal(r.released,true);assert.equal(r.headers['Cache-Control'],'private, no-store');
+ assert.deepEqual([r.result.year,r.result.month,r.result.yearFrom,r.result.yearTo,r.result.monthFrom,r.result.monthTo],['2026','2026-11','2026-11-01','2026-11-12','2026-11-01','2026-11-12'],'the fixture clock says 12 November');
+ const reads=h.calls.filter(c=>c.sql.includes('SELECT l.id'));assert.equal(reads.length,1,'November is the only month of records so far');assert.deepEqual(reads[0].args[2],[site]);assert.ok(reads[0].sql.includes("l.book_type IN ('vehicle','equipment','lmv')"));
+ assert.ok(!h.calls.some(c=>/BEGIN|COMMIT/.test(c.sql)),'counts are read without holding a transaction open');
+ assert.equal(r.result.drivers.length,1);const [driver]=r.result.drivers;assert.deepEqual([driver.month,driver.year],[{red:2,orange:0,review:0,total:2},{red:2,orange:0,review:0,total:2}]);
+ assert.deepEqual(driver.events.map(e=>[e.date,e.severity,e.logBook]),[[date,'red','VLB'],['2026-11-04','red','VLB']]);assert.ok(!JSON.stringify(r.result).includes('record_data'));
+ assert.equal((await h.run({site:'Jayant OC',to:date},path)).status,403);assert.equal((await h.run({to:date},path)).status,400,'a site is required');assert.equal((await h.run({site,to:'bad'},path)).status,400);
 });
 test('history API reads only earlier dates within scope and returns one repeat per event',async()=>{
  const h=apiHarness({sites:['sasti ob']},[card(1,1),card(2,2)]),path='/api/reports/manpower/ot-history';
