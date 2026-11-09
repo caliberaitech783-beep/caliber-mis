@@ -6,12 +6,18 @@ import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
-const views=[['manpower','Manpower by Category'],['employee','Shift Performance'],['attendance','Shift Attendance'],['ot','OT & Multiple Duties']];
+const views=[['manpower','Manpower by Category'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
 const person=[['employeeId','Employee ID'],['caliberCode','Caliber ID'],['employeeName','Driver / operator']];
-const attendanceColumns=columns([...context,...person,['status','Attendance'],['trips','Completed VLB trips'],['doors','Assigned vehicles / equipment'],['reason','Zero-trip reason'],['remarks','Remarks']]);
+// Date, site and shift sit in the heading; each returns as a column only when the list covers more than one.
+const attendanceColumns=({days,sites,shifts,equipment})=>columns([...(days?[['date','Duty date']]:[]),...(sites?[['site','Site']]:[]),...(shifts?[['shift','Shift']]:[]),...person,['doors','Door / equipment'],...(equipment?[['equipment','Equipment']]:[]),['makeModel','Make / model'],['status','Attendance'],['trips','Completed VLB trips'],['actualLabel','Actual duty'],['flagLabel','Duty flag'],['note','Duty note'],['reason','Zero-trip reason'],['remarks','Remarks']]).map(c=>c.key==='flagLabel'?{...c,render:r=><strong className={'mp-flag mp-flag-'+r.flag}>{r.flagLabel}</strong>}:c);
+const dutyFlags=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift 1 and Shift 3 with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
+const noPick={siteKey:'',shift:'',equipment:'',flag:''},EVERY='*';
+const shiftName=code=>({S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'})[code]||code;
+const shortDate=date=>date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4);
+const dutyCount=(n,kind)=>n+' '+kind+(n===1?' duty':' duties');
 const classification=[['category','Category'],['group','Equipment group'],['make','Make'],['model','Model']];
 const detailColumns=columns([...context,['door','Door / equipment'],...classification,...person,['assignment','Assignment'],['batches','Source batches'],['batchStatus','Batch status'],['book','Saved card'],['remarks','Remarks / review']]);
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
@@ -94,11 +100,69 @@ function otOverview({report,filters,query,selectSite,description,ReportSection,s
  </>;
 }
 
+// Shift Attendance Equipment Wise: every site by shift, then one site and shift by equipment, then its drivers.
+// Plain render function: its state lives in ManpowerReports.
+function attendanceOverview({report,filters,query,ReportSection,pick,setPick}){
+ const rows=report.attendanceEquipment||[],sites=report.attendanceSites||[];
+ const shifts=filters.shift?[filters.shift]:[...new Set(['S1','S2','S3',...rows.map(r=>r.shift)])].sort();
+ const within=(site,code)=>rows.filter(r=>(site===EVERY||r.siteKey===site)&&(!code||r.shift===code));
+ // An actual duty is one driver in one shift on one date; a second machine in the same shift is not another one.
+ const actual=list=>list.filter(r=>r.actual).length;
+ // A report holding one site opens that site by itself.
+ const siteKey=sites.length===1?sites[0].siteKey:pick.siteKey===EVERY||sites.some(s=>s.siteKey===pick.siteKey)?pick.siteKey:'';
+ const shift=siteKey&&shifts.includes(pick.shift)?pick.shift:'',chosen=siteKey?within(siteKey,shift):[];
+ const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
+ const open=pick.equipment===EVERY||equipment.some(e=>e.equipment===pick.equipment)?pick.equipment:'',flag=open?pick.flag:'';
+ const listed=open?chosen.filter(r=>(open===EVERY||r.equipment===open)&&(!flag||r.flag===flag)):[];
+ const days=filters.from!==filters.to,dateLabel=days?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
+ const heading=[siteKey===EVERY?'All sites':sites.find(s=>s.siteKey===siteKey)?.site||'',shift?shiftName(shift):'All shifts',dateLabel].join(' · ');
+ const openLabel=open===EVERY?'All equipment':open,flagName=dutyFlags.find(([id])=>id===flag)?.[1]||'';
+ const choose=(site,code)=>setPick(siteKey===site&&shift===code?noPick:{...noPick,siteKey:site,shift:code});
+ const list=(name,colour='')=>setPick(open===name&&flag===colour?{...noPick,siteKey,shift}:{siteKey,shift,equipment:name,flag:colour});
+ const count=(site,code,label)=>{const n=actual(within(site,code));return n?<button type="button" className="mp-att-count" aria-pressed={siteKey===site&&shift===code} aria-label={dutyCount(n,'actual')+' · '+label} onClick={()=>choose(site,code)}>{n}</button>:<span className="mp-zero">0</span>;};
+ const line=(name,label,e,total)=><tr key={name} className={[total&&'mp-att-total',open===name&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+  <td><button type="button" className="mp-cat-open" aria-pressed={open===name&&!flag} onClick={()=>list(name)}>{label}</button></td>
+  <td><button type="button" className="mp-cat-count" aria-pressed={open===name&&!flag} aria-label={dutyCount(e.duties,'equipment-wise')+' · '+label} onClick={()=>list(name)}>{e.duties}</button></td>
+  <td>{e.actual}</td>
+  {dutyFlags.map(([id,colour])=><td key={id}>{e[id]?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={open===name&&flag===id} aria-label={e[id]+' '+colour+' · '+label} onClick={()=>list(name,id)}>{e[id]}</button>:0}</td>)}
+ </tr>;
+ const totals={duties:chosen.length,actual:actual(chosen),...Object.fromEntries(dutyFlags.map(([id])=>[id,chosen.filter(r=>r.flag===id).length]))},second=totals.duties-totals.actual;
+ return <>
+  <p className="mp-notice">{dutyCount(actual(rows),'actual')} · {dutyCount(rows.length,'equipment-wise')}. An actual duty is one driver in one shift on one date. A driver on two equipment types in one shift is counted on both machines and once in actual duties.</p>
+  <div className="mp-category mp-att" role="group" aria-label="Actual duties by site and shift">
+   <h2>All sites, shift-wise · {dateLabel} · actual duties</h2>
+   {sites.length?<>
+    <p className="mp-category-hint">Press a number to see that site and shift by equipment.</p>
+    <table><thead><tr><th scope="col">Site</th>{shifts.map(code=><th key={code} scope="col">{shiftName(code)}</th>)}<th scope="col">All shifts</th></tr></thead>
+     <tbody>{sites.map(s=><tr key={s.siteKey} className={siteKey===s.siteKey?'mp-on':undefined}><th scope="row">{s.site}</th>{shifts.map(code=><td key={code}>{count(s.siteKey,code,s.site+' · '+shiftName(code))}</td>)}<td>{count(s.siteKey,'',s.site+' · All shifts')}</td></tr>)}
+     {sites.length>1&&<tr className={'mp-att-total'+(siteKey===EVERY?' mp-on':'')}><th scope="row">All sites</th>{shifts.map(code=><td key={code}>{count(EVERY,code,'All sites · '+shiftName(code))}</td>)}<td>{count(EVERY,'','All sites · All shifts')}</td></tr>}</tbody>
+    </table>
+   </>:<p>No site is available for these selections.</p>}
+  </div>
+  {siteKey?<>
+   <div className="mp-category mp-att">
+    <h2>{heading} · duties by equipment</h2>
+    {equipment.length?<>
+     <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick({...noPick,siteKey,shift})}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
+     <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
+      <tbody>{equipment.map(e=>line(e.equipment,e.equipment,e,false))}{line(EVERY,'All equipment',totals,true)}</tbody>
+     </table>
+     {second>0&&<p className="mp-att-foot">{second} {second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties.</p>}
+    </>:<p>No duty in this selection.</p>}
+   </div>
+   {open&&<>
+    <div className="mp-legend" aria-label="Row colours"><span className="mp-flag mp-flag-normal">White · Normal duty</span>{dutyFlags.map(([id,colour,meaning])=><span key={id} className={'mp-flag mp-flag-'+id}>{colour} · {meaning}</span>)}</div>
+    <ReportSection key={'attendance-'+query+'-'+siteKey+'-'+shift+'-'+open+'-'+flag} title={'Shift Attendance Equipment Wise · '+heading+' · '+openLabel+(flagName?' · '+flagName+' only':'')} category="shift-attendance" description={dutyCount(listed.length,'equipment-wise')+' · '+dutyCount(actual(listed),'actual')+' · Saved records only'} rows={listed} columns={attendanceColumns({days,sites:siteKey===EVERY,shifts:!shift,equipment:open===EVERY})} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} emptyMessage="No duty matches this selection."/>
+   </>}
+  </>:<p className="mp-notice">Press a number above to see the duties by equipment, then the drivers.</p>}
+ </>;
+}
+
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection}){
  const [filters,setFilters]=useState(()=>{const date=today();return {from:date,to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null);
- const [severity,setSeverity]=useState(''),[history,setHistory]=useState({key:'',data:null,error:''}),[logBook,setLogBook]=useState(''),[drill,setDrill]=useState(noDrill);
+ const [severity,setSeverity]=useState(''),[history,setHistory]=useState({key:'',data:null,error:''}),[logBook,setLogBook]=useState(''),[drill,setDrill]=useState(noDrill),[pick,setPick]=useState(noPick);
  // The OT view always loads every assigned site; the Site selection there opens one site.
  const query=useMemo(()=>new URLSearchParams(reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId]);
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
@@ -143,8 +207,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    <p className="mp-source">{description} · Updated {new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
    {reportId!=='attendance'&&reportId!=='ot'&&<div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>}
    {reportId==='attendance'?<>
-    <p className="mp-notice">{report.shiftAttendance.length} present shifts. Each employee counts once per date and shift, including when trips are entered later.</p>
-    <ReportSection key={'attendance-'+query} title="Shift Attendance" category="shift-attendance" description={description} rows={report.shiftAttendance} columns={attendanceColumns} rowKey={r=>r.id} emptyMessage="No attendance matches these selections."/>
+    {attendanceOverview({report,filters,query,ReportSection,pick,setPick})}
    </>:reportId==='ot'?<>
     {otOverview({report,filters,query,selectSite:site=>set('site',site),description,ReportSection,severity,setSeverity,logBook,setLogBook,drill,setDrill,history,historyKey})}
    </>:reportId==='employee'?<>

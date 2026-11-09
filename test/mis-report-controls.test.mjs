@@ -201,3 +201,54 @@ test('manpower reports export complete selected data, separate shift hours, and 
  assert.equal(nodes(render({session:{token:'test'},reportId:'employee',onSelect:()=>{}}),ReportSection).length,0,'changed filters cannot export stale results');
 });
 
+
+test('shift attendance equipment wise opens sites by shift, then equipment, then the coloured driver list',async()=>{
+ const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''};
+ const duty=(n,siteKey,site,shift,equipment,flag='normal',actual=true)=>({id:'d'+n,dutyId:'e'+n,date:filters.from,shift,site,siteKey,employeeId:'E'+n,caliberCode:'C'+n,employeeName:'Driver '+n,equipment,doors:'V'+n,makeModel:'VOLVO FMX',status:'Present',trips:1,actual,actualLabel:actual?'Yes':'No — second machine',flag,flagLabel:flag==='red'?'RED — Back-to-back OT':'Normal duty',note:'',reason:'',remarks:''});
+ const sasti=['sasti ob','Sasti OC'],rows=[duty(1,...sasti,'S1','Volvo Tippers'),duty(2,...sasti,'S1','Volvo Tippers','red'),duty(7,...sasti,'S1','Volvo Tippers'),duty(3,...sasti,'S1','Graders','zero'),duty(4,...sasti,'S1','Graders','normal',false),duty(5,...sasti,'S2','Volvo Tippers','review'),duty(6,'jayant ob','Jayant OC','S3','Excavator','orange')];
+ const sites=[{siteKey:'dhoptala',site:'Dhoptala OC'},{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}];
+ const payload=(attendanceSites=sites)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment:rows,attendanceSites,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
+ const mount=async(pick,chosen=filters,data=payload())=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query:new URLSearchParams(chosen).toString(),payload:data},'',false,0,{},false,false,'',{key:'',data:null,error:''},'',{category:'',severity:''},...(pick?[pick]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
+ const buttons=(tree,name)=>nodes(tree,'button').filter(n=>new RegExp('(^| )'+name+'( |$)').test(n.props.className||''));
+ const categories=tree=>nodes(tree,ReportSection).map(n=>n.props.category);
+ assert.equal(operations.operationReports.find(r=>r.id==='attendance').title,'Shift Attendance Equipment Wise');
+
+ // Step 1: every assigned site by shift, counting actual duties; a site with no duty shows zeros and no button.
+ const view=await mount(),first=view();
+ assert.equal(nodes(first,'h1')[0].props.children,'Shift Attendance Equipment Wise');
+ assert.deepEqual(nodes(first,'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Dhoptala OC','Jayant OC','Sasti OC','All sites']);
+ assert.deepEqual(buttons(first,'mp-att-count').map(n=>n.props.children),[1,1,4,1,5,4,1,1,6],'the second machine of one driver is not another actual duty');
+ assert.deepEqual(categories(first),['manpower-review'],'no driver list before a site and shift are chosen');
+ assert.equal(buttons(first,'mp-cat-open').length,0);
+
+ // Step 2: pressing Shift 1 of a site lists its equipment with both totals and the four colours.
+ buttons(first,'mp-att-count').find(n=>n.props['aria-label']==='4 actual duties · Sasti OC · Shift 1').props.onClick();
+ const second=view();
+ assert.deepEqual(buttons(second,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);
+ assert.deepEqual(buttons(second,'mp-cat-count').map(n=>n.props['aria-label']),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 Red · All equipment','1 Blue · All equipment']);
+ assert.match(nodes(second,'p').find(n=>n.props.className==='mp-att-foot').props.children.join(''),/^1 duty here is a second machine/);
+ assert.deepEqual(categories(second),['manpower-review']);
+
+ // Step 3: pressing an equipment lists its drivers; date, site and shift are in the heading, not in the columns.
+ buttons(second,'mp-cat-open')[0].props.onClick();
+ const list=nodes(view(),ReportSection)[0].props;
+ assert.equal(list.category,'shift-attendance');assert.equal(list.rows.length,3);
+ assert.equal(list.title,'Shift Attendance Equipment Wise · Sasti OC · Shift 1 · 10-11-26 · Volvo Tippers');
+ assert.equal(list.description,'3 equipment-wise duties · 3 actual duties · Saved records only');
+ assert.deepEqual(list.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','doors','makeModel','status','trips','actualLabel','flagLabel','note','reason','remarks']);
+ assert.deepEqual(list.rows.map(list.rowClassName),['mp-duty-normal','mp-duty-red','mp-duty-normal']);
+ assert.match(list.columns.find(c=>c.key==='flagLabel').render(list.rows[1]).props.className,/mp-flag-red/);
+ buttons(view(),'mp-cat-count').find(n=>n.props['aria-label']==='1 Red · Volvo Tippers').props.onClick();
+ {const red=nodes(view(),ReportSection)[0].props;assert.equal(red.rows.length,1);assert.match(red.title,/Volvo Tippers · Red only$/);}
+
+ // A wider selection brings back the columns that no longer fit in the heading.
+ {const all=nodes((await mount({siteKey:'*',shift:'',equipment:'*',flag:'zero'}))(),ReportSection)[0].props;
+  assert.equal(all.title,'Shift Attendance Equipment Wise · All sites · All shifts · 10-11-26 · All equipment · Blue only');assert.equal(all.rows.length,1);
+  assert.deepEqual(all.columns.map(c=>c.key).filter(key=>['date','site','shift','equipment'].includes(key)),['site','shift','equipment']);}
+ {const range={...filters,to:'2026-11-12'},days=nodes((await mount({siteKey:'sasti ob',shift:'S1',equipment:'Graders',flag:''},range))(),ReportSection)[0].props;
+  assert.equal(days.columns[0].key,'date');assert.match(days.title,/10-11-26 to 12-11-26 · Graders$/);assert.equal(days.description,'2 equipment-wise duties · 1 actual duty · Saved records only');}
+
+ // One site in the report opens by itself; a stale choice is ignored.
+ {const only=(await mount(undefined,{...filters,site:'Sasti OC'},payload([sites[2]])))();assert.deepEqual(buttons(only,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);assert.equal(nodes(only,'th').filter(n=>n.props.scope==='row').length,1);}
+ {const stale=(await mount({siteKey:'not a site',shift:'S1',equipment:'Volvo Tippers',flag:''}))();assert.deepEqual(categories(stale),['manpower-review']);assert.equal(buttons(stale,'mp-cat-open').length,0);}
+});
