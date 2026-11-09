@@ -83,7 +83,9 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   if(!r.schedule)addIssue(r,'Effective site shift schedule is missing or ambiguous; timing requires review.');
   else if(d.masterShiftStart&&text(d.masterShiftStart).slice(0,5)!==r.schedule.startLabel.slice(-5))addIssue(r,'Saved shift start differs from the effective Shift Master; timing requires review.');
   r.hours=meter(d,'Hmr');r.km=r.kind==='vehicle'?meter(d,'Kmr'):null;r.trips=r.kind==='vehicle'?number(d.completedTrips??d.totalTrips):null;
-  if(r.hours===null||r.schedule&&r.hours>r.schedule.hours){r.performanceValid=false;addIssue(r,'Invalid or excessive HMR hours; performance totals unavailable.');}
+  // HMR is optional on an LMV card, so a blank one is not a review item; its hours simply stay unavailable.
+  const blankLmvHmr=r.kind==='lmv'&&number(d.openingHmr)===null&&number(d.closingHmr)===null;
+  if(r.hours===null||r.schedule&&r.hours>r.schedule.hours){r.performanceValid=false;if(!blankLmvHmr)addIssue(r,'Invalid or excessive HMR hours; performance totals unavailable.');}
   if(r.kind==='vehicle'&&(r.km===null||r.trips===null||r.trips<0)){r.performanceValid=false;addIssue(r,'Missing or invalid kilometre / completed-trip values; performance totals unavailable.');}
   rows.push(r);
  }

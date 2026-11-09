@@ -142,6 +142,9 @@ test('LMV log books count in OT, under each log book the duty was saved in, and 
  assert.deepEqual(all.ot.map(e=>e.logBook),['VLB + ELB + LMV']);assert.deepEqual(all.otSites[0].books,{VLB:one,ELB:one,LMV:one});
  const review=report([card(1,1),{...lmv,asset_id:999,data:{...lmv.data,assetId:999}}]);
  assert.deepEqual(review.exceptions.map(e=>[e.logBook,e.reason]),[['LMV','Equipment master match is missing.']]);assert.equal(review.totals.exceptions,0,'LMV review items are not counted on the VLB and ELB views');
+ const blank=report([card(1,1),{...lmv,data:{...lmv.data,openingHmr:null,closingHmr:null}}]);
+ assert.deepEqual([blank.ot.map(e=>e.severity),blank.exceptions.length,blank.ot[0].combinedHours],[['red'],0,null],'an LMV card saved without HMR still counts as a duty and is not a review item');
+ assert.match(report([card(1,1),{...lmv,data:{...lmv.data,openingHmr:200,closingHmr:150}}]).exceptions[0].reason,/Invalid or excessive HMR/);
 });
 test('earlier repeats look back at most 90 days, never before the first day of records',()=>{
  assert.deepEqual(otHistoryWindows('2026-11-01'),[]);

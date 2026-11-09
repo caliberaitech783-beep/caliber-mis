@@ -38,3 +38,4 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 - The flag summary is a grid: one row for all log books and one each for VLB, ELB and LMV, with RED / ORANGE / REVIEW counts. Pressing a row narrows the page to that log book; pressing a count also lists those drivers with their earlier repeats.
 - Each site card lists the three log books with their red, orange and review counts (`otSites[].books`).
 - Earlier repeats read the same three log books and count the driver across all of them.
+- HMR is optional on an LMV card. A card saved without it still counts as a duty; its hours show as unavailable and it is not listed for review.
