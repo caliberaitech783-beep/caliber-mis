@@ -19,7 +19,7 @@ export default function VlbEntryWorkspace({kind,session,mode,ReportSection,Expor
  const blocker=elbEntryBlocker(kind,selected);
  const attendanceEntry=mode==='manual'&&(attendanceOpen?<ShiftAttendance kind={kind} session={session} batch={selected} onClose={()=>setAttendanceOpen(false)}/>:<button type="button" onClick={()=>setAttendanceOpen(true)}>Present — 0 trips</button>);
  const roster=selected&&!blocker?<FleetReconciliation key={selected.id+':fleet:'+kind} session={session} context={selected} kind={kind}/>:null;
- const siteFleet=roster&&<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / ELB, breakdown and idle details</summary>{roster}</details>;
+ const siteFleet=roster&&<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary>{roster}</details>;
  const key='vlb-entry-batch:'+String(session.login||session.name||'');
  // Scan entry, card and view stay in the address when the same batch is picked
  // again (a refresh, a crash recovery, a server update); they are cleared only
