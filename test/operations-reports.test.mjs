@@ -5,15 +5,29 @@ const records=[{id:1,book_no:'BOOK1',book_type:'vehicle',data:{bookDate:'2026-12
 test('all registered reports produce a stable table including explicit commercial dependencies',()=>{const rows=normalise(records);assert.equal(operationReports.length,26);for(const {id} of operationReports){const r=buildOperationReport(id,rows,{filters:{from:'2026-12-28',to:'2026-12-28'}});for(const row of r.rows)assert.equal(row.length,r.columns.length,id);assert.ok(r.columns.length);}assert.equal(Object.keys(requirements).length,5);});
 test('totals count trips rather than trip rows and use meter pairs',()=>{const r=buildOperationReport('daily',normalise(records));assert.deepEqual(r.rows[0],['2026-12-28','Sasti','Day',1,1,3,40,6,8,75]);const loading=buildOperationReport('loading',normalise(records));assert.equal(loading.rows[0][2],2);});
 test('filters restrict source records and loading equipment',()=>{const rows=normalise(records);assert.equal(filterRecords(rows,{site:'Other'}).length,0);assert.equal(filterRecords(rows,{asset:'1',employee:'2',shift:'3'}).length,1);const r=buildOperationReport('timing',rows,{filters:{loading:'L2'}});assert.equal(r.rows.length,1);assert.equal(r.rows[0].at(-1),15);});
-test('unavailable breakdown remains null and zero readings remain valid',()=>{const rows=normalise(records);const r=buildOperationReport('breakdown',rows);assert.equal(r.rows[0][8],null);assert.equal(r.rows[0][9],2);const n=normalise([{...records[0],data:{...records[0].data,openingHmr:0,closingHmr:0}}]);assert.equal(n[0].hours,0);});
-test('duplicates and potential missing entries are separated',()=>{const rows=normalise([...records,{...records[0],id:2,book_no:'BOOK2'}]);const r=buildOperationReport('missing',rows,{assets:[{id:'1',site:'Sasti',door:'V1'},{id:'4',site:'Sasti',door:'V2'}],shifts:[{id:'3',site:'Sasti',name:'Day'}],filters:{from:'2026-12-28',to:'2026-12-28'}});assert.equal(r.rows.filter(r=>r[4]==='Duplicate').length,1);assert.equal(r.rows.filter(r=>r[4]==='Potential missing').length,1);});
+test('unavailable breakdown remains null and zero readings remain valid',()=>{const rows=normalise(records);const r=buildOperationReport('breakdown',rows);assert.equal(r.rows[0][9],null);assert.equal(r.rows[0][10],2);const n=normalise([{...records[0],data:{...records[0].data,openingHmr:0,closingHmr:0}}]);assert.equal(n[0].hours,0);});
+test('duplicates and potential missing entries are separated',()=>{const rows=normalise([...records,{...records[0],id:2,book_no:'BOOK2'}]);const r=buildOperationReport('missing',rows,{assets:[{id:'1',site:'Sasti',door:'V1'},{id:'4',site:'Sasti',door:'V2'}],shifts:[{id:'3',site:'Sasti',name:'Day'}],filters:{from:'2026-12-28',to:'2026-12-28'}});assert.equal(r.rows.filter(r=>r[6]==='Duplicate').length,1);assert.equal(r.rows.filter(r=>r[6]==='Potential missing').length,1);});
 test('meter exceptions and monthly grouping are calculated',()=>{const rows=normalise(records);const invalid={...rows[0],id:2,openingHmr:28,closingHmr:27,hours:-1,book:'BOOK2'};assert.match(buildOperationReport('meters',[...rows,invalid]).rows[0].at(-1),/Closing HMR below opening.*discontinuity/);assert.equal(buildOperationReport('trends',rows,{monthly:true}).rows[0][0],'2026-12');});
 test('CSV preserves commas, quotes and newlines while neutralising spreadsheet formulas',()=>{const csv=reportCsv(['Name'],[['=SUM(1,2)'],['A"B\nC']]);assert.ok(csv.includes('"\'=SUM(1,2)"'));assert.ok(csv.includes('"A""B\nC"'));});
 test('live handover completion counts are used instead of counting both driver cards',()=>{const source=[{...records[0],data:{...records[0].data,completedTrips:0}},{...records[0],id:2,data:{...records[0].data,completedTrips:3}}];const rows=normalise(source);assert.equal(rows.reduce((s,r)=>s+r.tripsTotal,0),3);assert.equal(buildOperationReport('daily',rows).rows[0][5],3);});
 
 test('breakdown report identifies a manual fallback instead of labelling it as Pulse data',()=>{
  const row={...records[0],data:{...records[0].data,breakdownHours:1.5,breakdownHoursSource:'manual',hoursWarning:'Pulse offline'}};
- const report=buildOperationReport('breakdown',normalise([row]));assert.equal(report.rows[0][8],1.5);assert.match(report.rows[0].at(-1),/Manual entry/);
+ const report=buildOperationReport('breakdown',normalise([row]));assert.equal(report.rows[0][9],1.5);assert.match(report.rows[0].at(-1),/Manual entry/);
+});
+
+test('every report built from cards or vehicles shows the Caliber ID and the name together',()=>{
+ const second={...records[0],id:2,book_no:'BOOK2',data:{...records[0].data,employeeId:5,employeeName:'Night driver',caliberId:'E5',shiftId:4,shiftName:'Night'}};
+ const rows=normalise([records[0],second]),cards=[{id:9,filename:'a.jpg',status:'pending',draft:{...records[0].data}}];
+ for(const id of ['vehicle','timing','breakdown','meters','vehicle-trips','utilisation','missing','scans']){
+  const r=buildOperationReport(id,rows,{cards,filters:{}}),at=r.columns.indexOf('Caliber ID');
+  assert.ok(at>=0,id);assert.equal(r.columns[at+1],'Employee',id);
+ }
+ const trips=buildOperationReport('vehicle-trips',rows),at=trips.columns.indexOf('Caliber ID');
+ assert.equal(trips.rows.length,1);assert.equal(trips.rows[0][at],'E2, E5');assert.equal(trips.rows[0][at+1],'Driver, Night driver');
+ const register=buildOperationReport('vehicle',rows);assert.deepEqual(register.rows[0].slice(4,6),['E2','Driver']);
+ const scans=buildOperationReport('scans',rows,{cards,filters:{}});assert.deepEqual(scans.rows[0].slice(4,6),['E2','Driver']);
+ const dup=buildOperationReport('missing',normalise([records[0],{...records[0],id:3,book_no:'BOOK3'}]));assert.deepEqual(dup.rows[0].slice(4,7),['E2','Driver','Duplicate']);
 });
 
 
