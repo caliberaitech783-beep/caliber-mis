@@ -67,10 +67,14 @@ try{
  await page.goto(base+'/scanner-connector.html');
  await page.getByText('No scanner access has been enabled.',{exact:false}).waitFor();
  await page.evaluate(()=>sessionStorage.clear());
- await page.goto(base+'/');
+ await page.route('**/app-assets/index-*.js',route=>route.abort());
+ await page.goto(base+'/',{waitUntil:'domcontentloaded'});
+ await page.getByRole('button',{name:'Refresh application'}).waitFor();
+ await page.unroute('**/app-assets/index-*.js');
+ await page.getByRole('button',{name:'Refresh application'}).click();
  await page.locator('#root input').first().waitFor();
  assert.deepEqual(errors,[]);
- console.log('Scanner connector and built MIS sign-in page load');
+ console.log('Scanner connector, bundle recovery and built MIS sign-in page work');
 }finally{
  await browser?.close();
  server.closeAllConnections();
