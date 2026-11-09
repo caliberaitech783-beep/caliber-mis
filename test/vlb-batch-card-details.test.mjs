@@ -8,7 +8,7 @@ import {requestedMisPage} from '../src/mis-navigation.mjs';
 async function compile(file,name,bindings){const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});return new Function(...Object.keys(bindings),code+';return '+name)(...Object.values(bindings));}
 test('Saved VLB and Saved ELB legacy links lead to site batches',async()=>{
  assert.equal(requestedMisPage('?page=vlb-saved'),'Create VLB Batch');assert.equal(requestedMisPage('?page=elb-saved'),'Create VLB Batch');
- const Choice=await compile('log-book-mode-choice.jsx','LogBookModeChoice',{React,TabSelectionDialog:({children})=>children,BookOpen:()=>null,Keyboard:()=>null,ScanLine:()=>null});
+ const Choice=await compile('log-book-mode-choice.jsx','LogBookModeChoice',{React,BookOpen:()=>null,Keyboard:()=>null,ScanLine:()=>null});
  const vehicle=renderToStaticMarkup(React.createElement(Choice,{kind:'vehicle'}));assert.match(vehicle,/Site batches/);assert.doesNotMatch(vehicle,/Saved VLB/);const equipment=renderToStaticMarkup(React.createElement(Choice,{kind:'equipment'}));assert.match(equipment,/Site batches/);assert.doesNotMatch(equipment,/Saved ELB/);assert.match(equipment,/close and lock ELB/);
 });
 test('batch details only show a member snapshot and gate its editor',async()=>{

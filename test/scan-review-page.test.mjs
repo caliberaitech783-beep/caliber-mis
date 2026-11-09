@@ -4,7 +4,7 @@ import React from 'react';
 import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
-const scope={React,TabSelectionDialog:({children})=>children};
+const scope={React};
 for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  if(!match[2].startsWith('.'))continue;
  const module=await import(new URL('../src/'+match[2],import.meta.url));

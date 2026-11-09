@@ -15,7 +15,6 @@ import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.m
 
 async function compile(file,scope,names){
  scope={employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
- if(file==='vlb-create-batch.jsx')scope={...scope,TabSelectionDialog:({children})=>children};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));

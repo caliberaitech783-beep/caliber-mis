@@ -1,4 +1,3 @@
-import TabSelectionDialog from './tab-selection-dialog.jsx';
 import SmartSelect from './smart-select.jsx';
 import React, {useEffect, useMemo, useState} from 'react';
 import {FileBarChart, RefreshCw} from 'lucide-react';
@@ -42,18 +41,15 @@ export default function GrnRegister({token,ReportSection}) {
   },[token,range,attempt]);
   const rows=useMemo(()=>data.rows.filter(row=>(!status||row.documentStatus===status)&&(!type||row.docType===type)&&(!department||row.department===department)),[data.rows,status,type,department]);
   const options=useMemo(()=>({status:[...new Set(data.rows.map(row=>row.documentStatus))].filter(Boolean).sort(),type:[...new Set(data.rows.map(row=>row.docType))].filter(Boolean).sort(),department:[...new Set(data.rows.map(row=>row.department))].filter(Boolean).sort()}),[data.rows]);
-  const load=()=>{try{purchaseOrderRange(draft.from,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);return false;}};
+  const load=event=>{event.preventDefault();try{purchaseOrderRange(draft.from,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);}};
   return <section className="reports-workspace stock-statement purchase-order-report">
     <h1><FileBarChart aria-hidden="true"/> GRN Register</h1>
     <p>View and search goods receipt notes. Each row shows one receipt item.</p>
-    <TabSelectionDialog title="GRN report dates" onSubmit={load}>
-   <form className="stock-statement-filters">
+    <form className="stock-statement-filters" onSubmit={load}>
       <label>From<DateInput value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})}/></label>
       <label>To<DateInput value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})}/></label>
       <button type="submit" disabled={data.loading}><RefreshCw/> {data.loading?'Loading…':'Load / Refresh'}</button>
     </form>
-   {validation&&<p role="alert">{validation}</p>}
-   </TabSelectionDialog>
     {validation&&<p role="alert">{validation}</p>}
     <div className="stock-statement-filters">
       <label>Document status<SmartSelect value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option>{options.status.map(value=><option key={value}>{value}</option>)}</SmartSelect></label>

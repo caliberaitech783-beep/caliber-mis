@@ -13,7 +13,7 @@ const text=tree=>{const out=[];const visit=node=>{if(Array.isArray(node))return 
 function harness(batches,{denied=''}={}){
  const slots=[],effects=[],calls=[];let cursor=0,effectCursor=0,pending=[];
  const SmartSelect=props=>React.createElement('select',props),ScanBatchReports=()=>null,VlbBatchReport=()=>null,VlbBatchCardDetails=()=>null;
- const scope={React,TabSelectionDialog:({children})=>children,SmartSelect,ScanBatchReports,VlbBatchReport,VlbBatchCardDetails,crypto:{randomUUID:()=>'view-key'},
+ const scope={React,SmartSelect,ScanBatchReports,VlbBatchReport,VlbBatchCardDetails,crypto:{randomUUID:()=>'view-key'},
   useState:initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]},
   useMemo:fn=>fn(),
   useEffect:(fn,deps)=>{const i=effectCursor++,prior=effects[i];if(!prior||deps.some((v,n)=>v!==prior.deps[n]))pending.push(()=>{prior?.cleanup?.();effects[i]={deps,cleanup:fn()}})},
