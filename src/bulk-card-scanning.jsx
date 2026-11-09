@@ -1,3 +1,4 @@
+import {scanTripsOptional} from '../shared/scan-trip-requirement.mjs';
 import {validVlbCardCounts} from '../shared/vlb-card-counts.mjs';
 import {isScanIssueFocus,scanIssueFieldVisible,focusedScanMessages} from './scan-issue-focus.mjs';
 import ScanCardAbortDialog from './scan-card-abort-dialog.jsx';
@@ -479,7 +480,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
     </div>
    )}
    <button type="button" className="scan-add-trip" onClick={()=>{update('trips',[...draft.trips||[],blankTrip()]);}}><Plus size={14}/>Add trip row</button>
-   {!draft.trips?.length&&<label className="scan-confirm"><input type="checkbox" checked={noTrips} onChange={e=>setNoTrips(e.target.checked)}/>I checked the scan: this card has no trip rows.</label>}
+   {!draft.trips?.length&&!scanTripsOptional(options?.assets?.find(asset=>String(asset.id)===String(draft.assetId))?.door||draft.doorText)&&<label className="scan-confirm"><input type="checkbox" checked={noTrips} onChange={e=>setNoTrips(e.target.checked)}/>I checked the scan: this card has no trip rows.</label>}
   </div>
  }
  {kind==='vehicle'&&<section data-review-section="summary" hidden={!visibleField('scanMachineSummary')} className={'scan-machine-summary '+fieldClass('scanMachineSummary')+(machineIssues.length?' scan-trips-recheck':'')}><details className="scan-calculated-details" open={!reviewPage||!reviewCompact}><summary>Calculated trips</summary><table hidden={correctionView}><thead><tr><th>Equipment name</th><th>Detail trips</th></tr></thead><tbody>{machineSummary(comparisonDraft.trips||[]).map(row=><tr key={row.equipmentName}><td>{row.equipmentName}</td><td>{row.tripCount}</td></tr>)}</tbody><tfoot><tr><th scope="row">Total trips</th><td>{machineTripTotal(draft.trips||[])}</td></tr></tfoot></table></details><h4>Machine-wise summary</h4>{showAll&&(draft.scanMachineSummarySource==='calculated-from-trips'||draft.trips?.some(r=>r.equipmentSource==='previous-trip-row'))&&<p>Blank equipment cells use the last clear equipment above in consecutive trip rows. Missing summary totals are calculated from those rows. Check the assignments against the original card before approval.</p>}{(draft.scanMachineSummary||[]).map((row,i)=>{
