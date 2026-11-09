@@ -1,0 +1,300 @@
+{
+  "id": "daily",
+  "group": "Operations",
+  "title": "Daily Operations Summary",
+  "menu": "Reports → Operations → Daily Operations Summary",
+  "en": {
+    "purpose": "Shows, for each date, site and shift, how many log books were saved and their total trips, kilometres and running hours. Site in-charges and MIS staff use it for a quick daily check of the work recorded and of the log books received.",
+    "row": "One row is one date, one site and one shift. All saved VLB and ELB log books of that date, site and shift are added up in it.",
+    "filters": [
+      [
+        "From / To",
+        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+      ],
+      [
+        "Site",
+        "Keeps only the log books of one site. \"All\" keeps every site your login can see. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."
+      ],
+      [
+        "Shift",
+        "Keeps only the log books of the chosen shift. Every shift in the list belongs to one site, so shifts of the same name at two sites appear as separate entries. Choose Site first, then Shift."
+      ],
+      [
+        "Vehicle / equipment",
+        "Keeps only the log books of the chosen door number."
+      ],
+      [
+        "Driver / operator",
+        "Keeps only the log books saved in the name of the chosen person. The list has only the people found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Work order",
+        "Keeps only the log books saved against the chosen work order. The list has only the work orders found on the log books and scan cards of the chosen dates."
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "Drop-down at the top with every report, listed under its group. Choosing a name opens that report."
+      ],
+      [
+        "Saved operational records",
+        "Line under the report name. It repeats the From and To dates in use."
+      ],
+      [
+        "Refresh",
+        "Loads the saved log books again for the same dates. Press it when log books were saved or corrected after the report was opened. While data is loading the button cannot be pressed and \"Loading complete report data…\" is shown."
+      ],
+      [
+        "Filters:",
+        "One line listing the selectors that are set. With none set it reads \"All sites, assets, shifts and employees\". The line uses short names: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder and loading. For shift, asset and employee it shows the record number of the choice, not its name."
+      ],
+      [
+        "logbooks",
+        "Number of saved log books, VLB and ELB together, that match the dates and filters."
+      ],
+      [
+        "assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "trips",
+        "Total trips on those log books."
+      ],
+      [
+        "report rows",
+        "Number of rows in the table below."
+      ],
+      [
+        "Notice below the counts",
+        "\"Utilisation = recorded running hours ÷ scheduled hours of recorded logbooks. Duplicate entries can inflate totals; missing logbooks are not counted as zero.\" It says how Utilisation % is worked out. It also says that a log book entered twice raises the totals, while a log book that was not entered is left out and is not counted as zero."
+      ],
+      [
+        "No matching records or exceptions found.",
+        "Shown inside the table when nothing matches the dates and filters."
+      ]
+    ],
+    "columns": [
+      [
+        "Date",
+        "Book Date of the log books in the row. On screen it shows as DD-MM-YY, for example 13-12-26."
+      ],
+      [
+        "Site",
+        "Site saved on the log books."
+      ],
+      [
+        "Shift",
+        "Shift name saved on the log books. Shows \"Unassigned\" for log books without a shift name."
+      ],
+      [
+        "Logbooks",
+        "Number of saved log books added up in this row."
+      ],
+      [
+        "Assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "Trips",
+        "Total trips of those log books. Trips come from the trip rows of vehicle log books (VLB); equipment log books (ELB) add none."
+      ],
+      [
+        "KM",
+        "Total kilometres of the vehicle log books in the row. For each book it is CLO KMR minus OPN KMR; if a book was saved with a separate actual distance because the meter was replaced, that distance is used. Equipment log books add none."
+      ],
+      [
+        "Running HRS",
+        "Total running hours: CLO HMR minus OPN HMR of each log book, added up. Blank if any log book in the row has no HMR reading."
+      ],
+      [
+        "Scheduled HRS",
+        "Shift hours of the log books in the row, added up; for example 8 or 12 for each book. Blank if any log book has no shift hours."
+      ],
+      [
+        "Utilisation %",
+        "Running HRS ÷ Scheduled HRS × 100, to at most 3 decimal places. Blank when Running HRS or Scheduled HRS is blank, or Scheduled HRS is 0."
+      ]
+    ],
+    "notes": [
+      "Only saved VLB and ELB log books are used. LMV log books and deleted log books are not in this report.",
+      "A log book that was not entered is left out, not counted as zero, so the totals come out lower. A log book entered twice is counted twice, so the totals come out higher.",
+      "A trip is counted on the log book that has its loading time. A trip row with only an unloading time (a load taken over from the previous driver) is not counted again.",
+      "Rows are not always in date order. Press the Date heading to sort by date. An empty cell shows —.",
+      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date.",
+      "You see only the sites your login is allowed to see."
+    ],
+    "checklist": [
+      "Set From and To to the day you are checking. Choose Site if you look after one site.",
+      "Compare the Logbooks figure of each shift with the number of trip cards and equipment log books the site sent for that shift.",
+      "Look for a shift that has no row or fewer Logbooks than expected. Then open Reports → Utilisation & Exceptions → Missing / Duplicate Logbooks to see which door has no book.",
+      "Compare Trips and KM with the site's own count for the shift. For a doubtful row, open Vehicle Logbook Register with the same date and Shift to see each book.",
+      "Read Utilisation %. A blank means a log book in that row has no HMR reading or no shift hours; a figure above 100 means running hours are more than the shift hours. Check such books in Reports → Utilisation & Exceptions → Meter Reading Exceptions."
+    ],
+    "faq": [
+      [
+        "Why is there no row for a shift?",
+        "A row is made only when at least one log book is saved for that date, site and shift. If none is saved, there is no row."
+      ],
+      [
+        "Why is Running HRS or Utilisation % blank?",
+        "At least one log book in that row has no OPN HMR or CLO HMR (or no shift hours). Find the book in Vehicle Logbook Register or Equipment Logbook Register."
+      ],
+      [
+        "Why do equipment log books not add to Trips or KM?",
+        "Trips and KM are taken from vehicle log books (VLB). Equipment log books (ELB) add to Logbooks, Assets, Running HRS and Scheduled HRS only."
+      ],
+      [
+        "The totals look too high. What should I check?",
+        "The same log book may have been saved twice. Check Reports → Utilisation & Exceptions → Missing / Duplicate Logbooks for that date."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "हर तारीख़, साइट और Shift के लिए बताती है कि कितनी लॉग बुक सेव हुईं और उनकी कुल ट्रिप, किलोमीटर और चलने के घंटे कितने हैं। साइट इंचार्ज और MIS स्टाफ़ इससे रोज़ के दर्ज काम और मिली हुई लॉग बुक की जल्दी जाँच करते हैं।",
+    "row": "एक पंक्ति का मतलब है एक तारीख़, एक साइट और एक Shift। उस तारीख़, साइट और Shift की सभी सेव VLB और ELB लॉग बुक इसमें जोड़ी जाती हैं।",
+    "filters": [
+      [
+        "From / To",
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट की लॉग बुक रखता है। \"All\" पर वे सभी साइट आती हैं जो आपके लॉगिन को दिखती हैं। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ चुनी हुई Shift की लॉग बुक रखता है। सूची की हर Shift किसी एक साइट की होती है, इसलिए दो साइट की एक ही नाम की Shift सूची में अलग-अलग आती हैं। पहले Site चुनें, फिर Shift।"
+      ],
+      [
+        "Vehicle / equipment",
+        "सिर्फ़ चुने हुए डोर नंबर की लॉग बुक रखता है।"
+      ],
+      [
+        "Driver / operator",
+        "सिर्फ़ चुने हुए व्यक्ति के नाम पर सेव लॉग बुक रखता है। सूची में वही लोग आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Work order",
+        "सिर्फ़ चुने हुए वर्क ऑर्डर पर सेव लॉग बुक रखता है। सूची में वही वर्क ऑर्डर आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "ऊपर की ड्रॉप-डाउन सूची, जिसमें सभी रिपोर्ट अपने ग्रुप के नीचे लिखी हैं। नाम चुनने पर वह रिपोर्ट खुलती है।"
+      ],
+      [
+        "Saved operational records",
+        "रिपोर्ट के नाम के नीचे की लाइन। इसमें चालू From और To तारीख़ें लिखी रहती हैं।"
+      ],
+      [
+        "Refresh",
+        "उन्हीं तारीख़ों की सेव लॉग बुक दोबारा लाता है। रिपोर्ट खोलने के बाद कोई लॉग बुक सेव या ठीक हुई हो तो इसे दबाएँ। डेटा आते समय यह बटन नहीं दबता और \"Loading complete report data…\" लिखा दिखता है।"
+      ],
+      [
+        "Filters:",
+        "एक लाइन जिसमें लगे हुए फ़िल्टर लिखे रहते हैं। कोई फ़िल्टर न लगा हो तो \"All sites, assets, shifts and employees\" लिखा आता है। इस लाइन में छोटे नाम आते हैं: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder और loading। shift, asset और employee के आगे चुने हुए नाम की जगह उसका रिकॉर्ड नंबर दिखता है।"
+      ],
+      [
+        "logbooks",
+        "तारीख़ों और फ़िल्टर से मेल खाती सेव लॉग बुक की गिनती, VLB और ELB दोनों मिलाकर।"
+      ],
+      [
+        "assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "trips",
+        "उन लॉग बुक की कुल ट्रिप।"
+      ],
+      [
+        "report rows",
+        "नीचे की तालिका में पंक्तियों की गिनती।"
+      ],
+      [
+        "गिनती के नीचे की सूचना",
+        "\"Utilisation = recorded running hours ÷ scheduled hours of recorded logbooks. Duplicate entries can inflate totals; missing logbooks are not counted as zero.\" यह बताती है कि Utilisation % कैसे निकलता है। यह भी बताती है कि दो बार चढ़ी लॉग बुक से जोड़ बढ़ जाता है, जबकि जो लॉग बुक चढ़ी ही नहीं वह छूट जाती है और शून्य नहीं गिनी जाती।"
+      ],
+      [
+        "No matching records or exceptions found.",
+        "जब तारीख़ों और फ़िल्टर से कुछ भी मेल नहीं खाता, तब तालिका के अंदर यह लिखा आता है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Date",
+        "पंक्ति की लॉग बुक की Book Date। स्क्रीन पर DD-MM-YY में दिखती है, जैसे 13-12-26।"
+      ],
+      [
+        "Site",
+        "लॉग बुक पर सेव साइट।"
+      ],
+      [
+        "Shift",
+        "लॉग बुक पर सेव Shift का नाम। जिन लॉग बुक में Shift का नाम नहीं है उनके लिए \"Unassigned\" दिखता है।"
+      ],
+      [
+        "Logbooks",
+        "इस पंक्ति में जोड़ी गई सेव लॉग बुक की गिनती।"
+      ],
+      [
+        "Assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "Trips",
+        "उन लॉग बुक की कुल ट्रिप। ट्रिप गाड़ी की लॉग बुक (VLB) की ट्रिप पंक्तियों से आती हैं; मशीन की लॉग बुक (ELB) से कोई ट्रिप नहीं जुड़ती।"
+      ],
+      [
+        "KM",
+        "पंक्ति की VLB का कुल किलोमीटर। हर बुक के लिए यह CLO KMR में से OPN KMR घटाकर निकलता है; अगर मीटर बदलने के कारण बुक में असली दूरी अलग से सेव है तो वही दूरी ली जाती है। ELB से कोई किलोमीटर नहीं जुड़ता।"
+      ],
+      [
+        "Running HRS",
+        "कुल चलने के घंटे: हर लॉग बुक का CLO HMR घटा OPN HMR, सबका जोड़। पंक्ति की किसी भी लॉग बुक में HMR रीडिंग न हो तो यह खाली रहता है।"
+      ],
+      [
+        "Scheduled HRS",
+        "पंक्ति की लॉग बुक के Shift घंटों का जोड़, जैसे हर बुक के 8 या 12 घंटे। किसी लॉग बुक में Shift के घंटे न हों तो यह खाली रहता है।"
+      ],
+      [
+        "Utilisation %",
+        "Running HRS ÷ Scheduled HRS × 100, ज़्यादा से ज़्यादा 3 दशमलव तक। Running HRS या Scheduled HRS खाली हो, या Scheduled HRS 0 हो, तो यह खाली रहता है।"
+      ]
+    ],
+    "notes": [
+      "सिर्फ़ सेव की गई VLB और ELB लॉग बुक ली जाती हैं। LMV लॉग बुक और डिलीट की गई लॉग बुक इस रिपोर्ट में नहीं आतीं।",
+      "जो लॉग बुक चढ़ी ही नहीं, वह शून्य नहीं गिनी जाती, बस छूट जाती है, इसलिए जोड़ कम आता है। जो लॉग बुक दो बार चढ़ी है वह दो बार गिनी जाती है, इसलिए जोड़ ज़्यादा आता है।",
+      "ट्रिप उसी लॉग बुक में गिनी जाती है जिसमें उसका लोडिंग समय लिखा है। जिस ट्रिप पंक्ति में सिर्फ़ अनलोडिंग समय है (पिछले ड्राइवर से ली गई भरी गाड़ी), वह दोबारा नहीं गिनी जाती।",
+      "पंक्तियाँ हमेशा तारीख़ के क्रम में नहीं होतीं; तारीख़ के क्रम के लिए Date कॉलम का नाम दबाएँ। खाली खाने में — दिखता है।",
+      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।",
+      "आपको सिर्फ़ वही साइट दिखती हैं जिन्हें देखने की अनुमति आपके लॉगिन को है।"
+    ],
+    "checklist": [
+      "From और To में वह दिन रखें जिसकी जाँच करनी है। एक ही साइट देखते हों तो Site चुनें।",
+      "हर Shift के Logbooks की संख्या को उस Shift के लिए साइट से आए ट्रिप कार्ड और मशीन की लॉग बुक की गिनती से मिलाएँ।",
+      "देखें कि किसी Shift की पंक्ति ही नहीं है या उसमें Logbooks उम्मीद से कम हैं। फिर Reports → Utilisation & Exceptions → Missing / Duplicate Logbooks खोलकर देखें कि किस डोर की बुक नहीं है।",
+      "Trips और KM को उस Shift की साइट की अपनी गिनती से मिलाएँ। जिस पंक्ति पर शक हो, उसी तारीख़ और Shift के साथ Vehicle Logbook Register खोलकर हर बुक देखें।",
+      "Utilisation % देखें। खाली होने का मतलब है कि उस पंक्ति की किसी लॉग बुक में HMR रीडिंग या Shift के घंटे नहीं हैं; 100 से ऊपर का मतलब है कि चलने के घंटे Shift के घंटों से ज़्यादा हैं। ऐसी बुक Reports → Utilisation & Exceptions → Meter Reading Exceptions में जाँचें।"
+    ],
+    "faq": [
+      [
+        "किसी Shift की पंक्ति क्यों नहीं है?",
+        "पंक्ति तभी बनती है जब उस तारीख़, साइट और Shift की कम से कम एक लॉग बुक सेव हो। कोई बुक सेव न हो तो पंक्ति नहीं बनती।"
+      ],
+      [
+        "Running HRS या Utilisation % खाली क्यों है?",
+        "उस पंक्ति की कम से कम एक लॉग बुक में OPN HMR या CLO HMR (या Shift के घंटे) नहीं हैं। वह बुक Vehicle Logbook Register या Equipment Logbook Register में ढूँढें।"
+      ],
+      [
+        "मशीन की लॉग बुक से Trips या KM क्यों नहीं जुड़ते?",
+        "Trips और KM गाड़ी की लॉग बुक (VLB) से लिए जाते हैं। मशीन की लॉग बुक (ELB) सिर्फ़ Logbooks, Assets, Running HRS और Scheduled HRS में जुड़ती है।"
+      ],
+      [
+        "जोड़ बहुत ज़्यादा लग रहा है। क्या देखूँ?",
+        "हो सकता है एक ही लॉग बुक दो बार सेव हुई हो। उस तारीख़ के लिए Reports → Utilisation & Exceptions → Missing / Duplicate Logbooks देखें।"
+      ]
+    ]
+  }
+}

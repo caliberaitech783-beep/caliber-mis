@@ -1,0 +1,284 @@
+{
+  "id": "site",
+  "group": "Operations",
+  "title": "Site / Work Order Summary",
+  "menu": "Reports → Operations → Site / Work Order Summary",
+  "en": {
+    "purpose": "Adds up the saved log books of the chosen dates for each site and work order: number of books, trips, kilometres and running hours. It is used to see the work recorded against each work order.",
+    "row": "One row is one site and one work order. All saved VLB and ELB log books of that site and work order from From to To are added up in it.",
+    "filters": [
+      [
+        "From / To",
+        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+      ],
+      [
+        "Site",
+        "Keeps only the log books of one site. \"All\" keeps every site your login can see. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."
+      ],
+      [
+        "Shift",
+        "Keeps only the log books of the chosen shift. Every shift in the list belongs to one site, so shifts of the same name at two sites appear as separate entries. Choose Site first, then Shift."
+      ],
+      [
+        "Vehicle / equipment",
+        "Keeps only the log books of the chosen door number."
+      ],
+      [
+        "Driver / operator",
+        "Keeps only the log books saved in the name of the chosen person. The list has only the people found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Work order",
+        "Keeps only the log books saved against the chosen work order. The list has only the work orders found on the log books and scan cards of the chosen dates."
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "Drop-down at the top with every report, listed under its group. Choosing a name opens that report."
+      ],
+      [
+        "Saved operational records",
+        "Line under the report name. It repeats the From and To dates in use."
+      ],
+      [
+        "Refresh",
+        "Loads the saved log books again for the same dates. Press it when log books were saved or corrected after the report was opened. While data is loading the button cannot be pressed and \"Loading complete report data…\" is shown."
+      ],
+      [
+        "Filters:",
+        "One line listing the selectors that are set. With none set it reads \"All sites, assets, shifts and employees\". The line uses short names: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder and loading. For shift, asset and employee it shows the record number of the choice, not its name."
+      ],
+      [
+        "logbooks",
+        "Number of saved log books, VLB and ELB together, that match the dates and filters."
+      ],
+      [
+        "assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "trips",
+        "Total trips on those log books."
+      ],
+      [
+        "report rows",
+        "Number of rows in the table below."
+      ],
+      [
+        "Notice below the counts",
+        "\"Utilisation = recorded running hours ÷ scheduled hours of recorded logbooks. Duplicate entries can inflate totals; missing logbooks are not counted as zero.\" It says how Utilisation % is worked out. It also says that a log book entered twice raises the totals, while a log book that was not entered is left out and is not counted as zero."
+      ],
+      [
+        "No matching records or exceptions found.",
+        "Shown inside the table when nothing matches the dates and filters."
+      ]
+    ],
+    "columns": [
+      [
+        "Site",
+        "Site saved on the log books."
+      ],
+      [
+        "WO / Contract",
+        "Work order saved on the log books. Shows \"Unassigned\" for log books saved without a work order."
+      ],
+      [
+        "Logbooks",
+        "Number of saved log books added up in this row."
+      ],
+      [
+        "Assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "Trips",
+        "Total trips of those log books. Trips come from the trip rows of vehicle log books (VLB); equipment log books (ELB) add none."
+      ],
+      [
+        "KM",
+        "Total kilometres of the vehicle log books in the row. For each book it is CLO KMR minus OPN KMR; if a book was saved with a separate actual distance because the meter was replaced, that distance is used. Equipment log books add none."
+      ],
+      [
+        "Running HRS",
+        "Total running hours: CLO HMR minus OPN HMR of each log book, added up. Blank if any log book in the row has no HMR reading."
+      ],
+      [
+        "Scheduled HRS",
+        "Shift hours of the log books in the row, added up; for example 8 or 12 for each book. Blank if any log book has no shift hours."
+      ],
+      [
+        "Utilisation %",
+        "Running HRS ÷ Scheduled HRS × 100, to at most 3 decimal places. Blank when Running HRS or Scheduled HRS is blank, or Scheduled HRS is 0."
+      ]
+    ],
+    "notes": [
+      "Only saved VLB and ELB log books are used. LMV log books and deleted log books are not in this report.",
+      "Each row covers the whole period from From to To. For one day, set From and To to the same date.",
+      "Log books saved without a work order are added up in the \"Unassigned\" row of their site.",
+      "A log book that was not entered is left out, not counted as zero, so the totals come out lower. A log book entered twice is counted twice, so the totals come out higher.",
+      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date.",
+      "You see only the sites your login is allowed to see."
+    ],
+    "checklist": [
+      "Set From and To to the period you are checking, for example the first and last day of a month.",
+      "Check that each site shows the work orders you expect. An unexpected work order or an \"Unassigned\" row means some log books carry a different work order or none.",
+      "To find those log books, choose the site in Site and open Vehicle Logbook Register and Equipment Logbook Register. Their WO / Contract column shows the work order of every book.",
+      "Compare Logbooks, Trips and KM of each work order with the site's own records for the period.",
+      "Read Running HRS and Utilisation % together with Logbooks, because log books not yet entered lower the totals."
+    ],
+    "faq": [
+      [
+        "What does \"Unassigned\" mean?",
+        "Those log books were saved without a work order."
+      ],
+      [
+        "Can I see one work order only?",
+        "Yes. Choose it in Work order. The list shows the work orders found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Why is Running HRS blank for a work order?",
+        "At least one log book in that row has no HMR reading."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "चुनी हुई तारीख़ों की सेव लॉग बुक को हर साइट और वर्क ऑर्डर के हिसाब से जोड़ती है: बुक की संख्या, ट्रिप, किलोमीटर और चलने के घंटे। इससे देखा जाता है कि किस वर्क ऑर्डर पर कितना काम दर्ज हुआ।",
+    "row": "एक पंक्ति का मतलब है एक साइट और एक वर्क ऑर्डर। From से To तक उस साइट और वर्क ऑर्डर की सभी सेव VLB और ELB लॉग बुक इसमें जोड़ी जाती हैं।",
+    "filters": [
+      [
+        "From / To",
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट की लॉग बुक रखता है। \"All\" पर वे सभी साइट आती हैं जो आपके लॉगिन को दिखती हैं। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ चुनी हुई Shift की लॉग बुक रखता है। सूची की हर Shift किसी एक साइट की होती है, इसलिए दो साइट की एक ही नाम की Shift सूची में अलग-अलग आती हैं। पहले Site चुनें, फिर Shift।"
+      ],
+      [
+        "Vehicle / equipment",
+        "सिर्फ़ चुने हुए डोर नंबर की लॉग बुक रखता है।"
+      ],
+      [
+        "Driver / operator",
+        "सिर्फ़ चुने हुए व्यक्ति के नाम पर सेव लॉग बुक रखता है। सूची में वही लोग आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Work order",
+        "सिर्फ़ चुने हुए वर्क ऑर्डर पर सेव लॉग बुक रखता है। सूची में वही वर्क ऑर्डर आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "ऊपर की ड्रॉप-डाउन सूची, जिसमें सभी रिपोर्ट अपने ग्रुप के नीचे लिखी हैं। नाम चुनने पर वह रिपोर्ट खुलती है।"
+      ],
+      [
+        "Saved operational records",
+        "रिपोर्ट के नाम के नीचे की लाइन। इसमें चालू From और To तारीख़ें लिखी रहती हैं।"
+      ],
+      [
+        "Refresh",
+        "उन्हीं तारीख़ों की सेव लॉग बुक दोबारा लाता है। रिपोर्ट खोलने के बाद कोई लॉग बुक सेव या ठीक हुई हो तो इसे दबाएँ। डेटा आते समय यह बटन नहीं दबता और \"Loading complete report data…\" लिखा दिखता है।"
+      ],
+      [
+        "Filters:",
+        "एक लाइन जिसमें लगे हुए फ़िल्टर लिखे रहते हैं। कोई फ़िल्टर न लगा हो तो \"All sites, assets, shifts and employees\" लिखा आता है। इस लाइन में छोटे नाम आते हैं: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder और loading। shift, asset और employee के आगे चुने हुए नाम की जगह उसका रिकॉर्ड नंबर दिखता है।"
+      ],
+      [
+        "logbooks",
+        "तारीख़ों और फ़िल्टर से मेल खाती सेव लॉग बुक की गिनती, VLB और ELB दोनों मिलाकर।"
+      ],
+      [
+        "assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "trips",
+        "उन लॉग बुक की कुल ट्रिप।"
+      ],
+      [
+        "report rows",
+        "नीचे की तालिका में पंक्तियों की गिनती।"
+      ],
+      [
+        "गिनती के नीचे की सूचना",
+        "\"Utilisation = recorded running hours ÷ scheduled hours of recorded logbooks. Duplicate entries can inflate totals; missing logbooks are not counted as zero.\" यह बताती है कि Utilisation % कैसे निकलता है। यह भी बताती है कि दो बार चढ़ी लॉग बुक से जोड़ बढ़ जाता है, जबकि जो लॉग बुक चढ़ी ही नहीं वह छूट जाती है और शून्य नहीं गिनी जाती।"
+      ],
+      [
+        "No matching records or exceptions found.",
+        "जब तारीख़ों और फ़िल्टर से कुछ भी मेल नहीं खाता, तब तालिका के अंदर यह लिखा आता है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Site",
+        "लॉग बुक पर सेव साइट।"
+      ],
+      [
+        "WO / Contract",
+        "लॉग बुक पर सेव वर्क ऑर्डर। बिना वर्क ऑर्डर के सेव लॉग बुक के लिए \"Unassigned\" दिखता है।"
+      ],
+      [
+        "Logbooks",
+        "इस पंक्ति में जोड़ी गई सेव लॉग बुक की गिनती।"
+      ],
+      [
+        "Assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "Trips",
+        "उन लॉग बुक की कुल ट्रिप। ट्रिप गाड़ी की लॉग बुक (VLB) की ट्रिप पंक्तियों से आती हैं; मशीन की लॉग बुक (ELB) से कोई ट्रिप नहीं जुड़ती।"
+      ],
+      [
+        "KM",
+        "पंक्ति की VLB का कुल किलोमीटर। हर बुक के लिए यह CLO KMR में से OPN KMR घटाकर निकलता है; अगर मीटर बदलने के कारण बुक में असली दूरी अलग से सेव है तो वही दूरी ली जाती है। ELB से कोई किलोमीटर नहीं जुड़ता।"
+      ],
+      [
+        "Running HRS",
+        "कुल चलने के घंटे: हर लॉग बुक का CLO HMR घटा OPN HMR, सबका जोड़। पंक्ति की किसी भी लॉग बुक में HMR रीडिंग न हो तो यह खाली रहता है।"
+      ],
+      [
+        "Scheduled HRS",
+        "पंक्ति की लॉग बुक के Shift घंटों का जोड़, जैसे हर बुक के 8 या 12 घंटे। किसी लॉग बुक में Shift के घंटे न हों तो यह खाली रहता है।"
+      ],
+      [
+        "Utilisation %",
+        "Running HRS ÷ Scheduled HRS × 100, ज़्यादा से ज़्यादा 3 दशमलव तक। Running HRS या Scheduled HRS खाली हो, या Scheduled HRS 0 हो, तो यह खाली रहता है।"
+      ]
+    ],
+    "notes": [
+      "सिर्फ़ सेव की गई VLB और ELB लॉग बुक ली जाती हैं। LMV लॉग बुक और डिलीट की गई लॉग बुक इस रिपोर्ट में नहीं आतीं।",
+      "हर पंक्ति From से To तक की पूरी अवधि की है। एक दिन के लिए From और To में एक ही तारीख़ रखें।",
+      "बिना वर्क ऑर्डर के सेव लॉग बुक अपनी साइट की \"Unassigned\" पंक्ति में जुड़ती हैं।",
+      "जो लॉग बुक चढ़ी ही नहीं, वह शून्य नहीं गिनी जाती, बस छूट जाती है, इसलिए जोड़ कम आता है। जो लॉग बुक दो बार चढ़ी है वह दो बार गिनी जाती है, इसलिए जोड़ ज़्यादा आता है।",
+      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।",
+      "आपको सिर्फ़ वही साइट दिखती हैं जिन्हें देखने की अनुमति आपके लॉगिन को है।"
+    ],
+    "checklist": [
+      "From और To में वह अवधि रखें जिसकी जाँच करनी है, जैसे महीने का पहला और आख़िरी दिन।",
+      "देखें कि हर साइट के सामने वही वर्क ऑर्डर हैं जो होने चाहिए। कोई अनजाना वर्क ऑर्डर या \"Unassigned\" पंक्ति हो तो मतलब है कि कुछ लॉग बुक पर दूसरा वर्क ऑर्डर है या कोई नहीं है।",
+      "वे लॉग बुक ढूँढने के लिए Site में वह साइट चुनें और Vehicle Logbook Register तथा Equipment Logbook Register खोलें। उनके WO / Contract कॉलम में हर बुक का वर्क ऑर्डर दिखता है।",
+      "हर वर्क ऑर्डर के Logbooks, Trips और KM को उस अवधि के साइट के अपने रिकॉर्ड से मिलाएँ।",
+      "Running HRS और Utilisation % को Logbooks के साथ पढ़ें, क्योंकि जो लॉग बुक अभी नहीं चढ़ीं उनसे जोड़ कम आता है।"
+    ],
+    "faq": [
+      [
+        "\"Unassigned\" का क्या मतलब है?",
+        "वे लॉग बुक बिना वर्क ऑर्डर के सेव हुई हैं।"
+      ],
+      [
+        "क्या सिर्फ़ एक वर्क ऑर्डर देखा जा सकता है?",
+        "हाँ। उसे Work order में चुनें। सूची में वही वर्क ऑर्डर आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "किसी वर्क ऑर्डर का Running HRS खाली क्यों है?",
+        "उस पंक्ति की कम से कम एक लॉग बुक में HMR रीडिंग नहीं है।"
+      ]
+    ]
+  }
+}

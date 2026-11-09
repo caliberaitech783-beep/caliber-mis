@@ -1,0 +1,340 @@
+{
+  "id": "timing",
+  "group": "Trips & Productivity",
+  "title": "Trip Timing & Gap Report",
+  "menu": "Reports → Trips & Productivity → Trip Timing & Gap Report",
+  "en": {
+    "purpose": "Lists every trip row of the saved Vehicle Log Books in the chosen dates, with its loading time, unloading time, the minutes taken and the gap before it. It is used to find long gaps between trips and rows with doubtful times.",
+    "row": "One row is one trip row (one line of the trip table) of one saved Vehicle Log Book. A trip row can hold more than one trip.",
+    "filters": [
+      [
+        "From / To",
+        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+      ],
+      [
+        "Site",
+        "Keeps only the log books of one site. \"All\" keeps every site your login can see. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."
+      ],
+      [
+        "Shift",
+        "Keeps only the log books of the chosen shift. Every shift in the list belongs to one site, so shifts of the same name at two sites appear as separate entries. Choose Site first, then Shift."
+      ],
+      [
+        "Vehicle / equipment",
+        "Keeps only the log books of the chosen vehicle. It does not choose the loading equipment; use Loading equipment for that."
+      ],
+      [
+        "Driver / operator",
+        "Keeps only the log books saved in the name of the chosen person. The list has only the people found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Work order",
+        "Keeps only the log books saved against the chosen work order. The list has only the work orders found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Loading equipment",
+        "Keeps only the trip rows loaded by the chosen loading equipment. It changes the table and the \"report rows\" count only; the logbooks, assets and trips counts above the table do not change."
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "Drop-down at the top with every report, listed under its group. Choosing a name opens that report."
+      ],
+      [
+        "Saved operational records",
+        "Line under the report name. It repeats the From and To dates in use."
+      ],
+      [
+        "Refresh",
+        "Loads the saved log books again for the same dates. Press it when log books were saved or corrected after the report was opened. While data is loading the button cannot be pressed and \"Loading complete report data…\" is shown."
+      ],
+      [
+        "Filters:",
+        "One line listing the selectors that are set. With none set it reads \"All sites, assets, shifts and employees\". The line uses short names: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder and loading. For shift, asset and employee it shows the record number of the choice, not its name."
+      ],
+      [
+        "logbooks",
+        "Number of saved log books, VLB and ELB together, that match the dates and filters."
+      ],
+      [
+        "assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "trips",
+        "Total trips on those log books."
+      ],
+      [
+        "report rows",
+        "Number of rows in the table below."
+      ],
+      [
+        "Notice below the counts",
+        "\"Elapsed times cover each recorded row. Rows may represent multiple trips; they are not individual trip cycle times. First-row gaps are unavailable.\" It says that Elapsed (min) is for the whole row, that a row can hold more than one trip, and that the first row of a log book has no gap."
+      ],
+      [
+        "No matching records or exceptions found.",
+        "Shown inside the table when nothing matches the dates and filters."
+      ]
+    ],
+    "columns": [
+      [
+        "Date",
+        "Book Date of the log book. On screen it shows as DD-MM-YY, for example 13-12-26."
+      ],
+      [
+        "Site",
+        "Site saved on the log book."
+      ],
+      [
+        "Book NO",
+        "Book number the system gave when the log book was saved. A number that begins with VLB_M is a typed entry; one that begins with VLB_S came from a scanned card."
+      ],
+      [
+        "Door NO",
+        "Door number of the vehicle, for example V9001."
+      ],
+      [
+        "Caliber ID",
+        "Employee ID of the driver on the log book, for example CMPL90001."
+      ],
+      [
+        "Employee",
+        "Name of the driver on the log book, for example SAMPLE DRIVER 01."
+      ],
+      [
+        "Shift",
+        "Shift name saved on the log book."
+      ],
+      [
+        "Tr.Sr.No",
+        "Serial number of the trip row. It is the serial saved with the row; if none was saved, it is the position of the row in the log book (1, 2, 3 and so on)."
+      ],
+      [
+        "Equipment",
+        "Loading equipment written in the trip row."
+      ],
+      [
+        "Trips",
+        "Number of trips written in this trip row."
+      ],
+      [
+        "L. time",
+        "Loading time of the row in 24-hour time, for example 05:20. Blank if not saved."
+      ],
+      [
+        "U. time",
+        "Unloading time of the row in 24-hour time. Blank if not saved."
+      ],
+      [
+        "Elapsed (min)",
+        "Minutes from L. time to U. time of the same row. If U. time is earlier than L. time, it is taken as the next day. Blank if either time is missing or the log book was saved without trip times."
+      ],
+      [
+        "GAP (min)",
+        "Minutes from the U. time of the previous row of the same log book to the L. time of this row. Blank for the first row of every log book, when either of those two times is missing, and for log books saved without trip times."
+      ]
+    ],
+    "notes": [
+      "Only Vehicle Log Books are used. LMV log books and deleted log books are not shown.",
+      "When Trips is more than 1, Elapsed (min) covers all the trips of that row together. It is not the time of one trip.",
+      "GAP (min) is worked out inside one log book only. The gap between the last row of one log book and the first row of the next is not shown.",
+      "GAP (min) is saved with the log book. When Loading equipment hides some rows, each gap still refers to the row just before it in the log book.",
+      "The counts \"logbooks\", \"assets\" and \"trips\" above the table take all matching log books, VLB and ELB together. They do not change with Loading equipment.",
+      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date."
+    ],
+    "checklist": [
+      "Set From and To to the day, choose Site, and if needed choose Vehicle / equipment or Loading equipment.",
+      "Press the GAP (min) heading to sort, so that the longest gaps come together. Note the Door NO, Book NO and Tr.Sr.No of each long gap.",
+      "Press the Elapsed (min) heading and look at the very long and very short rows. Read Trips first: a row with several trips takes longer.",
+      "Compare L. time and U. time of doubtful rows with the paper trip card.",
+      "For a long gap, look at the loading equipment of that shift in Reports → Utilisation & Exceptions → Breakdown & Idle Hours."
+    ],
+    "faq": [
+      [
+        "Why is GAP (min) blank on the first row of a log book?",
+        "A gap needs the unloading time of the row before it in the same log book. The first row has no row before it."
+      ],
+      [
+        "Why are L. time, U. time, Elapsed (min) and GAP (min) all blank for a log book?",
+        "That log book was saved without trip times. Only the loading equipment and the number of trips were entered."
+      ],
+      [
+        "Why is Elapsed (min) very large on a row?",
+        "Either the row holds several trips, or its U. time is earlier than its L. time and was taken as the next day. Check Trips and both times on the trip card."
+      ],
+      [
+        "Does one row mean one trip?",
+        "Not always. The Trips column shows how many trips the row holds."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "चुनी हुई तारीख़ों की सेव Vehicle Log Book की हर ट्रिप पंक्ति की सूची, उसके लोडिंग समय, अनलोडिंग समय, लगे मिनट और उससे पहले के गैप के साथ। इससे ट्रिप के बीच के लंबे गैप और शक वाले समय की पंक्तियाँ ढूँढी जाती हैं।",
+    "row": "एक पंक्ति का मतलब है एक सेव Vehicle Log Book की एक ट्रिप पंक्ति (ट्रिप तालिका की एक लाइन)। एक ट्रिप पंक्ति में एक से ज़्यादा ट्रिप हो सकती हैं।",
+    "filters": [
+      [
+        "From / To",
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट की लॉग बुक रखता है। \"All\" पर वे सभी साइट आती हैं जो आपके लॉगिन को दिखती हैं। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ चुनी हुई Shift की लॉग बुक रखता है। सूची की हर Shift किसी एक साइट की होती है, इसलिए दो साइट की एक ही नाम की Shift सूची में अलग-अलग आती हैं। पहले Site चुनें, फिर Shift।"
+      ],
+      [
+        "Vehicle / equipment",
+        "सिर्फ़ चुनी हुई गाड़ी की लॉग बुक रखता है। इससे लोडिंग मशीन नहीं चुनी जाती; उसके लिए Loading equipment का इस्तेमाल करें।"
+      ],
+      [
+        "Driver / operator",
+        "सिर्फ़ चुने हुए व्यक्ति के नाम पर सेव लॉग बुक रखता है। सूची में वही लोग आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Work order",
+        "सिर्फ़ चुने हुए वर्क ऑर्डर पर सेव लॉग बुक रखता है। सूची में वही वर्क ऑर्डर आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Loading equipment",
+        "सिर्फ़ उन ट्रिप पंक्तियों को रखता है जिनमें चुनी हुई लोडिंग मशीन लिखी है। इससे सिर्फ़ तालिका और \"report rows\" की गिनती बदलती है; तालिका के ऊपर की logbooks, assets और trips की गिनती नहीं बदलती।"
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "ऊपर की ड्रॉप-डाउन सूची, जिसमें सभी रिपोर्ट अपने ग्रुप के नीचे लिखी हैं। नाम चुनने पर वह रिपोर्ट खुलती है।"
+      ],
+      [
+        "Saved operational records",
+        "रिपोर्ट के नाम के नीचे की लाइन। इसमें चालू From और To तारीख़ें लिखी रहती हैं।"
+      ],
+      [
+        "Refresh",
+        "उन्हीं तारीख़ों की सेव लॉग बुक दोबारा लाता है। रिपोर्ट खोलने के बाद कोई लॉग बुक सेव या ठीक हुई हो तो इसे दबाएँ। डेटा आते समय यह बटन नहीं दबता और \"Loading complete report data…\" लिखा दिखता है।"
+      ],
+      [
+        "Filters:",
+        "एक लाइन जिसमें लगे हुए फ़िल्टर लिखे रहते हैं। कोई फ़िल्टर न लगा हो तो \"All sites, assets, shifts and employees\" लिखा आता है। इस लाइन में छोटे नाम आते हैं: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder और loading। shift, asset और employee के आगे चुने हुए नाम की जगह उसका रिकॉर्ड नंबर दिखता है।"
+      ],
+      [
+        "logbooks",
+        "तारीख़ों और फ़िल्टर से मेल खाती सेव लॉग बुक की गिनती, VLB और ELB दोनों मिलाकर।"
+      ],
+      [
+        "assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "trips",
+        "उन लॉग बुक की कुल ट्रिप।"
+      ],
+      [
+        "report rows",
+        "नीचे की तालिका में पंक्तियों की गिनती।"
+      ],
+      [
+        "गिनती के नीचे की सूचना",
+        "\"Elapsed times cover each recorded row. Rows may represent multiple trips; they are not individual trip cycle times. First-row gaps are unavailable.\" यह बताती है कि Elapsed (min) पूरी पंक्ति का समय है, एक पंक्ति में एक से ज़्यादा ट्रिप हो सकती हैं, और लॉग बुक की पहली पंक्ति का गैप नहीं होता।"
+      ],
+      [
+        "No matching records or exceptions found.",
+        "जब तारीख़ों और फ़िल्टर से कुछ भी मेल नहीं खाता, तब तालिका के अंदर यह लिखा आता है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Date",
+        "लॉग बुक की Book Date। स्क्रीन पर DD-MM-YY में दिखती है, जैसे 13-12-26।"
+      ],
+      [
+        "Site",
+        "लॉग बुक पर सेव साइट।"
+      ],
+      [
+        "Book NO",
+        "लॉग बुक सेव होते समय सिस्टम का दिया हुआ बुक नंबर। जो नंबर VLB_M से शुरू होता है वह हाथ से भरी एंट्री है, और जो VLB_S से शुरू होता है वह स्कैन किए हुए कार्ड से बनी है।"
+      ],
+      [
+        "Door NO",
+        "गाड़ी का डोर नंबर, जैसे V9001।"
+      ],
+      [
+        "Caliber ID",
+        "लॉग बुक के ड्राइवर की Employee ID, जैसे CMPL90001।"
+      ],
+      [
+        "Employee",
+        "लॉग बुक के ड्राइवर का नाम, जैसे SAMPLE DRIVER 01।"
+      ],
+      [
+        "Shift",
+        "लॉग बुक पर सेव Shift का नाम।"
+      ],
+      [
+        "Tr.Sr.No",
+        "ट्रिप पंक्ति का सीरियल नंबर। यह पंक्ति के साथ सेव सीरियल है; सीरियल सेव न हो तो लॉग बुक में पंक्ति का क्रम (1, 2, 3 ...) दिखता है।"
+      ],
+      [
+        "Equipment",
+        "ट्रिप पंक्ति में लिखी लोडिंग मशीन।"
+      ],
+      [
+        "Trips",
+        "इस ट्रिप पंक्ति में लिखी ट्रिप की संख्या।"
+      ],
+      [
+        "L. time",
+        "पंक्ति का लोडिंग समय, 24 घंटे की घड़ी में, जैसे 05:20। सेव न हो तो खाली।"
+      ],
+      [
+        "U. time",
+        "पंक्ति का अनलोडिंग समय, 24 घंटे की घड़ी में। सेव न हो तो खाली।"
+      ],
+      [
+        "Elapsed (min)",
+        "उसी पंक्ति के L. time से U. time तक के मिनट। U. time अगर L. time से पहले का हो तो उसे अगले दिन का माना जाता है। दोनों में से कोई समय न हो, या लॉग बुक बिना ट्रिप समय के सेव हो, तो खाली।"
+      ],
+      [
+        "GAP (min)",
+        "उसी लॉग बुक की पिछली पंक्ति के U. time से इस पंक्ति के L. time तक के मिनट। हर लॉग बुक की पहली पंक्ति में, इन दोनों में से कोई समय न होने पर, और बिना ट्रिप समय के सेव लॉग बुक में यह खाली रहता है।"
+      ]
+    ],
+    "notes": [
+      "सिर्फ़ Vehicle Log Book ली जाती हैं। LMV लॉग बुक और डिलीट की गई लॉग बुक नहीं दिखतीं।",
+      "जब Trips 1 से ज़्यादा हो, तो Elapsed (min) उस पंक्ति की सभी ट्रिप का मिला हुआ समय है। यह एक ट्रिप का समय नहीं है।",
+      "GAP (min) सिर्फ़ एक लॉग बुक के अंदर निकलता है। एक लॉग बुक की आख़िरी पंक्ति और अगली लॉग बुक की पहली पंक्ति के बीच का गैप नहीं दिखता।",
+      "GAP (min) लॉग बुक के साथ सेव होता है। Loading equipment चुनने से कुछ पंक्तियाँ छिप जाएँ तब भी हर गैप लॉग बुक में उससे ठीक पहले वाली पंक्ति से ही गिना रहता है।",
+      "तालिका के ऊपर की \"logbooks\", \"assets\" और \"trips\" की गिनती सभी मेल खाती लॉग बुक की है, VLB और ELB दोनों मिलाकर। Loading equipment चुनने से ये नहीं बदलतीं।",
+      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।"
+    ],
+    "checklist": [
+      "From और To में दिन रखें, Site चुनें, और ज़रूरत हो तो Vehicle / equipment या Loading equipment चुनें।",
+      "GAP (min) कॉलम का नाम दबाकर क्रम लगाएँ ताकि सबसे लंबे गैप एक साथ आ जाएँ। हर लंबे गैप का Door NO, Book NO और Tr.Sr.No लिख लें।",
+      "Elapsed (min) कॉलम का नाम दबाएँ और बहुत लंबी और बहुत छोटी पंक्तियाँ देखें। पहले Trips देखें: कई ट्रिप वाली पंक्ति में समय ज़्यादा लगता है।",
+      "शक वाली पंक्तियों का L. time और U. time काग़ज़ के ट्रिप कार्ड से मिलाएँ।",
+      "लंबे गैप के लिए उस Shift की लोडिंग मशीन को Reports → Utilisation & Exceptions → Breakdown & Idle Hours में देखें।"
+    ],
+    "faq": [
+      [
+        "लॉग बुक की पहली पंक्ति में GAP (min) खाली क्यों है?",
+        "गैप के लिए उसी लॉग बुक की पिछली पंक्ति का अनलोडिंग समय चाहिए। पहली पंक्ति से पहले कोई पंक्ति नहीं होती।"
+      ],
+      [
+        "किसी लॉग बुक में L. time, U. time, Elapsed (min) और GAP (min) सब खाली क्यों हैं?",
+        "वह लॉग बुक बिना ट्रिप समय के सेव हुई है। उसमें सिर्फ़ लोडिंग मशीन और ट्रिप की संख्या भरी गई है।"
+      ],
+      [
+        "किसी पंक्ति में Elapsed (min) बहुत ज़्यादा क्यों है?",
+        "या तो उस पंक्ति में कई ट्रिप हैं, या उसका U. time उसके L. time से पहले का है और उसे अगले दिन का माना गया। Trips और दोनों समय ट्रिप कार्ड से मिलाएँ।"
+      ],
+      [
+        "क्या एक पंक्ति का मतलब एक ट्रिप है?",
+        "हमेशा नहीं। Trips कॉलम बताता है कि उस पंक्ति में कितनी ट्रिप हैं।"
+      ]
+    ]
+  }
+}
