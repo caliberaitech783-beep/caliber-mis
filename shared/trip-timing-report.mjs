@@ -5,11 +5,12 @@
 import {tripSerialNumber} from './log-book-labels.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 
-export const DELAY_LIMIT=10;
+// Owner's limit (11 Nov 2026): a time above 15 minutes is a delay. It was 10 at first; real cards showed a usual trip takes 10 to 20 minutes.
+export const DELAY_LIMIT=15;
 // A time longer than a shift can only be a wrongly written clock time, so it is not judged.
 export const DOUBTFUL_MINUTES=720;
-export const BANDS=[{key:'b1',label:'10 to 20 min',above:10,upTo:20},{key:'b2',label:'20 to 30 min',above:20,upTo:30},{key:'b3',label:'30+ min',above:30,upTo:Infinity}];
-export const BAND_LABELS={ok:'Within 10 min',...Object.fromEntries(BANDS.map(b=>[b.key,b.label]))};
+export const BANDS=[{key:'b1',label:DELAY_LIMIT+' to 20 min',above:DELAY_LIMIT,upTo:20},{key:'b2',label:'20 to 30 min',above:20,upTo:30},{key:'b3',label:'30+ min',above:30,upTo:Infinity}];
+export const BAND_LABELS={ok:'Within '+DELAY_LIMIT+' min',...Object.fromEntries(BANDS.map(b=>[b.key,b.label]))};
 export const MODES={
  'load-unload':{label:'Loading → Unloading',unit:'Trips timed',noun:'trip'},
  'unload-load':{label:'Unloading → next Loading',unit:'Gaps timed',noun:'gap'}
