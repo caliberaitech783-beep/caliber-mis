@@ -68,9 +68,24 @@ test('one site written in several spellings on the cards is counted as one site'
  assert.deepEqual(sites.rows.map(r=>[r.site,r.timed,r.driversLate]),[['Dudhichua East OB',3,3],['Majri OB',3,3],['sasti ob',1,1]]);
 });
 
+test('a site opens date by date and shift by shift, and a driver line carries his delays from both views',()=>{
+ const day=(id,date,shiftName,driver,trips)=>book(id,'Site A',driver,'V90'+id,trips,{bookDate:date,shiftName,caliberId:'CMPL9'+driver.slice(-2)});
+ const set=tripEntries(normalise([
+  day(21,'2026-12-14','Shift 1','SAMPLE DRIVER 21',[trip('EX1','06:00','06:18'),trip('EX1','06:40','07:05'),trip('EX1','07:10','07:50')]),
+  day(22,'2026-12-14','Shift 2','SAMPLE DRIVER 21',[trip('EX1','14:00','14:08')]),
+  day(23,'2026-12-15','Shift 1','SAMPLE DRIVER 23',[trip('EX1','06:00','06:10'),trip('EX1','06:15','06:22')])]));
+ const shifts=summarise(set,'load-unload','shift');
+ assert.deepEqual(shifts.rows.map(r=>[r.date,r.shift,r.timed,r.b1,r.b2,r.b3,r.driversLate]),[['2026-12-15','Shift 1',2,0,0,0,0],['2026-12-14','Shift 1',3,1,1,1,1],['2026-12-14','Shift 2',1,0,0,0,0]],'newest date first, then shift');
+ assert.equal(shifts.total.over,3);
+ const key=shifts.rows[1].key,drivers=summarise(set.filter(e=>JSON.stringify([e.date,e.shift])===key),'load-unload','driver');
+ // One line for the driver: a trip in each band, and his one long gap (06:18 to 06:40) from the other view.
+ assert.deepEqual(drivers.rows.map(r=>[r.driver,r.b1,r.b2,r.b3,r.over,r.otherOver]),[['SAMPLE DRIVER 21',1,1,1,3,1]]);
+ assert.equal(summarise(set,'unload-load','driver').rows.find(r=>r.driver==='SAMPLE DRIVER 21').otherOver,3);
+});
+
 test('the shared screen shows the delay views on the Trip Timing tab only',()=>{
  const screen=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(screen,/id==='timing'\?<TripTimingReport records=\{selected\} loading=\{filters\.loading\}/);
  const view=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
- for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ','Step 4 · Trip card '])assert.ok(view.includes(text),text);
+ for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ','Step 4 · ','Step 5 · Trip card ','date-wise and shift-wise'])assert.ok(view.includes(text),text);
 });

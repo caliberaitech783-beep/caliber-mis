@@ -51,23 +51,27 @@ export function tripEntries(records){
  return out;
 }
 
-const keyOf={site:e=>e.site,driver:e=>e.driverKey,door:e=>e.door,machine:e=>e.machine};
+const keyOf={site:e=>e.site,shift:e=>JSON.stringify([e.date,e.shift]),driver:e=>e.driverKey,door:e=>e.door,machine:e=>e.machine};
+const OTHER={'load-unload':'unload-load','unload-load':'load-unload'};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function counts(entries,mode){
  const c={timed:0,ok:0,b1:0,b2:0,b3:0,over:0,percent:null,longest:null,notJudged:0};const late=new Set();
  for(const e of entries){const m=e[mode];if(!m.counted)continue;if(!m.band){c.notJudged++;continue;}c.timed++;c[m.band]++;if(c.longest===null||m.minutes>c.longest)c.longest=m.minutes;if(m.band!=='ok'){c.over++;late.add(e.driverKey);}}
- c.percent=c.timed?Math.round(c.over/c.timed*1000)/10:null;c.driversLate=late.size;return c;
+ c.percent=c.timed?Math.round(c.over/c.timed*1000)/10:null;c.driversLate=late.size;
+ // Delays of the same rows in the other timing, so one line shows everything against a driver.
+ c.otherOver=entries.filter(e=>{const o=e[OTHER[mode]];return o.counted&&o.band&&o.band!=='ok';}).length;return c;
 }
-// One line per site, driver, door or loading machine, with the count in each band. `total` is the line for all of them.
+// One line per site, date and shift, driver, door or loading machine, with the count in each band. `total` is the line for all of them.
 export function summarise(entries,mode,group){
  const groups=new Map();
- for(const e of entries){if(!e[mode].counted)continue;const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
- const rows=[...groups.entries()].map(([key,list])=>{const f=list[0];return {id:group+':'+key,key,site:f.site,caliberId:f.caliberId||'ID not recorded',driver:f.driver||'Name not recorded',door:f.door,machine:f.machine,
-  doors:[...new Set(list.map(e=>e.door))].join(', '),driverCount:new Set(list.map(e=>e.driverKey)).size,vehicleCount:new Set(list.map(e=>e.door)).size,...counts(list,mode)};});
+ for(const e of entries){const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
+ const rows=[...groups.entries()].map(([key,list])=>{const f=list[0];return {id:group+':'+key,key,site:f.site,date:f.date,shift:f.shift||'Not recorded',caliberId:f.caliberId||'ID not recorded',driver:f.driver||'Name not recorded',door:f.door,machine:f.machine,
+  doors:[...new Set(list.map(e=>e.door))].join(', '),driverCount:new Set(list.map(e=>e.driverKey)).size,vehicleCount:new Set(list.map(e=>e.door)).size,...counts(list,mode)};}).filter(r=>r.timed+r.notJudged+r.otherOver>0);
  if(group==='site')rows.sort((a,b)=>a.site.localeCompare(b.site));
+ else if(group==='shift')rows.sort((a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true}));
  else rows.sort((a,b)=>b.over-a.over||b.b3-a.b3||b.b2-a.b2||(b.longest??0)-(a.longest??0)||String(a.key).localeCompare(String(b.key)));
- const all=entries.filter(e=>e[mode].counted);
- return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',caliberId:'',driver:'TOTAL',door:'TOTAL',machine:'TOTAL',doors:'',driverCount:new Set(all.map(e=>e.driverKey)).size,vehicleCount:new Set(all.map(e=>e.door)).size,...counts(all,mode)}};
+ const all=entries;
+ return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',caliberId:'',driver:'TOTAL',door:'TOTAL',machine:'TOTAL',doors:'',driverCount:new Set(all.map(e=>e.driverKey)).size,vehicleCount:new Set(all.map(e=>e.door)).size,...counts(all,mode)}};
 }
 // The delayed trips (or gaps) behind one line, newest first. `band` keeps one band only.
 export function delayedEntries(entries,mode,band=''){
