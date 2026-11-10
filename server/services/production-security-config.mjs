@@ -5,6 +5,8 @@ export function assertProductionSecurityConfig(env=process.env){
 }
 export function legacyPasswordRouteGuard(env=process.env){
  return (_req,res,next)=>(env.MIS_SSO_MODE||'client')==='client'
-  ?res.status(403).json({error:'Use Pulse to sign in or reset your primary password.',code:'PULSE_SIGNIN_REQUIRED'})
+  // Only a page opened before a release still shows the old form (current pages go to Pulse on this
+  // code), so the message tells that user the one step that works: reload, which opens Pulse sign-in.
+  ?res.status(403).json({error:'MIS signs in through Pulse. Reload this page (Ctrl+F5) to continue to Pulse sign-in. To reset your password, use Pulse.',code:'PULSE_SIGNIN_REQUIRED'})
   :next();
 }
