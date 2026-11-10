@@ -44,7 +44,8 @@ if(process.argv.includes('--azure')){
   body:payload,signal:AbortSignal.timeout(30000)
  });
  assert.ok(upload.ok,'Verification checker upload HTTP '+upload.status);
- const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs`);
+ const siteArgs=process.argv.includes('--sites-only')?' --sites-only':'';
+ const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs${siteArgs}`);
  console.log(result.Output||'');
  if(result.ExitCode!==0)console.error(result.Error||'Live checker returned '+result.ExitCode);
  assert.equal(result.ExitCode,0,'Live VLB/ELB verification failed; no production records were changed');
@@ -76,9 +77,11 @@ if(process.argv.includes('--azure')){
   const candidates=sessions.filter(session=>{const n=attempts.get(session.login)||0;attempts.set(session.login,n+1);return n<2;})
    .sort((a,b)=>Number(isMisAdministrator(a))-Number(isMisAdministrator(b)));
   restrictedCandidates=candidates.filter(session=>!isMisAdministrator(session)).length;
-  const seen=new Set();
+  const sitesOnly=process.argv.includes('--sites-only');
+ if(sitesOnly)candidates.sort((a,b)=>Number(isMisAdministrator(b))-Number(isMisAdministrator(a)));
+ const seen=new Set();
   for(const session of candidates){
-   if(seen.has(session.login))continue;
+   if(seen.has(session.login)||sitesOnly&&!isMisAdministrator(session))continue;
    const headers={Authorization:'Bearer '+session.token};
    const response=await fetch(base+'/api/log-books/options?scan=1',{headers,signal:AbortSignal.timeout(30000)});
    if([401,403].includes(response.status))continue;
@@ -93,6 +96,7 @@ if(process.argv.includes('--azure')){
    assert.deepEqual(options.sites,batchOptions.sites,'VLB and ELB scan sites must match Create VLB Batch');
    assert.deepEqual(lmvOptions.sites,batchOptions.sites,'LMV scan sites must match Create VLB Batch');
    console.log('Live site lists match:',JSON.stringify(batchOptions.sites));
+   if(sitesOnly&&batchOptions.canSelectSite&&batchOptions.sites.length){await pool.end();process.exit(0);}
    assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
    assert.equal(options.canSelectSite,scope.sites===null,'Site selection follows the assigned operational scope, including administrators');
    if(admin)admins++;else{

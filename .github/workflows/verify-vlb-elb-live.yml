@@ -1,5 +1,11 @@
 name: Verify existing VLB and ELB production access
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      sites_only:
+        description: Compare production log-book site lists only
+        type: boolean
+        default: false
 permissions:
   contents: read
   id-token: write
@@ -18,7 +24,11 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
       - name: Verify current production VLB and ELB access
+        env:
+          SITES_ONLY: ${{ inputs.sites_only }}
         run: |
           EXPECTED_COMMIT=$(curl --fail --silent https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit')
           export EXPECTED_COMMIT
-          node scripts/verify-vlb-elb-live.mjs --azure
+          args=(--azure)
+          if [[ "$SITES_ONLY" == "true" ]]; then args+=(--sites-only); fi
+          node scripts/verify-vlb-elb-live.mjs "${args[@]}"
