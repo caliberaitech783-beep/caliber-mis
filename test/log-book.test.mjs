@@ -128,3 +128,29 @@ test('database-backed log books enforce access, persist both forms, generate num
 });
 
 
+
+import {activeWorkOrders,workOrderJobTypes} from '../shared/trip-card-rules.mjs';
+test('a vehicle card preserves coal and OB work contracts and totals within one shift',()=>{
+ const contracts=[
+  {id:'11',site:'Sasti OC',begin:'2026-12-01',end:'2026-12-31'},
+  {id:'12',site:'Sasti OC',begin:'2026-12-18'},
+  {id:'13',site:'Sasti OC',end:'2026-12-17'},
+  {id:'14',site:'Jayant OC'},
+  {id:'15',site:'Sasti OC',status:'inactive'},
+ ];
+ assert.deepEqual(activeWorkOrders(contracts,'Sasti OC','2026-12-18').map(row=>row.id),['11','12']);
+ const card=normalizeLogBook('vehicle',{...input(),timeMode:'without',trips:[
+  {equipmentName:'VPC-60',jobType:'Coal',workOrderId:'11',tripCount:4},
+  {equipmentName:'VPC-60',jobType:'OB',workOrderId:'12',tripCount:6},
+ ]});
+ assert.equal(card.totalTrips,10);
+ assert.deepEqual(card.trips.map(({workOrderId,jobType,tripCount})=>[workOrderId,jobType,tripCount]),[['11','Coal',4],['12','OB',6]]);
+});
+
+test('equipment job rows preserve individual Work Order Master selections',()=>{
+ const order={jobs:[{jobType:' Coal '},{jobType:'OB'},{jobType:'Coal'},{jobType:''}]};
+ assert.deepEqual(workOrderJobTypes(order),['Coal','OB']);
+ const jobs=[{jobType:'Coal',workOrderId:'11',masterJob:true},{jobType:'OB',workOrderId:'12',masterJob:true}];
+ const card=normalizeLogBook('equipment',{...input(),jobDetails:jobs});
+ assert.deepEqual(card.jobDetails.map(({jobType,workOrderId,masterJob})=>({jobType,workOrderId,masterJob})),jobs);
+});

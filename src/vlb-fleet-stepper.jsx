@@ -1,5 +1,7 @@
 import React,{useState,useEffect} from 'react';
 import PreviousElbEntries from './previous-elb-entries.jsx';
+import WorkOrderJobSelect from './work-order-job-select.jsx';
+import {activeWorkOrders} from '../shared/trip-card-rules.mjs';
 import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
@@ -38,6 +40,7 @@ const text=value=>value==null?'':String(value);
 export const fleetDraftFields=(row={})=>{
  const source=row.logbook||{};
  return {
+  ...(Array.isArray(source.jobDetails)?{jobDetails:source.jobDetails}:{}),
   shiftStatus:'working',manualShift:source.manualShift||'',shiftHours:source.shiftHours??'',employeeId:text(source.employeeId),
   ...(source.operatorSplit?{secondOperatorId:text(source.operatorSplit.secondOperatorId),handoverHmr:text(source.operatorSplit.handoverHmr)}:{}),
   openingHmr:text(source.openingHmr),closingHmr:text(source.closingHmr),manualBreakdownHours:text(source.manualBreakdownHours),
@@ -58,6 +61,7 @@ const machineCollator=new Intl.Collator('en-IN',{numeric:true,sensitivity:'base'
 export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu,canDeleteElb}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
+ const [editingJobs,setEditingJobs]=useState(false);
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
  const [dirty,setDirty]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
 
@@ -83,7 +87,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const pulse=pulseLookup.key===lookupKey?pulseLookup.data:null;
  const pulseLoading=pulseLookup.key!==lookupKey||pulseLookup.loading;
  const pulseError=pulseLookup.key===lookupKey?pulseLookup.error:'';
- const goTo=next=>{const target=fleet[next];if(!target||target.saved_at&&!canEditSaved)return;setReliefRequestKey('');setIndex(next);setForm(fleetDraftFields(target));setDirty(false);setError('');setNotice('')};
+ const goTo=next=>{const target=fleet[next];if(!target||target.saved_at&&!canEditSaved)return;setReliefRequestKey('');setIndex(next);setEditingJobs(false);setForm(fleetDraftFields(target));setDirty(false);setError('');setNotice('')};
  const nextUnsaved=(list,from)=>{
   for(let step=1;step<=list.length;step++){const i=(from+step)%list.length;if(!list[i].saved_at&&!list[i].skipped&&!list[i].tripExempt)return i}
   for(let step=1;step<=list.length;step++){const i=(from+step)%list.length;if(!list[i].saved_at)return i}
@@ -145,6 +149,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const surfaceMiner=isSurfaceMiner(row);
  const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
  const idleHours=fleetIdleHours(form.shiftHours||pulse?.shiftHours,hours);
+ const jobs=form.jobDetails||[];
+ const contracts=activeWorkOrders(options?.workOrders||[],batch.site,batch.report_date);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
  const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
@@ -199,6 +205,14 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
      if(!dirty&&String(record.id)===String(row.logbook_id))setForm(fleetDraftFields(result.fleet.find(machine=>machine.assetId===row.assetId)));
     }catch(e){setError(e.message)}finally{setBusy(false)}
    }}/>}
+  </section>
+  <section className="logbook-section">
+   <div className="logbook-section-title"><h3>Equipment jobs</h3><button type="button" disabled={busy} onClick={()=>setEditingJobs(value=>!value)}>{editingJobs?'Done editing jobs':'Edit jobs'}</button></div>
+   {jobs.map((job,i)=><div className="vlb-batch-actions" key={i}>
+    <WorkOrderJobSelect row={job} contracts={contracts} label={'Equipment job '+(i+1)} disabled={!editingJobs||busy} onChange={value=>update('jobDetails',jobs.map((entry,n)=>n===i?{...entry,...value}:entry))}/>
+    {editingJobs&&<button type="button" disabled={busy} onClick={()=>update('jobDetails',jobs.filter((_,n)=>n!==i))}>Remove job</button>}
+   </div>)}
+   {editingJobs&&<button type="button" disabled={busy||jobs.length>=300} onClick={()=>update('jobDetails',[...jobs,{}])}>Add job</button>}
   </section>
   <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved&&!additional} onClick={next}>{busy?'Saving…':additional?'Save relief card':row.saved_at?'Save changes':'Next'}</button>{additional&&<button type="button" disabled={busy} onClick={()=>{setReliefRequestKey('');setForm(fleetDraftFields(row));setDirty(false);setError('')}}>Cancel relief card</button>}{dirty&&<span className="vlb-draft-indicator" role="status">{additional?'Relief card has unsaved changes':'Not saved · select Next to save this ELB'}</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}

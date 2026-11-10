@@ -1,7 +1,7 @@
 import {MANUAL_ROW_LIMIT} from '../shared/manual-log-book-details.mjs';
 // An untouched row is an entry placeholder, not a trip to submit or count.
 export const isEmptyTripPlaceholder = row => !String(row.equipmentName ?? '').trim() &&
-  !row.loadingTime && !row.unloadingTime && !String(row.jobType??'').trim() && !String(row.remark??'').trim() && Number(row.tripCount) === 1;
+  !row.loadingTime && !row.unloadingTime && !row.workOrderId && !String(row.jobType??'').trim() && !String(row.remark??'').trim() && Number(row.tripCount) === 1;
 
 export function focusNextLogBookField(input, form) {
   if (!form) return;

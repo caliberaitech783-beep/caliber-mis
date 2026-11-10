@@ -32,7 +32,7 @@ import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from '../../shared/log-book-access.mjs';
-import {meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
+import {activeWorkOrders,workOrderJobTypes,WORK_ORDER_MASTERS,meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
@@ -89,7 +89,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.masterJob===true?{masterJob:true}:{}),...(row.workOrderId?{workOrderId:String(number(row.workOrderId,'Trip Work Order',{integer:true}))}:{}),...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=openingHmr===null||closingHmr===null?null:rounded(closingHmr-openingHmr);
@@ -101,7 +101,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
    workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:workingHmr===null?null:rounded(shiftHours-workingHmr)};
 }
 
-const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
+const woNames=WORK_ORDER_MASTERS;
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
 export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit,manualEntry=false}={}){
  requireOperationalDate(input.bookDate||systemBookDate());
@@ -112,6 +112,20 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
  const data=normalizeLogBook(kind,input,{manualEntry});
+ const jobRows=[...(data.trips||[]),...(data.jobDetails||[])];
+ const tripOrderIds=[...new Set(jobRows.filter(row=>row.workOrderId).map(row=>String(number(row.workOrderId,'Job Work Order',{integer:true}))))];
+ if(tripOrderIds.length){
+  const {rows}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[]) AND id=ANY($2::bigint[])',[woNames,tripOrderIds]);
+  const contracts=new Map(activeWorkOrders(rows.map(row=>({...row.record_data,id:String(row.id)})),data.location,data.bookDate).map(row=>[row.id,row]));
+  for(const trip of jobRows){
+   if(!trip.workOrderId)continue;
+   const contract=contracts.get(trip.workOrderId);
+   if(!contract)fail('Select an active job work contract for this site and report date.');
+   if(trip.masterJob&& !workOrderJobTypes(contract).includes(trip.jobType))fail('Select a job type listed on the chosen work order.');
+   trip.workOrderContract=woNumber(contract);
+  }
+ }
+
  const optionalShift=manualEntry&&(kind==='vehicle'||kind==='lmv')&&!input.scanCardId;
      const masterIds=[data.assetId,data.employeeId,data.shiftId];
      if(operatorSplit)masterIds.push(operatorSplit.secondOperatorId);
@@ -209,7 +223,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
        if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.designation||r.userGroup)});
        if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);if(site)sites.add(site);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
-       if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
+       if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),jobs:workOrderJobTypes(r),status:text(r.status),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
        if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
        if(row.master_name==='Region master')regionSites.push(...displaySiteSelection(r.sites));
      }

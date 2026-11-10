@@ -91,6 +91,13 @@ export function machineDiscrepancies(trips=[],printed=[]){
  if(detailTotal!==summaryTotal)issues.push('Total trips: detail trips '+detailTotal+', scanned summary '+summaryTotal+'. Machine summary must equal Trip Details; count each trip once.');
  return issues;
 }
+export const WORK_ORDER_MASTERS=['Work Order master','Work order master','Work Order Master','WO master'];
+export function workOrderJobTypes(order){
+ return [...new Set((Array.isArray(order.jobs)?order.jobs:[]).map(job=>String(job?.jobType||'').trim()).filter(Boolean))];
+}
+export function activeWorkOrders(rows,site,date){
+ return matchingWorkOrders(rows,site,date).filter(r=>date&&(!r.workOrderDate||r.workOrderDate<=date)&&!['inactive','completed','closed','cancelled'].includes(String(r.status||'').trim().toLowerCase()));
+}
 export function matchingWorkOrders(rows,site,date){return rows.filter(r=>canonicalSiteName(r.site||r.location)===canonicalSiteName(site)&&site&&!r.sourceMissing&&(!(r.begin||r.commencementDate)||(r.begin||r.commencementDate)<=date)&&(!(r.end||r.completionDate)||(r.end||r.completionDate)>=date));}
 export function normalizeCardShift(value){const code=bookShiftCode(String(value||'').replace(/\s*\([ABC]\)\s*$/i,''));return ({S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'})[code]||'';}
 export function markedShiftEvidence(text){

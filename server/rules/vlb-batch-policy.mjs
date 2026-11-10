@@ -14,6 +14,7 @@ export const VLB_BATCH_SCHEMA=`
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS closure_revision INTEGER NOT NULL DEFAULT 0;
  -- Preserve the legacy per-user open-slot index. Admin batches use creator_login
  -- for attribution and a NULL legacy slot so different authorized sites can stay open.
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS work_order_id BIGINT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS creator_login TEXT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
  ${VLB_BATCH_RETENTION_SCHEMA}

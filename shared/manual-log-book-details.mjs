@@ -22,7 +22,7 @@ export function normalizeManualDetails(input={},kind='vehicle'){
   if(row.tripCount!=='')row.tripCount=Number(row.tripCount);
   const hasTimes=[row.startDate,row.startTime,row.endDate,row.endTime].some(Boolean),durationHours=jobDurationHours(row);
   if(hasTimes&&durationHours===null)fail('Enter valid start/end dates and times in job row '+(i+1)+'; the end must follow the start.');
-  return {...row,durationHours};
+  return {...row,durationHours,...(r.workOrderId?{workOrderId:text(r.workOrderId,30)}:{}),...(r.masterJob===true?{masterJob:true}:{})};
  });
  if(input.breakdownDetails!==undefined)result.breakdownDetails=list(input.breakdownDetails,'Breakdown details').map((r,i)=>{
   const row=Object.fromEntries(Object.keys(blankBreakdown()).map(k=>[k,text(r[k],2000)]));

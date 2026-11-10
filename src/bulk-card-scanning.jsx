@@ -54,10 +54,11 @@ import {advanceLogBookField} from './log-book-enter-navigation.mjs';
 import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
 import {saveDraftRecovery,loadDraftRecovery} from '../shared/scan-draft-cache.mjs';
 import {previewBookNumber,scanBookPreviewSequence} from '../shared/book-number-preview.mjs';
-import {ignoreScanLoadingWithoutEquipment,shiftMeterIssues,kmrMeterReplaced,manualTripShiftPatch,CARD_SHIFTS,cardShiftLabel,machineLabel,machineSummary,machineTripTotal,machineDiscrepancies,matchingWorkOrders,selectedMasterShift,systemBookDate,latestWorkOrder,interTripGap,tripClockForShift,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
+import {ignoreScanLoadingWithoutEquipment,shiftMeterIssues,kmrMeterReplaced,manualTripShiftPatch,CARD_SHIFTS,cardShiftLabel,machineLabel,machineSummary,machineTripTotal,machineDiscrepancies,activeWorkOrders,matchingWorkOrders,selectedMasterShift,systemBookDate,latestWorkOrder,interTripGap,tripClockForShift,tripEquipmentRequired} from '../shared/trip-card-rules.mjs';
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import {scanFieldIssues,scanFieldState} from './scan-field-review.mjs';
 import LocalScannerPanel from './local-scanner-panel.jsx';
+import WorkOrderJobSelect from './work-order-job-select.jsx';
 import React,{useState,useEffect,useRef} from 'react';
 import LogBookForm from './log-book-form.jsx';
 import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
@@ -346,6 +347,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  manualVisibility.current=retainManualFields(manualVisibility.current,visibilityKey,manualIssues);
  const correctionView=!showAll&&!['approved','posted','rejected'].includes(card?.status);
  // Keep complete trip rows visible even when header fields are filtered to corrections.
+ const tripContracts=activeWorkOrders(options?.workOrders||[],draft.location,draft.bookDate);
  const visibleField=key=>focusedIssue?scanIssueFieldVisible(groupFilter,key):['doorText','assetId'].includes(key)||/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
  const fieldIssues=Object.fromEntries(Object.entries(scanMatchingPending?{}:correctionView?manualIssues:{...allFieldIssues,...fleetFields}).filter(([key])=>scanIssueFieldVisible(groupFilter,key)));
  // Meter totals over the shift limit stay highlighted in red; since 1 November they no longer block saving (see scan-field-review.mjs).
@@ -401,7 +403,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   if(linked){setDraft(d=>({...d,assetId:String(linked.id),manualBreakdownHours:''}));setDirty(true);setChecked(false);}
  },[options,card?.id,card?.status,draft.doorText,draft.location,draft.assetId,kind]);
  const readonly=!card||['queued','reading','posted'].includes(card.status);
- useEffect(()=>{if(!card||!options||!draft.bookDate||!['vehicle','equipment'].includes(kind)||(kind==='vehicle'&&!dirtyRef.current))return;const changes={};const orders=matchingWorkOrders(options.workOrders||[],draft.location,draft.bookDate);const latest=latestWorkOrder(options.workOrders||[],draft.location,draft.bookDate);if(!draft.workOrderId&&latest)changes.workOrderId=latest.id;const shift=selectedMasterShift(options.shifts||[],draft.location,draft.cardShift,draft.bookDate);if(!draft.shiftId&&shift)changes.shiftId=shift.id;const hours=CARD_SHIFTS[draft.cardShift]?.hours;if(hours&&Number(draft.shiftHours)!==hours)changes.shiftHours=hours;if(!draft.employeeId&&card.raw_fields?.employeeCode){const value=String(card.raw_fields.employeeCode).trim().toUpperCase();const matched=(options.employees||[]).filter(r=>[r.caliberId,r.employeeCode].some(v=>String(v||'').toUpperCase()===value));const preferred=matched.filter(r=>r.masterName==='Employee master');const candidates=preferred.length?preferred:matched;if(candidates.length===1)changes.employeeId=candidates[0].id;}if(changes.shiftId||changes.shiftHours)changes.manualBreakdownHours='';if(Object.keys(changes).length){setDraft(d=>({...d,...changes}));setDirty(true);setChecked(false);}},[options,draft.bookDate,draft.location,draft.cardShift,card?.id]);
+ useEffect(()=>{if(!card||!options||!draft.bookDate||!['vehicle','equipment'].includes(kind)||(kind==='vehicle'&&!dirtyRef.current))return;const changes={};const orders=matchingWorkOrders(options.workOrders||[],draft.location,draft.bookDate);const latest=orders.find(row=>row.id===String(vlbBatch?.work_order_id))||latestWorkOrder(options.workOrders||[],draft.location,draft.bookDate);if(!draft.workOrderId&&latest)changes.workOrderId=latest.id;const shift=selectedMasterShift(options.shifts||[],draft.location,draft.cardShift,draft.bookDate);if(!draft.shiftId&&shift)changes.shiftId=shift.id;const hours=CARD_SHIFTS[draft.cardShift]?.hours;if(hours&&Number(draft.shiftHours)!==hours)changes.shiftHours=hours;if(!draft.employeeId&&card.raw_fields?.employeeCode){const value=String(card.raw_fields.employeeCode).trim().toUpperCase();const matched=(options.employees||[]).filter(r=>[r.caliberId,r.employeeCode].some(v=>String(v||'').toUpperCase()===value));const preferred=matched.filter(r=>r.masterName==='Employee master');const candidates=preferred.length?preferred:matched;if(candidates.length===1)changes.employeeId=candidates[0].id;}if(changes.shiftId||changes.shiftHours)changes.manualBreakdownHours='';if(Object.keys(changes).length){setDraft(d=>({...d,...changes}));setDirty(true);setChecked(false);}},[options,draft.bookDate,draft.location,draft.cardShift,card?.id]);
  const difference=(a,b)=>a!==''&&b!==''&&a!=null&&b!=null&&Number.isFinite(Number(a))&&Number(b)>=Number(a)?(Number(b)-Number(a)).toFixed(2):'—';
  const equipmentValidation=validateTripEquipment(normalizeScanEquipmentRows(kind==='vehicle'?ignoreScanLoadingWithoutEquipment(draft):draft,options?.assets||[]),options?.assets||[]);
  const comparisonDraft=equipmentValidation.draft;
@@ -490,6 +492,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
       ['equipmentName','Loading equipment','text'],
       ...(draft.timeMode==='without'?[]:[['loadingTime','Loading time','time'],['unloadingTime','Unloading time','time']]),
       ['tripCount','Trips','number'],
+      ['jobType','Job type / Work Contract','select'],
      ].map(([k,l,t])=>
       <label key={k} data-trip-field={k} className={fieldClass('trips.'+i+'.'+k)}>
        <span title={l}>{compactLogBookLabel(l)}</span>
@@ -511,6 +514,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
            return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
           })}
          </SmartSelect>
+        :k==='jobType'?<WorkOrderJobSelect row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
         :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:e.currentTarget.value}:row))}/>}
        {tripEstimateNote(r,k)&&<small className="scan-field-message"><mark>{tripEstimateNote(r,k)}</mark></small>}
        {k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&aliasMachineHint(r)?<small className="scan-alias-note">{aliasMachineHint(r)}</small>:k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}

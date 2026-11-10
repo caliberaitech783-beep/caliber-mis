@@ -174,7 +174,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const nonWorking=NON_WORKING_STATUSES.includes(status);
  const opening=num(input.openingHmr),closing=num(input.closingHmr);
  const body={bookDate:batch.report_date,bookDateSource:'batch',location:displaySiteName(batch.site),assetId:String(assetId),employeeId:nonWorking&&!text(input.employeeId)?null:text(input.employeeId),shiftId:shift.id,shiftHours:hours,manualShift:input.manualShift,
-  openingHmr:opening??(nonWorking?0:''),closingHmr:closing??(nonWorking?(opening??0):''),jobCardNo:text(input.jobCardNo),remark:text(input.remark),timeMode:'without',
+  workOrderId:batch.work_order_id,jobDetails:input.jobDetails,openingHmr:opening??(nonWorking?0:''),closingHmr:closing??(nonWorking?(opening??0):''),jobCardNo:text(input.jobCardNo),remark:text(input.remark),timeMode:'without',
   manualBreakdownHours:breakdownHours??'',shiftStatus:status,statusReason:text(input.statusReason),breakdownDetails:Array.isArray(input.breakdownDetails)?input.breakdownDetails:undefined,
   idleHoursEntered:num(input.idleHours),batchId:batch.id,fleetTrips:elbTripCount(row),bookShiftCode:batch.shift};
  const data=await ops.resolve(client,'equipment',body,{...(operatorSplit?{operatorSplit,enforceEmployeeSite:true}:{}),manualEntry:true});
