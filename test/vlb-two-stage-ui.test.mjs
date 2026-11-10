@@ -1,3 +1,4 @@
+import {isJayantSecondShift} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -15,7 +16,7 @@ import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.m
 
 async function compile(file,scope,names){
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
- scope={employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
+ scope={isJayantSecondShift,employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -356,4 +357,15 @@ test('a batch owner can start an additional ELB card from the same machine row',
  assert.equal(calls[0].body.employeeId,'');
  assert.equal(calls[0].body.revision,undefined);
  assert.equal(calls[0].body.requestKey,'relief-key');
+});
+
+test('Jayant OC S2 displays nine hours even when an older saved card contains eight',async()=>{
+ for(const [site,shift,expected] of [['Jayant OC','S2',[9]],['jayant ob','S2',[9]],['Jayant OC','S1',[8,12]],['Sasti OC','S2',[8,12]]]){
+  const h=hooks();
+  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
+  const tree=VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',site,shift,fleet:[{...fleet[0],logbook:{shiftHours:8}}]},options:{employees:[]},embedded:true});
+  const select=nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift Hrs')[0];
+  assert.deepEqual(nodes(select,n=>n.type==='option').map(n=>n.props.value),expected);
+  assert.equal(select.props.value,expected[0]);
+ }
 });
