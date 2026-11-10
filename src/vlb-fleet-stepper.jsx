@@ -61,7 +61,6 @@ const machineCollator=new Intl.Collator('en-IN',{numeric:true,sensitivity:'base'
 export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu,canDeleteElb}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
- const [editingJobs,setEditingJobs]=useState(false);
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
  const [dirty,setDirty]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
 
@@ -141,6 +140,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  );
  const reportMachines=visibleMachines.map(({item})=>item);
  const machineReportTitle=['ELB Manual machines',batch?.name,batch?.site,batch?.report_date,batch?.shift].filter(Boolean).join(' · ');
+ const [editingJobs,setEditingJobs]=useState(false);
  if(!row)return embedded?<section className="logbook-section vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p></section>:<div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-label="Machine entry" className="logbook-dialog vlb-fleet-stepper"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss}  aria-label="Close window">× Close</button></div><p>The fleet list for this batch is empty.</p><div className="vlb-batch-actions"><button type="button" onClick={dismiss}>Close dialog</button></div></div></div>;
  const trips=Number(row.trips)||0;
  const workingStatus=true;

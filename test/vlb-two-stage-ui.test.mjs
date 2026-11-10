@@ -7,13 +7,14 @@ import {transformWithOxc} from 'vite';
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
-import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
 
 async function compile(file,scope,names){
+ scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  scope={employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});

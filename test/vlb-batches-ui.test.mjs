@@ -8,13 +8,14 @@ import {transformWithOxc} from 'vite';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {withLmvEntrySite} from '../src/vlb-entry-context.mjs';
-import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
+ scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
