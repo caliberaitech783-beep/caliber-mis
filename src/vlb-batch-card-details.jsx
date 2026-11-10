@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from 'react';
+import {StepBackButton} from './step-back.jsx';
 import {SavedLogBookDetails} from './saved-log-books.jsx';
 import LogBookForm from './log-book-form.jsx';
 import PulseTripVerification from './pulse-trip-verification.jsx';
@@ -16,7 +17,7 @@ export default function VlbBatchCardDetails({session,batch,record,ReportSection,
  },[kind,current?.id,current?.data?.scanCardId,session.token]);
  if(!current)return null;
  return <section id="vlb-selected-card-details" className="logbook-section vlb-selected-card-details" tabIndex={-1} aria-label={'Saved '+label+' '+current.book_no}><h2>Batch {batch.name} · {current.book_no}</h2>
-  {onClose&&<button type="button" onClick={onClose}>Back to batch report</button>}
+  {onClose&&<StepBackButton onBack={onClose} label="Back to batch report"/>}
   {canEdit&&<button type="button" onClick={()=>setEditing(value=>!value)}>{editing?'Back to saved details':'Edit this '+label}</button>}
   {editing&&canEdit?<LogBookForm key={current.id} kind={kind} session={session} vlbBatch={batch} initialRecord={current} onExit={()=>setEditing(false)} onSaved={()=>{setEditing(false);onChanged?.()}}/>:<><SavedLogBookDetails record={current} kind={kind} imageUrl={image} imageError={error} ReportSection={ReportSection}/>{vehicle&&<PulseTripVerification session={session} logbookId={current.id}/>}</>}
  </section>;

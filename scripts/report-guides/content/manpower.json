@@ -4,8 +4,8 @@
   "title": "Manpower by Category",
   "menu": "Reports → Manpower & OT → Manpower by Category",
   "asOf": {
-    "en": "Matches the system as of 10 November 2026",
-    "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"
+    "en": "Matches the system as of 11 November 2026",
+    "hi": "11 नवंबर 2026 तक के सिस्टम के अनुसार"
   },
   "en": {
     "purpose": "Shows how many machines and how many employees worked, step by step: first every site, then one site date by shift, then one date and shift by equipment category. Below the steps it lists the counts by category, group, make and model and every saved VLB and ELB card they come from, for whatever step is open. A site in-charge or MIS clerk uses it to see how the fleet was manned and to find cards whose employee or equipment details need checking.",
@@ -107,7 +107,7 @@
       ],
       [
         "Line above the steps",
-        "Shows where you are, for example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”. Press any part of it to step back to that level."
+        "Shows where you are, for example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”. Press any part of it to step back to that level. The violet Back button at the start of the line goes back one level; the round back arrow at the top of the page does the same."
       ],
       [
         "Manpower by Category, Make & Model",
@@ -415,7 +415,7 @@
       ],
       [
         "चरणों के ऊपर की लाइन",
-        "बताती है कि आप कहाँ हैं, जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ।"
+        "बताती है कि आप कहाँ हैं, जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ। लाइन की शुरुआत का बैंगनी Back बटन एक स्तर पीछे ले जाता है; पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है।"
       ],
       [
         "Manpower by Category, Make & Model",

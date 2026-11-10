@@ -74,6 +74,8 @@ import { TwelveHourDateTimeInput, TwelveHourTimeInput } from "./twelve-hour-inpu
 import SharedActionsTable from "./shared-actions-table.jsx";
 import { useTableLayouts, TableLayoutControls, TableLayoutSelect } from "./table-layouts.jsx";
 import { useColumnPreferences } from "./use-column-preferences.jsx";
+import { twoLineHeading, columnWidthStyle, useColumnWidths } from "./report-column-widths.mjs";
+import { StepBackButton, useStepBack } from "./step-back.jsx";
 import ReopenBreakdownForm from "./reopen-breakdown-form.jsx";
 import {capturePhotoForInput} from "./camera-upload.mjs";
 import {ComplaintMediaInputs,ComplaintMediaView} from "./complaint-media.jsx";
@@ -3434,8 +3436,44 @@ function FilterableHeader({
   durationSortOnly = isDurationColumn(label, sortKey),
   dateSortOnly = false,
   wrapHeader = false,
+  fitHeader = false,
+  width = 0,
+  onResize = null,
 }) {
   const [valueSearch, setValueSearch] = useState("");
+  const [resizing, setResizing] = useState(false);
+  const headingLines = fitHeader && !wrapHeader && !width ? twoLineHeading(label) : null;
+  // Drag the right edge of the heading to set the column width; double-click to fit it again.
+  const startResize = (event) => {
+    if (event.button > 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget, startX = event.clientX, startWidth = handle.parentElement.getBoundingClientRect().width;
+    let frame = 0, latest = startWidth;
+    const move = (moveEvent) => {
+      latest = startWidth + moveEvent.clientX - startX;
+      if (!frame) frame = window.requestAnimationFrame(() => { frame = 0; onResize(latest); });
+    };
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("column-resizing");
+      setResizing(false);
+    };
+    try { handle.setPointerCapture(event.pointerId); } catch {}
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+    document.body.classList.add("column-resizing");
+    setResizing(true);
+  };
+  const nudgeWidth = (event) => {
+    const step = event.key === "ArrowRight" ? 16 : event.key === "ArrowLeft" ? -16 : 0;
+    if (!step) return;
+    event.preventDefault();
+    onResize(event.currentTarget.parentElement.getBoundingClientRect().width + step);
+  };
   const triggerRef = useRef(null);
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
   const active = sort.key === sortKey,
@@ -3475,7 +3513,7 @@ function FilterableHeader({
     };
   }, [open]);
   return (
-    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""}`} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""} ${fitHeader ? "report-fit-header" : ""} ${width ? "column-resized" : ""}`} style={columnWidthStyle(width)} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
       <button
         ref={triggerRef}
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
@@ -3484,9 +3522,10 @@ function FilterableHeader({
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span>{label}</span><Icon aria-hidden="true" />
+        <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
+      {onResize && <span className={`column-resize-handle ${resizing ? "dragging" : ""}`} role="separator" aria-orientation="vertical" aria-label={`Change the width of ${typeof label === "string" ? label : "this column"}`} title="Drag to make this column wider or narrower. Double-click to fit it again." tabIndex={0} onPointerDown={startResize} onDoubleClick={(event) => { event.stopPropagation(); onResize(null); }} onClick={(event) => event.stopPropagation()} onKeyDown={nudgeWidth} />}
       {open && createPortal(
         <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
@@ -4268,6 +4307,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   visibleColumnKeys = appliedColumns;
   onVisibleColumnsChange = keys => { applyColumns(keys); notifyColumnsChange?.(keys); };
   if(columns[0]?.key==='requestShift'&&visibleColumnKeys.length)visibleColumnKeys=['requestShift',...visibleColumnKeys.filter(key=>key!=='requestShift')];
+  const [columnWidths, setColumnWidth, resetColumnWidths] = useColumnWidths(layoutKey || "report-table", columns);
   const [columnFilters, setColumnFilters] = useState({});
   const [savedReportDialog, setSavedReportDialog] = useState("");
   const [openFilter, setOpenFilter] = useState(null);
@@ -4353,7 +4393,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
         <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {rows.length.toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { resetColumnWidths(); onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
         <SavedReportsPanel title={reportTitle} tableKey={layoutKey} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint={dataReady} onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
@@ -4373,6 +4413,9 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             key={column.key}
             durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
+            fitHeader
+            width={columnWidths[column.key] || 0}
+            onResize={(value) => setColumnWidth(column.key, value)}
             label={column.headerLabel || column.label}
             sortKey={column.key}
             sort={sort}
@@ -4389,7 +4432,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
           {pagedRows.length ? pagedRows.map((row, index) => (
             <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
               {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
-              {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={column.key === "complaint" || column.wrap ? "report-complaint-cell" : undefined}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
+              {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
             </tr>
             {rowEditor?.(row, displayedColumns.length + 1 + Number(Boolean(rowAction)))}
             </React.Fragment>
@@ -7291,7 +7334,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7315,7 +7358,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         </div>
       </div>
       {controls}
-      {!children && showSearch && <div className="generated-report-search"><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{rows.length.toLocaleString("en-IN")} record{rows.length === 1 ? "" : "s"}</span></div>}
+      {!children && (showSearch || onBack) && <div className="generated-report-search">{onBack && <StepBackButton onBack={onBack} label={backLabel} />}{showSearch && <><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{rows.length.toLocaleString("en-IN")} record{rows.length === 1 ? "" : "s"}</span></>}</div>}
       {children || (
         <TableViewport className="reports-detail-table emptytable">
           <ReportTable
@@ -11591,6 +11634,7 @@ function App() {
     lastAuditedPage.current = active;
     recordUserActivity({module:"Navigation",action:"Open page",targetReference:active});
   }, [active,session?.token]);
+  const stepBack = useStepBack();
   const goBack = () => {
     if (pageHistory.current.length <= 1) return;
     pageHistory.current.pop();
@@ -12016,10 +12060,10 @@ function App() {
             <button
               type="button"
               className="page-back"
-              onClick={goBack}
-              disabled={!canGoBack}
-              aria-label="Go back to previous page"
-              title={canGoBack ? "Back to previous page" : "No previous page"}
+              onClick={stepBack || goBack}
+              disabled={!stepBack && !canGoBack}
+              aria-label={stepBack ? "Go back one step" : "Go back to previous page"}
+              title={stepBack ? "Back one step" : canGoBack ? "Back to previous page" : "No previous page"}
             >
               <ArrowLeft />
             </button>

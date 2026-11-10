@@ -13,7 +13,7 @@ test('Saved VLB and Saved ELB legacy links lead to site batches',async()=>{
 });
 test('batch details only show a member snapshot and gate its editor',async()=>{
  let editing=false;const Editor=()=>null,Details=()=>null;
- const Component=await compile('vlb-batch-card-details.jsx','VlbBatchCardDetails',{React,useEffect:()=>{},useState:initial=>[typeof initial==='boolean'?editing:initial,v=>editing=typeof v==='function'?v(editing):v],SavedLogBookDetails:Details,LogBookForm:Editor,PulseTripVerification:()=>null});
+ const Component=await compile('vlb-batch-card-details.jsx','VlbBatchCardDetails',{React,useEffect:()=>{},useState:initial=>[typeof initial==='boolean'?editing:initial,v=>editing=typeof v==='function'?v(editing):v],StepBackButton:()=>null,SavedLogBookDetails:Details,LogBookForm:Editor,PulseTripVerification:()=>null});
  const record={id:7,book_no:'VLB7',data:{}},batch={id:'batch1',name:'SITE/B01',records:[record]};
  assert.equal(Component({session:{},batch,record:{id:8}}),null);
  let tree=Component({session:{},batch,record,canEdit:false});assert.match(renderToStaticMarkup(tree),/SITE\/B01/);assert.doesNotMatch(renderToStaticMarkup(tree),/Edit this VLB/);
@@ -22,13 +22,13 @@ test('batch details only show a member snapshot and gate its editor',async()=>{
 });
 
 test('viewing a batch card reveals and focuses its details with a return action',async()=>{
- const effects=[],calls=[];
+ const effects=[],calls=[],StepBack=()=>null;
  const node={scrollIntoView:options=>calls.push(['scroll',options]),focus:options=>calls.push(['focus',options])};
- const Component=await compile('vlb-batch-card-details.jsx','VlbBatchCardDetails',{React,useEffect:fn=>effects.push(fn),useState:initial=>[initial,()=>{}],document:{getElementById:id=>id==='vlb-selected-card-details'?node:null},SavedLogBookDetails:()=>null,LogBookForm:()=>null,PulseTripVerification:()=>null});
+ const Component=await compile('vlb-batch-card-details.jsx','VlbBatchCardDetails',{React,useEffect:fn=>effects.push(fn),useState:initial=>[initial,()=>{}],document:{getElementById:id=>id==='vlb-selected-card-details'?node:null},StepBackButton:StepBack,SavedLogBookDetails:()=>null,LogBookForm:()=>null,PulseTripVerification:()=>null});
  const record={id:7,book_no:'VLB7',data:{}},batch={name:'SITE/B01',records:[record]};let closed=false;
  const tree=Component({session:{},batch,record,onClose:()=>closed=true});
  effects[0]();
  assert.deepEqual(calls,[['scroll',{block:'start'}],['focus',{preventScroll:true}]]);
  assert.equal(tree.props.tabIndex,-1);
- tree.props.children.find(child=>child?.type==='button').props.onClick();assert.equal(closed,true);
+ const back=tree.props.children.find(child=>child?.type===StepBack);assert.equal(back.props.label,'Back to batch report');back.props.onBack();assert.equal(closed,true);
 });
