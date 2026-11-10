@@ -74,3 +74,40 @@ test('the main app shows the old password form only when the server says shared 
   assert.match(app,/sharedSignIn\.mode==='client'\|\|sharedSignIn\.mode==='checking'\)\) return <MisSharedLogin/);
   assert.match(app,/refusal\?\.code==='PULSE_SIGNIN_REQUIRED'\)\{window\.location\.assign\('\/api\/mis-credentials\/start'\)/);
 });
+
+async function runHandoffThroughRestart(statuses,{search='?misCredentialReady='+('a'.repeat(43))}={}){
+  const requests=[],redirects=[],events=[],effects=[],states=[];let sessionCalls=0;
+  const scope={React,useState:initial=>[initial,value=>states.push(typeof value==='function'?value(states.at(-1)||initial):value)],useEffect:effect=>effects.push(effect),
+    fetch:async url=>{requests.push(url);
+      if(url.endsWith('/config'))return {ok:true,status:200,json:async()=>({mode:'client'})};
+      const status=statuses[sessionCalls++]??200;
+      if(status==='network')throw new TypeError('Failed to fetch');
+      return {ok:status===200,status,json:async()=>{if(status!==200)throw SyntaxError('Unexpected token <');return {token:'synthetic-mis-session'};}};},
+    setTimeout:run=>setImmediate(run),
+    window:{location:{search,replace:url=>redirects.push(url)},history:{replaceState:()=>{}},dispatchEvent:event=>events.push(event)},
+    CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}}};
+  const hook=new Function(...Object.keys(scope),`${hookCode};return useMisSharedSignIn;`)(...Object.values(scope));
+  hook(null,{autoStart:true});effects[0]();
+  for(let i=0;i<30;i++)await new Promise(resolve=>setImmediate(resolve));
+  return {requests,redirects,events,states,sessionCalls};
+}
+
+test('a Pulse hand-over that meets a restarting MIS (503, 502, dropped connection) waits and completes sign-in',async()=>{
+  const result=await runHandoffThroughRestart([503,502,'network',504]);
+  assert.equal(result.requests.filter(url=>url.startsWith('/api/mis-credentials/session')).length,5);
+  assert.equal(result.events[0]?.type,'mis-shared-signin');
+  assert.ok(result.states.some(state=>/restarting/.test(state?.error||'')));
+  assert.deepEqual(result.redirects,[]);
+});
+
+test('a real refusal from MIS is not repeated and is shown to the user',async()=>{
+  const result=await runHandoffThroughRestart([401]);
+  assert.equal(result.requests.filter(url=>url.startsWith('/api/mis-credentials/session')).length,1);
+  assert.deepEqual(result.events,[]);
+  assert.match(result.states.at(-1)?.error||'',/Pulse could not complete MIS sign-in/);
+});
+
+test('waiting for a restart stops within the 60-second life of the hand-over cookie',()=>{
+  const delays=hookSource.match(/delays=\[([0-9,]+)\]/)[1].split(',').map(Number);
+  assert.ok(delays.reduce((a,b)=>a+b,0)<=50000);
+});
