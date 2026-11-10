@@ -8,3 +8,6 @@
 .meter-continuity-report tr.meter-row-negative td{background:rgba(179,38,30,.10)}
 .meter-continuity-report tr.meter-row-jump td{background:rgba(179,107,0,.10)}
 .meter-continuity-report tr.meter-row-tolerance td{background:rgba(31,111,139,.07)}
+/* A card with no reading to compare on either meter. */
+.meter-status-no-reading{border-color:#6b6477;color:#6b6477}
+.meter-continuity-report tr.meter-row-no-reading td{background:rgba(107,100,119,.10)}

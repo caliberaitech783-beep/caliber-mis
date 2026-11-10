@@ -22,7 +22,9 @@ const num=value=>{if(value===null||value===undefined||value==='')return null;con
 const round=value=>value===null?null:Math.round(value*1000)/1000;
 const shiftRank=code=>SHIFT_ORDER[code]||9;
 const classify=(gap,tolerance)=>gap===null?'no-reading':gap<0?'negative':gap===0?'match':gap<=tolerance?'tolerance':'jump';
-const worst=(...classes)=>classes.reduce((a,b)=>RANK[b]>RANK[a]?b:a,'match');
+// The result is the worst of the meters that could be compared. A blank reading on one meter leaves the result
+// to the other; when neither meter could be compared the result is "Reading missing", never "Match".
+const worst=(...classes)=>classes.reduce((a,b)=>RANK[b]>RANK[a]?b:a,'no-reading');
 
 export function normalizeTolerance(input={}){
  const pick=(value,fallback,max)=>{const n=Number(value);return Number.isFinite(n)&&n>=0&&n<=max?n:fallback;};
@@ -64,20 +66,22 @@ export function buildMeterContinuityReport({records=[],from='',to='',kmTolerance
   const map=new Map();
   for(const row of rows){
    const key=keyOf(row);if(!key)continue;
-   if(!map.has(key))map.set(key,{key,label:labelOf(row),cards:0,compared:0,matches:0,tolerance:0,negatives:0,jumps:0,absKm:0,absHours:0,kmCount:0,hourCount:0});
+   if(!map.has(key))map.set(key,{key,label:labelOf(row),cards:0,compared:0,matches:0,tolerance:0,negatives:0,jumps:0,noReading:0,absKm:0,absHours:0,kmCount:0,hourCount:0});
    const s=map.get(key);s.cards++;
    if(row.status==='no-previous')continue;
+   // A card with no reading to compare on either meter was not compared: it is counted on its own.
+   if(row.status==='no-reading'){s.noReading++;continue;}
    s.compared++;if(row.status==='match')s.matches++;if(row.status==='tolerance')s.tolerance++;if(row.status==='negative')s.negatives++;if(row.status==='jump')s.jumps++;
    if(row.kmGap!==null){s.absKm+=Math.abs(row.kmGap);s.kmCount++;}if(row.hourGap!==null){s.absHours+=Math.abs(row.hourGap);s.hourCount++;}
   }
-  return [...map.values()].map(s=>({key:s.key,label:s.label,cards:s.cards,compared:s.compared,matches:s.matches,tolerance:s.tolerance,negatives:s.negatives,jumps:s.jumps,
+  return [...map.values()].map(s=>({key:s.key,label:s.label,cards:s.cards,compared:s.compared,matches:s.matches,tolerance:s.tolerance,negatives:s.negatives,jumps:s.jumps,noReading:s.noReading,
    averageAbsKmGap:s.kmCount?round(s.absKm/s.kmCount):null,averageAbsHourGap:s.hourCount?round(s.absHours/s.hourCount):null,issueRate:s.compared?round((s.negatives+s.jumps)/s.compared*100):null}))
    .sort((a,b)=>(b.negatives+b.jumps)-(a.negatives+a.jumps)||b.compared-a.compared||a.label.localeCompare(b.label,undefined,{numeric:true}));
  };
  const drivers=summarise(row=>row.driverId||row.driver,row=>row.driver?`${row.driver}${row.driverId?' ('+row.driverId+')':''}`:'Unknown driver');
  const tippers=summarise(row=>row.door,row=>row.door||'Unknown tipper');
  const totals={cards:rows.length,compared:0,matches:0,tolerance:0,negatives:0,jumps:0,noReading:0};
- for(const row of rows){if(row.status==='no-previous')continue;totals.compared++;if(row.status==='no-reading')totals.noReading++;else totals[row.status==='match'?'matches':row.status==='tolerance'?'tolerance':row.status==='negative'?'negatives':'jumps']++;}
+ for(const row of rows){if(row.status==='no-previous')continue;if(row.status==='no-reading'){totals.noReading++;continue;}totals.compared++;totals[row.status==='match'?'matches':row.status==='tolerance'?'tolerance':row.status==='negative'?'negatives':'jumps']++;}
  return {rows,drivers,tippers,totals,kmTolerance,hourTolerance};
 }
 

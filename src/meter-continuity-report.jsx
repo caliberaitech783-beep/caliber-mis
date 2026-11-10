@@ -16,7 +16,7 @@ export const cardColumns=[column('date','Date'),column('shift','Shift',r=>SHIFT_
  column('bookNo','Card'),column('source','Source'),column('previousBookNo','Previous card',r=>r.previousBookNo?`${r.previousBookNo} (${r.previousDate}, ${SHIFT_LABELS[r.previousShift]||r.previousShift})`:'—'),
  column('previousClosingKmr','Prev. closing KMR'),column('openingKmr','Opening KMR'),column('kmGap','KM gap',r=>signed(r.kmGap)),
  column('previousClosingHmr','Prev. closing HMR'),column('openingHmr','Opening HMR'),column('hourGap','HMR gap',r=>signed(r.hourGap)),column('statusLabel','Result')];
-export const summaryColumns=label=>[column('label',label),column('cards','Cards'),column('compared','Compared'),column('matches','Match'),column('tolerance','Within tolerance'),column('negatives','Below previous'),column('jumps','Jumps'),column('issueRate','Issue %'),column('averageAbsKmGap','Avg. KM gap'),column('averageAbsHourGap','Avg. HMR gap')];
+export const summaryColumns=label=>[column('label',label),column('cards','Cards'),column('compared','Compared'),column('matches','Match'),column('tolerance','Within tolerance'),column('negatives','Below previous'),column('jumps','Jumps'),column('noReading','Reading missing'),column('issueRate','Issue %'),column('averageAbsKmGap','Avg. KM gap'),column('averageAbsHourGap','Avg. HMR gap')];
 
 export default function MeterContinuityReport({session,ReportSection,onSelect,reportId}){
  const [filters,setFilters]=useState({site:'',from:today(),to:today(),kmTolerance:DEFAULT_TOLERANCE.kmTolerance,hourTolerance:DEFAULT_TOLERANCE.hourTolerance});
@@ -31,7 +31,7 @@ export default function MeterContinuityReport({session,ReportSection,onSelect,re
  const set=(key,value)=>{setFilters(f=>({...f,[key]:value}));setError('');};
  const report=result?.query===query&&!busy?result.data:null;
  const valid=filters.site&&filters.from>=OPERATIONAL_START&&filters.to>=filters.from;
- const description=report?`${report.site} · ${report.from} to ${report.to} · tolerance ${report.kmTolerance} km / ${report.hourTolerance} h · ${report.totals.cards} cards, ${report.totals.compared} compared: ${report.totals.matches} match, ${report.totals.tolerance} within tolerance, ${report.totals.negatives} below previous closing, ${report.totals.jumps} jumps · Generated ${new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}`:'Run the report to compare each tipper card with its previous card.';
+ const description=report?`${report.site} · ${report.from} to ${report.to} · tolerance ${report.kmTolerance} km / ${report.hourTolerance} h · ${report.totals.cards} cards, ${report.totals.compared} compared: ${report.totals.matches} match, ${report.totals.tolerance} within tolerance, ${report.totals.negatives} below previous closing, ${report.totals.jumps} jumps${report.totals.noReading?', '+report.totals.noReading+' reading missing (not compared)':''} · Generated ${new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}`:'Run the report to compare each tipper card with its previous card.';
  const tabs=[['cards','Card by card'],['drivers','By driver'],['tippers','By tipper']];
  const rows=report?tab==='cards'?report.rows:tab==='drivers'?report.drivers:report.tippers:[];
  const columns=tab==='cards'?cardColumns:summaryColumns(tab==='drivers'?'Driver':'Tipper');
