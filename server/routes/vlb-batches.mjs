@@ -84,8 +84,22 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  const batchScope=batch=>({site:batch.site,bookDate:batch.report_date,shift:batch.shift});
  const batchTransaction=async(req,fn)=>{const scope=batchScope(await visible(pool,req.params.id,req));return transaction(async client=>fn(client,await visible(client,req.params.id,req)),scope)};
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
+ // Every open batch screen asks for this list every 4 s, and the list (every batch since 1 November
+ // with its card counts, all sites) is the same for everyone until a batch changes. One read is shared
+ // for 3 s by everyone asking, and any batch change empties it; each user's site filter still applies.
+ const LIST_REUSE_MS=Number(process.env.VLB_LIST_REUSE_MS??3000);
+ let listRows=null,listAt=0,listPending=null,listGeneration=0;
+ const clearBatchList=()=>{listRows=null;listPending=null;listGeneration++;};
+ const readBatchList=async()=>{
+  if(listRows&&Date.now()-listAt<LIST_REUSE_MS)return listRows;
+  if(listPending)return listPending;
+  const generation=listGeneration;
+  const pending=pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=b.id AND ${ACTIVE_VLB_ENTRY_FILTER}) AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`).then(result=>{if(generation===listGeneration){listRows=result.rows;listAt=Date.now();}return result.rows;}).finally(()=>{if(listPending===pending)listPending=null;});
+  listPending=pending;return pending;
+ };
+ app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD'){clearBatchList();res.on('finish',clearBatchList);}next();});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=b.id AND ${ACTIVE_VLB_ENTRY_FILTER}) AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
+  const rows=(await readBatchList()).map(row=>({...row}));
   const twoStage=twoStageEnabled();
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),canClose:canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
