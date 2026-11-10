@@ -60,6 +60,14 @@ test('delayed list is newest first, keeps one band when asked, and explains rows
  assert.match(entryRemark(entries[0]),/First trip of the card/);assert.match(entryRemark(entries[5]),/not written/);assert.equal(entryRemark(entries[1]),'');
 });
 
+test('one site written in several spellings on the cards is counted as one site',()=>{
+ const one=[trip('EX1','06:00','06:15')];
+ const mixed=tripEntries(normalise([book(11,'majri ob','SAMPLE DRIVER 11','V9011',one),book(12,'majri ob','SAMPLE DRIVER 12','V9012',one),book(13,'Majri OB','SAMPLE DRIVER 13','V9013',one),
+  book(14,'Dudhicua East OB','SAMPLE DRIVER 14','V9014',one),book(15,'Dudhichua East OB','SAMPLE DRIVER 15','V9015',one),book(16,'Dudhichua East OB','SAMPLE DRIVER 16','V9016',one),book(17,'sasti ob','SAMPLE DRIVER 17','V9017',one)]));
+ const sites=summarise(mixed,'load-unload','site');
+ assert.deepEqual(sites.rows.map(r=>[r.site,r.timed,r.driversLate]),[['Dudhichua East OB',3,3],['Majri OB',3,3],['sasti ob',1,1]]);
+});
+
 test('the shared screen shows the delay views on the Trip Timing tab only',()=>{
  const screen=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(screen,/id==='timing'\?<TripTimingReport records=\{selected\} loading=\{filters\.loading\}/);

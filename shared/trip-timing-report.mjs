@@ -3,6 +3,7 @@
 //   unload-load : unloading time of the row above to loading time of this row, on the same card
 // Pure rules only; the screen is src/trip-timing-report.jsx.
 import {tripSerialNumber} from './log-book-labels.mjs';
+import {canonicalSiteName} from './site-location.mjs';
 
 export const DELAY_LIMIT=10;
 // A time longer than a shift can only be a wrongly written clock time, so it is not judged.
@@ -22,9 +23,17 @@ export function bandOf(minutes){if(minutes===null||minutes===undefined||minutes>
 const text=v=>String(v??'').trim();
 const clock=v=>text(v).slice(0,5);
 
+// Cards carry the site as it was typed or read ("Majri OB", "majri ob", "Dudhicua East OB"). All spellings of one site
+// are shown as one site, under the spelling used most among those that are not all in small letters.
+function siteLabels(records){
+ const spellings=new Map();
+ for(const r of records){const name=text(r.location);if(!name)continue;const key=canonicalSiteName(name);if(!spellings.has(key))spellings.set(key,new Map());const count=spellings.get(key);count.set(name,(count.get(name)||0)+1);}
+ const label=new Map([...spellings].map(([key,count])=>[key,[...count].sort((a,b)=>(a[0]===a[0].toLowerCase())-(b[0]===b[0].toLowerCase())||b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]]));
+ return name=>text(name)?label.get(canonicalSiteName(name)):'Unassigned';
+}
 // One entry per trip row of every saved Vehicle Log Book in `records` (rows from normalise()).
 export function tripEntries(records){
- const out=[];
+ const out=[],siteName=siteLabels(records);
  for(const r of records){
   if(r.kind!=='vehicle')continue;
   const timed=r.timeMode!=='without',trips=r.trips||[];
@@ -32,7 +41,7 @@ export function tripEntries(records){
   trips.forEach((t,i)=>{
    const previous=i>0?trips[i-1]:null;
    const taken=timed?minutesBetween(t.loadingTime,t.unloadingTime):null,gap=timed&&previous?minutesBetween(previous.unloadingTime,t.loadingTime):null;
-   out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:r.location||'Unassigned',shift:r.shiftName||'',door:text(r.door)||'Not recorded',caliberId,driver,
+   out.push({id:r.id+'-'+i,recordId:String(r.id),book:r.book,date:r.bookDate,site:siteName(r.location),shift:r.shiftName||'',door:text(r.door)||'Not recorded',caliberId,driver,
     driverKey:JSON.stringify([caliberId,driver]),sr:tripSerialNumber(t,i),machine:text(t.equipmentName)||'Not recorded',trips:t.tripCount??'',
     loadingTime:clock(t.loadingTime),unloadingTime:clock(t.unloadingTime),previousUnloadingTime:previous?clock(previous.unloadingTime):'',first:i===0,
     'load-unload':{counted:true,minutes:taken,band:bandOf(taken)},'unload-load':{counted:i>0,minutes:gap,band:bandOf(gap)}});
