@@ -32,6 +32,13 @@ function lmvSnapshot(data){
    .map(row=>({...row,category:'LMV',registration:row.registration||row.reg,assetNo:row.assetNo||row.asset}));
  return snapshot;
 }
+// Postgres returns JSONB keys in its own order, so records are compared with sorted keys.
+export function sameMasterData(a,b){
+ const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']'
+  :value&&typeof value==='object'?'{'+Object.keys(value).filter(k=>value[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+stable(value[k])).join(',')+'}'
+  :JSON.stringify(value??null);
+ return stable(a)===stable(b);
+}
 function recordKey(master,row){
  if(master===PULSE_REGION_MASTER)return String(row.code||row.shortName||row.name||'').trim().toLowerCase();
  if(master==='Shift Master')return `${shiftIdentity({...row,shiftName:row.shiftName||row.name||row.shift})}|${String(row.effectiveFrom||'').trim()}`;
@@ -61,6 +68,7 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
      const links=targetLinks.filter(row=>row.master_name===name);
      const mapped=new Map(links.map(r=>[String(r.source_id),r.local_id]));
      const {rows:locals}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=$1',[target]);
+     const localById=new Map(locals.map(local=>[String(local.id),local.record_data]));
      const linkedIds=new Set(targetLinks.map(r=>String(r.local_id)));
      const incomingIds=new Set(snapshot[name].map(r=>String(r.id)));
      for(const row of snapshot[name]){
@@ -72,7 +80,7 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
          if(matches.length>1)throw new Error(`Multiple local records match a Pulse ${name} record. Reconcile duplicates before syncing.`);
          localId=matches[0]?.id;
          if(name==='Users & employees'){
-           const previous=locals.find(local=>String(local.id)===String(localId))?.record_data;
+           const previous=localById.get(String(localId));
            data.passwordHash=previous?.passwordHash||hashPassword(randomBytes(32).toString('hex'));
            data.mustChangePassword=previous?.mustChangePassword===true;
          }
@@ -81,10 +89,13 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
          await client.query('INSERT INTO pulse_master_links(master_name,source_id,local_id) VALUES($1,$2,$3)',[name,String(sourceId),localId]);
        }
        if(name==='Users & employees'&&!data.passwordHash){
-         const previous=locals.find(local=>String(local.id)===String(localId))?.record_data;
+         const previous=localById.get(String(localId));
          data.passwordHash=previous?.passwordHash||hashPassword(randomBytes(32).toString('hex'));
          data.mustChangePassword=previous?.mustChangePassword===true;
        }
+       // The sync runs every minute and Pulse rarely changes; an unchanged record needs no statement.
+       // Each UPDATE statement also bumped the master-data revision, which reloads every master copy.
+       if(localById.has(String(localId))&&sameMasterData(localById.get(String(localId)),data))continue;
        await client.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name=$3 AND record_data IS DISTINCT FROM $1::jsonb',[JSON.stringify(data),localId,target]);
      }
      for(const row of links)if(!incomingIds.has(String(row.source_id))){
