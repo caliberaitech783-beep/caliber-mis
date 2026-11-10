@@ -10,7 +10,7 @@ export function scanFieldState(draft,key,issues){
  const value=key.split('.').reduce((row,part)=>row?.[part],draft);
  return value==null||String(value).trim()===''||(Array.isArray(value)&&!value.length)?'missing':'invalid';
 }
-export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null){
+export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null,lmv=false){
  if(kind==='vehicle')draft=ignoreScanLoadingWithoutEquipment(draft);
  const issues={...recoveredTripNumberIssues(raw,draft)};if(responseReviewNeeded(raw,draft))issues.responseRecoveryConfirmed='Check the flagged extraction issues against the original scan and confirm your corrections.';if(kind==='vehicle'&&raw.shiftRuleVersion===1&&!CARD_SHIFTS[draft.cardShift])issues.cardShift='Select the clearly ticked shift from the original card; I/II/III = 8 hours, Day/Night = 12 hours.';for(const key of draft.extractionReviewFields||[])if(!(['aFormNo','jobCardNo','workOrderId','bookNo'].includes(key)&&!String(draft[key]??'').trim()))issues[key]='Extracted from handwriting: check this field against the original card.';for(const key of draft.meterReviewFields||[])if(['openingKmr','closingKmr','openingHmr','closingHmr'].includes(key))issues[key]=draft.meterReviewMessages?.[key]||'Handwritten reading: compare this value with the reading table and confirm or correct it.';const fields=[...required,...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])];
  for(const [key,label] of fields)if(draft[key]==null||String(draft[key]).trim()==='')issues[key]=(key==='employeeId'?(kind==='vehicle'?'Driver':'Operator'):label)+' needs checking: enter the value from the scan.';
@@ -23,6 +23,11 @@ export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null){
  if(options){for(const [field,collection,label,read]of [['assetId','assets','Equipment Master',raw.door],['employeeId','employees','Employee Master',raw.employeeCode],['shiftId','shifts','Shift Master',draft.cardShift]])if(!draft[field]){if(!options[collection]?.length)issues[field]=label+' is empty in this MIS database. Sync/import it before matching scans.';else if(read)issues[field]='Scan reads '+String(read).slice(0,80)+'; no unique '+label+' match was found. Check the reading or master record.';}}
  if(kind==='vehicle'&&options){const v=validateTripEquipment(draft,options.assets||[]);Object.assign(issues,v.issues);const differences=machineDiscrepancies(v.draft.trips,v.draft.scanMachineSummary);if(differences.length)issues.scanMachineSummary=differences.join(' ');for(const [key,message] of Object.entries(v.issues))if(key.startsWith('scanMachineSummary.'))issues.scanMachineSummary=[issues.scanMachineSummary,message].filter(Boolean).join(' ');}
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
- if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,kind));
+ if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,lmv?'lmv':kind));
+ if(lmv){
+  delete issues.openingHmr;
+  delete issues.closingHmr;
+  if(!draft.shiftId)delete issues.shiftId;
+ }
  return issues;
 }

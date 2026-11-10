@@ -336,14 +336,14 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const recoveryIssues=activeResponseRecoveryIssues(card?.raw_fields||{},draft);
  const scanMatchingPending=!options||card?.validationPending||['queued','reading'].includes(card?.status);
  const correctEquipment=(collection,index,id)=>{const assets=options?.assets||[],next=correctMatchingTripEquipment(draft,collection,index,id,assets);update('trips',next.trips);update('scanMachineSummary',next.scanMachineSummary);setNotice('Selected machine applied to matching trip and summary rows on this card.');if(collection==='trips')void learnEquipmentAlias(next.trips[index],assets);};
- const allFieldIssues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:(draft.meterReviewFields||[]).filter(key=>Boolean(draft.meterReviewMessages?.[key]))},kind,card?.raw_fields,options);
+ const allFieldIssues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:(draft.meterReviewFields||[]).filter(key=>Boolean(draft.meterReviewMessages?.[key]))},kind,card?.raw_fields,options,lmv);
  const reviewErrors=(scanMatchingPending?[]:card?.checks?.errors||[]).filter(message=>message!=='Confirm or correct the highlighted meter readings against the original reading table before approval.');
  const focusedIssue=isScanIssueFocus(groupFilter);
  const visibilityKey=kind+':'+(card?.id||'')+':'+(card?.status||'');
  const fleetFields=card?.raw_fields?.fleetReview?.signature===scanFleetSignature(draft)?Object.fromEntries((card.raw_fields.fleetReview.issues||[]).flatMap(issue=>issue.fields.map(field=>[field,'Not assigned to '+issue.selectedSite+' · Pulse: '+issue.pulseSite+'.']))):{};
  if(fleetFields.doorText)fleetFields.assetId=fleetFields.doorText;
  if(Object.keys(fleetFields).some(field=>field.startsWith('scanMachineSummary.')))fleetFields.scanMachineSummary='Equipment not assigned to the selected site; resolve the Pulse review.';
- const manualIssues=scanMatchingPending?{}:{...(card?manualScanIssues(draft,kind,card.raw_fields,options):{}),...fleetFields};
+ const manualIssues=scanMatchingPending?{}:{...(card?manualScanIssues(draft,kind,card.raw_fields,options,lmv):{}),...fleetFields};
  manualVisibility.current=retainManualFields(manualVisibility.current,visibilityKey,manualIssues);
  const correctionView=!showAll&&!['approved','posted','rejected'].includes(card?.status);
  // Keep complete trip rows visible even when header fields are filtered to corrections.
@@ -351,7 +351,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const visibleField=key=>focusedIssue?scanIssueFieldVisible(groupFilter,key):['doorText','assetId'].includes(key)||/^trips\.\d+\./.test(key)||!correctionView||manualVisibility.current.fields.has(key);
  const fieldIssues=Object.fromEntries(Object.entries(scanMatchingPending?{}:correctionView?manualIssues:{...allFieldIssues,...fleetFields}).filter(([key])=>scanIssueFieldVisible(groupFilter,key)));
  // Meter totals over the shift limit stay highlighted in red; since 1 November they no longer block saving (see scan-field-review.mjs).
- const meterLimitIssues=shiftMeterIssues(draft,kind);
+ const meterLimitIssues=shiftMeterIssues(draft,lmv?'lmv':kind);
  const fieldClass=key=>{const state=scanFieldState(draft,key,fieldIssues);return (state?`scan-field-invalid scan-field-${state}`:'')+(fleetFields[key]?' scan-field-fleet':'');};
  const reviewWarnings=card?.checks?.warnings||[],blockingReviewWarnings=blockingScanWarnings(reviewWarnings);
  const bdFallbackMissing=Boolean(pulseHoursError&&(draft.manualBreakdownHours===undefined||draft.manualBreakdownHours===null||draft.manualBreakdownHours===''));
@@ -370,7 +370,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const reviewComplete=Boolean(!scanMatchingPending&&!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
   if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked||autoSavingRef.current)return;
-  const next=cards.find(c=>c.batch_id===activeRef.current&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
+  const next=cards.find(c=>c.batch_id===activeRef.current&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options,lmv)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
   if(!next)return;
   const key=next.id+':'+next.revision;
   autoSaveAttempts.current.add(key);
@@ -427,7 +427,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   if(reviewPage){autoReviewEntry.current=batch.id;return;}
   if(autoReviewEntry.current===batch.id||autoSaving||!aliasCheckedBatches.has(batch.id)||busy||dirty||uploading||scannerBusy||fleetBusy||fleetDialogCard||aliasOpen||!options||contextBlocked||connectionError)return;
   if(cards.some(row=>row.validationPending||(['review','approved','error'].includes(row.status)&&!row.checks)))return;
-  if(cards.some(row=>canAutoSaveScanCard(row,kind,options)&&!autoSaveAttempts.current.has(row.id+':'+row.revision)))return;
+  if(cards.some(row=>canAutoSaveScanCard(row,kind,options,lmv)&&!autoSaveAttempts.current.has(row.id+':'+row.revision)))return;
   const target=cards.find(row=>matchesCardGroup(row,'actionable',kind,options,contextGate?.context));
   if(!target)return;
   autoReviewEntry.current=batch.id;

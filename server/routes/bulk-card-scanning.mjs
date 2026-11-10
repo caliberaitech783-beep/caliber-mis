@@ -110,13 +110,14 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  if(card.raw_fields?.fleetBlock)errors.push(card.raw_fields.fleetBlock.message||'Review the restored card before saving.');
  const context=(await client.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
  // The batch date, site and shift are final: a different handwritten header is noted, never a block.
+ const lmv=isLmvScan({kind,expected_context:context});
  warnings.push(...scanContextNotes(context,card,input));
  input=await applyBatchContext(client,context,input);
  errors.push(...Object.values(recoveredTripNumberIssues(card.raw_fields,input)));
  if(responseReviewNeeded(card.raw_fields,input))errors.push('Check the flagged extraction response issues against the original scan and confirm the corrections.');
  if(kind==='vehicle'&&card.raw_fields?.shiftRuleVersion===1){const hours=CARD_SHIFTS[input.cardShift]?.hours;if(!hours)errors.push('Select one clearly marked Trip Card shift: I, II, III, Day or Night.');else if(Number(input.shiftHours)!==hours)errors.push('The marked shift requires '+hours+' hours.');}
  if(kind==='vehicle'&&(input.machineNotationRuleVersion===1||card.raw_fields?.machineNotation?.version===1)){const equipment=await withEquipmentAliases(client,scanEquipmentMasters((await client.query(MASTER_SQL,[['Equipment master']])).rows));input=normalizeScanEquipmentRows({...input,machineNotationRuleVersion:1,tripBodyRuleVersion:card.raw_fields?.tripBodyRuleVersion||input.tripBodyRuleVersion||1},equipment);errors.push(...new Set(Object.values(scanEquipmentMatchIssues(input,equipment))));}if(card.page_count<card.expected_pages)errors.push('The back page is missing. Reject this card and rescan both sides.');
- for(const [key,label] of [['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId',kind==='vehicle'?'Driver':'Operator'],['shiftId','Shift'],['shiftHours','Shift hours'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR'],...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])])if(input[key]===undefined||input[key]===null||input[key]==='')errors.push(label+' is missing or unreadable.');
+ for(const [key,label] of [['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId',kind==='vehicle'?'Driver':'Operator'],['shiftHours','Shift hours'],...(lmv?[]:[['shiftId','Shift'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR']]),...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])])if(input[key]===undefined||input[key]===null||input[key]==='')errors.push(label+' is missing or unreadable.');
  try{data=await resolveLogBookData(client,scanBookKind({kind,expected_context:context}),input,{enforceEmployeeSite});}catch(e){errors.push(e.message)}
  const number=cardKey(kind==='vehicle'?input.aFormNo:input.jobCardNo);
  const duplicateImage=(await client.query(`SELECT c.id FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.image_hash=$1 AND c.id<>$2 AND c.status NOT IN('rejected') AND (c.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (c.created_at<$3 OR (c.created_at=$3 AND c.id<$2)) LIMIT 1`,[card.image_hash,card.id,card.created_at])).rows[0];if(duplicateImage)errors.push('Duplicate card.');
@@ -132,7 +133,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  for(const row of input.scanMachineSummary||[])if(!String(row.equipmentName||'').trim()||!Number.isSafeInteger(Number(row.tripCount))||Number(row.tripCount)<1)errors.push('Check the equipment name and positive trip count on every machine-summary row.');
  if(!input.bookDate&&input.bookDateSource==='scan-unreadable')warnings.push('Book Date could not be read. Enter the date printed on the scanned card; today is not substituted.');
  if(input.bookDateSource==='system-fallback')warnings.push('Book date was not read from the scan; system date used. Confirm or enter the card date.');
- if(input.cardShift&&!input.shiftId)warnings.push('Marked shift '+input.cardShift+' does not match a unique Shift Master time. Check the marked shift and location.');
+ if(!lmv&&input.cardShift&&!input.shiftId)warnings.push('Marked shift '+input.cardShift+' does not match a unique Shift Master time. Check the marked shift and location.');
  if(kind==='vehicle'&&!input.scanMachineSummary?.length&&machineTripTotal(input.trips||[])>0)warnings.push('Printed machine-wise summary was not read. Compare the calculated totals with the paper summary.');
  if(kind==='vehicle'&&!scanTripsOptional(data?.door||input.doorText)&&!(input.trips||[]).length)warnings.push('No trip rows extracted. Add all trip rows, or explicitly confirm the card has no trips.');
 
@@ -402,7 +403,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     requireLogBookSite(req.logBookScope,card.draft.location);
     const check=await checkScanCard(c,batch.kind,card,undefined,{enforceEmployeeSite:req.logBookScope.sites!==null});
     const issueOptions=await scanIssueOptions(c,batch);
-    if(!canAutoSaveScanCard({...card,checks:check},batch.kind,issueOptions))fail('Correct the card before saving: '+[...new Set([...check.errors,...check.warnings,...Object.values(manualScanIssues(card.draft,batch.kind,card.raw_fields,issueOptions))])].join(' '),409);
+    if(!canAutoSaveScanCard({...card,checks:check},batch.kind,issueOptions,isLmvScan(batch)))fail('Correct the card before saving: '+[...new Set([...check.errors,...check.warnings,...Object.values(manualScanIssues(card.draft,batch.kind,card.raw_fields,issueOptions,isLmvScan(batch)))])].join(' '),409);
     const data={...check.data,meterCorrectionHistory:card.raw_fields?.meterCorrectionHistory||[],scanCardNumber:check.number||null,scanCardId:card.id,scanBatchId:batch.id,scanEntrySource:card.raw_fields?.entrySource||undefined,scanSaveMode:'automatic-validation',autoSavedBy:actor,autoSavedAt:new Date().toISOString()};
     await applyBreakdownHours(data,{readHours:lockedReadHours(input=>readHours({...input,client:c}),prefetched),actor});
     if(data.breakdownHours===null)fail('Pulse BD hours unavailable. Enter BD hours manually to finish automatic saving.',409);
