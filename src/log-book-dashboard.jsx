@@ -2,9 +2,16 @@ import React,{useEffect,useState} from 'react';
 import {BookOpen,Building2,ShieldCheck,ArrowUpRight,X} from 'lucide-react';
 import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
+import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import BatchStatusReport from './batch-status-report.jsx';
+import ManpowerReports from './manpower-reports.jsx';
 export const LOGBOOK_COLOURS={vehicle:'#56309A',equipment:'#F34856'};
 const number=n=>Number(n||0).toLocaleString('en-IN');
-export function initialLogbookRange(){const to=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});return {from:to,to,location:'',shift:''};}
+const todayIst=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+// The dashboard opens on the month so far: 1 November 2026 (the first operating day) to today, then the 1st of each later month.
+export function monthToDate(to=todayIst()){const first=to.slice(0,8)+'01';return {from:first<OPERATIONAL_START?OPERATIONAL_START:first,to};}
+export function initialLogbookRange(){return {...monthToDate(),location:'',shift:''};}
+export const rangeValid=({from,to},today=todayIst())=>Boolean(from&&to)&&from>=OPERATIONAL_START&&to>=from&&to<=today&&(Date.parse(to)-Date.parse(from))/86400000<=365;
 const query=filters=>new URLSearchParams(Object.entries(filters).filter(([,v])=>v)).toString();
 const dateLabel=value=>new Date(value+'T00:00:00Z').toLocaleDateString('en-IN',{day:'2-digit',month:'short',timeZone:'UTC'});
 function Legend(){return <div className="lb-legend"><span><i className="lb-purple"/>VLB · Vehicle</span><span><i className="lb-coral"/>ELB · Equipment</span></div>}
@@ -16,15 +23,23 @@ function RecordDetails({selection,filters,session,fetcher,close}){
  const openScan=async row=>{try{const response=await fetcher(`/api/log-books/${row.book_type}/${row.id}/source-image`,{headers:{Authorization:'Bearer '+session.token}});if(!response.ok)throw Error('No original scan is available for this entry. Manual entries may have no scan.');const blob=await response.blob();const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=row.book_no.replaceAll('/','-')+scanImageExtensionForType(blob.type);link.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){setState(s=>({...s,error:e.message}))}};
  return <Dialog title={(selection.kind==='vehicle'?'VLB':'ELB')+' saved cards'+(selection.location?' · '+selection.location:'')} close={close}><p className="lb-muted">{dateLabel(selection.from||filters.from)} – {dateLabel(selection.to||filters.to)} · Saved entries only</p>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<div className="lb-table-wrap"><table><thead><tr><th>Book number</th><th>Site / date</th><th>Door</th><th>Original</th></tr></thead><tbody>{state.records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.site}<small>{r.day}</small></td><td>{r.door||'—'}</td><td><button onClick={()=>void openScan(r)}>Download scan</button></td></tr>)}</tbody></table></div>{!state.records.length&&!state.loading&&<p>No saved cards match these filters.</p>}{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>
 }
-export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters}){
- const [applied]=useState(()=>initialFilters||initialLogbookRange()),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0),[selection,setSelection]=useState(null),[showTable,setShowTable]=useState(false);
+export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters,ReportSection}){
+ const [applied,setApplied]=useState(()=>initialFilters||initialLogbookRange()),[range,setRange]=useState(()=>({from:applied.from,to:applied.to})),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0),[selection,setSelection]=useState(null),[showTable,setShowTable]=useState(false);
  useEffect(()=>{const abort=new AbortController();setLoading(true);setError('');setData(null);setSelection(null);fetcher('/api/dashboard/log-books?'+query(applied),{signal:abort.signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token}}).then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error||'Dashboard could not be loaded.');if(!abort.signal.aborted)setData(body)}).catch(e=>{if(!abort.signal.aborted)setError(e.message)}).finally(()=>{if(!abort.signal.aborted)setLoading(false)});return ()=>abort.abort()},[applied,refresh,session.token,fetcher]);
  const [compact,setCompact]=useState(()=>window.matchMedia('(max-width:540px)').matches);
  useEffect(()=>{const media=window.matchMedia('(max-width:540px)'),change=()=>setCompact(media.matches);media.addEventListener('change',change);return ()=>media.removeEventListener('change',change)},[]);
  const chartWidth=compact?420:760,plotWidth=chartWidth-100;
  const choose=(kind,extra={})=>setSelection({kind,...extra});
  const max=Math.max(1,...(data?.bySite||[]).flatMap(r=>[r.vehicle,r.equipment])),trend=data?.trend||[],top=Math.max(4,Math.ceil(Math.max(0,...trend.flatMap(r=>[r.vehicle,r.equipment]))/4)*4),x=i=>52+(trend.length<2?plotWidth/2:i/(trend.length-1)*plotWidth),y=n=>190-n/top*150;
- return <section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
+ return <><section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
+  <form className="lb-filters lb-range" aria-label="Dashboard dates" onSubmit={e=>{e.preventDefault();if(rangeValid(range))setApplied(a=>({...a,from:range.from,to:range.to}));}}>
+   <label>From<input type="date" required min={OPERATIONAL_START} max={range.to||todayIst()} value={range.from} onChange={e=>setRange(r=>({...r,from:e.target.value}))}/></label>
+   <label>To<input type="date" required min={range.from||OPERATIONAL_START} max={todayIst()} value={range.to} onChange={e=>setRange(r=>({...r,to:e.target.value}))}/></label>
+   <button type="submit" className="lb-apply" disabled={!rangeValid(range)||loading}>{loading?'Loading…':'Show dashboard'}</button>
+   <button type="button" disabled={loading} onClick={()=>{const month=monthToDate();setRange(month);setApplied(a=>({...a,...month}));}}>Month to date</button>
+   <button type="button" disabled={loading} onClick={()=>{const day=todayIst(),one={from:day,to:day};setRange(one);setApplied(a=>({...a,...one}));}}>Today</button>
+  </form>
+  {!rangeValid(range)&&<p role="status" className="lb-muted">Choose dates from 01 Nov 2026 up to today, with From not after To.</p>}
   {error&&<div role="alert" className="lb-error">{error} <button onClick={()=>setRefresh(n=>n+1)}>Retry</button></div>}{loading&&<p role="status" className="lb-loading">Loading site totals and graphs…</p>}
   {data&&<><div className="lb-context"><span>{dateLabel(applied.from)} – {dateLabel(applied.to)} · {applied.location||'All permitted sites'} · {applied.shift||'All shifts'}</span><span>Updated {new Date(data.updatedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div>
    <div className="lb-kpis">{[{key:'vehicle',name:'Total VLB cards',sub:'Saved vehicle logbook entries',icon:BookOpen,tone:'purple',click:()=>choose('vehicle')},{key:'equipment',name:'Total ELB cards',sub:'Saved equipment logbook entries',icon:BookOpen,tone:'coral',click:()=>choose('equipment')},{key:'activeSites',name:'Sites with entries',sub:`of ${data.bySite.length} sites in view`,icon:Building2,tone:'purple',click:()=>setSelection({sites:true})},{key:'recoveryDrafts',name:'My recovery drafts',sub:'Server copies · counted separately',icon:ShieldCheck,tone:'amber',click:()=>setSelection({drafts:true})}].map(({key,name,sub,icon:Icon,tone,click})=><button key={key} className={'lb-kpi lb-tone-'+tone} onClick={click} disabled={['vehicle','equipment'].includes(key)&&!data.kinds.includes(key)}><span className="lb-kpi-top"><span>{name}</span><i><Icon size={21}/></i></span><strong>{['vehicle','equipment'].includes(key)&&!data.kinds.includes(key)?'—':number(data.totals[key])}</strong><span className="lb-kpi-bottom">{sub}<ArrowUpRight size={16}/></span></button>)}</div>
@@ -39,4 +54,9 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
   {selection?.sites&&<Dialog title="Sites with saved entries" close={()=>setSelection(null)}><p className="lb-muted">Sites with zero entries are included for comparison.</p><div className="lb-table-wrap"><table><thead><tr><th>Site</th><th>VLB</th><th>ELB</th></tr></thead><tbody>{data.bySite.map(r=><tr key={r.site}><td>{r.site}</td>{['vehicle','equipment'].map(k=><td key={k}><button disabled={!r[k]} onClick={()=>choose(k,{location:r.site})}>{number(r[k])}</button></td>)}</tr>)}</tbody></table></div></Dialog>}
   {selection?.drafts&&<Dialog title="My recovery drafts" close={()=>setSelection(null)}><p>{number(data.totals.recoveryDrafts)} active server recovery copies match these filters. Copies saved only on another laptop are not counted here.</p><p>These copies are separate from saved logbook totals. Completed recovery copies are removed after their batch is saved and locked.</p>{goto?<button className="lb-apply" onClick={()=>goto('Drafts')}>Open Draft recovery</button>:<p className="lb-muted">Open MIS → Draft recovery in the live app to resume work.</p>}</Dialog>}
  </section>
+ {/* The two reports sit below the graphs and keep their own dates, so changing the dashboard dates does not reload them. */}
+ {ReportSection&&<div className="lb-reports" aria-label="Reports on the dashboard">
+  <BatchStatusReport session={session} ReportSection={ReportSection}/>
+  <ManpowerReports session={session} reportId="ot" ReportSection={ReportSection} embedded initialFrom={monthToDate().from}/>
+ </div>}</>
 }
