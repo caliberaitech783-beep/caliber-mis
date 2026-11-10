@@ -178,7 +178,7 @@ test('manpower reports export complete selected data, separate shift hours, and 
   nodes(overview,'button').find(n=>n.props['aria-label']==='137 Red · Sasti OC').props.onClick();
   const [drivers,each]=nodes(view(),ReportSection);assert.deepEqual(categories(view()),['manpower-ot-drivers','manpower-ot']);
   assert.equal(drivers.props.title,'Sasti OC · Red only · drivers');assert.equal(drivers.props.rows.length,137,'one row per driver');assert.equal(each.props.rows.length,137,'export receives every matching case');
-  assert.deepEqual(drivers.props.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','category','red','orange','review','total','otMonth','otYear','logBook','dutyDates','shifts','equipment'],'one site: no Site column');
+  assert.deepEqual(drivers.props.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','otMonth','otYear','category','red','orange','review','total','logBook','dutyDates','shifts','equipment'],'one site: no Site column; the two OT counts sit right after the name');
   assert.deepEqual([drivers.props.recordDateFilter,each.props.recordDateFilter],[false,false],'the page dates are the only date control');
   {const value=key=>drivers.props.columns.find(c=>c.key===key).value(drivers.props.rows[1]);assert.deepEqual(['employeeId','category','red','orange','review','total','dutyDates','logBook'].map(value),['E1','Volvo Driver',1,0,0,1,filters.from,'ELB']);}
   {const cols=each.props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);assert.equal(cols.find(c=>c.key==='logBook').value(rows[0]),'VLB + ELB');const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(each.props.rowClassName(rows[0]),'mp-ot-red');}
@@ -195,7 +195,7 @@ test('manpower reports export complete selected data, separate shift hours, and 
  {const event=(id,date,severity)=>({id,date,dates:date,severity,reason:severity.toUpperCase()+' — fixture',shifts:date+' S1; '+date+' S2',logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:15,books:'CARD'});
   const yearData={year:'2026',month:'2026-11',yearFrom:'2026-11-01',yearTo:'2026-11-10',monthFrom:'2026-11-01',monthTo:'2026-11-10',drivers:[{employeeKey:'E1',siteKey:'sasti ob',month:{red:4,orange:1,review:0,total:5},year:{red:20,orange:4,review:1,total:25},events:[event('a','2026-11-09','red'),event('b','2026-11-03','orange')],duties:{'2026-11':9}}]};
   const loaded={key:'sasti ob|2026-11|0',data:yearData,error:''},first=view=>nodes(view(),ReportSection)[0].props;
-  const waiting=first(await ot({otPick:sasti}));assert.deepEqual(waiting.columns.slice(8,10).map(c=>c.label),['OT in Nov 2026','OT in 2026']);
+  const waiting=first(await ot({otPick:sasti}));assert.deepEqual(waiting.columns.slice(3,5).map(c=>c.label),['OT in Nov 2026','OT in 2026']);
   assert.deepEqual([waiting.rows[0].otMonth,waiting.rows[0].otYear],['Checking…','Checking…'],'counts are never shown as zero before they load');
   assert.equal(first(await ot({otPick:sasti,tally:{key:'sasti ob|2026-11|0',data:null,error:'Unable to load the month and year counts.'}})).rows[0].otYear,'Unavailable');
   assert.equal(first(await ot({otPick:{siteKey:'*',severity:''},tally:loaded})).rows[1].otYear,'Press the name','in a list of every site the counts are read for the driver whose name is pressed');

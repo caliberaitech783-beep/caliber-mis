@@ -3,6 +3,7 @@
   "group": "Manpower & OT",
   "title": "Manpower by Category",
   "menu": "Reports → Manpower & OT → Manpower by Category",
+  "asOf": {"en": "Matches the system as of 10 November 2026", "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"},
   "en": {
     "purpose": "Shows how many machines and how many employees worked in each equipment category, group, make and model, for each duty date, site and shift. Below the counts it lists every saved VLB and ELB card they come from. A site in-charge or MIS clerk uses it to see how the fleet was manned and to find cards whose employee or equipment details need checking.",
     "row": "In “Manpower by Category, Make & Model” one row is one duty date, site, shift, category, equipment group, make and model. In “Vehicle & Employee Assignments” one row is one saved VLB or ELB card.",
@@ -31,7 +32,7 @@
       ["Review items", "Count card. Number of rows in the “Manpower Data Review” table at the bottom."],
       ["Manpower by Category, Make & Model", "The first table: the counts. The line under its title repeats the selections and adds “Distinct assets and employees within each category”. If nothing matches it says “No saved asset assignments in this selection. An empty batch has no manpower count.”"],
       ["Vehicle & Employee Assignments", "The second table: the saved cards, one by one. If nothing matches it says “No saved assignments match these selections.”"],
-      ["Manpower Data Review", "The table at the bottom. It lists every problem found on the selected cards, one row for each problem, so that it can be corrected. If there is none it says “No data-review items for these selections.”"],
+      ["Manpower Data Review", "The table at the bottom. It lists every problem found on the selected cards, one row for each problem, so that it can be corrected. If there is none it says “No card needs correction in these selections.”"],
       ["Sources and calculation rules", "Press to open the written rules the report follows. The last line says that manpower requirements, shortages and relief availability are reserved for a later phase."]
     ],
     "columns": [
@@ -72,7 +73,7 @@
       ["Manpower Data Review · Saved card", "Book number of the card. Use it to find the card."],
       ["Manpower Data Review · Log book", "VLB or ELB. LMV items are shown only on OT & Multiple Duties."],
       ["Manpower Data Review · Source batches", "Names of the batches holding the card, or “Saved VLB (no site batch)” / “Saved ELB (no site batch)”."],
-      ["Manpower Data Review · Review reason", "The problem in words. Examples: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"]
+      ["Manpower Data Review · What to correct", "The problem in words. Examples: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"]
     ],
     "notes": [
       "Only saved VLB and ELB log books dated 1 November 2026 or later are read. Pending scans and deleted records are excluded. LMV log books are used only by OT & Multiple Duties.",
@@ -125,7 +126,7 @@
       ["Review items", "गिनती का कार्ड। सबसे नीचे की “Manpower Data Review” टेबल में कितनी लाइनें हैं।"],
       ["Manpower by Category, Make & Model", "पहली टेबल: गिनती। इसके नाम के नीचे की लाइन में चुनाव दोबारा लिखे रहते हैं और साथ में “Distinct assets and employees within each category”। कुछ न मिलने पर लिखा आता है “No saved asset assignments in this selection. An empty batch has no manpower count.”"],
       ["Vehicle & Employee Assignments", "दूसरी टेबल: सेव किए हुए कार्ड, एक-एक करके। कुछ न मिलने पर लिखा आता है “No saved assignments match these selections.”"],
-      ["Manpower Data Review", "सबसे नीचे की टेबल। चुने हुए कार्डों में जो भी गड़बड़ी मिली है वह यहाँ दिखती है, हर गड़बड़ी की एक लाइन, ताकि उसे ठीक किया जा सके। कोई गड़बड़ी न हो तो लिखा आता है “No data-review items for these selections.”"],
+      ["Manpower Data Review", "सबसे नीचे की टेबल। चुने हुए कार्डों में जो भी गड़बड़ी मिली है वह यहाँ दिखती है, हर गड़बड़ी की एक लाइन, ताकि उसे ठीक किया जा सके। कोई गड़बड़ी न हो तो लिखा आता है “No card needs correction in these selections.”"],
       ["Sources and calculation rules", "दबाने पर वे लिखे हुए नियम खुलते हैं जिन पर रिपोर्ट चलती है। आख़िरी लाइन बताती है कि manpower की ज़रूरत, कमी और relief की उपलब्धता बाद के चरण के लिए रखी गई है।"]
     ],
     "columns": [
@@ -166,7 +167,7 @@
       ["Manpower Data Review · Saved card", "कार्ड का बुक नंबर। इसी से कार्ड ढूँढें।"],
       ["Manpower Data Review · Log book", "VLB या ELB। LMV की लाइनें सिर्फ़ OT & Multiple Duties में दिखती हैं।"],
       ["Manpower Data Review · Source batches", "जिन बैच में कार्ड है उनके नाम, या “Saved VLB (no site batch)” / “Saved ELB (no site batch)”।"],
-      ["Manpower Data Review · Review reason", "गड़बड़ी शब्दों में। उदाहरण: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"]
+      ["Manpower Data Review · What to correct", "गड़बड़ी शब्दों में। उदाहरण: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"]
     ],
     "notes": [
       "सिर्फ़ 1 November 2026 या उसके बाद की तारीख वाली सेव की हुई VLB और ELB लॉग बुक पढ़ी जाती हैं। पेंडिंग स्कैन और डिलीट किए गए रिकॉर्ड शामिल नहीं हैं। LMV लॉग बुक सिर्फ़ OT & Multiple Duties में काम आती हैं।",
