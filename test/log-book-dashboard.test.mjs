@@ -1,5 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';
-import {registerLogBookDashboard,dashboardFilters} from '../server/routes/log-book-dashboard.mjs';
+import {registerLogBookDashboard,dashboardFilters,summarizeLogBooks} from '../server/routes/log-book-dashboard.mjs';
+test('Lalpeth is left out of the site list unless it has saved cards in the dates',()=>{
+ const sites=['Sasti OC','Lalpeth OC','lalpeth ob','Lalpeth II'],range={from:'2026-11-01',to:'2026-11-02'};
+ const empty=summarizeLogBooks({rows:[],sites,...range});
+ assert.deepEqual(empty.sites,['Sasti OC']);assert.deepEqual(empty.bySite.map(r=>r.site),['Sasti OC']);
+ const used=summarizeLogBooks({rows:[{site:'lalpeth ob',book_type:'vehicle',day:'2026-11-01',count:3}],sites,...range});
+ assert.deepEqual(used.bySite.find(r=>r.site==='Lalpeth OC'),{site:'Lalpeth OC',vehicle:3,equipment:0});assert.equal(used.totals.vehicle,3);
+});
 test('dashboard aggregates all saved rows, aliases and zero sites; filters and permissions protect counts and drilldowns',async()=>{
  const db=new PGlite();let server;try{
   await db.exec(`CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,data JSONB,deleted_at TIMESTAMPTZ);CREATE TABLE master_records(master_name TEXT,record_data JSONB);CREATE TABLE mis_workflow_drafts(owner_login TEXT,workflow TEXT,site TEXT,payload JSONB,created_at TIMESTAMPTZ DEFAULT now(),deleted_at TIMESTAMPTZ);`);
