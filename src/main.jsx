@@ -389,6 +389,7 @@ import "./no-motion.css";
 import { APP_VERSION } from "./app-version.js";
 import { formatCountDelta } from "./fleet-count-trend.mjs";
 import DateInput from "./date-input.mjs";
+import { approveEquipmentChanges, equipmentChangeText, equipmentChanges } from "./equipment-otp-dialog.mjs";
 
 const vehicles = [];
 const breakdowns = [];
@@ -8533,7 +8534,18 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
       controller.abort();
     };
   }, [name, loadAttempt, authToken, enabled]);
+  // Equipment master is shared with Pulse: every change needs the one OTP sent to the
+  // authorised mobiles, then the list reloads with what Pulse applied.
+  const isEquipmentMaster = name === "Equipment master";
+  const approveEquipment = async (changes, { silent = false } = {}) => {
+    if (!changes.length) throw new Error("No saved equipment records were selected.");
+    const result = await approveEquipmentChanges({ token: authToken, changes });
+    setLoadAttempt((attempt) => attempt + 1);
+    if (!silent) alert(`Equipment master updated in Pulse: ${equipmentChangeText(result.summary)}.${result.synced === false ? " Pulse-II shows it after the next one-minute sync." : ""}`);
+    return result;
+  };
   const add = async (incoming, { silent = false } = {}) => {
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.add(incoming), { silent });
     const batches = batchMasterRecords(incoming);
     const saved = [];
     for (let index = 0; index < batches.length; index += 1) {
@@ -8589,6 +8601,10 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
     }
   };
   const edit = async (id, record) => {
+    if (isEquipmentMaster) {
+      await approveEquipment(equipmentChanges.edit(id, record), { silent: true });
+      return { ...record, id };
+    }
     const update = () => fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
       method: "PUT", cache:"no-store",
       headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`},
@@ -8612,6 +8628,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
     return details;
   };
   const remove = async (id, reason = "") => {
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(records.filter((record) => record.id === id)));
     const response = await fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
       method: "DELETE",
       headers: {Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason},
@@ -8625,6 +8642,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
   };
   const removeAll = async () => {
     if (!confirm(`Delete all records from ${name}? This cannot be undone.`)) return;
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(records));
     const reason = window.prompt(`Enter the reason for deleting all ${name} records:`, "");
     if (reason === null) return;
     if (!reason.trim()) return alert("A deletion reason is required for the Audit Trail.");
@@ -8640,6 +8658,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
   const removeSelected = async (selectedRecords = [], reason = "") => {
     const ids = [...new Set(selectedRecords.map((record) => Number(record.id)).filter((id) => Number.isSafeInteger(id) && id > 0))];
     if (!ids.length) throw new Error("No saved equipment records match the current filters.");
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(selectedRecords));
     if (!reason.trim()) throw new Error("A deletion reason is required for the Audit Trail.");
     const response = await fetch(`/api/masters/${encodeURIComponent(name)}/selected`, {
       method: "DELETE",

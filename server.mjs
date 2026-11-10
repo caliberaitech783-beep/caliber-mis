@@ -38,6 +38,7 @@ import {registerErpMasters} from './server/routes/erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './shared/telegram-bdms-period.mjs';
 import {registerPulseMasterSync} from './server/routes/pulse-master-sync.mjs';
 import {createPulseSignInBridge} from './server/services/pulse-signin-bridge.mjs';
+import {registerEquipmentMasterOtp} from './server/routes/equipment-master-otp.mjs';
 import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
 import {registerLogBooks} from './server/routes/log-book.mjs';
 import {accountLedgerQueries} from './server/rules/iboss-account-ledger.mjs';
@@ -7895,7 +7896,11 @@ const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(proce
 // After every Pulse snapshot: retire aliases Pulse now carries as real doors, suspend aliases a real door now shadows (Telegram to the approver and the MIS managers).
 const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
 registerLmvImport(app,{pool,requireSession,requireAdministrator});
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
+const pulseSignInBridge=createPulseSignInBridge({pool});
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:pulseSignInBridge,requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
+// Equipment master is two-way with Pulse: changes made here reach Pulse after one shared OTP.
+registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
+ audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
