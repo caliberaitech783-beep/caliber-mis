@@ -1,0 +1,20 @@
+/* Trip Timing & Gap Report: sub-tabs, step trail and delay band colours. */
+.tt-report{display:flex;flex-direction:column;gap:14px;margin-top:16px;min-width:0}
+.tt-report .tt-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}
+.tt-report .tt-crumbs button{padding:6px 12px;border:1px solid #c7b5dd;border-radius:9px;background:var(--card,#fff);color:inherit;font:inherit;cursor:pointer}
+.tt-report .tt-crumbs strong{padding:6px 2px}
+.tt-report .tt-subtabs,.tt-report .tt-chips{display:flex;flex-wrap:wrap;gap:8px}
+.tt-report .tt-subtabs button,.tt-report .tt-chips button{padding:7px 14px;border-radius:999px;border:1px solid #b7a1d1;background:var(--card,#fff);color:#51317d;font:inherit;font-size:14px;font-weight:650;cursor:pointer}
+.tt-report .tt-subtabs button[aria-current]{background:#59358e;border-color:#59358e;color:#fff}
+.tt-report .tt-chips button[aria-current]{outline:3px solid #59358e;outline-offset:1px}
+.tt-report .tt-insight{margin:0;padding:12px 16px;border:1px solid #ead9a3;border-radius:10px;background:#fff8e1;color:#3d3214;font-weight:650;line-height:1.6}
+.tt-report .tt-band{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
+.tt-report button.tt-band{cursor:pointer}
+.tt-report .tt-b1{background:#fff3c4;color:#6b5200}
+.tt-report .tt-b2{background:#ffe0bf;color:#8a4a00}
+.tt-report .tt-b3{background:#ffe0df;color:#a31f20}
+.tt-report tr.tt-total td{font-weight:750;background:rgba(89,51,139,.07)}
+.tt-report .tt-notes{font-size:13px;color:#4f4660}
+.tt-report .tt-notes summary{cursor:pointer;font-weight:700}
+.tt-report .tt-notes li{margin-top:4px}
+@media print{.tt-report .tt-crumbs,.tt-report .tt-subtabs,.tt-report .tt-chips,.tt-report .tt-notes{display:none}}

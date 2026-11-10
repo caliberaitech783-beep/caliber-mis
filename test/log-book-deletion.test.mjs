@@ -6,7 +6,7 @@ import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {SCAN_BACKUP_SCHEMA} from '../server/routes/scan-backup.mjs';
 import {VLB_BATCH_SCHEMA} from '../server/routes/vlb-batches.mjs';
 import {SCAN_SCHEMA,checkScanCard} from '../server/routes/bulk-card-scanning.mjs';
-import {DELETION_PHONE,registerLogBookDeletion} from '../server/rules/log-book-deletion.mjs';
+import {registerLogBookDeletion} from '../server/rules/log-book-deletion.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomic, scoped and permanent',async t=>{
@@ -67,7 +67,7 @@ test('bulk deletion requires exact approval and delivered WhatsApp OTP, is atomi
  // Reset the test clock's request timestamp, without weakening runtime throttling.
  await db.query("UPDATE mis_log_book_deletions SET otp_requested_at=NOW()-INTERVAL '2 minutes'");available=true;
  p=await preview([a,b]);
- assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);assert.equal(sent.at(-1).to,DELETION_PHONE);
+ assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,200);assert.equal(sent.at(-1).to,'917379771776');
  assert.equal((await api(p.id+'/otp',{approval:p.approval})).status,409);
  assert.ok(!JSON.stringify(p).includes(sent.at(-1).otp));
  const wrong=sent.at(-1).otp==='111111'?'222222':'111111';
