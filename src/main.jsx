@@ -471,15 +471,20 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
       requestInit=browserSessionRequestInit({...requestInit,headers});
       requestInit = edgeSafeJsonInit(requestInit);
     }
+    const requestToken = new Headers(requestInit?.headers).get("Authorization");
     // While a deployment restarts the app the gateway answers 502/503/504 for
     // a few seconds. Read-only API calls wait and retry instead of showing an
     // error; writes are never replayed because the server may have applied them.
     const response = await fetchWithTransientRetry(nativeFetch, input, requestInit, {
       onRetry: ({attempt, reason, status}) => console.warn(`Retrying ${url} after a transient ${reason === "status" ? `HTTP ${status}` : "network failure"} (attempt ${attempt + 1}).`),
     });
-    if (response.status === 401 && authToken && url.startsWith("/api/") && !url.startsWith("/api/login")) {
-      clearStoredSession();
-      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+    if (response.status === 401 && authToken && url.startsWith("/api/")) {
+      const result = await response.clone().json().catch(() => null);
+      const expired = /^(Your sign-in has expired\.|This user account no longer exists\.)/.test(result?.error || "");
+      if (expired && requestToken === "Bearer " + authToken) {
+        clearStoredSession();
+        window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+      }
     }
     if(response.status===403&&url.startsWith("/api/")){const result=await response.clone().json().catch(()=>null);if(result?.code==="MFA_REQUIRED")window.dispatchEvent(new CustomEvent("mis-security-required"));}
     return response;
@@ -11455,19 +11460,12 @@ function App() {
   useEffect(()=>{
     if(!session?.token)return undefined;
     let lastHeartbeatAt=0,closed=false;
-    const closeInvalidSession=()=>{
-      if(closed)return;
-      closed=true;
-      clearStoredSession();
-      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
-    };
     const heartbeat=async(force=false)=>{
       if(closed)return;
       if(!force&&Date.now()-lastHeartbeatAt<30000)return;
       lastHeartbeatAt=Date.now();
       try{
-        const response=await fetch('/api/session-heartbeat',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});
-        if(response.status===401)closeInvalidSession();
+        await fetch('/api/session-heartbeat',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});
       }catch{}
     };
     let activityHeartbeatHandle=null,activityHeartbeatUsesIdle=false;

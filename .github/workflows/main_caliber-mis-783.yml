@@ -296,6 +296,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.MIS_GEMINI_API_KEY }}
         run: python3 scripts/configure-gemini-azure.py
 
+      - name: Carry forward immutable assets used by open MIS tabs
+        if: steps.ui-delta.outputs.applied != 'true'
+        run: node scripts/preserve-live-ui-assets.mjs
+
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         if: steps.ui-delta.outputs.applied != 'true'
