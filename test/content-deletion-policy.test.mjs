@@ -18,3 +18,8 @@ test('only the authorized single scan-card POST delete bypasses the global OTP r
  assert.equal(contentDeletionBlocked('POST',path.toUpperCase()+'/'),false);
  for(const [method,url] of [['DELETE',path],['PUT',path],['PATCH',path],['POST','/api/scan-cards/bulk-delete'],['POST',path+'/all'],['POST','/api/scan-cards/not-an-id/delete'],['POST','/api/scan-batches/'+id+'/delete'],['POST','/api/log-books/'+id+'/delete']])assert.equal(contentDeletionBlocked(method,url),true,method+' '+url);
 });
+
+test('saved LMV deletion reaches only the guarded numeric record route',()=>{
+ assert.equal(contentDeletionBlocked('DELETE','/api/log-books/lmv/42'),false);
+ assert.equal(contentDeletionBlocked('DELETE','/api/log-books/lmv/all'),true);
+});

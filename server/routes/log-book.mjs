@@ -288,7 +288,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        else if(kind==='lmv'){
@@ -347,6 +347,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
        await assertLmvBatchWrite(client,record.data);
        if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
        await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
+       const scanTable=(await client.query("SELECT to_regclass('mis_scan_cards') AS name")).rows[0].name;
+       if(scanTable)await client.query("UPDATE mis_scan_cards SET review_note='Card deleted manually by user through LMV Log Book',revision=revision+1 WHERE logbook_id=$1",[id]);
        await client.query('COMMIT');
        return res.json({deleted:true});
      }
