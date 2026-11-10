@@ -13,12 +13,13 @@ test('manual Day/Night options retain master starts and allow an independently s
  assert.equal(manualShiftWindow(payload,base,[{...base,site:'Sasti OC',shiftCode:'DAY',startTime:'08:00'}]).startTime,'05:00');
  assert.equal(base.endTime,'13:00:00','master remains unchanged');
 });
-for(const kind of ['vehicle','equipment'])test(kind+' manual save accepts 12 hours against marked shift I while scan normalization remains strict',async()=>{
+for(const kind of ['vehicle','equipment'])test(kind+' manual and scan normalization apply their shift-hours rules',async()=>{
  const rows=[{id:1,master_name:'Equipment master',record_data:{kind,site:'Jayant OC',door:'V1'}},{id:2,master_name:'Employee master',record_data:{name:'Driver',site:'Jayant OC'}},{id:3,master_name:'Shift Master',record_data:base}];
  const client={query:async sql=>({rows:sql.includes('master_name=ANY')?[]:sql.includes("master_name='Equipment master'")?[rows[0]]:sql.includes("master_name='Shift Master'")?[rows[2]]:sql.includes('master_records')?rows:[]})};
  const saved=await resolveLogBookData(client,kind,payload,{manualEntry:true});
  assert.equal(saved.shiftHours,12);assert.equal(saved.manualShift,'day');assert.equal(saved.shiftName,'Day');assert.equal(saved.bookShiftCode,'S1');assert.equal(saved.idleHours,1);
- assert.throws(()=>normalizeLogBook(kind,payload),/requires 8 hours/);
+ if(kind==='vehicle')assert.equal(normalizeLogBook(kind,payload).shiftHours,12);
+ else assert.throws(()=>normalizeLogBook(kind,payload),/requires 8 hours/);
  assert.throws(()=>normalizeLogBook(kind,{...payload,shiftHours:9},{manualEntry:true}),/8-hour or 12-hour/);
 });
 test('manual combined HMR uses the selected 12 hours while scan entries retain their shift limit',async()=>{
