@@ -100,7 +100,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const batch='/api/vlb-batches/'+created.data.id;
  const card=(door,trips)=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:ids[door],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips,requestKey:randomUUID()});
  const lmv=()=>({...card('L1',[]),manualEntry:true});
- assert.equal((await call('/api/log-books/lmv','POST',lmv())).status,409,'LMV waits for the VLB lock');
+ assert.equal((await call('/api/log-books/lmv','POST',{...lmv(),bookDate:'2026-12-19'})).status,409,'LMV requires an existing batch for its site, date and shift');
  assert.equal((await call(batch+'/lock-lmv','POST',{})).status,409);
  const first=await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:5},{equipmentName:'VPC 019',tripCount:3}]));
  assert.equal(first.status,201,JSON.stringify(first.data));assert.deepEqual(first.data.data.siteHolds,[]);
@@ -116,14 +116,14 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  await db.query("UPDATE master_records SET record_data=record_data||'{\"currentLocation\":\"Sasti OC\"}' WHERE id=$1",[ids['VPC-077']]);
  view=await call(batch);assert.equal(view.data.holds.length,0,'transfer clears the hold without any batch action');
  {const bob=await call(batch+'/lock-vlb','POST',{},'bob');assert.equal(bob.status,403,JSON.stringify(bob.data));}
+ const savedLmv=await call('/api/log-books/lmv','POST',lmv());
+ assert.equal(savedLmv.status,201,JSON.stringify(savedLmv.data));
  const vlbLocked=await call(batch+'/lock-vlb','POST',{});
  assert.equal(vlbLocked.status,200,JSON.stringify(vlbLocked.data));
  assert.equal(vlbLocked.data.stage,'lmv_open');
  assert.equal(vlbLocked.data.canClose,false);
  assert.equal((await call(batch+'/close','POST',{})).status,409);
  assert.equal((await call('/api/log-books/equipment','POST',{...card('D1',[]),openingHmr:1,closingHmr:3})).status,409,'ELB waits for the LMV lock');
- const savedLmv=await call('/api/log-books/lmv','POST',lmv());
- assert.equal(savedLmv.status,201,JSON.stringify(savedLmv.data));
  assert.deepEqual((await call(batch)).data.lmvRecords.map(row=>row.id),[savedLmv.data.id]);
  assert.equal((await call(batch+'/lock-lmv','POST',{},'bob')).status,403);
  const locked=await call(batch+'/lock-lmv','POST',{});

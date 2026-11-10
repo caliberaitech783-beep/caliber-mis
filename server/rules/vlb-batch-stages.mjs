@@ -216,7 +216,7 @@ export async function assertLmvBatchWrite(client,data){
  if(!twoStageEnabled())return null;
  await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,data);
- if(!batch||batch.deleted_at||batchStage(batch)!=='lmv_open')fail('Select a batch with VLB locked and LMV open before saving or changing LMV cards.',409);
+ if(!batch||batch.deleted_at||batch.archived_at||!['vlb_open','lmv_open'].includes(batchStage(batch)))fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',409);
  return batch;
 }
