@@ -132,3 +132,11 @@ Owner's sketch of 10 Nov 2026 (a marked-up copy of the site summary workbook): s
 - The drivers list replaces "OT in <month>" and "OT in <year>" with four columns: Red and Orange in the month, Red and Orange in the year. Brown stays in the driver's history. The colour columns for the selection are named "Red / Orange / Brown in selected dates". Shift Attendance Equipment Wise keeps its two combined OT columns.
 - The date-by-shift table is a screen table like the site lines: it has no Generate button. The drivers list and the case table under it export what is selected.
 - No new read: the table is built in the page from the cases already loaded.
+
+## Second machine column (10 Nov 2026)
+
+Owner's request on the live "duties by equipment" table of Shift Attendance Equipment Wise.
+
+- A **Second machine** column sits beside Actual duties: equipment-wise duties minus actual duties (128 minus 124 shows 4). It is the number of rows where that equipment was a driver's second machine in the shift.
+- Pressing the number lists only those drivers (`actual` false); the title ends with "Second machine only" and Duty note names the machine that carries the actual duty. Pressing it again closes the list.
+- Two machines of the same equipment group in one shift are still one row with both door numbers, so they are not part of this number.

@@ -275,10 +275,16 @@ test('shift attendance equipment wise opens sites by shift, then equipment, then
  press(first,'4 actual duties · Sasti OC · Shift 1');
  const second=view();
  assert.deepEqual(buttons(second,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);
- assert.deepEqual(buttons(second,'mp-cat-count').map(n=>n.props['aria-label']),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 Red · All equipment','1 Blue · All equipment']);
+ assert.deepEqual(buttons(second,'mp-cat-count').map(n=>n.props['aria-label']),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 second machine · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 second machine · All equipment','1 Red · All equipment','1 Blue · All equipment'],'Second machine is equipment-wise minus actual duties; a zero is not a button');
  assert.match(nodes(second,'p').find(n=>n.props.className==='mp-att-foot').props.children.join(''),/^1 duty here is a second machine/);
  assert.equal(nodes(second,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).length,0,'a closed batch needs no line');
  assert.deepEqual(categories(second),[]);
+ // The Second machine number lists only the drivers for whom this equipment was a second machine in the shift.
+ press(second,'1 second machine · Graders');
+ {const extra=nodes(view(),ReportSection)[0].props;assert.equal(extra.title,'Shift Attendance Equipment Wise · Sasti OC · Shift 1 · 10-11-26 · Graders · Second machine only');
+  assert.deepEqual(extra.rows.map(r=>[r.equipment,r.actual,r.actualLabel]),[['Graders',false,'No — second machine']]);assert.equal(extra.description.split(' · ').slice(0,2).join(' · '),'1 equipment-wise duty · 0 actual duties');
+  assert.equal(buttons(view(),'mp-cat-count').find(n=>n.props['aria-label']==='1 second machine · Graders').props['aria-pressed'],true);}
+ press(view(),'1 second machine · Graders');assert.deepEqual(categories(view()),[],'pressing the same number again closes the list');
 
  // Step 3: pressing an equipment lists its drivers; date, site and shift are in the heading, not in the columns.
  buttons(second,'mp-cat-open')[0].props.onClick();
