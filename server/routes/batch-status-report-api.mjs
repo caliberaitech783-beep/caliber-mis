@@ -3,6 +3,7 @@ import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {batchStatusFilters,buildBatchStatusReport,buildBatchDetail} from '../../shared/batch-status-report.mjs';
+import {directLane,reportKey} from '../services/report-lane.mjs';
 
 const BATCH_COLUMNS=`b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.stage,b.created_at,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,COALESCE(b.creator_login,b.created_by,'') AS created_by`;
 const shiftMaster=async client=>(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id")).rows.map(r=>({...r.record_data,id:String(r.id)}));
@@ -15,13 +16,16 @@ async function lmvBooks(client,from,to){
  return rows.map(r=>({book_no:r.book_no,site:r.data.location||r.site,date:r.date,shift:vlbRecordShift(r.data),at:r.at,by:r.by}));
 }
 
-export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>Date.now()}){
+export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>Date.now(),lane=directLane}){
  // Steps 1 and 2: every permitted site, every due shift in the range.
  app.get('/api/reports/batch-status',...protect,async(req,res,next)=>{
-  let client;
   try{
    const filters=batchStatusFilters(req.query);
-   await ensureBooks();client=await pool.connect();
+   await ensureBooks();
+   const report=await lane.run(reportKey('batch-status',req),async()=>{
+   let client;
+   try{
+   client=await pool.connect();
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    const allowed=row=>siteAllowed(req.logBookScope,row.site);
    // A site is counted from the date of its first batch, so a site that started later is not shown as behind before that.
@@ -35,11 +39,16 @@ export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>
    const events=batches.length?(await client.query(`SELECT batch_id,action,actor,occurred_at AS at FROM mis_vlb_batch_audit WHERE batch_id=ANY($1::uuid[]) ORDER BY occurred_at,id LIMIT 300001`,[batches.map(b=>b.id)])).rows:[];
    if(events.length>300000)throw Object.assign(new Error('This range contains too much batch history. Select a shorter date range.'),{status:400});
    const books=(await lmvBooks(client,filters.from,filters.to)).filter(allowed);
-   const report=buildBatchStatusReport({...filters,now:now(),siteStarts,shifts:await shiftMaster(client),batches,events,lmvBooks:books});
+   const shifts=await shiftMaster(client);
    await client.query('COMMIT');
+   // The connection goes back to the pool before the report is put together.
+   client.release();client=null;
+   return buildBatchStatusReport({...filters,now:now(),siteStarts,shifts,batches,events,lmvBooks:books});
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
+   finally{client?.release();}
+   });
    res.set('Cache-Control','private, no-store').json(report);
-  }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error);}
-  finally{client?.release();}
+  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  });
  // Steps 3 and 4: one batch, its milestones and every recorded action.
  app.get('/api/reports/batch-status/batch',...protect,async(req,res,next)=>{

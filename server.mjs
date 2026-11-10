@@ -1,4 +1,5 @@
 import {registerLmvImport} from './server/routes/lmv-import.mjs';
+import {reportLane} from './server/services/report-lane.mjs';
 import {assertProductionSecurityConfig,legacyPasswordRouteGuard} from './server/services/production-security-config.mjs';
 import {operationalScanSql} from './shared/operational-start.mjs';
 import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
@@ -3592,7 +3593,7 @@ app.get('/api/health',async(_req,res)=>{
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
       cdirRosterRevision,
-      performance:{databasePool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},requestFeedCache:requestFeedCache.stats,slowRequestThresholdMs},
+      performance:{databasePool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},reportLane:reportLane.stats(),requestFeedCache:requestFeedCache.stats,slowRequestThresholdMs},
     });
   }catch(error){
     databaseReady=false;

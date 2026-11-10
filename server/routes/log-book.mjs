@@ -1,4 +1,5 @@
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
+import {reportLane} from '../services/report-lane.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {registerLogBookDashboard} from './log-book-dashboard.mjs';
@@ -181,7 +182,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
  const batchScope=protect[2];
- registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
+ registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane:reportLane});
  const attendanceAccess=(req,res,next)=>{
   const kind=req.method==='POST'?req.body?.kind:req.query?.kind;
   const page=kind==='vehicle'?'Vehicle Log Book':kind==='equipment'?'Equipment Log Book':'';
@@ -191,7 +192,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerShiftAttendance(app,{pool,protect:[requireSession,attendanceAccess,batchScope],ensureBooks:ensure});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
- registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure});
+ registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure,lane:reportLane});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
