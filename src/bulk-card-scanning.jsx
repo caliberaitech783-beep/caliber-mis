@@ -262,7 +262,8 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
    const data=await api('/api/vlb-batches/'+vlbBatch.id+'/card-counts',{signal:controller.signal,cache:'no-store'});
    if(!controller.signal.aborted)setBatchCardSummary(validVlbCardCounts(data,vlbBatch.id));
   }catch{if(!controller.signal.aborted)setBatchCardSummary(null)}finally{pending=false}};
-  void refresh();const timer=setInterval(refresh,4000);
+  // The saved-card headline is only for someone looking at it: a hidden tab stops asking.
+  void refresh();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void refresh()},4000);
   return()=>{controller.abort();clearInterval(timer)};
  },[kind,token,vlbBatch?.id]);
  const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=0;try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
