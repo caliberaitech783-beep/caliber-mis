@@ -1,7 +1,9 @@
 // Capture the rendered dashboard, not a separate table of KPI values.
 // A print keeps the screen's Day or Night palette and the clock row the dashboard sits under;
 // a PDF download stays on the Day palette.
-async function captureDashboard(dashboard, {forPrint = false, section = null} = {}) {
+// With reportPage, only that report of a dashboard made of reports (data-print-pages) is drawn, at the width where it
+// fills one sheet of the given shape. Nothing is returned when that report has nothing on screen.
+async function captureDashboard(dashboard, {forPrint = false, section = null, reportPage = null} = {}) {
   if (!dashboard) throw new Error("Dashboard is not available. Please reopen it and try again.");
   const {toCanvas} = await import("html-to-image");
   await document.fonts.ready;
@@ -43,7 +45,36 @@ async function captureDashboard(dashboard, {forPrint = false, section = null} = 
     root.querySelectorAll(".export-menu, .overlay, [role=dialog]").forEach(node => node.remove());
     // Buttons that only make sense on screen (Export, Smart Print) are left off the paper.
     root.querySelectorAll("[data-print-hide]").forEach(node => node.remove());
-    if (dashboard.hasAttribute?.("data-print-fit")) {
+    let reportRoot = null;
+    if (reportPage) {
+      clone.setAttribute("data-printing", "");
+      const reports = Array.from(clone.querySelectorAll(reportPage.selector));
+      const report = reports[reportPage.index];
+      if (!report) return null;
+      reports.forEach(node => { if (node !== report) node.style.display = "none"; });
+      // The first sheet keeps the clock row and the banner above its report; every other report stands alone.
+      reportRoot = reportPage.index ? report : root;
+      // Sticky banners and boxes that scroll up and down are opened first, so the height measured is the height printed.
+      root.querySelectorAll("*").forEach(node => {
+        const style = getComputedStyle(node);
+        if (style.position === "sticky") node.style.position = "static";
+        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) {
+          node.style.maxHeight = "none";
+          node.style.height = "auto";
+          node.style.overflowY = "visible";
+        }
+      });
+      const measure = width => {
+        host.style.width = `${width}px`;
+        let short = 0;
+        [reportRoot, ...reportRoot.querySelectorAll("*")].forEach(node => {
+          if (/(auto|scroll)/.test(getComputedStyle(node).overflowX)) short = Math.max(short, node.scrollWidth - node.clientWidth);
+        });
+        return {short, width: reportRoot.getBoundingClientRect().width, height: reportRoot.scrollHeight};
+      };
+      host.style.width = `${dashboardFitWidth(measure, reportPage.aspect)}px`;
+      if (reportRoot.scrollHeight < 2) return null;
+    } else if (dashboard.hasAttribute?.("data-print-fit")) {
       // A table wider than the screen scrolls sideways there. On paper nothing scrolls, so the copy is made as wide
       // as its widest table needs (up to a limit) and the whole dashboard is laid out again at that width.
       clone.setAttribute("data-printing", "");
@@ -74,10 +105,11 @@ async function captureDashboard(dashboard, {forPrint = false, section = null} = 
       }
     });
     // The section is rendered from inside the full copy, so its layout, palette and every dashboard rule stay as on screen.
+    if (reportRoot) root = reportRoot;
     if (section) root = root.querySelector("[data-print-section]") || root;
     const width = Math.ceil(Math.max(root.scrollWidth, root.getBoundingClientRect().width));
     const height = Math.ceil(root.scrollHeight);
-    const canvas = await toCanvas(root, {width, height, pixelRatio: Math.min(2, Math.sqrt(24000000 / (width * height))), backgroundColor: background || getComputedStyle(clone).backgroundColor || "#ffffff"});
+    const canvas = await toCanvas(root, {width, height, pixelRatio: Math.min(reportPage ? 2.5 : 2, Math.sqrt(24000000 / (width * height))), backgroundColor: background || getComputedStyle(clone).backgroundColor || "#ffffff"});
     return {canvas, background: background || "#ffffff"};
   } finally {
     host.remove();
@@ -133,6 +165,26 @@ export async function printDashboard(dashboard, title, section = null) {
 
 const MM_TO_PT = 72 / 25.4;
 const PRINT_MAX_WIDTH = 3200;
+const PRINT_MIN_WIDTH = 960;
+
+/**
+ * The width, in screen pixels, at which one report is drawn so that it fills one sheet: the narrowest width (so the
+ * largest print) at which no table is cut off at the side and the report is not taller than the sheet.
+ * measure(width) lays the report out and returns {short, width, height}; aspect is sheet width / sheet height.
+ * A report too long for one sheet at any width is drawn at the narrowest width that shows its tables whole.
+ */
+export function dashboardFitWidth(measure, aspect, min = PRINT_MIN_WIDTH, max = PRINT_MAX_WIDTH, step = 16) {
+  const seen = new Map(), at = width => { if (!seen.has(width)) seen.set(width, measure(width)); return seen.get(width); };
+  const smallest = (ok, low) => {
+    if (ok(low)) return low;
+    if (!ok(max)) return null;
+    let high = max;
+    while (high - low > step) { const mid = Math.round((low + high) / 2); if (ok(mid)) high = mid; else low = mid; }
+    return high;
+  };
+  const whole = smallest(width => at(width).short <= 1, min) ?? max;
+  return smallest(width => at(width).short <= 1 && at(width).height * aspect <= at(width).width, whole) ?? whole;
+}
 const PRINT_MARGIN_MM = 8;
 
 /**
@@ -216,29 +268,42 @@ function blankRowDetector(canvas) {
 
 /** The dashboard, or one of its sections, as it is on screen, on landscape pages of the paper chosen in Smart Print. */
 export async function dashboardPrintPdf(dashboard, page = {widthMm: 297, heightMm: 210}, section = null) {
-  const {canvas, background} = await captureDashboard(dashboard, {forPrint: true, section});
-  const {jsPDF} = await import("jspdf");
-  const paper = hexColor(background);
+  if (!dashboard) throw new Error("Dashboard is not available. Please reopen it and try again.");
   const pageWidth = page.widthMm * MM_TO_PT, pageHeight = page.heightMm * MM_TO_PT, margin = PRINT_MARGIN_MM * MM_TO_PT;
   const printableWidth = pageWidth - margin * 2, printableHeight = pageHeight - margin * 2;
-  const isBlankRow = blankRowDetector(canvas);
-  const fitted = dashboardPageFit(canvas.width, canvas.height, printableWidth, printableHeight, isBlankRow, dashboard?.hasAttribute?.("data-print-fit") ? PRINT_FIT_STEPS : []);
-  const scale = fitted.scale, left = margin + (printableWidth - canvas.width * scale) / 2;
+  // A dashboard made of reports (data-print-pages) gives each report its own sheet, drawn as large as the sheet allows.
+  const holder = section ? null : dashboard.matches?.("[data-print-pages]") ? dashboard : dashboard.querySelector?.("[data-print-pages]");
+  const selector = holder?.getAttribute("data-print-pages") || "";
+  const reports = selector ? dashboard.querySelectorAll(selector).length : 0;
+  const captures = [];
+  for (let index = 0; index < reports; index++) {
+    const capture = await captureDashboard(dashboard, {forPrint: true, reportPage: {selector, index, aspect: printableWidth / printableHeight}});
+    if (capture) captures.push(capture);
+  }
+  if (!captures.length) captures.push(await captureDashboard(dashboard, {forPrint: true, section}));
+  const {jsPDF} = await import("jspdf");
   const pdf = new jsPDF({unit: "pt", format: [pageWidth, pageHeight], orientation: "landscape", compress: true});
-  fitted.slices.forEach(({top, height}, index) => {
-    const part = document.createElement("canvas");
-    part.width = canvas.width;
-    part.height = height;
-    const context = part.getContext("2d", {alpha: false});
-    context.fillStyle = paper;
-    context.fillRect(0, 0, part.width, part.height);
-    context.drawImage(canvas, 0, top, part.width, height, 0, 0, part.width, height);
-    if (index) pdf.addPage([pageWidth, pageHeight], "landscape");
-    // The whole sheet takes the page colour, so Night mode prints dark to the edge instead of on white.
-    pdf.setFillColor(paper);
-    pdf.rect(0, 0, pageWidth, pageHeight, "F");
-    pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", left, margin, canvas.width * scale, height * scale);
-  });
+  let sheets = 0;
+  for (const {canvas, background} of captures) {
+    const paper = hexColor(background);
+    const isBlankRow = blankRowDetector(canvas);
+    const fitted = dashboardPageFit(canvas.width, canvas.height, printableWidth, printableHeight, isBlankRow, dashboard.hasAttribute?.("data-print-fit") ? PRINT_FIT_STEPS : []);
+    const scale = fitted.scale, left = margin + (printableWidth - canvas.width * scale) / 2;
+    fitted.slices.forEach(({top, height}) => {
+      const part = document.createElement("canvas");
+      part.width = canvas.width;
+      part.height = height;
+      const context = part.getContext("2d", {alpha: false});
+      context.fillStyle = paper;
+      context.fillRect(0, 0, part.width, part.height);
+      context.drawImage(canvas, 0, top, part.width, height, 0, 0, part.width, height);
+      if (sheets++) pdf.addPage([pageWidth, pageHeight], "landscape");
+      // The whole sheet takes the page colour, so Night mode prints dark to the edge instead of on white.
+      pdf.setFillColor(paper);
+      pdf.rect(0, 0, pageWidth, pageHeight, "F");
+      pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", left, margin, canvas.width * scale, height * scale);
+    });
+  }
   return pdf.output("blob");
 }
 

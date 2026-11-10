@@ -25,7 +25,8 @@ function RecordDetails({selection,filters,session,fetcher,close}){
  const openScan=async row=>{try{const response=await fetcher(`/api/log-books/${row.book_type}/${row.id}/source-image`,{headers:{Authorization:'Bearer '+session.token}});if(!response.ok)throw Error('No original scan is available for this entry. Manual entries may have no scan.');const blob=await response.blob();const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=row.book_no.replaceAll('/','-')+scanImageExtensionForType(blob.type);link.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){setState(s=>({...s,error:e.message}))}};
  return <Dialog title={(selection.kind==='vehicle'?'VLB':'ELB')+' saved cards'+(selection.location?' · '+selection.location:'')} close={close}><p className="lb-muted">{dateLabel(selection.from||filters.from)} – {dateLabel(selection.to||filters.to)} · Saved entries only</p>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<div className="lb-table-wrap"><table><thead><tr><th>Book number</th><th>Site / date</th><th>Door</th><th>Original</th></tr></thead><tbody>{state.records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.site}<small>{r.day}</small></td><td>{r.door||'—'}</td><td><button onClick={()=>void openScan(r)}>Download scan</button></td></tr>)}</tbody></table></div>{!state.records.length&&!state.loading&&<p>No saved cards match these filters.</p>}{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>
 }
-// The whole dashboard on A3 landscape sheets: as many pages as it needs, each ending between two panels.
+// The dashboard on A3 landscape sheets, one report to a sheet: the cards and graphs, Batch Status & Turnaround, then
+// OT & Multiple Duties, each drawn as large as its sheet allows. A report too long for one sheet runs on to the next.
 const A3_PAGE={widthMm:420,heightMm:297};
 const displayDay=value=>value.slice(8,10)+'-'+value.slice(5,7)+'-'+value.slice(2,4);
 export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters,ReportSection,printDashboard}){
@@ -60,7 +61,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
  // Lowest entry site on top, best site at the bottom, so weak sites are seen first.
  const rankedSites=sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k)));
  const max=Math.max(1,...(data?.bySite||[]).flatMap(r=>[r.vehicle,r.equipment])),trend=data?.trend||[],top=Math.max(4,Math.ceil(Math.max(0,...trend.flatMap(r=>[r.vehicle,r.equipment]))/4)*4),x=i=>52+(trend.length<2?plotWidth/2:i/(trend.length-1)*plotWidth),y=n=>190-n/top*150;
- return <div className="lb-print-root" data-print-fit="" ref={printRoot}><section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
+ return <div className="lb-print-root" data-print-fit="" data-print-pages=".lb-dashboard, .lb-reports > *" ref={printRoot}><section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
   <form className="lb-filters lb-range" aria-label="Dashboard dates" onSubmit={e=>{e.preventDefault();if(rangeValid(range))setApplied(a=>({...a,from:range.from,to:range.to}));}}>
    <label>From<input type="date" required min={OPERATIONAL_START} max={range.to||todayIst()} value={range.from} onChange={e=>setRange(r=>({...r,from:e.target.value}))}/></label>
    <label>To<input type="date" required min={range.from||OPERATIONAL_START} max={todayIst()} value={range.to} onChange={e=>setRange(r=>({...r,to:e.target.value}))}/></label>
@@ -72,7 +73,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
     <button type="button" disabled={loading||Boolean(printing)} onClick={smartPrint} title="Choose paper, printer, pages and copies"><Printer size={16}/>Smart Print</button>
    </span>
   </form>
-  {printing&&<p role="status" className="lb-muted">{printing} This takes a few seconds; the whole dashboard is being drawn.</p>}
+  {printing&&<p role="status" className="lb-muted" data-print-hide="">{printing} This takes a few seconds; the whole dashboard is being drawn.</p>}
   {printError&&<p role="alert" className="lb-error">{printError}</p>}
   {!rangeValid(range)&&<p role="status" className="lb-muted">Choose dates from 01 Nov 2026 up to today, with From not after To.</p>}
   {error&&<div role="alert" className="lb-error">{error} <button onClick={()=>setRefresh(n=>n+1)}>Retry</button></div>}{loading&&<p role="status" className="lb-loading">Loading site totals and graphs…</p>}

@@ -87,6 +87,41 @@ test("a dashboard of sections ends its pages between sections and keeps a headin
   assert.equal(dashboardPageFit(1000, 900, 500, 500, () => false, [1, 0.96, 0.8]).scale, 0.5, "a dashboard that already fits is not shrunk");
 });
 
+test("each report is drawn at the width where it fills one sheet", async () => {
+  const {dashboardFitWidth} = await import("../src/dashboard-pdf.mjs");
+  const aspect = 404 / 281;
+  // Cards and graphs: nothing is cut off at any width and the height hardly changes, so the width follows the sheet shape.
+  const cards = dashboardFitWidth(width => ({short: 0, width, height: 900}), aspect);
+  assert.ok(cards >= 900 * aspect && cards <= 900 * aspect + 16, "about 1294 px wide, not the 2239 px that left half the sheet empty");
+  // A table that needs 1500 px: never narrower than that, even though the sheet would have room below.
+  const table = dashboardFitWidth(width => ({short: Math.max(0, 1500 - width), width, height: 600}), aspect);
+  assert.ok(table >= 1500 && table <= 1516, "the table is shown whole");
+  // A short report is drawn at the narrowest width, so its print is as large as it can be.
+  assert.equal(dashboardFitWidth(width => ({short: 0, width, height: 300}), aspect), 960);
+  // A report that gets shorter as it gets wider: the narrowest width at which it is not taller than the sheet.
+  const reflow = dashboardFitWidth(width => ({short: 0, width, height: 1600000 / width}), aspect);
+  assert.ok(reflow >= Math.sqrt(1600000 * aspect) && reflow <= Math.sqrt(1600000 * aspect) + 16);
+  // Too long for one sheet at any width: the narrowest width that shows its tables whole, then it runs on to more sheets.
+  assert.ok(dashboardFitWidth(width => ({short: Math.max(0, 1200 - width), width, height: 9000}), aspect) <= 1216);
+  assert.equal(dashboardFitWidth(width => ({short: 5000 - width, width, height: 500}), aspect), 3200, "never wider than the limit");
+});
+
+test("the dashboard PDF gives each of its three reports its own sheet", () => {
+  const read = file => readFileSync(new URL("../src/" + file, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const screen = read("log-book-dashboard.jsx"), capture = read("dashboard-pdf.mjs"), css = read("log-book-dashboard.css");
+  assert.match(screen, /className="lb-print-root" data-print-fit="" data-print-pages="\.lb-dashboard, \.lb-reports > \*"/, "cards and graphs, Batch Status & Turnaround, OT & Multiple Duties");
+  assert.match(screen, /\{printing&&<p role="status" className="lb-muted" data-print-hide="">/, "the 'Preparing the PDF' line is not printed");
+  assert.match(capture, /const holder = section \? null : dashboard\.matches\?\.\("\[data-print-pages\]"\) \? dashboard : dashboard\.querySelector\?\.\("\[data-print-pages\]"\);/, "one section printed alone keeps its own layout");
+  assert.match(capture, /for \(let index = 0; index < reports; index\+\+\) \{\n\s+const capture = await captureDashboard\(dashboard, \{forPrint: true, reportPage: \{selector, index, aspect: printableWidth \/ printableHeight\}\}\);/, "each report is captured for the shape of the chosen paper");
+  assert.match(capture, /if \(!captures\.length\) captures\.push\(await captureDashboard\(dashboard, \{forPrint: true, section\}\)\);/, "other dashboards print as before");
+  assert.match(capture, /reports\.forEach\(node => \{ if \(node !== report\) node\.style\.display = "none"; \}\);/, "the other reports are left off that sheet");
+  assert.match(capture, /reportRoot = reportPage\.index \? report : root;/, "the clock row and banner stay on the first sheet only");
+  assert.match(capture, /host\.style\.width = `\$\{dashboardFitWidth\(measure, reportPage\.aspect\)\}px`;/);
+  assert.match(capture, /if \(sheets\+\+\) pdf\.addPage\(\[pageWidth, pageHeight\], "landscape"\);/);
+  assert.match(css, /\[data-printing\] \.lb-reports th\.column-filter-header\{min-width:0\}/, "table headings may wrap on paper, so the table can be drawn larger");
+  assert.match(css, /\[data-printing\] \.lb-reports \.reports-detail-table th \.sort-header svg\{display:none\}/, "no sort arrows on paper");
+});
+
 test("the MIS dashboard offers an A3 PDF and Smart Print of the complete page", () => {
   const read = file => readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const screen = read("log-book-dashboard.jsx"), capture = read("dashboard-pdf.mjs"), host = read("mis-dashboard.jsx"), main = read("main.jsx");
