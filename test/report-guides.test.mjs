@@ -37,6 +37,7 @@ test('the manual bar offers both downloads and stays off screens without a manua
  const ReportGuide=new Function('React','reportGuide',code+';return ReportGuide')(React,reportGuide);
  const html=renderToStaticMarkup(React.createElement(ReportGuide,{id:'daily'}));
  assert.match(html,/href="\/guides\/daily-en\.pdf" download=""/);assert.match(html,/href="\/guides\/daily-hi\.pdf" download=""/);assert.match(html,/Operating manual/);
+ assert.doesNotMatch(html,/<aside/,'style.css pins every bare aside to the left edge as the side menu; the bar must not be one');
  assert.equal(renderToStaticMarkup(React.createElement(ReportGuide,{id:'not-a-report'})),'');
 });
 test('the manual bar sits above the operations report tabs and the VLB and ELB report pages',()=>{
