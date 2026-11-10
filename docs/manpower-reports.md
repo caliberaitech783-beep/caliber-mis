@@ -132,3 +132,20 @@ Owner's sketch of 10 Nov 2026 (a marked-up copy of the site summary workbook): s
 - The drivers list replaces "OT in <month>" and "OT in <year>" with four columns: Red and Orange in the month, Red and Orange in the year. Brown stays in the driver's history. The colour columns for the selection are named "Red / Orange / Brown in selected dates". Shift Attendance Equipment Wise keeps its two combined OT columns.
 - The date-by-shift table is a screen table like the site lines: it has no Generate button. The drivers list and the case table under it export what is selected.
 - No new read: the table is built in the page from the cases already loaded.
+
+## OT in five steps, with duties, equipment categories and OT % (10 Nov 2026)
+
+Owner's final workbook of 10 Nov 2026 (`docs/OT-Multiple-Duties-Drill-Down-Plan-FINAL-2026-11-10.xlsx`): site, then date by shift, then equipment category, then drivers, then the driver's history. Decisions left blank in the workbook took option A.
+
+- **Cases and duties.** The site lines still count cases (one driver, several shifts). From the date table down every number is a duty (one driver, one shift, one date) and a duty carries the strongest colour of the cases it is part of. A driver who worked Shift 1 and Shift 2 is therefore red under both shifts, and the date table no longer adds up to the site line's case counts. This replaces the "case placed once, where it started" table of the same day; `startDate` and `startShift` stay on `ot` events but the page no longer reads them.
+- **OT %** is always duties of that colour divided by all duties of the same line. A line with no duty shows "—".
+- **Step 1** adds Total duties, Red OT % and Orange OT %. Every number on a site line opens that site; colours are chosen further down.
+- **Step 2** shows, per date and shift, the duties and the red, orange and brown duties among them, then Day duties, OT duties, Red OT % and Orange OT %. A strip of equipment categories above the table narrows it to one category. The duties number of a box opens Step 3; a coloured number goes straight to those drivers; Day duties opens the whole day and the All dates line every date.
+- **Step 3** lists the opened date and shift by equipment category: People, Equipment worked (different door numbers), Red OT and %, Orange OT and %, Brown, Total OT and %. For a whole day or all dates a Duties column is added, People means different persons and the percentages stay on duties.
+- **Equipment category** is the equipment group in the Equipment master, written the same way as on Shift Attendance Equipment Wise. A duty on two machines in one shift sits on the one with the most HMR hours, so People adds up to the duties.
+- **Step 4** lists one row per duty of the opened category (or of all), OT duties first, with the other shift worked, the colour and reason, and red and orange for the month and year. The case table under it holds only the cases behind the listed OT duties.
+- **Step 5** is the same history; it gains "OT % of duties" (duties named in the month's cases, out of the duties worked, never above them). Shift Attendance Equipment Wise shows the same column.
+- A trail above the tables (All sites › site › date and shift › category) steps back.
+- Steps 1 to 3 are drawn inside the shared report frame, so each has a Generate button and exports what the table shows.
+
+Data: `GET /api/reports/manpower` adds `otDuties`, one line per duty from saved VLB, ELB and LMV cards within the selections: `date`, `shift`, `site`, `siteKey`, the driver, `category` (designation), `equipment`, `doors`, `makeModel`, `logBooks`, `flag` (`red` | `orange` | `review` | `normal`), `flagLabel`, `others`, `hours`, `trips`, `books`. No new read.

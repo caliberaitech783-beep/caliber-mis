@@ -164,70 +164,99 @@ test('manpower reports export complete selected data, separate shift hours, and 
   for(const section of sections.filter(n=>n.props.category!=='manpower-review'))assert.equal(section.props.rows.length,137,'export receives every matching row');
   if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
  }
- // OT view: one line per site with red, orange, brown and drivers; pressing a number lists that site's drivers.
- const blank={key:'',data:null,error:''},props={session:{token:'test'},reportId:'ot',onSelect:()=>{}};
- const ot=async({site='',logBook='',tally=blank,driverOpen='',otPick={siteKey:'',severity:''},data=payload}={})=>{const view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[{...filters,site},{query,payload:data},'',false,0,{},false,false,logBook,tally,driverOpen,{siteKey:'',shift:'',equipment:'',flag:''},otPick]);return ()=>view(props);};
+ // OT view in five steps: every site, one site date by shift, a date and shift by equipment category, the drivers of a category, one driver's history.
+ // Cases two in three are Shift 1 + Shift 2 (91), the rest Shift 2 + Shift 3 (46); odd drivers work a Tipper, even ones an Excavator.
+ // Ten more Tipper drivers worked a normal Shift 1. So 284 duties: Shift 1 = 91 red + 10 normal, Shift 2 = 137 red, Shift 3 = 46 red.
+ const pair=id=>id%3?['S1','S2']:['S2','S3'],machine=id=>id%2?'Tipper':'Excavator';
+ const cases=rows.map(r=>({...r,shifts:pair(r.id).map(code=>filters.from+' '+code).join('; ')}));
+ const duty=(id,code,flag,key='E'+id)=>({id:key+code,date:filters.from,shift:code,site:'Sasti OC',siteKey:'sasti ob',employeeKey:key,employeeId:key,caliberCode:'C'+key,employeeName:'Example',category:'Volvo Driver',equipment:machine(id),doors:'V'+key,makeModel:'Volvo FMX',logBooks:flag==='normal'?['VLB']:rows[id].logBooks,logBook:'VLB',flag,flagLabel:flag==='normal'?'Normal duty':'RED — Back-to-back OT',others:'',hours:8,trips:null,books:'CARD'});
+ const otDuties=[...rows.flatMap(r=>pair(r.id).map(code=>duty(r.id,code,'red'))),...Array.from({length:10},(_,i)=>duty(1,'S1','normal','N'+i))];
+ const otPayload={...payload,ot:cases,otDuties};
+ const blank={key:'',data:null,error:''},props={session:{token:'test'},reportId:'ot',onSelect:()=>{}},closed={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
+ const ot=async({site='',logBook='',tally=blank,driverOpen='',otPick=closed,data=otPayload}={})=>{const view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[{...filters,site},{query,payload:data},'',false,0,{},false,false,logBook,tally,driverOpen,{siteKey:'',shift:'',equipment:'',flag:''},otPick]);return ()=>view(props);};
  const categories=tree=>nodes(tree,ReportSection).map(n=>n.props.category);
+ const section=(tree,category)=>nodes(tree,ReportSection).find(n=>n.props.category===category)?.props;
  const counts=tree=>nodes(tree,'button').filter(n=>/mp-cat-count/.test(n.props.className||'')).map(n=>n.props['aria-label']);
- const sasti={siteKey:'sasti ob',severity:''};
+ const box=(tree,name)=>nodes(tree,'div').find(n=>n.props['aria-label']===name);
+ const press=(view,label)=>nodes(view(),'button').find(n=>n.props['aria-label']===label).props.onClick();
+ const sasti={...closed,siteKey:'sasti ob'},shiftOne={...sasti,scope:true,date:filters.from,shift:'S1'},everyone={...sasti,scope:true,equipment:'*'};
+ // Step 1: one line per site; cases by colour, total duties and the share of red and orange duties.
  {const view=await ot(),overview=view();
-  assert.deepEqual(categories(overview),[],'no driver list before a number is pressed');
-  assert.deepEqual(nodes(overview,'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Jayant OC','Sasti OC','All sites']);
-  assert.deepEqual(counts(overview),['137 Red · Sasti OC','137 drivers · Sasti OC','137 Red · All sites','137 drivers · All sites'],'a site with no case shows zeros, not buttons');
+  assert.deepEqual(categories(overview),['manpower-ot-sites'],'only the site lines before a number is pressed');
+  assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Jayant OC','Sasti OC','All sites']);
+  assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Site','Total duties','Red','Orange','Brown','Red OT %','Orange OT %','Drivers']);
+  assert.deepEqual(counts(overview),['284 duties · Sasti OC','137 Red · Sasti OC','137 drivers · Sasti OC','284 duties · All sites','137 Red · All sites','137 drivers · All sites'],'a site with nothing shows zeros, not buttons');
+  assert.deepEqual(section(overview,'manpower-ot-sites').rows.map(r=>[r.site,r.duties,r.red,r.redPct,r.orangePct,r.drivers]),[['Jayant OC',0,0,'—','—',0],['Sasti OC',284,137,'96.5%','0%',137],['All sites',284,137,'96.5%','0%',137]],'the export holds what the table shows; red OT % is red duties out of all duties');
   assert.deepEqual(nodes(nodes(overview,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props.children),['All log books','VLB','ELB','LMV'],'log book is one selector');
-  assert.equal(nodes(overview,'button').filter(n=>/mp-site-card|mp-ot-count|mp-ot-book/.test(n.props.className||'')).length,0,'the log-book grid and the site cards are gone');
-  // Pressing a number opens that site's drivers (one row each) and, under them, each case.
-  nodes(overview,'button').find(n=>n.props['aria-label']==='137 Red · Sasti OC').props.onClick();
-  const [drivers,each]=nodes(view(),ReportSection);assert.deepEqual(categories(view()),['manpower-ot-drivers','manpower-ot']);
-  assert.equal(drivers.props.title,'Sasti OC · Red only · drivers');assert.equal(drivers.props.rows.length,137,'one row per driver');assert.equal(each.props.rows.length,137,'export receives every matching case');
-  assert.deepEqual(drivers.props.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','otMonthRed','otMonthOrange','otYearRed','otYearOrange','category','red','orange','review','total','logBook','dutyDates','shifts','equipment'],'one site: no Site column; the month and year counts sit right after the name');
-  assert.deepEqual([drivers.props.recordDateFilter,each.props.recordDateFilter],[false,false],'the page dates are the only date control');
-  {const value=key=>drivers.props.columns.find(c=>c.key===key).value(drivers.props.rows[1]);assert.deepEqual(['employeeId','category','red','orange','review','total','dutyDates','logBook'].map(value),['E1','Volvo Driver',1,0,0,1,filters.from,'ELB']);}
-  {const cols=each.props.columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(rows[0]),15);assert.equal(cols.find(c=>c.key==='logBook').value(rows[0]),'VLB + ELB');const reason=cols.find(c=>c.key==='reason');assert.match(reason.value(rows[0]),/^RED/);assert.match(reason.render(rows[0]).props.className,/mp-flag-red/);assert.equal(each.props.rowClassName(rows[0]),'mp-ot-red');}
-  nodes(view(),'button').find(n=>n.props['aria-label']==='137 Red · Sasti OC').props.onClick();assert.deepEqual(categories(view()),[],'pressing the same number again closes the list');
-  nodes(view(),'button').find(n=>n.props['aria-label']==='137 drivers · All sites').props.onClick();
-  const everywhere=nodes(view(),ReportSection)[0];assert.equal(everywhere.props.title,'All sites · All colours · drivers');assert.equal(everywhere.props.columns[0].key,'site','every site: the Site column returns');}
- // An opened site shows its cases date by shift, each case once in the shift where it started; a number there narrows the two lists.
- {const view=await ot({otPick:sasti}),grid=tree=>nodes(tree,'div').find(n=>/mp-ot-grid/.test(n.props.className||'')),dates=tree=>nodes(grid(tree),'th').filter(n=>n.props.scope==='row').map(n=>[].concat(n.props.children)[0]);
-  assert.equal(grid((await ot())()),undefined,'no date table before a site is opened');
-  assert.deepEqual(nodes(grid(view()),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Date','Shift 1','Shift 2','Shift 3','Cases','Drivers']);
-  assert.deepEqual(dates(view()),['10-11-26'],'one selected date: one row and no All dates row');
-  assert.deepEqual(nodes(grid(view()),'button').map(n=>n.props['aria-label']),['91 Red · 10-11-26 · Shift 1','46 Red · 10-11-26 · Shift 3','137 cases · 10-11-26'],'the boxes add up to the site line; an empty shift shows 0, not a button');
-  const press=label=>nodes(grid(view()),'button').find(n=>n.props['aria-label']===label).props.onClick(),lists=()=>nodes(view(),ReportSection);
-  press('46 Red · 10-11-26 · Shift 3');
-  assert.deepEqual(lists().map(n=>[n.props.title,n.props.rows.length]),[['Sasti OC · 10-11-26 · Shift 3 · Red only · drivers',46],['Sasti OC · 10-11-26 · Shift 3 · Red only · each case',46]]);
-  assert.match(lists()[0].props.description,/^Cases that started on 10-11-26 · Shift 3 · VLB, ELB and LMV · /);
-  assert.equal(nodes(grid(view()),'button').find(n=>n.props['aria-label']==='46 Red · 10-11-26 · Shift 3').props['aria-pressed'],true);
-  press('46 Red · 10-11-26 · Shift 3');assert.deepEqual(lists().map(n=>[n.props.title,n.props.rows.length]),[['Sasti OC · All colours · drivers',137],['Sasti OC · All colours · each case',137]],'pressing the same number again shows the whole site');
-  press('137 cases · 10-11-26');assert.deepEqual(lists().map(n=>n.props.title),['Sasti OC · 10-11-26 · All colours · drivers','Sasti OC · 10-11-26 · All colours · each case']);
-  // An overnight case that began the evening before the selected date keeps its own row, and the All dates row returns.
-  const night=await ot({otPick:sasti,data:{...payload,ot:rows.map(r=>r.id?r:{...r,startDate:'2026-11-09',startShift:'S3'})}});
-  assert.deepEqual(dates(night()),['09-11-26','10-11-26','All dates']);
-  assert.deepEqual(nodes(grid(night()),'button').map(n=>n.props['aria-label']),['1 Red · 09-11-26 · Shift 3','1 case · 09-11-26','91 Red · 10-11-26 · Shift 1','45 Red · 10-11-26 · Shift 3','136 cases · 10-11-26','91 Red · All dates · Shift 1','46 Red · All dates · Shift 3','137 cases · All dates']);
-  assert.deepEqual(nodes((await ot({otPick:{...sasti,date:'2026-10-01',shift:'S9'}}))(),ReportSection).map(n=>n.props.rows.length),[137,137],'a stale date or shift is ignored');}
+  // Step 2: pressing any number of a site opens it date by shift.
+  press(view,'137 Red · Sasti OC');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates']);
+  const grid=()=>box(view(),'Duties by date and shift');
+  assert.deepEqual(nodes(grid(),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Date','Shift 1','Shift 2','Shift 3','Day duties','OT duties','Red OT %','Orange OT %']);
+  assert.deepEqual(nodes(grid(),'th').filter(n=>n.props.scope==='row').map(n=>[].concat(n.props.children)[0]),['10-11-26'],'one selected date: one row and no All dates row');
+  assert.deepEqual(nodes(grid(),'button').filter(n=>/mp-cat-count/.test(n.props.className)).map(n=>n.props['aria-label']),['101 duties · 10-11-26 · Shift 1','91 Red · 10-11-26 · Shift 1','137 duties · 10-11-26 · Shift 2','137 Red · 10-11-26 · Shift 2','46 duties · 10-11-26 · Shift 3','46 Red · 10-11-26 · Shift 3','284 duties · 10-11-26'],'a driver on two shifts is counted in both');
+  assert.deepEqual(section(view(),'manpower-ot-dates').rows.map(r=>[r.date,r.S1_duties,r.S1_red,r.S2_red,r.S3_duties,r.duties,r.ot,r.redPct]),[['10-11-26',101,91,137,46,284,274,'96.5%']]);
+  // Step 3: a box opens that date and shift by equipment category.
+  press(view,'101 duties · 10-11-26 · Shift 1');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates','manpower-ot-categories']);
+  const byCategory=()=>section(view(),'manpower-ot-categories');
+  assert.equal(byCategory().title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+  assert.deepEqual(byCategory().rows.map(r=>[r.equipment,r.people,r.machines,r.red,r.redPct,r.orange,r.ot,r.otPct]),[['Tipper',55,55,45,'81.8%',0,45,'81.8%'],['Excavator',46,46,46,'100%',0,46,'100%'],['All categories',101,101,91,'90.1%',0,91,'90.1%']]);
+  assert.ok(!byCategory().columns.some(c=>c.key==='duties'),'one shift: people and duties are the same number');
+  // Step 4: a category lists its drivers, OT duties first; a colour lists only those.
+  nodes(box(view(),'Duties by equipment category'),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
+  assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates','manpower-ot-categories','manpower-ot-drivers','manpower-ot']);
+  const drivers=()=>section(view(),'manpower-ot-drivers'),each=()=>section(view(),'manpower-ot');
+  assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · drivers');assert.equal(drivers().rows.length,55);
+  assert.deepEqual([drivers().rows[0].flag,drivers().rows[44].flag,drivers().rows[45].flag],['red','red','normal'],'OT duties first');
+  assert.deepEqual(drivers().columns.map(c=>c.key),['employeeId','caliberCode','employeeName','category','doors','makeModel','logBook','others','flagLabel','hours','trips','otMonthRed','otMonthOrange','otYearRed','otYearOrange','books'],'one date, shift, site and category: none of them is a column');
+  assert.deepEqual([drivers().recordDateFilter,each().recordDateFilter],[false,false],'the page dates are the only date control');
+  assert.equal(drivers().rowClassName(drivers().rows[0]),'mp-duty-red');assert.match(drivers().columns.find(c=>c.key==='flagLabel').render(drivers().rows[0]).props.className,/mp-flag-red/);
+  assert.equal(each().rows.length,45,'the cases behind the listed OT duties');
+  {const cols=each().columns;assert.equal(cols.find(c=>c.key==='combinedHours').value(cases[1]),15);const reason=cols.find(c=>c.key==='reason');assert.match(reason.render(cases[1]).props.className,/mp-flag-red/);assert.equal(each().rowClassName(cases[1]),'mp-ot-red');}
+  press(view,'45 Red · Tipper');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · Red only · drivers');assert.equal(drivers().rows.length,45);
+  press(view,'45 Red · Tipper');assert.deepEqual(categories(view()).slice(-1),['manpower-ot-categories'],'pressing the same number again closes the list');
+  // A colour in a box goes straight to those drivers, across every category.
+  press(view,'46 Red · 10-11-26 · Shift 3');assert.equal(drivers().title,'Step 4 · Sasti OC · 10-11-26 · Shift 3 · All categories · Red only · drivers');assert.equal(drivers().rows.length,46);assert.ok(drivers().columns.some(c=>c.key==='equipment'));
+  // A whole day: people are different persons, so Duties returns as a column.
+  press(view,'284 duties · 10-11-26');assert.equal(byCategory().title,'Step 3 · Sasti OC · 10-11-26 · All shifts · by equipment category');
+  assert.deepEqual(byCategory().rows.map(r=>[r.equipment,r.people,r.duties]),[['Tipper',78,146],['Excavator',69,138],['All categories',147,284]]);
+  // The strip above the date table narrows it to one equipment category.
+  assert.deepEqual(nodes(box(view(),'Equipment category'),'button').map(n=>n.props['aria-label']),['All categories · 284 duties','Tipper · 146 duties','Excavator · 138 duties']);
+  press(view,'Excavator · 138 duties');assert.deepEqual(section(view(),'manpower-ot-dates').rows.map(r=>[r.duties,r.S1_duties]),[[138,46]]);assert.match(section(view(),'manpower-ot-dates').title,/ · Excavator$/);
+  // The trail steps back: the site name closes everything under the date table, All sites closes the site.
+  const trail=()=>nodes(nodes(view(),'p').find(n=>n.props.className==='mp-trail'),'button');
+  press(view,'46 duties · 10-11-26 · Shift 1');assert.deepEqual(trail().map(n=>n.props.children),['All sites','Sasti OC','10-11-26 · Shift 1']);
+  trail()[1].props.onClick();assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates']);
+  trail()[0].props.onClick();assert.deepEqual(categories(view()),['manpower-ot-sites']);}
+ // Several dates: every date has a row, then All dates; a stale date or shift is read as the whole selection.
+ {const two={...filters,to:'2026-11-11'},twoQuery=new URLSearchParams(two).toString();
+  const view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[two,{query:twoQuery,payload:otPayload},'',false,0,{},false,false,'',blank,'',{siteKey:'',shift:'',equipment:'',flag:''},{...sasti,scope:true,date:'2026-10-01',shift:'S9'}]),tree=view(props);
+  assert.deepEqual(nodes(box(tree,'Duties by date and shift'),'th').filter(n=>n.props.scope==='row').map(n=>[].concat(n.props.children)[0]),['10-11-26','11-11-26','All dates']);
+  assert.equal(section(tree,'manpower-ot-categories').title,'Step 3 · Sasti OC · All dates · All shifts · by equipment category');
+  assert.ok(counts(tree).includes('284 duties · All dates'));}
  // The log book selector narrows every number; a duty saved in two log books counts under both.
- for(const [book,expected] of [['VLB',46],['ELB',47],['LMV',45]]){const tree=(await ot({logBook:book,otPick:sasti}))();assert.equal(nodes(tree,ReportSection)[1].props.rows.length,expected,book);assert.ok(counts(tree).includes(expected+' Red · Sasti OC'));assert.match(nodes(tree,ReportSection)[0].props.description,new RegExp(' · '+book+' · '));}
+ for(const [book,expected,worked] of [['VLB',46,102],['ELB',47,94],['LMV',45,90]]){const tree=(await ot({logBook:book,otPick:everyone}))();assert.equal(section(tree,'manpower-ot').rows.length,expected,book);assert.ok(counts(tree).includes(expected+' Red · Sasti OC'));assert.ok(counts(tree).includes(worked+' duties · Sasti OC'),book);assert.match(section(tree,'manpower-ot-drivers').description,new RegExp(' · '+book+' · '));}
  // The Site selection narrows the list of sites; one site opens by itself.
- {const only=(await ot({site:'Sasti OC'}))();assert.deepEqual(nodes(nodes(only,'div').find(n=>n.props['aria-label']==='Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Sasti OC']);assert.deepEqual(categories(only),['manpower-ot-drivers','manpower-ot']);
-  const other=(await ot({site:'Jayant OC'}))();assert.equal(nodes(other,ReportSection)[0].props.rows.length,0,'another site never shows this site’s drivers');
-  assert.deepEqual(categories((await ot({otPick:{siteKey:'not a site',severity:'red'}}))()),[],'a stale choice is ignored');}
- // Drivers list: OT counts for the month and year, and the name opens that driver's month-wise history.
+ {const only=(await ot({site:'Sasti OC'}))();assert.deepEqual(nodes(box(only,'Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Sasti OC']);assert.deepEqual(categories(only),['manpower-ot-sites','manpower-ot-dates']);
+  const other=(await ot({site:'Jayant OC'}))();assert.deepEqual(section(other,'manpower-ot-dates').rows.map(r=>r.duties),[0],'another site never shows this site’s duties');
+  assert.deepEqual(categories((await ot({otPick:{...closed,siteKey:'not a site',scope:true,equipment:'*'}}))()),['manpower-ot-sites'],'a stale choice is ignored');}
+ // Drivers list: red and orange for the month and year, and the name opens that driver's month-wise history.
  {const event=(id,date,severity)=>({id,date,dates:date,severity,reason:severity.toUpperCase()+' — fixture',shifts:date+' S1; '+date+' S2',logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:15,books:'CARD'});
   const yearData={year:'2026',month:'2026-11',yearFrom:'2026-11-01',yearTo:'2026-11-10',monthFrom:'2026-11-01',monthTo:'2026-11-10',drivers:[{employeeKey:'E1',siteKey:'sasti ob',month:{red:4,orange:1,review:0,total:5},year:{red:20,orange:4,review:1,total:25},events:[event('a','2026-11-09','red'),event('b','2026-11-03','orange')],duties:{'2026-11':9}}]};
-  const loaded={key:'sasti ob|2026-11|0',data:yearData,error:''},first=view=>nodes(view(),ReportSection)[0].props;
-  const waiting=first(await ot({otPick:sasti}));assert.deepEqual(waiting.columns.slice(3,7).map(c=>c.label),['Red in Nov 2026','Orange in Nov 2026','Red in 2026','Orange in 2026']);
-  assert.deepEqual([waiting.rows[0].otMonthRed,waiting.rows[0].otMonthOrange,waiting.rows[0].otYearRed,waiting.rows[0].otYearOrange],Array(4).fill('Checking…'),'counts are never shown as zero before they load');
-  assert.equal(first(await ot({otPick:sasti,tally:{key:'sasti ob|2026-11|0',data:null,error:'Unable to load the month and year counts.'}})).rows[0].otYearRed,'Unavailable');
-  assert.equal(first(await ot({otPick:{siteKey:'*',severity:''},tally:loaded})).rows[1].otYearRed,'Press the name','in a list of every site the counts are read for the driver whose name is pressed');
-  assert.equal(first(await ot({otPick:{siteKey:'*',severity:''},tally:loaded,driverOpen:'E1|sasti ob'})).rows[1].otYearRed,20);
-  const view=await ot({otPick:sasti,tally:loaded});
-  assert.deepEqual(first(view).rows.slice(0,3).map(r=>[r.employeeId,r.otMonthRed,r.otMonthOrange,r.otYearRed,r.otYearOrange]),[['E0',0,0,0,0],['E1',4,1,20,4],['E2',0,0,0,0]],'red and orange are counted apart, for the month and for the year');
-  const name=first(view).columns.find(c=>c.key==='employeeName'),button=name.render(first(view).rows[1]);assert.equal(button.type,'button');assert.equal(button.props.children,'Example');assert.equal(name.value(first(view).rows[1]),'Example','exports keep the plain name');
-  button.props.onClick();assert.deepEqual(categories(view()),['manpower-ot-drivers','manpower-ot-driver-history','manpower-ot']);
-  const history=nodes(view(),ReportSection)[1].props;assert.deepEqual(history.rows.map(r=>[r.date,r.severity]),[['2026-11-09','red'],['2026-11-03','orange']]);assert.equal(history.title,'Example · flagged duties in 2026');assert.equal(history.rowClassName(history.rows[0]),'mp-ot-red');
-  const monthTable=nodes(nodes(view(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr').map(row=>[].concat(row.props.children).map(cell=>cell.props.children));
-  assert.deepEqual(monthTable,[['Month','Duties','Red','Orange','Brown','OT times'],['Nov 2026',9,1,1,0,2],[['Year ','2026'],9,1,1,0,2]],'duties and OT month by month, then the year');
-  first(view).columns.find(c=>c.key==='employeeName').render(first(view).rows[1]).props.onClick();assert.deepEqual(categories(view()),['manpower-ot-drivers','manpower-ot'],'pressing the name again closes the history');}
+  const loaded={key:'sasti ob|2026-11|0',data:yearData,error:''},list=view=>section(view(),'manpower-ot-drivers'),row=(view,id)=>list(view).rows.find(r=>r.employeeId===id);
+  const waiting=await ot({otPick:everyone});assert.deepEqual(list(waiting).columns.filter(c=>/^ot(Month|Year)/.test(c.key)).map(c=>c.label),['Red in Nov 2026','Orange in Nov 2026','Red in 2026','Orange in 2026']);
+  assert.deepEqual(['otMonthRed','otMonthOrange','otYearRed','otYearOrange'].map(key=>row(waiting,'E1')[key]),Array(4).fill('Checking…'),'counts are never shown as zero before they load');
+  assert.equal(row(await ot({otPick:everyone,tally:{key:'sasti ob|2026-11|0',data:null,error:'Unable to load the month and year counts.'}}),'E1').otYearRed,'Unavailable');
+  const all={...everyone,siteKey:'*'};
+  assert.equal(row(await ot({otPick:all,tally:loaded}),'E1').otYearRed,'Press the name','in a list of every site the counts are read for the driver whose name is pressed');
+  assert.equal(row(await ot({otPick:all,tally:loaded,driverOpen:'E1|sasti ob'}),'E1').otYearRed,20);assert.equal(list(await ot({otPick:all})).columns[1].key,'site','every site: the Site column returns after the shift');
+  const view=await ot({otPick:everyone,tally:loaded});
+  assert.deepEqual(['E0','E1','E2'].map(id=>[row(view,id).otMonthRed,row(view,id).otMonthOrange,row(view,id).otYearRed,row(view,id).otYearOrange]),[[0,0,0,0],[4,1,20,4],[0,0,0,0]],'red and orange are counted apart, for the month and for the year');
+  const name=()=>list(view).columns.find(c=>c.key==='employeeName'),button=name().render(row(view,'E1'));assert.equal(button.type,'button');assert.equal(button.props.children,'Example');assert.equal(name().value(row(view,'E1')),'Example','exports keep the plain name');
+  button.props.onClick();assert.deepEqual(categories(view()).slice(-3),['manpower-ot-drivers','manpower-ot-driver-history','manpower-ot']);
+  const history=section(view(),'manpower-ot-driver-history');assert.deepEqual(history.rows.map(r=>[r.date,r.severity]),[['2026-11-09','red'],['2026-11-03','orange']]);assert.equal(history.title,'Example · flagged duties in 2026');assert.equal(history.rowClassName(history.rows[0]),'mp-ot-red');
+  const monthTable=nodes(nodes(view(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr').map(line=>[].concat(line.props.children).map(cell=>cell.props.children));
+  assert.deepEqual(monthTable,[['Month','Duties','Red','Orange','Brown','OT times','OT % of duties'],['Nov 2026',9,1,1,0,2,'44.4%'],[['Year ','2026'],9,1,1,0,2,'44.4%']],'duties and OT month by month, then the year; four of the nine duties were part of a case');
+  name().render(row(view,'E1')).props.onClick();assert.deepEqual(categories(view()).slice(-2),['manpower-ot-drivers','manpower-ot'],'pressing the name again closes the history');}
  // Cards to correct: one line on the OT and attendance pages, the full list on Manpower by Category.
  {const flawed={...payload,exceptions:[{id:'x',date:filters.from,site:'Sasti OC',siteKey:'sasti ob',shift:'S1',logBook:'VLB',reason:'Equipment master match is missing.'}],attendanceEquipment:[],attendanceSites:[],attendanceShifts:[]};
   const page=async reportId=>(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload:flawed},'',false,0,{}]))({session:{token:'test'},reportId,onSelect:()=>{}});
@@ -309,11 +338,11 @@ test('shift attendance equipment wise opens sites by shift, then equipment, then
   const name=rowsOf(history).columns.find(c=>c.key==='employeeName'),button=name.render(rowsOf(history).rows[1]);assert.equal(button.props['aria-label'],'History of Driver 2');assert.equal(name.value(rowsOf(history).rows[1]),'Driver 2','exports keep the plain name');
   button.props.onClick();assert.deepEqual(categories(history()),['shift-attendance','manpower-ot-driver-history']);
   const table=nodes(nodes(history(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr').map(row=>[].concat(row.props.children).map(cell=>cell.props.children));
-  assert.deepEqual(table,[['Month','Duties','Red','Orange','Brown','OT times'],['Nov 2026',8,1,0,0,1],[['Year ','2026'],8,1,0,0,1]]);
+  assert.deepEqual(table,[['Month','Duties','Red','Orange','Brown','OT times','OT % of duties'],['Nov 2026',8,1,0,0,1,'25%'],[['Year ','2026'],8,1,0,0,1,'25%']]);
   assert.deepEqual(nodes(history(),ReportSection)[1].props.rows.map(r=>r.id),['a']);
   // A driver with duties and no OT still has a history.
   rowsOf(history).columns.find(c=>c.key==='employeeName').render(rowsOf(history).rows[0]).props.onClick();
-  assert.deepEqual(nodes(nodes(history(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr')[1].props.children.map(cell=>cell.props.children),['Nov 2026',10,0,0,0,0]);}
+  assert.deepEqual(nodes(nodes(history(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr')[1].props.children.map(cell=>cell.props.children),['Nov 2026',10,0,0,0,0,'0%']);}
 
  // A wider selection brings back the columns that no longer fit in the heading.
  {const all=nodes((await mount({pick:{siteKey:'*',shift:'',equipment:'*',flag:'zero'}}))(),ReportSection)[0].props;
