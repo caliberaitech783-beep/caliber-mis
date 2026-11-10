@@ -26,3 +26,18 @@ test('Jayant deletion uses the new number without changing the recipient for oth
  await assert.rejects(()=>sendDeletionOtp({...request,to:jayant,sites:['Jayant OC','Sasti OC']},transport),/separately/);
  assert.deepEqual(delivered,[jayant,DELETION_PHONE]);
 });
+
+test('Dudhichua East and Dudhichua each use their own deletion number',async()=>{
+ const pool={query:async()=>({rows:[{setting_value:{enabled:true,purpose:'logBookDeletionOtp',recipient:DELETION_PHONE}}]})};
+ const sent=[];
+ const transport={sendTemplate:async({to})=>sent.push(to)};
+ const request={pool,otp:'123456',requestId:'dudhichua-routing',count:1};
+ const east='919113496780',west='916394694715';
+ await sendDeletionOtp({...request,to:east,sites:['Dudhichua East OC','Dudhichua East OB']},transport);
+ await sendDeletionOtp({...request,to:west,sites:['Dudhichau OC','Dudhichua OC','Dudhichua West']},transport);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:east,sites:['Dudhichua OC']},transport),/Invalid/);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:west,sites:['Dudhichua East OC']},transport),/Invalid/);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:DELETION_PHONE,sites:['Dudhichua OC']},transport),/Invalid/);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:east,sites:['Dudhichua East OC','Dudhichua OC']},transport),/separately/);
+ assert.deepEqual(sent,[east,west]);
+});
