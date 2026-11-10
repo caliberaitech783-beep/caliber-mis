@@ -288,3 +288,16 @@ test('driver history counts actual duties month by month for every driver, besid
  // The attendance rows carry the driver key that joins them to this history.
  const rows=report([card(1,1),card(2,2)]).attendanceEquipment;assert.deepEqual(rows.map(x=>x.employeeKey),[rows[0].employeeKey,rows[0].employeeKey]);assert.ok(rows[0].employeeKey);
 });
+test('OT duty lines list every duty with the colour of its case, its equipment category and the other shift worked',()=>{
+ const other={...assets[1],group:'water tanker'};
+ const r=buildManpowerReport({records:[card(1,1),card(2,2),card(3,1,{assetId:2,door:'V2',employeeId:22,caliberId:'102'})],assets:[assets[0],other],employees:[employees[0],{...employees[1],name:'Driver Two',designation:'Tanker Driver'}],shifts,filters:{from:date,to:date}});
+ assert.deepEqual(r.otDuties.map(d=>[d.employeeName,d.shift,d.flag,d.equipment,d.others,d.category,d.logBook,d.doors]),[
+  ['Driver One','S1','red','Tipper','Also worked S2','Category not in Employee master','VLB','V1'],
+  ['Driver Two','S1','normal','Water Tanker','','Tanker Driver','VLB','V2'],
+  ['Driver One','S2','red','Tipper','Also worked S1','Category not in Employee master','VLB','V1']]);
+ assert.match(r.otDuties[0].flagLabel,/^RED/);assert.equal(r.otDuties[1].flagLabel,'Normal duty');
+ assert.equal(r.ot.length,1,'two red duties are one case');
+ assert.deepEqual(report([card(1,1),card(2,2)],{filters:{from:date,to:date,shift:'S2'}}).otDuties.map(d=>d.shift),['S2'],'the Shift selection keeps only matching duties');
+ const lmv=card(4,3,{employeeId:22,caliberId:'102',assetId:2,door:'V2'},{book_type:'lmv'});
+ assert.deepEqual(buildManpowerReport({records:[lmv],assets,employees,shifts,filters:{from:date,to:date}}).otDuties.map(d=>[d.logBook,d.flag]),[['LMV','normal']],'LMV duties are part of the OT duty count');
+});

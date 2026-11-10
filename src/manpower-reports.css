@@ -55,3 +55,6 @@
 .mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-orange:hover>td{background:color-mix(in srgb,#e67e00 30%,var(--card,#fff));color:inherit}
 .mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-review:hover>td{background:color-mix(in srgb,#8b4513 40%,var(--card,#fff));color:inherit}
 .mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-zero:hover>td{background:color-mix(in srgb,#2563c8 24%,var(--card,#fff));color:inherit}
+.mp-ot-duties{min-width:40px;padding:3px 8px;font-weight:750}.mp-ot-cell{align-items:center}.mp-ot-grid thead th small,.mp-ot-categories thead th small{display:block;font-weight:500;letter-spacing:0;text-transform:none}
+.mp-trail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 4px;font-size:14px}.mp-trail button{border:1px solid #c7b5dd;border-radius:8px;padding:4px 10px;background:transparent;color:inherit;font:inherit;font-weight:650;cursor:pointer}.mp-trail button:hover{border-color:#59338b}.mp-trail span{color:var(--muted,#8a8496)}
+.mp-ot-filter{margin:0 0 10px}.mp-ot-filter small{font-weight:500;opacity:.75}
