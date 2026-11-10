@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
+import {StepBackButton} from './step-back.jsx';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,GOOD_PERCENT,POOR_PERCENT,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
 import './production-reports.css';
@@ -62,6 +63,8 @@ export default function BatchStatusReport({session,ReportSection}){
  const openBatch=row=>{if(row.batchId){setBatchId(row.batchId);setActionStage('');}};
  const level=!siteKey?1:!batchId?2:!actionStage?3:4;
  const crumbs=[['All sites',()=>openSite('')],...(siteKey?[[siteLabel,()=>{setBatchId('');setActionStage('');}]]:[]),...(batchId?[[detail?detail.batch.name:'Batch',()=>setActionStage('')]]:[]),...(actionStage?[[actionStage===EVERY?'All actions':actionStage+' actions',null]]:[])];
+ // One step back: the step before the one on screen, as in the line of steps above the table.
+ const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
  const actions=detail?detail.actions.filter(a=>actionStage===EVERY||a.stage===actionStage):[];
  const batchLine=detail?`${detail.batch.site} · ${displayDate(detail.batch.date)} · ${detail.batch.shiftLabel} · ${detail.batch.stageLabel}${detail.batch.enteredBy?' · entered by '+detail.batch.enteredBy:''}`:'';
  return <section className="production-reports batch-status-report"><header><small>REPORTS / OPERATIONS</small><h1>Batch Status & Turnaround</h1><p>Where every shift stands, how long each stage took, and how much of that was actual work on the website.</p></header>
@@ -72,7 +75,7 @@ export default function BatchStatusReport({session,ReportSection}){
   </form>
   {!valid&&<p role="status">Choose a range of at most {MAX_DAYS} days, on or after 01-11-26.</p>}
   {error&&<p role="alert" className="production-error">{error}</p>}
-  {report&&<nav className="bs-crumbs" aria-label="Steps">{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
+  {report&&<nav className="bs-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
   {report&&level===1&&<>
    {report.sites.length>0&&<ul className="bs-insight">{sitesInsights(report.sites,report.total).map(line=><li key={line}>{line}</li>)}</ul>}
    <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site, best first'+asOf+'. Done = Locked out of Shifts due. Green = '+GOOD_PERCENT+'% or more done, orange = '+POOR_PERCENT+'% to '+(GOOD_PERCENT-1)+'%, red = below '+POOR_PERCENT+'%. Balance = Batch not created + VLB open + LMV open + ELB open; each shift is counted once, at the stage where it stands now. Press a site to see it shift by shift.'}
@@ -88,17 +91,17 @@ export default function BatchStatusReport({session,ReportSection}){
   {report&&level===2&&<>
    <p className="bs-insight">{shiftsInsight(siteShifts)}</p>
    <nav className="production-tabs" aria-label="Stage">{[['','All shifts',siteShifts.length],...['locked',...PENDING_STAGES].map(key=>[key,STAGE_LABELS[key],siteShifts.filter(r=>r.stage===key).length])].map(([key,label,count])=><button key={key||'all'} type="button" aria-current={stage===key?'page':undefined} onClick={()=>setStage(key)}>{label} · {count}</button>)}</nav>
-   <ReportSection key={'bs-shifts-'+query+'-'+siteKey+'-'+stage} title={'Step 2 · '+siteLabel+' · shift by shift · '+period+(stage?' · '+STAGE_LABELS[stage]:'')} category="batch-status-shifts" description={'One line per shift'+asOf+'. Hours in each stage are by the clock. Red = more than '+TARGET_HOURS+' hours from shift end to locked. Press a line to open its batch.'}
+   <ReportSection key={'bs-shifts-'+query+'-'+siteKey+'-'+stage} onBack={back} backLabel={backTo} title={'Step 2 · '+siteLabel+' · shift by shift · '+period+(stage?' · '+STAGE_LABELS[stage]:'')} category="batch-status-shifts" description={'One line per shift'+asOf+'. Hours in each stage are by the clock. Red = more than '+TARGET_HOURS+' hours from shift end to locked. Press a line to open its batch.'}
     rows={listed} columns={shiftColumns(siteKey===EVERY)} rowKey={r=>r.id} rowClassName={r=>'bs-row-'+r.stage} onRowClick={openBatch} emptyMessage="No shifts at this stage."/>
   </>}
   {report&&level>=3&&detailError&&<p role="alert" className="production-error">{detailError}</p>}
   {report&&level>=3&&!detail&&!detailError&&<p role="status">Reading the batch…</p>}
   {report&&level===3&&detail&&<>
    <p className="bs-insight">{detail.insight}</p>
-   <ReportSection key={'bs-timeline-'+batchId} title={'Step 3 · '+detail.batch.name+' · timeline'} category="batch-status-timeline" description={batchLine} rows={detail.timeline} columns={timelineColumns} rowKey={r=>r.id} showSearch={false} emptyMessage="No milestones."/>
+   <ReportSection key={'bs-timeline-'+batchId} onBack={back} backLabel={backTo} title={'Step 3 · '+detail.batch.name+' · timeline'} category="batch-status-timeline" description={batchLine} rows={detail.timeline} columns={timelineColumns} rowKey={r=>r.id} showSearch={false} emptyMessage="No milestones."/>
    <ReportSection key={'bs-stages-'+batchId} title="Time taken in each stage" category="batch-status-stages" description={'Clock time is from one lock to the next. Work on website counts the gaps between saves up to '+detail.idleLimitMinutes+' minutes; longer gaps are waiting. Press a stage to see its actions.'} rows={detail.stages} columns={stageColumns} rowKey={r=>r.id} rowClassName={r=>r.stage==='Whole batch'?'bs-total':''} onRowClick={r=>setActionStage(r.stage==='Whole batch'?EVERY:r.stage)} showSearch={false} emptyMessage="No stages."/>
    <ReportSection key={'bs-rework-'+batchId} title="Rework in this batch" category="batch-status-rework" description="Counted from the batch history." rows={detail.rework} columns={reworkColumns} rowKey={r=>r.id} showSearch={false} emptyMessage="No rework."/>
   </>}
-  {report&&level===4&&detail&&<ReportSection key={'bs-actions-'+batchId+'-'+actionStage} title={'Step 4 · '+detail.batch.name+' · '+(actionStage===EVERY?'every action':actionStage+' actions')} category="batch-status-actions" description={batchLine+' · A gap of more than '+detail.idleLimitMinutes+' minutes between two actions is counted as waiting, not as work.'} rows={actions} columns={actionColumns} rowKey={r=>r.id} rowClassName={r=>r.waiting?'bs-waiting':''} emptyMessage="No actions recorded in this stage."/>}
+  {report&&level===4&&detail&&<ReportSection key={'bs-actions-'+batchId+'-'+actionStage} onBack={back} backLabel={backTo} title={'Step 4 · '+detail.batch.name+' · '+(actionStage===EVERY?'every action':actionStage+' actions')} category="batch-status-actions" description={batchLine+' · A gap of more than '+detail.idleLimitMinutes+' minutes between two actions is counted as waiting, not as work.'} rows={actions} columns={actionColumns} rowKey={r=>r.id} rowClassName={r=>r.waiting?'bs-waiting':''} emptyMessage="No actions recorded in this stage."/>}
  </section>;
 }

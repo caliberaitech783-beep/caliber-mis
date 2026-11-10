@@ -4,8 +4,8 @@
   "title": "Manpower by Category Reconciliation",
   "menu": "Reports → Manpower & OT → Manpower by Category Reconciliation",
   "asOf": {
-    "en": "Matches the system as of 10 November 2026",
-    "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"
+    "en": "Matches the system as of 11 November 2026",
+    "hi": "11 नवंबर 2026 तक के सिस्टम के अनुसार"
   },
   "en": {
     "purpose": "Compares the machines available at a site with what the saved VLB and ELB cards show, shift by shift: how many had a card saved, how many did active production, how many had zero trips, how many had zero kilometres, and how many had no card at all. It opens in steps: every site, one site shift by shift, one shift by equipment category, then the machines. A site in-charge or MIS clerk uses it to see how much of the fleet was actually deployed in each shift.",
@@ -83,7 +83,7 @@
       ],
       [
         "Line showing where you are",
-        "For example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”. Press any part of it to step back to that level."
+        "For example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”. Press any part of it to step back to that level. The violet Back button at the start of the line goes back one level; the round back arrow at the top of the page does the same."
       ],
       [
         "Step 1 · All sites",
@@ -295,7 +295,7 @@
       ],
       [
         "आप कहाँ हैं, यह बताने वाली लाइन",
-        "जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ।"
+        "जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ। लाइन की शुरुआत का बैंगनी Back बटन एक स्तर पीछे ले जाता है; पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है।"
       ],
       [
         "Step 1 · All sites",

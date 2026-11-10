@@ -60,7 +60,7 @@ async function sharedScreen(root,id){
  // The Trip Timing tab draws its delay views with its own component: the real code, with React's own state.
  const timingRules=await load(path.join(root,'shared/trip-timing-report.mjs'));
  const timing=await transformWithOxc(fs.readFileSync(path.join(root,'src/trip-timing-report.jsx'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replace(/^export /gm,''),'trip-timing-report.jsx',{jsx:{runtime:'classic'}});
- const timingEnv={React,useMemo:React.useMemo,useState:React.useState,...timingRules};
+ const timingEnv={React,useMemo:React.useMemo,useState:React.useState,StepBackButton:({label='Back'})=>React.createElement('button',{type:'button',className:'step-back-button'},'← '+label),...timingRules};
  const TripTimingReport=new Function(...Object.keys(timingEnv),timing.code+';return TripTimingReport')(...Object.values(timingEnv));
  const slots=[{from,to,site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''},{...payload,reportRange:from+'|'+to},'',false,0,false];let cursor=0;
  const env={SmartSelect:'select',ManpowerReports:()=>null,ProductionReports:()=>null,MeterContinuityReport:()=>null,BatchStatusReport:()=>null,TripTimingReport,React,...model,...dates,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],()=>{}];}};

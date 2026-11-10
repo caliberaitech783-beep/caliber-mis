@@ -3,7 +3,7 @@
   "group": "Operations",
   "title": "Batch Status & Turnaround",
   "menu": "Reports → Operations → Batch Status & Turnaround",
-  "asOf": {"en": "Matches the system as of 10 November 2026", "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"},
+  "asOf": {"en": "Matches the system as of 11 November 2026", "hi": "11 नवंबर 2026 तक के सिस्टम के अनुसार"},
   "en": {
     "purpose": "This report shows where every shift stands in batch entry: batch not created, VLB open, LMV open, ELB open or locked. It also shows how many hours each stage took and how much of that time was actual work on the website. Site in-charges and the MIS team use it to find pending shifts and slow stages.",
     "row": "In Step 1 one row is one site. In Step 2 one row is one shift of one date. In Step 3 one row is a milestone or a stage of one batch. In Step 4 one row is one recorded action in that batch.",
@@ -14,7 +14,7 @@
     ],
     "screen": [
       ["REPORTS / OPERATIONS", "The page heading, with the title “Batch Status & Turnaround” under it."],
-      ["All sites › (site) › (batch) › (stage) actions", "The step trail. It shows which step is open. Press an earlier name to go back to that step."],
+      ["All sites › (site) › (batch) › (stage) actions", "The step trail. It shows which step is open. Press an earlier name to go back to that step. The violet Back button at the start of this line, and the one beside Search this report, go back one step; while a step is open, the round back arrow at the top of the page does the same. Long column headings are written on two lines. Drag the right edge of a column heading to make the column wider or narrower, double-click the edge to fit it again; Reset table under Actions puts every column back."],
       ["Yellow box", "One to four lines in plain words worked out from the table below it, for example how many shifts are not yet locked, which site is at rank 1 and which is last, and how many of today's shifts are already counted."],
       ["Step 1 · All sites · (dates)", "One line per site, the best site first, and a last line ALL SITES. The coloured edge and the coloured Rank, Done and Performance show the rating: green for Good, orange for Average, red for Poor. Press a site to open Step 2 for that site. Press ALL SITES to see the shifts of every site together."],
       ["How this report counts", "Press to read the counting rules used on this page."],
@@ -116,7 +116,7 @@
     ],
     "screen": [
       ["REPORTS / OPERATIONS", "पेज का शीर्षक, जिसके नीचे “Batch Status & Turnaround” लिखा रहता है।"],
-      ["All sites › (साइट) › (batch) › (चरण) actions", "चरणों की पट्टी। यह बताती है कि कौन सा Step खुला है। पीछे जाने के लिए पहले वाला नाम दबाएँ।"],
+      ["All sites › (साइट) › (batch) › (चरण) actions", "चरणों की पट्टी। यह बताती है कि कौन सा Step खुला है। पीछे जाने के लिए पहले वाला नाम दबाएँ। इस लाइन की शुरुआत का बैंगनी Back बटन, और Search this report के पास वाला Back बटन, एक चरण पीछे ले जाते हैं; जब कोई चरण खुला हो, तो पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है। लंबे कॉलम शीर्षक दो लाइनों में लिखे जाते हैं। कॉलम को चौड़ा या पतला करने के लिए उसके शीर्षक का दायाँ किनारा खींचें, फिर से पहले जैसा फिट करने के लिए उस किनारे पर दो बार क्लिक करें; Actions में Reset table सभी कॉलम वापस पहले जैसे कर देता है।"],
       ["पीला बॉक्स", "नीचे की तालिका से निकाली गई एक से चार सीधी लाइनें, जैसे कितनी Shift अभी Locked नहीं हैं, कौन सी साइट Rank 1 पर है और कौन सबसे आख़िर में, और आज की कितनी Shift गिनती में आ चुकी हैं।"],
       ["Step 1 · All sites · (तारीखें)", "हर साइट की एक लाइन, सबसे अच्छी साइट सबसे ऊपर, और आख़िर में ALL SITES की लाइन। किनारे का रंग और Rank, Done और Performance का रंग रेटिंग बताता है: Good के लिए हरा, Average के लिए नारंगी, Poor के लिए लाल। किसी साइट को दबाने पर उसका Step 2 खुलता है। ALL SITES दबाने पर सभी साइटों की Shift एक साथ दिखती हैं।"],
       ["How this report counts", "इसे दबाकर इस पेज के गिनती के नियम पढ़ें।"],

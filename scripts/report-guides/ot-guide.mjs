@@ -22,7 +22,7 @@ const ReportSection=({title,description,category,rows,columns,emptyMessage,rowCl
   h('tbody',null,rows.slice(0,6).map((r,i)=>h('tr',{key:i,className:rowClassName?.(r)},h('td',null,i+1),columns.map(c=>h('td',{key:c.key},c.render?c.render(r):String(c.value(r))))))))):h('p',{className:'g-empty'},emptyMessage));
 function view(slots){
  let cursor=0;
- const env={compactLogBookLabel,canonicalSiteName,React,OPERATIONAL_START:'2026-11-01',useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],()=>{}];}};
+ const env={StepBackButton:({label='Back'})=>h('button',{type:'button',className:'step-back-button'},'← '+label),compactLogBookLabel,canonicalSiteName,React,OPERATIONAL_START:'2026-11-01',useRef:()=>({current:null}),useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],()=>{}];}};
  const render=new Function(...Object.keys(env),code+';return ManpowerReports')(...Object.values(env));
  return renderToStaticMarkup(render({session:{token:'guide'},reportId:'ot',onSelect(){},ReportSection}));
 }
@@ -160,7 +160,7 @@ ${next('sites')}
 
 <section>
 <h2>5. Step 2: the site, date by shift</h2>
-<p>When a site is open, a second table shows it day by day and shift by shift. It has one line for every date you chose, and an <b>All dates</b> line at the bottom when you chose more than one date. A line above the tables shows where you are, for example <b>All sites › Dhoptala OC (2nd) › 09-12-26 · Shift 2</b>; press any part of it to step back.</p>
+<p>When a site is open, a second table shows it day by day and shift by shift. It has one line for every date you chose, and an <b>All dates</b> line at the bottom when you chose more than one date. A line above the tables shows where you are, for example <b>All sites › Dhoptala OC (2nd) › 09-12-26 · Shift 2</b>; press any part of it to step back. The violet <b>Back</b> button at the start of that line goes back one level; the round back arrow at the top of the page does the same.</p>
 ${next('grid')}
 <table class="plain">
  <tr><th>Column</th><th>What it shows</th></tr>
