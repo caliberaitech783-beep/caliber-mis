@@ -95,7 +95,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const load=()=>{if(pending)return;pending=true;
    return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true)}).catch(e=>{if(!controller.signal.aborted){setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false});
   };
-  void load();const timer=setInterval(load,4000);
+  // A board left open in a background tab stops asking; it catches up when shown again.
+  void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load()},4000);
   return()=>{controller.abort();clearInterval(timer)};
  },[session.token,refresh]);
  // A report entry action already chose a batch. Restore its site only after
@@ -109,7 +110,9 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   if(!batch||!site){setError('The selected batch is no longer available for your account. Select an available site and batch.');return}
   setSelection({site,date:batch.report_date,shift:batch.shift});
  },[entryMode,options,batchStatusReady,batches,session.login,session.name]);
- useEffect(()=>{const timer=setInterval(()=>setRefresh(n=>n+1),10000);return()=>clearInterval(timer)},[]);
+ // The 10 s board refresh (list, open batch, preview) runs only while the tab is visible,
+ // and once at the moment it becomes visible again.
+ useEffect(()=>{const tick=()=>{if(document.visibilityState!=='hidden')setRefresh(n=>n+1)};const timer=setInterval(tick,10000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
  // The board re-reads the open batch every 10 s. It sends the last ETag it saw, and a
  // 304 keeps the batch on screen as it is instead of downloading every record again.
  const detailCache=useRef({id:'',etag:'',data:null});

@@ -63,8 +63,31 @@ async function details(client,batch,req){
   [batch.report_date])).rows.filter(record=>canonicalSiteName(record.data.location)===canonicalSiteName(batch.site)&&vlbRecordScope(record.data).shift===batch.shift):[];
  return {...batch,canEditSavedFleet:req.batchActor.admin,created_by:creator(batch),pmApprovalTrial,trialExpired,records,lmvRecords,canLockLmv:stageInfo.stage==='lmv_open'&&(owner||req.batchActor.admin)&&!trialExpired,entry_count:records.length,requests,audit,approvalOtps,...stageInfo,canLockVlb:stageInfo.twoStage&&stageInfo.stage==='vlb_open'&&(owner||req.batchActor.admin)&&!trialExpired&&!stageInfo.lockBlockers.length,canUnlockVlb:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin),canRequestUnlockOtp:stageInfo.twoStage&&['lmv_open','elb_open'].includes(stageInfo.stage)&&!(batchPmAtSite(req.batchActor,batch.site)||req.batchActor.admin)&&(owner||req.batchActor.mis),canEnterFleet:stageInfo.twoStage&&stageInfo.stage==='elb_open'&&!trialExpired&&(owner||req.batchActor.admin),canContinue:!trialExpired&&!batch.closed_at&&(!batch.amendment_by||owner)&&(!stageInfo.twoStage||stageInfo.stage==='vlb_open'),canClose:canClose(batch,req.batchActor,stageInfo.twoStage),canRequestReopen:Boolean(batch.closed_at&&req.batchActor.mis),canReopen:Boolean(batch.closed_at&&req.batchActor.mis&&(grantValid||pmApprovalTrial.active)),approvalExpired:Boolean(grant&&!grantValid&&!pmApprovalTrial.active)};
 }
-export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ensureBooks,sendOtp,imageStorage,logBookOps=null,approvalOtp={},getActor=(session,client)=>vlbBatchActor(client,session)}){
+// One read shared by callers that arrive together and reused for ttlMs. clear() drops the
+// copy, and a read already running when clear() is called is not handed to later callers.
+export function createSharedRead({ttlMs=3000,now=()=>Date.now()}={}){
+ let value=null,until=0,running=null,runningGeneration=-1,generation=0;
+ const shared=read=>{
+  if(ttlMs<=0)return read();
+  if(value&&until>now())return Promise.resolve(value);
+  if(running&&runningGeneration===generation)return running;
+  const started=generation;
+  const job=Promise.resolve().then(read).then(result=>{if(started===generation){value=result;until=now()+ttlMs;}return result;}).finally(()=>{if(running===job)running=null;});
+  running=job;runningGeneration=started;
+  return job;
+ };
+ shared.clear=()=>{value=null;until=0;generation++;};
+ return shared;
+}
+
+export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ensureBooks,sendOtp,imageStorage,logBookOps=null,approvalOtp={},getActor=(session,client)=>vlbBatchActor(client,session),listCacheMs=3000}){
  let ready;
+ // Every open batch board asks for the batch list every 4 s, and on 11 Nov 2026 those reads
+ // alone kept the 10-connection pool full. The rows are the same for every caller (site
+ // access is applied afterwards), so one read is shared by callers that arrive together and
+ // reused for a few seconds. Any batch action through these routes clears it at once.
+ const sharedBatchRows=createSharedRead({ttlMs:listCacheMs});
+ app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD'){sharedBatchRows.clear();res.on('finish',sharedBatchRows.clear);}next();});
  // Site PMs who may approve by OTP: injected from the server (shared with Vehicle transfers), else derived from the Users master.
  const defaultPmLogins=async(client,site)=>{const {rows}=await client.query("SELECT DISTINCT lower(trim(record_data->>'login')) AS login FROM master_records WHERE master_name='Users & employees' AND COALESCE(trim(record_data->>'login'),'')<>''");const out=[];for(const {login} of rows){if(batchPmAtSite(await getActor({login},client),site))out.push(login)}return out};
  const pmLogins=approvalOtp.pmLogins||defaultPmLogins,deliver=approvalOtp.deliver;
@@ -85,7 +108,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  const batchTransaction=async(req,fn)=>{const scope=batchScope(await visible(pool,req.params.id,req));return transaction(async client=>fn(client,await visible(client,req.params.id,req)),scope)};
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=b.id AND ${ACTIVE_VLB_ENTRY_FILTER}) AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows;
+  const rows=await sharedBatchRows(async()=>(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=b.id AND ${ACTIVE_VLB_ENTRY_FILTER}) AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC`)).rows);
   const twoStage=twoStageEnabled();
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),canClose:canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
