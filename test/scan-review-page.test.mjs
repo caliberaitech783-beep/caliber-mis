@@ -126,7 +126,9 @@ test('fleet reconciliation is collapsed below Card status on the VLB overview',(
 
 test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
- assert.match(source,/autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card \{autoSaveError\.ordinal\}\.<\/strong> \{autoSaveError\.message\}/);
+ assert.match(source,/role=\{autoSaveError.retryAt\?"status":"alert"\}/);
+ assert.match(source,/autoSaveError.retryAt\?"Automatic saving is waiting at card ":"Automatic saving stopped at card "/);
+ assert.match(source,/\{autoSaveError.ordinal\}\.<\/strong> \{autoSaveError.message\}/);
  assert.match(source,/autoSaveFailures\.current\.set\(key,e\.message\)/);
  assert.match(source,/autoSaveFailures\.current\.clear\(\);setFailureTick/);
 });
