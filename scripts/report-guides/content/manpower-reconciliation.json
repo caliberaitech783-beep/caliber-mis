@@ -1,0 +1,434 @@
+{
+  "id": "manpower-reconciliation",
+  "group": "Manpower & OT",
+  "title": "Manpower by Category Reconciliation",
+  "menu": "Reports → Manpower & OT → Manpower by Category Reconciliation",
+  "asOf": {
+    "en": "Matches the system as of 10 November 2026",
+    "hi": "10 नवंबर 2026 तक के सिस्टम के अनुसार"
+  },
+  "en": {
+    "purpose": "Compares the machines available at a site with what the saved VLB and ELB cards show, shift by shift: how many had a card saved, how many did active production, how many had zero trips, how many had zero kilometres, and how many had no card at all. It opens in steps: every site, one site shift by shift, one shift by equipment category, then the machines. A site in-charge or MIS clerk uses it to see how much of the fleet was actually deployed in each shift.",
+    "row": "In Step 1 one row is one site. In Step 2 one row is one date and shift of the opened site. In Step 3 one row is one equipment category. In Step 4 one row is one machine in one shift on one date.",
+    "filters": [
+      [
+        "From / To",
+        "First and last duty date of the report. Both open on today’s date. A date before 1 November 2026 cannot be chosen, To cannot be earlier than From, and the range can cover at most 31 days. Outside these limits nothing loads and the screen says “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+      ],
+      [
+        "Site",
+        "Keeps only the cards of one site. “All” means every site assigned to your login. Changing the site sets Saved batch and Door / equipment back to “All”."
+      ],
+      [
+        "Shift",
+        "Keeps only the cards of one shift. The list shows the shift codes found in the loaded records, for example S1, S2, S3."
+      ],
+      [
+        "Saved batch",
+        "Keeps only the cards saved in one batch. The list holds the batches dated within From and To and the batches of the loaded cards. A batch with no saved card can be chosen, but it gives no count."
+      ],
+      [
+        "Employee",
+        "Keeps only the cards whose Employee ID was matched to that employee. Each entry reads Employee ID · name, for example “CMPL90001 · SAMPLE DRIVER 01”. Cards with an unmatched ID are not shown while an employee is chosen."
+      ],
+      [
+        "Door / equipment",
+        "Keeps only the cards of one door number, for example V9001."
+      ],
+      [
+        "Today",
+        "Button. Sets From and To to today’s date. The other selections stay."
+      ],
+      [
+        "Clear selections",
+        "Button. Sets Site, Shift, Saved batch, Employee and Door / equipment back to “All”. The dates stay."
+      ],
+      [
+        "Auto-hide filters",
+        "Tick box. When ticked, the selectors are tucked away and only a bar with the current dates, site and shift stays on screen. Move the mouse over the bar, or press it, to open the selectors; they close when the mouse leaves. The choice is remembered in this browser."
+      ],
+      [
+        "Refresh reports",
+        "Button at the top right. Reads the saved records again with the same selections. It cannot be pressed while a load is running."
+      ]
+    ],
+    "screen": [
+      [
+        "REPORTS / MANPOWER & OT",
+        "The page heading, with the title “Manpower by Category Reconciliation” under it. The next line reads “Saved duties, clear assignments and shift-by-shift performance.”"
+      ],
+      [
+        "Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties",
+        "The tab row. Press a name to open that view. The dates and selections stay the same when you move between these five tabs."
+      ],
+      [
+        "Bar above the selectors",
+        "Shows the From and To dates in use, the site (or “All assigned sites”), the shift (or “All shifts”) and how many of Saved batch, Employee and Door / equipment are set, for example “2 more selections”. The bar can be pressed only when “Auto-hide filters” is ticked."
+      ],
+      [
+        "Loading saved records and checking shift patterns…",
+        "Shown while the report is being read. The tables appear when the reading is over."
+      ],
+      [
+        "Error message",
+        "If the report cannot be read, the reason is shown in place of the tables. For example, when the chosen dates hold more than 50,000 saved cards the screen says “This range contains too many saved cards. Select a shorter date range.”"
+      ],
+      [
+        "Line under the selectors",
+        "Repeats the dates, site and shift in use, then “Saved records only” and “Updated … IST”, the time at which this report was read."
+      ],
+      [
+        "Line above the steps (notice)",
+        "Says what is counted: Available is the machines the Equipment master places at the site today, as on the Fleet reconciliation screen, with LMVs left out, and totals over several shifts are machine-shifts."
+      ],
+      [
+        "Line showing where you are",
+        "For example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”. Press any part of it to step back to that level."
+      ],
+      [
+        "Step 1 · All sites",
+        "One line for every site assigned to your login, and an “All sites” line, for all the selected dates and shifts together. Press any number on a line to open that site; press it again to close it."
+      ],
+      [
+        "Step 2 · shift by shift",
+        "Opens when a site is pressed. One line for every selected date and shift, and an “All dates · All shifts” line at the bottom. Press any number on a line to open Step 3 for that date and shift."
+      ],
+      [
+        "Step 3 · by equipment category",
+        "Opens when a line of Step 2 is pressed. One line for each equipment category (the equipment group in the Equipment master) and an “All categories” line. Press a category name or its Available number to list all its machines; press another number to list only those machines, for example only the machines with No card."
+      ],
+      [
+        "Step 4 · machines",
+        "Opens when a category or a number in Step 3 is pressed. One line for each machine in that shift, with its status and what its cards show."
+      ],
+      [
+        "… saved cards need correction (list for the MIS team)",
+        "Shown near the bottom when a saved card has a data problem. Press it to open “Manpower Data Review”, the list of those cards."
+      ],
+      [
+        "Sources and calculation rules",
+        "Press to open the written rules the report follows."
+      ]
+    ],
+    "columns": [
+      [
+        "Steps 1 to 3 · Machines in fleet",
+        "Step 1 only. The number of different machines the Equipment master places at the site today."
+      ],
+      [
+        "Steps 1 to 3 · Available",
+        "Machines in the fleet list, counted once for every date and shift the line covers. For one shift it equals the machines in the fleet."
+      ],
+      [
+        "Steps 1 to 3 · Card saved",
+        "Fleet machines with a saved VLB or ELB card in that shift."
+      ],
+      [
+        "Steps 1 to 3 · Active production",
+        "Of those, the machines whose VLB card has at least one completed trip, or whose ELB card has running hours or trips."
+      ],
+      [
+        "Steps 1 to 3 · Zero trips",
+        "Machines with a card saved but no active production: a VLB card with 0 trips or no trips written, or an ELB card with no running hours and no trips. Card saved = Active production + Zero trips."
+      ],
+      [
+        "Steps 1 to 3 · Zero km",
+        "Machines whose VLB cards for the shift add up to 0 kilometres. A zero-km machine can also be counted under Zero trips or under Active production."
+      ],
+      [
+        "Steps 1 to 3 · No card",
+        "Available minus Card saved: fleet machines with no saved card in that shift."
+      ],
+      [
+        "Steps 1 to 3 · Deployed %",
+        "Card saved divided by Available, multiplied by 100. “—” when nothing is available."
+      ],
+      [
+        "Steps 1 to 3 · Not in fleet list",
+        "Saved cards of machines that the Equipment master places at another site today. They are not part of Available or Card saved."
+      ],
+      [
+        "Step 4 · Duty date, Shift, Site",
+        "Shown only when the list covers more than one date, shift or site."
+      ],
+      [
+        "Step 4 · Door / equipment",
+        "Door number of the machine."
+      ],
+      [
+        "Step 4 · Equipment category",
+        "Shown when “All categories” is open."
+      ],
+      [
+        "Step 4 · Make / model",
+        "From the Equipment master."
+      ],
+      [
+        "Step 4 · Status",
+        "“Active production”, “Zero trips”, “No card” or “Not in fleet list”, with “Zero km” added where the kilometres are 0."
+      ],
+      [
+        "Step 4 · Log book",
+        "VLB, ELB, or both."
+      ],
+      [
+        "Step 4 · Completed VLB trips, Kilometres, HMR hours",
+        "Totals of the machine’s saved cards for that shift. “—” when there is no card or the value is not written."
+      ],
+      [
+        "Step 4 · Driver / operator",
+        "Names on the saved cards."
+      ],
+      [
+        "Step 4 · Saved cards",
+        "Card numbers behind the line."
+      ]
+    ],
+    "notes": [
+      "Available comes from the Equipment master as it is today. The fleet list of an earlier date is not kept, so a machine moved to another site since then is counted at its present site, and its old cards appear under “Not in fleet list”.",
+      "Only saved VLB and ELB log books dated 1 November 2026 or later are read. Pending scans, deleted records and LMV log books are not counted, and LMVs are not part of Available.",
+      "Totals over several shifts are machine-shifts: one machine in three shifts counts three times. Machines in fleet in Step 1 counts each machine once.",
+      "Zero km is worked out for VLB cards only; an ELB machine is never counted under Zero km.",
+      "Breakdown and idle reasons are not shown here. Open MIS → Fleet reconciliation for the reason a machine did not work.",
+      "The Shift selection keeps one shift. The Saved batch, Employee and Door / equipment selections keep only the matching cards while Available stays the whole fleet, so use them with care on this tab."
+    ],
+    "checklist": [
+      "Set From, To and Site. Read the “Updated” time and press “Refresh reports” if cards were saved after it.",
+      "In Step 1 read Deployed % and No card for each site, then press the site.",
+      "In Step 2 find the dates and shifts with a low Deployed % or a high Zero trips or Zero km, and press that line.",
+      "In Step 3 press the No card, Zero trips or Zero km number of a category and read the machines in Step 4.",
+      "Check “Not in fleet list”: these machines have cards at this site but the Equipment master places them elsewhere. Get the master location corrected if the machine is really at this site.",
+      "Use Generate on any step to download it."
+    ],
+    "faq": [
+      [
+        "Why is Available the same on every date?",
+        "It is the fleet the Equipment master places at the site today. The list for earlier dates is not kept."
+      ],
+      [
+        "Why are Zero trips and Zero km not the same number?",
+        "Zero trips counts machines with a card but no work, VLB or ELB. Zero km counts VLB machines whose kilometres add up to 0. A VLB can have trips written and 0 km, or 0 trips and some km."
+      ],
+      [
+        "A whole date shows No card for every machine. Why?",
+        "No VLB or ELB card of that date and shift has been saved yet for the site, or the cards are still pending in scanning."
+      ],
+      [
+        "Why does a machine show under “Not in fleet list”?",
+        "Its card was saved at this site, but the Equipment master now places the machine at another site, or the machine is not found in the master."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट साइट पर उपलब्ध मशीनों की तुलना सेव किए हुए VLB और ELB कार्डों से करती है, हर Shift के लिए: कितनी मशीनों का कार्ड सेव हुआ, कितनी ने सचमुच उत्पादन किया, कितनी की ट्रिप शून्य रही, कितनी के किलोमीटर शून्य रहे, और कितनी का कोई कार्ड ही नहीं है। यह चरणों में खुलती है: सभी साइट, एक साइट Shift-दर-Shift, एक Shift equipment category के अनुसार, फिर मशीनें। साइट इंचार्ज या MIS क्लर्क इससे देखते हैं कि हर Shift में फ़्लीट का कितना हिस्सा सचमुच लगाया गया।",
+    "row": "Step 1 में एक लाइन एक साइट है। Step 2 में एक लाइन खोली हुई साइट की एक तारीख़ और Shift है। Step 3 में एक लाइन एक equipment category है। Step 4 में एक लाइन एक तारीख़ की एक Shift में एक मशीन है।",
+    "filters": [
+      [
+        "From / To",
+        "रिपोर्ट की पहली और आख़िरी ड्यूटी तारीख। दोनों में शुरू में आज की तारीख रहती है। 1 November 2026 से पहले की तारीख नहीं चुनी जा सकती, To की तारीख From से पहले की नहीं हो सकती, और एक बार में ज़्यादा से ज़्यादा 31 दिन चुने जा सकते हैं। इन सीमाओं के बाहर कुछ लोड नहीं होता और स्क्रीन पर लिखा आता है “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट के कार्ड रखता है। “All” का मतलब है आपके login को दी गई सभी साइटें। साइट बदलने पर Saved batch और Door / equipment वापस “All” हो जाते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ एक Shift के कार्ड रखता है। सूची में वही Shift कोड आते हैं जो लोड हुए रिकॉर्ड में मिले हैं, जैसे S1, S2, S3।"
+      ],
+      [
+        "Saved batch",
+        "सिर्फ़ एक बैच में सेव हुए कार्ड रखता है। सूची में From से To के बीच की तारीख वाले बैच और लोड हुए कार्डों के बैच आते हैं। जिस बैच में कोई सेव कार्ड नहीं है वह भी चुना जा सकता है, पर उससे कोई गिनती नहीं बनती।"
+      ],
+      [
+        "Employee",
+        "सिर्फ़ वे कार्ड रखता है जिनका Employee ID उस कर्मचारी से मिल गया है। सूची में हर नाम Employee ID · नाम के रूप में दिखता है, जैसे “CMPL90001 · SAMPLE DRIVER 01”। कर्मचारी चुने रहने पर वे कार्ड नहीं दिखते जिनका ID किसी से नहीं मिला।"
+      ],
+      [
+        "Door / equipment",
+        "सिर्फ़ एक डोर नंबर के कार्ड रखता है, जैसे V9001।"
+      ],
+      [
+        "Today",
+        "बटन। From और To दोनों में आज की तारीख भर देता है। बाकी चुनाव वैसे ही रहते हैं।"
+      ],
+      [
+        "Clear selections",
+        "बटन। Site, Shift, Saved batch, Employee और Door / equipment को वापस “All” कर देता है। तारीखें नहीं बदलतीं।"
+      ],
+      [
+        "Auto-hide filters",
+        "टिक बॉक्स। टिक करने पर फ़िल्टर छिप जाते हैं और सिर्फ़ एक पट्टी दिखती है जिसमें अभी की तारीखें, साइट और Shift लिखे रहते हैं। फ़िल्टर खोलने के लिए माउस पट्टी पर ले जाएँ या पट्टी दबाएँ; माउस हटाने पर वे फिर छिप जाते हैं। यह चुनाव इसी ब्राउज़र में याद रहता है।"
+      ],
+      [
+        "Refresh reports",
+        "ऊपर दाईं ओर का बटन। उन्हीं चुनावों के साथ सेव रिकॉर्ड दोबारा पढ़ता है। जब तक रिपोर्ट लोड हो रही हो, यह बटन नहीं दबता।"
+      ]
+    ],
+    "screen": [
+      [
+        "REPORTS / MANPOWER & OT",
+        "पेज का शीर्षक, और उसके नीचे नाम “Manpower by Category Reconciliation”। अगली लाइन में लिखा है “Saved duties, clear assignments and shift-by-shift performance.”"
+      ],
+      [
+        "Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties",
+        "टैब की लाइन। कोई नाम दबाएँ तो वह रिपोर्ट खुलेगी। इन पाँच टैब के बीच जाने पर तारीख़ें और चुनाव वही रहते हैं।"
+      ],
+      [
+        "फ़िल्टर के ऊपर की पट्टी",
+        "इसमें अभी की From और To तारीखें, साइट (या “All assigned sites”), Shift (या “All shifts”) और यह लिखा रहता है कि Saved batch, Employee और Door / equipment में से कितने चुने गए हैं, जैसे “2 more selections”। यह पट्टी तभी दबती है जब “Auto-hide filters” टिक हो।"
+      ],
+      [
+        "Loading saved records and checking shift patterns…",
+        "जब तक रिपोर्ट पढ़ी जा रही है तब तक यह लिखा रहता है। पढ़ना पूरा होने पर टेबल दिखती हैं।"
+      ],
+      [
+        "गलती का संदेश",
+        "अगर रिपोर्ट नहीं पढ़ी जा सकी तो टेबल की जगह उसका कारण लिखा आता है। जैसे, चुनी हुई तारीखों में 50,000 से ज़्यादा सेव कार्ड होने पर लिखा आता है “This range contains too many saved cards. Select a shorter date range.”"
+      ],
+      [
+        "फ़िल्टर के नीचे की लाइन",
+        "इसमें अभी की तारीखें, साइट और Shift दोबारा लिखे रहते हैं, फिर “Saved records only” और “Updated … IST”, यानी यह रिपोर्ट किस समय पढ़ी गई।"
+      ],
+      [
+        "चरणों के ऊपर की लाइन (notice)",
+        "बताती है कि क्या गिना गया है: Available यानी वे मशीनें जिन्हें Equipment master आज इस साइट पर दिखाता है, जैसे Fleet reconciliation स्क्रीन पर, LMV को छोड़कर; और कई Shift का जोड़ machine-shifts में होता है।"
+      ],
+      [
+        "आप कहाँ हैं, यह बताने वाली लाइन",
+        "जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers · No card”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ।"
+      ],
+      [
+        "Step 1 · All sites",
+        "आपके लॉगिन को दी गई हर साइट की एक लाइन, और “All sites” की लाइन, चुनी हुई सभी तारीख़ों और Shift को मिलाकर। किसी लाइन की कोई भी संख्या दबाएँ तो वह साइट खुलेगी; बंद करने के लिए दोबारा दबाएँ।"
+      ],
+      [
+        "Step 2 · shift by shift",
+        "साइट दबाने पर खुलती है। चुनी हुई हर तारीख़ और Shift की एक लाइन, और सबसे नीचे “All dates · All shifts” की लाइन। किसी लाइन की कोई भी संख्या दबाएँ तो उस तारीख़ और Shift का Step 3 खुलेगा।"
+      ],
+      [
+        "Step 3 · by equipment category",
+        "Step 2 की लाइन दबाने पर खुलती है। हर equipment category (Equipment master का equipment group) की एक लाइन, और “All categories” की लाइन। category का नाम या उसकी Available संख्या दबाएँ तो उसकी सभी मशीनें दिखेंगी; कोई और संख्या दबाएँ तो सिर्फ़ वही मशीनें, जैसे सिर्फ़ No card वाली।"
+      ],
+      [
+        "Step 4 · machines",
+        "Step 3 में category या संख्या दबाने पर खुलती है। उस Shift की हर मशीन की एक लाइन, उसकी स्थिति और उसके कार्डों की जानकारी के साथ।"
+      ],
+      [
+        "… saved cards need correction (list for the MIS team)",
+        "जब किसी सेव कार्ड में डेटा की गड़बड़ी हो तो यह लाइन नीचे की ओर दिखती है। इसे दबाने पर “Manpower Data Review” खुलता है, यानी उन कार्डों की सूची।"
+      ],
+      [
+        "Sources and calculation rules",
+        "दबाने पर वे लिखे हुए नियम खुलते हैं जिन पर रिपोर्ट चलती है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Steps 1 to 3 · Machines in fleet",
+        "सिर्फ़ Step 1 में। Equipment master आज उस साइट पर कितनी अलग-अलग मशीनें दिखाता है।"
+      ],
+      [
+        "Steps 1 to 3 · Available",
+        "फ़्लीट सूची की मशीनें, लाइन में जितनी तारीख़ें और Shift हैं उतनी बार गिनी हुई। एक Shift के लिए यह फ़्लीट की मशीनों के बराबर है।"
+      ],
+      [
+        "Steps 1 to 3 · Card saved",
+        "फ़्लीट की वे मशीनें जिनका उस Shift में VLB या ELB कार्ड सेव है।"
+      ],
+      [
+        "Steps 1 to 3 · Active production",
+        "उनमें से वे मशीनें जिनके VLB कार्ड पर कम से कम एक पूरी ट्रिप है, या जिनके ELB कार्ड पर चलने के घंटे या ट्रिप हैं।"
+      ],
+      [
+        "Steps 1 to 3 · Zero trips",
+        "वे मशीनें जिनका कार्ड सेव है पर उत्पादन नहीं: VLB कार्ड पर 0 ट्रिप या ट्रिप लिखी ही नहीं, या ELB कार्ड पर न घंटे न ट्रिप। Card saved = Active production + Zero trips।"
+      ],
+      [
+        "Steps 1 to 3 · Zero km",
+        "वे मशीनें जिनके VLB कार्डों के उस Shift के किलोमीटर का जोड़ 0 है। ऐसी मशीन Zero trips में या Active production में भी गिनी हो सकती है।"
+      ],
+      [
+        "Steps 1 to 3 · No card",
+        "Available में से Card saved घटाकर: फ़्लीट की वे मशीनें जिनका उस Shift में कोई कार्ड सेव नहीं है।"
+      ],
+      [
+        "Steps 1 to 3 · Deployed %",
+        "Card saved को Available से भाग देकर 100 से गुणा। कुछ उपलब्ध न हो तो “—”।"
+      ],
+      [
+        "Steps 1 to 3 · Not in fleet list",
+        "उन मशीनों के सेव कार्ड जिन्हें Equipment master आज किसी दूसरी साइट पर दिखाता है। ये Available या Card saved में नहीं गिने जाते।"
+      ],
+      [
+        "Step 4 · Duty date, Shift, Site",
+        "तभी दिखते हैं जब सूची में एक से ज़्यादा तारीख़, Shift या साइट हो।"
+      ],
+      [
+        "Step 4 · Door / equipment",
+        "मशीन का डोर नंबर।"
+      ],
+      [
+        "Step 4 · Equipment category",
+        "तब दिखता है जब “All categories” खुला हो।"
+      ],
+      [
+        "Step 4 · Make / model",
+        "Equipment master से।"
+      ],
+      [
+        "Step 4 · Status",
+        "“Active production”, “Zero trips”, “No card” या “Not in fleet list”; जहाँ किलोमीटर 0 हैं वहाँ साथ में “Zero km”।"
+      ],
+      [
+        "Step 4 · Log book",
+        "VLB, ELB, या दोनों।"
+      ],
+      [
+        "Step 4 · Completed VLB trips, Kilometres, HMR hours",
+        "उस Shift के लिए मशीन के सेव कार्डों का जोड़। कार्ड न हो या मान लिखा न हो तो “—”।"
+      ],
+      [
+        "Step 4 · Driver / operator",
+        "सेव कार्डों पर लिखे नाम।"
+      ],
+      [
+        "Step 4 · Saved cards",
+        "लाइन के पीछे के कार्ड नंबर।"
+      ]
+    ],
+    "notes": [
+      "Available आज के Equipment master से आता है। पुरानी तारीख़ की फ़्लीट सूची नहीं रखी जाती, इसलिए जो मशीन तब से दूसरी साइट पर चली गई वह अपनी मौजूदा साइट पर गिनी जाती है, और उसके पुराने कार्ड “Not in fleet list” में दिखते हैं।",
+      "सिर्फ़ 1 November 2026 या उसके बाद की सेव की हुई VLB और ELB लॉग बुक पढ़ी जाती हैं। पेंडिंग स्कैन, डिलीट किए गए रिकॉर्ड और LMV लॉग बुक नहीं गिने जाते, और LMV Available में शामिल नहीं हैं।",
+      "कई Shift का जोड़ machine-shifts में होता है: एक मशीन तीन Shift में तीन बार गिनी जाती है। Step 1 का Machines in fleet हर मशीन को एक बार गिनता है।",
+      "Zero km सिर्फ़ VLB कार्डों के लिए निकाला जाता है; ELB मशीन कभी Zero km में नहीं गिनी जाती।",
+      "ब्रेकडाउन और खाली रहने के कारण यहाँ नहीं दिखते। मशीन क्यों नहीं चली, यह देखने के लिए MIS → Fleet reconciliation खोलें।",
+      "Shift का चुनाव एक Shift रखता है। Saved batch, Employee और Door / equipment के चुनाव सिर्फ़ मिलते हुए कार्ड रखते हैं जबकि Available पूरी फ़्लीट ही रहता है, इसलिए इस टैब पर इन्हें सोच-समझकर इस्तेमाल करें।"
+    ],
+    "checklist": [
+      "From, To और Site चुनें। “Updated” का समय पढ़ें और उसके बाद कार्ड सेव हुए हों तो “Refresh reports” दबाएँ।",
+      "Step 1 में हर साइट का Deployed % और No card पढ़ें, फिर साइट दबाएँ।",
+      "Step 2 में वे तारीख़ें और Shift ढूँढें जहाँ Deployed % कम है या Zero trips या Zero km ज़्यादा है, और वह लाइन दबाएँ।",
+      "Step 3 में किसी category की No card, Zero trips या Zero km संख्या दबाएँ और Step 4 में मशीनें पढ़ें।",
+      "“Not in fleet list” जाँचें: इन मशीनों के कार्ड इस साइट पर हैं पर Equipment master इन्हें कहीं और दिखाता है। मशीन सच में इसी साइट पर हो तो मास्टर में जगह ठीक करवाएँ।",
+      "किसी भी चरण को डाउनलोड करने के लिए Generate दबाएँ।"
+    ],
+    "faq": [
+      [
+        "Available हर तारीख़ पर एक जैसा क्यों है?",
+        "यह वह फ़्लीट है जिसे Equipment master आज उस साइट पर दिखाता है। पुरानी तारीख़ों की सूची नहीं रखी जाती।"
+      ],
+      [
+        "Zero trips और Zero km की संख्या अलग क्यों है?",
+        "Zero trips उन मशीनों को गिनता है जिनका कार्ड है पर काम नहीं, VLB हो या ELB। Zero km उन VLB मशीनों को गिनता है जिनके किलोमीटर का जोड़ 0 है। किसी VLB पर ट्रिप लिखी हो सकती हैं और किलोमीटर 0, या ट्रिप 0 और कुछ किलोमीटर।"
+      ],
+      [
+        "पूरी तारीख़ में हर मशीन No card क्यों दिख रही है?",
+        "उस तारीख़ और Shift का कोई VLB या ELB कार्ड अभी उस साइट के लिए सेव नहीं हुआ है, या कार्ड अभी स्कैनिंग में पेंडिंग हैं।"
+      ],
+      [
+        "कोई मशीन “Not in fleet list” में क्यों है?",
+        "उसका कार्ड इस साइट पर सेव हुआ, पर Equipment master अब उस मशीन को किसी दूसरी साइट पर दिखाता है, या मशीन मास्टर में मिली ही नहीं।"
+      ]
+    ]
+  }
+}

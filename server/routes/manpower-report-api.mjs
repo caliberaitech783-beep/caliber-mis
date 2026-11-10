@@ -54,7 +54,8 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
    await client.query('COMMIT');
-   res.set('Cache-Control','private, no-store').json({...report,otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()});
+   const fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
+   res.set('Cache-Control','private, no-store').json({...report,fleet:report.fleet.filter(m=>fleetSites.has(m.siteKey)),fleetWork:report.fleetWork.filter(w=>fleetSites.has(w.siteKey)),otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()});
   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error);}
   finally{client?.release();}
  });

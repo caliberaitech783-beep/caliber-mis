@@ -168,3 +168,13 @@ The owner's first request showed the Manpower by Category tab; the five-step cha
 - A trail above the steps steps back. Steps 1 to 3 have a Generate button.
 
 Data: `details` rows add `siteKey`, `equipment`, `assetKey`, `employeeKey` and `dutyKey` (empty on a card left out of totals, so the page's distinct counts equal `totals`); `summary` rows add `siteKey` and `equipment`. No new read.
+
+## Manpower by Category Reconciliation (10 Nov 2026)
+
+Owner's request of 10 Nov 2026: "how many machines were available at the site as per fleet reconciliation versus how many were deployed for active production and how many were there where there were zero trips and how many were there where there were 0 kilometer ... shift wise", placed under Manpower by Category. It is the fifth Manpower & OT tab, id `manpower-reconciliation`, second in the tab row.
+
+- **Available** is the fleet of the Fleet reconciliation screen: Equipment master records whose current location is the site, one per chassis (`assetIdentity`), without LMVs. The master holds today's location only, so the same list is used for every selected date; a card of a machine the master now places elsewhere is counted apart as "Not in fleet list".
+- **Card saved**: a fleet machine with a saved VLB or ELB card in the shift. **Active production**: a VLB card with at least one trip, or an ELB card with running hours or trips. **Zero trips**: card saved, not active (so Card saved = Active + Zero trips). **Zero km**: a VLB whose kilometres for the shift add up to 0; it overlaps the other two. **No card**: Available minus Card saved. **Deployed %**: Card saved of Available.
+- Steps: every site; one site, one line per date and shift; one date and shift by equipment category; the machines, one line per machine, date and shift, with status, trips, kilometres, hours, driver and cards. Totals over several shifts are machine-shifts.
+- Not included: breakdown and idle reasons (they need the live Pulse breakdown read of the Fleet reconciliation screen, one shift at a time) and LMVs. The owner did not answer the two questions on what counts as deployed and on LMVs; both columns (Card saved and Active production) are shown so either reading can be used.
+- Data: `GET /api/reports/manpower` adds `fleet` (`siteKey`, `key`, `door`, `equipment`, `makeModel`) and `fleetWork` (one line per site, date, shift and machine with `inFleet`, `trips`, `km`, `hours`, `active`, `zeroKm`, `employees`, `books`), both limited to the sites of the login. No new read.

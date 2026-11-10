@@ -2,7 +2,7 @@
 export const title='OT और Multiple Duties रिपोर्ट: कैसे देखें और जाँचें';
 export const pictureWord='चित्र',sampleWord='नमूना डेटा।';
 export const captions={
- open:'रिपोर्ट का पेज। Manpower & OT के चार टैब में OT & Multiple Duties आख़िरी है।',
+ open:'रिपोर्ट का पेज। Manpower & OT के पाँच टैब में OT & Multiple Duties आख़िरी है।',
  filters:'फ़िल्टर। ऊपर की लाइन पर हमेशा चालू तारीख़ें दिखती हैं। फ़िल्टर छिपाने के लिए Auto-hide filters पर टिक करें।',
  books:'वह लाइन जो बताती है कि क्या गिना गया है, और लॉग बुक का सिलेक्टर। शुरू में All log books चुना रहता है।',
  sites:'चरण 1। हर साइट की एक लाइन: कुल ड्यूटी, red, orange और brown मामले, red और orange ड्यूटी का प्रतिशत, और ड्राइवरों की संख्या। हर संख्या दबाई जा सकती है।',

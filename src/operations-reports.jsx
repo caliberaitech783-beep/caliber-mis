@@ -13,7 +13,7 @@ export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
  if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
  if(props.reportId==='batch-status')return <BatchStatusReport {...props}/>;
- if(['manpower','employee','attendance','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
+ if(['manpower','manpower-reconciliation','employee','attendance','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
  return <SavedOperationReports {...props}/>;
 }
 function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportSection}){

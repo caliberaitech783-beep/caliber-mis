@@ -310,3 +310,12 @@ test('assignment and summary rows carry the keys the Manpower by Category steps 
  assert.equal(new Set(r.details.map(d=>d.dutyKey).filter(Boolean)).size,r.totals.duties);
  assert.deepEqual(r.summary.map(s=>[s.siteKey,s.equipment]),[['sasti ob','Tipper'],['sasti ob','Tipper']]);
 });
+test('reconciliation lists the site fleet from the Equipment master and what each machine did per shift',()=>{
+ const fleetAssets=[...assets.slice(0,4).map((a,i)=>({...a,currentLocation:site,chassisNo:'CH'+i})),{...assets[4],currentLocation:'Jayant OC',chassisNo:'CH9'}];
+ const records=[card(1,1),card(2,1,{assetId:2,door:'V2',totalTrips:0,closingKmr:1000}),card(3,2,{assetId:5,door:'V5'}),card(4,1,{assetId:3,door:'V3',totalTrips:0})];
+ const r=buildManpowerReport({records,assets:fleetAssets,employees,shifts,filters:{from:date,to:date}});
+ assert.deepEqual(r.fleet.map(m=>[m.siteKey,m.door,m.equipment]),[['sasti ob','V1','Tipper'],['sasti ob','V2','Tipper'],['sasti ob','V3','Tipper'],['sasti ob','V4','Tipper']],'machines the master places at another site are not in this site’s fleet');
+ const work=Object.fromEntries(r.fleetWork.map(w=>[w.door+w.shift,[w.inFleet,w.active,w.zeroKm,w.trips,w.km]]));
+ assert.deepEqual(work,{V1S1:[true,true,false,5,100],V2S1:[true,false,true,0,0],V3S1:[true,false,false,0,100],V5S2:[false,true,false,5,100]},'a zero-trip card is not active; zero km is marked apart; a card of a machine now at another site is outside the fleet list');
+ assert.ok(r.fleetWork.every(w=>w.siteKey==='sasti ob'&&w.logBook==='VLB'));
+});

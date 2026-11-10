@@ -400,3 +400,42 @@ test('manpower by category opens sites, then date by shift, then equipment categ
  assert.deepEqual(trail().map(n=>n.props.children),['All sites','Sasti OC','10-11-26 · All shifts']);
  trail()[0].props.onClick();assert.deepEqual(categories(),['manpower-sites','manpower-summary','manpower-assignments','manpower-review']);assert.equal(section('manpower-assignments').rows.length,7);
 });
+
+test('manpower by category reconciliation compares the fleet with saved cards, shift by shift, down to the machines',async()=>{
+ const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
+ // Sasti fleet: three tippers and one excavator. Shift 1: V1 worked, V2 has a card with 0 trips and 0 km, X1 worked, V3 has no card,
+ // and V9 (listed at another site) has a card here. Shift 2: only V1 worked, with 0 km written.
+ const machine=(door,equipment)=>({siteKey:'sasti ob',key:'k'+door,door,equipment,makeModel:'Make Model'});
+ const fleet=[machine('V1','Tipper'),machine('V2','Tipper'),machine('V3','Tipper'),machine('X1','Excavator')];
+ const did=(door,shift,equipment,active,zeroKm,inFleet=true)=>({siteKey:'sasti ob',date:filters.from,shift,key:'k'+door,inFleet,door,equipment,makeModel:'Make Model',logBook:equipment==='Tipper'?'VLB':'ELB',trips:equipment==='Tipper'?(active?5:0):null,km:equipment==='Tipper'?(zeroKm?0:40):null,hours:7,active,zeroKm,employees:'SAMPLE DRIVER',books:'CARD-'+door+shift});
+ const fleetWork=[did('V1','S1','Tipper',true,false),did('V2','S1','Tipper',false,true),did('X1','S1','Excavator',true,false),did('V9','S1','Tipper',true,false,false),did('V1','S2','Tipper',true,true)];
+ const payload={summary:[],details:[],performance:[],ot:[],fleet,fleetWork,otSites:[{site:'Jayant OC',siteKey:'jayant ob'},{site:'Sasti OC',siteKey:'sasti ob'}],exceptions:[],totals:{assets:0,employees:0,duties:0,exceptions:0},notes:[],options:{},generatedAt:'2026-11-11T10:00:00Z'};
+ assert.equal(operations.operationReports.find(r=>r.id==='manpower-reconciliation').title,'Manpower by Category Reconciliation');
+ const view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]),tree=()=>view({session:{token:'test'},reportId:'manpower-reconciliation',onSelect:()=>{}});
+ const section=category=>nodes(tree(),ReportSection).find(n=>n.props.category===category)?.props,categories=()=>nodes(tree(),ReportSection).map(n=>n.props.category);
+ const press=label=>nodes(tree(),'button').find(n=>n.props['aria-label']===label).props.onClick();
+ const counts=r=>[r.available,r.carded,r.active,r.zero,r.zeroKm,r.none,r.share,r.outside];
+ assert.ok(nodes(tree(),'button').some(n=>n.props.children==='Manpower by Category Reconciliation'&&n.props['aria-current']==='page'),'the tab row names the report');
+ assert.equal(nodes(tree(),'div').filter(n=>n.props.className==='mp-metrics').length,0,'the count cards of the other tabs are not shown');
+ // Step 1: three shifts of four machines are twelve machine-shifts; four had a card, three worked.
+ assert.deepEqual(categories(),['manpower-rc-sites']);
+ assert.deepEqual(section('manpower-rc-sites').rows.map(r=>[r.site,r.machines,...counts(r)]),[['Jayant OC',0,0,0,0,0,0,0,'—',0],['Sasti OC',4,12,4,3,1,2,8,'33.3%',1],['All sites',4,12,4,3,1,2,8,'33.3%',1]]);
+ // Step 2: one line per date and shift.
+ press('4 machines · Sasti OC');
+ assert.deepEqual(section('manpower-rc-shifts').rows.map(r=>[r.date,r.shift,...counts(r)]),[['10-11-26','Shift 1',4,3,2,1,1,1,'75%',1],['10-11-26','Shift 2',4,1,1,0,1,3,'25%',0],['10-11-26','Shift 3',4,0,0,0,0,4,'0%',0],['All dates','All shifts',12,4,3,1,2,8,'33.3%',1]]);
+ // Step 3: the shift by equipment category; a card of a machine listed elsewhere stays outside Available and Card saved.
+ press('4 Available · 10-11-26 · Shift 1');assert.equal(section('manpower-rc-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+ assert.deepEqual(section('manpower-rc-categories').rows.map(r=>[r.equipment,...counts(r)]),[['Tipper',3,2,1,1,1,1,'66.7%',1],['Excavator',1,1,1,0,0,0,'100%',0],['All categories',4,3,2,1,1,1,'75%',1]]);
+ // Step 4: every machine of the category, or only those of the number pressed.
+ nodes(tree(),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
+ assert.deepEqual(section('manpower-rc-machines').rows.map(r=>[r.door,r.statusLabel]),[['V1','Active production'],['V2','Zero trips · Zero km'],['V3','No card'],['V9','Not in fleet list · worked']]);
+ assert.deepEqual(section('manpower-rc-machines').columns.map(c=>c.key),['door','makeModel','statusLabel','logBook','trips','km','hours','employees','books']);
+ press('1 No card · Tipper');assert.equal(section('manpower-rc-machines').title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Tipper · No card · machines');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V3']);
+ press('1 Zero km · Tipper');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V2']);
+ press('1 Not in fleet list · All categories');assert.deepEqual(section('manpower-rc-machines').rows.map(r=>r.door),['V9']);
+ // The total line opens every shift together, with Date and Shift as columns of the machine list.
+ press('8 No card · All dates · All shifts');press('8 No card · All categories');
+ assert.equal(section('manpower-rc-machines').rows.length,8);assert.deepEqual(section('manpower-rc-machines').columns.slice(0,2).map(c=>c.key),['shift','door'],'one date: only Shift returns as a column');
+ const trail=()=>nodes(nodes(tree(),'p').find(n=>n.props.className==='mp-trail'),'button');
+ trail()[0].props.onClick();assert.deepEqual(categories(),['manpower-rc-sites']);
+});
