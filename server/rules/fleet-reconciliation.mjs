@@ -26,17 +26,23 @@ export function shiftForDate(shifts,site,date,code){
  return {start,end:start+minutes*60000,label:s.shiftName||s.name||code};
 }
 export function reconcileFleet({assets,books,breakdowns,reasons=[],date,site,shift,window,kind='',now=Date.now()}){
+ // Site names, shift codes and identity keys are worked out once per record. Matching every
+ // machine against the whole Pulse breakdown history with these worked out again each time
+ // blocked the server for 11-14 s per report on 11 Nov 2026.
+ const siteKey=canonicalSiteName(site);
  const grouped=new Map(),warnings=[];
- for(const asset of assets){if(asset.sourceMissing||canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(site)||kind&&fleetAssetKind(asset)!==kind)continue;const key=assetIdentity(asset);const current=grouped.get(key);if(current){current.aliases.push(text(asset.id));warnings.push('Duplicate master records grouped for '+(asset.door||asset.id));}else grouped.set(key,{...asset,aliases:[text(asset.id)]});}
+ for(const asset of assets){if(asset.sourceMissing||canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==siteKey||kind&&fleetAssetKind(asset)!==kind)continue;const key=assetIdentity(asset);const current=grouped.get(key);if(current){current.aliases.push(text(asset.id));warnings.push('Duplicate master records grouped for '+(asset.door||asset.id));}else grouped.set(key,{...asset,aliases:[text(asset.id)]});}
+ const shiftBooks=books.filter(b=>canonicalSiteName(b.site||b.data?.location)===siteKey&&fleetShift(b.data?.cardShift||b.data?.batchShift||b.data?.bookShiftCode||b.data?.shiftName)===shift).map(b=>({book:b,assetRef:text(b.asset_id||b.data?.assetId)}));
+ const siteRequests=breakdowns.filter(request=>!request.archivedAt&&canonicalSiteName(request.site)===siteKey).map(request=>({request,chassis:serial(request.chassis),keys:[request.door,request.equipment,request.reg].map(identity)}));
  const unmatched=[];
  const rows=[...grouped.values()].map(asset=>{
   const type=fleetAssetKind(asset),door=text(asset.door||asset.doorNo||equipmentDoorNumber(asset));
-  const entries=books.filter(b=>b.book_type===type&&canonicalSiteName(b.site||b.data?.location)===canonicalSiteName(site)&&fleetShift(b.data?.cardShift||b.data?.batchShift||b.data?.bookShiftCode||b.data?.shiftName)===shift&&asset.aliases.includes(text(b.asset_id||b.data?.assetId)));
+  const entries=shiftBooks.filter(({book,assetRef})=>book.book_type===type&&asset.aliases.includes(assetRef)).map(({book})=>book);
   const cards=entries.map(b=>({id:text(b.id),reference:b.book_no,status:b.data?.shiftStatus||'working',reason:b.data?.statusReason||b.data?.remark||''}));
   const operated=entries.some(b=>!['breakdown','maintenance','no_operator','not_in_use'].includes(b.data?.shiftStatus)&&(type!=='equipment'||Number(b.data?.totalWorkingHmr)>0||Number(b.data?.runningHours)>0||Number(b.data?.totalTrips)>0||Number(b.data?.fleetTrips)>0));
   const aliases=[asset.door,asset.doorNo,asset.registration,asset.reg,door,...(/\d/.test(text(asset.equipmentName))?[asset.equipmentName]:[])].map(identity).filter(Boolean),chassis=serial(asset.chassis||asset.chassisNo);
   const bd=[],pulseIdle=[];
-  for(const request of breakdowns){if(request.archivedAt||canonicalSiteName(request.site)!==canonicalSiteName(site))continue;const requestChassis=serial(request.chassis);const match=chassis&&requestChassis?chassis===requestChassis:[request.door,request.equipment,request.reg].some(v=>identity(v)&&aliases.includes(identity(v)));if(!match)continue;
+  for(const {request,chassis:requestChassis,keys} of siteRequests){const match=chassis&&requestChassis?chassis===requestChassis:keys.some(v=>v&&aliases.includes(v));if(!match)continue;
    const start=epoch(request.start),hasEnd=request.closedAt&&request.closedAt!=='—',end=hasEnd?epoch(request.closedAt):now;
    if(!Number.isFinite(start)||!Number.isFinite(end)||end<start)throw Object.assign(Error('Invalid dates in Pulse breakdown '+text(request.ref)+'. Reconciliation cannot classify this asset.'),{status:502});
    const idleStart=request.vehicleIdle===true?epoch(request.idealApprovedAt||request.idealRequestedAt||request.start):null;
@@ -58,7 +64,8 @@ export function reconcileFleet({assets,books,breakdowns,reasons=[],date,site,shi
   const status=operated?(bd.length?'Operated + Breakdown':'Operated only'):bd.length?'Breakdown only':reason?'Idle / Not operated':'Reason pending';
   return {assetId:text(asset.id),assetKey:assetIdentity(asset),site,date,shift,door,kind:type,name:text(asset.equipmentName||asset.equipment||asset.name||asset.group),model:text(asset.modelName||asset.model||asset.modelNo),cards,breakdowns:bd,operated,breakdown:bd.length>0,status,reason,remarks};
  });
- for(const b of books){if(canonicalSiteName(b.site||b.data?.location)!==canonicalSiteName(site)||fleetShift(b.data?.cardShift||b.data?.batchShift||b.data?.bookShiftCode||b.data?.shiftName)!==shift||kind&&b.book_type!==kind)continue;if(![...grouped.values()].some(a=>a.aliases.includes(text(b.asset_id||b.data?.assetId))))unmatched.push({reference:b.book_no,door:b.data?.door||'',kind:b.book_type});}
+ const knownAssets=new Set([...grouped.values()].flatMap(a=>a.aliases));
+ for(const {book:b,assetRef} of shiftBooks){if(kind&&b.book_type!==kind)continue;if(!knownAssets.has(assetRef))unmatched.push({reference:b.book_no,door:b.data?.door||'',kind:b.book_type});}
  const summary=type=>{const items=rows.filter(r=>r.kind===type),count=status=>items.filter(r=>r.status===status).length;return {total:items.length,operatedOnly:count('Operated only'),operatedBreakdown:count('Operated + Breakdown'),breakdownOnly:count('Breakdown only'),idle:count('Idle / Not operated'),pending:count('Reason pending'),operated:items.filter(r=>r.operated).length,breakdown:items.filter(r=>r.breakdown).length};};
  return {rows:rows.sort((a,b)=>a.kind.localeCompare(b.kind)||a.door.localeCompare(b.door,undefined,{numeric:true})),summary:{vehicle:summary('vehicle'),lmv:summary('lmv'),equipment:summary('equipment')},unmatched,warnings:[...new Set(warnings)]};
 }
