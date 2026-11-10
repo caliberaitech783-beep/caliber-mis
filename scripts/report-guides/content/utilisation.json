@@ -7,8 +7,8 @@
     "purpose": "Shows, for each door number, how many log books were saved in the chosen dates and the trips, KM, running hours and shift hours on them, with a utilisation percentage. It is built only from saved VLB and ELB log books. A site in-charge or MIS clerk uses it to see how much of the recorded shift time each vehicle or equipment actually ran.",
     "row": "One row is one door number at one site, of one asset type (vehicle or equipment), with all its saved log books in the chosen dates added together.",
     "filters": [
-      ["From", "First book date to include. It opens on today's date (India time). Dates before 1 November 2026 are not accepted."],
-      ["To", "Last book date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From and To back to today."],
+      ["From", "First book date to include. It opens on the 1st of the current month (India time). Dates before 1 November 2026 are not accepted."],
+      ["To", "Last book date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
       ["Site", "Keeps only log books of that site. \"All\" means every site assigned to your login. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."],
       ["Shift", "Keeps only log books saved against that shift."],
       ["Vehicle / equipment", "Keeps only log books of that door number."],
@@ -65,8 +65,8 @@
     "purpose": "यह रिपोर्ट हर डोर नंबर के लिए बताती है कि चुनी हुई तारीखों में कितनी लॉग बुक सेव हुईं और उन पर कुल ट्रिप, KM, चलने के घंटे और Shift के घंटे कितने हैं; साथ में उपयोग का प्रतिशत (Utilisation %) भी देती है। यह सिर्फ़ सेव की गई VLB और ELB लॉग बुक से बनती है। साइट इंचार्ज या MIS क्लर्क इससे देखते हैं कि दर्ज Shift समय में से हर गाड़ी या मशीन असल में कितना चली।",
     "row": "एक लाइन का मतलब है एक साइट पर एक डोर नंबर, एक Asset type (vehicle या equipment) के साथ। चुनी हुई तारीखों की उसकी सारी सेव लॉग बुक जोड़कर दिखाई जाती हैं।",
     "filters": [
-      ["From", "पहली बुक तारीख जो रिपोर्ट में लेनी है। स्क्रीन खुलने पर आज की तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
-      ["To", "आख़िरी बुक तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From और To दोनों फिर से आज की तारीख हो जाती हैं।"],
+      ["From", "पहली बुक तारीख जो रिपोर्ट में लेनी है। स्क्रीन खुलने पर चालू महीने की 1 तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
+      ["To", "आख़िरी बुक तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
       ["Site", "सिर्फ़ उस साइट की लॉग बुक रखता है। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"],
       ["Shift", "सिर्फ़ उस Shift पर सेव की गई लॉग बुक रखता है।"],
       ["Vehicle / equipment", "सिर्फ़ उस डोर नंबर की लॉग बुक रखता है।"],

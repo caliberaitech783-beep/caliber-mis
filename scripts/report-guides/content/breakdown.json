@@ -7,8 +7,8 @@
     "purpose": "Shows every saved VLB and ELB log book in the chosen dates with its shift hours, its running hours from the HMR readings, the breakdown (BD) hours saved with it, and the hours left over. It also says where the BD hours came from. A site in-charge or MIS clerk uses it to see idle time shift by shift and to find log books whose breakdown hours are missing or were typed by hand.",
     "row": "One row is one saved log book: one door, on one date, in one shift.",
     "filters": [
-      ["From", "First book date to include. It opens on today's date (India time). Dates before 1 November 2026 are not accepted."],
-      ["To", "Last book date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From and To back to today."],
+      ["From", "First book date to include. It opens on the 1st of the current month (India time). Dates before 1 November 2026 are not accepted."],
+      ["To", "Last book date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
       ["Site", "Keeps only log books of that site. \"All\" means every site assigned to your login. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."],
       ["Shift", "Keeps only log books saved against that shift."],
       ["Vehicle / equipment", "Keeps only log books of that door number."],
@@ -63,8 +63,8 @@
     "purpose": "यह रिपोर्ट चुनी हुई तारीखों की हर सेव VLB और ELB लॉग बुक दिखाती है: उसके Shift के घंटे, HMR रीडिंग से निकले चलने के घंटे, उसके साथ सेव ब्रेकडाउन (BD) के घंटे और बचे हुए घंटे। यह भी बताती है कि BD के घंटे कहाँ से आए। साइट इंचार्ज या MIS क्लर्क इससे हर Shift का खाली समय देखते हैं और वे लॉग बुक ढूँढते हैं जिनमें ब्रेकडाउन के घंटे नहीं हैं या हाथ से भरे गए हैं।",
     "row": "एक लाइन का मतलब है एक सेव लॉग बुक: एक डोर, एक तारीख, एक Shift।",
     "filters": [
-      ["From", "पहली बुक तारीख जो रिपोर्ट में लेनी है। स्क्रीन खुलने पर आज की तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
-      ["To", "आख़िरी बुक तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From और To दोनों फिर से आज की तारीख हो जाती हैं।"],
+      ["From", "पहली बुक तारीख जो रिपोर्ट में लेनी है। स्क्रीन खुलने पर चालू महीने की 1 तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
+      ["To", "आख़िरी बुक तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
       ["Site", "सिर्फ़ उस साइट की लॉग बुक रखता है। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"],
       ["Shift", "सिर्फ़ उस Shift पर सेव की गई लॉग बुक रखता है।"],
       ["Vehicle / equipment", "सिर्फ़ उस डोर नंबर की लॉग बुक रखता है।"],

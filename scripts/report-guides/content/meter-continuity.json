@@ -13,7 +13,7 @@
       ],
       [
         "2. From",
-        "First card date of the range. It opens on today's date. Dates before 1 November 2026 cannot be chosen."
+        "First card date of the range. It opens on the 1st of the current month. Dates before 1 November 2026 cannot be chosen."
       ],
       [
         "3. To",
@@ -228,7 +228,7 @@
       ],
       [
         "2. From",
-        "सीमा की पहली कार्ड तारीख। शुरू में आज की तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं चुनी जा सकती।"
+        "सीमा की पहली कार्ड तारीख। शुरू में चालू महीने की 1 तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं चुनी जा सकती।"
       ],
       [
         "3. To",

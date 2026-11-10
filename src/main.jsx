@@ -157,6 +157,7 @@ import { requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagRequired,
 import { requestDeletable } from "../shared/request-deletion.mjs";
 import { elapsedLabel, elapsedMilliseconds } from "../shared/report-metrics.mjs";
 import { indiaDateTimeEpoch, indiaDateTimeInputValue, reportRowsWithinRange, validReportDateRange } from "../shared/report-date-range.mjs";
+import { monthStartDate } from "../shared/operational-start.mjs";
 import { IN_OUT_REPORT_TITLE } from "../shared/in-out-report.mjs";
 import { buildDepartmentReports, TICKET_ACCEPTANCE_REPORT_TITLE } from "../shared/department-reports.mjs";
 import { stageTimingRow, slowestStageGap } from "../shared/stage-timing-report.mjs";
@@ -7404,10 +7405,10 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
   const [breakdownMonth, setBreakdownMonth] = useState(() => indiaDateTimeInputValue(new Date()).slice(0, 7));
   const [breakdownRegion, setBreakdownRegion] = useState("all");
   const [breakdownSite, setBreakdownSite] = useState("");
-  const [reportZipFrom, setReportZipFrom] = useState(() => `${indiaDateTimeInputValue(new Date()).slice(0,10)}T00:00`);
+  const [reportZipFrom, setReportZipFrom] = useState(() => `${monthStartDate(indiaDateTimeInputValue(new Date()).slice(0,10))}T00:00`);
   const [reportZipTo, setReportZipTo] = useState(() => indiaDateTimeInputValue(new Date(Date.now() + 60 * 1000)));
   const reportGeneratedAt = useMemo(() => indiaDateTimeInputValue(new Date()), []);
-  const [availabilityFrom, setAvailabilityFrom] = useState(() => indiaDateTimeInputValue(new Date()).slice(0,10));
+  const [availabilityFrom, setAvailabilityFrom] = useState(() => monthStartDate(indiaDateTimeInputValue(new Date()).slice(0,10)));
   const [reportFrom, setReportFrom] = useState("");
   const [reportTo, setReportTo] = useState("");
   const [selectedReportShift, setSelectedReportShift] = useState(ALL_SHIFTS_KEY);

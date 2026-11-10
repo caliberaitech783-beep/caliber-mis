@@ -9,7 +9,7 @@
     "filters": [
       [
         "From / To",
-        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+        "First and last date to include, by the Book Date of the log book. From starts on the 1st of the current month and To on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
       ],
       [
         "Site",
@@ -129,7 +129,7 @@
       "The four counts above the table take VLB and ELB together, so \"logbooks\" and \"trips\" can be more than the table shows.",
       "An equipment log book saved with the status Breakdown, Maintenance, No operator or Not in use can be saved without an operator. Caliber ID and Employee then show —.",
       "Rows are not always in date order. Press the Date heading to sort by date. An empty cell shows —.",
-      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date.",
+      "\"Reset table\" in the Actions menu of the table also puts From back to the 1st of the current month and To back to today's date.",
       "You see only the sites your login is allowed to see."
     ],
     "checklist": [
@@ -160,7 +160,7 @@
     "filters": [
       [
         "From / To",
-        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय From में चालू महीने की 1 तारीख़ और To में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
       ],
       [
         "Site",
@@ -280,7 +280,7 @@
       "तालिका के ऊपर की चारों गिनतियाँ VLB और ELB दोनों को मिलाकर हैं, इसलिए \"logbooks\" और \"trips\" की संख्या तालिका से ज़्यादा हो सकती है।",
       "जो Equipment Log Book Breakdown, Maintenance, No operator या Not in use स्टेटस के साथ सेव हुई है, वह बिना ऑपरेटर के सेव हो सकती है। तब Caliber ID और Employee में — दिखता है।",
       "पंक्तियाँ हमेशा तारीख़ के क्रम में नहीं होतीं; तारीख़ के क्रम के लिए Date कॉलम का नाम दबाएँ। खाली खाने में — दिखता है।",
-      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।",
+      "तालिका के Actions मेनू का \"Reset table\" From को भी वापस चालू महीने की 1 तारीख़ पर और To को आज की तारीख़ पर ले आता है।",
       "आपको सिर्फ़ वही साइट दिखती हैं जिन्हें देखने की अनुमति आपके लॉगिन को है।"
     ],
     "checklist": [

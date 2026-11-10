@@ -9,6 +9,7 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 import {encodeDateRange,parseDateRange} from './date-range-filter.mjs';
+import {monthStartDate} from '../shared/operational-start.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
@@ -18,7 +19,7 @@ export default function OperationsReports(props){
  return <SavedOperationReports {...props}/>;
 }
 function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportSection}){
- const [filters,setFilters]=useState(()=>({from:today(),to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
+ const [filters,setFilters]=useState(()=>({from:monthStartDate(today()),to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),[monthly,setMonthly]=useState(false);
  const id=operationReports.some(r=>r.id===reportId)?reportId:'daily',definition=operationReports.find(r=>r.id===id);
  const valid=filters.from&&filters.to&&filters.from>='2026-11-01'&&filters.to>='2026-11-01'&&filters.from<=filters.to&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<=365;
@@ -32,7 +33,7 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const options=(key,label)=>[...new Map(optionRows.filter(r=>!filters.site||r.location===filters.site).map(r=>[String(r[key]||''),r[label]||r[key]])).entries()].filter(([v])=>v).sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
  const field=(key,label,choices)=> <label>{label}<SmartSelect value={filters[key]} onChange={e=>set(key,e.target.value)} disabled={id==='missing'&&['employee','workOrder'].includes(key)}><option value="">All</option>{choices.map(([value,text])=><option key={value} value={value}>{text}</option>)}</SmartSelect></label>;
  const canExport=Boolean(data)&&!busy&&!error&&valid&&data.reportRange===filters.from+'|'+filters.to;
- const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||today(),to:range?.to||today()}));}};
+ const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||monthStartDate(today()),to:range?.to||today()}));}};
  // The table of the chosen report. The Trip Timing tab shows it as its "All trip rows" view, beside the two delay views.
  const table=<ReportSection key={id} reportKey={definition.title} recordDateFilter={recordDateFilter} dataReady={canExport} title={definition.title+' · '+filters.from+' to '+filters.to} category={'operations-'+id} description={'Filters: '+(Object.entries(effective).filter(([key,value])=>value&&!['from','to'].includes(key)).map(([key,value])=>key+': '+value).join(' · ')||'All assigned records')} columns={report.columns.map((label,index)=>({key:id+'-'+index,label,value:row=>row[index]}))} rows={report.rows} emptyMessage="No matching records or exceptions found."/>;
  return <section className="operations-reports">

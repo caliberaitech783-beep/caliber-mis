@@ -9,7 +9,7 @@
     "filters": [
       [
         "From / To",
-        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+        "First and last date to include, by the Book Date of the log book. From starts on the 1st of the current month and To on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
       ],
       [
         "Site",
@@ -118,7 +118,7 @@
       "Compare shifts only after reading Logbooks. A shift whose log books are not all entered shows lower totals, and a log book entered twice raises them.",
       "Rows are made by site and by the shift name saved on the log book, so shifts of the same name at two sites stay in separate rows.",
       "A trip is counted on the log book that has its loading time. A trip row with only an unloading time (a load taken over from the previous driver) is not counted again.",
-      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date."
+      "\"Reset table\" in the Actions menu of the table also puts From back to the 1st of the current month and To back to today's date."
     ],
     "checklist": [
       "Set From and To to the period and choose Site.",
@@ -148,7 +148,7 @@
     "filters": [
       [
         "From / To",
-        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय From में चालू महीने की 1 तारीख़ और To में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
       ],
       [
         "Site",
@@ -257,7 +257,7 @@
       "Shift की तुलना Logbooks पढ़ने के बाद ही करें। जिस Shift की सारी लॉग बुक नहीं चढ़ीं उसका जोड़ कम आता है, और दो बार चढ़ी लॉग बुक से जोड़ बढ़ जाता है।",
       "पंक्तियाँ साइट और लॉग बुक पर सेव Shift के नाम से बनती हैं, इसलिए दो साइट की एक ही नाम की Shift अलग-अलग पंक्तियों में रहती हैं।",
       "ट्रिप उसी लॉग बुक में गिनी जाती है जिसमें उसका लोडिंग समय लिखा है। जिस ट्रिप पंक्ति में सिर्फ़ अनलोडिंग समय है (पिछले ड्राइवर से ली गई भरी गाड़ी), वह दोबारा नहीं गिनी जाती।",
-      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।"
+      "तालिका के Actions मेनू का \"Reset table\" From को भी वापस चालू महीने की 1 तारीख़ पर और To को आज की तारीख़ पर ले आता है।"
     ],
     "checklist": [
       "From और To में अवधि रखें और Site चुनें।",

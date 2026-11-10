@@ -7,8 +7,8 @@
     "purpose": "This tab is kept for a report of cost per trip, per tonne and per hour. Today it does not show any cost or rate: the table has one row that names the data still needed (\"Fuel, labour, maintenance and other allocated costs\") with the status \"Source not connected\". The totals line above the table still counts the saved log books, assets and trips for the chosen dates.",
     "row": "The table has a single row. It is not a cost record; it only names the data the report needs and says that its source is not connected.",
     "filters": [
-      ["From", "First book date for the totals line. It opens on today's date (India time). Dates before 1 November 2026 are not accepted. It does not change the table row."],
-      ["To", "Last book date for the totals line. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and nothing is shown. Keep in mind: Actions → Reset table also puts From and To back to today."],
+      ["From", "First book date for the totals line. It opens on the 1st of the current month (India time). Dates before 1 November 2026 are not accepted. It does not change the table row."],
+      ["To", "Last book date for the totals line. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and nothing is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
       ["Site", "Narrows the saved log books counted in the totals line to that site. \"All\" means every site assigned to your login. The table row stays the same."],
       ["Shift", "Narrows the totals line to log books of that shift. The table row stays the same."],
       ["Vehicle / equipment", "Narrows the totals line to log books of that door number. The table row stays the same."],
@@ -53,8 +53,8 @@
     "purpose": "यह टैब प्रति ट्रिप, प्रति टन और प्रति घंटा लागत की रिपोर्ट के लिए रखा गया है। अभी यह कोई लागत या दर नहीं दिखाता: टेबल में एक ही लाइन है जो बताती है कि कौन-सा डेटा अभी चाहिए (\"Fuel, labour, maintenance and other allocated costs\") और उसका Status \"Source not connected\" है। टेबल के ऊपर की कुल गिनती वाली लाइन फिर भी चुनी हुई तारीखों की सेव लॉग बुक, asset और ट्रिप गिनती है।",
     "row": "टेबल में सिर्फ़ एक लाइन है। यह लागत का रिकॉर्ड नहीं है; यह सिर्फ़ बताती है कि रिपोर्ट को कौन-सा डेटा चाहिए और उसका स्रोत जुड़ा नहीं है।",
     "filters": [
-      ["From", "कुल गिनती वाली लाइन के लिए पहली बुक तारीख। स्क्रीन खुलने पर आज की तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती। इससे टेबल की लाइन नहीं बदलती।"],
-      ["To", "कुल गिनती वाली लाइन के लिए आख़िरी बुक तारीख। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और कुछ नहीं दिखता। ध्यान रखें: Actions → Reset table दबाने पर From और To दोनों फिर से आज की तारीख हो जाती हैं।"],
+      ["From", "कुल गिनती वाली लाइन के लिए पहली बुक तारीख। स्क्रीन खुलने पर चालू महीने की 1 तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती। इससे टेबल की लाइन नहीं बदलती।"],
+      ["To", "कुल गिनती वाली लाइन के लिए आख़िरी बुक तारीख। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और कुछ नहीं दिखता। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
       ["Site", "कुल गिनती वाली लाइन में सिर्फ़ उस साइट की सेव लॉग बुक गिनता है। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट। टेबल की लाइन वही रहती है।"],
       ["Shift", "कुल गिनती वाली लाइन में सिर्फ़ उस Shift की लॉग बुक गिनता है। टेबल की लाइन वही रहती है।"],
       ["Vehicle / equipment", "कुल गिनती वाली लाइन में सिर्फ़ उस डोर नंबर की लॉग बुक गिनता है। टेबल की लाइन वही रहती है।"],

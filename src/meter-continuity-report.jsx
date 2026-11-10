@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import {CLASS_LABELS,DEFAULT_TOLERANCE} from '../shared/meter-continuity-report.mjs';
 import './production-reports.css';
 import './meter-continuity-report.css';
@@ -19,7 +19,7 @@ export const cardColumns=[column('date','Date'),column('shift','Shift',r=>SHIFT_
 export const summaryColumns=label=>[column('label',label),column('cards','Cards'),column('compared','Compared'),column('matches','Match'),column('tolerance','Within tolerance'),column('negatives','Below previous'),column('jumps','Jumps'),column('noReading','Reading missing'),column('issueRate','Issue %'),column('averageAbsKmGap','Avg. KM gap'),column('averageAbsHourGap','Avg. HMR gap')];
 
 export default function MeterContinuityReport({session,ReportSection,onSelect,reportId}){
- const [filters,setFilters]=useState({site:'',from:today(),to:today(),kmTolerance:DEFAULT_TOLERANCE.kmTolerance,hourTolerance:DEFAULT_TOLERANCE.hourTolerance});
+ const [filters,setFilters]=useState({site:'',from:monthStartDate(today()),to:today(),kmTolerance:DEFAULT_TOLERANCE.kmTolerance,hourTolerance:DEFAULT_TOLERANCE.hourTolerance});
  const [sites,setSites]=useState([]),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[run,setRun]=useState(null),[tab,setTab]=useState('cards');
  const query=useMemo(()=>new URLSearchParams(filters).toString(),[filters]);
  useEffect(()=>{const c=new AbortController();request('/api/reports/production/options',session.token,c.signal).then(o=>setSites(o.sites||[])).catch(e=>{if(!c.signal.aborted)setError(e.message);});return()=>c.abort();},[session.token]);
