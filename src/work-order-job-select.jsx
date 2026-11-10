@@ -1,13 +1,13 @@
 import React from 'react';
 import SmartSelect from './smart-select.jsx';
 
-export default function WorkOrderJobSelect({row,contracts,label,disabled,onChange}){
+export default function WorkOrderJobSelect({row,contracts,label,disabled,onChange,showOverflowValue=false}){
  const choices=contracts.flatMap(contract=>(contract.jobs||[]).map(jobType=>({
   key:JSON.stringify([contract.id,jobType]),jobType,workOrderId:contract.id,number:contract.number
  })));
  const selected=choices.find(choice=>choice.workOrderId===String(row.workOrderId)&&choice.jobType===row.jobType);
  const value=selected?.key||(row.jobType?'saved':'');
- return <SmartSelect searchable aria-label={label} disabled={disabled} value={value} onChange={event=>{
+ return <SmartSelect searchable showOverflowValue={showOverflowValue} aria-label={label} disabled={disabled} value={value} onChange={event=>{
   const choice=choices.find(option=>option.key===event.target.value);
   onChange(choice?{jobType:choice.jobType,workOrderId:choice.workOrderId,masterJob:true}:{jobType:'',workOrderId:'',masterJob:undefined});
  }}>
