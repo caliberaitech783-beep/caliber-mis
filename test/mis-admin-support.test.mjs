@@ -52,3 +52,8 @@ test('MIS ticket creation enforces the assigned site and uses MIS notifications 
  assert.equal((await call('Other')).status,403);assert.equal(inserts.length,0);
  assert.equal((await call('Assigned')).status,201);assert.equal(inserts[0][2],'MIS User');assert.equal(inserts[0][4],'MIS');assert.deepEqual(notifications,[['created',ticket]]);assert.ok(queries.includes('COMMIT'));
 });
+
+test('the Diagnostics page can read its detailed timing for MIS administrators only',()=>{
+ const allowed=(session,path,method='GET')=>misRequestAllowed(session,{path,method});
+ for(const path of ['/api/diagnostics','/api/diagnostics/performance']){assert.equal(allowed(user,path),false,path);assert.equal(allowed(admin,path),true,path);assert.equal(allowed(admin,path,'POST'),false,path);}
+});
