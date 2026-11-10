@@ -5,6 +5,10 @@ const siteRecipients=new Map([
  ['dudhichua east ob','919113496780'],
  ['dudhichua ob','916394694715'],
  ['dudhichau ob','916394694715'],
+ ['sasti ob','917379771776'],
+ ['majri ob','919801238859'],
+ ['gauri pauni ob 2nd','918535853563'],
+ ['dhoptala ob 2nd','919392864944'],
 ]);
 export function deletionPhone(sites=[]){
  const recipients=new Set(sites.map(site=>siteRecipients.get(canonicalSiteName(site))||DELETION_PHONE));
