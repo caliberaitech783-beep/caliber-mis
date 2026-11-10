@@ -3,7 +3,7 @@
 export const REPORT_GUIDE_IDS=[
  'daily','vehicle','equipment','site','trends','batch-status',
  'door-production','machine-production','meter-continuity','vehicle-trips','loading','shift','timing',
- 'manpower','employee','attendance','ot',
+ 'manpower','manpower-reconciliation','employee','attendance','ot',
  'utilisation','breakdown','meters','missing','scans',
  'tonnage','fuel','cost','targets','billing',
  'vlb-reports','elb-reports','fleet-capacity','equipment-deployment'];

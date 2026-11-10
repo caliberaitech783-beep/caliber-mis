@@ -21,7 +21,7 @@
     ],
     "screen": [
       ["REPORTS / MANPOWER & OT", "The page heading, with the title “Shift Attendance Equipment Wise” under it. The next line reads “Saved duties, clear assignments and shift-by-shift performance.”"],
-      ["Manpower by Category · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties", "The tab row. Press a name to open that view. The dates and selections stay the same when you move between these four tabs."],
+      ["Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties", "The tab row. Press a name to open that view. The dates and selections stay the same when you move between these five tabs."],
       ["Bar above the selectors", "Shows the From and To dates in use, the site (or “All assigned sites”), the shift (or “All shifts”) and how many of Saved batch, Employee and Door / equipment are set, for example “2 more selections”. The bar can be pressed only when “Auto-hide filters” is ticked."],
       ["Loading saved records and checking shift patterns…", "Shown while the report is being read. The tables appear when the reading is over."],
       ["Error message", "If the report cannot be read, the reason is shown in place of the tables. For example “This range contains too many saved cards. Select a shorter date range.” or “This range contains too many attendance entries. Select a shorter date range.” (more than 50,000 in the chosen dates)."],
@@ -138,7 +138,7 @@
     ],
     "screen": [
       ["REPORTS / MANPOWER & OT", "पेज का शीर्षक, जिसके नीचे “Shift Attendance Equipment Wise” लिखा रहता है। उसके बाद की लाइन है “Saved duties, clear assignments and shift-by-shift performance.”"],
-      ["Manpower by Category · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties", "टैब की पट्टी। जिस नाम को दबाएँगे वही रिपोर्ट खुलेगी। इन चारों टैब के बीच जाने पर तारीखें और चुनाव वही रहते हैं।"],
+      ["Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties", "टैब की पट्टी। जिस नाम को दबाएँगे वही रिपोर्ट खुलेगी। इन चारों टैब के बीच जाने पर तारीखें और चुनाव वही रहते हैं।"],
       ["फ़िल्टर के ऊपर की पट्टी", "इसमें अभी की From और To तारीखें, साइट (या “All assigned sites”), Shift (या “All shifts”) और यह लिखा रहता है कि Saved batch, Employee और Door / equipment में से कितने चुने गए हैं, जैसे “2 more selections”। यह पट्टी तभी दबती है जब “Auto-hide filters” टिक हो।"],
       ["Loading saved records and checking shift patterns…", "जब तक रिपोर्ट पढ़ी जा रही है तब तक यह लिखा रहता है। पढ़ना पूरा होने पर टेबल दिखती हैं।"],
       ["गलती का संदेश", "अगर रिपोर्ट नहीं पढ़ी जा सकी तो टेबल की जगह उसका कारण लिखा आता है। जैसे “This range contains too many saved cards. Select a shorter date range.” या “This range contains too many attendance entries. Select a shorter date range.” (चुनी हुई तारीखों में 50,000 से ज़्यादा होने पर)।"],

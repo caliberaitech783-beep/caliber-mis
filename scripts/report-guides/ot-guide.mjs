@@ -71,7 +71,7 @@ const views={
 
 // ---- Illustrations: a state of the screen and the parts of it to keep ----
 const figures={
- open:{view:'start',keep:['.mp-heading','.mp-tabs'],caption:'The report page. OT & Multiple Duties is the last of the four Manpower & OT tabs.'},
+ open:{view:'start',keep:['.mp-heading','.mp-tabs'],caption:'The report page. OT & Multiple Duties is the last of the five Manpower & OT tabs.'},
  filters:{view:'start',keep:['.mp-filter-box'],caption:'The filters. The top line always shows the dates in use. Tick Auto-hide filters to tuck the selectors away.'},
  books:{view:'cell',keep:['.mp-notice','.mp-book-pick'],caption:'The line that says what is counted, and the log book selector. All log books is chosen at the start.'},
  sites:{view:'start',keep:['[data-cat="manpower-ot-sites"]'],caption:'Step 1. One line per site: total duties, red, orange and brown cases, the share of red and orange duties, and the number of drivers. Every number can be pressed.'},

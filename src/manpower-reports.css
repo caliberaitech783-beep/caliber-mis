@@ -59,3 +59,6 @@
 .mp-trail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 4px;font-size:14px}.mp-trail button{border:1px solid #c7b5dd;border-radius:8px;padding:4px 10px;background:transparent;color:inherit;font:inherit;font-weight:650;cursor:pointer}.mp-trail button:hover{border-color:#59338b}.mp-trail span{color:var(--muted,#8a8496)}
 .mp-ot-filter{margin:0 0 10px}.mp-ot-filter small{font-weight:500;opacity:.75}
 .mp-att thead th small{white-space:normal;max-width:17ch}
+
+.mp-rc thead th small{white-space:normal;max-width:15ch}.mp-rc-active{color:#17663a}.mp-rc-zero,.mp-rc-zeroKm{color:#984800}.mp-rc-none{color:#a31f20}
+.mp-rc-row-none td:first-of-type,.mp-rc-row-zero td:first-of-type,.mp-rc-row-outside td:first-of-type{font-weight:700}
