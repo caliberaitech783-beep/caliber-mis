@@ -1,5 +1,17 @@
 const abortError=()=>new DOMException('Upload aborted.','AbortError');
 
+export function summarizeUploadExtraction(receipts,cards){
+ const statuses=new Map(cards.map(card=>[card.id,card.status]));
+ const summary={extracted:0,failed:0,skipped:0};
+ for(const receipt of receipts){
+  const status=statuses.get(receipt.id);
+  if(receipt.skipped||status==='rejected')summary.skipped++;
+  else if(status==='error')summary.failed++;
+  else if(['review','approved','posted'].includes(status))summary.extracted++;
+ }
+ return summary;
+}
+
 // Retain only the first counted PDF, so the common single-PDF upload opens once
 // without holding every selected PDF in memory at the same time.
 export function createPdfUploadSession(open){

@@ -1,9 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPdfUploadSession,transferScanGroups} from '../src/scan-upload-pipeline.mjs';
+import {createPdfUploadSession,transferScanGroups,summarizeUploadExtraction} from '../src/scan-upload-pipeline.mjs';
 import {scanValidationClient} from '../server/rules/scan-validation-cache.mjs';
 import {scanProgressChanged,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
 import {readFileSync} from 'node:fs';
+
+test('upload extraction counts only successful receipts and keeps failures and skips separate',()=>{
+ const receipts=[{id:'existing'},{id:'new'},{id:'error'},{id:'reading'},{id:'unseen'},{id:'duplicate',skipped:true}];
+ const cards=[{id:'existing',status:'posted'},{id:'new',status:'review'},{id:'error',status:'error'},{id:'reading',status:'reading'},{id:'unrelated',status:'posted'}];
+ assert.deepEqual(summarizeUploadExtraction(receipts,cards),{extracted:2,failed:1,skipped:1});
+});
 
 test('the counted PDF is reused for rendering and retained documents are bounded and cleaned up',async()=>{
  const opened=[],destroyed=[],open=async file=>{opened.push(file);return {doc:{numPages:3},task:{destroy:async()=>destroyed.push(file)}};};
