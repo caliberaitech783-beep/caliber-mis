@@ -514,7 +514,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
            return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
           })}
          </SmartSelect>
-        :k==='jobType'?<WorkOrderJobSelect row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
+        :k==='jobType'?<WorkOrderJobSelect showOverflowValue row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
         :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:e.currentTarget.value}:row))}/>}
        {tripEstimateNote(r,k)&&<small className="scan-field-message"><mark>{tripEstimateNote(r,k)}</mark></small>}
        {k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&aliasMachineHint(r)?<small className="scan-alias-note">{aliasMachineHint(r)}</small>:k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}

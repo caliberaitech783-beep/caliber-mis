@@ -27,7 +27,7 @@ import {activeResponseRecoveryIssues} from './shared/scan-response-recovery.mjs'
 const params=new URLSearchParams(location.search),mode=params.get('mode')||'scan';
 const fields=${fieldDefinition};
 const options={accountLocation:'Sasti OC',sites:['Sasti OC'],assets:[{id:'1',kind:'equipment',door:'TPC50',name:'TPC50-05008',site:'Sasti OC'},{id:'2',kind:'vehicle',door:'V/792',name:'Volvo',site:'Sasti OC'}],employees:[{id:'3',name:'Example driver',caliberId:'CMPL9143',site:'Sasti OC',location:'Sasti OC'}],shifts:[{id:'4',name:'Shift A',site:'Sasti OC',startTime:'05:00',endTime:'13:00'}],workOrders:[]};
-const record={id:1,book_no:'VLB_S/1ST-NOV26/S1/030',book_type:'vehicle',data:{bookDate:'2026-11-01',location:'Sasti OC',door:'V/792',assetId:'2',employeeId:'3',employeeName:'Example driver',caliberId:'CMPL9143',shiftId:'4',shiftName:'Shift A',shiftHours:8,openingKmr:32577.1,closingKmr:32675.6,openingHmr:1978,closingHmr:1984,totalWorkingHmr:6,totalRunningKmr:98.5,timeMode:'with',trips:[{rowNumber:8,equipmentName:'TPC50-05008',loadingTime:'10:49',unloadingTime:'11:12',tripCount:1}],remark:'Layout verification'}};
+const record={id:1,book_no:'VLB_S/1ST-NOV26/S1/030',book_type:'vehicle',data:{bookDate:'2026-11-01',location:'Sasti OC',door:'V/792',assetId:'2',employeeId:'3',employeeName:'Example driver',caliberId:'CMPL9143',shiftId:'4',shiftName:'Shift A',shiftHours:8,openingKmr:32577.1,closingKmr:32675.6,openingHmr:1978,closingHmr:1984,totalWorkingHmr:6,totalRunningKmr:98.5,timeMode:'with',trips:[{rowNumber:8,equipmentName:'TPC50-05008',loadingTime:'10:49',unloadingTime:'11:12',tripCount:1,jobType:'Coal transportation',workOrderId:'9'}],remark:'Layout verification'}};
 window.fetch=async url=>new Response(JSON.stringify(String(url).includes('/options')?options:String(url).includes('/hours')?{breakdownHours:0,warnings:[]}:{records:[],nextCursor:null}),{headers:{'Content-Type':'application/json'}});
 function ScanFixture(){
  const [draft,setDraft]=useState({location:'Sasti OC',timeMode:mode.startsWith('untimed')?'without':'with',trips:[record.data.trips[0],{...record.data.trips[0],rowNumber:9}]});
@@ -36,7 +36,7 @@ function ScanFixture(){
  // A restrictive header filter must never hide valid trip controls.
  const visibleField=key=>mode!=='filtered-correction'||key.endsWith('.tripCount'),fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
  // The job column reads the batch work contracts and the card's edit state.
- const tripContracts=[],readonly=false,busy=false;
+ const tripContracts=[{id:'9',number:'CMLL/SASTI/2026/WO-12',jobs:['Coal transportation','OB removal']}],readonly=false,busy=false;
  const update=(key,value)=>setDraft(d=>({...d,[key]:value}));
  const tripEquipmentOptions=[{id:'TPC50-05008',name:'TPC50-05008'}],resolvedMachineName=a=>a.name,tripEquipmentSelectionValue=r=>r.equipmentName,selectTripEquipment=(r,value)=>({...r,equipmentName:value});
  return <div className={'scan-page scan-review-page'+(mode==='full-correction'?'':' scan-review-compact')} style={{height:'auto',display:'block',padding:0}}><div className="scan-workspace" style={{display:'block',height:'auto',width:'100%'}}><div className="scan-selected-card" style={{display:'block'}}><section className="scan-draft-sheet" style={{height:'auto',position:'static',transform:'none',width:'100%'}}><fieldset id="scan-entry-fields"><div className="scan-fields scan-card-fields"><div className="scan-review-doc-meta"><strong>Book NO</strong><span>{record.book_no}</span></div><label><span>Doc type</span><input readOnly value="VLB"/></label>{fields.map(([key,label,type])=><label key={key} data-field={key}><span>{compactLogBookLabel(label)}</span>{["number","date"].includes(type)?<input readOnly type={type} value={record.data[key]??""}/>:<SmartSelect showOverflowValue aria-label={label} value="selected" onChange={()=>{}}><option value="selected">{key==="assetId"?"V792 · Volvo":key==="workOrderId"?"CMLL/SASTI/2026/WORK-ORDER-123456789":record.data[key]||label}</option></SmartSelect>}</label>)}</div><div className="scan-trips">${timeEntryMarkup}{draft.trips.map((r,i)=>(${tripMarkup}))}</div></fieldset></section></div></div></div>;
@@ -58,7 +58,7 @@ const browser=await chromium.launch({headless:true});
 mkdirSync('layout-checks',{recursive:true});
 const findings=[];
 try{
- for(const width of [320,390,640,840,900,1024])for(const mode of ['scan','recovery','correction','recovery-correction','filtered-correction','full-correction','untimed','untimed-correction','manual-vlb','manual-elb','saved']){
+ for(const width of [320,390,640,840,900,1024,1280])for(const mode of ['scan','recovery','correction','recovery-correction','filtered-correction','full-correction','untimed','untimed-correction','manual-vlb','manual-elb','saved']){
   const page=await browser.newPage({viewport:{width,height:1000},locale:'en-IN'});
   const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(width,mode,error.message)});
   await page.goto('http://127.0.0.1:'+server.address().port+'/?mode='+mode);
@@ -89,7 +89,7 @@ try{
     else if(timeMode.getBoundingClientRect().height>120)issues.push('Time entry selector must not reserve a blank 220px flex row');
     const timed=!mode.startsWith('untimed');
     for(const row of document.querySelectorAll('.scan-trip-entry')){
-     for(const selector of ['.scan-trip-serial','[data-trip-field="equipmentName"]','[data-trip-field="tripCount"]',...(timed?['[data-trip-field="loadingTime"]','[data-trip-field="unloadingTime"]','.scan-trip-gap']:[])]){
+     for(const selector of ['.scan-trip-serial','[data-trip-field="equipmentName"]','[data-trip-field="tripCount"]','[data-trip-field="jobType"]',...(timed?['[data-trip-field="loadingTime"]','[data-trip-field="unloadingTime"]','.scan-trip-gap']:[])]){
       const control=row.querySelector(selector);if(!control||!visible(control))issues.push('Missing trip control '+selector);
      }
      if(!timed&&row.querySelector('input[type=time]'))issues.push('Without time must retain its untimed behavior');
@@ -97,7 +97,11 @@ try{
     for(const row of document.querySelectorAll('.scan-trip-entry')){
      const fields=[...row.querySelectorAll('label')].filter(visible).map(e=>e.getBoundingClientRect());
      for(let i=0;i<fields.length;i++)for(let j=i+1;j<fields.length;j++){const a=fields[i],b=fields[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)issues.push('Trip fields overlap');}
-     if(document.querySelector('.scan-draft-sheet').clientWidth>880){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
+     const job=row.querySelector('[data-trip-field="jobType"]')?.getBoundingClientRect();if(job&&job.width<150)issues.push('Job selector too narrow: '+round(job.width));
+     const jobLabel=row.querySelector('[data-trip-field="jobType"] > span');if(job&&jobLabel&&jobLabel.scrollWidth>Math.ceil(job.width)+1)issues.push('Job label wider than its field');
+     // The job column made the timed row eight fields wide: it needs 1120px to stay on
+     // one line without clipping. The untimed row still fits from 881px.
+     if(document.querySelector('.scan-draft-sheet').clientWidth>(timed?1119:880)){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
     }
    }
    for(const e of document.querySelectorAll('#logbook-entry-form .searchable-select-full-value')){const control=e.parentElement.querySelector('.searchable-select-control');if(visible(e)&&e.getBoundingClientRect().top<control.getBoundingClientRect().bottom-1)issues.push('Full selected value must appear below its control');}
@@ -108,7 +112,7 @@ try{
   result.issues.push(...errors);
   findings.push(result);
   writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
-  if([320,390,840,900,1024].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
+  if([320,390,840,900,1024,1280].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
   if(mode==='untimed-correction'){
    const times=page.locator('.scan-trip-entry input[type=time]');
    const values=await page.locator('[data-trip-field="tripCount"] input').evaluateAll(nodes=>nodes.map(node=>node.value));
@@ -131,5 +135,5 @@ try{
  writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
  const failures=findings.filter(f=>f.issues.length);
  assert.deepEqual(failures,[],'Responsive layout regressions: '+JSON.stringify(failures));
- console.log('Verified '+findings.length+' layouts: complete scan trip controls, correction/recovery, time-mode switching, VLB, ELB and saved records at 320–1024px; delete preserves serials.');
+ console.log('Verified '+findings.length+' layouts: complete scan trip controls, correction/recovery, time-mode switching, VLB, ELB and saved records at 320–1280px; delete preserves serials.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
