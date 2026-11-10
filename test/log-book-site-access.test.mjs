@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
-import {logBookSiteScope,employeeAtLocation,siteAllowed} from '../shared/log-book-access.mjs';
+import {logBookSiteScope,logBookAccountLocation,employeeAtLocation,siteAllowed} from '../shared/log-book-access.mjs';
 import {LOG_BOOK_SCHEMA,registerLogBooks} from '../server/routes/log-book.mjs';
 import {registerErpEmployees} from '../server/routes/erp-employee-source.mjs';
 import {registerBulkCardScanning,SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
@@ -28,6 +28,10 @@ test('site and regional scopes use canonical site names and deny unassigned MIS 
   assert.equal(siteAllowed(logBookSiteScope({role:'normal',site:'Sasti OC',managerRegion:'All'}),'Jayant OC'),false);
   assert.equal(employeeAtLocation({site:'Sasti OC | Majri OC'},'Sasti OB'),true);
   assert.equal(employeeAtLocation({site:''},'Sasti OC'),false);
+  const session={...mis,login:'operator',site:'Sasti OB'};
+  const incompleteUser=[{login:'operator',site:''}];
+  assert.equal(logBookAccountLocation(session,{sites:['sasti ob','jayant ob']},incompleteUser),'Sasti OC');
+  assert.equal(logBookAccountLocation(session,{sites:['jayant ob']},incompleteUser),'');
 });
 
 test('VLB/ELB options, paginated records, lookups, hours and writes enforce site scope on the server',async t=>{

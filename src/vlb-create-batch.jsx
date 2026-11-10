@@ -6,6 +6,7 @@ import LogBookDeletion from './log-book-deletion.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
+import {withLmvEntrySite} from './vlb-entry-context.mjs';
 import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType} from '../shared/vlb-batch-format.mjs';
 import VlbBatchReport from './vlb-batch-report.jsx';
@@ -78,14 +79,18 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const data=await response.json();if(!response.ok)throw Error(data.error||'Could not read VLB batches.');return data;
  };
  useEffect(()=>{const controller=new AbortController();
-  read(entryMode?'/api/log-books/options':'/api/log-books/options?siteSource=region-master',{signal:controller.signal}).then(data=>{
+  read(entryMode?'/api/log-books/options':'/api/log-books/options?siteSource=region-master',{signal:controller.signal}).then(async masters=>{
+   const data=entryMode&&entryKind==='lmv'
+    ?await withLmvEntrySite(masters,session,path=>read(path,{signal:controller.signal}))
+    :masters;
+   if(controller.signal.aborted)return;
    setOptions(data);
-   const accountSite=entryMode?data.accountLocation:data.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(data.accountLocation));
+   const accountSite=entryMode?data.lmvEntrySite||data.accountLocation:data.sites?.find(site=>canonicalSiteName(site)===canonicalSiteName(data.accountLocation));
    const site=accountSite||(data.sites?.length===1?data.sites[0]:'');
    setSelection(current=>({...current,site,shift:''}));
   }).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false)}});
   return()=>controller.abort();
- },[session.token,entryMode]);
+ },[session.token,entryMode,entryKind]);
  useEffect(()=>{const controller=new AbortController();let pending=false;
   const load=()=>{if(pending)return;pending=true;
    return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true)}).catch(e=>{if(!controller.signal.aborted){setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false});

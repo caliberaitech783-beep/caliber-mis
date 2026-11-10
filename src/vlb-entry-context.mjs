@@ -11,7 +11,10 @@ export function sameVlbEntryContext(batch,context){return Boolean(context&&conte
 export async function withLmvEntrySite(options,session,read,storage){
  const sites=options.sites||[];
  const siteOption=site=>sites.find(option=>canonicalSiteName(option)===canonicalSiteName(site));
- if(options.accountLocation)return {...options,lmvEntrySite:siteOption(options.accountLocation)||options.accountLocation};
+ if(options.accountLocation){
+  const site=siteOption(options.accountLocation);
+  return site?{...options,lmvEntrySite:site}:{...options,sites:[...sites,options.accountLocation],lmvEntrySite:options.accountLocation};
+ }
  if(sites.length===1)return {...options,lmvEntrySite:sites[0]};
  if(!sites.length)return options;
  try{

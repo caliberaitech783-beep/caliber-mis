@@ -43,5 +43,5 @@ export function manualLogBookLocation(session={},scope=logBookSiteScope(session)
 export function logBookAccountLocation(session={},scope=logBookSiteScope(session),users=[]){
  const login=String(session.login||'').trim().toLowerCase(),name=String(session.name||'').trim().toLowerCase();
  const user=users.find(row=>login&&String(row.login||'').trim().toLowerCase()===login)||users.find(row=>name&&String(row.employee||row.name||'').trim().toLowerCase()===name);
- return manualLogBookLocation(user||session,scope);
+  return manualLogBookLocation(user&&userSiteSelection(user).length?user:session,scope);
 }

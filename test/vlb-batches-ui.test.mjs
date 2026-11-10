@@ -7,6 +7,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
+import {withLmvEntrySite} from '../src/vlb-entry-context.mjs';
 import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
@@ -35,6 +36,34 @@ test('VLB and ELB show three entry options and both permissions can open the sha
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/fleet/7',method:'POST'}),true);
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/close',method:'POST'}),true);
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'POST'}),false,'ELB-only access cannot create or lock the VLB stage');
+});
+
+test('LMV Manual and Scan preselect the account site in the batch picker',async()=>{
+ for(const entryMode of ['manual','scan']){
+  const slots=[],effects=[];
+  let cursor=0;
+  const useState=initial=>{
+   const index=cursor++;
+   if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
+   return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
+  };
+  const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
+   React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:effect=>effects.push(effect),
+   canonicalSiteName,displaySiteName,withLmvEntrySite,bookShiftCode,systemBookDate,
+   fetch:async url=>{
+    assert.equal(url,'/api/log-books/options'+(entryMode==='scan'?'?scan=1':''));
+    return {ok:true,json:async()=>({accountLocation:'Sasti OC',sites:['Jayant OC'],shifts:[]})};
+   }
+  },['VlbCreateBatch']);
+  const render=()=>{cursor=0;effects.length=0;return VlbCreateBatch({session:{login:'operator',token:'test'},entryMode,entryKind:'lmv'})};
+  render();
+  const cleanup=effects.find(effect=>String(effect).includes('/api/log-books/options'))();
+  await new Promise(resolve=>setImmediate(resolve));
+  const [select]=nodes(render(),node=>node.type==='select');
+  assert.equal(select.props.value,'Sasti OC');
+  assert.ok(nodes(select,node=>node.type==='option').some(option=>option.props.children==='Sasti OC'));
+  cleanup();
+ }
 });
 
 test('dedicated PM navigation permits only review routes without granting VLB editing permissions',()=>{
