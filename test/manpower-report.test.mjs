@@ -45,6 +45,14 @@ test('S2 + S3 is red, S1 + S3 orange, all three red with priority',()=>{
 test('S3 → next day S1 is red with zero scheduled gap',()=>{
  const r=report([card(1,3),card(2,1,{bookDate:'2026-11-11'})]);assert.equal(r.performance.length,1);assert.equal(r.ot.length,1);assert.equal(r.ot[0].severity,'red');assert.equal(r.ot[0].gaps,'0 h');assert.match(r.ot[0].schedule,/2026-11-11 05:00/);
 });
+test('a case is placed once, on the date and shift of its first duty',()=>{
+ const start=cards=>{const [e]=report(cards).ot;return [e.startDate,e.startShift];};
+ assert.deepEqual(start([card(1,1),card(2,2)]),[date,'S1']);assert.deepEqual(start([card(1,2),card(2,3)]),[date,'S2']);
+ assert.deepEqual(start([card(1,1),card(2,3)]),[date,'S1'],'Shift 1 and Shift 3 sit under Shift 1');
+ assert.deepEqual(start([card(1,3),card(2,2),card(3,1)]),[date,'S1'],'all three shifts sit under Shift 1');
+ assert.deepEqual(start([card(1,3),card(2,1,{bookDate:'2026-11-11'})]),[date,'S3'],'an overnight pair sits under Shift 3 of the first day');
+ assert.deepEqual(start([card(1,3,{bookDate:'2026-11-09'}),card(2,1)]),['2026-11-09','S3'],'also when the first day is the day before the selected dates');
+});
 test('left boundary includes previous-day S3 for selected-day S1',()=>{
  const r=report([card(1,3,{bookDate:'2026-11-09'}),card(2,1)]);assert.equal(r.ot[0].severity,'red');assert.match(r.ot[0].dates,/2026-11-09/);assert.equal(r.performance.length,1);
 });

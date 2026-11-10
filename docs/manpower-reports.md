@@ -120,3 +120,15 @@ All Manpower & OT pages:
 - A site is shown under one properly written name (Shift Master first, then batches, then cards). A stored lower-case key such as "jayant ob" appears only when no better spelling exists, and the Site selector lists each site once.
 
 Data: `GET /api/reports/manpower` adds `attendanceShifts` (`siteKey`, `date`, `shift`, `state` = `none` | `vlb_open` | `lmv_open` | `elb_open` | `closed` | `not_due`, `batch`) and `employeeKey` on `attendanceEquipment` rows; the batch read now includes `shift` and `stage`. `GET /api/reports/manpower/ot-drivers` adds `duties` (actual duties per month, saved VLB and ELB cards) and lists every driver of the site, not only flagged ones.
+
+## OT date by shift (10 Nov 2026)
+
+Owner's sketch of 10 Nov 2026 (a marked-up copy of the site summary workbook): site, then date by shift, then drivers, then the driver's red and orange counts for the month and the year.
+
+- An opened site now shows a **date by shift** table between the site lines and the drivers list: one row per selected date, one column per shift (Shift 1 to 3, plus any other shift code found), then Cases and Drivers, and an All dates row when more than one date is selected.
+- **A case is placed once, on the date and shift of its first duty** (`startDate`, `startShift` on every `ot` event). Shift 1 with Shift 2 or Shift 3, and all three shifts, sit under Shift 1; Shift 2 with Shift 3 under Shift 2; Shift 3 with the next day's Shift 1 under Shift 3 of the first day. The table therefore adds up to the site's line. This is the same day rule as the month and year counts.
+- A case that began in Shift 3 on the evening before the From date is part of the site's line (the report reads one adjoining day), so it gets its own row, marked "night before the selected dates".
+- Each box holds a pressable number per colour. Pressing one narrows the drivers list and the case table to that date, shift and colour; the Cases number narrows to the date; the All dates row narrows to a shift. Pressing the same number again, or "Show all dates and shifts", returns to the whole site. The site's drivers are still listed as soon as the site opens.
+- The drivers list replaces "OT in <month>" and "OT in <year>" with four columns: Red and Orange in the month, Red and Orange in the year. Brown stays in the driver's history. The colour columns for the selection are named "Red / Orange / Brown in selected dates". Shift Attendance Equipment Wise keeps its two combined OT columns.
+- The date-by-shift table is a screen table like the site lines: it has no Generate button. The drivers list and the case table under it export what is selected.
+- No new read: the table is built in the page from the cases already loaded.

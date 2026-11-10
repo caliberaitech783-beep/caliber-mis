@@ -38,10 +38,12 @@ const print=async(html,pdf)=>{
  for(let attempt=1;attempt<=2;attempt++){
   if(fs.existsSync(pdf))fs.rmSync(pdf);
   const child=spawn(browser,['--headless=new','--disable-gpu','--no-pdf-header-footer','--allow-file-access-from-files','--virtual-time-budget=15000','--user-data-dir='+path.join(work,'profile-'+(++prints)),'--print-to-pdf='+pdf,pathToFileURL(html).href],{stdio:'ignore'});
-  let exited=false,size=-1,steady=0;child.on('exit',()=>{exited=true;});
+  // The process started here can end before the PDF is written (the browser hands the print to another of its processes),
+  // so a missing file is given up on only 20 seconds after that exit.
+  let exited=false,exitedAt=0,size=-1,steady=0;child.on('exit',()=>{exited=true;exitedAt=Date.now();});
   for(const started=Date.now();Date.now()-started<90000&&steady<3;){
    await sleep(500);const now=fs.existsSync(pdf)?fs.statSync(pdf).size:-1;
-   steady=now>20000&&now===size?steady+1:0;size=now;if(exited&&steady<3&&now<=20000)break;
+   steady=now>20000&&now===size?steady+1:0;size=now;if(exited&&steady<3&&now<=20000&&Date.now()-exitedAt>20000)break;
   }
   if(!exited)close(child);
   if(fs.existsSync(pdf)&&fs.statSync(pdf).size>20000)return;

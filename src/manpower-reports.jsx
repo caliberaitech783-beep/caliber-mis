@@ -15,6 +15,8 @@ const shiftName=code=>({S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'
 const stageName=state=>({vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open'})[state]||'Open';
 const batchOpen=b=>/_open$/.test(b.state);
 const shortDate=date=>date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(2,4);
+const weekday=date=>new Date(date+'T00:00:00Z').toLocaleString('en-IN',{weekday:'short',timeZone:'UTC'});
+const nextDay=date=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
 const monthName=month=>new Date(month+'-01T00:00:00Z').toLocaleString('en-IN',{month:'short',year:'numeric',timeZone:'UTC'});
 const many=(n,word)=>n+' '+word+(n===1?'':'s');
 const dutyCount=(n,kind)=>n+' '+kind+(n===1?' duty':' duties');
@@ -27,7 +29,7 @@ const flagChip=key=>c=>c.key===key?{...c,render:r=><strong className={'mp-flag m
 const driverButton=(opened,openDriver)=>c=>c.key==='employeeName'?{...c,render:r=><button type="button" className="mp-driver-open" aria-pressed={opened===r.driverId} aria-label={'History of '+r.employeeName} onClick={()=>openDriver(opened===r.driverId?'':r.driverId)}>{r.employeeName}</button>}:c;
 // Date, site and shift sit in the heading; each returns as a column only when the list covers more than one.
 const attendanceColumns=({days,sites,shifts,equipment,month,year,opened,openDriver})=>columns([...(days?[['date','Duty date']]:[]),...(sites?[['site','Site']]:[]),...(shifts?[['shift','Shift']]:[]),...person,['otMonth','OT in '+monthName(month)],['otYear','OT in '+year],['doors','Door / equipment'],...(equipment?[['equipment','Equipment']]:[]),['makeModel','Make / model'],['status','Attendance'],['trips','Completed VLB trips'],['actualLabel','Actual duty'],['flagLabel','Duty flag'],['note','Duty note'],['reason','Zero-trip reason'],['remarks','Remarks']]).map(flagChip('flagLabel')).map(driverButton(opened,openDriver));
-const otDriverColumns=({sites,month,year,opened,openDriver})=>columns([...(sites?[['site','Site']]:[]),...person,['otMonth','OT in '+monthName(month)],['otYear','OT in '+year],['category','Driver category'],['red','Red'],['orange','Orange'],['review','Brown'],['total','Cases in selected dates'],['logBook','Log book'],['dutyDates','Duty dates'],['shifts','Shifts worked'],['equipment','Equipment worked']]).map(driverButton(opened,openDriver));
+const otDriverColumns=({sites,month,year,opened,openDriver})=>columns([...(sites?[['site','Site']]:[]),...person,['otMonthRed','Red in '+monthName(month)],['otMonthOrange','Orange in '+monthName(month)],['otYearRed','Red in '+year],['otYearOrange','Orange in '+year],['category','Driver category'],['red','Red in selected dates'],['orange','Orange in selected dates'],['review','Brown in selected dates'],['total','Cases in selected dates'],['logBook','Log book'],['dutyDates','Duty dates'],['shifts','Shifts worked'],['equipment','Equipment worked']]).map(driverButton(opened,openDriver));
 const otColumns=columns([['reason','OT flag / reason'],['logBook','Log book'],...person,['category','Driver category'],['equipment','Equipment worked'],['site','Site'],['dates','Duty dates'],['shifts','Shifts worked'],['shiftHours','Each shift’s HMR hours'],['combinedHours','Combined HMR performance hours'],['schedule','Scheduled start / end (IST)'],['gaps','Scheduled gap between duties'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]).map(flagChip('reason'));
 const driverHistoryColumns=columns([['date','Duty date'],['reason','OT flag / reason'],['shifts','Shifts worked'],['logBook','Log book'],['equipment','Equipment worked'],['combinedHours','Combined HMR performance hours'],['books','Saved cards']]).map(flagChip('reason'));
 const classification=[['category','Category'],['group','Equipment group'],['make','Make'],['model','Model']];
@@ -35,7 +37,7 @@ const detailColumns=columns([...context,['door','Door / equipment'],...classific
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
 const performanceColumns=columns([...context,...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
 const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','What to correct']]);
-const noPick={siteKey:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',severity:''};
+const noPick={siteKey:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',severity:'',date:'',shift:''};
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
 const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
 
@@ -45,7 +47,7 @@ const openSite=(sites,picked)=>sites.length===1?sites[0].siteKey:picked===EVERY|
 // in a list of every site, pressing a driver's name reads that driver's site.
 const tallyReader=(tally,tallyKey,tallySite)=>{
  const counted=tally.key===tallyKey,data=counted?tally.data:null,drivers=new Map((data?.drivers||[]).map(d=>[d.employeeKey+'|'+d.siteKey,d]));
- return {counted,data,error:counted?tally.error:'',record:id=>drivers.get(id),count:(id,siteKey,span)=>siteKey!==tallySite?'Press the name':data?drivers.get(id)?.[span].total||0:counted?'Unavailable':'Checking…'};
+ return {counted,data,error:counted?tally.error:'',record:id=>drivers.get(id),count:(id,siteKey,span,level='total')=>siteKey!==tallySite?'Press the name':data?drivers.get(id)?.[span][level]||0:counted?'Unavailable':'Checking…'};
 };
 
 // One driver's history for the year, opened from his name: duties and OT month by month, then every flagged duty.
@@ -66,14 +68,21 @@ function driverHistory({driver,detail,reader,year,close,historyBox,ReportSection
  </>;
 }
 
-// OT & Multiple Duties: one line per site, then that site's drivers, then one driver's history.
+// OT & Multiple Duties: one line per site, then that site date by shift, then its drivers, then one driver's history.
 // Plain render function: its state lives in ManpowerReports.
 function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
  // A duty saved in two log books belongs to both, so it is counted under each.
  const cases=report.ot.filter(r=>!logBook||(r.logBooks||[]).includes(logBook));
  const of=(site,level)=>cases.filter(r=>(site===EVERY||r.siteKey===site)&&(!level||r.severity===level));
  const driversIn=list=>new Set(list.map(r=>r.employeeKey+'|'+r.siteKey)).size;
- const siteKey=openSite(sites,otPick.siteKey),severity=siteKey?otPick.severity:'',chosen=siteKey?of(siteKey,severity):[];
+ const siteKey=openSite(sites,otPick.siteKey),severity=siteKey?otPick.severity:'';
+ // Date by shift for the open site. A case is placed once, on the date and shift of its first duty, so the table adds up to the site's line.
+ // An overnight case that began the evening before the selected dates gets its own row.
+ const inSite=siteKey?of(siteKey,''):[],span=[];for(let day=filters.from;day<=filters.to&&span.length<32;day=nextDay(day))span.push(day);
+ const gridDates=[...new Set([...span,...inSite.map(r=>r.startDate).filter(Boolean)])].sort(),gridShifts=[...new Set(['S1','S2','S3',...inSite.map(r=>r.startShift).filter(Boolean)])].sort();
+ const date=siteKey&&gridDates.includes(otPick.date)?otPick.date:'',shift=siteKey&&gridShifts.includes(otPick.shift)?otPick.shift:'';
+ const at=(day,code,level)=>inSite.filter(r=>(!day||r.startDate===day)&&(!code||r.startShift===code)&&(!level||r.severity===level));
+ const chosen=at(date,shift,severity),narrowed=[date&&shortDate(date),shift&&shiftName(shift)].filter(Boolean).join(' · ');
  const colour=otFlags.find(([id])=>id===severity)?.[1]||'',siteLabel=siteKey===EVERY?'All sites':sites.find(s=>s.siteKey===siteKey)?.site||'';
  const reader=tallyReader(tally,tallyKey,tallySite),month=filters.to.slice(0,7),year=filters.to.slice(0,4);
  const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
@@ -81,15 +90,25 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
   const drivers=new Map();
   for(const r of chosen){const id=r.employeeKey+'|'+r.siteKey,row=drivers.get(id)||{id,driverId:id,siteKey:r.siteKey,site:r.site,employeeId:r.employeeId,caliberCode:r.caliberCode,employeeName:r.employeeName,category:r.category,red:0,orange:0,review:0,total:0,books:new Set(),dates:new Set(),shifts:[],equipment:new Set()};
    row[r.severity]++;row.total++;for(const code of r.logBooks||[])row.books.add(code);for(const date of String(r.dates||'').split('; '))if(date)row.dates.add(date);if(r.shifts)row.shifts.push(r.shifts);for(const item of String(r.equipment||'').split('; '))if(item)row.equipment.add(item);drivers.set(id,row);}
-  return [...drivers.values()].map(({books,dates,shifts,equipment,...row})=>({...row,otMonth:reader.count(row.id,row.siteKey,'month'),otYear:reader.count(row.id,row.siteKey,'year'),logBook:logBooks.map(([code])=>code).filter(code=>books.has(code)).join(' + '),dutyDates:[...dates].sort().join('; '),shifts:shifts.join(' | '),equipment:[...equipment].join('; ')}))
+  return [...drivers.values()].map(({books,dates,shifts,equipment,...row})=>({...row,otMonthRed:reader.count(row.id,row.siteKey,'month','red'),otMonthOrange:reader.count(row.id,row.siteKey,'month','orange'),otYearRed:reader.count(row.id,row.siteKey,'year','red'),otYearOrange:reader.count(row.id,row.siteKey,'year','orange'),logBook:logBooks.map(([code])=>code).filter(code=>books.has(code)).join(' + '),dutyDates:[...dates].sort().join('; '),shifts:shifts.join(' | '),equipment:[...equipment].join('; ')}))
    .sort((a,b)=>b.red-a.red||b.orange-a.orange||b.total-a.total||String(a.employeeName).localeCompare(String(b.employeeName)));
  })();
  const opened=driverRows.find(r=>r.id===driverOpen);
- const choose=(site,level)=>setOtPick(siteKey===site&&severity===level?noOtPick:{siteKey:site,severity:level});
+ const whole=!date&&!shift,choose=(site,level)=>setOtPick(siteKey===site&&severity===level&&whole?noOtPick:{...noOtPick,siteKey:site,severity:level});
+ const narrow=(day,code,level)=>setOtPick(date===day&&shift===code&&severity===level?{...noOtPick,siteKey}:{siteKey,severity:level,date:day,shift:code});
+ // One box of the date-by-shift table: a pressable number for every colour that has a case there.
+ const cell=(day,code,label)=>{const found=otFlags.map(([id,name])=>[id,name,at(day,code,id).length]).filter(([,,n])=>n);
+  return found.length?<span className="mp-ot-cell">{found.map(([id,name,n])=><button key={id} type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={date===day&&shift===code&&severity===id} aria-label={n+' '+name+' · '+label} onClick={()=>narrow(day,code,id)}>{n}</button>)}</span>:<span className="mp-zero">0</span>;};
+ const gridLine=(day,name,note,total)=>{const all=at(day,'','');return <tr key={day||'all'} className={[total&&'mp-att-total',!total&&date===day&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+  <th scope="row">{name}{note&&<small>{note}</small>}</th>
+  {gridShifts.map(code=><td key={code}>{cell(day,code,name+' · '+shiftName(code))}</td>)}
+  <td>{all.length?<button type="button" className="mp-cat-count" aria-pressed={date===day&&!shift&&!severity&&!total} aria-label={many(all.length,'case')+' · '+name} onClick={()=>total?setOtPick({...noOtPick,siteKey}):narrow(day,'','')}>{all.length}</button>:<span className="mp-zero">0</span>}</td>
+  <td>{driversIn(all)}</td>
+ </tr>;};
  const line=(site,name,total)=><tr key={site} className={[total&&'mp-att-total',siteKey===site&&'mp-on'].filter(Boolean).join(' ')||undefined}>
   <th scope="row">{name}</th>
-  {otFlags.map(([id,label])=>{const n=of(site,id).length;return <td key={id}>{n?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={siteKey===site&&severity===id} aria-label={n+' '+label+' · '+name} onClick={()=>choose(site,id)}>{n}</button>:0}</td>;})}
-  <td>{of(site,'').length?<button type="button" className="mp-cat-count" aria-pressed={siteKey===site&&!severity} aria-label={many(driversIn(of(site,'')),'driver')+' · '+name} onClick={()=>choose(site,'')}>{driversIn(of(site,''))}</button>:0}</td>
+  {otFlags.map(([id,label])=>{const n=of(site,id).length;return <td key={id}>{n?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={siteKey===site&&severity===id&&whole} aria-label={n+' '+label+' · '+name} onClick={()=>choose(site,id)}>{n}</button>:0}</td>;})}
+  <td>{of(site,'').length?<button type="button" className="mp-cat-count" aria-pressed={siteKey===site&&!severity&&whole} aria-label={many(driversIn(of(site,'')),'driver')+' · '+name} onClick={()=>choose(site,'')}>{driversIn(of(site,''))}</button>:0}</td>
  </tr>;
  return <>
   <p className="mp-notice">A case is one driver working more than one shift: back to back (red), Shift 1 and Shift 3 on one day (orange), or a pattern that needs checking (brown). {many(cases.length,'case')} and {many(driversIn(cases),'driver')} in the selected dates.</p>
@@ -97,17 +116,24 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
   <div className="mp-category mp-att" role="group" aria-label="Cases by site">
    <h2>All sites · {dateLabel} · {logBook||'VLB, ELB and LMV'}</h2>
    {sites.length?<>
-    <p className="mp-category-hint">Press a number to list those drivers, one row each.</p>
+    <p className="mp-category-hint">Press a number to open that site date by shift, with its drivers under it.</p>
     <table><thead><tr><th scope="col">Site</th>{otFlags.map(([id,label,meaning])=><th key={id} scope="col">{label}<small>{meaning}</small></th>)}<th scope="col">Drivers<small>With any colour</small></th></tr></thead>
      <tbody>{sites.map(s=>line(s.siteKey,s.site,false))}{sites.length>1&&line(EVERY,'All sites',true)}</tbody>
     </table>
    </>:<p>No site is available for these selections.</p>}
   </div>
   {siteKey?<>
-   <ReportSection key={'drivers-'+query+'-'+siteKey+'-'+logBook+'-'+severity} title={[siteLabel,colour?colour+' only':'All colours','drivers'].join(' · ')} category="manpower-ot-drivers" description={dateLabel+' · '+(logBook||'VLB, ELB and LMV')+' · One row per driver · Press a name for the month-wise history'} rows={driverRows} columns={otDriverColumns({sites:siteKey===EVERY,month,year,opened:opened?.id||'',openDriver:setDriverOpen})} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No driver with these colours in this selection."/>
+   <div className="mp-category mp-att mp-ot-grid" role="group" aria-label="Cases by date and shift">
+    <h2>{siteLabel} · date by shift · {dateLabel}</h2>
+    <p className="mp-category-hint">Each case is shown once, in the shift where it started: Shift 1 with Shift 2 or Shift 3 sits under Shift 1, and Shift 3 with the next day’s Shift 1 sits under Shift 3 of the first day. {narrowed?<>Showing <strong>{narrowed}{colour?' · '+colour+' only':''}</strong> below. <button type="button" onClick={()=>setOtPick({...noOtPick,siteKey})}>Show all dates and shifts</button></>:'Press a number to list only those drivers below.'}</p>
+    <table><thead><tr><th scope="col">Date</th>{gridShifts.map(code=><th key={code} scope="col">{shiftName(code)}</th>)}<th scope="col">Cases<small>All shifts</small></th><th scope="col">Drivers<small>With any colour</small></th></tr></thead>
+     <tbody>{gridDates.map(day=>gridLine(day,shortDate(day),weekday(day)+(day<filters.from?' · night before the selected dates':''),false))}{gridDates.length>1&&gridLine('','All dates','',true)}</tbody>
+    </table>
+   </div>
+   <ReportSection key={'drivers-'+query+'-'+siteKey+'-'+logBook+'-'+severity+'-'+date+'-'+shift} title={[siteLabel,narrowed,colour?colour+' only':'All colours','drivers'].filter(Boolean).join(' · ')} category="manpower-ot-drivers" description={(narrowed?'Cases that started on '+narrowed:dateLabel)+' · '+(logBook||'VLB, ELB and LMV')+' · One row per driver · Press a name for the month-wise history'} rows={driverRows} columns={otDriverColumns({sites:siteKey===EVERY,month,year,opened:opened?.id||'',openDriver:setDriverOpen})} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No driver with these colours in this selection."/>
    {opened&&driverHistory({driver:opened,detail:opened.category,reader,year,close:()=>setDriverOpen(''),historyBox,ReportSection,sectionKey:'driver-history-'+query+'-'+opened.id})}
-   <ReportSection key={'ot-'+query+'-'+siteKey+'-'+logBook+'-'+severity} title={[siteLabel,colour?colour+' only':'All colours','each case'].join(' · ')} category="manpower-ot" description="One row per case: the driver and the shifts worked together. Scheduled times in IST; HMR hours are machine hours, not payable OT." rows={chosen} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} recordDateFilter={false} emptyMessage="No case in this selection."/>
-  </>:<p className="mp-notice">Press a number above to list the drivers, then a driver’s name for the month-wise history.</p>}
+   <ReportSection key={'ot-'+query+'-'+siteKey+'-'+logBook+'-'+severity+'-'+date+'-'+shift} title={[siteLabel,narrowed,colour?colour+' only':'All colours','each case'].filter(Boolean).join(' · ')} category="manpower-ot" description="One row per case: the driver and the shifts worked together. Scheduled times in IST; HMR hours are machine hours, not payable OT." rows={chosen} columns={otColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} recordDateFilter={false} emptyMessage="No case in this selection."/>
+  </>:<p className="mp-notice">Press a number above to open a site date by shift, then a number there for its drivers, then a driver’s name for the month-wise history.</p>}
  </>;
 }
 
