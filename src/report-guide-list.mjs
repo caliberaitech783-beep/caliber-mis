@@ -1,7 +1,7 @@
 // Report tabs that have an operating manual. Each id has two files under public/guides:
 // <id>-en.pdf and <id>-hi.pdf. They are built by scripts/report-guides/build.mjs.
 export const REPORT_GUIDE_IDS=[
- 'daily','vehicle','equipment','site','trends',
+ 'daily','vehicle','equipment','site','trends','batch-status',
  'door-production','machine-production','meter-continuity','vehicle-trips','loading','shift','timing',
  'manpower','employee','attendance','ot',
  'utilisation','breakdown','meters','missing','scans',
