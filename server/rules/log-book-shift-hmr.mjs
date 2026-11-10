@@ -19,7 +19,7 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null){
   return shift&&otherShift?shift===otherShift:String(row.data.shiftId)===String(data.shiftId);
  });
  if(!peers.length)return;
- if(kind!=='lmv'||!data.manualShiftOverride){
+ if(kind!=='lmv'){
   const limit=data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
    data.shiftHours,...peers.map(row=>Number(row.data.shiftHours)).filter(hours=>hours===8||hours===12)
   );

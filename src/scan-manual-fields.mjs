@@ -6,12 +6,12 @@ import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired,ignoreScanLo
 import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
-export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
+export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv=false){
  if(kind==='vehicle')input=ignoreScanLoadingWithoutEquipment(input);
  const draft=normalizeScanEquipmentRows({...withScannedDoor(input,raw,kind),...(raw?.machineNotation?.version===1?{machineNotationRuleVersion:1}:{}),trips:scanTripTimeInputs(input.trips)},options?.assets||[]);
  // A generic "check extracted handwriting" marker does not mean a value needs
  // typing. Keep actual missing/invalid values and specific conflicts visible.
- const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options);
+ const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options,lmv);
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
  for(const key of draft.meterReviewFields||[])if(draft.meterReviewMessages?.[key])issues[key]=draft.meterReviewMessages[key];
  if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift']]){
@@ -28,7 +28,11 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null){
   }
  }
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
- if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,kind));
+ if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,lmv?'lmv':kind));
+ if(lmv){
+  delete issues.openingHmr;
+  delete issues.closingHmr;
+ }
  return issues;
 }
 
