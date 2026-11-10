@@ -1,3 +1,4 @@
+import {deletionPhone,deletionRecipient} from '../rules/deletion-otp-routing.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {isDeletableScanCard,scanDeletionSelection,scanDeletionApproval} from '../../src/scan-card-deletion-selection.mjs';
 export const SCAN_CARD_GROUP_DELETION_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_scan_card_group_deletions(id UUID PRIMARY KEY,batch_id UUID NOT NULL,actor TEXT NOT NULL,cards JSONB NOT NULL,approval TEXT NOT NULL,reason TEXT NOT NULL,otp_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL,expires_at TIMESTAMPTZ NOT NULL,permanent BOOLEAN NOT NULL DEFAULT FALSE);ALTER TABLE mis_scan_card_group_deletions ADD COLUMN IF NOT EXISTS permanent BOOLEAN NOT NULL DEFAULT FALSE;CREATE INDEX IF NOT EXISTS mis_scan_card_group_deletions_actor ON mis_scan_card_group_deletions(actor,created_at);`;
@@ -17,15 +18,16 @@ export function registerScanCardGroupDeletion(app,{pool,protect,wrap,getBatch,ge
   const items=selection(req.body.cards),entry=req.body.entry===true,approval=scanDeletionApproval(items)+(entry?entryApproval:''),reason=String(req.body.reason||'').trim(),permanent=req.body.permanent===true;
   if(req.body.approval!==approval||!reason||reason.length>2000)fail('Approve the exact selected cards and enter a deletion reason.',400);
   if(entry){if(!permanent||!checkEntryDeletion)fail('Scan entry deletion is unavailable.');await checkEntryDeletion(pool,req.params.id,items,req);}
-  await check(pool,req.params.id,items,false,permanent);
+  const cards=await check(pool,req.params.id,items,false,permanent),batch=await getBatch(pool,req.params.id);
+  const sites=cards.map(card=>batch?.expected_context?.location||card.draft?.location),to=deletionPhone(sites);
   const time=now(),user=actor(req),id=randomUUID(),otp=String(randomInt(100000,1000000)),client=await pool.connect();
   try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['scan-card-group-deletion:'+user]);const recent=(await client.query('SELECT created_at FROM mis_scan_card_group_deletions WHERE actor=$1 AND created_at>$2 ORDER BY created_at DESC',[user,new Date(time-3600000)])).rows;if(recent.length>=10||recent.some(row=>time-new Date(row.created_at).getTime()<60000))fail('Wait one minute between OTP requests; maximum ten per hour.',429);
    await client.query("UPDATE mis_scan_card_group_deletions SET state='superseded' WHERE actor=$1 AND state IN('pending','delivered')",[user]);
    await client.query('INSERT INTO mis_scan_card_group_deletions(id,batch_id,actor,cards,approval,reason,otp_hash,created_at,expires_at,permanent) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)',[id,req.params.id,user,JSON.stringify(items),approval,reason,digest(id,otp),new Date(time),new Date(time+600000),permanent]);await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
-  let delivery;try{delivery=await sendOtp({to:'919925565281',otp,requestId:id,count:items.length})}catch{}
+  let delivery;try{delivery=await sendOtp({to,sites,otp,requestId:id,count:items.length})}catch{}
   if(!delivery?.sent||!delivery.messageId){await pool.query("UPDATE mis_scan_card_group_deletions SET state='failed' WHERE id=$1",[id]);fail('WhatsApp OTP delivery failed. No cards were deleted.',503)}
-  await pool.query("UPDATE mis_scan_card_group_deletions SET state='delivered' WHERE id=$1 AND state='pending'",[id]);res.json({requestId:id,recipient:'+91 9925565281',expiresInMinutes:10,count:items.length});
+  await pool.query("UPDATE mis_scan_card_group_deletions SET state='delivered' WHERE id=$1 AND state='pending'",[id]);res.json({requestId:id,recipient:deletionRecipient(to),expiresInMinutes:10,count:items.length});
  }));
  app.post('/api/scan-batches/:id/card-deletions/confirm',...protect,wrap(async(req,res)=>{
   if(req.body.requestId&&!/^[a-f0-9-]{36}$/i.test(String(req.body.requestId)))fail('Deletion OTP expired or unavailable. Request a new code.');

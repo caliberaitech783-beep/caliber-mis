@@ -12,3 +12,17 @@ test('dedicated Pulse sender is restricted to deletion OTPs and the approved rec
  await assert.rejects(()=>sendDeletionOtp({...request,count:0},transport),/Invalid/);
  config.purpose='manualReports';await assert.rejects(()=>sendDeletionOtp(request,transport),/not configured/);assert.equal(calls.length,1);
 });
+
+test('Jayant deletion uses the new number without changing the recipient for other sites',async()=>{
+ const pool={query:async()=>({rows:[{setting_value:{enabled:true,purpose:'logBookDeletionOtp',recipient:DELETION_PHONE}}]})};
+ const delivered=[];
+ const transport={sendTemplate:async({to})=>delivered.push(to)};
+ const request={pool,otp:'123456',requestId:'routing-test',count:1};
+ const jayant='919936297751';
+ await sendDeletionOtp({...request,to:jayant,sites:['Jayant OC','Jayant OB']},transport);
+ await sendDeletionOtp({...request,to:DELETION_PHONE,sites:['Sasti OC']},transport);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:DELETION_PHONE,sites:['Jayant OC']},transport),/Invalid/);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:jayant,sites:['Sasti OC']},transport),/Invalid/);
+ await assert.rejects(()=>sendDeletionOtp({...request,to:jayant,sites:['Jayant OC','Sasti OC']},transport),/separately/);
+ assert.deepEqual(delivered,[jayant,DELETION_PHONE]);
+});

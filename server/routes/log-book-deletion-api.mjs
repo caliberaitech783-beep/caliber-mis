@@ -2,7 +2,9 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {vlbBatchSelection,vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {discoverDeletionScope,bindLocalFiles,scopeHash,stableJson,deletionError} from '../services/log-book-deletion-scope.mjs';
-export const DELETION_PHONE='919925565281';
+import {deletionPhone,deletionRecipient} from '../rules/deletion-otp-routing.mjs';
+export {DELETION_PHONE} from '../rules/deletion-otp-routing.mjs';
+const deletionSites=(records,manifest)=>[...records.map(r=>r.site),...manifest.scans.map(s=>s.site)];
 const schema=`CREATE TABLE IF NOT EXISTS mis_log_book_deletions(
  id UUID PRIMARY KEY,actor TEXT NOT NULL,reason TEXT NOT NULL,snapshot JSONB NOT NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),expires_at TIMESTAMPTZ NOT NULL,
@@ -70,7 +72,7 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
   if(hash(plan)!==hash(row.deletion_manifest))deletionError('Records, duplicate copies, images or linked backups changed. Prepare and approve a fresh list.');
   return plan;
  }
- function view(row){const m=row.deletion_manifest;return {id:row.id,records:row.snapshot,scans:m.scans,manifest:m,scopeHash:hash(m),reason:row.reason,impact,approval:phrase(row),filesReady:m.localFiles.length===m.files.length,recipient:'+91 9925565281',expiresInMinutes:10};}
+ function view(row){const m=row.deletion_manifest;return {id:row.id,records:row.snapshot,scans:m.scans,manifest:m,scopeHash:hash(m),reason:row.reason,impact,approval:phrase(row),filesReady:m.localFiles.length===m.files.length,recipient:deletionRecipient(deletionPhone(deletionSites(row.snapshot,row.deletion_manifest))),expiresInMinutes:10};}
  async function status(req,id){
   const row=(await pool.query('SELECT * FROM mis_log_book_deletions WHERE id=$1 AND actor=$2',[id,actor(req)])).rows[0];if(!row||row.deletion_mode!=='permanent-v2')deletionError('Deletion request not found.',404);
   row.snapshot.forEach(r=>assertSite(req,r.site));
@@ -110,7 +112,7 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
   const result=await transaction(async c=>{
    const rows=(await c.query('SELECT * FROM mis_log_books WHERE id=ANY($1::bigint[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',[records.map(r=>String(r.id))])).rows;
    if(rows.length!==records.length||records.some(s=>!rows.some(r=>String(r.id)===String(s.id)&&r.revision===s.revision)))deletionError('Selected records changed. Refresh before previewing.');rows.forEach(r=>assertSite(req,r.site));
-   const manifest=await discoverDeletionScope(c,rows,{assertSite:site=>assertSite(req,site),imageStorage});const id=randomUUID();
+   const manifest=await discoverDeletionScope(c,rows,{assertSite:site=>assertSite(req,site),imageStorage});deletionPhone(deletionSites(rows,manifest));const id=randomUUID();
    await c.query("INSERT INTO mis_log_book_deletions(id,actor,reason,snapshot,expires_at,deletion_mode,scan_selection,deletion_manifest) VALUES($1,$2,$3,$4::jsonb,NOW()+INTERVAL '10 minutes','permanent-v2',$5::jsonb,$6::jsonb)",[id,actor(req),reason,JSON.stringify(rows),JSON.stringify(manifest.scans),JSON.stringify(manifest)]);
    return view({id,snapshot:rows,reason,deletion_manifest:manifest});
   });res.json(result);
@@ -121,8 +123,9 @@ export function registerLogBookDeletion(app,{pool,protect,ensureBooks,sendOtp,im
  app.post('/api/log-book-deletions/:id/otp',...protect,wrap(async(req,res)=>{
   const otp=String(randomInt(100000,1000000));
   const row=await transaction(async c=>{const r=await owned(c,req);await current(c,r,req);bindLocalFiles(r.deletion_manifest,r.deletion_manifest.localFiles);if(r.otp_requested_at)deletionError('OTP already requested. Prepare a new preview if it expired.');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['log-book-deletion:'+actor(req)]);const recent=(await c.query("SELECT COUNT(*)::int AS count,MAX(otp_requested_at) AS latest FROM mis_log_book_deletions WHERE actor=$1 AND otp_requested_at>NOW()-INTERVAL '1 hour'",[actor(req)])).rows[0];if(recent.count>=10||(recent.latest&&Date.now()-new Date(recent.latest).getTime()<60000))deletionError('Wait at least one minute between OTP requests; maximum ten per hour.',429);await c.query('UPDATE mis_log_book_deletions SET approved_at=NOW(),otp_requested_at=NOW(),otp_hash=$2 WHERE id=$1',[r.id,digest(r.id,otp)]);return r;});
-  try{const delivery=await sendOtp?.({to:DELETION_PHONE,otp,requestId:row.id,count:row.snapshot.length});if(!delivery?.sent||!delivery.messageId)throw Error();await pool.query('UPDATE mis_log_book_deletions SET delivered_at=NOW() WHERE id=$1',[row.id]);}catch{deletionError('WhatsApp OTP could not be sent. No entries or files were deleted. Prepare a new preview after checking the connection.',503);}
-  res.json({sent:true,recipient:'+91 9925565281'});
+  const sites=deletionSites(row.snapshot,row.deletion_manifest);
+  try{const delivery=await sendOtp?.({to:deletionPhone(sites),sites,otp,requestId:row.id,count:row.snapshot.length});if(!delivery?.sent||!delivery.messageId)throw Error();await pool.query('UPDATE mis_log_book_deletions SET delivered_at=NOW() WHERE id=$1',[row.id]);}catch{deletionError('WhatsApp OTP could not be sent. No entries or files were deleted. Prepare a new preview after checking the connection.',503);}
+  res.json({sent:true,recipient:deletionRecipient(deletionPhone(deletionSites(row.snapshot,row.deletion_manifest)))});
  }));
  app.post('/api/log-book-deletions/:id/confirm',...protect,wrap(async(req,res)=>{
   const result=await transaction(async c=>{

@@ -42,7 +42,7 @@ import {ignoreScanLoadingWithoutEquipment,CARD_SHIFTS,machineDiscrepancies,bookS
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {sendDeletionOtp} from '../services/deletion-whatsapp.mjs';
-import {DELETION_PHONE} from '../rules/log-book-deletion.mjs';
+import {deletionPhone} from '../rules/deletion-otp-routing.mjs';
 import {resolveLogBookData,insertLogBook} from './log-book.mjs';
 import {responseReviewNeeded,recoveredTripNumberIssues} from '../../shared/scan-response-recovery.mjs';
 import {extractCard,extractScanResult,scanEquipmentMasters,matchScanDraft} from '../rules/scan-extraction.mjs';
@@ -233,7 +233,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   const card=await getCard(pool,req.params.id);deletable(card);
   if(card.revision!==req.body.revision)fail('Card changed. Reload before deleting.',409);
   if(req.body.approval!==deletionPhrase(card)||!String(req.body.reason||'').trim())fail('Enter the exact card approval and a deletion reason.',400);
-  res.json(await issueScanDeletionOtp(pool,{actor:deletionActor(req),card,reason:req.body.reason,send:sendCardDeletionOtp,to:DELETION_PHONE}));
+  const batch=await getBatch(pool,card.batch_id),sites=[batch.expected_context?.location||card.draft?.location];
+  res.json(await issueScanDeletionOtp(pool,{actor:deletionActor(req),card,reason:req.body.reason,send:sendCardDeletionOtp,to:deletionPhone(sites),sites}));
  }));
  app.post('/api/scan-cards/:id/delete',...protect,wrap(async(req,res)=>{
   const row=req.body.requestId?await consumeScanDeletionOtp(pool,{actor:deletionActor(req),cardId:req.params.id,requestId:req.body.requestId,otp:req.body.otp}):null;

@@ -1,9 +1,9 @@
 import {sendMetaWhatsAppTemplate} from '../rules/meta-whatsapp.mjs';
-import {DELETION_PHONE} from '../rules/log-book-deletion.mjs';
+import {DELETION_PHONE,deletionPhone} from '../rules/deletion-otp-routing.mjs';
 
 export const DELETION_WHATSAPP_KEY='mis_deletion_whatsapp';
-export async function sendDeletionOtp({pool,to,otp,requestId,count,test=false},{sendTemplate=sendMetaWhatsAppTemplate}={}){
- if(to!==DELETION_PHONE||!/^\d{6}$/.test(String(otp))||typeof requestId!=='string'||!requestId||!Number.isSafeInteger(count)||count<(test?0:1))throw Error('Invalid deletion OTP request.');
+export async function sendDeletionOtp({pool,to,otp,requestId,count,sites=[],test=false},{sendTemplate=sendMetaWhatsAppTemplate}={}){
+ if(to!==deletionPhone(sites)||!/^\d{6}$/.test(String(otp))||typeof requestId!=='string'||!requestId||!Number.isSafeInteger(count)||count<(test?0:1))throw Error('Invalid deletion OTP request.');
  const config=(await pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',[DELETION_WHATSAPP_KEY])).rows[0]?.setting_value;
  if(!config?.enabled||config.purpose!=='logBookDeletionOtp'||config.recipient!==DELETION_PHONE)throw Error('Deletion-only WhatsApp connection is not configured.');
  // This environment is passed only to this send. General MIS WhatsApp settings stay unchanged.
