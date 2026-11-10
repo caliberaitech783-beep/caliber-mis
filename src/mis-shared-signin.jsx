@@ -1,15 +1,33 @@
 import './mis-workspace.css';
 import {useEffect,useState} from 'react';
 let configuration;
-const config=()=>configuration||=(fetch('/api/mis-sso/config',{cache:'no-store'}).then(r=>r.ok?r.json():{mode:'off'}).catch(()=>{configuration=null;return {mode:'off'};}));
+// The sign-in mode is believed only when the server states it. A read that fails (the app restarts
+// during every release) is retried and never taken as "off": "off" opens the old password form, and
+// production refuses that form with "Use Pulse to sign in or reset your primary password."
+const config=()=>configuration||=fetch('/api/mis-sso/config',{cache:'no-store'}).then(async r=>{
+  const value=r.ok?await r.json():null;
+  if(typeof value?.mode!=='string')throw Error('MIS sign-in mode is not available yet.');
+  return value;
+}).catch(error=>{configuration=null;throw error;});
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
-  const [status,setStatus]=useState({mode:'off',error:''});
+  const [status,setStatus]=useState({mode:'checking',error:''});
   useEffect(()=>{
     if(paused)return;
     let stopped=false;
     const start=async()=>{
-      const {mode}=await config();if(stopped)return;
+      let mode;
+      for(let attempt=0;;attempt++){
+        try{({mode}=await config());break;}
+        catch{
+          if(stopped)return;
+          if(attempt>=1)setStatus({mode:'checking',error:'MIS is restarting. Sign-in will continue automatically in a moment.'});
+          await wait(Math.min(1000*2**attempt,8000));
+        }
+        if(stopped)return;
+      }
+      if(stopped)return;
       setStatus({mode,error:''});
       const query=new URLSearchParams(window.location.search);
       if(mode==='issuer'&&session?.token){
