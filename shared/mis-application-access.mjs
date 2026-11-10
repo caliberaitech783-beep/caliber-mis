@@ -3,6 +3,7 @@ import {isMisAdministrator,MIS_ADMIN_PAGES} from './mis-admin-access.mjs';
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
+ if(['Fleet Capacity','Equipment Deployment'].includes(page))return misPageAllowed(session,'Reports',view);
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
@@ -19,6 +20,8 @@ export function misRequestAllowed(session,req){
  if(route==='/api/security/account')return read;
  if(['/api/security/session/migrate','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'].includes(route))return req.method==='POST';
  const allowed=page=>misPageAllowed(session,page);
+ if(route==='/api/capacity-master/fleet')return allowed('Capacity master')&&(read||req.method==='PUT');
+ if(route==='/api/reports/fleet-population')return read&&allowed('Reports');
  if(route==='/api/capacity-master')return allowed('Capacity master')&&(read||req.method==='POST');
  if(route==='/api/mis-ticket-sites')return read;
  if(route==='/api/mis-admin/backup')return isMisAdministrator(session)&&req.method==='POST';

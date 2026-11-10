@@ -14,6 +14,7 @@ import EnvironmentBanner from './environment-banner.jsx';
 import OperationsReports from './operations-reports.jsx';
 import ReportGuide from './report-guide.jsx';
 import CapacityMaster from './capacity-master.jsx';
+import {FleetPopulationReport} from './fleet-population.jsx';
 import {operationReports} from './operations-report-model.mjs';
 import VlbBatchReports from './vlb-batch-reports.jsx';
 import ElbBatchReports from './elb-batch-reports.jsx';
@@ -4327,6 +4328,13 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     setPage(0);
   };
   const printSavedView = () => openSmartPrint({ title: reportTitle, columns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
+  const headerGroups = displayedColumns.reduce((groups, column) => {
+    const label = column.headerGroup || "";
+    const previous = groups.at(-1);
+    if (previous?.label === label) previous.count++;
+    else groups.push({ label, count: 1 });
+    return groups;
+  }, []);
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
         {dateControl && !recordDateFilter && <RecordDateRange {...dateControl} />}
@@ -4342,13 +4350,18 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     <>
       {toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
       <table className="report-filter-table">
-        <thead><tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
+        <thead>{headerGroups.some(group => group.label) && <tr className="fleet-site-header">
+          {rowAction && <td aria-hidden="true"/>}{displayedColumns[0]?.key !== 'requestShift' && <td aria-hidden="true"/>}
+          {headerGroups.map(({ label, count }, index) => label
+            ? <th key={index} scope="colgroup" colSpan={count}>{label}</th>
+            : <td key={index} colSpan={count} aria-hidden="true"/>)}
+        </tr>}<tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
             durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
-            label={column.label}
+            label={column.headerLabel || column.label}
             sortKey={column.key}
             sort={sort}
             onSort={changeSort}
@@ -11464,6 +11477,7 @@ function App() {
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
     if(name==='Employee Current Location')return Boolean(session?.token);
+    if(['Fleet Capacity','Equipment Deployment'].includes(name))return canOpenAdminPage('Reports');
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
@@ -11803,6 +11817,8 @@ function App() {
   : renderedActive==='LMV Scan' ? (<VlbEntryWorkspace key="lmv-scan" kind="lmv" mode="scan" session={session} ReportSection={ReportSection}><BulkCardScanning kind="vehicle" logBookKind="lmv" session={session} ReportSection={ReportSection}/></VlbEntryWorkspace>)
   : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
+  ) : ['Fleet Capacity','Equipment Deployment'].includes(renderedActive) ? (
+    <><ReportGuide id={renderedActive==='Fleet Capacity'?'fleet-capacity':'equipment-deployment'}/><FleetPopulationReport key={renderedActive} session={session} ReportSection={ReportSection} capacity={renderedActive==='Fleet Capacity'}/></>
   ) : renderedActive==='VLB Reports' ? (<><ReportGuide id="vlb-reports"/><VlbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/></>
   ) : renderedActive==='ELB Reports' ? (<><ReportGuide id="elb-reports"/><ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/></>
   ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch canDeleteManualElb={canOpenAdminPage('Deletion')} onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onLmvManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Manual')}} onLmvScan={canOpenAdminPage('LMV Scan')?batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Scan')}:undefined} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
@@ -11939,7 +11955,7 @@ function App() {
           {name:'Masters',pages:[...['Users & employees','Employee master','Employee Current Location','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
           {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
-          {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},

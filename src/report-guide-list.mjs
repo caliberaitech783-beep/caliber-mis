@@ -6,5 +6,5 @@ export const REPORT_GUIDE_IDS=[
  'manpower','employee','attendance','ot',
  'utilisation','breakdown','meters','missing','scans',
  'tonnage','fuel','cost','targets','billing',
- 'vlb-reports','elb-reports'];
+ 'vlb-reports','elb-reports','fleet-capacity','equipment-deployment'];
 export const reportGuide=id=>REPORT_GUIDE_IDS.includes(id)?{en:`/guides/${id}-en.pdf`,hi:`/guides/${id}-hi.pdf`}:null;

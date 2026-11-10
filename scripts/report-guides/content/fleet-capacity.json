@@ -1,0 +1,82 @@
+{
+  "id": "fleet-capacity",
+  "title": "Fleet Capacity",
+  "group": "Reports",
+  "menu": "Reports → Fleet Capacity",
+  "en": {
+    "purpose": "Fleet population by make and model, with daily capacity by location.",
+    "row": "One make and model from Capacity Master.",
+    "filters": [
+      [
+        "Search this report",
+        "Find a model or equipment group."
+      ]
+    ],
+    "screen": [
+      [
+        "Location columns",
+        "Show the locations available to your login."
+      ],
+      [
+        "Total",
+        "Adds the counts across the displayed locations."
+      ]
+    ],
+    "columns": [
+      [
+        "Location",
+        "Population × Daily Capacity (cu.m)"
+      ]
+    ],
+    "notes": [
+      "Counts come from current Equipment Master assignments."
+    ],
+    "checklist": [
+      "Verify the location and count against Equipment Master."
+    ],
+    "faq": [
+      [
+        "What does a zero mean?",
+        "No matching equipment is assigned to that location. In Fleet Capacity, a zero daily rate also gives zero volume."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "हर स्थान पर मॉडल की संख्या और उसकी कुल दैनिक क्षमता।",
+    "row": "Capacity Master में एक मेक और मॉडल।",
+    "filters": [
+      [
+        "Search this report",
+        "मॉडल या उपकरण समूह खोजें।"
+      ]
+    ],
+    "screen": [
+      [
+        "स्थान के कॉलम",
+        "आपके लॉगिन के लिए उपलब्ध स्थान दिखाते हैं।"
+      ],
+      [
+        "Total",
+        "दिखाए गए स्थानों की संख्याएँ जोड़ता है।"
+      ]
+    ],
+    "columns": [
+      [
+        "स्थान",
+        "संख्या × दैनिक क्षमता (घन मीटर)"
+      ]
+    ],
+    "notes": [
+      "संख्या Equipment Master में दर्ज वर्तमान तैनाती से आती है।"
+    ],
+    "checklist": [
+      "Equipment Master से स्थान और संख्या की जाँच करें।"
+    ],
+    "faq": [
+      [
+        "शून्य का क्या अर्थ है?",
+        "उस स्थान पर मेल खाने वाले उपकरण नहीं हैं। Fleet Capacity में दैनिक दर शून्य होने पर कुल क्षमता भी शून्य होती है।"
+      ]
+    ]
+  }
+}

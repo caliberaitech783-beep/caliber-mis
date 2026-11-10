@@ -26,5 +26,7 @@
  "targets": "199aae5f90c3c65c",
  "billing": "3c6104d6d3524e04",
  "vlb-reports": "9b246f48ad2f4c43",
- "elb-reports": "c76cd0639aab8107"
+ "elb-reports": "c76cd0639aab8107",
+ "fleet-capacity": "f463840893d42e34",
+ "equipment-deployment": "456fd04eea1b1e39"
 }
