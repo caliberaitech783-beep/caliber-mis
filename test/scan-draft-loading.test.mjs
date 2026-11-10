@@ -22,7 +22,7 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
  scope.window={location:{search:''},addEventListener(){},removeEventListener(){}};
  scope.localStorage={getItem(){return null},setItem(){},removeItem(){}};
  scope.fetch=()=>new Promise(()=>{});
- scope.setTimeout=()=>1;scope.clearTimeout=()=>{};scope.setInterval=()=>1;scope.clearInterval=()=>{};
+ scope.setTimeout=()=>1;scope.clearTimeout=()=>{};scope.setInterval=()=>1;scope.clearInterval=()=>{};scope.startVisiblePoll=()=>()=>{};
  const Component=new Function(...Object.keys(scope),source+';return BulkCardScanning;')(...Object.values(scope));
  function settle(){let result;for(let i=0;i<12;i++){changed=false;cursor=0;result=Component({kind:'vehicle',session:{token:'test',login:'test'}});for(const effect of pending.splice(0))effect();if(!changed)return result;}throw Error('Draft rendering did not settle');}
  settle();

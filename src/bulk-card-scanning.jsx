@@ -59,6 +59,8 @@ import {ignoreScanLoadingWithoutEquipment,shiftMeterIssues,kmrMeterReplaced,manu
 import EmployeeIdLookup from './employee-id-lookup.jsx';
 import {scanFieldIssues,scanFieldState} from './scan-field-review.mjs';
 import LocalScannerPanel from './local-scanner-panel.jsx';
+import {startVisiblePoll} from './visible-poll.mjs';
+import {SCAN_PROGRESS_ACTIVE_MS,VLB_CARD_COUNT_POLL_MS,scanProgressActive,shouldReadScanProgress} from '../shared/scan-progress-poll.mjs';
 import WorkOrderJobSelect from './work-order-job-select.jsx';
 import React,{useState,useEffect,useRef} from 'react';
 import LogBookForm from './log-book-form.jsx';
@@ -262,8 +264,9 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
    const data=await api('/api/vlb-batches/'+vlbBatch.id+'/card-counts',{signal:controller.signal,cache:'no-store'});
    if(!controller.signal.aborted)setBatchCardSummary(validVlbCardCounts(data,vlbBatch.id));
   }catch{if(!controller.signal.aborted)setBatchCardSummary(null)}finally{pending=false}};
-  void refresh();const timer=setInterval(refresh,4000);
-  return()=>{controller.abort();clearInterval(timer)};
+  // Saved totals change only when a card is saved, so 15 s is enough; a hidden tab stops asking.
+  const stopCounts=startVisiblePoll(refresh,VLB_CARD_COUNT_POLL_MS);
+  return()=>{controller.abort();stopCounts()};
  },[kind,token,vlbBatch?.id]);
  const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=0;try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
  const trackUploadExtraction=uploadTotal>0&&(uploading||uploadExtraction.extracted+uploadExtraction.failed+uploadExtraction.skipped<uploadSent);
@@ -286,9 +289,9 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
    }catch{/* Keep the last confirmed counts and retry on the next poll. */}
    finally{inFlight=false;}
   };
-  void refresh();
-  const timer=setInterval(refresh,4000);
-  return()=>{active=false;clearInterval(timer);controller.abort();};
+  // Display only: a hidden tab stops asking and catches up when shown again.
+  const stopExtraction=startVisiblePoll(refresh,SCAN_PROGRESS_ACTIVE_MS);
+  return()=>{active=false;stopExtraction();controller.abort();};
  },[trackUploadExtraction,uploading,token]);
  const batchLoads=useRef(new Map()),autoReviewEntry=useRef('');
  // A background poll (fresh=false) reads the slim progress list. Only when a card, its
@@ -298,7 +301,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  // Without an entry in the address (refresh, crash recovery, server update) the
  // entry this browser last worked in for the VLB batch, or the newest entry with
  // unsaved cards, reopens on its own. Cards are never lost by reloading.
- void list().then(rows=>{if(initial||!vlbBatch||activeRef.current)return;const entry=chooseScanEntry(rows,{remembered:recallScanEntry(localStorage,logBookKind,vlbBatch.id)});if(entry)void selectBatch(entry.id);}).catch(e=>setError(e.message));void readOptions().then(setOptions).catch(e=>setError(e.message));const t=setInterval(()=>{if(activeRef.current)void load(activeRef.current,false).catch(e=>setConnectionError(e.message))},4000);return()=>{clearInterval(t);activeRef.current=null}},[kind,token]);
+ void list().then(rows=>{if(initial||!vlbBatch||activeRef.current)return;const entry=chooseScanEntry(rows,{remembered:recallScanEntry(localStorage,logBookKind,vlbBatch.id)});if(entry)void selectBatch(entry.id);}).catch(e=>setError(e.message));void readOptions().then(setOptions).catch(e=>setError(e.message));const progressWorking=()=>scanProgressActive(cardsView.current.cards,{uploading:uploadingRef.current});let lastProgressRead=0;const stopProgress=startVisiblePoll(()=>{if(!activeRef.current||!shouldReadScanProgress({active:progressWorking(),lastReadAt:lastProgressRead,now:Date.now()}))return;lastProgressRead=Date.now();return load(activeRef.current,false).catch(e=>setConnectionError(e.message));},SCAN_PROGRESS_ACTIVE_MS,{keepPolling:progressWorking});return()=>{stopProgress();activeRef.current=null}},[kind,token]);
  const card=cards.find(c=>c.id===selected);
  const groupSummary=reviewGroupSummary(cards,kind,options,contextGate?.context);
  const matchedUploadCount=uploadAttempt.current?.receipts.filter(receipt=>receipt.matched).length||0;
