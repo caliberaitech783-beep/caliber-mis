@@ -120,6 +120,10 @@
       [
         "Messages when nothing is shown",
         "'No shift batches yet. A report appears here as soon as a VLB batch is created for a site, date and shift.' means no batch exists for your sites. 'No VLB card has been saved in this batch yet.' means the chosen batch is empty. 'No cards match this search in the opened batch.' means Smart Search or a filter hides every card. 'Shift batch reports are not available for this login (...). Showing scan / upload batches.' means the login cannot read shift batches, so the page moved to the other view."
+      ],
+      [
+        "Editing saved LMV scans",
+        "Open LMV Scan and select Edit beside the scan entry. In All cards, use Edit to open the saved LMV form. An MIS administrator can use Delete card and confirm to remove the saved entry from an open batch."
       ]
     ],
     "columns": [
@@ -528,6 +532,10 @@
       [
         "जब कुछ न दिखे तब के संदेश",
         "'No shift batches yet. A report appears here as soon as a VLB batch is created for a site, date and shift.' का मतलब है कि आपकी साइटों के लिए कोई बैच नहीं है। 'No VLB card has been saved in this batch yet.' का मतलब है कि चुना हुआ बैच खाली है। 'No cards match this search in the opened batch.' का मतलब है कि Smart Search या किसी फ़िल्टर ने सारे कार्ड छिपा दिए हैं। 'Shift batch reports are not available for this login (...). Showing scan / upload batches.' का मतलब है कि यह लॉगिन Shift वाले बैच नहीं पढ़ सकता, इसलिए पेज दूसरे व्यू पर चला गया।"
+      ],
+      [
+        "सहेजे गए LMV स्कैन में बदलाव",
+        "LMV Scan खोलें और स्कैन एंट्री के पास Edit चुनें। All cards में Edit से सहेजा गया LMV फ़ॉर्म खुलता है। खुले बैच में MIS प्रशासक Delete card चुनकर और पुष्टि करके सहेजी गई एंट्री हटा सकते हैं।"
       ]
     ],
     "columns": [

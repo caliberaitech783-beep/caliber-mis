@@ -10,11 +10,11 @@ test('manual VLB location resolves from the account without guessing across mult
  assert.equal(manualLogBookLocation({location:'Jayant OC'}, {sites:['Sasti OC'].map(canonicalSiteName)}),'');
 });
 
-test('account site uses the matching current Pulse master rather than a stale sign-in site',()=>{
+test('account site uses the current Pulse master and falls back to sign-in when the master has no site',()=>{
  const session={login:'ADMIN01',name:'Admin',location:'Old site'},scope={sites:null};
  const users=[{login:'other',site:'Other site'},{login:'admin01',employee:'Admin',site:'Sasti OC'}];
  assert.equal(logBookAccountLocation(session,scope,users),'Sasti OC');
  assert.equal(logBookAccountLocation(session,scope,[{login:'admin01',site:'Sasti OC|Jayant OC'}]),'');
- assert.equal(logBookAccountLocation(session,scope,[{login:'admin01'}]),'');
+ assert.equal(logBookAccountLocation(session,scope,[{login:'admin01'}]),'Old site');
  assert.equal(logBookAccountLocation(session,{sites:['sasti oc']},[{login:'admin01',site:'Jayant OC'}]),'');
 });
