@@ -745,6 +745,11 @@ function Login({ onLogin, theme, toggleTheme }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, portal:accountsPortal?'accounts':'operations', selectedRole:selectedLoginRole }),
       });
+      if(response.status===403){
+        // This server signs in through Pulse only: go there instead of leaving the user on a form that cannot work.
+        const refusal=await response.clone().json().catch(()=>null);
+        if(refusal?.code==='PULSE_SIGNIN_REQUIRED'){window.location.assign('/api/mis-credentials/start');return;}
+      }
       const data = await readApiJson(response, "Could not sign in.");
       if(data.requiresRoleSelection){setLoginRoles(data.roles||[]);setSelectedLoginRole('');return;}
       if (data.requiresPasswordChange) {
@@ -11926,7 +11931,8 @@ function App() {
     session, theme,
   ]);
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
-  if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
+  // 'checking' = the server has not yet said which sign-in applies; never show the old password form on a guess.
+  if (!session && (sharedSignIn.mode==='client'||sharedSignIn.mode==='checking')) return <MisSharedLogin error={sharedSignIn.error} message={sharedSignIn.mode==='checking'?'Opening MIS sign-in…':undefined}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">
     <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><button type="button" onClick={()=>setEmployeeLocationOpen(true)}>Employee Current Location</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
