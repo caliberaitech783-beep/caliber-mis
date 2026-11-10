@@ -1,5 +1,6 @@
-import React,{useEffect,useState} from 'react';
-import {BookOpen,Building2,ShieldCheck,ArrowUpRight,X} from 'lucide-react';
+import React,{useEffect,useRef,useState} from 'react';
+import {BookOpen,Building2,ShieldCheck,ArrowUpRight,X,Download,Printer} from 'lucide-react';
+import {openSmartPrint} from './smart-print.mjs';
 import './log-book-dashboard.css';
 import {scanImageExtensionForType} from '../public/scan-image-type.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
@@ -24,24 +25,55 @@ function RecordDetails({selection,filters,session,fetcher,close}){
  const openScan=async row=>{try{const response=await fetcher(`/api/log-books/${row.book_type}/${row.id}/source-image`,{headers:{Authorization:'Bearer '+session.token}});if(!response.ok)throw Error('No original scan is available for this entry. Manual entries may have no scan.');const blob=await response.blob();const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=row.book_no.replaceAll('/','-')+scanImageExtensionForType(blob.type);link.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){setState(s=>({...s,error:e.message}))}};
  return <Dialog title={(selection.kind==='vehicle'?'VLB':'ELB')+' saved cards'+(selection.location?' · '+selection.location:'')} close={close}><p className="lb-muted">{dateLabel(selection.from||filters.from)} – {dateLabel(selection.to||filters.to)} · Saved entries only</p>{state.error&&<p role="alert" className="lb-error">{state.error}</p>}<div className="lb-table-wrap"><table><thead><tr><th>Book number</th><th>Site / date</th><th>Door</th><th>Original</th></tr></thead><tbody>{state.records.map(r=><tr key={r.id}><td>{r.book_no}</td><td>{r.site}<small>{r.day}</small></td><td>{r.door||'—'}</td><td><button onClick={()=>void openScan(r)}>Download scan</button></td></tr>)}</tbody></table></div>{!state.records.length&&!state.loading&&<p>No saved cards match these filters.</p>}{state.loading&&<p role="status">Loading records…</p>}{state.cursor&&<button disabled={state.loading} onClick={()=>void load(state.cursor)}>Load more cards</button>}</Dialog>
 }
-export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters,ReportSection}){
+// The whole dashboard on A3 landscape sheets: as many pages as it needs, each ending between two panels.
+const A3_PAGE={widthMm:420,heightMm:297};
+const displayDay=value=>value.slice(8,10)+'-'+value.slice(5,7)+'-'+value.slice(2,4);
+export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters,ReportSection,printDashboard}){
+ const printRoot=useRef(null),[printing,setPrinting]=useState(''),[printError,setPrintError]=useState('');
+ // Everything the user sees on the dashboard page: the banner, the cards and graphs, and the two reports.
+ const printTarget=()=>printRoot.current?.closest('.erp-mis-dashboard')||printRoot.current;
  const [applied,setApplied]=useState(()=>initialFilters||initialLogbookRange()),[range,setRange]=useState(()=>({from:applied.from,to:applied.to})),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0),[selection,setSelection]=useState(null),[showTable,setShowTable]=useState(false);
  useEffect(()=>{const abort=new AbortController();setLoading(true);setError('');setData(null);setSelection(null);fetcher('/api/dashboard/log-books?'+query(applied),{signal:abort.signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token}}).then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error||'Dashboard could not be loaded.');if(!abort.signal.aborted)setData(body)}).catch(e=>{if(!abort.signal.aborted)setError(e.message)}).finally(()=>{if(!abort.signal.aborted)setLoading(false)});return ()=>abort.abort()},[applied,refresh,session.token,fetcher]);
  const [compact,setCompact]=useState(()=>window.matchMedia('(max-width:540px)').matches);
  useEffect(()=>{const media=window.matchMedia('(max-width:540px)'),change=()=>setCompact(media.matches);media.addEventListener('change',change);return ()=>media.removeEventListener('change',change)},[]);
  const chartWidth=compact?420:760,plotWidth=chartWidth-100;
  const choose=(kind,extra={})=>setSelection({kind,...extra});
+ const printTitle='Caliber Pulse-II dashboard · '+displayDay(applied.from)+' to '+displayDay(applied.to);
+ const exportPdf=async()=>{
+  if(printing)return;setPrintError('');setPrinting('Preparing the A3 PDF…');
+  try{
+   const {dashboardPrintPdf}=await import('./dashboard-pdf.mjs');
+   const blob=await dashboardPrintPdf(printTarget(),A3_PAGE);
+   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='Caliber-Pulse-II-Dashboard-'+displayDay(applied.from)+'-to-'+displayDay(applied.to)+'-A3.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+  }catch(e){setPrintError(e.message||'The dashboard PDF could not be prepared.');}
+  finally{setPrinting('');}
+ };
+ const smartPrint=()=>{
+  setPrintError('');
+  openSmartPrint({title:printTitle,snapshot:'The complete dashboard prints as it looks on screen: the cards, both graphs, Batch Status & Turnaround and OT & Multiple Duties, over as many pages as it needs. Choose the paper (A3 suits it best) and the printer next.',
+   onPrint:({pageSize,printOptions})=>{
+    const dashboard=printTarget();
+    if(printDashboard)printDashboard({dashboard,title:printTitle,pageSize,printOptions});
+    else void import('./dashboard-pdf.mjs').then(m=>m.printDashboard(dashboard,printTitle)).catch(e=>setPrintError(e.message||'The dashboard could not be printed.'));
+   }});
+ };
  // Lowest entry site on top, best site at the bottom, so weak sites are seen first.
  const rankedSites=sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k)));
  const max=Math.max(1,...(data?.bySite||[]).flatMap(r=>[r.vehicle,r.equipment])),trend=data?.trend||[],top=Math.max(4,Math.ceil(Math.max(0,...trend.flatMap(r=>[r.vehicle,r.equipment]))/4)*4),x=i=>52+(trend.length<2?plotWidth/2:i/(trend.length-1)*plotWidth),y=n=>190-n/top*150;
- return <><section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
+ return <div className="lb-print-root" data-print-fit="" ref={printRoot}><section className="lb-dashboard" aria-label="VLB and ELB dashboard" aria-busy={loading}>
   <form className="lb-filters lb-range" aria-label="Dashboard dates" onSubmit={e=>{e.preventDefault();if(rangeValid(range))setApplied(a=>({...a,from:range.from,to:range.to}));}}>
    <label>From<input type="date" required min={OPERATIONAL_START} max={range.to||todayIst()} value={range.from} onChange={e=>setRange(r=>({...r,from:e.target.value}))}/></label>
    <label>To<input type="date" required min={range.from||OPERATIONAL_START} max={todayIst()} value={range.to} onChange={e=>setRange(r=>({...r,to:e.target.value}))}/></label>
    <button type="submit" className="lb-apply" disabled={!rangeValid(range)||loading}>{loading?'Loading…':'Show dashboard'}</button>
    <button type="button" disabled={loading} onClick={()=>{const month=monthToDate();setRange(month);setApplied(a=>({...a,...month}));}}>Month to date</button>
    <button type="button" disabled={loading} onClick={()=>{const day=todayIst(),one={from:day,to:day};setRange(one);setApplied(a=>({...a,...one}));}}>Today</button>
+   <span className="lb-print-actions" data-print-hide="">
+    <button type="button" disabled={loading||Boolean(printing)} onClick={()=>void exportPdf()} title="The complete dashboard as an A3 PDF file"><Download size={16}/>{printing||'Export PDF (A3)'}</button>
+    <button type="button" disabled={loading||Boolean(printing)} onClick={smartPrint} title="Choose paper, printer, pages and copies"><Printer size={16}/>Smart Print</button>
+   </span>
   </form>
+  {printing&&<p role="status" className="lb-muted">{printing} This takes a few seconds; the whole dashboard is being drawn.</p>}
+  {printError&&<p role="alert" className="lb-error">{printError}</p>}
   {!rangeValid(range)&&<p role="status" className="lb-muted">Choose dates from 01 Nov 2026 up to today, with From not after To.</p>}
   {error&&<div role="alert" className="lb-error">{error} <button onClick={()=>setRefresh(n=>n+1)}>Retry</button></div>}{loading&&<p role="status" className="lb-loading">Loading site totals and graphs…</p>}
   {data&&<><div className="lb-context"><span>{dateLabel(applied.from)} – {dateLabel(applied.to)} · {applied.location||'All permitted sites'} · {applied.shift||'All shifts'}</span><span>Updated {new Date(data.updatedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div>
@@ -61,5 +93,5 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
  {ReportSection&&<div className="lb-reports" aria-label="Reports on the dashboard">
   <BatchStatusReport session={session} ReportSection={ReportSection}/>
   <ManpowerReports session={session} reportId="ot" ReportSection={ReportSection} embedded initialFrom={monthToDate().from}/>
- </div>}</>
+ </div>}</div>
 }

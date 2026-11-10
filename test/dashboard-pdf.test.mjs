@@ -65,3 +65,38 @@ test("a print starts with the clock row and keeps the sticky banner in its place
   assert.match(source, /section\?\.setAttribute\("data-print-section", ""\);\n\s+const clone = dashboard\.cloneNode\(true\);\n\s+section\?\.removeAttribute\("data-print-section"\);/, "a section is marked only while the dashboard is copied");
   assert.match(source, /if \(section\) root = root\.querySelector\("\[data-print-section\]"\) \|\| root;\n\s+const width = /, "a section prints alone, rendered from inside the full copy");
 });
+
+test("a dashboard of sections ends its pages between sections and keeps a heading with its section", async () => {
+  const {dashboardSectionSlices, dashboardPageFit} = await import("../src/dashboard-pdf.mjs");
+  // Rows 300-304 are the small gap under a heading; rows 250-289 are the wide gap between two sections.
+  const blank = row => (row >= 300 && row <= 304) || (row >= 250 && row <= 289);
+  assert.deepEqual(dashboardSectionSlices(700, 400, blank, 20), [{top: 0, height: 289, ended: "section"}, {top: 289, height: 400, ended: "cut"}, {top: 689, height: 11, ended: "end"}], "the page ends in the wide gap, above the heading");
+  assert.deepEqual(dashboardSectionSlices(500, 400, row => row === 390, 20).map(s => s.ended), ["row", "end"], "with no wide gap any blank row is used");
+  for (const [total, page] of [[5000, 613.7], [1, 400], [2600, 2600]]) {
+    const slices = dashboardSectionSlices(total, page, row => row % 97 < 3);
+    assert.equal(slices.reduce((sum, slice) => sum + slice.height, 0), total, "every row is printed once");
+    slices.forEach((slice, index) => { assert.ok(slice.height > 0 && slice.height <= Math.floor(page)); if (index) assert.equal(slice.top, slices[index - 1].top + slices[index - 1].height); });
+  }
+  // 1000 px wide, 2100 px tall, on a sheet that holds 1000 px of height at full width: three sheets, or two when drawn a little narrower.
+  const plain = dashboardPageFit(1000, 2100, 500, 500, () => false, []);
+  assert.equal(plain.slices.length, 3);
+  assert.equal(plain.scale, 0.5, "other dashboards keep the full sheet width");
+  const fitted = dashboardPageFit(1000, 2100, 500, 500, () => false, [1, 0.96, 0.92, 0.88, 0.84, 0.8]);
+  assert.equal(fitted.slices.length, 2, "one sheet fewer");
+  assert.ok(fitted.scale < 0.5 && fitted.scale >= 0.4, "never narrower than 80% of the sheet");
+  assert.equal(dashboardPageFit(1000, 900, 500, 500, () => false, [1, 0.96, 0.8]).scale, 0.5, "a dashboard that already fits is not shrunk");
+});
+
+test("the MIS dashboard offers an A3 PDF and Smart Print of the complete page", () => {
+  const read = file => readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
+  const screen = read("log-book-dashboard.jsx"), capture = read("dashboard-pdf.mjs"), host = read("mis-dashboard.jsx"), main = read("main.jsx");
+  assert.match(screen, /const A3_PAGE=\{widthMm:420,heightMm:297\};/);
+  assert.match(screen, /dashboardPrintPdf\(printTarget\(\),A3_PAGE\)/, "the PDF is the captured dashboard on A3 sheets");
+  assert.match(screen, /closest\('\.erp-mis-dashboard'\)/, "banner, cards, graphs and both reports are captured together");
+  assert.match(screen, /printDashboard\(\{dashboard,title:printTitle,pageSize,printOptions\}\)/, "Smart Print uses the paper, printer, pages and copies chosen");
+  assert.match(screen, /className="lb-print-actions" data-print-hide=""/);
+  assert.match(capture, /root\.querySelectorAll\("\[data-print-hide\]"\)\.forEach\(node => node\.remove\(\)\);/, "the buttons are left off the paper");
+  assert.match(capture, /clone\.setAttribute\("data-printing", ""\);/, "wide tables get the width they need");
+  assert.match(host, /className="erp-mis-dashboard" data-print-fit=""/);
+  assert.equal((main.match(/ReportSection=\{ReportSection\} printDashboard=\{printDashboardReport\}/g) || []).length, 3);
+});

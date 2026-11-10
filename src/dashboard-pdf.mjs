@@ -41,6 +41,22 @@ async function captureDashboard(dashboard, {forPrint = false, section = null} = 
       else control.setAttribute("value", control.value);
     });
     root.querySelectorAll(".export-menu, .overlay, [role=dialog]").forEach(node => node.remove());
+    // Buttons that only make sense on screen (Export, Smart Print) are left off the paper.
+    root.querySelectorAll("[data-print-hide]").forEach(node => node.remove());
+    if (dashboard.hasAttribute?.("data-print-fit")) {
+      // A table wider than the screen scrolls sideways there. On paper nothing scrolls, so the copy is made as wide
+      // as its widest table needs (up to a limit) and the whole dashboard is laid out again at that width.
+      clone.setAttribute("data-printing", "");
+      for (let pass = 0; pass < 3; pass++) {
+        let short = 0;
+        root.querySelectorAll("*").forEach(node => {
+          if (/(auto|scroll)/.test(getComputedStyle(node).overflowX)) short = Math.max(short, node.scrollWidth - node.clientWidth);
+        });
+        const width = host.getBoundingClientRect().width;
+        if (short <= 1 || width >= PRINT_MAX_WIDTH) break;
+        host.style.width = `${Math.min(PRINT_MAX_WIDTH, Math.ceil(width + short + 2))}px`;
+      }
+    }
     // Expand internal scroll areas so all charts and rows are included.
     root.querySelectorAll("*").forEach(node => {
       const style = getComputedStyle(node);
@@ -116,6 +132,7 @@ export async function printDashboard(dashboard, title, section = null) {
 }
 
 const MM_TO_PT = 72 / 25.4;
+const PRINT_MAX_WIDTH = 3200;
 const PRINT_MARGIN_MM = 8;
 
 /**
@@ -134,6 +151,54 @@ export function dashboardPageSlices(totalHeight, pageHeight, isBlankRow = () => 
     top = bottom;
   }
   return slices;
+}
+
+/**
+ * Page ends for a dashboard made of sections (data-print-fit). A page ends in the lowest wide blank band of its
+ * lower half: the gap between two sections, not the small gap under a heading, so a heading stays with its section.
+ * Without a wide band it ends on any blank row; without one of those the page is cut at its full height.
+ * Each slice says how it ended: "end", "section", "row" or "cut".
+ */
+export function dashboardSectionSlices(totalHeight, pageHeight, isBlankRow = () => false, minGap = Math.max(2, Math.round(pageHeight * 0.014)), search = 0.5) {
+  const size = Math.max(1, Math.floor(pageHeight)), slices = [];
+  for (let top = 0; top < totalHeight;) {
+    let bottom = Math.min(totalHeight, top + size), ended = "end";
+    if (bottom < totalHeight) {
+      const lowest = Math.max(top + 1, Math.ceil(bottom - size * search));
+      let anyBlank = 0, section = 0;
+      for (let row = bottom; row >= lowest && !section;) {
+        if (!isBlankRow(row)) { row--; continue; }
+        let start = row, end = row;
+        while (start - 1 >= lowest && isBlankRow(start - 1)) start--;
+        while (end + 1 < totalHeight && end - start + 1 < minGap && isBlankRow(end + 1)) end++;
+        if (!anyBlank) anyBlank = row;
+        if (end - start + 1 >= minGap) section = row;
+        row = start - 1;
+      }
+      ended = section ? "section" : anyBlank ? "row" : "cut";
+      bottom = section || anyBlank || bottom;
+    }
+    slices.push({top, height: bottom - top, ended});
+    top = bottom;
+  }
+  return slices;
+}
+
+// A dashboard marked data-print-fit may be drawn a little narrower (never below 80% of the sheet width) when that
+// needs fewer sheets, or the same sheets with fewer panels split over two of them.
+const PRINT_FIT_STEPS = [1, 0.96, 0.92, 0.88, 0.84, 0.8];
+const SLICE_COST = {end: 0, section: 0, row: 1, cut: 4};
+export function dashboardPageFit(width, height, printableWidth, printableHeight, isBlankRow = () => false, steps = []) {
+  const full = printableWidth / width;
+  if (!steps.length) return {scale: full, slices: dashboardPageSlices(height, printableHeight / full, isBlankRow)};
+  const seen = new Map(), blank = row => { if (!seen.has(row)) seen.set(row, isBlankRow(row)); return seen.get(row); };
+  let best = null;
+  for (const step of steps) {
+    const scale = full * step, slices = dashboardSectionSlices(height, printableHeight / scale, blank);
+    const cost = slices.length * 100 + slices.reduce((sum, slice) => sum + SLICE_COST[slice.ended], 0);
+    if (!best || cost < best.cost) best = {scale, slices, cost};
+  }
+  return {scale: best.scale, slices: best.slices};
 }
 
 // A row is blank when every sampled pixel matches its first pixel: the gap between two panels.
@@ -156,9 +221,11 @@ export async function dashboardPrintPdf(dashboard, page = {widthMm: 297, heightM
   const paper = hexColor(background);
   const pageWidth = page.widthMm * MM_TO_PT, pageHeight = page.heightMm * MM_TO_PT, margin = PRINT_MARGIN_MM * MM_TO_PT;
   const printableWidth = pageWidth - margin * 2, printableHeight = pageHeight - margin * 2;
-  const scale = printableWidth / canvas.width;
+  const isBlankRow = blankRowDetector(canvas);
+  const fitted = dashboardPageFit(canvas.width, canvas.height, printableWidth, printableHeight, isBlankRow, dashboard?.hasAttribute?.("data-print-fit") ? PRINT_FIT_STEPS : []);
+  const scale = fitted.scale, left = margin + (printableWidth - canvas.width * scale) / 2;
   const pdf = new jsPDF({unit: "pt", format: [pageWidth, pageHeight], orientation: "landscape", compress: true});
-  dashboardPageSlices(canvas.height, printableHeight / scale, blankRowDetector(canvas)).forEach(({top, height}, index) => {
+  fitted.slices.forEach(({top, height}, index) => {
     const part = document.createElement("canvas");
     part.width = canvas.width;
     part.height = height;
@@ -170,7 +237,7 @@ export async function dashboardPrintPdf(dashboard, page = {widthMm: 297, heightM
     // The whole sheet takes the page colour, so Night mode prints dark to the edge instead of on white.
     pdf.setFillColor(paper);
     pdf.rect(0, 0, pageWidth, pageHeight, "F");
-    pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", margin, margin, printableWidth, height * scale);
+    pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", left, margin, canvas.width * scale, height * scale);
   });
   return pdf.output("blob");
 }
