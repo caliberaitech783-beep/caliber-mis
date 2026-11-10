@@ -152,9 +152,15 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.match(text(headline()),/Loading current batch total/,'never replace an unavailable saved total with raw scan counts');
  app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:121,manual_count:2,scan_count:119});
  tree=app.render({vlbBatch:{id:'vlb-1'}});
- assert.match(text(headline()),/Total cards in this batch: 121/);
+ assert.match(text(headline()),/Saved to log book: 121 cards/);
  assert.match(text(headline()),/Manual: 2/);
  assert.match(text(headline()),/Scan\/PDF: 119/);
+ assert.doesNotMatch(text(headline()),/ scanned/,'no "of N scanned" when saved records outnumber the listed scan cards');
+ app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:5,manual_count:1,scan_count:4});
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
+ assert.match(text(headline()),/Saved to log book: 5 cards · Manual: 1 · Scan\/PDF: 4 of 7 scanned/);
+ app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:121,manual_count:2,scan_count:119});
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
  const total=React.Children.toArray(nodes(tree,n=>n.props.className==='scan-entry-breakdown')[0].props.children);
  assert.equal(total[0].props.children[0].props.children,'Scan entries:');
  assert.equal(total[0].props.children.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
