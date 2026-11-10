@@ -177,7 +177,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   res.set('Cache-Control','no-store').type('pdf').attachment((report.vehicle?'VLB':'ELB')+'-batch-'+report.batchId+'.pdf').send(pdf);
  }));
  const fleetChecks=createScanFleetQueue({concurrency:2,onError:error=>console.error('Fleet review unavailable:',error.message)});
- async function enforceFleet(card,draft=card.draft,raw=card.raw_fields,actor){
+ // fresh makes the fleet read go to Pulse now instead of reusing a recent snapshot (recheck).
+ async function enforceFleet(card,draft=card.draft,raw=card.raw_fields,actor,{fresh=false}={}){
   if(!readPulseFleet||['posted','rejected','queued','reading'].includes(card.status)||card.raw_fields?.fleetRejection)return null;
   const expected=(await pool.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
   // The batch site is the card's site: the fleet check always runs against it.
@@ -187,7 +188,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     ?(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows
       .filter(row=>isLmv(row.record_data)||assetBookKind(row.record_data)==='equipment')
       .map(row=>({...row.record_data,id:row.id,...(isLmv(row.record_data)?{category:'Vehicle'}:{})}))
-    :await readPulseFleet(actor,draft.location);const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
+    :await readPulseFleet(actor,draft.location,{fresh});const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
   const prior=raw?.fleetReview;
   const review={signature,issues,error,checkedAt:new Date().toISOString(),decision:issues.length&&prior?.signature===signature&&prior.decision==='transfer-pending'?'transfer-pending':'unresolved'};
   await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||jsonb_build_object('fleetReview',$2::jsonb) WHERE id=$1 AND revision=$3 AND status IN('review','approved','error')",[card.id,JSON.stringify(encodeScanJson(review)),card.revision]);
@@ -260,7 +261,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   const initial=await getCard(pool,req.params.id);if(!['review','approved','error'].includes(initial.status))fail('Only unsaved review cards can be changed here.',409);
   if(initial.revision!==req.body.revision)fail('Card changed. Reload and retry.',409);
   if(req.body.action==='delete')fail('Use the Delete card button in card review.',409);
-  const review=await enforceFleet(initial,initial.draft,initial.raw_fields,req.session.login||req.session.name);
+  const review=await enforceFleet(initial,initial.draft,initial.raw_fields,req.session.login||req.session.name,{fresh:req.body.action==='recheck'});
   if(!review)fail('Resolve this card\'s date, site and shift mismatch before equipment review.',409);
   if(review.error)fail(review.error,409);
   if(req.body.action==='recheck'){if(!review.issues.length&&refreshPulseFleet)await refreshPulseFleet(req.session.login||req.session.name);return res.json({review,ready:!review.issues.length});}
