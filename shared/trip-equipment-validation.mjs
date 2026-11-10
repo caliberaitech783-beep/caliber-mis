@@ -12,23 +12,58 @@ const serialIdentity=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?
 const labels=r=>[r.door,r.doorNo,r.equipmentName,r.equipment,r.name].filter(Boolean);
 // Matching also accepts approved card aliases; display labels stay the real master label.
 const matchLabels=r=>[...labels(r),...(Array.isArray(r.cardAliases)?r.cardAliases.filter(Boolean):[])];
+// Master arrays are replaced on refresh. Index the snapshot once for all trip rows.
+const equipmentIndexes=new WeakMap();
+function equipmentIndex(assets){
+ let index=equipmentIndexes.get(assets);
+ if(index)return index;
+ const records=assets.filter(record=>assetBookKind(record)==='equipment');
+ const byId=new Map(),byNumber=new Map(),byKey=new Map();
+ let hasUMachine=false;
+ const add=(map,key,entry)=>{
+  if(!map.has(key))map.set(key,new Set());
+  map.get(key).add(entry);
+ };
+ for(const [position,record] of records.entries()){
+  const id=String(record.id);
+  if(!byId.has(id))byId.set(id,record);
+  hasUMachine||=labels(record).some(value=>parse(value)?.prefix==='U');
+  if(record.sourceMissing)continue;
+  const entry={record,position,site:canonicalSiteName(record.currentLocation||record.site||record.location)};
+  for(const value of matchLabels(record)){
+   const parsed=parse(value);
+   if(parsed)add(byNumber,parsed.number,entry);
+   add(byKey,key(value),entry);
+  }
+ }
+ index={byId,byNumber,byKey,hasUMachine};
+ equipmentIndexes.set(assets,index);
+ return index;
+}
 export function resolveTripEquipment(row={},assets=[],location='',{anySite=false}={}){
  const original=clean(row.equipmentName||[row.machine||row.m,row.equipmentNo||row.no].filter(v=>v!=null).join(' ')),parsed=parse(original),site=canonicalSiteName(location);
  if(!site)return {error:'Select a location before matching trip equipment.'};
  if(!original)return {error:'Enter the loading equipment.'};
  // Vehicle doors (for example T11 and S44) cannot identify loading equipment.
- const equipment=assets.filter(record=>assetBookKind(record)==='equipment');
+ const equipment=equipmentIndex(assets);
  // An explicit dropdown choice is identified by its master ID, not its OCR alias.
  if(row.equipmentSource==='master-selection'){
-  const record=equipment.find(r=>String(r.id)===String(row.equipmentId));
+  const record=equipment.byId.get(String(row.equipmentId));
   if(!record||record.sourceMissing||!anySite&&canonicalSiteName(record.currentLocation||record.site||record.location)!==site)return {error:'Selected equipment is no longer available at '+location+'. Select equipment registered at this site.'};
   const label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
   return {equipmentId:String(record.id),equipmentName:label?families[label.prefix]+' '+label.number:clean(labels(record)[0]),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};
  }
  // UP registrations are vehicle identifiers, not a U-type machine code.
- if(parsed?.prefix==='U'&&equipment.some(r=>labels(r).some(v=>parse(v)?.prefix==='U')))return {error:'U cannot be interpreted as V: a U-type machine code exists in the master. Check the card.'};
+ if(parsed?.prefix==='U'&&equipment.hasUMachine)return {error:'U cannot be interpreted as V: a U-type machine code exists in the master. Check the card.'};
  const family=parsed&&(parsed.prefix==='U'?'Vpc':families[parsed.prefix]);
- const broadMatches=equipment.filter(r=>!r.sourceMissing&&(anySite||canonicalSiteName(r.currentLocation||r.site||r.location)===site)&&matchLabels(r).some(v=>{const p=parse(v);if(parsed&&p)return parsed.number===p.number&&(!parsed.prefix||parsed.prefix===p.prefix||family&&families[p.prefix]===family);return key(v)===key(original);}));
+ const originalKey=key(original);
+ const candidates=new Set(equipment.byKey.get(originalKey));
+ if(parsed)for(const entry of equipment.byNumber.get(parsed.number)||[])candidates.add(entry);
+ const broadMatches=[...candidates].filter(entry=>(anySite||entry.site===site)&&matchLabels(entry.record).some(value=>{
+  const label=parse(value);
+  if(parsed&&label)return parsed.number===label.number&&(!parsed.prefix||parsed.prefix===label.prefix||family&&families[label.prefix]===family);
+  return key(value)===originalKey;
+ })).sort((left,right)=>left.position-right.position).map(entry=>entry.record);
  const exactSerial=serialIdentity(original),serialMatches=exactSerial?broadMatches.filter(r=>matchLabels(r).some(v=>serialIdentity(v)===exactSerial)):[];
  const matches=exactSerial?serialMatches:broadMatches;
  const selected=clean(row.equipmentId),selectedMatches=selected?matches.filter(r=>String(r.id)===selected):[];
