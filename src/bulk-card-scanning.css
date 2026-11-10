@@ -110,7 +110,7 @@
 .scan-source .scan-preview-fit .scan-preview-image img{display:block;width:100%;height:auto;max-height:none;max-width:100%}
 .scan-review-page .scan-source-expanded .scan-preview-fit{max-height:none}
 
-/* Keep entry text at its real size and reserve at least a third for the scan. */
+/* Give the trip fields room while keeping the original card alongside them. */
 .scan-source-heading{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .scan-source-heading h2{flex:1 1 100%;margin:0}
 .scan-review-panel-toggle{display:none!important}
@@ -121,7 +121,7 @@
  .scan-review-compact>.scan-error,.scan-review-compact>.scan-success,.scan-review-compact>p{flex-shrink:0;margin:0;max-height:12dvh;overflow:auto}
  .scan-review-compact>.scan-success{position:absolute;top:8px;right:8px;max-width:calc(100% - 330px);max-height:32px;padding:4px 8px;font-size:12px}
  .scan-review-compact>.scan-review-workspace{flex:1;min-height:0;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:8px}
- .scan-review-compact .scan-selected-card{grid-column:1;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:8px}
+ .scan-review-compact .scan-selected-card{grid-column:1;min-height:0;grid-template-columns:minmax(0,clamp(50%, 790px, 75%)) minmax(0,1fr);align-items:stretch;gap:8px}
  .scan-review-compact .scan-selected-card>.scan-draft{grid-row:1;grid-column:1;min-height:0;overflow:hidden;padding:12px}
  .scan-review-compact .scan-draft-sheet{position:static;width:auto;height:100%;min-height:0;transform:none;display:flex;flex-direction:column;gap:8px}
  .scan-review-compact .scan-draft-heading{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:8px;flex-shrink:0;max-height:26vh;overflow:auto}
