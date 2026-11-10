@@ -59,7 +59,7 @@ if(process.argv.includes('--azure')){
  const health=await liveJson(base+'/api/health');
  assert.equal(health.commit,process.env.EXPECTED_COMMIT,'Live backend must serve the expected release');
  const ui=await readFile('src/vlb-create-batch.jsx','utf8');
- assert.match(ui,/const site=data.accountLocation\|\|/,'Entry must default to the assigned site');
+ assert.match(ui,/const accountSite=entryMode\?data.lmvEntrySite\|\|data.accountLocation/,'Entry must default to the assigned site');
  const picker=/export function preferredVlbEntryBatch\(batches,remembered\)\{([\s\S]*?)\n\}/.exec(ui);
  assert.ok(picker,'Deployed picker must be present');
  const preferred=new Function('batches','remembered',picker[1]);
