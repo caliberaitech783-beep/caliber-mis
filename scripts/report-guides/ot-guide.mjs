@@ -14,7 +14,7 @@ const source=fs.readFileSync(path.join(root,'src/manpower-reports.jsx'),'utf8');
 const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function'),'manpower-reports.jsx',{jsx:{runtime:'classic'}});
 
 // Stand-in for the shared report table: same titles, columns and rows; simplified frame.
-const ReportSection=({title,description,category,rows,columns,emptyMessage,rowClassName})=>h('section',{className:'g-report','data-cat':category},
+const ReportSection=({title,description,category,rows,columns,emptyMessage,rowClassName,children})=>children?h('section',{className:'g-report','data-cat':category},h('header',null,h('div',null,h('h2',null,title),h('p',null,description)),h('span',{className:'g-generate'},'Generate ▾')),children):h('section',{className:'g-report','data-cat':category},
  h('header',null,h('div',null,h('h2',null,title),h('p',null,description)),h('span',{className:'g-generate'},'Generate ▾')),
  h('div',{className:'g-tools'},h('span',{className:'g-search'},'Search this report'),h('span',null,rows.length+' record'+(rows.length===1?'':'s'))),
  rows.length?h('div',{className:'g-table'},h('table',null,
@@ -39,11 +39,15 @@ add(SITE,'red',['VLB'],'VOLVO DRIVER',6);add(SITE,'orange',['VLB'],'VOLVO DRIVER
 add(SITE,'red',['ELB'],'PC OPERATOR',1,'Excavator / Volvo');add(SITE,'orange',['ELB'],'PC OPERATOR',1,'Excavator / Volvo');add(SITE,'red',['VLB','LMV'],'VOLVO DRIVER',1,'Tipper / Volvo; Camper / Mahindra');add(SITE,'review',['LMV'],'LMV DRIVER',1,'Camper / Mahindra');
 add('Jayant OC','red',['VLB'],'VOLVO DRIVER',4);add('Jayant OC','orange',['ELB'],'DOZER OPERATOR',1,'Dozer / Komatsu');add('Jayant OC','red',['LMV'],'LMV DRIVER',1,'Shift van / Tata');
 add('Sasti OC','red',['VLB'],'VOLVO DRIVER',3);add('Sasti OC','orange',['VLB'],'TIPPER DRIVER',2);add('Majri OC','red',['ELB'],'PC OPERATOR',2,'Excavator / Tata Hitachi');add('Dudhichua OC','orange',['VLB'],'VOLVO DRIVER',2);add('Gauri Pauni OC (2nd)','review',['VLB','ELB'],'GRADER OPERATOR',1,'Grader / Caterpillar');
+// One line per duty. Every case gives its two duties the case's colour; the opened site also has normal duties on every date and shift.
+const groupOf=e=>e.equipment.split(' / ')[0],otDuties=[];
+for(const e of ot)for(const part of e.shifts.split('; ')){const [date,shift]=part.split(' '),other=e.shifts.split('; ').find(x=>x!==part).split(' ')[1];otDuties.push({id:e.id+shift,date,shift,site:e.site,siteKey:e.siteKey,employeeKey:e.employeeKey,employeeId:e.employeeId,caliberCode:e.caliberCode,employeeName:e.employeeName,category:e.category,equipment:groupOf(e),doors:(groupOf(e)==='Tipper'?'V10':'E2')+e.id.slice(1).padStart(2,'0'),makeModel:e.equipment.split('; ')[0].split(' / ').reverse().join(' '),logBooks:e.logBooks,logBook:e.logBook,flag:e.severity,flagLabel:e.reason,others:'Also worked '+other,hours:7.5,trips:e.logBooks.includes('VLB')?9:null,books:e.books});}
+let extra=100;for(const date of DAYS)for(const shift of ['S1','S2','S3'])for(const [equipment,count,category,book,make] of [['Tipper',14,'VOLVO DRIVER','VLB','Volvo FMX 460'],['Excavator',4,'PC OPERATOR','ELB','Volvo EC750'],['Dozer',2,'DOZER OPERATOR','ELB','Komatsu D155'],['Water Tanker',1,'TANKER DRIVER','VLB','Tata 2518']])for(let i=0;i<count;i++){extra++;const k=String(100+(extra%60));otDuties.push({id:'n'+extra,date,shift,site:SITE,siteKey:canonicalSiteName(SITE),employeeKey:'N'+shift+equipment+i,employeeId:'CMPL901'+k.slice(1),caliberCode:'CMLL901'+k.slice(1),employeeName:'SAMPLE DRIVER '+k,category,equipment,doors:equipment[0]+'3'+String(i).padStart(2,'0'),makeModel:make,logBooks:[book],logBook:book,flag:'normal',flagLabel:'Normal duty',others:'',hours:7.5,trips:book==='VLB'?10:null,books:'CAL/'+book+'/'+date.slice(8)+'1226/'+shift+'/0'+k});}
 const tally=list=>Object.fromEntries(['red','orange','review'].map(s=>[s,list.filter(e=>e.severity===s).length]));
 const otSites=sites.map(site=>{const events=ot.filter(e=>e.site===site);return {site,siteKey:canonicalSiteName(site),...tally(events),books:Object.fromEntries(['VLB','ELB','LMV'].map(b=>[b,tally(events.filter(e=>e.logBooks.includes(b)))]))};});
 const exceptions=[{id:'x1',date:DAY,site:SITE,siteKey:canonicalSiteName(SITE),shift:'S2',door:'V1042',employeeId:'',employeeName:'SAMPLE DRIVER 31',book:'CAL/VLB/141226/S2/0031',logBook:'VLB',batches:'CMLL/'+DAY+'/DHOPTALA/S2',reason:'Employee ID is missing or cannot be resolved to an employee master.'},
  {id:'x2',date:DAY,site:SITE,siteKey:canonicalSiteName(SITE),shift:'S1',door:'C-58',employeeId:'CMPL90032',employeeName:'SAMPLE DRIVER 32',book:'CAL/LMV/14-12-26/007',logBook:'LMV',batches:'Saved LMV (no site batch)',reason:'Effective site shift schedule is missing or ambiguous; timing requires review.'}];
-const payload={summary:[],details:[],performance:[],shiftAttendance:[],ot,otSites,exceptions,totals:{assets:0,employees:0,duties:0,exceptions:0},notes:[],options:{sites},generatedAt:'2026-12-14T11:30:00Z'};
+const payload={summary:[],details:[],performance:[],shiftAttendance:[],ot,otDuties,otSites,exceptions,totals:{assets:0,employees:0,duties:0,exceptions:0},notes:[],options:{sites},generatedAt:'2026-12-14T11:30:00Z'};
 const siteKey=canonicalSiteName(SITE),ev=(id,date,severity)=>({id,date,dates:date,severity,reason:reasons[severity],shifts:date+(severity==='red'?' S1; '+date+' S2':' S1; '+date+' S3'),logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:severity==='red'?14.5:13.5,books:'CAL/VLB/'+date.slice(8)+date.slice(5,7)+'26/S1/0012'});
 const counts=events=>({month:{...tally(events.filter(e=>e.date>='2026-12-01')),total:events.filter(e=>e.date>='2026-12-01').length},year:{...tally(events),total:events.length}});
 const history01=[ev('h1',DAY,'red'),ev('h2','2026-12-11','red'),ev('h3','2026-12-08','orange'),ev('h4','2026-12-05','red'),ev('h5','2026-12-02','red'),ev('h6','2026-11-27','red'),ev('h7','2026-11-21','orange'),ev('h8','2026-11-16','red'),ev('h9','2026-11-12','red'),ev('h10','2026-11-09','red'),ev('h11','2026-11-04','red')];
@@ -53,27 +57,30 @@ const yearData={year:'2026',month:'2026-12',yearFrom:'2026-11-01',yearTo:DAY,mon
  ...[['S02',[DAY,'2026-12-03','2026-11-18']],['S03',[DAY,'2026-11-25']],['S04',[DAY]],['S05',[DAY,'2026-12-09','2026-12-01','2026-11-20','2026-11-06']],['S06',[DAY,'2026-12-10']],['S07',[DAY,'2026-11-30']],['S08',[DAY]],['S09',[DAY,'2026-12-04','2026-11-11']],['S15',[DAY,'2026-12-06']]].map(([key,dates])=>{const events=dates.map((d,i)=>ev(key+i,d,i%3===2?'orange':'red'));return {employeeKey:key,siteKey,...counts(events),events,...worked(24,12)};})]};
 const none={key:'',data:null,error:''};
 // State order of the screen: filters, data, error, busy, refresh, options, auto-hide, filters open, log book, month and year counts, opened driver, attendance choice, OT choice.
-const whole={severity:'',date:'',shift:''};
-const state=({logBook='',tallyState=none,driverOpen='',otPick={siteKey:'',...whole}}={})=>view([{...filters},{query,payload},'',false,0,{sites},false,false,logBook,tallyState,driverOpen,{siteKey:'',shift:'',equipment:'',flag:''},otPick]);
+const closed={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
+const state=({logBook='',tallyState=none,driverOpen='',otPick=closed}={})=>view([{...filters},{query,payload},'',false,0,{sites},false,false,logBook,tallyState,driverOpen,{siteKey:'',shift:'',equipment:'',flag:''},otPick]);
 const loaded={key:siteKey+'|2026-12|0',data:yearData,error:''};
+// The first sample driver's red case is Shift 2 with Shift 3 on 09-12-26, so that box is the one opened.
+const cell={...closed,siteKey,scope:true,date:'2026-12-09',shift:'S2'},tipper={...cell,equipment:'Tipper'};
 const views={
  start:state(),
- site:state({otPick:{siteKey,...whole},tallyState:loaded}),
- cell:state({otPick:{siteKey,severity:'red',date:'2026-12-11',shift:'S1'},tallyState:loaded}),
- red:state({otPick:{siteKey,...whole,severity:'red'},tallyState:loaded}),
- driver:state({otPick:{siteKey,...whole,severity:'red'},tallyState:loaded,driverOpen:'S01|'+siteKey})};
+ site:state({otPick:{...closed,siteKey},tallyState:loaded}),
+ cell:state({otPick:cell,tallyState:loaded}),
+ tipper:state({otPick:tipper,tallyState:loaded}),
+ driver:state({otPick:tipper,tallyState:loaded,driverOpen:'S01|'+siteKey})};
 
 // ---- Illustrations: a state of the screen and the parts of it to keep ----
 const figures={
  open:{view:'start',keep:['.mp-heading','.mp-tabs'],caption:'The report page. OT & Multiple Duties is the last of the four Manpower & OT tabs.'},
  filters:{view:'start',keep:['.mp-filter-box'],caption:'The filters. The top line always shows the dates in use. Tick Auto-hide filters to tuck the selectors away.'},
- books:{view:'site',keep:['.mp-notice','.mp-book-pick'],caption:'The line that says what is counted, and the log book selector. All log books is chosen at the start.'},
- sites:{view:'start',keep:['.mp-att'],caption:'One line per site: red, orange and brown cases and the number of drivers. Every number can be pressed.'},
- grid:{view:'cell',keep:['.mp-ot-grid'],caption:'The opened site, date by shift. Each box shows the red, orange and brown cases that started in that shift. Here the red number of 11-12-26, Shift 1 has been pressed.'},
- drivers:{view:'red',keep:['[data-cat="manpower-ot-drivers"]'],caption:'The drivers list after a red number is pressed: one row per driver, with his red and orange counts for the month and for the year.'},
- driver:{view:'driver',keep:['.mp-driver-history','[data-cat="manpower-ot-driver-history"]'],caption:'Press a driver’s name to open his history: duties and OT month by month, then every flagged duty, newest first.'},
- cases:{view:'red',keep:['[data-cat="manpower-ot"]'],caption:'Each case: one row per case, with the shifts worked and the saved cards behind it.'},
- review:{view:'site',keep:['.mp-review'],caption:'The line “saved cards need correction”, opened: saved cards that could not be counted properly.'}};
+ books:{view:'cell',keep:['.mp-notice','.mp-book-pick'],caption:'The line that says what is counted, and the log book selector. All log books is chosen at the start.'},
+ sites:{view:'start',keep:['[data-cat="manpower-ot-sites"]'],caption:'Step 1. One line per site: total duties, red, orange and brown cases, the share of red and orange duties, and the number of drivers. Every number can be pressed.'},
+ grid:{view:'cell',keep:['.mp-trail','[data-cat="manpower-ot-dates"]'],caption:'Step 2. The opened site, date by shift. In each box the first number is the duties and the coloured numbers are the red, orange and brown duties. Here the box of 09-12-26, Shift 2 has been pressed.'},
+ categories:{view:'cell',keep:['[data-cat="manpower-ot-categories"]'],caption:'Step 3. That date and shift by equipment category: people, machines, red and orange OT with their percentages.'},
+ drivers:{view:'tipper',keep:['.mp-legend','[data-cat="manpower-ot-drivers"]'],caption:'Step 4. The drivers of the Tipper category in that shift, OT duties first, with red and orange counts for the month and for the year.'},
+ driver:{view:'driver',keep:['.mp-driver-history','[data-cat="manpower-ot-driver-history"]'],caption:'Step 5. Press a driver’s name to open his history: duties and OT month by month, then every flagged duty, newest first.'},
+ cases:{view:'tipper',keep:['[data-cat="manpower-ot"]'],caption:'Each case behind the listed OT duties: one row per case, with the shifts worked and the saved cards behind it.'},
+ review:{view:'cell',keep:['.mp-review'],caption:'The line “saved cards need correction”, opened: saved cards that could not be counted properly.'}};
 const figureCss=`html,body{margin:0;background:#f6f3fb;height:auto;overflow:hidden}body{font-family:Arial,Helvetica,sans-serif}
 .mp-reports{padding:14px;gap:12px}
 .g-report{border:1px solid #dfd6e9;border-radius:12px;background:#fff;padding:14px 16px;overflow:hidden}.g-report>header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.g-report h2{margin:0 0 4px;font-size:17px}.g-report header p{margin:0;font-size:12px;color:#665e75}
@@ -133,72 +140,99 @@ ${next('books')}
 </section>
 
 <section>
-<h2>4. Read the site table</h2>
-<p>The table has one line for every site assigned to your login, and an <b>All sites</b> line at the bottom.</p>
+<h2>4. Step 1: the site table</h2>
+<p>The page opens in five steps, each one under the last: all sites, one site date by shift, one date and shift by equipment category, the drivers, and one driver’s history. Step 1 has one line for every site assigned to your login, and an <b>All sites</b> line at the bottom.</p>
 ${next('sites')}
 <table class="plain">
  <tr><th>Column</th><th>What it shows</th></tr>
- <tr><td>Red, Orange, Brown</td><td>The number of cases of that colour at the site, in the dates you chose.</td></tr>
+ <tr><td>Total duties</td><td>All duties saved at the site in your dates. One duty is one driver in one shift on one date, with or without OT.</td></tr>
+ <tr><td>Red, Orange, Brown</td><td>The number of <b>cases</b> of that colour at the site. A driver who worked Shift 1 and Shift 2 is one case.</td></tr>
+ <tr><td>Red OT %, Orange OT %</td><td>Out of every 100 duties at the site, how many were part of a red case, and how many of an orange case.</td></tr>
  <tr><td>Drivers</td><td>How many different drivers at the site have a case of any colour.</td></tr>
 </table>
 <ul>
- <li><b>Press a red, orange or brown number</b> to open that site: first its date-by-shift table (section 5), and under it the drivers of that colour. <b>Press the number under Drivers</b> to open the site with all colours.</li>
- <li>Press the same number again to close the site.</li>
+ <li><b>Press any number on a site’s line</b> to open that site date by shift (Step 2). Press it again to close the site.</li>
  <li>A line with all zeros means the site was checked and nothing was found.</li>
- <li>A number on the <b>All sites</b> line lists the drivers of every site together. That list has a Site column.</li>
+ <li>The <b>All sites</b> line opens every site together.</li>
 </ul>
+<p class="note"><b>Cases and duties.</b> One case is made of two or three duties. The site table counts cases. From Step 2 downwards every number is a duty, so the red duties there are about double the red cases here. Both are correct. The percentages are always on duties.</p>
 </section>
 
 <section>
-<h2>5. The site, date by shift</h2>
-<p>When a site is open, a second table shows its cases day by day and shift by shift. It has one line for every date you chose, and an <b>All dates</b> line at the bottom when you chose more than one date.</p>
+<h2>5. Step 2: the site, date by shift</h2>
+<p>When a site is open, a second table shows it day by day and shift by shift. It has one line for every date you chose, and an <b>All dates</b> line at the bottom when you chose more than one date. A line above the tables shows where you are, for example <b>All sites › Dhoptala OC (2nd) › 09-12-26 · Shift 2</b>; press any part of it to step back.</p>
 ${next('grid')}
 <table class="plain">
  <tr><th>Column</th><th>What it shows</th></tr>
  <tr><td>Date</td><td>The duty date, with the day of the week.</td></tr>
- <tr><td>Shift 1, Shift 2, Shift 3</td><td>The cases that <b>started</b> in that shift on that date. A red number is the red cases, an orange number the orange cases, a brown number the brown cases. 0 means none.</td></tr>
- <tr><td>Cases</td><td>All cases of that date, of every shift and colour.</td></tr>
- <tr><td>Drivers</td><td>How many different drivers have a case on that date.</td></tr>
+ <tr><td>Shift 1, Shift 2, Shift 3</td><td>The first number is the duties worked in that shift. The coloured numbers after it are the red, orange and brown duties among them. 0 means no duty was saved.</td></tr>
+ <tr><td>Day duties</td><td>All duties of that date, of the three shifts together.</td></tr>
+ <tr><td>OT duties</td><td>The duties of that date that carry any colour.</td></tr>
+ <tr><td>Red OT %, Orange OT %</td><td>Red duties of the day out of the day’s duties, and the same for orange.</td></tr>
 </table>
-<p class="note"><b>Each case is counted once, in the shift where it started.</b> Shift 1 with Shift 2 is under Shift 1. Shift 2 with Shift 3 is under Shift 2. Shift 1 with Shift 3, and all three shifts, are under Shift 1. Shift 3 followed by the next day’s Shift 1 is under Shift 3 of the first day. So the table adds up exactly to the site’s line in the site table.</p>
+<p class="note"><b>A driver who worked two shifts is counted in both.</b> A red case of Shift 1 with Shift 2 shows one red duty under Shift 1 and one under Shift 2. Shift 3 followed by the next day’s Shift 1 shows red under Shift 3 of the first day and under Shift 1 of the next day.</p>
 <ul>
- <li><b>Press a coloured number</b> to list, below, only the drivers of that date, shift and colour. <b>Press the number under Cases</b> to list everyone of that date.</li>
- <li>A number on the <b>All dates</b> line lists that shift for all the dates together.</li>
- <li>Press the same number again, or <b>Show all dates and shifts</b>, to come back to the whole site.</li>
- <li>A line marked <b>night before the selected dates</b> holds a case that started in Shift 3 on the evening before your From date and continued into Shift 1 of your first day.</li>
+ <li>The buttons above the table are the <b>equipment categories</b> worked at the site, with their duties. Press one, for example Tipper, to see the table for that category only. <b>All categories</b> brings everything back.</li>
+ <li><b>Press the first number in a box</b> to open that date and shift by equipment category (Step 3).</li>
+ <li><b>Press a coloured number</b> to go straight to the drivers of that colour in that date and shift (Step 4).</li>
+ <li>Press the number under <b>Day duties</b> for the whole day, or a number on the <b>All dates</b> line for all the dates together.</li>
 </ul>
 </section>
 
 <section>
-<h2>6. The drivers list and the OT counts</h2>
-<p>Below the date-by-shift table is the drivers list, one row per driver. It follows what you pressed: the whole site, or one date and shift.</p>
-${next('drivers')}
+<h2>6. Step 3: by equipment category</h2>
+<p>The third table shows the date and shift you pressed, one line for each equipment category, and an <b>All categories</b> line at the bottom.</p>
+${next('categories')}
 <table class="plain">
  <tr><th>Column</th><th>What it shows</th></tr>
- <tr><td>Red in the month, Orange in the month</td><td>Right after the name. How many red cases and how many orange cases the driver has in the calendar month of your To date, at this site.</td></tr>
- <tr><td>Red in the year, Orange in the year</td><td>The same two counts for the calendar year. Records start on 1 November 2026, so 2026 covers November and December.</td></tr>
- <tr><td>Driver category</td><td>The driver’s current designation in the Employee master. “Category not in Employee master” means none is saved; get the Employee master corrected.</td></tr>
- <tr><td>Red, Orange and Brown in selected dates</td><td>The driver’s cases of each colour inside what you opened: the dates you chose, or the one date and shift you pressed.</td></tr>
- <tr><td>Cases in selected dates</td><td>The total of the three.</td></tr>
- <tr><td>Log book, duty dates, shifts, equipment</td><td>Where and when those duties were done.</td></tr>
+ <tr><td>Equipment category</td><td>The equipment group of the machine worked, from the Equipment master: Tipper, Excavator, Dozer and so on.</td></tr>
+ <tr><td>People</td><td>The number of drivers and operators who worked on that category.</td></tr>
+ <tr><td>Equipment worked</td><td>The number of different vehicles or machines of that category that ran.</td></tr>
+ <tr><td>Red OT, Red OT %</td><td>The people on a red case, and their share of that category’s people.</td></tr>
+ <tr><td>Orange OT, Orange OT %</td><td>The same for orange.</td></tr>
+ <tr><td>Brown</td><td>Duties whose pattern has to be reviewed.</td></tr>
+ <tr><td>Total OT, Total OT %</td><td>Red, orange and brown together, and their share.</td></tr>
 </table>
-<p class="note"><b>One OT is one case.</b> The month and year columns count red and orange apart; brown cases are in the driver’s history (section 7). While the counts are being read the cells say “Checking…”. They never show 0 before the answer has come. In a list opened from the All sites line the cells say “Press the name”: the counts are read for one site at a time, when you press a driver’s name.</p>
+<ul>
+ <li><b>Press a category name or its People number</b> to list all its drivers (Step 4). <b>Press a coloured number</b> to list only those drivers.</li>
+ <li>For a whole day or for all dates a <b>Duties</b> column is added. People then means different persons, and the percentages are on duties, because one person works many duties.</li>
+ <li>A driver who worked on two machines in one shift is counted on the machine with the most HMR hours.</li>
+ <li><b>Group missing in master</b> means the machine has no equipment group in the Equipment master. Get the master corrected.</li>
+</ul>
 </section>
 
 <section>
-<h2>7. One driver’s history</h2>
+<h2>7. Step 4: the drivers</h2>
+<p>The drivers list has one row for each duty in the category you pressed. Drivers on OT come first: red, then orange, then brown, then the normal duties in white.</p>
+${next('drivers')}
+<table class="plain">
+ <tr><th>Column</th><th>What it shows</th></tr>
+ <tr><td>Driver category</td><td>The driver’s current designation in the Employee master. “Category not in Employee master” means none is saved; get the Employee master corrected.</td></tr>
+ <tr><td>Door / equipment, Make / model, Log book</td><td>The machine worked and the log book the card was saved in.</td></tr>
+ <tr><td>Other shift worked</td><td>For an OT duty, the other shift of the same case, for example “Also worked S3”.</td></tr>
+ <tr><td>OT colour / reason</td><td>The colour and the exact reason, or “Normal duty”.</td></tr>
+ <tr><td>HMR hours, Completed VLB trips</td><td>Machine hours and trips of this shift, from the saved cards.</td></tr>
+ <tr><td>Red and Orange in the month, Red and Orange in the year</td><td>How many red cases and orange cases the driver has in the calendar month and year of your To date, at this site. Records start on 1 November 2026.</td></tr>
+ <tr><td>Saved cards</td><td>The card numbers behind the duty.</td></tr>
+</table>
+<p class="note"><b>Reading the month and year counts.</b> While the counts are being read the cells say “Checking…”. They never show 0 before the answer has come. In a list opened from the All sites line the cells say “Press the name”: the counts are read for one site at a time, when you press a driver’s name.</p>
+</section>
+
+<section>
+<h2>8. Step 5: one driver’s history</h2>
 <p><b>Press the driver’s name.</b> His history for the year opens below the list.</p>
 ${next('driver')}
 <ul>
  <li>The first table goes month by month: <b>Duties</b> (saved VLB and ELB cards, one per shift), then Red, Orange, Brown and <b>OT times</b>, with the year total in the last row.</li>
+ <li><b>OT % of duties</b> is the duties that were part of a case, out of the duties worked in that month.</li>
  <li>The second table lists every case of the year, newest first, with the shifts worked and the saved card numbers.</li>
  <li>Press the name again, or <b>Close history</b>, to close it.</li>
 </ul>
 </section>
 
 <section>
-<h2>8. Each case</h2>
-<p>Below the drivers list, the table <b>each case</b> lists every case in full, for the site, colour, date and shift you opened.</p>
+<h2>9. Each case</h2>
+<p>Below the drivers list, the table <b>each case</b> lists in full the cases behind the OT duties shown in the list.</p>
 ${next('cases')}
 <table class="plain">
  <tr><th>Column</th><th>How to use it</th></tr>
@@ -211,7 +245,7 @@ ${next('cases')}
 </section>
 
 <section>
-<h2>9. Cards that need correction</h2>
+<h2>10. Cards that need correction</h2>
 <p>Near the bottom of the page one line reads <b>“… saved cards need correction (list for the MIS team)”</b>. Press it to open <b>Manpower Data Review</b>: saved cards that could not be counted properly. Until they are corrected, the counts above may be short. The line is not shown when no card needs correction.</p>
 ${next('review')}
 <table class="plain">
@@ -224,38 +258,40 @@ ${next('review')}
 </section>
 
 <section>
-<h2>10. Download, print and search</h2>
+<h2>11. Download, print and search</h2>
 <ul>
- <li>The drivers list, the driver’s history and the case table each have a <b>Generate</b> button: <b>Download as PDF</b>, <b>Download as Excel</b> or <b>Smart Print</b>. The file contains all rows of that table, not only the ones on screen.</li>
- <li>Type in <b>Search this report</b> to find a driver, door number or card inside a table.</li>
- <li>Press a column heading to sort by that column.</li>
+ <li>Every table on the page has a <b>Generate</b> button: the site table, the date-by-shift table, the equipment category table, the drivers list, the driver’s history and the case table. Choose <b>Download as PDF</b>, <b>Download as Excel</b> or <b>Smart Print</b>. The file contains all rows of that table, not only the ones on screen.</li>
+ <li>In the drivers list and the case table, type in <b>Search this report</b> to find a driver, door number or card.</li>
+ <li>Press a column heading there to sort by that column.</li>
 </ul>
 </section>
 
 <section class="keep">
-<h2>11. Daily review routine</h2>
+<h2>12. Daily review routine</h2>
 <table class="plain steps">
  <tr><th>Step</th><th>Do this</th></tr>
  <tr><td>1</td><td>Open the report and set the dates to the day or days you are reviewing.</td></tr>
- <tr><td>2</td><td>Leave the selector on All log books. In the site table read the Red column first, then Orange, then Brown.</td></tr>
- <tr><td>3</td><td>Press the red number of each site that has one. The site opens date by shift. Read which dates and shifts carry the cases, and press a number there to see only those drivers.</td></tr>
- <tr><td>4</td><td>For each driver, read Red and Orange in the month and in the year. Press the name of anyone who repeats and read his history.</td></tr>
- <tr><td>5</td><td>Before reporting a case, check it in the table “each case”: shifts worked and saved cards. A wrong driver ID or a wrong shift on a card creates a false OT. Get such cards corrected in the log book.</td></tr>
- <tr><td>6</td><td>Open the line “saved cards need correction” and get every listed card or master entry corrected.</td></tr>
- <tr><td>7</td><td>Use Generate to download the drivers list or the case table for your record or report.</td></tr>
+ <tr><td>2</td><td>Leave the selector on All log books. In the site table read Red OT % and Orange OT % first, then the Red, Orange and Brown cases.</td></tr>
+ <tr><td>3</td><td>Press a number of each site that has OT. The site opens date by shift. Read which dates and shifts carry the red and orange duties and how high their percentages are.</td></tr>
+ <tr><td>4</td><td>Press the box of a date and shift. Read which equipment category carries the OT and its percentage.</td></tr>
+ <tr><td>5</td><td>Press the red number of that category. For each driver read Red and Orange in the month and in the year. Press the name of anyone who repeats and read his history.</td></tr>
+ <tr><td>6</td><td>Before reporting a case, check it in the table “each case”: shifts worked and saved cards. A wrong driver ID or a wrong shift on a card creates a false OT. Get such cards corrected in the log book.</td></tr>
+ <tr><td>7</td><td>Open the line “saved cards need correction” and get every listed card or master entry corrected.</td></tr>
+ <tr><td>8</td><td>Use Generate to download any of the tables for your record or report.</td></tr>
 </table>
 <p class="note"><b>This guide shows how to find and verify the cases.</b> What action to take on a red or orange case is as instructed by management.</p>
 </section>
 
 <section class="keep">
-<h2>12. Common questions</h2>
+<h2>13. Common questions</h2>
 <table class="plain">
  <tr><th>Question</th><th>Answer</th></tr>
  <tr><td>A driver did OT but is not in the report.</td><td>Check that both cards are saved (not pending in scanning), carry the same Employee ID, and are at the same site. Open the line “saved cards need correction” and look for his cards.</td></tr>
  <tr><td>The numbers changed since the morning.</td><td>More cards were saved, corrected or deleted. Press <b>Refresh reports</b> for the latest position.</td></tr>
- <tr><td>VLB + ELB + LMV is more than All log books.</td><td>A case done on two log books is counted under both. All log books counts it once.</td></tr>
- <tr><td>A driver did Shift 1 and Shift 2 but is not under Shift 2.</td><td>A case is shown once, in the shift where it started, so he is under Shift 1. The case table shows both shifts.</td></tr>
- <tr><td>The date table has a line for the day before my From date.</td><td>That case started in Shift 3 the evening before and ran into Shift 1 of your first day. It is counted in the site’s line as well.</td></tr>
+ <tr><td>VLB + ELB + LMV is more than All log books.</td><td>A duty or case done on two log books is counted under both. All log books counts it once.</td></tr>
+ <tr><td>The red numbers in the date table add up to more than Red on the site line.</td><td>The site line counts cases. The date table counts duties, and one case is two or three duties, one under each shift worked.</td></tr>
+ <tr><td>How is Red OT % worked out?</td><td>Red duties divided by all duties of the same line, multiplied by 100. A line with no duty shows “—”.</td></tr>
+ <tr><td>People in a category is less than its Duties.</td><td>You opened a whole day or all dates. One person worked several duties; People counts him once.</td></tr>
  <tr><td>Red in the year is the same as Red in the month.</td><td>That happens in the first month of records, or when all his red cases of the year are in this month.</td></tr>
  <tr><td>The month and year cells say “Press the name”.</td><td>You opened the All sites line. Press the driver’s name: the counts of his site are then read.</td></tr>
  <tr><td>A driver works at two sites.</td><td>Counts are for one site at a time. In the All sites list he has one row for each site.</td></tr>
