@@ -13,7 +13,7 @@
     "filters": [
       [
         "From / To",
-        "First and last duty date of the report. Both open on today’s date. A date before 1 November 2026 cannot be chosen, To cannot be earlier than From, and the range can cover at most 31 days. Outside these limits nothing loads and the screen says “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+        "First and last duty date of the report. From opens on the 1st of the current month and To on today’s date. A date before 1 November 2026 cannot be chosen, To cannot be earlier than From, and the range can cover at most 31 days. Outside these limits nothing loads and the screen says “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
       ],
       [
         "Site",
@@ -225,7 +225,7 @@
     "filters": [
       [
         "From / To",
-        "रिपोर्ट की पहली और आख़िरी ड्यूटी तारीख। दोनों में शुरू में आज की तारीख रहती है। 1 November 2026 से पहले की तारीख नहीं चुनी जा सकती, To की तारीख From से पहले की नहीं हो सकती, और एक बार में ज़्यादा से ज़्यादा 31 दिन चुने जा सकते हैं। इन सीमाओं के बाहर कुछ लोड नहीं होता और स्क्रीन पर लिखा आता है “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+        "रिपोर्ट की पहली और आख़िरी ड्यूटी तारीख। शुरू में From में चालू महीने की 1 तारीख और To में आज की तारीख रहती है। 1 November 2026 से पहले की तारीख नहीं चुनी जा सकती, To की तारीख From से पहले की नहीं हो सकती, और एक बार में ज़्यादा से ज़्यादा 31 दिन चुने जा सकते हैं। इन सीमाओं के बाहर कुछ लोड नहीं होता और स्क्रीन पर लिखा आता है “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
       ],
       [
         "Site",

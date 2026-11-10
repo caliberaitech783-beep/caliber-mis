@@ -9,7 +9,7 @@
     "filters": [
       [
         "From / To",
-        "First and last date to include, by the Book Date of the log book. Both start on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+        "First and last date to include, by the Book Date of the log book. From starts on the 1st of the current month and To on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
       ],
       [
         "Site",
@@ -117,7 +117,7 @@
       "Each row covers the whole period from From to To. For one day, set From and To to the same date.",
       "Log books saved without a work order are added up in the \"Unassigned\" row of their site.",
       "A log book that was not entered is left out, not counted as zero, so the totals come out lower. A log book entered twice is counted twice, so the totals come out higher.",
-      "\"Reset table\" in the Actions menu of the table also puts From and To back to today's date.",
+      "\"Reset table\" in the Actions menu of the table also puts From back to the 1st of the current month and To back to today's date.",
       "You see only the sites your login is allowed to see."
     ],
     "checklist": [
@@ -148,7 +148,7 @@
     "filters": [
       [
         "From / To",
-        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय दोनों में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय From में चालू महीने की 1 तारीख़ और To में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
       ],
       [
         "Site",
@@ -256,7 +256,7 @@
       "हर पंक्ति From से To तक की पूरी अवधि की है। एक दिन के लिए From और To में एक ही तारीख़ रखें।",
       "बिना वर्क ऑर्डर के सेव लॉग बुक अपनी साइट की \"Unassigned\" पंक्ति में जुड़ती हैं।",
       "जो लॉग बुक चढ़ी ही नहीं, वह शून्य नहीं गिनी जाती, बस छूट जाती है, इसलिए जोड़ कम आता है। जो लॉग बुक दो बार चढ़ी है वह दो बार गिनी जाती है, इसलिए जोड़ ज़्यादा आता है।",
-      "तालिका के Actions मेनू का \"Reset table\" From और To को भी वापस आज की तारीख़ पर ले आता है।",
+      "तालिका के Actions मेनू का \"Reset table\" From को भी वापस चालू महीने की 1 तारीख़ पर और To को आज की तारीख़ पर ले आता है।",
       "आपको सिर्फ़ वही साइट दिखती हैं जिन्हें देखने की अनुमति आपके लॉगिन को है।"
     ],
     "checklist": [

@@ -2,7 +2,7 @@ import './log-book-readability.css';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {canonicalSiteName} from '../shared/site-location.mjs';
-import {OPERATIONAL_START} from '../shared/operational-start.mjs';
+import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
 const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties']];
@@ -427,7 +427,7 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
 
 // On the dashboard (embedded) the report stands alone: it opens on the dates given and shows no tabs for the other views.
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection,embedded=false,initialFrom=''}){
- const [filters,setFilters]=useState(()=>{const date=today();return {from:initialFrom||date,to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
+ const [filters,setFilters]=useState(()=>{const date=today();return {from:initialFrom||monthStartDate(date),to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null),historyBox=useRef(null);
  const [logBook,setLogBook]=useState(''),[tally,setTally]=useState({key:'',data:null,error:''}),[driverOpen,setDriverOpen]=useState('');

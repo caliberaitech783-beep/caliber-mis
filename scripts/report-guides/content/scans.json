@@ -7,8 +7,8 @@
     "purpose": "Lists the scanned cards whose date falls in the chosen dates, with the status of each card, the book number of the saved log book if one was created from it, and any error. A MIS clerk uses it to see which scanned cards are still waiting, which failed, and which became saved log books.",
     "row": "One row is one scanned card.",
     "filters": [
-      ["From", "First card date to include. The card date is the book date on the card; if the card has no book date, the date it was scanned (India time) is used. It opens on today's date. Dates before 1 November 2026 are not accepted."],
-      ["To", "Last card date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From and To back to today."],
+      ["From", "First card date to include. The card date is the book date on the card; if the card has no book date, the date it was scanned (India time) is used. It opens on the 1st of the current month. Dates before 1 November 2026 are not accepted."],
+      ["To", "Last card date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
       ["Site", "Keeps only cards on which that site was read. Cards with no site read are left out. \"All\" means every site assigned to your login."],
       ["Shift", "Keeps only cards on which that shift was identified. Cards with no shift identified are left out."],
       ["Vehicle / equipment", "Keeps only cards on which that door was identified. Cards with no door identified are left out."],
@@ -63,8 +63,8 @@
     "purpose": "यह रिपोर्ट वे स्कैन किए हुए कार्ड दिखाती है जिनकी तारीख चुनी हुई तारीखों में आती है: हर कार्ड का Status, उससे बनी सेव लॉग बुक का बुक नंबर (अगर बनी हो), और कोई गलती हो तो वह। MIS क्लर्क इससे देखते हैं कि कौन-से स्कैन कार्ड अभी रुके हैं, कौन-से फ़ेल हुए और कौन-से सेव लॉग बुक बन गए।",
     "row": "एक लाइन का मतलब है एक स्कैन किया हुआ कार्ड।",
     "filters": [
-      ["From", "पहली कार्ड तारीख जो रिपोर्ट में लेनी है। कार्ड की तारीख उस पर लिखी बुक तारीख है; कार्ड में बुक तारीख न हो तो जिस दिन वह स्कैन हुआ (भारतीय समय) वह तारीख ली जाती है। स्क्रीन खुलने पर आज की तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
-      ["To", "आख़िरी कार्ड तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From और To दोनों फिर से आज की तारीख हो जाती हैं।"],
+      ["From", "पहली कार्ड तारीख जो रिपोर्ट में लेनी है। कार्ड की तारीख उस पर लिखी बुक तारीख है; कार्ड में बुक तारीख न हो तो जिस दिन वह स्कैन हुआ (भारतीय समय) वह तारीख ली जाती है। स्क्रीन खुलने पर चालू महीने की 1 तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
+      ["To", "आख़िरी कार्ड तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
       ["Site", "सिर्फ़ वे कार्ड रखता है जिन पर वह साइट पढ़ी गई। जिन कार्ड पर साइट नहीं पढ़ी गई वे हट जाते हैं। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट।"],
       ["Shift", "सिर्फ़ वे कार्ड रखता है जिन पर वह Shift पहचानी गई। जिन कार्ड पर Shift नहीं पहचानी गई वे हट जाते हैं।"],
       ["Vehicle / equipment", "सिर्फ़ वे कार्ड रखता है जिन पर वह डोर पहचाना गया। जिन कार्ड पर डोर नहीं पहचाना गया वे हट जाते हैं।"],

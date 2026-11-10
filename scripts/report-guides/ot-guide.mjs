@@ -119,7 +119,7 @@ const body=`
 <h2>2. Open the report and choose the dates</h2>
 <ol>
  <li>In the left menu open <b>Reports → Manpower &amp; OT → OT &amp; Multiple Duties</b>.</li>
- <li>The report opens on today’s date. In the filters at the top set <b>From</b> and <b>To</b> for the days you want. Press <b>Today</b> to come back to today’s date.</li>
+ <li>The report opens on the month so far: From is the 1st of the current month and To is today’s date. In the filters at the top set <b>From</b> and <b>To</b> for the days you want. Press <b>Today</b> to come back to today’s date.</li>
  <li>You can choose up to 31 days at a time, starting from 1 November 2026.</li>
  <li>To see one site only, choose it in <b>Site</b>. Its date-by-shift table and its drivers then open straight away.</li>
  <li>Press <b>Refresh reports</b> to read the latest saved cards.</li>
