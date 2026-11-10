@@ -28,4 +28,11 @@ test('VLB and ELB save attendance without an asset and update the same shift rec
  assert.equal((await save({kind:'equipment',location:'Sasti OB',reason:'Other',remarks:'Work suspended'})).status,200);
  const {rows}=await pool.query('SELECT site,shift,asset_id,kind,reason,remarks FROM mis_shift_attendance');
  assert.deepEqual(rows,[{site:'sasti ob',shift:'S1',asset_id:null,kind:'equipment',reason:'Other',remarks:'Work suspended'}]);
+ for(const shiftCode of ['D','N']){
+  assert.equal((await save({shiftId:null,shiftCode})).status,200);
+ }
+ assert.equal((await save({shiftId:null,shiftCode:'S1'})).status,400);
+ assert.equal((await save({shiftCode:'D'})).status,400);
+ const savedShifts=await pool.query('SELECT shift FROM mis_shift_attendance ORDER BY shift');
+ assert.deepEqual(savedShifts.rows.map(row=>row.shift),['D','N','S1']);
 });

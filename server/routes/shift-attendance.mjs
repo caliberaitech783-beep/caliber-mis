@@ -19,25 +19,26 @@ const masterId = value => /^[1-9]\d{0,17}$/.test(String(value ?? ''));
 export function registerShiftAttendance(app,{pool,protect,ensureBooks}){
  app.post('/api/shift-attendance',...protect,async(req,res,next)=>{
   try{
-   const {kind,bookDate,location,shiftId,employeeId,assetId,reason,remarks=''}=req.body||{};
+   const {kind,bookDate,location,shiftId,shiftCode,employeeId,assetId,reason,remarks=''}=req.body||{};
    requireOperationalDate(bookDate);
+   const standaloneShift=shiftId==null&&(shiftCode==='D'||shiftCode==='N');
    const note=typeof remarks==='string'?remarks.trim():null;
    if(!['vehicle','equipment'].includes(kind)||typeof location!=='string'||!canonicalSiteName(location)||
-      !masterId(shiftId)||!masterId(employeeId)||(assetId&&!masterId(assetId))||
+      !(standaloneShift||(shiftCode==null&&masterId(shiftId)))||!masterId(employeeId)||(assetId&&!masterId(assetId))||
       !ZERO_TRIP_REASONS.includes(reason)||note===null||note.length>2000||(reason==='Other'&&!note)){
     return res.status(400).json({error:'Select a valid site, employee, shift and reason. Enter remarks for Other.'});
    }
    requireLogBookSite(req.logBookScope,location);
    const site=canonicalSiteName(location);
    await ensureBooks();
-   const {rows}=await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[shiftId,employeeId,...(assetId?[assetId]:[])]]);
+   const {rows}=await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[employeeId,...(shiftId?[shiftId]:[]),...(assetId?[assetId]:[])]]);
    const employee=rows.find(r=>String(r.id)===String(employeeId)&&employeeMasters.includes(r.master_name))?.record_data;
    const shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;
    const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data;
-   const code=bookShiftCode(shift?.shiftCode)||bookShiftCode(shift?.shiftName||shift?.name||shift?.shift);
-   if(!employee||!employeeAtLocation(employee,site)||!code||canonicalSiteName(shift.site||shift.siteName)!==site||
+   const code=standaloneShift?shiftCode:bookShiftCode(shift?.shiftCode)||bookShiftCode(shift?.shiftName||shift?.name||shift?.shift);
+   if(!employee||!employeeAtLocation(employee,site)||!code||(!standaloneShift&&(canonicalSiteName(shift.site||shift.siteName)!==site||
       shift.sourceMissing||String(shift.status).trim().toLowerCase()==='inactive'||
-      (shift.effectiveFrom&&bookDate<shift.effectiveFrom)||(shift.effectiveTo&&bookDate>shift.effectiveTo)||
+      (shift.effectiveFrom&&bookDate<shift.effectiveFrom)||(shift.effectiveTo&&bookDate>shift.effectiveTo)))||
       (assetId&&(!asset||assetBookKind(asset)!==kind||canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==site))){
     return res.status(400).json({error:'Select an employee, effective shift and optional asset assigned to this site.'});
    }

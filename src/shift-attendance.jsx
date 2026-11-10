@@ -23,12 +23,12 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
  const siteKey=canonicalSiteName(site);
  const shifts=['S1','S2','S3','D','N'].map(code=>({
   code,row:selectedMasterShift((options?.shifts||[]).filter(row=>(bookShiftCode(row.shiftCode)||bookShiftCode(row.name))===code),site,code,date)
- })).filter(({row})=>row);
- const shiftId=shifts.find(({code})=>code===shift)?.row.id;
+ })).filter(({code,row})=>row||code==='D'||code==='N');
+ const selectedShift=shifts.find(({code})=>code===shift);
  const submit=async event=>{
-  event.preventDefault();setBusy(true);setError('');setSaved(false);
+  event.preventDefault();if(!selectedShift)return;setBusy(true);setError('');setSaved(false);
   try{
-   const response=await fetch('/api/shift-attendance',{method:'POST',headers,body:JSON.stringify({kind,location:site,bookDate:date,shiftId,employeeId,assetId,reason,remarks})});
+   const response=await fetch('/api/shift-attendance',{method:'POST',headers,body:JSON.stringify({kind,location:site,bookDate:date,...(selectedShift.row?{shiftId:selectedShift.row.id}:{shiftCode:shift}),employeeId,assetId,reason,remarks})});
    const data=await response.json();
    if(!response.ok)throw Error(data.error||'Could not save attendance.');
    setSaved(true);
@@ -46,8 +46,8 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
      <option value="">Select site</option>{[...new Set([...(site?[site]:[]),...options.sites])].map(value=><option key={value}>{value}</option>)}
     </select></label>
     <label className="logbook-field">Book date<input type="date" required min={OPERATIONAL_START} value={date} onChange={e=>setDate(e.target.value)}/></label>
-    <label className="logbook-field">Shift<select required value={shiftId?shift:''} onChange={e=>setShift(e.target.value)}>
-     <option value="">Select shift</option>{shifts.map(({code,row})=><option key={code} value={code}>{row.name||code} · {row.startTime}–{row.endTime}</option>)}
+    <label className="logbook-field">Shift<select required value={selectedShift?shift:''} onChange={e=>setShift(e.target.value)}>
+     <option value="">Select shift</option>{shifts.map(({code,row})=><option key={code} value={code}>{row?(row.name||code)+' · '+row.startTime+'–'+row.endTime:code==='D'?'Day Shift':'Night Shift'}</option>)}
     </select></label>
     <label className="logbook-field">{vehicle?'Driver':'Operator'}<select required value={employeeId} onChange={e=>setEmployee(e.target.value)}>
      <option value="">Select employee</option>{options.employees.filter(row=>employeeAtLocation(row,site)).map(row=><option key={row.id} value={row.id}>{row.name} · {row.caliberId||row.employeeCode}</option>)}
@@ -60,7 +60,7 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
     </select></label>
     <label className="logbook-field">Remarks {reason==='Other'?'(required)':'(optional)'}<input required={reason==='Other'} maxLength={2000} value={remarks} onChange={e=>setRemarks(e.target.value)}/></label>
    </div>
-   <button type="submit" disabled={!shiftId||saved}>{busy?'Saving…':'Save attendance'}</button>
+   <button type="submit" disabled={!selectedShift||saved}>{busy?'Saving…':'Save attendance'}</button>
   </fieldset>}
  </form>;
 }
