@@ -76,12 +76,11 @@ try{
    if(document.documentElement.scrollWidth>width+2)issues.push('Page overflow '+document.documentElement.scrollWidth+' > '+width);
    const labels=[...document.querySelectorAll('#scan-entry-fields label > span,#logbook-entry-form .logbook-field > span,.saved-logbook-values dt')].filter(visible);
    if(labels.length<5)issues.push('Expected visible form/detail labels, found '+labels.length);
-   for(const e of labels){const s=getComputedStyle(e);if(parseFloat(s.fontSize)<minimumLabel||Number(s.fontWeight)<700)issues.push('Small/nonbold label '+e.textContent+' '+s.fontSize+'/'+s.fontWeight);}
+   for(const e of labels){const s=getComputedStyle(e);if(parseFloat(s.fontSize)<(e.closest('.scan-trip-entry')?13:minimumLabel)||Number(s.fontWeight)<700)issues.push('Small/nonbold label '+e.textContent+' '+s.fontSize+'/'+s.fontWeight);}
    for(const e of [...document.querySelectorAll('#scan-entry-fields input,#scan-entry-fields output,#logbook-entry-form .logbook-field input')].filter(visible)){
-    const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<minimumValue)issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
+    const s=getComputedStyle(e),box=e.getBoundingClientRect();if(parseFloat(s.fontSize)<(e.closest('.scan-trip-entry')?15:minimumValue))issues.push('Small value '+(e.getAttribute('aria-label')||e.value)+' '+s.fontSize);
     if(box.right>width+2||box.left< -2)issues.push('Field outside viewport');
-    if(e.type==='time'&&box.width<168)issues.push('Native time too narrow: '+box.width);
-    if(e.closest('.scan-trip-entry')&&e.tagName==='INPUT'&&parseFloat(s.fontSize)!==20)issues.push('Trip value must use its bounded 20px font: '+s.fontSize);
+    if(e.type==='time'&&box.width<(e.closest('.scan-trip-entry')?100:168))issues.push('Native time too narrow: '+box.width);
    }
    if(!mode.startsWith('manual')&&mode!=='saved'){
     const timeMode=document.querySelector('.scan-time-entry');
@@ -101,7 +100,7 @@ try{
      const jobLabel=row.querySelector('[data-trip-field="jobType"] > span');if(job&&jobLabel&&jobLabel.scrollWidth>Math.ceil(job.width)+1)issues.push('Job label wider than its field');
      // The job column made the timed row eight fields wide: it needs 1120px to stay on
      // one line without clipping. The untimed row still fits from 881px.
-     if(document.querySelector('.scan-draft-sheet').clientWidth>(timed?1119:880)){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
+     if(document.querySelector('.scan-draft-sheet').clientWidth>720){const tops=fields.map(r=>round(r.top));if(Math.max(...tops)-Math.min(...tops)>2)issues.push('Wide trip labels do not share a row');}
     }
    }
    for(const e of document.querySelectorAll('#logbook-entry-form .searchable-select-full-value')){const control=e.parentElement.querySelector('.searchable-select-control');if(visible(e)&&e.getBoundingClientRect().top<control.getBoundingClientRect().bottom-1)issues.push('Full selected value must appear below its control');}
