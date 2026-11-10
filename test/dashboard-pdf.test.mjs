@@ -57,7 +57,7 @@ test("printing an unavailable dashboard is refused before anything is prepared",
 
 test("a print starts with the clock row and keeps the sticky banner in its place", () => {
   const source = readFileSync(new URL("../src/dashboard-pdf.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  assert.match(source, /const clockRow = forPrint \? document\.querySelector\("\.content > \.top, \.normal > header"\) : null;/, "the row with the live time and date, for prints only");
+  assert.match(source, /const clockRow = forPrint && !reportPage \? document\.querySelector\("\.content > \.top, \.normal > header"\) : null;/, "the row with the live time and date, for prints only");
   assert.match(source, /root\.append\(rowClone, clone\);/, "the clock row sits above the dashboard, as on screen");
   assert.match(source, /root\.querySelectorAll\("\.export-menu, \.overlay, \[role=dialog\]"\)\.forEach\(node => node\.remove\(\)\);/);
   assert.match(source, /root\.querySelectorAll\("\*"\)\.forEach\(node => \{\n\s+const style = getComputedStyle\(node\);\n[^\n]*\n\s+if \(style\.position === "sticky"\) node\.style\.position = "static";/, "a banner pinned while the page is scrolled is not pushed down over the charts");
@@ -112,10 +112,10 @@ test("the dashboard PDF gives each of its three reports its own sheet", () => {
   assert.match(screen, /className="lb-print-root" data-print-fit="" data-print-pages="\.lb-dashboard, \.lb-reports > \*"/, "cards and graphs, Batch Status & Turnaround, OT & Multiple Duties");
   assert.match(screen, /\{printing&&<p role="status" className="lb-muted" data-print-hide="">/, "the 'Preparing the PDF' line is not printed");
   assert.match(capture, /const holder = section \? null : dashboard\.matches\?\.\("\[data-print-pages\]"\) \? dashboard : dashboard\.querySelector\?\.\("\[data-print-pages\]"\);/, "one section printed alone keeps its own layout");
-  assert.match(capture, /for \(let index = 0; index < reports; index\+\+\) \{\n\s+const capture = await captureDashboard\(dashboard, \{forPrint: true, reportPage: \{selector, index, aspect: printableWidth \/ printableHeight\}\}\);/, "each report is captured for the shape of the chosen paper");
-  assert.match(capture, /if \(!captures\.length\) captures\.push\(await captureDashboard\(dashboard, \{forPrint: true, section\}\)\);/, "other dashboards print as before");
+  assert.match(capture, /for \(let index = 0; index < reports; index\+\+\) \{\n\s+const capture = await captureDashboard\(dashboard, \{forPrint: true, reportPage: \{selector, index, aspect: printableWidth \/ printableHeight, brand, logo\}\}\);/, "each report is captured for the shape of the chosen paper");
+  assert.match(capture, /const paged = captures\.length > 0;\n\s+if \(!paged\) captures\.push\(await captureDashboard\(dashboard, \{forPrint: true, section\}\)\);/, "other dashboards print as before");
   assert.match(capture, /reports\.forEach\(node => \{ if \(node !== report\) node\.style\.display = "none"; \}\);/, "the other reports are left off that sheet");
-  assert.match(capture, /reportRoot = reportPage\.index \? report : root;/, "the clock row and banner stay on the first sheet only");
+  assert.match(capture, /report\.prepend\(printPageHeader\(report, reportPage\)\);\n\s+reportRoot = report;/, "every report stands alone under its own heading band");
   assert.match(capture, /host\.style\.width = `\$\{dashboardFitWidth\(measure, reportPage\.aspect\)\}px`;/);
   assert.match(capture, /if \(sheets\+\+\) pdf\.addPage\(\[pageWidth, pageHeight\], "landscape"\);/);
   assert.match(css, /\[data-printing\] \.lb-reports th\.column-filter-header\{min-width:0\}/, "table headings may wrap on paper, so the table can be drawn larger");
@@ -134,4 +134,19 @@ test("the MIS dashboard offers an A3 PDF and Smart Print of the complete page", 
   assert.match(capture, /clone\.setAttribute\("data-printing", ""\);/, "wide tables get the width they need");
   assert.match(host, /className="erp-mis-dashboard" data-print-fit=""/);
   assert.equal((main.match(/ReportSection=\{ReportSection\} printDashboard=\{printDashboardReport\}/g) || []).length, 3);
+});
+
+test("each sheet of the dashboard PDF is dressed for paper: a heading band, page numbers and no screen controls", () => {
+  const source = readFileSync(new URL("../src/dashboard-pdf.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.match(source, /const title = report\.getAttribute\("data-print-title"\) \|\| text\("header h1, header h2"\)/, "the band names the report");
+  assert.match(source, /add\(meta, "span", "", "Printed " \+ istStamp\(new Date\(\)\) \+ " IST"\);/, "and says when it was printed");
+  assert.match(source, /if \(paged\) for \(let sheet = 1; sheet <= sheets; sheet\+\+\) \{[\s\S]*?pdf\.text\(`Page \$\{sheet\} of \$\{sheets\}`/, "sheets of reports are numbered");
+  const screen = readFileSync(new URL("../src/log-book-dashboard.jsx", import.meta.url), "utf8");
+  assert.match(screen, /data-print-brand="Caliber Pulse-II" data-print-logo="\/pulse-ii-icon\.png"/);
+  assert.match(screen, /data-print-title="VLB & ELB Dashboard"/);
+  const css = readFileSync(new URL("../src/log-book-dashboard.css", import.meta.url), "utf8");
+  assert.match(css, /\[data-printing\] :is\(\.lb-range,\.lb-footer,/, "the date boxes and buttons are left off the paper");
+  assert.match(css, /\[data-printing\] \.lb-reports :is\(header,\.mp-heading,\.production-filters,[^)]*\.generated-report-search,\.report-table-pagination,/, "so are each report's filters, search box and page buttons");
+  assert.match(css, /\[data-printing\] \*\{scrollbar-width:none\}/, "no scroll bars are drawn");
+  assert.match(css, /\[data-printing\] \.lb-reports table tbody td\{font-size:16\.5px;color:#1a1330/, "table figures are large and dark");
 });

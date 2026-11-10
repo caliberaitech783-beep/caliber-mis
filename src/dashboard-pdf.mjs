@@ -13,12 +13,13 @@ async function captureDashboard(dashboard, {forPrint = false, section = null, re
   section?.removeAttribute("data-print-section");
   // Reports stay on the Day palette even when the screen is in Night mode.
   if (!forPrint) clone.classList.replace("mine-dashboard-night", "mine-dashboard-day");
-  const background = forPrint ? pageBackground(dashboard) : "";
+  // A report on a sheet of its own is drawn on white paper; any other print keeps the colour behind the dashboard.
+  const background = reportPage ? "#ffffff" : forPrint ? pageBackground(dashboard) : "";
   const host = document.createElement("div");
   host.style.cssText = "position:fixed;left:-100000px;top:0;pointer-events:none;z-index:-1;";
   host.style.width = `${dashboard.getBoundingClientRect().width}px`;
   // A print starts with the row showing the live time and date, as the screen does.
-  const clockRow = forPrint ? document.querySelector(".content > .top, .normal > header") : null;
+  const clockRow = forPrint && !reportPage ? document.querySelector(".content > .top, .normal > header") : null;
   let root = clone;
   if (clockRow) {
     root = document.createElement("div");
@@ -52,8 +53,9 @@ async function captureDashboard(dashboard, {forPrint = false, section = null, re
       const report = reports[reportPage.index];
       if (!report) return null;
       reports.forEach(node => { if (node !== report) node.style.display = "none"; });
-      // The first sheet keeps the clock row and the banner above its report; every other report stands alone.
-      reportRoot = reportPage.index ? report : root;
+      // Every report stands alone on its sheet, under a heading band that names it.
+      report.prepend(printPageHeader(report, reportPage));
+      reportRoot = report;
       // Sticky banners and boxes that scroll up and down are opened first, so the height measured is the height printed.
       root.querySelectorAll("*").forEach(node => {
         const style = getComputedStyle(node);
@@ -114,6 +116,32 @@ async function captureDashboard(dashboard, {forPrint = false, section = null, re
   } finally {
     host.remove();
   }
+}
+
+const istStamp = date => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", hour12: true}).formatToParts(date).map(part => [part.type, part.value]));
+  return `${parts.day}-${parts.month}-${parts.year}, ${parts.hour}:${parts.minute} ${String(parts.dayPeriod || "").toUpperCase()}`;
+};
+
+// The band at the top of a report's sheet: the logo and brand, the report's name and what it shows, its dates and when
+// it was printed. The name comes from data-print-title, or the report's own heading; the screen heading is left off the paper.
+function printPageHeader(report, {brand = "", logo = ""}) {
+  const text = selector => report.querySelector(selector)?.textContent.trim() || "";
+  const title = report.getAttribute("data-print-title") || text("header h1, header h2") || report.getAttribute("aria-label") || "";
+  const subtitle = report.getAttribute("data-print-subtitle") || text("header p");
+  const note = report.getAttribute("data-print-note") || "";
+  const header = document.createElement("div");
+  header.className = "print-page-header";
+  const add = (parent, tag, className, content) => { const node = document.createElement(tag); node.className = className; if (content) node.textContent = content; parent.append(node); return node; };
+  if (logo) add(header, "img", "print-page-logo").src = logo;
+  const name = add(header, "div", "print-page-name");
+  if (brand) add(name, "span", "print-page-brand", brand);
+  add(name, "strong", "print-page-title", title);
+  if (subtitle) add(name, "span", "print-page-subtitle", subtitle);
+  const meta = add(header, "div", "print-page-meta");
+  if (note) add(meta, "strong", "", note);
+  add(meta, "span", "", "Printed " + istStamp(new Date()) + " IST");
+  return header;
 }
 
 // The colour behind the dashboard on screen: the dark page in Night mode, the light page in Day mode.
@@ -275,12 +303,14 @@ export async function dashboardPrintPdf(dashboard, page = {widthMm: 297, heightM
   const holder = section ? null : dashboard.matches?.("[data-print-pages]") ? dashboard : dashboard.querySelector?.("[data-print-pages]");
   const selector = holder?.getAttribute("data-print-pages") || "";
   const reports = selector ? dashboard.querySelectorAll(selector).length : 0;
+  const brand = holder?.getAttribute("data-print-brand") || "", logo = holder?.getAttribute("data-print-logo") || "";
   const captures = [];
   for (let index = 0; index < reports; index++) {
-    const capture = await captureDashboard(dashboard, {forPrint: true, reportPage: {selector, index, aspect: printableWidth / printableHeight}});
+    const capture = await captureDashboard(dashboard, {forPrint: true, reportPage: {selector, index, aspect: printableWidth / printableHeight, brand, logo}});
     if (capture) captures.push(capture);
   }
-  if (!captures.length) captures.push(await captureDashboard(dashboard, {forPrint: true, section}));
+  const paged = captures.length > 0;
+  if (!paged) captures.push(await captureDashboard(dashboard, {forPrint: true, section}));
   const {jsPDF} = await import("jspdf");
   const pdf = new jsPDF({unit: "pt", format: [pageWidth, pageHeight], orientation: "landscape", compress: true});
   let sheets = 0;
@@ -303,6 +333,15 @@ export async function dashboardPrintPdf(dashboard, page = {widthMm: 297, heightM
       pdf.rect(0, 0, pageWidth, pageHeight, "F");
       pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", left, margin, canvas.width * scale, height * scale);
     });
+  }
+  // Sheets of reports carry the brand and "Page 2 of 3" in the bottom margin.
+  if (paged) for (let sheet = 1; sheet <= sheets; sheet++) {
+    pdf.setPage(sheet);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(110, 100, 130);
+    if (brand) pdf.text(brand, margin, pageHeight - margin / 2 + 2);
+    pdf.text(`Page ${sheet} of ${sheets}`, pageWidth - margin, pageHeight - margin / 2 + 2, {align: "right"});
   }
   return pdf.output("blob");
 }
