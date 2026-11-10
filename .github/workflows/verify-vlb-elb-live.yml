@@ -19,6 +19,14 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
       - name: Verify current production VLB and ELB access
         run: |
-          EXPECTED_COMMIT=$(curl --fail --silent https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit')
-          export EXPECTED_COMMIT
-          node scripts/verify-vlb-elb-live.mjs --azure
+          export EXPECTED_COMMIT=29d24d96bba2d63c69e98b759fc5053f6e1fdb1d
+          for attempt in {1..80}; do
+            live=$(curl --fail --silent --max-time 12 https://pulse-ll.cmll.in/api/app-version | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).commit' 2>/dev/null || true)
+            if [ "$live" = "$EXPECTED_COMMIT" ]; then
+              node scripts/verify-vlb-elb-live.mjs --azure
+              exit $?
+            fi
+            sleep 15
+          done
+          echo "Expected LMV release did not become live within the verification window."
+          exit 1
