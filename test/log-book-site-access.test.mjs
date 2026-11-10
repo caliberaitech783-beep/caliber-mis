@@ -59,6 +59,14 @@ test('VLB/ELB options, paginated records, lookups, hours and writes enforce site
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
   const call=async(path,method='GET',body,auth='site')=>{if(body&&['POST','PUT'].includes(method)&&path.startsWith('/api/log-books/vehicle'))await prepareVlbFixture(db,body);const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method,headers:{Authorization:auth,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
   const allOptions=await call('/api/log-books/options','GET',null,'admin');assert.equal(allOptions.data.canSelectSite,true);assert.deepEqual(allOptions.data.sites,['Jayant OC','Sasti OC']);
+  const batchOptions='/api/log-books/options?siteSource=region-master';
+  assert.deepEqual((await call(batchOptions,'GET',null,'admin')).data.sites,[]);
+  await db.query("INSERT INTO master_records(master_name,record_data) VALUES($1,$2),($3,$4)",[
+   'Region master',{name:'West',sites:'Sasti OB | Sasti OC'},'C-Dir Site & Office master',{name:'Corporate Office, Nagpur'},
+  ]);
+  assert.deepEqual((await call(batchOptions,'GET',null,'admin')).data.sites,['Sasti OC']);
+  assert.deepEqual((await call(batchOptions,'GET',null,'region')).data.sites,[]);
+  await db.query("DELETE FROM master_records WHERE master_name='C-Dir Site & Office master'");
   for(const suffix of ['','?scan=1']){
    const assignedOptions=await call('/api/log-books/options'+suffix,'GET',null,'assignedAdmin');
    assert.equal(assignedOptions.status,200);
