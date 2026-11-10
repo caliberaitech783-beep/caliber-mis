@@ -101,11 +101,19 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
 }
 
-export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,fetchImpl=fetch,onSnapshot=null}){
+// How long one Pulse read answers later callers. Card saves at scanning speed used to read Pulse's
+// whole breakdown feed and whole fleet once per save; with six sites saving at once those reads
+// filled Pulse's database connections and its own sign-in timed out (10 Nov 2026). A breakdown or a
+// transfer completed in Pulse is seen at the latest after this window; a recheck reads fresh at once.
+export const PULSE_FEED_REUSE_MS=20000,PULSE_FLEET_REUSE_MS=30000;
+export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSignIn,fetchImpl=fetch,onSnapshot=null,now=Date.now}){
  // Real-time checks that run after every applied snapshot (equipment alias redundancy and shadowing).
  const afterSnapshot=async()=>{if(!onSnapshot)return;try{await onSnapshot();}catch(e){console.error("Pulse snapshot follow-up failed:",e?.message||e);}};
  let breakdownCache=null;
- const fleetReadsInFlight=new Map();
+ // Shared-sign-in breakdown reads, per actor: Pulse filters the feed by the actor's site scope, so
+ // actors never share. An entry holds the last rows with their time and the request in flight.
+ const sharedBreakdownReads=new Map();
+ const fleetReadsInFlight=new Map(),fleetSnapshots=new Map();
  let token='',username='',lastSuccess=null,lastAttempt=null,error='',counts={},busy=false,started=false,timer;
  let lmvLastSuccess=null,lmvError='';
  let regionLastSuccess=null,regionError='';
@@ -158,7 +166,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    }
    if(!token&&!sharedSignIn?.status().connected)throw new Error('Sign in to Pulse II to connect Pulse automatically.');
    busy=true;lastAttempt=new Date().toISOString();
-   try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};await afterSnapshot();lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
+   try{let snapshot;if(!token&&sharedSignIn)snapshot=validatePulseSnapshot(await sharedSignIn.request('masters',{},actor));else{try{snapshot=await fetchMasters(token)}catch(e){if(e.code!=='PULSE_AUTH_EXPIRED'||!credentialStore)throw e;await reconnect();snapshot=await fetchMasters(token)}}counts={...counts,...await applyPulseSnapshot(pool,snapshot,master?[master]:PULSE_MASTER_NAMES)};fleetSnapshots.clear();await afterSnapshot();lastSuccess=new Date().toISOString();error='';return {...status(),busy:false};}
    catch(cause){error=cause.message;throw cause;}finally{busy=false;}
  };
  const refresh=async()=>{
@@ -167,25 +175,39 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    await sync().catch(()=>{});
    if(token||sharedSignIn?.status().connected)await sync(PULSE_REGION_MASTER).catch(()=>{});
  };
- return {
+ const service={
    status,
-   async readEquipmentMasters(actor,site){
-     // Share simultaneous reads only. A later save/recheck always starts a new
-     // authorized request, and different users or source sessions never share.
+   async readEquipmentMasters(actor,site,{fresh=false}={}){
+     // Simultaneous reads share one request, and a snapshot answers later reads for a short
+     // window, so saving at scanning speed does not read the whole fleet from Pulse once per
+     // card. A recheck passes fresh, so a transfer just completed in Pulse is seen at once.
+     // Different users, sites or source sessions never share.
      const sourceToken=token,key=JSON.stringify([sourceToken?'manual':'shared',sourceToken,actor||null,site||null]);
+     if(!fresh){const snapshot=fleetSnapshots.get(key);if(snapshot&&now()-snapshot.at<PULSE_FLEET_REUSE_MS)return structuredClone(snapshot.rows);}
      let pending=fleetReadsInFlight.get(key);
      if(!pending){
        pending=(async()=>{
          const snapshot=!sourceToken&&sharedSignIn?await sharedSignIn.request('fleet',{site},actor):await request('/api/masters?names=Equipment%20master',{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}});
          if(!Array.isArray(snapshot?.['Equipment master'])||!snapshot['Equipment master'].length)throw Error('Pulse returned no fleet records. Reconnect Pulse before saving scanned cards.');
+         fleetSnapshots.set(key,{at:now(),rows:snapshot['Equipment master']});
          return snapshot['Equipment master'];
        })().finally(()=>{if(fleetReadsInFlight.get(key)===pending)fleetReadsInFlight.delete(key);});
        fleetReadsInFlight.set(key,pending);
      }
      return structuredClone(await pending);
    },
-   async readBreakdownRequests({fresh=false,actor}={}){if(!token&&sharedSignIn)return sharedSignIn.request('requests',{},actor);if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&Date.now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:Date.now(),rows};return rows;},
-   forActor(actor){return sharedSignIn?{readBreakdownRequests:()=>sharedSignIn.request('requests',{},actor),verifyTripCard:(reference,payload)=>sharedSignIn.request('verify',{reference,payload},actor)}:null;},
+   async readBreakdownRequests({fresh=false,actor}={}){
+     if(!token&&sharedSignIn){
+       // One read of Pulse's feed per actor per window; callers only read the rows.
+       const key=String(actor||''),entry=sharedBreakdownReads.get(key);
+       if(!fresh&&entry){if(entry.rows&&now()-entry.at<PULSE_FEED_REUSE_MS)return entry.rows;if(entry.pending)return entry.pending;}
+       const pending=sharedSignIn.request('requests',{},actor).then(rows=>{if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');sharedBreakdownReads.set(key,{at:now(),rows});return rows;})
+         .finally(()=>{const current=sharedBreakdownReads.get(key);if(current?.pending===pending)sharedBreakdownReads.set(key,{...current,pending:null});});
+       sharedBreakdownReads.set(key,{...entry,pending});
+       return pending;
+     }
+     if(!token)throw new Error('Connect Pulse to fetch breakdown hours.');if(!fresh&&breakdownCache?.token===token&&now()-breakdownCache.at<15000)return breakdownCache.rows;const rows=await authorizedRequest('/api/requests');if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');breakdownCache={token,at:now(),rows};return rows;},
+   forActor(actor){return sharedSignIn?{readBreakdownRequests:(options={})=>service.readBreakdownRequests({...options,actor}),verifyTripCard:async(reference,payload)=>{const row=await sharedSignIn.request('verify',{reference,payload},actor);sharedBreakdownReads.delete(String(actor||''));return row;}}:null;},
    async verifyTripCard(reference,payload){if(!reference)throw new Error('Pulse request reference is required.');const row=await authorizedRequest(`/api/requests/${encodeURIComponent(reference)}/verify`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});breakdownCache=null;return row;},
    sync,
    async connect(credentials){
@@ -216,6 +238,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    },
    stop(){clearInterval(timer);sharedSignIn?.stop();},
  };
+ return service;
 }
 
 export function registerPulseMasterSync(app,{pool,stateFile,credentialStore,sharedSignIn,requireSession,requireAdministrator,onSnapshot=null}){
