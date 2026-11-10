@@ -88,6 +88,11 @@ if(process.argv.includes('--azure')){
     AND (lower(trim(record_data->>'login'))=$1 OR lower(trim(record_data->>'employee'))=$2)
     ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
    const scope=logBookSiteScope(session,user),admin=isMisAdministrator(session);
+   const batchOptions=await liveJson(base+'/api/log-books/options',{headers});
+   const lmvOptions=await liveJson(base+'/api/log-books/options?scan=1&logBookKind=lmv',{headers});
+   assert.deepEqual(options.sites,batchOptions.sites,'VLB and ELB scan sites must match Create VLB Batch');
+   assert.deepEqual(lmvOptions.sites,batchOptions.sites,'LMV scan sites must match Create VLB Batch');
+   console.log('Live site lists match:',JSON.stringify(batchOptions.sites));
    assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
    assert.equal(options.canSelectSite,scope.sites===null,'Site selection follows the assigned operational scope, including administrators');
    if(admin)admins++;else{

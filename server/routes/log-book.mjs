@@ -37,7 +37,7 @@ import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {displaySiteSelection,REGION_DATA} from '../../shared/region-scope.mjs';
+import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
 
 export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
  id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv')),
@@ -217,33 +217,35 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  });
  app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
    try{await ensure();
-     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
-     const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set(),regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
+     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
+     const assets=[],employees=[],shifts=[],workOrders=[],regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
-       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
+       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
        if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.designation||r.userGroup)});
-       if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);if(site)sites.add(site);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
+       if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
        if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),jobs:workOrderJobTypes(r),status:text(r.status),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
-       if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
        if(row.master_name==='Region master')regionSites.push(...displaySiteSelection(r.sites));
      }
-     for(const site of regionSites)sites.add(site);
+     const allowed=site=>siteAllowed(req.logBookScope,site);
+     const sites=displaySiteSelection(regionSites).filter(allowed).sort();
+     const siteNames=new Map(sites.map(site=>[canonicalSiteName(site),site]));
+     const siteLabel=site=>siteNames.get(canonicalSiteName(site))||displaySiteName(site);
+     const labelSites=records=>records.map(record=>({...record,site:siteLabel(record.site)}));
+     const accountLocation=siteLabel(logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)));
      if(req.path==='/api/shift-attendance'){
-       const allowed=site=>siteAllowed(req.logBookScope,site);
        return res.set('Cache-Control','private, no-store').json({
-        accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),
-        assets:assets.filter(r=>r.kind===req.query.kind&&allowed(r.site)),
+        accountLocation,
+        assets:labelSites(assets.filter(r=>r.kind===req.query.kind&&allowed(r.site))),
         employees:employees.filter(r=>displaySiteSelection(r.site).some(allowed)),
-        shifts:shifts.filter(r=>allowed(r.site)),sites:displaySiteSelection([...sites]).filter(allowed).sort()
+        shifts:labelSites(shifts.filter(r=>allowed(r.site))),sites
        });
      }
      const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters WHERE book_date>=$$2026-11-01$$ UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment' AND book_date>=$$2026-11-01$$")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
      const vehicleCardCounters={M:{},S:{}};for(const r of (await pool.query('SELECT book_date::text AS book_day,shift,source,last_number FROM mis_vlb_card_counters WHERE book_date>=$$2026-11-01$$')).rows)vehicleCardCounters[r.source][r.book_day+'/'+r.shift]=Number(r.last_number);
-     const allowed=site=>siteAllowed(req.logBookScope,site);
      const scanAssets=req.query.logBookKind==='lmv'
        ?assets.filter(asset=>asset.lmv||asset.kind==='equipment').map(asset=>asset.lmv?{...asset,kind:'vehicle'}:asset)
        :assets;
-     res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),bookNumberCounters,vehicleCardCounters,assets:(await withEquipmentAliases(pool,scanAssets)).filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:(req.query?.siteSource==='region-master'?displaySiteSelection(regionSites):req.query?.scan==='1'?REGION_DATA.flatMap(region=>region.sites):displaySiteSelection([...sites])).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
+     res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation,bookNumberCounters,vehicleCardCounters,assets:labelSites((await withEquipmentAliases(pool,scanAssets)).filter(r=>allowed(r.site))),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:labelSites(shifts.filter(r=>allowed(r.site))),sites,workOrders:labelSites(workOrders.filter(r=>allowed(r.site))),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
  // input.breakdownRows carries a feed read before the caller's advisory lock, and input.client
