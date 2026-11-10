@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {batchStatusFilters,buildBatchStatusReport,buildBatchDetail,shiftEndTime,workingMinutes,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
+import {batchStatusFilters,buildBatchStatusReport,buildBatchDetail,shiftEndTime,workingMinutes,sitesInsights,shiftsInsight,rankSites,ratingOf} from '../shared/batch-status-report.mjs';
 import {registerBatchStatusReport} from '../server/routes/batch-status-report-api.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
@@ -65,10 +65,31 @@ test('a shift whose end time has not passed is not yet due',()=>{
  assert.equal(report.shifts.some(r=>r.date==='2026-11-02'&&r.shift==='S2'),false);
 });
 
+test('a shift of today is counted the moment it ends, and the report says how many are in',()=>{
+ const sastiAt=clock=>{const report=buildBatchStatusReport({...input,now:at('02',clock).getTime()}),s=report.sites.find(s=>s.site===displaySiteName('Sasti'));return [s.due,s.todayCounted,s.todayShifts,report.today];};
+ assert.deepEqual(sastiAt('12:59'),[3,0,3,'2026-11-02'],'Shift 1 of today has not ended');
+ assert.deepEqual(sastiAt('13:00'),[4,1,3,'2026-11-02']);
+ assert.deepEqual(sastiAt('21:30'),[5,2,3,'2026-11-02']);
+ const report=buildBatchStatusReport({...input,now:at('02','14:00').getTime()});
+ assert.deepEqual([report.total.todayCounted,report.total.todayShifts],[2,6]);
+ assert.equal(sitesInsights(report.sites,report.total).includes("Today's shifts are counted as soon as they end: 2 of today's 6 site shifts are already in Shifts due."),true);
+ const past=buildBatchStatusReport(input);
+ assert.deepEqual([past.today,past.sites[0].todayShifts,past.total.todayShifts],['',null,null],'a range that does not include today shows no today figure');
+});
+
+test('sites are ranked by the share of due shifts locked and rated green, orange or red',()=>{
+ const report=buildBatchStatusReport(input);
+ assert.deepEqual(report.sites.map(s=>[s.site,s.rank,s.percentDone,s.rating,s.ratingLabel]),[[displaySiteName('Sasti'),1,17,'poor','Poor'],[displaySiteName('Jayant'),2,0,'poor','Poor']]);
+ assert.deepEqual([report.total.rank,report.total.percentDone,report.total.rating],[null,11,'poor']);
+ assert.deepEqual([0,24,25,49,50,100,null].map(ratingOf),['poor','poor','average','average','good','good','']);
+ const site=(name,locked,due)=>({site:name,locked,due});
+ assert.deepEqual(rankSites([site('D',0,28),site('A',3,28),site('C',0,28),site('B',14,28),site('E',6,56)]).map(s=>s.site+s.rank),['B1','A2','E2','C4','D4'],'equal shares hold the same rank, and the next rank skips');
+});
+
 test('the summary lines follow the table',()=>{
  const report=buildBatchStatusReport(input),lines=sitesInsights(report.sites,report.total);
  assert.equal(lines[0],'8 of 9 shifts are not yet locked. Most of them: Batch not created (6).');
- assert.match(lines[1],/^Furthest behind: .+, 5 shifts pending, oldest 01-11-26 Shift 2\.$/);
+ assert.equal(lines[1],`Rank 1: ${displaySiteName('Sasti')}, 17% of due shifts locked. Last (rank 2): ${displaySiteName('Jayant')}, 0%.`);
  assert.equal(shiftsInsight(report.shifts.filter(r=>r.site===displaySiteName('Sasti'))),'1 of 6 shifts locked. 3 shifts have no batch yet. Locked shifts took 8 hours on average after shift end; 0 took more than 24 hours.');
  assert.deepEqual(sitesInsights([],report.total),[]);
 });
