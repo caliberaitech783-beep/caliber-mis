@@ -48,11 +48,12 @@ test('a server that stays busy pauses saving without listing the card as refused
  await f.run();
  assert.equal(f.state.calls.length,AUTO_SAVE_BUSY_DELAYS_MS.length+1);
  assert.equal(f.state.failures.size,0,'a busy server is not a refusal');
- assert.equal(f.context.autoSavePaused.current,true);
+ assert.equal(f.context.autoSavePaused.current,'b');
+ assert.ok(f.state.error.retryAt>Date.now());
  assert.match(f.state.error.message,/stayed busy through 7 tries.*No card was lost/);
  assert.equal(f.state.error.ordinal,1);
  await f.run();
- assert.equal(f.state.calls.length,AUTO_SAVE_BUSY_DELAYS_MS.length+1,'paused until Retry automatic save');
+ assert.equal(f.state.calls.length,AUTO_SAVE_BUSY_DELAYS_MS.length+1,'paused during the retry cooldown');
  f.context.autoSavePaused.current=false;
  f.context.api=async path=>{f.state.calls.push(path);return {record:{id:1,book_no:'VLB/1'}};};
  await f.run();
