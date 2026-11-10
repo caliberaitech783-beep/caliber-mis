@@ -15,8 +15,8 @@
     "screen": [
       ["REPORTS / OPERATIONS", "The page heading, with the title “Batch Status & Turnaround” under it."],
       ["All sites › (site) › (batch) › (stage) actions", "The step trail. It shows which step is open. Press an earlier name to go back to that step."],
-      ["Yellow box", "One to three lines in plain words worked out from the table below it, for example how many shifts are not yet locked and which site is furthest behind."],
-      ["Step 1 · All sites · (dates)", "One line per site and a last line ALL SITES. Press a site to open Step 2 for that site. Press ALL SITES to see the shifts of every site together."],
+      ["Yellow box", "One to four lines in plain words worked out from the table below it, for example how many shifts are not yet locked, which site is at rank 1 and which is last, and how many of today's shifts are already counted."],
+      ["Step 1 · All sites · (dates)", "One line per site, the best site first, and a last line ALL SITES. The coloured edge and the coloured Rank, Done and Performance show the rating: green for Good, orange for Average, red for Poor. Press a site to open Step 2 for that site. Press ALL SITES to see the shifts of every site together."],
       ["How this report counts", "Press to read the counting rules used on this page."],
       ["All shifts · Locked · Batch not created · VLB open · LMV open · ELB open", "Buttons above Step 2, each with its number of shifts. Press one to list only the shifts at that stage."],
       ["Step 2 · (site) · shift by shift · (dates)", "One line per shift. The coloured edge is green for Locked, red for Batch not created and orange for an open stage. Press a line that has a batch to open Step 3."],
@@ -26,9 +26,13 @@
       ["Step 4 · (batch name) · (stage) actions", "Every recorded action in time order. An orange row is a gap longer than 10 minutes, counted as waiting."]
     ],
     "columns": [
+      ["Step 1 · Rank", "Position of the site by Done (% of shifts due). Rank 1 is the best. Sites with the same percentage have the same rank. ALL SITES has no rank."],
       ["Step 1 · Site", "Site name."],
-      ["Step 1 · Shifts due", "Shifts of the period whose end time has passed. A site is counted from the date of its first batch."],
+      ["Step 1 · Shifts due", "Shifts of the period whose end time has passed. A shift of today is added the moment it ends, so this number grows during the day. A site is counted from the date of its first batch."],
+      ["Step 1 · Of which today's shifts", "How many of today's shifts have ended and are already counted in Shifts due, for example 1 of 3. A dash when the period does not include today."],
       ["Step 1 · Locked", "Shifts whose batch is locked (closed)."],
+      ["Step 1 · Done (% of shifts due)", "Locked as a percentage of Shifts due."],
+      ["Step 1 · Performance", "Good (green) when Done is 50% or more, Average (orange) from 25% to 49%, Poor (red) below 25%."],
       ["Step 1 · Balance", "Shifts due minus Locked. It equals Batch not created + VLB open + LMV open + ELB open."],
       ["Step 1 · Batch not created", "Shifts for which no batch exists."],
       ["Step 1 · VLB open", "Batches still in the VLB stage: trip cards are being entered or VLB is not locked."],
@@ -88,7 +92,8 @@
     ],
     "checklist": [
       "Choose the dates and press Show report.",
-      "In Step 1, read the yellow box, then check Balance and Oldest pending shift of each site.",
+      "In Step 1, read the yellow box, then check Rank, Done and Performance of each site; the red sites need attention first.",
+      "Check Balance and Oldest pending shift of each site.",
       "Open a site and press Batch not created to list the shifts that still need a batch.",
       "For locked shifts, look for red in Shift end to locked (hours) and see which stage took the most hours.",
       "Open a slow batch and compare Clock time with Work on website to see whether the time went in work or in waiting.",
@@ -112,8 +117,8 @@
     "screen": [
       ["REPORTS / OPERATIONS", "पेज का शीर्षक, जिसके नीचे “Batch Status & Turnaround” लिखा रहता है।"],
       ["All sites › (साइट) › (batch) › (चरण) actions", "चरणों की पट्टी। यह बताती है कि कौन सा Step खुला है। पीछे जाने के लिए पहले वाला नाम दबाएँ।"],
-      ["पीला बॉक्स", "नीचे की तालिका से निकाली गई एक से तीन सीधी लाइनें, जैसे कितनी Shift अभी Locked नहीं हैं और कौन सी साइट सबसे पीछे है।"],
-      ["Step 1 · All sites · (तारीखें)", "हर साइट की एक लाइन और आख़िर में ALL SITES की लाइन। किसी साइट को दबाने पर उसका Step 2 खुलता है। ALL SITES दबाने पर सभी साइटों की Shift एक साथ दिखती हैं।"],
+      ["पीला बॉक्स", "नीचे की तालिका से निकाली गई एक से चार सीधी लाइनें, जैसे कितनी Shift अभी Locked नहीं हैं, कौन सी साइट Rank 1 पर है और कौन सबसे आख़िर में, और आज की कितनी Shift गिनती में आ चुकी हैं।"],
+      ["Step 1 · All sites · (तारीखें)", "हर साइट की एक लाइन, सबसे अच्छी साइट सबसे ऊपर, और आख़िर में ALL SITES की लाइन। किनारे का रंग और Rank, Done और Performance का रंग रेटिंग बताता है: Good के लिए हरा, Average के लिए नारंगी, Poor के लिए लाल। किसी साइट को दबाने पर उसका Step 2 खुलता है। ALL SITES दबाने पर सभी साइटों की Shift एक साथ दिखती हैं।"],
       ["How this report counts", "इसे दबाकर इस पेज के गिनती के नियम पढ़ें।"],
       ["All shifts · Locked · Batch not created · VLB open · LMV open · ELB open", "Step 2 के ऊपर के बटन, हर एक के साथ Shift की संख्या। किसी एक को दबाने पर सिर्फ़ उसी चरण की Shift दिखती हैं।"],
       ["Step 2 · (साइट) · shift by shift · (तारीखें)", "हर Shift की एक लाइन। किनारे का रंग Locked के लिए हरा, Batch not created के लिए लाल और खुले चरण के लिए नारंगी है। जिस लाइन में batch है उसे दबाने पर Step 3 खुलता है।"],
@@ -123,9 +128,13 @@
       ["Step 4 · (batch का नाम) · (चरण) actions", "दर्ज हुआ हर काम समय के क्रम में। नारंगी लाइन का मतलब 10 मिनट से लंबा अंतर है, जिसे इंतज़ार गिना जाता है।"]
     ],
     "columns": [
+      ["Step 1 · Rank", "Done (% of shifts due) के हिसाब से साइट का स्थान। Rank 1 सबसे अच्छी है। बराबर प्रतिशत वाली साइटों की Rank एक ही होती है। ALL SITES की कोई Rank नहीं होती।"],
       ["Step 1 · Site", "साइट का नाम।"],
-      ["Step 1 · Shifts due", "अवधि की वे Shift जिनका ख़त्म होने का समय निकल चुका है। साइट की गिनती उसके पहले batch की तारीख से होती है।"],
+      ["Step 1 · Shifts due", "अवधि की वे Shift जिनका ख़त्म होने का समय निकल चुका है। आज की Shift ख़त्म होते ही इसमें जुड़ जाती है, इसलिए यह संख्या दिन में बढ़ती रहती है। साइट की गिनती उसके पहले batch की तारीख से होती है।"],
+      ["Step 1 · Of which today's shifts", "आज की कितनी Shift ख़त्म होकर Shifts due में गिनी जा चुकी हैं, जैसे 1 of 3। अवधि में आज की तारीख न हो तो डैश दिखता है।"],
       ["Step 1 · Locked", "वे Shift जिनका batch Locked (बंद) है।"],
+      ["Step 1 · Done (% of shifts due)", "Shifts due में से कितने प्रतिशत Shift Locked हैं।"],
+      ["Step 1 · Performance", "Done 50% या ज़्यादा हो तो Good (हरा), 25% से 49% हो तो Average (नारंगी), 25% से कम हो तो Poor (लाल)।"],
       ["Step 1 · Balance", "Shifts due में से Locked घटाकर। यह Batch not created + VLB open + LMV open + ELB open के बराबर है।"],
       ["Step 1 · Batch not created", "वे Shift जिनका batch बना ही नहीं है।"],
       ["Step 1 · VLB open", "वे batch जो अभी VLB चरण में हैं: trip card भरे जा रहे हैं या VLB लॉक नहीं हुआ।"],
@@ -185,7 +194,8 @@
     ],
     "checklist": [
       "तारीखें चुनें और Show report दबाएँ।",
-      "Step 1 में पीला बॉक्स पढ़ें, फिर हर साइट का Balance और Oldest pending shift देखें।",
+      "Step 1 में पीला बॉक्स पढ़ें, फिर हर साइट की Rank, Done और Performance देखें; लाल साइटों पर सबसे पहले ध्यान दें।",
+      "हर साइट का Balance और Oldest pending shift देखें।",
       "साइट खोलें और Batch not created दबाकर वे Shift देखें जिनका batch अभी बनना है।",
       "Locked Shift में Shift end to locked (hours) में लाल देखें और देखें कि किस चरण में सबसे ज़्यादा घंटे लगे।",
       "धीमा batch खोलें और Clock time की Work on website से तुलना करें, ताकि पता चले कि समय काम में गया या इंतज़ार में।",

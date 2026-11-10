@@ -7,6 +7,11 @@ import {operationalDate,OPERATIONAL_START} from './operational-start.mjs';
 import {selectedMasterShift,bookShiftCode} from './trip-card-rules.mjs';
 
 export const IDLE_LIMIT_MINUTES=10,TARGET_HOURS=24,MAX_DAYS=31;
+// Rating of a site by the share of its due shifts that are locked: Good from 50%, Poor below 25%, Average in between.
+export const GOOD_PERCENT=50,POOR_PERCENT=25;
+export const RATING_LABELS={good:'Good',average:'Average',poor:'Poor'};
+export const ratingOf=percent=>percent===null||percent===undefined?'':percent>=GOOD_PERCENT?'good':percent>=POOR_PERCENT?'average':'poor';
+const indiaDate=time=>new Date(time+19800000).toISOString().slice(0,10);
 export const SHIFT_CODES=['S1','S2','S3','D','N'];
 export const SHIFT_LABELS={S1:'Shift 1',S2:'Shift 2',S3:'Shift 3',D:'Day shift',N:'Night shift'};
 export const STAGE_LABELS={none:'Batch not created',vlb_open:'VLB open',lmv_open:'LMV open',elb_open:'ELB open',locked:'Locked'};
@@ -75,15 +80,18 @@ export function buildBatchStatusReport({from,to,now=Date.now(),siteStarts=[],shi
  // One entry per site, counted from the date of its first batch.
  const sites=new Map();
  for(const {site,firstDate} of siteStarts){const key=canonicalSiteName(site);if(!key)continue;const known=sites.get(key);if(!known||firstDate<known.firstDate)sites.set(key,{key,site:displaySiteName(site),firstDate});}
- const rows=[];
+ const rows=[],today=indiaDate(now);
  for(const entry of [...sites.values()].sort((a,b)=>a.site.localeCompare(b.site))){
   const used=new Set(batches.filter(b=>canonicalSiteName(b.site)===entry.key).map(b=>bookShiftCode(b.shift)||b.shift));
   for(let date=from;date<=to;date=nextDate(date)){
    const have=SHIFT_CODES.filter(code=>byScope.has(scopeKey(entry.key,date,code)));
    const due=date<entry.firstDate?[]:dueShifts(shifts,entry.site,date,used);
-   for(const code of SHIFT_CODES.filter(code=>due.includes(code)||have.includes(code))){
+   const listed=SHIFT_CODES.filter(code=>due.includes(code)||have.includes(code));
+   if(date===today){entry.todayShifts=listed.length;entry.todayCounted=0;}
+   for(const code of listed){
     const batch=byScope.get(scopeKey(entry.key,date,code))||null,shiftEnd=shiftEndTime(shifts,entry.site,code,date);
     if(!batch&&(shiftEnd===null||shiftEnd>now))continue; // not yet due
+    if(date===today)entry.todayCounted++;
     const batchEvents=batch?eventsByBatch.get(batch.id)||[]:[],books=lmvByScope.get(scopeKey(entry.key,date,code))||[];
     const stage=batchStageKey(batch),m=batch?milestones(batch,batchEvents):{created:null,vlbLocked:null,lmvLocked:null,closed:null};
     rows.push({id:entry.key+'|'+date+'|'+code,siteKey:entry.key,site:entry.site,date,shift:code,shiftLabel:SHIFT_LABELS[code]||code,shiftEnd:shiftEnd===null?null:new Date(shiftEnd).toISOString(),
@@ -97,8 +105,8 @@ export function buildBatchStatusReport({from,to,now=Date.now(),siteStarts=[],shi
    }
   }
  }
- const siteRows=[...sites.values()].map(entry=>siteSummary(entry,rows.filter(r=>r.siteKey===entry.key))).filter(s=>s.due).sort((a,b)=>a.site.localeCompare(b.site));
- return {from,to,asOf:new Date(now).toISOString(),targetHours:TARGET_HOURS,idleLimitMinutes:IDLE_LIMIT_MINUTES,sites:siteRows,total:allSitesRow(siteRows),shifts:rows};
+ const siteRows=rankSites([...sites.values()].map(entry=>siteSummary(entry,rows.filter(r=>r.siteKey===entry.key))).filter(s=>s.due));
+ return {from,to,today:today>=from&&today<=to?today:'',asOf:new Date(now).toISOString(),targetHours:TARGET_HOURS,idleLimitMinutes:IDLE_LIMIT_MINUTES,sites:siteRows,total:allSitesRow(siteRows),shifts:rows};
 }
 
 const STAGE_HOUR_KEYS=[['VLB','vlbHours'],['LMV','lmvHours'],['ELB','elbHours']];
@@ -106,14 +114,21 @@ function siteSummary(entry,rows){
  const count=stage=>rows.filter(r=>r.stage===stage).length,locked=rows.filter(r=>r.stage==='locked'),timed=locked.filter(r=>r.lockHours!==null);
  const pending=rows.filter(r=>r.stage!=='locked').sort((a,b)=>(a.shiftEnd||a.date).localeCompare(b.shiftEnd||b.date));
  const stageAverages=STAGE_HOUR_KEYS.map(([stage,key])=>({stage,hours:average(locked.map(r=>r[key]))})).filter(s=>s.hours!==null).sort((a,b)=>b.hours-a.hours);
- return {id:entry.key,siteKey:entry.key,site:entry.site,due:rows.length,locked:locked.length,balance:rows.length-locked.length,notCreated:count('none'),vlbOpen:count('vlb_open'),lmvOpen:count('lmv_open'),elbOpen:count('elb_open'),
+ const percentDone=rows.length?Math.round(locked.length/rows.length*100):null;
+ return {id:entry.key,siteKey:entry.key,site:entry.site,rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:entry.todayShifts??null,todayCounted:entry.todayCounted??null,due:rows.length,locked:locked.length,balance:rows.length-locked.length,notCreated:count('none'),vlbOpen:count('vlb_open'),lmvOpen:count('lmv_open'),elbOpen:count('elb_open'),
   oldestPending:pending[0]?displayDate(pending[0].date)+' '+pending[0].shiftLabel:'',oldestPendingHours:pending[0]?.pendingHours??null,
   timedLocked:timed.length,withinTarget:timed.filter(r=>r.lockHours<=TARGET_HOURS).length,withinTargetPercent:timed.length?Math.round(timed.filter(r=>r.lockHours<=TARGET_HOURS).length/timed.length*100):null,
   averageLockHours:average(timed.map(r=>r.lockHours)),slowestStage:stageAverages[0]?.stage||'',slowestStageHours:stageAverages[0]?.hours??null,rework:rows.reduce((n,r)=>n+(r.rework||0),0)};
 }
+// Rank 1 is the site with the largest share of its due shifts locked. Sites with the same share hold the same rank.
+export function rankSites(sites){
+ const share=s=>s.due?s.locked/s.due:0,sorted=[...sites].sort((a,b)=>share(b)-share(a)||a.site.localeCompare(b.site));
+ sorted.forEach((s,index)=>{s.rank=index&&share(sorted[index-1])===share(s)?sorted[index-1].rank:index+1;});
+ return sorted;
+}
 export function allSitesRow(sites){
- const sum=key=>sites.reduce((n,s)=>n+(s[key]||0),0),timed=sum('timedLocked');
- return {id:'all-sites',siteKey:'',site:'ALL SITES',due:sum('due'),locked:sum('locked'),balance:sum('balance'),notCreated:sum('notCreated'),vlbOpen:sum('vlbOpen'),lmvOpen:sum('lmvOpen'),elbOpen:sum('elbOpen'),oldestPending:'',oldestPendingHours:null,
+ const sum=key=>sites.reduce((n,s)=>n+(s[key]||0),0),timed=sum('timedLocked'),percentDone=sum('due')?Math.round(sum('locked')/sum('due')*100):null,today=sites.some(s=>s.todayShifts!==null&&s.todayShifts!==undefined);
+ return {id:'all-sites',siteKey:'',site:'ALL SITES',rank:null,percentDone,rating:ratingOf(percentDone),ratingLabel:RATING_LABELS[ratingOf(percentDone)]||'',todayShifts:today?sum('todayShifts'):null,todayCounted:today?sum('todayCounted'):null,due:sum('due'),locked:sum('locked'),balance:sum('balance'),notCreated:sum('notCreated'),vlbOpen:sum('vlbOpen'),lmvOpen:sum('lmvOpen'),elbOpen:sum('elbOpen'),oldestPending:'',oldestPendingHours:null,
   timedLocked:timed,withinTarget:sum('withinTarget'),withinTargetPercent:timed?Math.round(sum('withinTarget')/timed*100):null,
   averageLockHours:timed?round1(sites.reduce((n,s)=>n+(s.averageLockHours||0)*s.timedLocked,0)/timed):null,slowestStage:'',slowestStageHours:null,rework:sum('rework')};
 }
@@ -123,8 +138,9 @@ export function sitesInsights(sites,total){
  if(!sites.length||!total.due)return [];
  const lines=[],parts=[['Batch not created',total.notCreated],['VLB open',total.vlbOpen],['LMV open',total.lmvOpen],['ELB open',total.elbOpen]].sort((a,b)=>b[1]-a[1]);
  lines.push(total.balance?`${total.balance} of ${total.due} shifts are not yet locked. Most of them: ${parts[0][0]} (${parts[0][1]}).`:`All ${total.due} shifts are locked.`);
- const behind=[...sites].sort((a,b)=>b.balance-a.balance)[0];
- if(behind?.balance)lines.push(`Furthest behind: ${behind.site}, ${behind.balance} shifts pending, oldest ${behind.oldestPending}.`);
+ const names=list=>list.map(s=>s.site).join(', '),ranked=sites.filter(s=>s.rank),first=ranked.filter(s=>s.rank===1),lastRank=Math.max(0,...ranked.map(s=>s.rank)),last=ranked.filter(s=>s.rank===lastRank);
+ if(lastRank>1)lines.push(`Rank 1: ${names(first)}, ${first[0].percentDone}% of due shifts locked. Last (rank ${lastRank}): ${names(last)}, ${last[0].percentDone}%.`);
+ if(total.todayShifts!==null&&total.todayShifts!==undefined)lines.push(`Today's shifts are counted as soon as they end: ${total.todayCounted} of today's ${total.todayShifts} site shifts are already in Shifts due.`);
  const timed=sites.filter(s=>s.averageLockHours!==null).sort((a,b)=>b.averageLockHours-a.averageLockHours);
  if(timed.length>1)lines.push(`Slowest to lock: ${timed[0].site}, ${timed[0].averageLockHours} hours after shift end on average. Fastest: ${timed.at(-1).site}, ${timed.at(-1).averageLockHours} hours.`);
  else if(timed.length)lines.push(`Locked shifts took ${timed[0].averageLockHours} hours on average after shift end.`);

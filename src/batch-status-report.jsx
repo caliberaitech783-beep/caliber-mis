@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
-import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
+import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,GOOD_PERCENT,POOR_PERCENT,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
 import './production-reports.css';
 import './batch-status-report.css';
 
@@ -16,7 +16,11 @@ const EVERY='*';
 const stageBadge=r=><span className={'bs-stage bs-stage-'+r.stage}>{r.stageLabel}</span>;
 const flagged=(text,bad)=>bad?<span className="bs-late">{text}</span>:text;
 
-export const siteColumns=[column('site','Site'),column('due','Shifts due'),column('locked','Locked'),column('balance','Balance'),column('notCreated','Batch not created'),column('vlbOpen','VLB open'),column('lmvOpen','LMV open'),column('elbOpen','ELB open'),
+const rated=(r,text)=>r.rating?<span className={'bs-rating bs-rating-'+r.rating}>{text}</span>:text;
+export const siteColumns=[column('rank','Rank',null,r=>blank(r.rank)?'—':rated(r,r.rank)),column('site','Site'),column('due','Shifts due'),
+ column('todayCounted',"Of which today's shifts",r=>blank(r.todayShifts)?'—':`${r.todayCounted} of ${r.todayShifts}`),column('locked','Locked'),
+ column('percentDone','Done (% of shifts due)',r=>blank(r.percentDone)?'—':r.percentDone+'%',r=>blank(r.percentDone)?'—':rated(r,r.percentDone+'%')),
+ column('ratingLabel','Performance',null,r=>r.ratingLabel?rated(r,r.ratingLabel):'—'),column('balance','Balance'),column('notCreated','Batch not created'),column('vlbOpen','VLB open'),column('lmvOpen','LMV open'),column('elbOpen','ELB open'),
  column('oldestPending','Oldest pending shift'),
  column('withinTargetPercent','Locked within '+TARGET_HOURS+' hours',r=>blank(r.withinTargetPercent)?'—':r.withinTargetPercent+'%'),
  column('averageLockHours','Average hours, shift end to locked',null,r=>blank(r.averageLockHours)?'—':flagged(r.averageLockHours,r.averageLockHours>TARGET_HOURS)),
@@ -71,10 +75,11 @@ export default function BatchStatusReport({session,ReportSection}){
   {report&&<nav className="bs-crumbs" aria-label="Steps">{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
   {report&&level===1&&<>
    {report.sites.length>0&&<ul className="bs-insight">{sitesInsights(report.sites,report.total).map(line=><li key={line}>{line}</li>)}</ul>}
-   <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site'+asOf+'. Balance = Batch not created + VLB open + LMV open + ELB open; each shift is counted once, at the stage where it stands now. Press a site to see it shift by shift.'}
-    rows={report.sites.length?[...report.sites,report.total]:[]} columns={siteColumns} rowKey={r=>r.id} rowClassName={r=>r.id==='all-sites'?'bs-total':''} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
+   <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site, best first'+asOf+'. Done = Locked out of Shifts due. Green = '+GOOD_PERCENT+'% or more done, orange = '+POOR_PERCENT+'% to '+(GOOD_PERCENT-1)+'%, red = below '+POOR_PERCENT+'%. Balance = Batch not created + VLB open + LMV open + ELB open; each shift is counted once, at the stage where it stands now. Press a site to see it shift by shift.'}
+    rows={report.sites.length?[...report.sites,report.total]:[]} columns={siteColumns} rowKey={r=>r.id} rowClassName={r=>(r.id==='all-sites'?'bs-total ':'')+(r.rating?'bs-band-'+r.rating:'')} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
    <details className="bs-notes"><summary>How this report counts</summary><ul>
-    <li>A site is counted from the date of its first batch. A shift is counted once its end time (from the Shift Master) has passed.</li>
+    <li>A site is counted from the date of its first batch. A shift is counted once its end time (from the Shift Master) has passed, so Shifts due grows during the day: each shift of today is added the moment it ends. Of which today's shifts shows how many of today's shifts are already counted.</li>
+    <li>Done is Locked as a percentage of Shifts due. Rank 1 is the site with the highest Done; sites with the same percentage share a rank. Performance: Good (green) from {GOOD_PERCENT}%, Average (orange) from {POOR_PERCENT}% to {GOOD_PERCENT-1}%, Poor (red) below {POOR_PERCENT}%.</li>
     <li>Locked within {TARGET_HOURS} hours and the average are measured from the end of the shift to the time the batch was locked.</li>
     <li>Slowest stage is the stage with the highest average clock time among the locked batches of the site.</li>
     <li>If a batch was unlocked or reopened, the times shown are its final lock times; the last column counts how often that happened.</li>
