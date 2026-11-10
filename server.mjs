@@ -1287,6 +1287,18 @@ async function migrate(){
       }
       await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_shift_timings_0500_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
     }
+    const {rows:jayantDayNightSeed}=await client.query("SELECT value FROM app_metadata WHERE key='jayant_day_night_shifts_seeded_v1' FOR UPDATE");
+    if(!jayantDayNightSeed.length){
+      const {rows:existingShifts}=await client.query("SELECT record_data FROM master_records WHERE master_name='Shift Master'");
+      const identities=new Set(existingShifts.map(row=>shiftIdentity(normalizeOperationalSiteFields(row.record_data))));
+      for(const [shiftName,startTime,endTime,shortCode] of [['Shift Day','05:00','17:00','D'],['Shift Night','17:00','05:00','N']]){
+        const record=normalizeOperationalSiteFields(normalizeShiftRecord({site:'Jayant OC',shiftName,startTime,endTime}));
+        if(!identities.has(shiftIdentity(record))&&!identities.has(shiftIdentity({...record,shiftCode:shortCode}))){
+          await client.query("INSERT INTO master_records (master_name,record_data) VALUES ('Shift Master',$1::jsonb)",[JSON.stringify(record)]);
+        }
+      }
+      await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_day_night_shifts_seeded_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
+    }
     // Privileged accounts must be provisioned explicitly by an authorized
     // administrator, never recreated with a known password during startup.
     // Existing accounts and credentials are not changed by this policy.
