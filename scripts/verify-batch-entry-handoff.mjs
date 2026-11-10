@@ -78,7 +78,8 @@ try{
    assert.match(await total.innerText(),/Manual: 2.*Scan\/PDF: 119/);
    if(order==='options-last'&&action==='Scan'){
     await page.evaluate(()=>{window.batchCounts={...window.batchCounts,entry_count:119,manual_count:0}});
-    await total.getByText('119',{exact:true}).waitFor({timeout:10000});
+    // The scan screen re-reads the saved total every 15 s (VLB_CARD_COUNT_POLL_MS) while on screen.
+    await total.getByText('119',{exact:true}).waitFor({timeout:20000});
    }
   }
   const requests=await page.evaluate(()=>window.requests);

@@ -39,7 +39,7 @@ test('after every wait is used the pause is reported with the number of tries',a
  assert.equal(calls,AUTO_SAVE_BUSY_DELAYS_MS.length+1);
  assert.equal(error.busyExhausted,true);
  assert.equal(error.attempts,calls);
- assert.match(busyAutoSaveStoppedMessage(error.attempts),/7 tries.*No card was lost.*Retry automatic save/);
+ assert.match(busyAutoSaveStoppedMessage(error.attempts),/7 tries.*retry in one minute.*No card was lost/);
 });
 
 test('retrying stops when the reviewer leaves the batch',async()=>{
@@ -53,6 +53,11 @@ test('the response reader marks temporary failures and leaves refusals unmarked'
  assert.equal(temporary.transient,true);assert.equal(temporary.status,503);
  const gateway=await readScannerResponse(response(502,'<html>Bad Gateway</html>')).catch(e=>e);
  assert.equal(gateway.transient,true);
+ const mis=await readScannerResponse(response(200,'<html>Proxy response</html>'),{mis:true}).catch(e=>e);
+ assert.equal(mis.transient,true);
+ assert.match(mis.message,/MIS server.*HTTP 200/);
+ const denied=await readScannerResponse(response(403,'<html>Denied</html>'),{mis:true}).catch(e=>e);
+ assert.equal(denied.transient,undefined);
  const refusal=await readScannerResponse(response(409,JSON.stringify({error:'Card changed. Reload before automatic saving.'}))).catch(e=>e);
  assert.equal(refusal.transient,undefined);assert.equal(refusal.message,'Card changed. Reload before automatic saving.');
  const expired=await readScannerResponse(response(401,'')).catch(e=>e);
@@ -63,7 +68,7 @@ test('the response reader marks temporary failures and leaves refusals unmarked'
 test('the scanning screen waits out a busy server instead of listing the card as refused',()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.match(source,/autoSaveWithBusyRetry\(\(\)=>api\('\/api\/scan-cards\/'\+next\.id\+'\/auto-save'/);
- assert.match(source,/if\(isBusyAutoSaveError\(e\)\)\{[\s\S]{0,200}autoSaveAttempts\.current\.delete\(key\);[\s\S]{0,200}autoSavePaused\.current=true;/);
+ assert.match(source,/if\(isBusyAutoSaveError\(e\)\)\{[\s\S]{0,200}autoSaveAttempts\.current\.delete\(key\);[\s\S]{0,200}autoSavePaused\.current=next\.batch_id;/);
  assert.ok(source.indexOf('if(isBusyAutoSaveError(e)){')<source.indexOf('autoSaveFailures.current.set(key,e.message)'),'a busy failure returns before the refusal list is touched');
  assert.match(source,/The server is busy\. Card \{autoSaveWait\.ordinal\} will be saved automatically/);
  assert.match(source,/onClick=\{\(\)=>\{autoSavePaused\.current=false;autoSaveAttempts\.current\.clear\(\)/);

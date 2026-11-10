@@ -9,6 +9,7 @@ const TRANSIENT_MESSAGE=/starting or reconnecting|unavailable|interrupted|networ
 export function isTransientUploadError(error){
  if(!error)return false;
  if(error.name==='AbortError')return false;
+ if(error.transient===true)return true;
  if(error.name==='TypeError')return true;
  if(Number.isInteger(error.status)&&[408,425,429,502,503,504].includes(error.status))return true;
  return TRANSIENT_MESSAGE.test(String(error.message||''));

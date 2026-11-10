@@ -52,5 +52,5 @@ export async function autoSaveWithBusyRetry(perform, {
 }
 
 export function busyAutoSaveStoppedMessage(attempts) {
-  return 'The server stayed busy through ' + attempts + ' tries, so automatic saving is paused. No card was lost. Wait a minute, then press Retry automatic save.';
+  return 'The server stayed busy through ' + attempts + ' tries, so automatic saving will retry in one minute. No card was lost.';
 }

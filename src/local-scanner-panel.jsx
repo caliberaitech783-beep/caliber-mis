@@ -5,13 +5,14 @@ import CloudScannerPanel from './cloud-scanner-panel.jsx';
 import React,{useState,useEffect,useRef} from 'react';
 import {ScanLine,FolderOpen,RefreshCw,Download} from 'lucide-react';
 import {readScannerResponse} from './local-scanner-response.mjs';
+import {startVisiblePoll} from './visible-poll.mjs';
 export default function LocalScannerPanel(props){return ['localhost','127.0.0.1'].includes(window.location.hostname)?<WindowsScannerPanel {...props}/>:<CloudScannerPanel {...props}/>;}
 function WindowsScannerPanel({kind,token,onBatch,onComplete,expectedContext,disabled=false,onBusyChange}){
  const [status,setStatus]=useState(null),[device,setDevice]=useState(''),[job,setJob]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[connectionError,setConnectionError]=useState(''),[loading,setLoading]=useState(true);
  const previousDevices=useRef(),refreshing=useRef(false),busyRef=useRef(false);busyRef.current=busy;
  const call=async(path,body)=>{let r;try{r=await fetch('/api/local-scanner/'+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})})}catch{throw new Error('The local scanner service is reconnecting. This page will retry automatically.');}return readScannerResponse(r)};
  const refresh=async()=>{if(disabled||refreshing.current||busyRef.current)return;refreshing.current=true;try{const d=await call('status');setStatus(d);setConnectionError('');const previous=previousDevices.current;setDevice(current=>chooseConnectedScanner(d.devices,current,previous));previousDevices.current=d.devices.map(v=>v.id)}catch(e){setConnectionError(e.message)}finally{refreshing.current=false;setLoading(false)}};
- useEffect(()=>{if(disabled){setLoading(false);return;}setLoading(true);void refresh();const timer=setInterval(()=>void refresh(),5000);return()=>clearInterval(timer)},[token,disabled]);
+ useEffect(()=>{if(disabled){setLoading(false);return;}setLoading(true);return startVisiblePoll(refresh,5000)},[token,disabled]);
  useEffect(()=>{if(!job?.id||job.status!=='running')return;let live=true;const tick=async()=>{try{const d=await call('jobs/'+job.id);if(!live)return;setJob(d);if(d.status!=='running'){setBusy(false);if(d.batch_id)onBatch(d.batch_id);if(d.error)setError(d.error);else if(d.batch_id)onComplete?.();}}catch(e){if(live)setError(e.message)}};const t=setInterval(()=>void tick(),2000);void tick();return()=>{live=false;clearInterval(t)}},[job?.id,job?.status]);
  useEffect(()=>{onBusyChange?.(busy);return()=>onBusyChange?.(false)},[busy,onBusyChange]);
  const start=async mode=>{try{if(disabled)throw Error('Fill the card date, site and shift before scanning.');parseScanContext(expectedContext)}catch(e){setError(e.message);return;}setBusy(true);setError('');try{const d=await call(mode,{kind,expectedContext,...(mode==='capture'?{deviceId:device}:{})});setJob({id:d.id,status:'running',pages:0,mode});}catch(e){setError(e.message);setBusy(false)}};
