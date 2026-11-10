@@ -45,6 +45,7 @@ import {manualScanIssues,retainManualFields} from './scan-manual-fields.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
 import {readScannerResponse} from './local-scanner-response.mjs';
+import {autoSaveWithBusyRetry,isBusyAutoSaveError,busyAutoSaveStoppedMessage} from '../shared/scan-auto-save-retry.mjs';
 import {nextScanReviewCard,scanReviewNeighbours} from './scan-next-card.mjs';
 import {remainingScanCards,scanReviewPosition} from './scan-review-queue.mjs';
 import {chooseScanCard,scanStatusLabels,scanCardStatus,scanProgressChanged,mergeScanProgressStages} from './scan-reader-status.mjs';
@@ -82,7 +83,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const optionsUrl=lmv?'/api/log-books/options?scan=1&logBookKind=lmv':'/api/log-books/options?scan=1';
  const title=lmv?'LMV Trip Cards':kind==='vehicle'?'Trip Cards':'Job Cards',token=session.token;
  const [groupFilter,setGroupFilter]=useState(()=>new URLSearchParams(window.location.search).get('scanGroup')||'all'),[storage,setStorage]=useState(null),[archiveResult,setArchiveResult]=useState(null),[groupMenu,setGroupMenu]=useState(null);
- const bdFetchUnavailable=useRef(false);const autoSaveAttempts=useRef(new Set()),autoSavingRef=useRef(null);const [autoSaving,setAutoSaving]=useState(null);const [autoSaveError,setAutoSaveError]=useState(null);
+ const bdFetchUnavailable=useRef(false);const autoSaveAttempts=useRef(new Set()),autoSavingRef=useRef(null);const [autoSaving,setAutoSaving]=useState(null);const [autoSaveError,setAutoSaveError]=useState(null);const autoSavePaused=useRef(false),[autoSaveWait,setAutoSaveWait]=useState(null);
  // Refused automatic saves, keyed by card id and revision. They are folded into the card
  // list as check errors so the tiles, chip, list and report agree; the cached view keeps the
  // same array identity between renders so effects keyed on `cards` do not re-run needlessly.
@@ -369,7 +370,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const reviewRequired=reviewActionable?[...focusedScanMessages(reviewErrors,groupFilter),...focusedScanMessages(blockingReviewWarnings,groupFilter),...Object.entries(manualIssues).filter(([key])=>scanIssueFieldVisible(groupFilter,key)).map(([,message])=>message),...(!focusedIssue&&bdFallbackMissing?['Enter breakdown hours manually because Pulse could not provide them.']:[]),...(!focusedIssue&&contextBlocked?['Resolve the scan setup or mismatch cards before saving.']:[])]:[];
  const reviewComplete=Boolean(!scanMatchingPending&&!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
-  if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked||autoSavingRef.current)return;
+  if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked||autoSavingRef.current||autoSavePaused.current)return;
   const next=cards.find(c=>c.batch_id===activeRef.current&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options,lmv)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
   if(!next)return;
   const key=next.id+':'+next.revision;
@@ -377,13 +378,23 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   autoSavingRef.current=next;
   setAutoSaving(next);
   void (async()=>{try{
-   const result=await api('/api/scan-cards/'+next.id+'/auto-save',{method:'POST',signal:AbortSignal.timeout(60000),body:JSON.stringify({revision:next.revision})});
+   // A busy server (503, gateway restart, dropped connection, timeout) is waited out and the
+   // same card is tried again; the route answers with the existing book if it was already saved.
+   const result=await autoSaveWithBusyRetry(()=>api('/api/scan-cards/'+next.id+'/auto-save',{method:'POST',signal:AbortSignal.timeout(60000),body:JSON.stringify({revision:next.revision})}),{shouldContinue:()=>activeRef.current===next.batch_id,onWait:wait=>setAutoSaveWait({ordinal:next.ordinal,batch_id:next.batch_id,seconds:Math.round(wait.delayMs/1000),nextAttempt:wait.nextAttempt,totalAttempts:wait.totalAttempts})});
    if(activeRef.current!==next.batch_id)return;
    setCards(rows=>rows.map(c=>c.id===next.id?applySavedScanCard(c,result.record):c));
    setResults(rows=>[...rows.filter(r=>String(r.id)!==String(result.record.id)),result.record]);
    if(result.archive)setArchiveResult(result.archive);
    setNotice('Card '+next.ordinal+' saved automatically as '+result.record.book_no+'.');
   }catch(e){
+   if(isBusyAutoSaveError(e)){
+    // Not a refusal of this card: it stays out of Needs attention and is tried again on Retry.
+    autoSaveAttempts.current.delete(key);
+    if(activeRef.current!==next.batch_id)return;
+    autoSavePaused.current=true;
+    setAutoSaveError({ordinal:next.ordinal,message:busyAutoSaveStoppedMessage(e.attempts||1)});
+    return;
+   }
    autoSaveFailures.current.set(key,e.message);
    setFailureTick(n=>n+1);
    if(activeRef.current!==next.batch_id)return;
@@ -394,6 +405,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
    }else setAutoSaveError({ordinal:next.ordinal,message:e.message});
   }finally{
    autoSavingRef.current=null;
+   setAutoSaveWait(null);
    setAutoSaving(null);
   }})();
  },[reviewPage,cards,kind,options,dirty,busy,fleetBusy,connectionError,saveTick,bdFallbackMissing,pulseHours?.breakdownHours,contextBlocked,autoSaving]);
@@ -467,7 +479,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  {batch&&<p aria-label="Batch name" className={uploading||pending.length>0?'scan-batch-progress-active':undefined} style={{overflowWrap:'anywhere'}}><strong>Batch name:</strong> {batch.name}</p>}
 </>}
 {uploading&&<div className="scan-upload-status" aria-live="polite"><ScanUploadTimer started={uploadStarted.current}/><div className="scan-upload-count" role="status">Trip cards uploaded: {uploadedCount}/{uploadTotal||'…'}</div></div>}
- {!reviewPage&&autoSaving?.batch_id===batch?.id&&autoSaving&&<p role="status">Saving card {autoSaving.ordinal} automatically…</p>}{!reviewPage&&!pending.length&&cards.some(row=>row.validationPending)&&<ScanCorrectionStatus working='Verifying equipment assignments in Pulse…'/>}{autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card {autoSaveError.ordinal}.</strong> {autoSaveError.message}{autoSaveFailures.current.size>1?' · '+autoSaveFailures.current.size+' cards were refused; each one is listed under Needs attention with its reason.':''} <button disabled={busy} onClick={()=>{autoSaveAttempts.current.clear();autoSaveFailures.current.clear();setFailureTick(n=>n+1);setAutoSaveError(null);setSaveTick(n=>n+1)}}>Retry automatic save</button></div>}{!reviewPage&&<ScanExtractionStatus batchId={batch?.id} pending={pending.length} total={cards.length} uploading={uploading} failed={cards.filter(card=>card.status==='error').length} reading={cards.filter(card=>card.status==='reading').length}/>}{connectionError&&<div role="status" className="scan-error">{connectionError}</div>}{error&&<div role="alert" className="scan-error">{error}</div>}{notice&&<div role="status" className="scan-success">{notice}</div>}
+ {!reviewPage&&autoSaving?.batch_id===batch?.id&&autoSaving&&(autoSaveWait?.batch_id===batch?.id?<p role="status">The server is busy. Card {autoSaveWait.ordinal} will be saved automatically; trying again in {autoSaveWait.seconds} seconds (try {autoSaveWait.nextAttempt} of {autoSaveWait.totalAttempts}). Nothing needs to be pressed.</p>:<p role="status">Saving card {autoSaving.ordinal} automatically…</p>)}{!reviewPage&&!pending.length&&cards.some(row=>row.validationPending)&&<ScanCorrectionStatus working='Verifying equipment assignments in Pulse…'/>}{autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card {autoSaveError.ordinal}.</strong> {autoSaveError.message}{autoSaveFailures.current.size>1?' · '+autoSaveFailures.current.size+' cards were refused; each one is listed under Needs attention with its reason.':''} <button disabled={busy} onClick={()=>{autoSavePaused.current=false;autoSaveAttempts.current.clear();autoSaveFailures.current.clear();setFailureTick(n=>n+1);setAutoSaveError(null);setSaveTick(n=>n+1)}}>Retry automatic save</button></div>}{!reviewPage&&<ScanExtractionStatus batchId={batch?.id} pending={pending.length} total={cards.length} uploading={uploading} failed={cards.filter(card=>card.status==='error').length} reading={cards.filter(card=>card.status==='reading').length}/>}{connectionError&&<div role="status" className="scan-error">{connectionError}</div>}{error&&<div role="alert" className="scan-error">{error}</div>}{notice&&<div role="status" className="scan-success">{notice}</div>}
  {!reviewPage&&<>
  {archiveResult&&<section className="scan-results"><h2>Scan folder archive</h2>{archiveResult.status==='saved'?<><p>Original scans and final values saved {archiveResult.target==='azure'?'on Azure':'locally'}. {archiveResult.target!=='azure'&&'Azure upload disabled.'}</p>{archiveResult.folders.map(folder=><p key={folder}>{folder}</p>)}</>:archiveResult.status==='pending'?<><p>{archiveResult.message}</p><button disabled={busy} onClick={async()=>{setBusy(true);try{setArchiveResult(await api('/api/scan-batches/'+batch.id+'/archive',{method:'POST',body:'{}'}))}catch(e){setError(e.message)}finally{setBusy(false)}}}>Retry folder archive</button></>:<p>Folder archiving is not configured.</p>}</section>}
  <div ref={scanEntryReportRef}><ApplicationErrorBoundary compact resetKey={batch?.id} label="The batch report could not be displayed. The cards are unaffected."><ScanBatchReport showEditActions={lmv} onEditSaved={lmv?target=>{const record=savedLmvRecord(target);if(record)setSavedLmvEdit({record,batchId:target.batch_id})}:undefined} onDeleteSaved={lmv&&isMisAdministrator(session)?deleteSavedLmv:undefined} onAbortCards={abortReviewCards} selectionDisabled={dirty||savingRef.current||(busy&&!uploading)||Boolean(abortTargets)} onAbort={abortUpload} abortDisabled={(!uploading&&!pending.length)||(!uploading&&busy)||savingRef.current} onDeleteCards={deleteReviewCards} onDeleteCard={deleteReviewCard} actionsDisabled={busy||dirty||savingRef.current||Boolean(abortTargets)} reviewDisabled={busy||dirty} onReviewCard={id=>{if(busy||dirty)return;selectedRevision.current=null;setSelected(id);const target=cards.find(row=>row.id===id);navigateReview(true,target?.status==='posted'?'orange':target?.status==='rejected'?'red':'all');const url=new URL(window.location.href);url.searchParams.set('card',id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}} contextBlocked={contextBlocked} ReportSection={ReportSection} batch={batch} cards={cards} duplicates={duplicates} token={token} options={options}/></ApplicationErrorBoundary></div>

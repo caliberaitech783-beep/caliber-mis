@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {applySavedScanCard,scanBatchReport} from '../shared/scan-batch-report.mjs';
+import {autoSaveWithBusyRetry,isBusyAutoSaveError,busyAutoSaveStoppedMessage} from '../shared/scan-auto-save-retry.mjs';
 const batch={id:'batch',kind:'vehicle'};
 test('confirmed saves update the combined total immediately for corrected and already-valid cards',()=>{
  const cards=['okay','corrected'].map((id,i)=>({id,batch_id:batch.id,ordinal:i+1,status:'review',draft:{totalTrips:999}}));
@@ -28,7 +29,7 @@ test('valid cards save in order across separate passes, even with a card missing
   const id=calls.length,scanCardId=path.split('/')[3];
   return {record:{id,book_no:'BOOK-'+id,data:{scanCardId,scanBatchId:'batch',totalTrips:1}}};
  };
- const scope={reviewPage:false,activeRef:{current:'batch'},contextBlocked:false,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},bdFetchUnavailable:{current:true},cards:rows,card:rows[0],bdFallbackMissing:true,kind:'vehicle',lmv:false,canAutoSaveScanCard:()=>true,autoSaveAttempts:{current:new Set()},autoSavingRef:{current:null},setAutoSaving:()=>{},api,setCards:fn=>{rows=fn(rows);},applySavedScanCard,setResults:()=>{},setArchiveResult:()=>{},setNotice:()=>{},load:async id=>{calls.push('load '+id);},list:async()=>{calls.push('list');},selectedCardRef:{current:'blocked'},setPulseHours:()=>{},setPulseHoursError:()=>{},setAutoSaveError:()=>{}};
+ const scope={reviewPage:false,activeRef:{current:'batch'},contextBlocked:false,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},bdFetchUnavailable:{current:true},cards:rows,card:rows[0],bdFallbackMissing:true,kind:'vehicle',lmv:false,canAutoSaveScanCard:()=>true,autoSaveAttempts:{current:new Set()},autoSavingRef:{current:null},autoSavePaused:{current:false},setAutoSaveWait:()=>{},autoSaveWithBusyRetry,isBusyAutoSaveError,busyAutoSaveStoppedMessage,setAutoSaving:()=>{},api,setCards:fn=>{rows=fn(rows);},applySavedScanCard,setResults:()=>{},setArchiveResult:()=>{},setNotice:()=>{},load:async id=>{calls.push('load '+id);},list:async()=>{calls.push('list');},selectedCardRef:{current:'blocked'},setPulseHours:()=>{},setPulseHoursError:()=>{},setAutoSaveError:()=>{}};
  new Function(...Object.keys(scope),body)(...Object.values(scope));
  await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(calls,['/api/scan-cards/okay/auto-save'],'first pass yields after one card');
