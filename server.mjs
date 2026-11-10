@@ -179,6 +179,7 @@ import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArc
 import {serverErrorHandler} from './server/middleware/server-error-response.mjs';
 import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './shared/vehicle-transfer-workflow.mjs';
 import {legacyEtcRepairPlan,legacyEtcRepairReason} from './server/rules/legacy-etc-repair.mjs';
+import {isJayantSecondShift} from './shared/site-shift-hours.mjs';
 import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shared/shift-master.mjs';
 import {requestShiftLabel} from './shared/request-shift.mjs';
 import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorrection,canDeletePendingCorrection,normalizeRequestCorrectionChanges,requestCorrectionChangedFields,requestCorrectionFields,requestCorrectionReviewRemarkError,requestCorrectionSnapshot,requestCorrectionTimelineFields,requestCorrectionType,requestCorrectionTypesForManagerRoles,requestCorrectionValidationError} from './shared/request-correction-policy.mjs';
@@ -1299,6 +1300,16 @@ async function migrate(){
         }
       }
       await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_day_night_shifts_seeded_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
+    }
+    const {rows:jayantSecondUpdated}=await client.query("SELECT value FROM app_metadata WHERE key='jayant_second_shift_1200_2100_v1' FOR UPDATE");
+    if(!jayantSecondUpdated.length){
+      const {rows:shifts}=await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' FOR UPDATE");
+      for(const row of shifts){
+        const data=row.record_data||{};
+        if(!isJayantSecondShift(data))continue;
+        await client.query("UPDATE master_records SET record_data=$1::jsonb WHERE id=$2",[JSON.stringify({...data,startTime:'12:00:00',endTime:'21:00:00',...(data.start?{start:'12:00:00'}:{}),...(data.end?{end:'21:00:00'}:{})}),row.id]);
+      }
+      await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_second_shift_1200_2100_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
     }
     // Privileged accounts must be provisioned explicitly by an authorized
     // administrator, never recreated with a known password during startup.

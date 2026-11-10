@@ -1,3 +1,4 @@
+import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {reportLane} from '../services/report-lane.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
@@ -74,7 +75,7 @@ export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
  const optionalShift=kind==='lmv'||manualEntry&&vehicle&&!input.scanCardId;
- const shiftHours=optionalShift&&kind==='vehicle'&&(input.shiftHours==null||input.shiftHours==='')?(CARD_SHIFTS[normalizeCardShift(input.cardShift||input.bookShiftCode)]?.hours||8):manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&kind!=='vehicle'&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
+ const shiftHours=optionalShift&&kind==='vehicle'&&(input.shiftHours==null||input.shiftHours==='')?(CARD_SHIFTS[normalizeCardShift(input.cardShift||input.bookShiftCode)]?.hours||8):manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&!isJayantSecondShift(input)&&kind!=='vehicle'&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&!validShiftHours(shiftHours,input))fail('Select an 8-hour or 12-hour shift.');
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
  const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true,optional:optionalShift});
  if(!assetId||!employeeId&&!nonWorking||!shiftId&&!optionalShift)fail('Select an asset, employee and shift from their masters.');
@@ -95,7 +96,7 @@ const timeMode=input.timeMode==='without'?'without':'with';
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
  const workingHmr=openingHmr===null||closingHmr===null?null:rounded(closingHmr-openingHmr);
- return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,...(manualEntry?{manualShift:isManualShift(input.manualShift)?input.manualShift:'',manualShiftOverride:true}:{}),docType:kind==='lmv'?'LMV':vehicle?'VLB':'QLB',
+ return {...normalizeManualDetails(input,kind),bookDate,location,...(input.bookShiftCode?{bookShiftCode:input.bookShiftCode}:{}),assetId,employeeId,shiftId,shiftHours,...(manualEntry?{manualShift:isManualShift(input.manualShift)?input.manualShift:'',manualShiftOverride:true}:{}),docType:kind==='lmv'?'LMV':vehicle?'VLB':'QLB',
    meterRuleErrors:meterRuleIssues(input,meterKind),openingKmr,closingKmr,openingHmr,closingHmr,...(replacementKmr!==null?{replacementKmr}:{}),totalRunningKmr:vehicle?rounded(replacementKmr??(closingKmr-openingKmr)):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
    aFormNo:vehicle?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
@@ -147,6 +148,8 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
      if(!asset||!employee&&!employeeOptional||(!optionalShift||data.shiftId)&&(!baseShift||!shift))fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     if(isJayantSecondShift({...baseShift,manualShift:input.manualShift})&&data.shiftHours!==9)fail('Jayant OC second shift requires 9 hours (12:00 PM to 9:00 PM).');
+     if(data.shiftHours===9&&!isJayantSecondShift({...baseShift,manualShift:input.manualShift}))fail('9 hours is allowed only for Jayant OC second shift.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(!allowsLogBookKind(asset,kind))fail('Select an asset from the correct log book category.');
      const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift?.site||shift?.siteName);

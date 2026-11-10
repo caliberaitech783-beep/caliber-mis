@@ -1,3 +1,4 @@
+import {isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {CARD_SHIFTS,normalizeCardShift,VLB_SHIFT_KMR_LIMIT} from '../../shared/trip-card-rules.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
@@ -20,7 +21,7 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null){
  });
  if(!peers.length)return;
  if(kind!=='lmv'){
-  const limit=data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
+  const limit=isJayantSecondShift({...data,bookShiftCode:shift})?9:data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
    data.shiftHours,...peers.map(row=>Number(row.data.shiftHours)).filter(hours=>hours===8||hours===12)
   );
   const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);

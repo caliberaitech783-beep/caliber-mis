@@ -1,3 +1,4 @@
+import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
 import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
 import {manualShiftHours} from '../../shared/manual-shift.mjs';
@@ -123,7 +124,8 @@ export async function saveFleetDraft(client,batch,assetId,draft,actor){
 export function fleetShiftHours(shift){
  const minutes=value=>{const m=text(value).match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null};
  const a=minutes(shift.startTime||shift.start),b=minutes(shift.endTime||shift.end),hours=a!==null&&b!==null?((b-a+1440)%1440)/60:null;
- if(![8,12].includes(hours))fail('The batch Shift Master must have a valid 8- or 12-hour start/end time.',409);
+ if(isJayantSecondShift(shift)&&(a!==720||b!==1260))fail('Jayant OC second shift must run from 12:00 PM to 9:00 PM (9 hours).',409);
+ if(!validShiftHours(hours,shift))fail('The batch Shift Master must have a valid 8- or 12-hour start/end time.',409);
  return hours;
 }
 export async function readFleetBreakdowns(client,batch,assetId,readHours,actor,input={}){
@@ -132,8 +134,8 @@ export async function readFleetBreakdowns(client,batch,assetId,readHours,actor,i
  if(!row)fail('This machine is not in the batch fleet list.',404);
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch.',409);
- const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours(input):fleetShiftHours(shift);
- const pulse=await readHours({bookDate:batch.report_date,location:displaySiteName(batch.site),assetId:String(assetId),shiftId:shift.id,shiftHours,manualEntry:input.shiftHours!==undefined,manualShift:input.manualShift,actor});
+ const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours({...input,location:batch.site,bookShiftCode:batch.shift}):fleetShiftHours(shift);
+ const pulse=await readHours({bookDate:batch.report_date,location:displaySiteName(batch.site),assetId:String(assetId),shiftId:shift.id,bookShiftCode:batch.shift,shiftHours,manualEntry:input.shiftHours!==undefined,manualShift:input.manualShift,actor});
  if(pulse?.breakdownHours===null||pulse?.breakdownHours===undefined||!Number.isFinite(Number(pulse.breakdownHours))||Number(pulse.breakdownHours)<0||Number(pulse.breakdownHours)>shiftHours)fail('Pulse returned invalid breakdown hours for this shift.',502);
  return {...pulse,assetId:String(assetId),bookDate:batch.report_date,location:displaySiteName(batch.site),shift:batch.shift,shiftHours};
 }
@@ -157,10 +159,10 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   operatorSplit=splitSurfaceMinerHmr(input);
   if(operatorSplit.error)fail(operatorSplit.error,400);
  }
- const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours(input):null;
+ const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours({...input,location:batch.site,bookShiftCode:batch.shift}):null;
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch shift at this site. Correct the Shift Master first.',409);
- const hours=input.entryMode==='working-only'?(shiftHours||fleetShiftHours(shift)):shiftHours||(()=>{const start=text(shift.startTime||shift.start),end=text(shift.endTime||shift.end);const m=v=>{const p=v.match(/^(\d{1,2}):(\d{2})/);return p?Number(p[1])*60+Number(p[2]):null};const a=m(start),b=m(end);const span=a!==null&&b!==null?((b-a+1440)%1440)/60:8;return span===12?12:8;})();
+ const hours=isJayantSecondShift({site:batch.site,shift:batch.shift,manualShift:input.manualShift})?fleetShiftHours(shift):input.entryMode==='working-only'?(shiftHours||fleetShiftHours(shift)):shiftHours||(()=>{const start=text(shift.startTime||shift.start),end=text(shift.endTime||shift.end);const m=v=>{const p=v.match(/^(\d{1,2}):(\d{2})/);return p?Number(p[1])*60+Number(p[2]):null};const a=m(start),b=m(end);const span=a!==null&&b!==null?((b-a+1440)%1440)/60:8;return span===12?12:8;})();
  let pulse=null;
  if(input.entryMode==='working-only'){
   pulse=await readFleetBreakdowns(client,batch,assetId,ops.readHours,actor,{...input,shiftHours:hours});

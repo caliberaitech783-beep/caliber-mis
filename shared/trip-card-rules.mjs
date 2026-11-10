@@ -7,7 +7,7 @@ export function kmrMeterReplaced({openingKmr,closingKmr}={}){
 export const VLB_SHIFT_KMR_LIMIT=250;
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
- if(![8,12].includes(hours))return issues;
+ if(![8,9,12].includes(hours))return issues;
  for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
