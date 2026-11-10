@@ -16,6 +16,7 @@ import {registerManpowerReports} from './manpower-report-api.mjs';
 import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
+import {registerBatchStatusReport} from './batch-status-report-api.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
@@ -192,6 +193,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerShiftAttendance(app,{pool,protect:[requireSession,attendanceAccess,batchScope],ensureBooks:ensure});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
+ registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 

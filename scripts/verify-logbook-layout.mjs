@@ -18,6 +18,7 @@ import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Trash2} from 'lucide-react';
 import SmartSelect from './src/smart-select.jsx';
+import WorkOrderJobSelect from './src/work-order-job-select.jsx';
 import LogBookForm from './src/log-book-form.jsx';
 import {SavedLogBookDetails} from './src/saved-log-books.jsx';
 import {compactLogBookLabel,tripSerialNumber} from './shared/log-book-labels.mjs';
@@ -34,6 +35,8 @@ function ScanFixture(){
  const recoveryIssues=activeResponseRecoveryIssues(card.raw_fields,draft);
  // A restrictive header filter must never hide valid trip controls.
  const visibleField=key=>mode!=='filtered-correction'||key.endsWith('.tripCount'),fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
+ // The job column reads the batch work contracts and the card's edit state.
+ const tripContracts=[],readonly=false,busy=false;
  const update=(key,value)=>setDraft(d=>({...d,[key]:value}));
  const tripEquipmentOptions=[{id:'TPC50-05008',name:'TPC50-05008'}],resolvedMachineName=a=>a.name,tripEquipmentSelectionValue=r=>r.equipmentName,selectTripEquipment=(r,value)=>({...r,equipmentName:value});
  return <div className={'scan-page scan-review-page'+(mode==='full-correction'?'':' scan-review-compact')} style={{height:'auto',display:'block',padding:0}}><div className="scan-workspace" style={{display:'block',height:'auto',width:'100%'}}><div className="scan-selected-card" style={{display:'block'}}><section className="scan-draft-sheet" style={{height:'auto',position:'static',transform:'none',width:'100%'}}><fieldset id="scan-entry-fields"><div className="scan-fields scan-card-fields"><div className="scan-review-doc-meta"><strong>Book NO</strong><span>{record.book_no}</span></div><label><span>Doc type</span><input readOnly value="VLB"/></label>{fields.map(([key,label,type])=><label key={key} data-field={key}><span>{compactLogBookLabel(label)}</span>{["number","date"].includes(type)?<input readOnly type={type} value={record.data[key]??""}/>:<SmartSelect showOverflowValue aria-label={label} value="selected" onChange={()=>{}}><option value="selected">{key==="assetId"?"V792 · Volvo":key==="workOrderId"?"CMLL/SASTI/2026/WORK-ORDER-123456789":record.data[key]||label}</option></SmartSelect>}</label>)}</div><div className="scan-trips">${timeEntryMarkup}{draft.trips.map((r,i)=>(${tripMarkup}))}</div></fieldset></section></div></div></div>;

@@ -3,6 +3,7 @@ import SmartSelect from './smart-select.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import ProductionReports from './production-reports.jsx';
 import MeterContinuityReport from './meter-continuity-report.jsx';
+import BatchStatusReport from './batch-status-report.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
@@ -11,6 +12,7 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'n
 export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
  if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
+ if(props.reportId==='batch-status')return <BatchStatusReport {...props}/>;
  if(['manpower','employee','attendance','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
  return <SavedOperationReports {...props}/>;
 }
