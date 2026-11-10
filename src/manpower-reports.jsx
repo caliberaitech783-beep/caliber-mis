@@ -204,12 +204,12 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
  const open=pick.equipment===EVERY||equipment.some(e=>e.equipment===pick.equipment)?pick.equipment:'',flag=open?pick.flag:'';
  const reader=tallyReader(tally,tallyKey,tallySite),month=filters.to.slice(0,7),year=filters.to.slice(0,4);
- const listed=(open?chosen.filter(r=>(open===EVERY||r.equipment===open)&&(!flag||r.flag===flag)):[]).map(r=>{const driverId=r.employeeKey+'|'+r.siteKey;return {...r,driverId,otMonth:reader.count(driverId,r.siteKey,'month'),otYear:reader.count(driverId,r.siteKey,'year')};});
+ const listed=(open?chosen.filter(r=>(open===EVERY||r.equipment===open)&&(!flag||(flag==='second'?!r.actual:r.flag===flag))):[]).map(r=>{const driverId=r.employeeKey+'|'+r.siteKey;return {...r,driverId,otMonth:reader.count(driverId,r.siteKey,'month'),otYear:reader.count(driverId,r.siteKey,'year')};});
  const opened=listed.find(r=>r.driverId===driverOpen);
  const days=filters.from!==filters.to,dateLabel=days?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
  const siteLabel=key=>sites.find(s=>s.siteKey===key)?.site||key;
  const heading=[siteKey===EVERY?'All sites':siteLabel(siteKey),shift?shiftName(shift):'All shifts',dateLabel].join(' · ');
- const openLabel=open===EVERY?'All equipment':open,flagName=dutyFlags.find(([id])=>id===flag)?.[1]||'';
+ const openLabel=open===EVERY?'All equipment':open,flagName=flag==='second'?'Second machine':dutyFlags.find(([id])=>id===flag)?.[1]||'';
  const choose=(site,code)=>setPick(siteKey===site&&shift===code?noPick:{...noPick,siteKey:site,shift:code});
  const list=(name,colour='')=>setPick(open===name&&flag===colour?{...noPick,siteKey,shift}:{siteKey,shift,equipment:name,flag:colour});
  // One box per site and shift. The whole box is red while its batch is missing and outlined orange while the batch is open;
@@ -224,6 +224,8 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
   <td><button type="button" className="mp-cat-open" aria-pressed={open===name&&!flag} onClick={()=>list(name)}>{label}</button></td>
   <td><button type="button" className="mp-cat-count" aria-pressed={open===name&&!flag} aria-label={dutyCount(e.duties,'equipment-wise')+' · '+label} onClick={()=>list(name)}>{e.duties}</button></td>
   <td>{e.actual}</td>
+  {/* Equipment-wise duties minus actual duties: the rows where this equipment was the driver's second machine in the shift. */}
+  <td>{e.duties-e.actual?<button type="button" className="mp-cat-count" aria-pressed={open===name&&flag==='second'} aria-label={(e.duties-e.actual)+' second machine · '+label} onClick={()=>list(name,'second')}>{e.duties-e.actual}</button>:0}</td>
   {dutyFlags.map(([id,colour])=><td key={id}>{e[id]?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={open===name&&flag===id} aria-label={e[id]+' '+colour+' · '+label} onClick={()=>list(name,id)}>{e[id]}</button>:0}</td>)}
  </tr>;
  const totals={duties:chosen.length,actual:actual(chosen),...Object.fromEntries(dutyFlags.map(([id])=>[id,chosen.filter(r=>r.flag===id).length]))},second=totals.duties-totals.actual;
@@ -250,10 +252,10 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
     {stillOpen.length>0&&<p className="mp-att-batch mp-att-batch-open"><strong>Batch not closed:</strong> {stillOpen.slice(0,60).map(b=>[where(b),b.batch,'('+stageName(b.state)+')'].filter(Boolean).join(' ')).join(' · ')}</p>}
     {equipment.length?<>
      <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick({...noPick,siteKey,shift})}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
-     <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
+     <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th><th scope="col" title="Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift">Second machine</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
       <tbody>{equipment.map(e=>line(e.equipment,e.equipment,e,false))}{line(EVERY,'All equipment',totals,true)}</tbody>
      </table>
-     {second>0&&<p className="mp-att-foot">{second} {second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties.</p>}
+     {second>0&&<p className="mp-att-foot">{second} {second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties. Press a number under Second machine to list those drivers.</p>}
     </>:<p>No duty saved in this selection.</p>}
    </div>
    {open&&<>
