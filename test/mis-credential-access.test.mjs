@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {misRequestAllowed,misPageAllowed,authorizeMisRequest} from '../shared/mis-application-access.mjs';
+
+test('Equipment master approval routes require the assigned menu and POST',()=>{
+ const session=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages}});
+ for(const path of ['/api/equipment-master/changes','/api/equipment-master/changes/pending-id/verify']){
+  assert.equal(misRequestAllowed(session(['Equipment master']),{path,method:'POST'}),true);
+  assert.equal(misRequestAllowed(session(['Employee master']),{path,method:'POST'}),false);
+  assert.equal(misRequestAllowed(session(['Equipment master']),{path,method:'GET'}),false);
+ }
+});
 import {installMisCredentialClient} from '../server/routes/mis-credential-client.mjs';
 const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Employee master','Vehicle Log Book','Trip Card Bulk Scan'],misMobileAccess:['Dashboard']}};
 test('MIS API permissions fail closed and follow assigned masters and working menus',()=>{
