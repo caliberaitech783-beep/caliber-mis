@@ -7093,9 +7093,9 @@ function UserSessionsPage({session}) {
     finally{if(!quiet)setLoading(false);}
   };
   useEffect(()=>{
-    load();
-    const timer=window.setInterval(()=>load({quiet:true}),3000);
-    return()=>window.clearInterval(timer);
+    // Every 3 s while the page is on screen; a hidden tab stops asking.
+    let first=true;
+    return startVisiblePoll(()=>{const quiet=!first;first=false;return load({quiet});},3000);
   },[session?.token]);
   const forceClose=async(row)=>{
     if(row.current)return;

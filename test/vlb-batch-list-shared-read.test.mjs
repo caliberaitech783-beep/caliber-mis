@@ -53,5 +53,6 @@ test('the batch list uses the shared read, cleared by every batch action, and hi
  assert.match(board,/setInterval\(\(\)=>\{if\(document\.visibilityState!=='hidden'\)void load\(\)\},4000\)/);
  assert.match(board,/const tick=\(\)=>\{if\(document\.visibilityState!=='hidden'\)setRefresh\(n=>n\+1\)\};const timer=setInterval\(tick,10000\);document\.addEventListener\('visibilitychange',tick\)/);
  const scan=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
- assert.match(scan,/'\/card-counts'[\s\S]{0,400}setInterval\(\(\)=>\{if\(document\.visibilityState!=='hidden'\)void refresh\(\)\},4000\)/);
+ // The scan screen's card total uses the shared visible-tab poll (every 15 s, none while hidden).
+ assert.match(scan,/'\/card-counts'[\s\S]{0,500}startVisiblePoll\(refresh,VLB_CARD_COUNT_POLL_MS\)/);
 });
