@@ -160,8 +160,8 @@ test('manpower reports export complete selected data, separate shift hours, and 
  const payload={summary:rows,details:rows,performance:rows,ot:rows,otSites:sites,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
  const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]);
  for(const reportId of ['manpower','employee']){
-  const tree=render({session:{token:'test'},reportId,onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,reportId==='manpower'?3:2);
-  for(const section of sections.filter(n=>n.props.category!=='manpower-review'))assert.equal(section.props.rows.length,137,'export receives every matching row');
+  const tree=render({session:{token:'test'},reportId,onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,reportId==='manpower'?4:2);
+  for(const section of sections.filter(n=>!['manpower-review','manpower-sites'].includes(n.props.category)))assert.equal(section.props.rows.length,137,'export receives every matching row');
   if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
  }
  // OT view in five steps: every site, one site date by shift, a date and shift by equipment category, the drivers of a category, one driver's history.
@@ -364,4 +364,39 @@ test('shift attendance equipment wise opens sites by shift, then equipment, then
  // One site in the report opens by itself; a stale choice is ignored.
  {const only=(await mount({chosen:{...filters,site:'Sasti OC'},data:payload([sites[2]],shiftBatches.filter(b=>b.siteKey==='sasti ob'))}))();assert.deepEqual(buttons(only,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);assert.equal(nodes(only,'th').filter(n=>n.props.scope==='row').length,1);}
  {const stale=(await mount({pick:{siteKey:'not a site',shift:'S1',equipment:'Volvo Tippers',flag:''}}))();assert.deepEqual(categories(stale),[]);assert.equal(buttons(stale,'mp-cat-open').length,0);}
+});
+
+test('manpower by category opens sites, then date by shift, then equipment category, and the two lists follow',async()=>{
+ const filters={from:'2026-11-10',to:'2026-11-11',site:'',shift:'',batch:'',employee:'',asset:''},query=new URLSearchParams(filters).toString();
+ const names={'sasti ob':'Sasti OC','jayant ob':'Jayant OC'};
+ // Sasti: three machines, three employees, five duties on six cards (one card has no matched employee). Jayant: one of each.
+ const card=(id,date,shift,equipment,door,employee,siteKey='sasti ob')=>({id,date,site:names[siteKey],siteKey,shift,equipment,door,assetKey:siteKey+'|'+door,employeeKey:employee,dutyKey:employee&&JSON.stringify([employee,siteKey,date,shift]),employeeId:employee,employeeName:'Example'});
+ const details=[card(1,'2026-11-10','S1','Tipper','V1','E1'),card(2,'2026-11-10','S1','Tipper','V2','E2'),card(3,'2026-11-10','S1','Excavator','X1','E3'),card(4,'2026-11-10','S2','Tipper','V1','E1'),card(5,'2026-11-11','S1','Tipper','V1','E1'),card(6,'2026-11-10','S1','Tipper','V1',''),card(7,'2026-11-10','S1','Dozer','D1','E9','jayant ob')];
+ const line=(date,shift,equipment,siteKey='sasti ob')=>({date,site:names[siteKey],siteKey,shift,equipment,category:'VEHICLE',group:equipment,make:'Make',model:'Model',assets:1,employees:1});
+ const summary=[line('2026-11-10','S1','Tipper'),line('2026-11-10','S1','Excavator'),line('2026-11-10','S2','Tipper'),line('2026-11-11','S1','Tipper'),line('2026-11-10','S1','Dozer','jayant ob')];
+ const payload={summary,details,performance:[],ot:[],otSites:[{site:'Jayant OC',siteKey:'jayant ob'},{site:'Sasti OC',siteKey:'sasti ob'}],exceptions:[],totals:{assets:4,employees:4,duties:6,exceptions:0},notes:[],options:{},generatedAt:'2026-11-11T10:00:00Z'};
+ const view=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]),tree=()=>view({session:{token:'test'},reportId:'manpower',onSelect:()=>{}});
+ const section=category=>nodes(tree(),ReportSection).find(n=>n.props.category===category)?.props,categories=()=>nodes(tree(),ReportSection).map(n=>n.props.category);
+ const press=label=>nodes(tree(),'button').find(n=>n.props['aria-label']===label).props.onClick(),counts=r=>[r.machines,r.employees,r.duties,r.cards];
+ // Step 1: one line per site; the two lists hold everything until a site is opened.
+ assert.deepEqual(categories(),['manpower-sites','manpower-summary','manpower-assignments','manpower-review']);
+ assert.deepEqual(section('manpower-sites').rows.map(r=>[r.site,...counts(r)]),[['Jayant OC',1,1,1,1],['Sasti OC',3,3,5,6],['All sites',4,4,6,7]],'the All sites line equals the count cards on top');
+ assert.deepEqual([section('manpower-summary').rows.length,section('manpower-assignments').rows.length],[5,7]);
+ // Step 2: a site opens date by shift, and the lists narrow to it.
+ press('5 duties · Sasti OC');assert.deepEqual(categories().slice(0,2),['manpower-sites','manpower-dates']);
+ assert.deepEqual(section('manpower-dates').rows.map(r=>[r.date,r.S1_duties,r.S1_machines,r.S2_duties,r.S3_duties,...counts(r)]),[['10-11-26',3,3,1,0,3,3,4,5],['11-11-26',1,1,0,0,1,1,1,1],['All dates',4,3,1,0,3,3,5,6]]);
+ assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC');assert.equal(section('manpower-assignments').rows.length,6);
+ // Step 3: a box opens that date and shift by equipment category.
+ press('3 duties · 3 machines · 10-11-26 · Shift 1');assert.equal(section('manpower-categories').title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment category');
+ assert.deepEqual(section('manpower-categories').rows.map(r=>[r.equipment,...counts(r)]),[['Tipper',2,2,2,3],['Excavator',1,1,1,1],['All categories',3,3,3,4]],'a card without a matched employee is a saved card, not a duty');
+ assert.equal(section('manpower-assignments').rows.length,4);
+ // A category narrows the two lists to its makes, models and cards.
+ nodes(tree(),'button').find(n=>n.props.className==='mp-cat-open'&&n.props.children==='Tipper').props.onClick();
+ assert.equal(section('manpower-assignments').title,'Vehicle & Employee Assignments · Sasti OC · 10-11-26 · Shift 1 · Tipper');
+ assert.deepEqual([section('manpower-summary').rows.length,section('manpower-assignments').rows.map(r=>r.id)],[1,[1,2,6]]);
+ // The whole day, then the trail back to every site.
+ press('4 duties · 10-11-26');assert.deepEqual(section('manpower-categories').rows.map(r=>[r.equipment,r.duties]),[['Tipper',3],['Excavator',1],['All categories',4]]);
+ const trail=()=>nodes(nodes(tree(),'p').find(n=>n.props.className==='mp-trail'),'button');
+ assert.deepEqual(trail().map(n=>n.props.children),['All sites','Sasti OC','10-11-26 · All shifts']);
+ trail()[0].props.onClick();assert.deepEqual(categories(),['manpower-sites','manpower-summary','manpower-assignments','manpower-review']);assert.equal(section('manpower-assignments').rows.length,7);
 });

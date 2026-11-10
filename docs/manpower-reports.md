@@ -156,3 +156,15 @@ Owner's final workbook of 10 Nov 2026 (`docs/OT-Multiple-Duties-Drill-Down-Plan-
 - Steps 1 to 3 are drawn inside the shared report frame, so each has a Generate button and exports what the table shows.
 
 Data: `GET /api/reports/manpower` adds `otDuties`, one line per duty from saved VLB, ELB and LMV cards within the selections: `date`, `shift`, `site`, `siteKey`, the driver, `category` (designation), `equipment`, `doors`, `makeModel`, `logBooks`, `flag` (`red` | `orange` | `review` | `normal`), `flagLabel`, `others`, `hours`, `trips`, `books`. No new read.
+
+## Manpower by Category in steps (10 Nov 2026)
+
+The owner's first request showed the Manpower by Category tab; the five-step change of the same day reached only OT & Multiple Duties. This tab now opens the same way.
+
+- **Step 1, all sites**: one line per assigned site and an All sites line, with different vehicles and machines, different employees, duties (one employee, one shift, one date) and saved cards. The All sites line equals the four count cards above it.
+- **Step 2, date by shift** for the opened site: each box shows the duties of the shift and the machines that worked; then the day's duties, machines, employees and saved cards.
+- **Step 3, equipment category** for the opened date and shift (or a whole day, or all dates): machines, employees, duties and saved cards per equipment group, written as on the other Manpower & OT tabs.
+- The two existing tables (Category, Make & Model; Vehicle & Employee Assignments) stay at the bottom and follow what is open: every site at first, then the site, the date and shift, the category. Their titles name the selection.
+- A trail above the steps steps back. Steps 1 to 3 have a Generate button.
+
+Data: `details` rows add `siteKey`, `equipment`, `assetKey`, `employeeKey` and `dutyKey` (empty on a card left out of totals, so the page's distinct counts equal `totals`); `summary` rows add `siteKey` and `equipment`. No new read.

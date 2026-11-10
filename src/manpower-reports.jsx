@@ -42,6 +42,7 @@ const summaryColumns=columns([...context,...classification,['assets','Distinct v
 const performanceColumns=columns([...context,...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
 const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','What to correct']]);
 const noPick={siteKey:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
+const noMpPick={siteKey:'',scope:false,date:'',shift:'',equipment:''};
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
 const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
 
@@ -267,12 +268,84 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
  </>;
 }
 
+// Manpower by Category in steps: every site, one site date by shift, one date and shift by equipment category,
+// then the two lists (category, make and model; saved cards) for what is open. Plain render function: its state lives in ManpowerReports.
+// Machines, employees and duties are counted from the keys on the saved cards, so every table agrees with the count cards on top.
+function manpowerOverview({report,filters,query,description,ReportSection,sites,mpPick,setMpPick}){
+ const cards=report.details||[],distinct=(list,key)=>new Set(list.map(r=>r[key]).filter(Boolean)).size;
+ const tallyOf=list=>({machines:distinct(list,'assetKey'),employees:distinct(list,'employeeKey'),duties:distinct(list,'dutyKey'),cards:list.length});
+ const within=site=>cards.filter(r=>site===EVERY||r.siteKey===site);
+ const siteKey=openSite(sites,mpPick.siteKey),inSite=siteKey?within(siteKey):[];
+ const span=[];for(let day=filters.from;day<=filters.to&&span.length<32;day=nextDay(day))span.push(day);
+ const gridDates=[...new Set([...span,...inSite.map(r=>r.date)])].sort(),gridShifts=[...new Set(['S1','S2','S3',...inSite.map(r=>r.shift).filter(Boolean)])].sort();
+ const scope=Boolean(siteKey&&mpPick.scope),date=scope&&gridDates.includes(mpPick.date)?mpPick.date:'',shift=scope&&gridShifts.includes(mpPick.shift)?mpPick.shift:'';
+ const at=(day,code)=>inSite.filter(r=>(!day||r.date===day)&&(!code||r.shift===code)),scoped=scope?at(date,shift):[];
+ const groups=new Map();for(const r of scoped){const name=r.equipment||'Group missing in master';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(r);}
+ const categories=[...groups].map(([equipment,list])=>({id:equipment,equipment,...tallyOf(list)})).sort((a,b)=>b.machines-a.machines||b.cards-a.cards||a.equipment.localeCompare(b.equipment)),everyCategory={id:EVERY,equipment:'All categories',...tallyOf(scoped)};
+ const open=scope&&(mpPick.equipment===EVERY||groups.has(mpPick.equipment))?mpPick.equipment:'';
+ // The two lists at the bottom follow whatever is open: nothing, a site, a date and shift, a category.
+ const chosen=r=>(!siteKey||siteKey===EVERY||r.siteKey===siteKey)&&(!scope||(!date||r.date===date)&&(!shift||r.shift===shift))&&(!open||open===EVERY||(r.equipment||'Group missing in master')===open);
+ const listedCards=siteKey?cards.filter(chosen):cards,listedSummary=siteKey?(report.summary||[]).filter(chosen):report.summary||[];
+ const siteLabel=siteKey===EVERY?'All sites':sites.find(s=>s.siteKey===siteKey)?.site||'',oneDate=gridDates.length===1;
+ const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
+ const scopeLabel=[date?shortDate(date):oneDate?shortDate(gridDates[0]):'All dates',shift?shiftName(shift):'All shifts'].join(' · ');
+ const openLabel=open===EVERY?'All categories':open,where=[siteLabel,scope&&scopeLabel,open&&openLabel].filter(Boolean).join(' · ');
+ const base={...noMpPick,siteKey};
+ const openSiteAt=site=>setMpPick(siteKey===site&&sites.length>1?noMpPick:{...noMpPick,siteKey:site});
+ const show=(day,code)=>setMpPick(scope&&date===day&&shift===code&&!open?base:{...base,scope:true,date:day,shift:code});
+ const list=name=>setMpPick(open===name?{...base,scope:true,date,shift}:{...base,scope:true,date,shift,equipment:name});
+ const zero=<span className="mp-zero">0</span>,measures=[['machines','Vehicles / equipment','vehicle or machine'],['employees','Employees','employee'],['duties','Duties','duty'],['cards','Saved cards','saved card']];
+ const said=(n,word)=>word==='duty'?duties(n):many(n,word);
+ const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,...tallyOf(within(s.siteKey))})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',...tallyOf(cards)}]:[])];
+ const dayRows=[...gridDates.map(day=>({id:day,day,date:shortDate(day)})),...(oneDate?[]:[{id:'all',day:'',date:'All dates'}])].map(row=>{const out={...row,...tallyOf(at(row.day,''))};for(const code of gridShifts){const t=tallyOf(at(row.day,code));out[code+'_duties']=t.duties;out[code+'_machines']=t.machines;out[code+'_cards']=t.cards;}return out;});
+ const numbers=(row,label,press,pressed)=>measures.map(([key,,word])=><td key={key}>{row[key]?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={said(row[key],word)+' · '+label} onClick={press}>{row[key]}</button>:0}</td>);
+ const box=(row,code)=>{const label=row.date+' · '+shiftName(code);if(!row[code+'_cards'])return zero;
+  return <button type="button" className="mp-att-count" aria-pressed={scope&&date===row.day&&shift===code} aria-label={duties(row[code+'_duties'])+' · '+many(row[code+'_machines'],'machine')+' · '+label} onClick={()=>show(row.day,code)}>{row[code+'_duties']}<small>{many(row[code+'_machines'],'machine')}</small></button>;};
+ const siteColumns=columns([['site','Site'],...measures.map(([key,label])=>[key,label])]);
+ const dayColumns=columns([['date','Date'],...gridShifts.flatMap(code=>[[code+'_duties',shiftName(code)+' duties'],[code+'_machines',shiftName(code)+' vehicles / equipment']]),['duties','Day duties'],['machines','Day vehicles / equipment'],['employees','Day employees'],['cards','Saved cards']]);
+ const categoryColumns=columns([['equipment','Equipment category'],...measures.map(([key,label])=>[key,label])]);
+ return <>
+  {siteKey&&<p className="mp-trail" aria-label="Where you are">{sites.length>1&&<><button type="button" onClick={()=>setMpPick(noMpPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setMpPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setMpPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}</strong></>}</p>}
+  <ReportSection key={'mp-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-sites" description="One line per site: different vehicles and machines, different employees, duties (one employee, one shift, one date) and saved cards. Press a number to open that site date by shift." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   <div className="mp-category mp-att" role="group" aria-label="Manpower by site">
+    {sites.length?<table><thead><tr><th scope="col">Site</th>{measures.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
+     <tbody>{siteRows.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{numbers(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
+    </table>:<p>No site is available for these selections.</p>}
+   </div>
+  </ReportSection>
+  {siteKey?<>
+   <ReportSection key={'mp-dates-'+query+'-'+siteKey} title={'Step 2 · '+siteLabel+' · date by shift · '+dateLabel} category="manpower-dates" description="In each box: the duties of that shift, and under it the vehicles and machines that worked. Press a box to see it by equipment category." rows={dayRows} columns={dayColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att mp-ot-grid" role="group" aria-label="Manpower by date and shift">
+     {scope&&<p className="mp-category-hint">Showing <strong>{scopeLabel}</strong> below. <button type="button" onClick={()=>setMpPick(base)}>Close</button></p>}
+     <table><thead><tr><th scope="col">Date</th>{gridShifts.map(code=><th key={code} scope="col">{shiftName(code)}<small>Duties · machines</small></th>)}<th scope="col">Day duties</th><th scope="col">Vehicles / equipment</th><th scope="col">Employees</th><th scope="col">Saved cards</th></tr></thead>
+      <tbody>{dayRows.map(row=>{const total=!row.day&&!oneDate,label=row.date;return <tr key={row.id} className={[total&&'mp-att-total',!total&&scope&&date===row.day&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+       <th scope="row">{row.date}{row.day&&<small>{weekday(row.day)}</small>}</th>
+       {gridShifts.map(code=><td key={code}>{box(row,code)}</td>)}
+       <td>{row.cards?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={scope&&date===row.day&&!shift} aria-label={duties(row.duties)+' · '+label} onClick={()=>show(row.day,'')}>{row.duties}</button>:zero}</td>
+       <td>{row.machines}</td><td>{row.employees}</td><td>{row.cards}</td>
+      </tr>;})}</tbody>
+     </table>
+    </div>
+   </ReportSection>
+   {scope?<ReportSection key={'mp-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-categories" description="One line per equipment category. Press a category or a number to list its makes, models and saved cards below." rows={[...categories,everyCategory]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att mp-ot-categories" role="group" aria-label="Manpower by equipment category">
+     {categories.length?<table><thead><tr><th scope="col">Equipment category</th>{measures.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
+      <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{numbers(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
+     </table>:<p>No saved card in this selection.</p>}
+    </div>
+   </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category. The two lists below show the whole site until then.</p>}
+  </>:<p className="mp-notice">Press a number above to open a site date by shift. The two lists below show every site until then.</p>}
+  <ReportSection key={'summary-'+query+'-'+where} title={'Manpower by Category, Make & Model'+(where?' · '+where:'')} category="manpower-summary" description={description+' · Distinct assets and employees within each category'} rows={listedSummary} columns={summaryColumns} recordDateFilter={false} emptyMessage="No saved asset assignments in this selection. An empty batch has no manpower count."/>
+  <ReportSection key={'details-'+query+'-'+where} title={'Vehicle & Employee Assignments'+(where?' · '+where:'')} category="manpower-assignments" description={description} rows={listedCards} columns={detailColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved assignments match these selections."/>
+ </>;
+}
+
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection}){
  const [filters,setFilters]=useState(()=>{const date=today();return {from:date,to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[options,setOptions]=useState({});
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null),historyBox=useRef(null);
  const [logBook,setLogBook]=useState(''),[tally,setTally]=useState({key:'',data:null,error:''}),[driverOpen,setDriverOpen]=useState('');
- const [pick,setPick]=useState(noPick),[otPick,setOtPick]=useState(noOtPick);
+ const [pick,setPick]=useState(noPick),[otPick,setOtPick]=useState(noOtPick),[mpPick,setMpPick]=useState(noMpPick);
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  const query=useMemo(()=>new URLSearchParams(reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId]);
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
@@ -330,8 +403,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
     <p className="mp-notice">One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.</p>
     <ReportSection key={'performance-'+query} title="Shift Performance" category="manpower-performance" description={description+' · Each shift is separate; HMR is machine performance'} rows={report.performance} columns={performanceColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved duties with a resolved employee identity match these selections."/>
    </>:<>
-    <ReportSection key={'summary-'+query} title="Manpower by Category, Make & Model" category="manpower-summary" description={description+' · Distinct assets and employees within each category'} rows={report.summary} columns={summaryColumns} recordDateFilter={false} emptyMessage="No saved asset assignments in this selection. An empty batch has no manpower count."/>
-    <ReportSection key={'details-'+query} title="Vehicle & Employee Assignments" category="manpower-assignments" description={description} rows={report.details} columns={detailColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved assignments match these selections."/>
+    {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick})}
    </>}
    {reportId==='attendance'||reportId==='ot'?exceptions.length>0&&<details className="mp-notes mp-review"><summary>{exceptions.length===1?'1 saved card needs':exceptions.length+' saved cards need'} correction (list for the MIS team)</summary>{review}</details>:review}
    <details className="mp-notes"><summary>Sources and calculation rules</summary><ul>{report.notes.map(note=><li key={note}>{note}</li>)}</ul><p>Manpower requirements, shortages and relief availability are reserved for a later phase.</p></details>

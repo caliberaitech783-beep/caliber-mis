@@ -301,3 +301,12 @@ test('OT duty lines list every duty with the colour of its case, its equipment c
  const lmv=card(4,3,{employeeId:22,caliberId:'102',assetId:2,door:'V2'},{book_type:'lmv'});
  assert.deepEqual(buildManpowerReport({records:[lmv],assets,employees,shifts,filters:{from:date,to:date}}).otDuties.map(d=>[d.logBook,d.flag]),[['LMV','normal']],'LMV duties are part of the OT duty count');
 });
+test('assignment and summary rows carry the keys the Manpower by Category steps count with',()=>{
+ const flawed=card(3,3,{},{site:'Jayant OC'});
+ const r=report([card(1,1),card(2,2,{assetId:2,door:'V2'}),flawed]);
+ assert.deepEqual(r.details.map(d=>[d.siteKey,d.equipment,d.assetKey,d.employeeKey,Boolean(d.dutyKey)]),[['sasti ob','Tipper','sasti ob|V1','CMLL101',true],['sasti ob','Tipper','sasti ob|V2','CMLL101',true],['jayant ob','Tipper','','',false]],'a card left out of totals carries no key');
+ assert.equal(new Set(r.details.map(d=>d.assetKey).filter(Boolean)).size,r.totals.assets);
+ assert.equal(new Set(r.details.map(d=>d.employeeKey).filter(Boolean)).size,r.totals.employees);
+ assert.equal(new Set(r.details.map(d=>d.dutyKey).filter(Boolean)).size,r.totals.duties);
+ assert.deepEqual(r.summary.map(s=>[s.siteKey,s.equipment]),[['sasti ob','Tipper'],['sasti ob','Tipper']]);
+});
