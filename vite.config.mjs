@@ -11,7 +11,6 @@ export default defineConfig({
           const moduleId = id.replaceAll("\\", "/");
           if (moduleId.includes("/node_modules/lucide-react/")) return "icons";
           if (/\/node_modules\/(react|react-dom|scheduler)\//.test(moduleId)) return "react-vendor";
-          if (moduleId.includes("/node_modules/jspdf/")) return "pdf-vendor";
           if (moduleId.includes("/node_modules/html-to-image/")) return "image-export-vendor";
           if (moduleId.includes("/node_modules/rrweb/")) return "replay-vendor";
           return undefined;

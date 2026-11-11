@@ -30,3 +30,5 @@ export async function withLmvEntrySite(options,session,read,storage){
  }
  return options;
 }
+
+export function rememberVlbEntryBatch(session,batch){if(batch?.id)try{const user=String(session.login||session.name||'');sessionStorage.setItem('vlb-entry-batch:'+user,batch.id);sessionStorage.setItem('vlb-entry-handoff:'+user,batch.id)}catch{}}
