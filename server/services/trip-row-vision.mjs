@@ -26,13 +26,26 @@ export async function readTripGrid(bytes,text,{recognize}={}){
  }
  return {template:'standard-trip-card-v1',rows,summary};
 }
+function summaryEquipment(grid){
+ return (grid.summary||[]).map(row=>({type:row.equipmentType?.value||'',no:row.equipmentNo?.value||'',count:Number(row.count?.value)||0})).filter(row=>row.type&&row.no);
+}
+function reconcileEquipmentCell(type,no,summary){
+ if(!type||!no||!summary.length)return {type,no};
+ if(summary.some(row=>row.type===type&&row.no===no))return {type,no};
+ const joined=summary.filter(row=>row.type===type&&no.startsWith(row.no)&&no.length-row.no.length<=2);
+ if(joined.length===1)return {type,no:joined[0].no,correctedFrom:no};
+ return {type,no:'',rejected:no};
+}
 export function resolveTripGrid(grid,shift){
- const trips=[],scanMachineSummary=[],issues=[],hasTime=grid.rows.some(r=>r.loading.present||r.unloading.present);let last=null;
+ const trips=[],scanMachineSummary=[],issues=[],hasTime=grid.rows.some(r=>r.loading.present||r.unloading.present),summary=summaryEquipment(grid);let last=null;
  for(const row of grid.rows){
   let type=row.equipmentType.value,no=row.equipmentNo.value;
   if(!row.equipmentType.present&&!row.equipmentNo.present&&last){type=last.type;no=last.no;}
   else if(!row.equipmentType.present&&row.equipmentNo.value===last?.no)type=last.type;
-  const equipmentName=row.equipmentName||(type&&no?type+no:!row.equipmentType.present&&!row.equipmentNo.present?last?.equipmentName||'':'');last={type,no,equipmentName};
+  const checked=reconcileEquipmentCell(type,no,summary);type=checked.type;no=checked.no;
+  if(checked.correctedFrom)issues.push('Trip '+row.rowNumber+': equipment number '+checked.correctedFrom+' crossed into the loading-time column; corrected to '+no+' from the machine-wise summary. Check the loading time.');
+  if(checked.rejected)issues.push('Trip '+row.rowNumber+': equipment number '+checked.rejected+' does not match the machine-wise summary; check the NO and loading-time columns.');
+  const equipmentName=checked.correctedFrom||checked.rejected?(type&&no?type+no:''):row.equipmentName||(type&&no?type+no:!row.equipmentType.present&&!row.equipmentNo.present?last?.equipmentName||'':'');last={type,no,equipmentName};
   if(!equipmentName)issues.push('Trip '+row.rowNumber+': equipment type/number needs checking.');
   if(hasTime&&(!row.loading.value||!row.unloading.value))issues.push('Trip '+row.rowNumber+': loading/unloading time needs checking.');
   trips.push({rowNumber:row.rowNumber,equipmentName,loadingTime:tripClockForShift(row.loading.value,shift),unloadingTime:tripClockForShift(row.unloading.value,shift),tripCount:1});
