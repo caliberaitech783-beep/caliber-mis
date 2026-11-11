@@ -3,8 +3,62 @@
 .mp-tabs{display:flex;flex-wrap:wrap;gap:8px}.mp-reports button,.mp-reports select,.mp-reports input{font:inherit}.mp-tabs button,.mp-heading button,.mp-filters>button{padding:10px 15px;border:1px solid #c7b5dd;border-radius:9px;background:var(--card,#fff);color:inherit;cursor:pointer}.mp-tabs button[aria-current=page]{background:#59338b;color:white;border-color:#59338b}.mp-reports button:disabled{opacity:.55;cursor:wait}.mp-reports :focus-visible{outline:3px solid #9460cc;outline-offset:3px}
 .mp-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:end;gap:12px;padding:16px;border:1px solid #ddd1ea;border-radius:12px;background:var(--card,#fff)}.mp-filters label{display:grid;gap:6px;font-size:13px;font-weight:700;min-width:0}.mp-filters input,.mp-filters select{width:100%;min-width:0;height:40px;border:1px solid #c8bdd5;border-radius:7px;padding:7px;background:var(--card,#fff);color:inherit}
 .mp-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.mp-metrics>div{display:flex;flex-direction:column;gap:4px;border:1px solid #dfd6e9;border-radius:12px;padding:18px;background:var(--card,#fff)}.mp-metrics strong{font-size:28px;color:#693f96}.mp-metrics span{font-size:13px}.mp-notice,.mp-notes{padding:14px 18px;background:var(--card,#f8f5fc);border:1px solid #ded3eb;border-radius:10px;margin:0;font-size:14px;line-height:1.6}.mp-notes summary{cursor:pointer;font-weight:700}.mp-notes li+li{margin-top:8px}
-.mp-legend{display:flex;flex-wrap:wrap;gap:10px}.mp-flag{display:inline-block;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:750;border:1px solid currentColor}.mp-flag-red{background:#ffe6e5;color:#a31f20}.mp-flag-orange{background:#fff0d8;color:#984800}.mp-flag-review{background:#eeedf5;color:#4d4467}.mp-reports tr.mp-ot-red td:first-child{border-left:5px solid #c92c2c}.mp-reports tr.mp-ot-orange td:first-child{border-left:5px solid #d97100}
+.mp-legend{display:flex;flex-wrap:wrap;gap:10px}.mp-flag{display:inline-block;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:750;border:1px solid currentColor}.mp-flag-red{background:#ffe6e5;color:#a31f20}.mp-flag-orange{background:#fff0d8;color:#984800}.mp-flag-review{background:#e8d2bd;color:#5c3310}.mp-flag-zero{background:#e1edff;color:#1c4f9c}.mp-flag-normal{background:var(--card,#fff);color:inherit;border-color:#c7b5dd}.mp-reports tr.mp-ot-red td:first-child{border-left:5px solid #c92c2c}.mp-reports tr.mp-ot-orange td:first-child{border-left:5px solid #d97100}.mp-reports tr.mp-ot-review td:first-child{border-left:5px solid #8b4513}
 @media(max-width:640px){.mp-reports{padding:12px;gap:14px}.mp-heading{align-items:flex-start;flex-direction:column}.mp-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.mp-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.mp-tabs button{flex:1 1 150px}}
 @media print{.mp-tabs,.mp-filters,.mp-heading>button{display:none}.mp-flag{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
 
 .mp-reports>*{min-width:0;max-width:100%;box-sizing:border-box}.mp-reports .reports-detail-table{min-width:0;max-width:100%;overflow-x:auto}
+
+/* Filters: the current dates stay visible when the selectors are tucked away. */
+.mp-filter-box{display:grid;gap:8px}.mp-filter-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.mp-filter-current{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:9px 14px;border:1px solid #ddd1ea;border-radius:9px;background:var(--card,#fff);color:inherit;text-align:left;cursor:pointer}.mp-reports .mp-filter-current:disabled{opacity:1;cursor:default}.mp-filter-current span{font-size:13px;color:var(--muted,#665e75)}
+.mp-autohide{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;cursor:pointer}.mp-autohide input{width:17px;height:17px}
+
+/* Summary tables: sites, categories and equipment share one block style. */
+.mp-category{padding:14px 18px;border:1px solid #dfd6e9;border-radius:12px;background:var(--card,#fff);overflow-x:auto}.mp-category h2{margin:0 0 10px;font-size:16px}.mp-category p{margin:0}.mp-category table{width:100%;border-collapse:collapse;font-size:14px}.mp-category th,.mp-category td{padding:8px 10px;border-bottom:1px solid #e6dff0;text-align:right}.mp-category th:first-child,.mp-category td:first-child{text-align:left}
+/* Drill-down: a category name or one of its numbers lists those drivers and duties under the table. */
+.mp-category .mp-category-hint{margin:0 0 10px;font-size:13px;color:var(--muted,#665e75)}.mp-category-hint strong{color:var(--text,#242137)}.mp-category-hint button{margin-left:8px;padding:4px 10px;border:1px solid #c7b5dd;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.mp-cat-open,.mp-cat-count{border:2px solid transparent;border-radius:8px;font:inherit;cursor:pointer}.mp-cat-open,.mp-cat-count:not([class*="mp-flag-"]){background:transparent;color:inherit}.mp-cat-open{padding:4px 8px;margin-left:-8px;text-align:left;font-weight:700;text-decoration:underline;text-decoration-color:#c7b5dd;text-underline-offset:3px}.mp-cat-count{min-width:46px;padding:4px 10px;text-align:center;font-weight:700}
+.mp-cat-open:hover,.mp-cat-count:hover{border-color:#c7b5dd}.mp-cat-open[aria-pressed=true],.mp-cat-count[aria-pressed=true]{border-color:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent)}.mp-category tr.mp-on td{background:color-mix(in srgb,#59338b 8%,transparent)}
+/* A driver's name opens his OT history for the year. */
+.mp-driver-open{padding:2px 6px;margin-left:-6px;border:2px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;font-weight:700;text-align:left;text-decoration:underline;text-decoration-color:#c7b5dd;text-underline-offset:3px;cursor:pointer}.mp-driver-open:hover{border-color:#c7b5dd}.mp-driver-open[aria-pressed=true]{border-color:#59338b;background:color-mix(in srgb,#59338b 12%,transparent)}
+.mp-driver-history tr.mp-total td{font-weight:800;border-top:2px solid #c7b5dd}
+@media print{.mp-filter-bar,.mp-book-pick{display:none}}
+
+/* Shift Attendance Equipment Wise: sites by shift, then equipment, then the drivers. Rows: red, orange, brown (review), blue (zero trips). */
+.mp-att th[scope=row]{font-weight:700}.mp-att thead th{font-size:12px;letter-spacing:.04em}.mp-att .mp-zero{color:var(--muted,#8a8496)}
+.mp-att-count{min-width:64px;padding:6px 12px;border:1px solid #c7b5dd;border-radius:8px;background:transparent;color:inherit;font:inherit;font-weight:750;cursor:pointer}.mp-att-count:hover{border-color:#59338b}.mp-att-count[aria-pressed=true]{background:#59338b;border-color:#59338b;color:#fff}
+.mp-category tr.mp-on th{background:color-mix(in srgb,#59338b 8%,transparent)}.mp-category tr.mp-att-total>*{border-top:2px solid #c7b5dd;font-weight:750}
+.mp-category .mp-att-foot{margin:10px 0 0;font-size:13px;color:var(--muted,#665e75)}
+.mp-reports tr.mp-duty-red>td{background:color-mix(in srgb,#c92c2c 17%,var(--card,#fff))}.mp-reports tr.mp-duty-orange>td{background:color-mix(in srgb,#e67e00 21%,var(--card,#fff))}.mp-reports tr.mp-duty-review>td{background:color-mix(in srgb,#8b4513 32%,var(--card,#fff))}.mp-reports tr.mp-duty-zero>td{background:color-mix(in srgb,#2563c8 16%,var(--card,#fff))}
+.mp-reports tr.mp-duty-red>td:first-child{border-left:5px solid #c92c2c}.mp-reports tr.mp-duty-orange>td:first-child{border-left:5px solid #d97100}.mp-reports tr.mp-duty-review>td:first-child{border-left:5px solid #8b4513}.mp-reports tr.mp-duty-zero>td:first-child{border-left:5px solid #2563c8}
+@media print{.mp-reports tr[class*="mp-duty-"]>td{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+
+/* Shift boxes: the whole box is red while the batch of that site and shift is missing, outlined orange while it is open. */
+.mp-att-count small{display:block;margin-top:2px;font-size:11px;font-weight:600;line-height:1.2}
+.mp-att-count.mp-att-none{background:#c92c2c;border-color:#a31f20;color:#fff}.mp-att-count.mp-att-none:hover{border-color:#6f1414}.mp-att-count.mp-att-open{border:2px solid #d97100}.mp-att-count.mp-att-open small{color:#984800}
+.mp-att-count[aria-pressed=true].mp-att-none{background:#8f1d1d;border-color:#59338b;box-shadow:0 0 0 3px color-mix(in srgb,#59338b 35%,transparent)}.mp-att-count[aria-pressed=true].mp-att-open{border-color:#d97100}.mp-att-count[aria-pressed=true].mp-att-open small{color:#ffe1bd}
+.mp-category .mp-att-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;font-size:13px;color:var(--muted,#665e75)}
+.mp-flag.mp-att-none{background:#c92c2c;border-color:#a31f20;color:#fff}.mp-flag.mp-att-open{background:transparent;border:2px solid #d97100;color:#984800}
+.mp-category .mp-att-batch{margin:0 0 8px;padding:8px 12px;border-radius:8px;font-size:13px;line-height:1.5}.mp-att-batch-none{background:color-mix(in srgb,#c92c2c 14%,var(--card,#fff));border-left:5px solid #c92c2c}.mp-att-batch-open{background:color-mix(in srgb,#e67e00 14%,var(--card,#fff));border-left:5px solid #d97100}
+/* A table heading may carry a second line that says what the number counts. */
+.mp-category thead th small{display:block;font-size:11px;font-weight:500;letter-spacing:0;color:var(--muted,#665e75)}
+/* Log book: one small selector instead of a split in every block. */
+.mp-book-pick{display:flex;flex-wrap:wrap;gap:8px}.mp-book-pick button{padding:7px 14px;border:1px solid #c7b5dd;border-radius:999px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:700;cursor:pointer}.mp-book-pick button[aria-pressed=true]{background:#59338b;border-color:#59338b;color:#fff}
+/* OT date by shift: one box per date and shift, with a pressable number for each colour found there. */
+.mp-ot-cell{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.mp-ot-cell .mp-cat-count{min-width:36px;padding:3px 8px}
+.mp-ot-grid tbody th small{display:block;font-size:11px;font-weight:500;color:var(--muted,#665e75)}.mp-ot-grid tbody th{white-space:nowrap}
+/* Cards to correct stay behind one line on the attendance and OT pages. */
+.mp-review>summary{font-weight:700}.mp-review[open]>summary{margin-bottom:12px}
+/* A coloured row keeps its colour under the pointer; the shared report table whitens hovered rows. */
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-red:hover>td{background:color-mix(in srgb,#c92c2c 26%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-orange:hover>td{background:color-mix(in srgb,#e67e00 30%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-review:hover>td{background:color-mix(in srgb,#8b4513 40%,var(--card,#fff));color:inherit}
+.mp-reports .generated-report-section .reports-detail-table .report-filter-table tbody tr.mp-duty-zero:hover>td{background:color-mix(in srgb,#2563c8 24%,var(--card,#fff));color:inherit}
+.mp-ot-duties{min-width:40px;padding:3px 8px;font-weight:750}.mp-ot-cell{align-items:center}.mp-ot-grid thead th small,.mp-ot-categories thead th small{display:block;font-weight:500;letter-spacing:0;text-transform:none}
+.mp-trail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 4px;font-size:14px}.mp-trail button{border:1px solid #c7b5dd;border-radius:8px;padding:4px 10px;background:transparent;color:inherit;font:inherit;font-weight:650;cursor:pointer}.mp-trail button:hover{border-color:#59338b}.mp-trail span{color:var(--muted,#8a8496)}
+.mp-ot-filter{margin:0 0 10px}.mp-ot-filter small{font-weight:500;opacity:.75}
+.mp-att thead th small{white-space:normal;max-width:17ch}
+
+.mp-rc thead th small{white-space:normal;max-width:15ch}.mp-rc-active{color:#17663a}.mp-rc-zero,.mp-rc-zeroKm{color:#984800}.mp-rc-none{color:#a31f20}
+.mp-rc-row-none td:first-of-type,.mp-rc-row-zero td:first-of-type,.mp-rc-row-outside td:first-of-type{font-weight:700}

@@ -1,0 +1,26 @@
+/* Batch Status & Turnaround: summary lines, step trail, stage colours. */
+.batch-status-report .bs-insight{margin:0;padding:12px 16px 12px 16px;border:1px solid #ead9a3;border-radius:10px;background:#fff8e1;color:#3d3214;font-weight:650;line-height:1.6;list-style:none}
+.batch-status-report ul.bs-insight li+li{margin-top:4px}
+.batch-status-report .bs-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}
+.batch-status-report .bs-crumbs button{padding:6px 12px;border:1px solid #c7b5dd;border-radius:9px;background:var(--card,#fff);color:inherit;font:inherit;cursor:pointer}
+.batch-status-report .bs-crumbs strong{padding:6px 2px}
+.batch-status-report .bs-stage{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:750;border:1px solid currentColor;white-space:nowrap}
+.batch-status-report .bs-stage-locked{background:#e3f4e6;color:#1f6b33}
+.batch-status-report .bs-stage-none{background:#ffe6e5;color:#a31f20}
+.batch-status-report .bs-stage-vlb_open,.batch-status-report .bs-stage-lmv_open,.batch-status-report .bs-stage-elb_open{background:#fff0d8;color:#8a4a00}
+.batch-status-report .bs-late{display:inline-block;padding:2px 8px;border-radius:6px;background:#ffe6e5;color:#a31f20;font-weight:750}
+.batch-status-report .bs-rating{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:750;border:1px solid currentColor;text-align:center;white-space:nowrap}
+.batch-status-report .bs-rating-good{background:#e3f4e6;color:#1f6b33}
+.batch-status-report .bs-rating-average{background:#fff0d8;color:#8a4a00}
+.batch-status-report .bs-rating-poor{background:#ffe6e5;color:#a31f20}
+.batch-status-report tr.bs-band-good td:first-child{border-left:5px solid #2f8a45}
+.batch-status-report tr.bs-band-average td:first-child{border-left:5px solid #d97100}
+.batch-status-report tr.bs-band-poor td:first-child{border-left:5px solid #c92c2c}
+.batch-status-report tr.bs-total td{font-weight:750;background:rgba(89,51,139,.07)}
+.batch-status-report tr.bs-row-none td:first-child{border-left:5px solid #c92c2c}
+.batch-status-report tr.bs-row-vlb_open td:first-child,.batch-status-report tr.bs-row-lmv_open td:first-child,.batch-status-report tr.bs-row-elb_open td:first-child{border-left:5px solid #d97100}
+.batch-status-report tr.bs-row-locked td:first-child{border-left:5px solid #2f8a45}
+.batch-status-report tr.bs-waiting td{background:rgba(217,113,0,.10)}
+.batch-status-report .bs-notes{padding:12px 16px;border:1px solid #ded3eb;border-radius:10px;font-size:14px;line-height:1.6}
+.batch-status-report .bs-notes summary{cursor:pointer;font-weight:700}
+@media print{.batch-status-report .bs-crumbs,.batch-status-report .production-filters,.batch-status-report .production-tabs{display:none}.batch-status-report .bs-stage,.batch-status-report .bs-late,.batch-status-report .bs-rating{print-color-adjust:exact;-webkit-print-color-adjust:exact}}

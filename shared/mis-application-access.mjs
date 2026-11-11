@@ -3,11 +3,13 @@ import {isMisAdministrator,MIS_ADMIN_PAGES} from './mis-admin-access.mjs';
 import {normalizedMisSelection,MIS_PERMISSION_OPTIONS} from './mis-permissions.mjs';
 export function misPageAllowed(session,page,view){
  if(!session?.permissions?.separateMisCredentials)return false;
+ if(['Fleet Capacity','Equipment Deployment'].includes(page))return misPageAllowed(session,'Reports',view);
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
  if(MIS_ADMIN_PAGES.includes(page))return isMisAdministrator(session);
  if(page==='Create VLB Batch')return ['Vehicle Log Book','Equipment Log Book'].some(name=>misPageAllowed(session,name,view));
+ if(['LMV Log Book','LMV Manual','LMV Scan'].includes(page))return misPageAllowed(session,page==='LMV Scan'?'Trip Card Bulk Scan':'Vehicle Log Book',view);
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
  if(page==='Scan Backup'||page==='Deletion'){const selection=view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)];return selection.includes(page)||['Vehicle Log Book','Equipment Log Book'].every(name=>selection.includes(name));}
  return (view==='desktop'?normalizedMisSelection(session.permissions.misDesktopAccess):view==='mobile'?normalizedMisSelection(session.permissions.misMobileAccess):[...normalizedMisSelection(session.permissions.misDesktopAccess),...normalizedMisSelection(session.permissions.misMobileAccess)]).includes(page);
@@ -18,6 +20,8 @@ export function misRequestAllowed(session,req){
  if(route==='/api/security/account')return read;
  if(['/api/security/session/migrate','/api/security/mfa/enroll','/api/security/mfa/confirm','/api/security/mfa/verify'].includes(route))return req.method==='POST';
  const allowed=page=>misPageAllowed(session,page);
+ if(route==='/api/capacity-master/fleet')return allowed('Capacity master')&&(read||req.method==='PUT');
+ if(route==='/api/reports/fleet-population')return read&&allowed('Reports');
  if(route==='/api/capacity-master')return allowed('Capacity master')&&(read||req.method==='POST');
  if(route==='/api/mis-ticket-sites')return read;
  if(route==='/api/mis-admin/backup')return isMisAdministrator(session)&&req.method==='POST';
@@ -27,7 +31,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');
- if(route==='/api/user-sessions'||route==='/api/user-login-history'||route==='/api/audit-events'||route==='/api/log-retention'||route==='/api/storage-overview'||route==='/api/diagnostics')return read&&isMisAdministrator(session);
+ if(route==='/api/user-sessions'||route==='/api/user-login-history'||route==='/api/audit-events'||route==='/api/log-retention'||route==='/api/storage-overview'||route==='/api/diagnostics'||route==='/api/diagnostics/performance')return read&&isMisAdministrator(session);
  if(route==='/api/backups'||/^\/api\/backups\/[a-f0-9-]{36}\/download$/.test(route))return read&&isMisAdministrator(session);
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
@@ -38,6 +42,9 @@ export function misRequestAllowed(session,req){
  if(route==='/api/saved-reports')return (read||req.method==='POST')&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(/^\/api\/saved-reports\/[^/]+$/.test(route))return req.method==='DELETE'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(route.startsWith('/api/masters/'))return allowed(decodeURIComponent(req.params?.master||route.split('/')[3]||''));
+ if(/^\/api\/equipment-master\/changes(?:\/[^/]+\/verify)?\/?$/i.test(route))return req.method==='POST'&&allowed('Equipment master');
+ if(route==='/api/employee-master/location')return req.method==='GET';
+ if(/^\/api\/employee-master\/location\/\d{1,18}$/.test(route))return req.method==='PUT';
  if(route.startsWith('/api/employee-master')||route.startsWith('/api/erp-employees'))return allowed('Employee master');
  if(route==='/api/erp-masters/status')return read&&['Work Order master','Financial Year master','Company master','Pulse Master Sync'].some(allowed);
  if(route==='/api/erp-masters/sync')return allowed('Pulse Master Sync');
@@ -49,6 +56,11 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/scan-backups'))return allowed('Scan Backup');
  if(route.startsWith('/api/log-books/options')||route==='/api/log-books/hours'||route==='/api/log-books/employee-lookup')return ['Vehicle Log Book','Equipment Log Book','Trip Card Bulk Scan','Job Card Bulk Scan'].some(allowed);
  if(route.startsWith('/api/log-books/vehicle'))return allowed('Vehicle Log Book');
+ if(/^\/api\/log-books\/lmv(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
+ if(route==='/api/shift-attendance'){
+  const kind=read?req.query?.kind:req.body?.kind;
+  return (read||req.method==='POST')&&(kind==='vehicle'?allowed('Vehicle Log Book'):kind==='equipment'&&allowed('Equipment Log Book'));
+ }
  if(/^\/api\/vlb-batch-deletions(?:\/|$)/.test(route))return allowed('Vehicle Log Book');
  if(/^\/api\/vlb-batches(?:\/|$)/.test(route)){
   if(allowed('Batch reopening approvals')&&(read&&route==='/api/vlb-batches/approvals'||req.method==='POST'&&/^\/api\/vlb-batches\/[0-9a-f-]{36}\/reopen-decision$/i.test(route)))return true;

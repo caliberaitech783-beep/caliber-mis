@@ -41,3 +41,18 @@ test('the range filters output rows but previous cards outside the range still c
  const strict=buildMeterContinuityReport({records:[card(1,'2026-12-01','I','V07',100,150,10,12),card(2,'2026-12-01','II','V07',151,200,12,14)],kmTolerance:0});
  assert.equal(strict.rows[1].status,'jump');
 });
+test('a card with nothing to compare on either meter reads Reading missing and is not counted as compared',()=>{
+ const records=[
+  card(1,'2026-12-01','I','V07',100,150,10,12),
+  card(2,'2026-12-01','II','V07','','','',''),                 // this card has no readings at all
+  card(3,'2026-12-01','III','V07',150,190,12,14),              // its previous card (2) has no closing readings
+  card(4,'2026-12-02','I','V07',190,230,'',''),                // KM follows on; HMR blank on this card
+ ];
+ const report=buildMeterContinuityReport({records,from:'2026-12-01',to:'2026-12-02'}),byId=Object.fromEntries(report.rows.map(r=>[r.id,r]));
+ assert.deepEqual([byId['2'].status,byId['2'].statusLabel,byId['2'].kmGap,byId['2'].hourGap],['no-reading','Reading missing',null,null],'blank on both meters is never a Match');
+ assert.equal(byId['3'].status,'no-reading','no closing reading on the previous card leaves nothing to compare');
+ assert.deepEqual([byId['4'].kmClass,byId['4'].hourClass,byId['4'].status],['match','no-reading','match'],'one blank meter leaves the result to the other meter');
+ assert.deepEqual(report.totals,{cards:4,compared:1,matches:1,tolerance:0,negatives:0,jumps:0,noReading:2});
+ const tipper=report.tippers.find(t=>t.key==='V07'),driver=report.drivers.find(d=>d.key==='E1');
+ for(const summary of [tipper,driver])assert.deepEqual([summary.cards,summary.compared,summary.matches,summary.noReading,summary.issueRate],[4,1,1,2,0],'Reading missing cards stay out of Compared and out of Issue %');
+});

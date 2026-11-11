@@ -63,3 +63,8 @@
 
 /* Serial number column shown in front of every shared table. */
 .table-serial-header, .table-serial-cell { width: 1%; min-width: 58px; white-space: nowrap; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Report rows that open a record when clicked. */
+tr.report-row-clickable{cursor:pointer}
+tr.report-row-clickable:hover>td,tr.report-row-clickable:focus-visible>td{background:#f3edfa}
+tr.report-row-clickable:focus-visible{outline:2px solid #522e90;outline-offset:-2px}

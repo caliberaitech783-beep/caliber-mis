@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPdfUploadSession,transferScanGroups} from '../src/scan-upload-pipeline.mjs';
+import {createPdfUploadSession,transferScanGroups,summarizeUploadExtraction} from '../src/scan-upload-pipeline.mjs';
 import {scanValidationClient} from '../server/rules/scan-validation-cache.mjs';
+import {scanProgressChanged,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
 import {readFileSync} from 'node:fs';
+
+test('upload extraction counts only successful receipts and keeps failures and skips separate',()=>{
+ const receipts=[{id:'existing'},{id:'new'},{id:'error'},{id:'reading'},{id:'unseen'},{id:'duplicate',skipped:true}];
+ const cards=[{id:'existing',status:'posted'},{id:'new',status:'review'},{id:'error',status:'error'},{id:'reading',status:'reading'},{id:'unrelated',status:'posted'}];
+ assert.deepEqual(summarizeUploadExtraction(receipts,cards),{extracted:2,failed:1,skipped:1});
+});
 
 test('the counted PDF is reused for rendering and retained documents are bounded and cleaned up',async()=>{
  const opened=[],destroyed=[],open=async file=>{opened.push(file);return {doc:{numPages:3},task:{destroy:async()=>destroyed.push(file)}};};
@@ -58,10 +65,12 @@ test('overlapping background batch polls coalesce; an explicit refresh reads aft
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  assert.ok(line);
  let requests=0,release,rows=[];const gate=new Promise(resolve=>release=resolve),noop=()=>{};
- const scope={SmartSelect: "select",kind:'equipment',vlbBatch:undefined,batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
+ const scope={SmartSelect: "select",kind:'equipment',lmv:false,vlbBatch:undefined,scanProgressChanged,mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
  const first=load('batch',false),same=load('batch',false),fresh=load('batch');
- assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,2);assert.equal(rows[0].revision,2);
+ // The gated progress poll finds a card the page does not show yet, so it reads the full
+ // entry once; the overlapping poll reuses it, and the explicit refresh reads after both.
+ assert.equal(requests,1);release();await Promise.all([first,same,fresh]);assert.equal(requests,3);assert.equal(rows[0].revision,3);
 });
 
 test('concurrent uploads start in page order, overlap, and stop launching after a failure',{timeout:2000},async()=>{
@@ -95,4 +104,21 @@ test('invalid upload concurrency rejects before any card is prepared',async()=>{
   async function* groups(){assert.fail('invalid concurrency must not read a card');}
   await assert.rejects(transferScanGroups(groups(),{concurrency,prepare:()=>assert.fail(),send:()=>assert.fail()}),/positive integer/);
  }
+});
+
+test('a PDF first card finishes before any later card transfer starts',async()=>{
+ const started=[];let releaseFirst;
+ async function* groups(){yield [{name:'cards.pdf · page 1'}];yield [{name:'cards.pdf · page 2'}];yield [{name:'cards.pdf · page 3'}]}
+ const run=transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0].name,send:async(group,name)=>{started.push(name);if(started.length===1)await new Promise(resolve=>{releaseFirst=resolve})}});
+ await new Promise(resolve=>setTimeout(resolve,10));assert.deepEqual(started,['cards.pdf · page 1']);
+ releaseFirst();await run;assert.deepEqual(started,['cards.pdf · page 1','cards.pdf · page 2','cards.pdf · page 3']);
+});
+
+test('each selected PDF waits for its own first-card duplicate check',async()=>{
+ const started=[];let releaseSecondPdf;
+ async function* groups(){yield [{name:'first.pdf · page 1'}];yield [{name:'first.pdf · page 2'}];yield [{name:'second.pdf · page 1'}];yield [{name:'second.pdf · page 2'}]}
+ const run=transferScanGroups(groups(),{concurrency:3,prepare:async group=>group[0].name,send:async(group,name)=>{started.push(name);if(name==='second.pdf · page 1')await new Promise(resolve=>{releaseSecondPdf=resolve})}});
+ while(!releaseSecondPdf)await new Promise(resolve=>setTimeout(resolve,1));
+ assert.equal(started.includes('second.pdf · page 2'),false);
+ releaseSecondPdf();await run;assert.equal(started.at(-1),'second.pdf · page 2');
 });

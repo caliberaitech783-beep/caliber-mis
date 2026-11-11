@@ -18,12 +18,29 @@ test('complete current values clear historical OCR warnings without requiring a 
  assert.deepEqual(result.errors,[]);assert.deepEqual(result.warnings,[]);
  assert.ok(result.data);assert.deepEqual(card.draft.extractionReviewFields,['shiftHours']);
 });
+test('scan review accepts a reset KMR below HMR',async()=>{
+ const result=await checkScanCard(client,'vehicle',card,{...draft,openingHmr:200,closingHmr:206,openingKmr:0,closingKmr:40});
+ assert.deepEqual(result.errors,[]);
+ assert.equal(result.data.totalRunningKmr,40);
+ assert.equal(result.data.totalWorkingHmr,6);
+});
+test('scan save excludes a borrowed opening loader and counts a final load without an unload',async()=>{
+ const trips=[
+  {rowNumber:1,equipmentName:'D19',equipmentSource:'previous-shift',equipmentNotation:{original:'',resolved:'D19'},loadingTime:'08:40',unloadingTime:'08:55',tripCount:1},
+  {...draft.trips[0],rowNumber:2},
+  {...draft.trips[0],rowNumber:3,loadingTime:'12:45',unloadingTime:''}
+ ];
+ const result=await checkScanCard(client,'vehicle',card,{...draft,trips,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});
+ assert.deepEqual(result.errors,[]);
+ assert.equal(result.data.totalTrips,2);
+ assert.equal(result.data.trips[0].loadingTime,'');
+ assert.equal(result.data.trips[2].unloadingTime,'');
+});
 test('genuinely missing values, invalid readings, summaries and missing pages still need correction',async()=>{
  const missing=await checkScanCard(client,'vehicle',card,{...draft,shiftHours:''});assert.ok(missing.errors.some(s=>/Shift hours/.test(s)));
- const swapped=await checkScanCard(client,'vehicle',card,{...draft,openingHmr:200,closingHmr:206,openingKmr:100,closingKmr:140});assert.ok(swapped.errors.some(s=>/Opening KMR must be greater/));
  const invalid=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:-1});assert.deepEqual(invalid.errors,[]);assert.match(invalid.data.meterRuleErrors.closingHmr,/below opening/);
  const summary=await checkScanCard(client,'vehicle',card,{...draft,scanMachineSummary:[{equipmentName:'D19',tripCount:2}]});assert.ok(summary.errors.some(s=>/summary mismatch/.test(s)));
  const back=await checkScanCard(client,'vehicle',{...card,expected_pages:2});assert.ok(back.errors.some(s=>/back page/.test(s)));
- const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.deepEqual(hours.errors,[]);assert.deepEqual(hours.warnings,[]);assert.match(hours.data.meterRuleErrors.closingHmr,/Exceeds limit/);
- const kmr=await checkScanCard(client,'vehicle',card,{...draft,closingKmr:351});assert.deepEqual(kmr.errors,[]);assert.match(kmr.data.meterRuleErrors.closingKmr,/Exceeds limit/);
+ const hours=await checkScanCard(client,'vehicle',card,{...draft,closingHmr:9});assert.match(hours.errors.join(' '),/HMR.*Exceeds limit/);
+ const kmr=await checkScanCard(client,'vehicle',card,{...draft,closingKmr:351});assert.match(kmr.errors.join(' '),/KMR.*Exceeds limit/);
 });

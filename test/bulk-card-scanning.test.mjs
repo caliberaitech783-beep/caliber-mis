@@ -29,13 +29,13 @@ test('batch review gates posting, saves 40 log books atomically, deduplicates re
  for(const c of cards){const r=await call('/api/scan-cards/'+c.id,'PUT',{draft:c.draft,revision:c.revision,action:'approve',checked:true});assert.equal(r.status,200,JSON.stringify(r.data));}
  cards=(await call('/api/scan-batches/'+batch)).data.cards;assert.deepEqual(cards[0].draft.meterReviewFields,[]);assert.deepEqual(cards[0].draft.extractionReviewFields,[]);const request={cards:cards.map(c=>({id:c.id,revision:c.revision}))};assert.equal((await call('/api/scan-batches/'+batch+'/post','POST',{cards:request.cards.slice(0,-1)})).status,409);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),0);
  await db.query("UPDATE master_records SET record_data=record_data||'{\"site\":\"Other site\"}'::jsonb WHERE id=3");assert.equal((await call('/api/scan-batches/'+batch+'/post','POST',request)).status,409);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),0);await db.query("UPDATE master_records SET record_data=record_data||'{\"site\":\"Sasti OC\"}'::jsonb WHERE id=3");
- const over=await call('/api/scan-batches/'+batch+'/post','POST',request);assert.equal(over.status,409);assert.match(over.data.error,/second scanned card cannot be saved/i);
+ const over=await call('/api/scan-batches/'+batch+'/post','POST',request);assert.equal(over.status,409);assert.match(over.data.error,/Combined working HMR.*limit is 8 hours/i);
  assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),0);
  const relief=cards[1];assert.equal(relief.draft.employeeId,'6');
- const corrected=await call('/api/scan-cards/'+relief.id,'PUT',{draft:{...relief.draft,assetId:'102',doorText:'V323',openingHmr:'206',closingHmr:'208'},revision:relief.revision,action:'approve',checked:true});assert.equal(corrected.status,200,JSON.stringify(corrected.data));
+ const corrected=await call('/api/scan-cards/'+relief.id,'PUT',{draft:{...relief.draft,openingHmr:'206',closingHmr:'208'},revision:relief.revision,action:'approve',checked:true});assert.equal(corrected.status,200,JSON.stringify(corrected.data));
  request.cards[1].revision=corrected.data.revision;
  const posted=await call('/api/scan-batches/'+batch+'/post','POST',request);assert.equal(posted.status,200,JSON.stringify(posted.data));assert.equal(posted.data.count,40);assert.equal(posted.data.archive.status,'pending');const archived=await call('/api/scan-batches/'+batch+'/archive','POST',{});assert.equal(archived.data.status,'saved');assert.equal(archived.data.azureUploadEnabled,false);assert.equal(new Set(posted.data.records.map(r=>r.book_no)).size,40);assert.match(posted.data.records[0].book_no,/^VLB_S\/19TH-DEC26\/S1\/001$/);assert.equal((await call('/api/scan-batches/'+batch+'/post','POST',request)).data.count,40);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),40);
- assert.equal((await db.query('SELECT name FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].name,batchName,'posting and retrying a saved batch retain its original batch name');const shared=(await db.query('SELECT data FROM mis_log_books WHERE asset_id=1 ORDER BY id')).rows.map(r=>r.data);assert.deepEqual(shared.map(r=>r.totalWorkingHmr),[6]);assert.deepEqual(shared.map(r=>String(r.employeeId)),['2']);
+ assert.equal((await db.query('SELECT name FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].name,batchName,'posting and retrying a saved batch retain its original batch name');const shared=(await db.query('SELECT data FROM mis_log_books WHERE asset_id=1 ORDER BY id')).rows.map(r=>r.data);assert.deepEqual(shared.map(r=>r.totalWorkingHmr),[6,2]);assert.deepEqual(shared.map(r=>String(r.employeeId)),['2','6']);
  const stored=(await db.query('SELECT data FROM mis_log_books ORDER BY id LIMIT 1')).rows[0].data;assert.equal(stored.location,'Sasti OB');assert.equal(first.raw_fields.locationReadings[0],'Sasti OC');assert.equal(stored.scanCardId,first.id);assert.equal(stored.caliberId,'EMP100');assert.equal(stored.totalTrips,2);const edited=await call('/api/log-books/vehicle/'+posted.data.records[0].id,'PUT',{...stored,revision:1,closingHmr:206});assert.equal(edited.status,200);assert.equal(edited.data.data.scanCardId,first.id);assert.equal(edited.data.data.totalWorkingHmr,6);
  const duplicateBatch=(await call('/api/scan-batches','POST',{kind:'vehicle',expectedContext:{bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I'}})).data.id;const duplicateId=randomUUID();const skipped=await call('/api/scan-batches/'+duplicateBatch+'/cards','POST',{base64:firstImage,uploadKey:duplicateId});assert.equal(skipped.status,200);assert.equal(skipped.data.duplicateSkipped,true);assert.equal(skipped.data.original.bookNo,posted.data.records[0].book_no);assert.equal((await call('/api/scan-batches/'+duplicateBatch)).data.cards.length,0,'an exact duplicate never enters review');const legacyDuplicate=randomUUID(),originalHash=(await db.query('SELECT image_hash FROM mis_scan_cards WHERE id=$1',[first.id])).rows[0].image_hash;await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,status) VALUES($1,$2,5,'legacy-duplicate.png',$3,$4,'review')",[legacyDuplicate,duplicateBatch,Buffer.from(firstImage,'base64'),originalHash]);assert.equal((await call('/api/scan-batches/'+duplicateBatch)).data.cards.length,0,'an already-uploaded exact duplicate is removed from active review');const legacyState=(await db.query('SELECT status,review_note,duplicate_of FROM mis_scan_cards WHERE id=$1',[legacyDuplicate])).rows[0];assert.equal(legacyState.status,'rejected');assert.equal(legacyState.review_note,'Exact duplicate upload skipped automatically');assert.equal(legacyState.duplicate_of,first.id,'a legacy duplicate points at its original');assert.equal((await call('/api/scan-batches/'+duplicateBatch)).data.duplicates.length,2,'skipped duplicates are listed beside the entry with their originals');
  await db.query('UPDATE mis_log_books SET deleted_at=NOW() WHERE id=$1',[posted.data.records[0].id]);const accepted=await call('/api/scan-batches/'+duplicateBatch+'/cards','POST',{base64:firstImage,uploadKey:randomUUID()});assert.equal(accepted.status,201,JSON.stringify(accepted));let rescanned;for(let tries=0;tries<100;tries++){rescanned=(await call('/api/scan-batches/'+duplicateBatch)).data.cards[0];if(rescanned?.status==='review')break;await new Promise(r=>setTimeout(r,20))}assert.ok(!rescanned.checks.errors.some(e=>e==='Duplicate card.'||e.includes('already exists')));assert.equal(cardReviewGroup(rescanned,'vehicle'),'orange');
@@ -49,4 +49,61 @@ test('matching after applying the batch site fills only unambiguous door and dri
  const wrong={...draft,doorText:'V32I'};assert.equal(matchScanDraft(wrong,{employeeCode:'INVALID'},'vehicle',masters),wrong);
  const duplicate={...masters[1],id:90};assert.equal(matchScanDraft(draft,raw,'vehicle',[...masters,duplicate]).employeeId,'');
  const corrected={...draft,assetId:'33',employeeId:'44'};assert.equal(matchScanDraft(corrected,raw,'vehicle',masters),corrected);
+});
+
+test('LMV uses VLB-style manual and scan entry without adding cards to a VLB batch',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ const legacyBookTable=LOG_BOOK_SCHEMA.slice(0,LOG_BOOK_SCHEMA.indexOf(' DO $lmv_book_type$')).replace(",'lmv'","");
+ await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+legacyBookTable+LOG_BOOK_SCHEMA);
+ for(const master of [...masters.slice(0,3),{id:7,master_name:'Equipment master',record_data:{category:'LMV',door:'LMV7',currentLocation:'Sasti OC'}}]){
+  await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[master.id,master.master_name,JSON.stringify(master.record_data)]);
+ }
+ const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
+ const pool={query,connect:async()=>({query,release(){}})};
+ const app=express();app.use(express.json());
+ const auth=(req,res,next)=>{req.session={role:'super',login:'admin',permissions:{adminLevel:'Admin'}};next()};
+ registerLogBooks(app,{pool,requireSession:auth,requireAdministrator:auth,getSiteScope:async()=>({sites:null})});
+ const scans=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,getSiteScope:async()=>({sites:null}),readPulseFleet:async()=>{throw Error('LMVs use their separate synced master')},ocr:{close(){}}});
+ await scans.start();await scans.stop();
+ app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ t.after(()=>{server.closeAllConnections();server.close()});
+ const call=async(route,method='GET',body)=>{
+  const response=await fetch('http://127.0.0.1:'+server.address().port+route,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  return {status:response.status,data:await response.json()};
+ };
+ const draft={bookDate:'2026-12-22',location:'Sasti OC',cardShift:'I',assetId:7,employeeId:2,shiftId:3,shiftHours:8,openingKmr:10,closingKmr:20,openingHmr:0,closingHmr:2,trips:[]};
+ assert.equal((await call('/api/log-books/lmv','POST',{...draft,assetId:1})).status,400);
+ const manual=await call('/api/log-books/lmv','POST',draft);
+ assert.equal(manual.status,201,JSON.stringify(manual.data));
+ assert.match(manual.data.book_no,/^CAL\/LMV/);
+ const batch=await call('/api/scan-batches','POST',{kind:'vehicle',expectedContext:{...draft,logBookKind:'lmv'}});
+ assert.equal(batch.status,201);
+ assert.match(batch.data.name,/^CMLL\/LMV/);
+ assert.equal((await call('/api/scan-batches')).data.batches.length,0);
+ assert.equal((await call('/api/scan-batches?logBookKind=lmv')).data.batches[0].id,batch.data.id);
+ const card=randomUUID(),scanDraft={...draft,openingHmr:2,closingHmr:4,doorText:'LMV7',aFormNo:'LMV-1'};
+ await db.query("UPDATE mis_scan_batches SET expected_context=expected_context||'{\"confirmed\":true}'::jsonb WHERE id=$1",[batch.data.id]);
+ await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image_hash,draft,status,checked_by) VALUES($1,$2,1,'lmv.png',$3,$4,'approved','admin')",[card,batch.data.id,randomUUID(),JSON.stringify(scanDraft)]);
+ const posted=await call('/api/scan-batches/'+batch.data.id+'/post','POST',{cards:[{id:card,revision:1}]});
+ assert.equal(posted.status,200,JSON.stringify(posted.data));
+ assert.match(posted.data.records[0].book_no,/^CAL\/LMV/);
+ assert.equal((await call('/api/log-books/lmv')).data.records.length,2);
+ assert.deepEqual((await call('/api/log-books/vehicle')).data.records,[]);
+ assert.equal((await db.query('SELECT * FROM mis_vlb_batch_entries')).rows.length,0);
+ const scanPath='/api/scan-batches/'+batch.data.id;
+ const detail=await call(scanPath);
+ assert.equal(detail.status,200,JSON.stringify(detail.data));
+ const savedCard=detail.data.cards[0];
+ const recordPath='/api/log-books/lmv/'+savedCard.logbook_id;
+ const updated=await call(recordPath,'PUT',{...savedCard.saved_data,remark:'Corrected saved scan',revision:savedCard.saved_revision});
+ assert.equal(updated.status,200,JSON.stringify(updated.data));
+ const corrected=(await call(scanPath)).data.cards[0];
+ assert.equal(corrected.saved_data.remark,'Corrected saved scan');
+ assert.equal(corrected.saved_revision,updated.data.revision);
+ assert.equal((await call(recordPath,'DELETE',{revision:savedCard.saved_revision})).status,409);
+ assert.equal((await call(recordPath,'DELETE',{revision:corrected.saved_revision})).status,200);
+ assert.deepEqual((await call(scanPath)).data.cards,[]);
+ assert.deepEqual((await call(scanPath+'?progress=1')).data.cards,[]);
+ assert.equal((await call('/api/log-books/lmv')).data.records.length,1);
 });

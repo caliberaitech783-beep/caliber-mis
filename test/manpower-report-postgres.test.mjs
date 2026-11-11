@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
+import {SHIFT_ATTENDANCE_SCHEMA} from '../server/routes/shift-attendance.mjs';
 
 const connectionString=process.env.DELETION_TEST_DATABASE_URL;
 test('manpower HTTP report reads scoped saved books and batches from PostgreSQL',{skip:!connectionString},async t=>{
@@ -13,10 +14,10 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  t.after(async()=>{await pool.end();await bootstrap.query('DROP SCHEMA '+schema+' CASCADE');await bootstrap.end();});
  await pool.query(`CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);
   CREATE TABLE mis_log_books(id BIGINT PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,asset_id BIGINT,data JSONB,deleted_at TIMESTAMPTZ);
-  CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT,site TEXT,book_date DATE,closed_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
-  CREATE TABLE mis_vlb_batch_entries(batch_id UUID,logbook_id BIGINT);`);
+  CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT,site TEXT,book_date DATE,closed_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,shift TEXT,stage TEXT);
+  CREATE TABLE mis_vlb_batch_entries(batch_id UUID,logbook_id BIGINT);`+SHIFT_ATTENDANCE_SCHEMA);
  for(const [id,master_name,record_data] of [[1,'Equipment master',{door:'V1',site:'Sasti OC',category:'Vehicle',group:'Tipper',make:'Volvo',model:'FMX'}],[21,'Employee master',{caliberId:'101',caliberCode:'CMLL101',name:'Example Driver'}],[31,'Shift Master',{site:'Sasti OC',shiftCode:'A',startTime:'05:00',endTime:'13:00'}],[32,'Shift Master',{site:'Sasti OC',shiftCode:'B',startTime:'13:00',endTime:'21:00'}]])await pool.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,master_name,record_data]);
- const batchId=randomUUID();await pool.query("INSERT INTO mis_vlb_batches VALUES($1,'TEST BATCH','Sasti OC','2026-11-10',NOW(),NULL,NULL)",[batchId]);
+ const batchId=randomUUID();await pool.query("INSERT INTO mis_vlb_batches VALUES($1,'TEST BATCH','Sasti OC','2026-11-10',NOW(),NULL,NULL,'S1','closed')",[batchId]);
  for(const [id,shift,site,deleted] of [[1,1,'Sasti OC',null],[2,2,'Sasti OC',null],[3,1,'Jayant OC',null],[4,1,'Sasti OC','2026-11-11']]){
   const data={bookDate:'2026-11-10',location:site,door:'V1',assetId:1,employeeId:21,caliberId:'101',shiftId:30+shift,bookShiftCode:'S'+shift,shiftName:'Shift '+(shift===1?'A':'B'),masterShiftStart:shift===1?'05:00':'13:00',openingHmr:100,closingHmr:shift===1?108:107,openingKmr:100,closingKmr:140,trips:[{equipmentName:'E1',tripCount:5}],timeMode:'without'};
   await pool.query("INSERT INTO mis_log_books VALUES($1,$2,'vehicle','2026-11-10',$3,1,$4,$5)",[id,'CARD-'+id,site,data,deleted]);if(id===1)await pool.query('INSERT INTO mis_vlb_batch_entries VALUES($1,$2)',[batchId,id]);
@@ -27,5 +28,7 @@ test('manpower HTTP report reads scoped saved books and batches from PostgreSQL'
  assert.equal((await fetch(url)).status,401);
  const response=await fetch(url,{headers:{Authorization:'Bearer fixture'}}),payload=await response.json();assert.equal(response.status,200,JSON.stringify(payload));assert.equal(payload.details.length,2);assert.equal(payload.performance.length,2);assert.equal(payload.ot[0].combinedHours,15);assert.equal(payload.ot[0].severity,'red');assert.equal(payload.performance[0].trips,5);assert.ok(payload.details.every(r=>r.site==='Sasti OC'));assert.equal(payload.options.batches[0].label,'TEST BATCH');
  assert.equal((await fetch(url+'&site=Jayant%20OC',{headers:{Authorization:'Bearer fixture'}})).status,403);
+ // The batch's shift and stage are read from the batch table: Shift 1 has a closed batch, and only this login's site is listed.
+ assert.deepEqual(payload.attendanceShifts.find(b=>b.shift==='S1'),{siteKey:'sasti ob',date:'2026-11-10',shift:'S1',state:'closed',batch:'TEST BATCH'});assert.deepEqual([...new Set(payload.attendanceShifts.map(b=>b.siteKey))],['sasti ob']);assert.deepEqual(payload.attendanceSites,[{siteKey:'sasti ob',site:'Sasti OC'}]);
  const filtered=await (await fetch(url+'&batch='+batchId,{headers:{Authorization:'Bearer fixture'}})).json();assert.equal(filtered.details.length,1);assert.match(filtered.ot[0].shifts,/S1.*S2/);
 });

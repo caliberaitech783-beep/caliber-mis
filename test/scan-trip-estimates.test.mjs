@@ -25,18 +25,20 @@ test('unreadable written times remain blank and unchanged cards do not acquire n
  assert.equal(estimateMissingTripTimes(draft,{gemini:{trips:{r:[[1,'','','08:22']]}}}).trips[0].loadingTime,'08:00');
 });
 test('missing machine comes from previous shift terminal trip with provenance; printed machine is retained',()=>{
- const next=completePreviousShiftMachines({...draft,trips:[...draft.trips,{equipmentName:'VPC37',loadingTime:'09:40',unloadingTime:'10:00'}]},[source()]);
+ const next=completePreviousShiftMachines({...draft,trips:[{equipmentName:'',loadingTime:'08:22',unloadingTime:''},{equipmentName:'VPC37',loadingTime:'09:40',unloadingTime:'10:00'}]},[source()]);
  assert.equal(next.trips[0].equipmentName,'VPC28');assert.match(tripEstimateNote(next.trips[0],'equipmentName'),/Taken from previous shift.*2026-12-29.*PREV\/1/);assert.equal(next.trips[1].equipmentName,'VPC37');
  assert.equal(tripEstimateNote({...next.trips[0],equipmentName:'VPC29'},'equipmentName'),'');
 });
 test('conflicting, wrong shift, chained and unmatched prefix sources never supply a guessed machine',()=>{
  for(const records of [[source(),source('VPC37',2)],[{...source(),data:{...source().data,cardShift:'III'}}],[{...source(),data:{...source().data,trips:[{...source().data.trips[0],equipmentSource:'previous-shift'}]}}]])assert.equal(completePreviousShiftMachines(draft,records).trips[0].equipmentName,'');
- const prefix={...draft,trips:[{equipmentName:'TPC',unloadingTime:'08:22'}]};assert.equal(completePreviousShiftMachines(prefix,[source()]).trips[0].equipmentName,'TPC');
- assert.equal(completePreviousShiftMachines({...prefix,trips:[{equipmentName:'VPC',unloadingTime:'08:22'}]},[source()]).trips[0].equipmentName,'VPC28');
+ const prefix={...draft,trips:[{equipmentName:'TPC',loadingTime:'08:22'}]};assert.equal(completePreviousShiftMachines(prefix,[source()]).trips[0].equipmentName,'TPC');
+ assert.equal(completePreviousShiftMachines({...prefix,trips:[{equipmentName:'VPC',loadingTime:'08:22'}]},[source()]).trips[0].equipmentName,'VPC28');
 });
 test('lookup is scoped to vehicle, site, exact date/shift and excludes deleted log books',async()=>{
  const queries=[];const client={query:async(sql,args)=>{queries.push({sql,args});return {rows:[source()]}}};
- const next=await fillScanTripEstimates(client,draft);assert.equal(next.trips[0].loadingTime,'08:00');assert.equal(next.trips[0].equipmentName,'VPC28');assert.deepEqual(queries[0].args,['645','Sasti OC','2026-12-29','I']);assert.match(queries[0].sql,/deleted_at IS NULL/);assert.match(queries[0].sql,/asset_id=\$1 AND site=\$2/);
+ const loading={...draft,trips:[{equipmentName:'',loadingTime:'08:22',unloadingTime:''}]};
+ const next=await fillScanTripEstimates(client,loading);assert.equal(next.trips[0].loadingTime,'08:22');assert.equal(next.trips[0].equipmentName,'VPC28');assert.deepEqual(queries[0].args,['645','Sasti OC','2026-12-29','I']);assert.match(queries[0].sql,/deleted_at IS NULL/);assert.match(queries[0].sql,/asset_id=\$1 AND site=\$2/);
  queries.length=0;assert.deepEqual(await fillScanTripEstimates(client,draft,{responseRecoveryIssues:['review']}),draft);assert.equal(queries.length,0);
- await fillScanTripEstimates(client,{...draft,assetId:''});assert.equal(queries.length,0);
+ const carry=await fillScanTripEstimates(client,draft);assert.deepEqual(carry,draft);
+ await fillScanTripEstimates(client,{...loading,assetId:''});assert.equal(queries.length,0);
 });

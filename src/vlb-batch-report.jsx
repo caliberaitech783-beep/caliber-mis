@@ -4,6 +4,12 @@ import React,{useState} from 'react';
 import {vlbRecordEntryType,vlbRecordSource,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 
+function equipmentUsed({data}){
+ const entries=Array.isArray(data.trips)?data.trips:data.machineSummary||[];
+ const equipment=entries.map(entry=>String(entry?.equipmentName??'').trim()).filter(Boolean);
+ return [...new Set(equipment)].join(', ')||'—';
+}
+
 export const vlbBatchColumns=[
  {key:'book',label:'Card ID',value:r=>r.book_no},
  {key:'card',label:'Trip card NO',value:r=>r.data.aFormNo||'—'},
@@ -15,6 +21,7 @@ export const vlbBatchColumns=[
  {key:'driver',label:'Driver',value:r=>r.data.employeeName},
  {key:'employee',label:'Employee ID',value:r=>r.data.caliberId},
  {key:'trips',label:'Trips',value:r=>r.data.completedTrips??r.data.totalTrips},
+ {key:'equipmentUsed',label:'Equipment used',value:equipmentUsed},
  {key:'km',label:'Total KMR',value:r=>r.data.totalRunningKmr},
  {key:'hours',label:'Total HMR',value:r=>r.data.totalWorkingHmr},
  {key:'remark',label:'Remark',value:r=>r.data.remark},
@@ -24,11 +31,17 @@ export const vlbBatchColumns=[
 ];
 // Optional columns appear only when at least one card in the batch has something to show.
 export const visibleVlbBatchColumns=records=>vlbBatchColumns.filter(column=>(!column.tone||records.some(record=>meterCorrectionReport(record.data).original))&&(!column.when||records.some(column.when)));
-export default function VlbBatchReport({batch,ReportSection,onView,entryType=''}){
+export default function VlbBatchReport({batch,bookLabel='VLB',ReportSection,onView,onRowClick,rowAction,rowEditor,renderField,entryType=''}){
  const [search,setSearch]=useState('');
  const records=entryType?batch.records.filter(record=>vlbRecordEntryType(record)===entryType):batch.records;
  const totalTrips=records.reduce((sum,record)=>sum+vlbRecordTrips(record),0);
- const section=<><div className="vlb-batch-report-totals" aria-label="VLB batch totals"><strong>Total Cards: {records.length}</strong><strong>Total Trips: {totalTrips}</strong></div><ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} columns={onView?[...visibleVlbBatchColumns(records),{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View VLB</button>}]:visibleVlbBatchColumns(records)} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction exportLabel="Generate" emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver, source or any report value" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/></>;
+ const editFields={card:'A Form no. (Trip Card)',door:'Door no.',driver:'Driver name',employee:'Employee ID / Caliber ID',trips:'trips',remark:'Remark',openingKmr:'Opening KMR',closingKmr:'Closing KMR',openingHmr:'Opening HMR',closingHmr:'Closing HMR'};
+ const columns=visibleVlbBatchColumns(records);
+ if(renderField){
+  columns.splice(columns.findIndex(column=>column.key==='trips'),0,...['openingKmr','closingKmr','openingHmr','closingHmr'].map(key=>({key,label:editFields[key],value:record=>record.data[key]})));
+ }
+ const displayColumns=renderField?columns.map(column=>editFields[column.key]?{...column,render:record=>renderField(record,editFields[column.key],column.value(record))}:column):columns;
+ const section=<><div className="vlb-batch-report-totals" aria-label={bookLabel+' batch totals'}><strong>Total Cards: {records.length}</strong><strong>Total Trips: {totalTrips}</strong></div><ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} columns={onView?[...displayColumns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View {bookLabel}</button>}]:displayColumns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction exportLabel="Generate" emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver or equipment" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/></>;
  if(!batch.machineReport)return section;
  return <>{section}<MachineReport report={batch.machineReport} statuses={batch.statuses}/></>;
 }

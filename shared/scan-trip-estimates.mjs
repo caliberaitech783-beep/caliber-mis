@@ -1,5 +1,6 @@
 import {operationalDate} from './operational-start.mjs';
 import {validScannedTime,normalizeScannedTime} from './scan-clock.mjs';
+import {ignoreScanLoadingWithoutEquipment,isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 import {identifyCardMachine} from './scan-machine-rules.mjs';
 
 const empty=value=>value==null||String(value).trim()==='';
@@ -37,7 +38,7 @@ export function completePreviousShiftMachines(input={},records=[]){
  const candidates=sources.map(record=>({record,row:(record.data.trips||[]).filter(r=>r.loadingTime||r.unloadingTime).at(-1)})).filter(item=>item.row?.equipmentName&&!item.row.equipmentSource&&!item.row.equipmentProvenance);
  if(!candidates.length)return input;
  return {...input,trips:(input.trips||[]).map(row=>{
-  if(row.equipmentSource==='master-selection')return row;
+  if(row.equipmentSource==='master-selection'||isUnloadingOnlyTrip(row))return row;
   const machine=identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true});
   if(!empty(row.equipmentName)&&(!machine||machine.hasNumber)||!row.loadingTime&&!row.unloadingTime)return row;
   const matching=candidates.filter(item=>{
@@ -53,8 +54,9 @@ export function completePreviousShiftMachines(input={},records=[]){
 
 export async function fillScanTripEstimates(client,input={},raw={}){
  if(raw.responseRecoveryIssues?.length)return input;
- let next=estimateMissingTripTimes(input,raw);
- const needsMachine=(next.trips||[]).some(row=>(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
+ const openingOnly={openingOnly:true};
+ const next=ignoreScanLoadingWithoutEquipment(estimateMissingTripTimes(ignoreScanLoadingWithoutEquipment(input,openingOnly),raw),openingOnly);
+ const needsMachine=(next.trips||[]).some(row=>!isUnloadingOnlyTrip(row)&&(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
  const previous=previousScanShift(next);
  if(!needsMachine||!previous||!operationalDate(previous.bookDate)||!next.assetId||!next.location)return next;
  const records=(await client.query(`SELECT id,book_no,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND asset_id=$1 AND site=$2 AND book_date=$3 AND data->>'cardShift'=$4 ORDER BY id DESC`,[next.assetId,next.location,previous.bookDate,previous.cardShift])).rows;

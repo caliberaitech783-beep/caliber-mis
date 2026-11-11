@@ -4,7 +4,8 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {batchFail as fail,auditVlbBatch,lockVlbBatchWrites,matchingVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {siteAllowed} from '../../shared/log-book-access.mjs';
 import {scopeHash} from '../services/log-book-deletion-scope.mjs';
-import {DELETION_PHONE} from './log-book-deletion-api.mjs';
+import {deletionPhone,deletionRecipient} from '../rules/deletion-otp-routing.mjs';
+const deletionSites=m=>m.target?[m.target.batch.site]:m.batches?m.batches.map(b=>b.original.site):m.original?.site?[m.original.site]:[];
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 
 const uuid=v=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v||'');
@@ -34,7 +35,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   const ids=records.map(r=>String(r.id)),linked=records.map(r=>r.data?.scanCardId).filter(Boolean);
   let scans=[],scanBatches=[];
   if(await exists(c,'mis_scan_cards')){
-   const candidates=(await c.query("SELECT * FROM mis_scan_batches WHERE kind='vehicle' AND NOT(COALESCE(expected_context,'{}'::jsonb) ? 'deletedVlbBatch') ORDER BY id")).rows;
+   const candidates=(await c.query("SELECT * FROM mis_scan_batches WHERE kind='vehicle' AND COALESCE(expected_context->>'logBookKind','')<>'lmv' AND NOT(COALESCE(expected_context,'{}'::jsonb) ? 'deletedVlbBatch') ORDER BY id")).rows;
    const contextual=candidates.filter(s=>sameScope(b,s.expected_context)).map(s=>s.id);
    scans=(await c.query("SELECT c.id,c.batch_id,c.ordinal,c.filename,c.status,c.revision,c.logbook_id,c.image_hash,c.image_blob_key,c.draft,md5((to_jsonb(c)-'image')::text) AS fingerprint FROM mis_scan_cards c WHERE c.batch_id=ANY($1::uuid[]) OR c.logbook_id=ANY($2::bigint[]) OR c.id::text=ANY($3::text[]) ORDER BY c.id FOR UPDATE",[contextual,ids,linked])).rows;
    // Include duplicate image copies only when no other saved batch owns them.
@@ -62,7 +63,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   const original=await batch(c,id,req,operation==='restore',operation==='purge');
   if(operation==='delete'||operation==='erase')return {original:{id:original.id,name:original.name},target:await scope(c,original)};
   const items=(await c.query('SELECT kind,item_key,md5(payload::text) AS fingerprint FROM mis_vlb_batch_recovery_items WHERE batch_id=$1 ORDER BY kind,item_key',[original.id])).rows;
-  if(operation==='purge')return {original:{id:original.id,name:original.name,deletedAt:original.deleted_at,restoreUntil:original.restore_until,counts:original.deleted_counts},items,target:null};
+  if(operation==='purge')return {original:{id:original.id,name:original.name,site:original.site,deletedAt:original.deleted_at,restoreUntil:original.restore_until,counts:original.deleted_counts},items,target:null};
   const replacement=await matchingVlbBatch(c,{location:original.site,bookDate:original.report_date,bookShiftCode:original.shift});
   if(replacement&&!siteAllowed(req.logBookScope,replacement.site))fail('Replacement batch is unavailable.',403);
   return {original:{id:original.id,name:original.name,deletedAt:original.deleted_at,restoreUntil:original.restore_until,counts:original.deleted_counts},items,target:replacement?await scope(c,replacement):null};
@@ -121,7 +122,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
   await c.query('UPDATE mis_vlb_batches SET purged_at=clock_timestamp() WHERE id=$1',[b.id]);
   await auditVlbBatch(c,b,actor,event,expired?{retentionHours:240}:{permanent:true});
  }
- function publicRequest(row){return {id:row.id,operation:row.operation,manifest:row.manifest,approval:approval(row),impact:row.operation.startsWith('purge')?purgeImpact:row.operation==='erase'?eraseImpact:impact,expiresAt:row.expires_at,recipient:'+91 9925565281',requiresReplacementDeletion:Boolean(row.operation==='restore'&&row.manifest.target)}}
+ function publicRequest(row){return {id:row.id,operation:row.operation,manifest:row.manifest,approval:approval(row),impact:row.operation.startsWith('purge')?purgeImpact:row.operation==='erase'?eraseImpact:impact,expiresAt:row.expires_at,recipient:deletionRecipient(deletionPhone(deletionSites(row.manifest))),requiresReplacementDeletion:Boolean(row.operation==='restore'&&row.manifest.target)}}
  app.get('/api/vlb-batch-deletions',...protect,handle(async(req,res)=>{
   const rows=(await pool.query('SELECT id,name,site,book_date::text AS report_date,shift,deleted_at,deleted_by,restore_until,purged_at,deleted_counts,restore_until>clock_timestamp() AND purged_at IS NULL AS can_restore FROM mis_vlb_batches WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC')).rows;
   res.json({batches:rows.filter(b=>siteAllowed(req.logBookScope,b.site))});
@@ -129,7 +130,7 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
  app.post('/api/vlb-batch-deletions/preview',...protect,handle(async(req,res)=>{
   authorize(req);const {operation,batchId}=req.body,reason=String(req.body.reason||'').trim();
   if(!['delete','restore','purge','purge-all','erase'].includes(operation)||reason.length<5||reason.length>2000)fail('Choose delete, restore or permanent deletion and enter a reason of 5 to 2000 characters.',400);
-  const row=await transaction(async c=>{const manifest=await plan(c,req,operation,batchId);return(await c.query('INSERT INTO mis_vlb_batch_deletions(id,actor,reason,operation,batch_id,replacement_id,manifest) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *',[randomUUID(),req.batchActor.login,reason,operation,operation==='purge-all'?manifest.batches[0].original.id:batchId,operation==='restore'?manifest.target?.batch.id||null:null,JSON.stringify(manifest)])).rows[0]});res.json(publicRequest(row));
+  const row=await transaction(async c=>{const manifest=await plan(c,req,operation,batchId);deletionPhone(deletionSites(manifest));return(await c.query('INSERT INTO mis_vlb_batch_deletions(id,actor,reason,operation,batch_id,replacement_id,manifest) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *',[randomUUID(),req.batchActor.login,reason,operation,operation==='purge-all'?manifest.batches[0].original.id:batchId,operation==='restore'?manifest.target?.batch.id||null:null,JSON.stringify(manifest)])).rows[0]});res.json(publicRequest(row));
  }));
  async function owned(c,req){
   authorize(req);if(!uuid(req.params.id))fail('Invalid request.',400);
@@ -153,9 +154,9 @@ export function registerVlbBatchDeletions(app,{pool,protect,handle,ensure,sendOt
    // The approval now lasts at least 10 minutes from this OTP so the OTP never outlives it.
    return(await c.query("UPDATE mis_vlb_batch_deletions SET otp_hash=$2,otp_requested_at=clock_timestamp(),delivered_at=NULL,expires_at=GREATEST(expires_at,clock_timestamp()+INTERVAL '10 minutes') WHERE id=$1 RETURNING *",[r.id,digest(r.id,otp)])).rows[0];
   });
-  const otpStatus=r=>({sent:true,sentAt:r.otp_requested_at,validUntil:r.expires_at,recipient:'+91 9925565281'});
+  const otpStatus=r=>({sent:true,sentAt:r.otp_requested_at,validUntil:r.expires_at,recipient:deletionRecipient(deletionPhone(deletionSites(r.manifest)))});
   if(row.alreadySent)return res.json({...otpStatus(row),alreadySent:true});
-  try{const delivery=await sendOtp({to:DELETION_PHONE,otp,requestId:row.id,count:Math.max(1,row.manifest.target?.records.length||row.manifest.original?.counts?.cards||row.manifest.counts?.cards||0)});if(!delivery?.sent||!delivery.messageId)throw Error('delivery');await pool.query('UPDATE mis_vlb_batch_deletions SET delivered_at=clock_timestamp() WHERE id=$1 AND otp_hash=$2',[row.id,digest(row.id,otp)]);}
+  try{const delivery=await sendOtp({to:deletionPhone(deletionSites(row.manifest)),sites:deletionSites(row.manifest),otp,requestId:row.id,count:Math.max(1,row.manifest.target?.records.length||row.manifest.original?.counts?.cards||row.manifest.counts?.cards||0)});if(!delivery?.sent||!delivery.messageId)throw Error('delivery');await pool.query('UPDATE mis_vlb_batch_deletions SET delivered_at=clock_timestamp() WHERE id=$1 AND otp_hash=$2',[row.id,digest(row.id,otp)]);}
   // A failed delivery releases the cooldown so the next attempt is not blocked, and does not count toward the hourly limit.
   catch{await pool.query('UPDATE mis_vlb_batch_deletions SET otp_hash=NULL,otp_requested_at=NULL,delivered_at=NULL WHERE id=$1 AND otp_hash=$2 AND completed_at IS NULL',[row.id,digest(row.id,otp)]).catch(()=>{});fail('WhatsApp OTP delivery failed. Nothing was changed. You can request the OTP again now.',503)}
   res.json(otpStatus(row));

@@ -2,94 +2,39 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {createSessionStore} from "../server/services/auth-session.mjs";
 
-test("stores login sessions in PostgreSQL", async () => {
+test("stores login sessions without expiring or replacing another signed-in device", async () => {
   const calls = [];
-  const store = createSessionStore({
-    async query(sql, params) {
-      calls.push({sql, params});
-      return {rows: []};
-    }
-  });
-
-  await store.create({
-    token: "token-1", role: "normal", name: "Anoop Paul", login: "anoop",
-    userType: "Mobile User", assignedRole: "Production User", permissions: {createRequests: true},
-  });
-
-  assert.match(calls[0].sql, /DELETE FROM auth_sessions/);
-  assert.deepEqual(calls[0].params, [30]);
-  assert.match(calls[1].sql, /INSERT INTO auth_sessions/);
-  assert.deepEqual(calls[1].params, ["token-1", "normal", "Anoop Paul", "anoop", "Mobile User", "Production User", '{"createRequests":true}']);
+  const store = createSessionStore({async query(sql, params) {calls.push({sql, params}); return {rows: []};}});
+  await store.create({token:"token-1",role:"normal",name:"Anoop Paul",login:"anoop",userType:"Mobile User",assignedRole:"MIS User",permissions:{verifyRequests:true}});
+  assert.equal(calls.length,1);
+  assert.match(calls[0].sql,/INSERT INTO auth_sessions/);
+  assert.doesNotMatch(calls[0].sql,/DELETE FROM auth_sessions/);
+  assert.deepEqual(calls[0].params,["token-1","normal","Anoop Paul","anoop","Mobile User","MIS User",'{"verifyRequests":true}']);
 });
 
-test("loads an existing session from PostgreSQL", async () => {
-  const store = createSessionStore({
-    async query(sql, params) {
-      assert.match(sql, /FROM auth_sessions/);
-      assert.match(sql, /created_at > NOW\(\) - make_interval\(days => \$2::int\)/);
-      assert.doesNotMatch(sql, /last_seen_at/);
-      assert.deepEqual(params, ["token-1", 30]);
-      return {rows: [{role: "normal", name: "Anoop Paul", login: "anoop", userType: "Mobile User", assignedRole: "MIS User", permissions: {verifyRequests: true}}]};
-    }
-  });
-
-  assert.deepEqual(await store.get("token-1"), {role: "normal", name: "Anoop Paul", login: "anoop", userType: "Mobile User", assignedRole: "MIS User", permissions: {verifyRequests: true}});
+test("loads a saved session by token without an age or inactivity limit", async () => {
+  const expected={role:"normal",name:"Anoop Paul",login:"anoop",userType:"Mobile User",assignedRole:"MIS User",permissions:{verifyRequests:true}};
+  const store=createSessionStore({async query(sql,params){
+    assert.match(sql,/FROM auth_sessions/);assert.match(sql,/WHERE token = \$1/);
+    assert.doesNotMatch(sql,/created_at\s*[<>]|last_seen_at\s*[<>]|make_interval|INTERVAL/);
+    assert.deepEqual(params,["token-1"]);return {rows:[expected]};
+  }});
+  assert.deepEqual(await store.get("token-1"),expected);
 });
 
-test("supports a bounded custom server-side session lifetime", async () => {
-  const calls = [];
-  const store = createSessionStore({
-    async query(sql, params) {
-      calls.push({sql, params});
-      return {rows: []};
-    }
-  }, {maxAgeDays: 7});
-
-  assert.equal(await store.get("token-2"), null);
-  assert.deepEqual(calls[0].params, ["token-2", 7]);
+test("does not query PostgreSQL when no token is supplied",async()=>{
+  const store=createSessionStore({async query(){assert.fail("query should not be called");}});
+  assert.equal(await store.get(""),null);
 });
 
-test("does not query PostgreSQL when no token is supplied", async () => {
-  const store = createSessionStore({
-    async query() {
-      assert.fail("query should not be called");
-    }
-  });
-
-  assert.equal(await store.get(""), null);
+test("records activity without changing or expiring the session",async()=>{
+  const calls=[];const store=createSessionStore({async query(sql,params){calls.push({sql,params});return {rows:[]};}});
+  await store.touch("token-3",{ipAddress:"10.0.0.8",deviceId:"DEVICE01",userAgent:"Test Browser"});
+  assert.match(calls[0].sql,/UPDATE auth_sessions/);assert.match(calls[0].sql,/last_seen_at = NOW\(\)/);
+  assert.doesNotMatch(calls[0].sql,/DELETE|make_interval/);
 });
 
-test("records session activity without changing the session token", async () => {
-  const calls = [];
-  const store = createSessionStore({
-    async query(sql, params) {
-      calls.push({sql, params});
-      return {rows: []};
-    }
-  });
-
-  await store.touch("token-3", {
-    ipAddress: "10.0.0.8",
-    deviceId: "Caliber Pulse-DEVICE01",
-    userAgent: "Test Browser",
-  });
-
-  assert.match(calls[0].sql, /UPDATE auth_sessions/);
-  assert.match(calls[0].sql, /last_seen_at = NOW\(\)/);
-  assert.doesNotMatch(calls[0].sql, /make_interval\(mins/);
-  assert.deepEqual(calls[0].params, ["token-3", "10.0.0.8", "Caliber Pulse-DEVICE01", "Test Browser"]);
-});
-
-test("prunes only sessions that exceed the absolute lifetime", async () => {
-  const calls = [];
-  const store = createSessionStore({
-    async query(sql, params) {
-      calls.push({sql, params});
-      return {rowCount: 3, rows: []};
-    }
-  });
-
-  assert.equal(await store.pruneExpired(), 3);
-  assert.doesNotMatch(calls[0].sql, /make_interval\(mins/);
-  assert.deepEqual(calls[0].params, [30]);
+test("automatic cleanup never expires a signed-in session",async()=>{
+  let calls=0;const store=createSessionStore({async query(){calls++;return {rowCount:1,rows:[]};}});
+  assert.equal(await store.pruneExpired(),0);assert.equal(calls,0);
 });

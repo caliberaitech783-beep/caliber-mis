@@ -27,17 +27,41 @@ test('open, missing, empty, reopened, stale and ambiguous batches never expose r
  for(const mutate of [f=>f.batches[1].closed_at=null,f=>f.batches.pop(),f=>f.records=f.records.filter(r=>r.data.cardShift!=='S2'),f=>f.records[0].batches[0].closed_at=null,f=>f.records[0].revision=2,f=>f.batches.push({...f.batches[0],id:'extra'})]){const f=fixture();mutate(f);const r=buildProductionReport(f);assert.equal(r.ready,false);assert.deepEqual(r.doorRows,[]);assert.deepEqual(r.machineRows,[]);assert.ok(r.issues.length);}
 });
 test('missing capacity, duplicate cards, unmatched machines and missing ELB block totals',()=>{
- for(const mutate of [f=>f.capacities.pop(),f=>f.records.push({...f.records[0],id:'duplicate'}),f=>f.records[0].data.trips[0].equipmentId='999',f=>f.records=f.records.filter(r=>!(r.book_type==='equipment'&&r.data.cardShift==='S1')),f=>f.records[0].data.trips[0].unmatchedTrips=1]){const f=fixture();mutate(f);const r=buildProductionReport(f);assert.equal(r.ready,false);assert.equal(r.totalQuantity,undefined);}
+ for(const mutate of [f=>f.capacities.pop(),f=>f.records.push({...f.records[0],id:'duplicate'}),f=>f.records[0].data.trips[0].equipmentId='999',f=>f.records=f.records.filter(r=>!(r.book_type==='equipment'&&r.data.cardShift==='S1'))]){const f=fixture();mutate(f);const r=buildProductionReport(f);assert.equal(r.ready,false);assert.equal(r.totalQuantity,undefined);}
 });
 test('mixed schedules require a choice; missing fleet cards are not claimed as recorded zeroes',()=>{
  const f=fixture();f.shifts.push({site,shiftCode:'D',startTime:'08:00',endTime:'20:00'},{site,shiftCode:'N',startTime:'21:00',endTime:'05:00'});assert.equal(buildProductionReport(f).ready,false);
  f.filters.schedule='three';f.assets.push({id:'99',door:'T99',site,category:'Vehicle',make:'Volvo',model:'FM'});const r=buildProductionReport(f);assert.equal(r.ready,true);const missing=r.doorRows.find(r=>r.id==='99');assert.equal(missing.S1Trips,null);assert.match(missing.coverage,/no saved VLB/);
 });
-test('a cross-shift completion uses the loading machine and requires its source batch to be processed',()=>{
+test('production credits the loading shift and accepts a carry-over without a matching load',()=>{
  const f=fixture(),loading=f.records[0],unloading=f.records[3];loading.data.timeMode='with';unloading.data.timeMode='with';loading.data.trips=[{equipmentId:'3',equipmentName:'PC1',tripCount:1,loadingTime:'12:50',unloadingTime:''}];unloading.data.trips=[{equipmentName:'',tripCount:1,loadingTime:'',unloadingTime:'13:10'}];
- f.records=[...linkVlbTripHandovers(f.records.filter(r=>r.book_type==='vehicle')),...f.records.filter(r=>r.book_type==='equipment')];f.filters={site,date,mode:'shift',shift:'S2'};const r=buildProductionReport(f);assert.equal(r.ready,true,JSON.stringify(r.issues));assert.equal(r.totalQuantity,80);assert.equal(r.machineRows[0].totalQuantity,80);
- f.records.find(r=>r.id===loading.id).batches[0].closed_at=null;assert.equal(buildProductionReport(f).ready,false);
+ f.records=[...linkVlbTripHandovers(f.records.filter(r=>r.book_type==='vehicle')),...f.records.filter(r=>r.book_type==='equipment')];f.filters={site,date,mode:'shift',shift:'S2'};const r=buildProductionReport(f);assert.equal(r.ready,true,JSON.stringify(r.issues));assert.equal(r.totalQuantity,60);assert.equal(r.machineRows[0].totalQuantity,60);assert.equal(r.doorRows[0].S2Trips,0);
+ f.filters.shift='S1';const first=buildProductionReport(f);assert.equal(first.ready,true);assert.equal(first.doorRows[0].S1Trips,1);
+ f.records=f.records.filter(r=>r.id!==loading.id);f.filters.shift='S2';const unmatched=buildProductionReport(f);assert.equal(unmatched.ready,true);assert.equal(unmatched.doorRows[0].S2Trips,0);
 });
 test('ELB inconsistency is visible without changing HMR or combining employee hours',()=>{
  const f=fixture();f.records.find(r=>r.book_type==='equipment').data.breakdownHours=8;f.records.find(r=>r.book_type==='equipment').data.idleHours=2;const r=buildProductionReport(f);assert.equal(r.ready,true);assert.equal(r.warnings.length,1);assert.equal(r.machineRows[0].S1Hours,6);assert.ok(!('combinedHours' in r.machineRows[0]));
+});
+
+test('production combines relief cards into one row per vehicle or machine and enforces shift HMR',()=>{
+ const f=fixture();
+ f.filters={site,date,mode:'shift',shift:'S1'};
+ for(const card of [f.records[0],f.records[2]]){
+  f.records.push({...card,id:card.id+'-relief',book_no:card.book_no+' relief',data:{
+   ...card.data,employeeId:'relief',employeeName:'Relief operator',openingHmr:16,closingHmr:18,
+  }});
+ }
+ const report=buildProductionReport(f);
+ assert.equal(report.ready,true,JSON.stringify(report.issues));
+ assert.equal(report.doorRows.length,2);
+ assert.equal(report.machineRows.length,1);
+ assert.equal(report.doorRows[0].S1Hours,8);
+ assert.equal(report.doorRows[0].totalTrips,2);
+ assert.equal(report.machineRows[0].S1Hours,8);
+ assert.equal(report.machineRows[0].S1Trips,3);
+ assert.match(report.machineRows[0].S1Driver,/Relief operator/);
+ f.records.at(-1).data.closingHmr=18.001;
+ const blocked=buildProductionReport(f);
+ assert.equal(blocked.ready,false);
+ assert.match(blocked.issues.find(issue=>issue.code==='hmr').message,/8\.001 hours.*limit is 8/);
 });

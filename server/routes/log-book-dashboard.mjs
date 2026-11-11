@@ -15,8 +15,11 @@ export function dashboardFilters(query={}){
  return {...filters,shift};
 }
 const shiftSql=`CASE COALESCE(NULLIF(data->>'cardShift',''),data->>'batchShift','') WHEN 'I' THEN 'S1' WHEN 'II' THEN 'S2' WHEN 'III' THEN 'S3' WHEN 'Day' THEN 'D' WHEN 'Night' THEN 'N' WHEN 'DN' THEN 'D' ELSE COALESCE(NULLIF(data->>'cardShift',''),data->>'batchShift','') END`;
+// Sites the owner removed from this dashboard (11 Nov 2026). They no longer show as empty rows;
+// if cards are saved for one in the selected dates it comes back, so no saved card is ever hidden.
+export const DASHBOARD_REMOVED_SITES=new Set(['Lalpeth OC'].map(site=>canonicalSiteName(site)));
 export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,kinds=['vehicle','equipment']}){
- const names=new Map(sites.map(site=>[canonicalSiteName(site),displaySiteName(site)]));
+ const names=new Map(sites.filter(site=>!DASHBOARD_REMOVED_SITES.has(canonicalSiteName(site))).map(site=>[canonicalSiteName(site),displaySiteName(site)]));
  for(const row of rows)names.set(canonicalSiteName(row.site),displaySiteName(row.site));
  const allSites=[...names.values()].sort((a,b)=>a.localeCompare(b));
  const selected=canonicalSiteName(location),siteRows=allSites.filter(site=>!selected||canonicalSiteName(site)===selected).map(site=>({site,vehicle:0,equipment:0}));

@@ -44,7 +44,8 @@ if(process.argv.includes('--azure')){
   body:payload,signal:AbortSignal.timeout(30000)
  });
  assert.ok(upload.ok,'Verification checker upload HTTP '+upload.status);
- const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs`);
+ const siteArgs=process.argv.includes('--sites-only')?' --sites-only':'';
+ const result=await remote(`EXPECTED_COMMIT=${expected} NODE_PATH=/home/data/vlb-elb-verification-runtime-20261029:/home/data/vlb-elb-verification-runtime-20261029/node_modules:/home/site/wwwroot/node_modules:/node_modules node /home/data/vlb-elb-access-check.mjs${siteArgs}`);
  console.log(result.Output||'');
  if(result.ExitCode!==0)console.error(result.Error||'Live checker returned '+result.ExitCode);
  assert.equal(result.ExitCode,0,'Live VLB/ELB verification failed; no production records were changed');
@@ -59,7 +60,7 @@ if(process.argv.includes('--azure')){
  const health=await liveJson(base+'/api/health');
  assert.equal(health.commit,process.env.EXPECTED_COMMIT,'Live backend must serve the expected release');
  const ui=await readFile('src/vlb-create-batch.jsx','utf8');
- assert.match(ui,/const site=data.accountLocation\|\|/,'Entry must default to the assigned site');
+ assert.match(ui,/const accountSite=entryMode\?data.lmvEntrySite\|\|data.accountLocation/,'Entry must default to the assigned site');
  const picker=/export function preferredVlbEntryBatch\(batches,remembered\)\{([\s\S]*?)\n\}/.exec(ui);
  assert.ok(picker,'Deployed picker must be present');
  const preferred=new Function('batches','remembered',picker[1]);
@@ -76,9 +77,11 @@ if(process.argv.includes('--azure')){
   const candidates=sessions.filter(session=>{const n=attempts.get(session.login)||0;attempts.set(session.login,n+1);return n<2;})
    .sort((a,b)=>Number(isMisAdministrator(a))-Number(isMisAdministrator(b)));
   restrictedCandidates=candidates.filter(session=>!isMisAdministrator(session)).length;
-  const seen=new Set();
+  const sitesOnly=process.argv.includes('--sites-only');
+ if(sitesOnly)candidates.sort((a,b)=>Number(isMisAdministrator(b))-Number(isMisAdministrator(a)));
+ const seen=new Set();
   for(const session of candidates){
-   if(seen.has(session.login))continue;
+   if(seen.has(session.login)||sitesOnly&&!isMisAdministrator(session))continue;
    const headers={Authorization:'Bearer '+session.token};
    const response=await fetch(base+'/api/log-books/options?scan=1',{headers,signal:AbortSignal.timeout(30000)});
    if([401,403].includes(response.status))continue;
@@ -88,6 +91,12 @@ if(process.argv.includes('--azure')){
     AND (lower(trim(record_data->>'login'))=$1 OR lower(trim(record_data->>'employee'))=$2)
     ORDER BY CASE WHEN lower(trim(record_data->>'login'))=$1 THEN 0 ELSE 1 END,created_at DESC LIMIT 1`,[session.login.toLowerCase(),session.name.toLowerCase()])).rows[0]?.record_data||{};
    const scope=logBookSiteScope(session,user),admin=isMisAdministrator(session);
+   const batchOptions=await liveJson(base+'/api/log-books/options',{headers});
+   const lmvOptions=await liveJson(base+'/api/log-books/options?scan=1&logBookKind=lmv',{headers});
+   assert.deepEqual(options.sites,batchOptions.sites,'VLB and ELB scan sites must match Create VLB Batch');
+   assert.deepEqual(lmvOptions.sites,batchOptions.sites,'LMV scan sites must match Create VLB Batch');
+   console.log('Live site lists match:',JSON.stringify(batchOptions.sites));
+   if(sitesOnly&&batchOptions.canSelectSite&&batchOptions.sites.length){await pool.end();process.exit(0);}
    assert.ok(options.sites.every(site=>siteAllowed(scope,site)),'Scan options must contain only authorized sites');
    assert.equal(options.canSelectSite,scope.sites===null,'Site selection follows the assigned operational scope, including administrators');
    if(admin)admins++;else{

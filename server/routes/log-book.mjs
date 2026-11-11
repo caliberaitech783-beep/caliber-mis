@@ -1,46 +1,59 @@
+import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
+import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
+import {reportLane} from '../services/report-lane.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
+import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {registerLogBookDashboard} from './log-book-dashboard.mjs';
 import {registerFleetReconciliation} from './fleet-reconciliation-api.mjs';
 import {withEquipmentAliases,aliasOtpEnabled} from '../../shared/equipment-aliases.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate} from '../../shared/operational-start.mjs';
-import {assetBookKind} from '../../shared/equipment-kind.mjs';
+import {assetBookKind,allowsLogBookKind,isLmv} from '../../shared/equipment-kind.mjs';
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
 import {vlbBatchActor} from '../rules/vlb-batch-access.mjs';
 import {registerVlbBatches} from './vlb-batches.mjs';
 import {registerManpowerReports} from './manpower-report-api.mjs';
+import {registerShiftAttendance,SHIFT_ATTENDANCE_SCHEMA} from './shift-attendance.mjs';
 import {registerProductionReports} from './production-report-api.mjs';
 import {registerMeterContinuityReport} from '../../shared/meter-continuity-report.mjs';
+import {registerBatchStatusReport} from './batch-status-report-api.mjs';
 import {assetCapacityPair} from '../../shared/production-report.mjs';
-import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
-import {assertCombinedShiftHmr} from '../rules/log-book-shift-hmr.mjs';
+import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
+import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
-import {assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
+import {assertLmvBatchWrite,assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from '../../shared/vlb-card-number.mjs';
 import {registerLogBookDeletion} from '../rules/log-book-deletion.mjs';
-import {manualBreakdownHours,applyBreakdownHours} from '../../shared/breakdown-hours-source.mjs';
+import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
-import {validTripTimes,withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {validTripTimes,vlbCountedTrips,withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
 import {logBookSiteScope,logBookAccountLocation,siteAllowed,requireLogBookSite,employeeAtLocation,filterLogBookSites} from '../../shared/log-book-access.mjs';
-import {meterPlacementIssues,meterRuleIssues,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
+import {activeWorkOrders,workOrderJobTypes,WORK_ORDER_MASTERS,meterRuleIssues,shiftMeterIssues,kmrMeterReplaced,normalizeCardShift,CARD_SHIFTS,formatBookNumber,bookShiftCode,matchingWorkOrders,machineLabel,machineSummary,machineDiscrepancies,systemBookDate,latestWorkOrder,interTripGap,tripEquipmentRequired} from '../../shared/trip-card-rules.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {summarizePulseHours} from '../rules/log-book-hours.mjs';
 import {randomUUID} from 'node:crypto';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {displaySiteSelection,REGION_DATA} from '../../shared/region-scope.mjs';
+import {displaySiteName,displaySiteSelection} from '../../shared/region-scope.mjs';
 
 export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
- id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CHECK(book_type IN ('vehicle','equipment')),
+ id BIGSERIAL PRIMARY KEY,book_no TEXT UNIQUE,book_type TEXT NOT NULL CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv')),
  book_date DATE NOT NULL,site TEXT NOT NULL,asset_id BIGINT NOT NULL,data JSONB NOT NULL,
  request_key UUID UNIQUE NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),revision INTEGER NOT NULL DEFAULT 1);
+ DO $lmv_book_type$ BEGIN
+  IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='mis_log_books'::regclass
+    AND conname='mis_log_books_book_type_check' AND pg_get_constraintdef(oid) NOT LIKE '%''lmv''%') THEN
+    ALTER TABLE mis_log_books DROP CONSTRAINT mis_log_books_book_type_check,
+      ADD CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv'));
+  END IF;
+ END $lmv_book_type$;
  ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA+VLB_BATCH_SCHEMA;
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
@@ -56,49 +69,67 @@ export function timeGapMinutes(start,end){
  const parse=value=>{const m=text(value).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);if(!m||Number(m[1])>23||Number(m[2])>59||Number(m[3]||0)>59)fail('Loading and unloading times must be valid clock times.');return Number(m[1])*3600+Number(m[2])*60+Number(m[3]||0)};
  let seconds=parse(end)-parse(start);if(seconds<0)seconds+=86400;return rounded(seconds/60);
 }
-export function normalizeLogBook(kind,input={}){
- if(!['vehicle','equipment'].includes(kind))fail('Invalid log book type.');
+export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
+ if(!['vehicle','equipment','lmv'].includes(kind))fail('Invalid log book type.');
+ const vehicle=kind==='vehicle'||kind==='lmv',optionalHmr=kind==='lmv',meterKind=optionalHmr?'lmv':vehicle?'vehicle':'equipment';
  if(String(input.bookDateSource||'').startsWith('scan')&&!input.bookDate)fail('Enter the Book Date from the scanned card.');const bookDate=text(input.bookDate||systemBookDate());requireOperationalDate(bookDate);if(!/^\d{4}-\d{2}-\d{2}$/.test(bookDate)||!Number.isFinite(Date.parse(bookDate+'T00:00:00Z'))||new Date(bookDate+'T00:00:00Z').toISOString().slice(0,10)!==bookDate)fail('Enter a valid book date.');
  const location=text(input.location);if(!location)fail('Select a location.');
- const shiftHours=number(input.shiftHours,'Shift hours');if(input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(![8,12].includes(shiftHours))fail('Select an 8-hour or 12-hour shift.');
+ const optionalShift=kind==='lmv'||manualEntry&&vehicle&&!input.scanCardId;
+ const shiftHours=optionalShift&&kind==='vehicle'&&(input.shiftHours==null||input.shiftHours==='')?(CARD_SHIFTS[normalizeCardShift(input.cardShift||input.bookShiftCode)]?.hours||8):manualEntry?manualShiftHours(input):number(input.shiftHours,'Shift hours');if(!manualEntry&&!isJayantSecondShift(input)&&kind!=='vehicle'&&input.cardShift&&CARD_SHIFTS[input.cardShift]&&shiftHours!==CARD_SHIFTS[input.cardShift].hours)fail('The marked card shift requires '+CARD_SHIFTS[input.cardShift].hours+' hours.');if(!manualEntry&&!validShiftHours(shiftHours,input))fail('Select an 8-hour or 12-hour shift.');
  const shiftStatus=kind==='equipment'&&FLEET_STATUSES[input.shiftStatus]?input.shiftStatus:'',nonWorking=Boolean(shiftStatus)&&NON_WORKING_STATUSES.includes(shiftStatus);
- const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,kind==='vehicle'?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true});
- if(!assetId||!employeeId&&!nonWorking||!shiftId)fail('Select an asset, employee and shift from their masters.');
- const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking})??0,closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking})??openingHmr;
-const openingKmr=kind==='vehicle'?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=kind==='vehicle'?number(input.closingKmr,'Closing KMR',{signed:true}):null;
-const placementIssues=meterPlacementIssues({openingHmr,openingKmr},kind);if(placementIssues.openingKmr)fail(placementIssues.openingKmr);
+ const assetId=number(input.assetId,'Door number',{integer:true}),employeeId=number(input.employeeId,vehicle?'Driver':'Operator',{integer:true,optional:nonWorking}),shiftId=number(input.shiftId,'Shift',{integer:true,optional:optionalShift});
+ if(!assetId||!employeeId&&!nonWorking||!shiftId&&!optionalShift)fail('Select an asset, employee and shift from their masters.');
+ const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:0),closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:openingHmr);
+const openingKmr=vehicle?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=vehicle?number(input.closingKmr,'Closing KMR',{signed:true}):null;
+if(vehicle){const limits=Object.values(shiftMeterIssues(input,meterKind));if(limits.length)fail(limits.join(' '));}
+const replacementKmr=vehicle&&kmrMeterReplaced(input)?number(input.replacementKmr,'Actual KMR distance'):null;
 const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');
- const trips=kind==='vehicle'?(input.trips||[]).map((row,index)=>{
+ const trips=vehicle?(input.trips||[]).map((row,index)=>{
    if(!row||typeof row!=='object'||Array.isArray(row))fail('Invalid trip row.');
    const equipmentName=text(row.equipmentName);if(tripEquipmentRequired(row,timeMode)&&!equipmentName)fail(`Enter the loading equipment for trip row ${index+1}.`);
    const tripCount=number(row.tripCount,`Trips in row ${index+1}`,{integer:true});if(tripCount<1)fail('Each trip row must contain at least one trip.');
    const loadingTime=timeMode==='with'?text(row.loadingTime,8):'',unloadingTime=timeMode==='with'?text(row.unloadingTime,8):'';
    if(timeMode==='with'&&!validTripTimes({loadingTime,unloadingTime}))fail('Enter at least one valid loading or unloading time for each trip.');
-   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
+   return {equipmentName,originalEquipmentName:text(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName),...(row.equipmentId?{equipmentId:text(row.equipmentId)}:{}),...(row.equipmentSite?{equipmentSite:text(row.equipmentSite)}:{}),loadingTime,unloadingTime,tripCount,...(row.masterJob===true?{masterJob:true}:{}),...(row.workOrderId?{workOrderId:String(number(row.workOrderId,'Trip Work Order',{integer:true}))}:{}),...(row.jobType?{jobType:text(row.jobType,500)}:{}),...(row.remark?{remark:text(row.remark,2000)}:{}),...(row.timeEstimates?{timeEstimates:row.timeEstimates}:{}),...(row.equipmentProvenance&&row.equipmentName===row.equipmentProvenance.value?{equipmentSource:'previous-shift',equipmentProvenance:row.equipmentProvenance}:{}),durationMinutes:timeMode==='with'&&loadingTime&&unloadingTime?timeGapMinutes(loadingTime,unloadingTime):null};
  }):[];
  trips.forEach((row,index)=>{row.gapMinutes=timeMode==='with'?interTripGap(trips,index):null});
- const workingHmr=rounded(closingHmr-openingHmr);
- return {...normalizeManualDetails(input,kind),bookDate,location,assetId,employeeId,shiftId,shiftHours,docType:kind==='vehicle'?'VLB':'QLB',
-   meterRuleErrors:meterRuleIssues(input,kind),openingKmr,closingKmr,openingHmr,closingHmr,totalRunningKmr:kind==='vehicle'?rounded(closingKmr-openingKmr):null,totalWorkingHmr:workingHmr,
+ const workingHmr=openingHmr===null||closingHmr===null?null:rounded(closingHmr-openingHmr);
+ return {...normalizeManualDetails(input,kind),bookDate,location,...(input.bookShiftCode?{bookShiftCode:input.bookShiftCode}:{}),assetId,employeeId,shiftId,shiftHours,...(manualEntry?{manualShift:isManualShift(input.manualShift)?input.manualShift:'',manualShiftOverride:true}:{}),docType:kind==='lmv'?'LMV':vehicle?'VLB':'QLB',
+   meterRuleErrors:meterRuleIssues(input,meterKind),openingKmr,closingKmr,openingHmr,closingHmr,...(replacementKmr!==null?{replacementKmr}:{}),totalRunningKmr:vehicle?rounded(replacementKmr??(closingKmr-openingKmr)):null,totalWorkingHmr:workingHmr,
    cardShift:CARD_SHIFTS[input.cardShift]?input.cardShift:'',bookDateSource:text(input.bookDateSource||'manual'),machineSummary:machineSummary(trips),scanMachineSummary:Array.isArray(input.scanMachineSummary)?input.scanMachineSummary.map(r=>({...r,equipmentName:text(r.equipmentName),tripCount:number(r.tripCount,'Machine summary trips',{integer:true})})):[],
-   aFormNo:kind==='vehicle'?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
-   totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+(timeMode==='without'||row.loadingTime&&row.unloadingTime?row.tripCount:0),0),
-   workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:rounded(shiftHours-workingHmr)};
+   aFormNo:vehicle?text(input.aFormNo):'',jobCardNo:kind==='equipment'?text(input.jobCardNo):'',remark:text(input.remark,4000),timeMode,trips,shiftStatus,statusReason:kind==='equipment'?text(input.statusReason,2000):'',
+   totalRecords:trips.length,openingTrips:trips.reduce((sum,row)=>sum+(row.loadingTime?row.tripCount:0),0),endingTrips:trips.reduce((sum,row)=>sum+(row.unloadingTime?row.tripCount:0),0),totalTrips:trips.reduce((sum,row)=>sum+vlbCountedTrips(row,timeMode),0),
+   workOrderContract:null,manualBreakdownHours:manualBreakdownHours(input.manualBreakdownHours,shiftHours),breakdownHours:null,availabilityHours:workingHmr,runningHours:workingHmr,idleHours:workingHmr===null?null:rounded(shiftHours-workingHmr)};
 }
 
-const woNames=['Work Order master','Work order master','Work Order Master','WO master'];
+const woNames=WORK_ORDER_MASTERS;
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
-export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit}={}){
+export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit,manualEntry=false}={}){
  requireOperationalDate(input.bookDate||systemBookDate());
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
- if(kind==='vehicle'){
+ if(kind==='vehicle'||kind==='lmv'){
  const assets=await withEquipmentAliases(client,(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})));
- const validation=validateTripEquipment(input,assets,{anySite:twoStageEnabled()});if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
+ const validation=validateTripEquipment(input,assets,{anySite:kind==='vehicle'&&twoStageEnabled()});if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
- const data=normalizeLogBook(kind,input);
+ const data=normalizeLogBook(kind,input,{manualEntry});
+ const jobRows=[...(data.trips||[]),...(data.jobDetails||[])];
+ const tripOrderIds=[...new Set(jobRows.filter(row=>row.workOrderId).map(row=>String(number(row.workOrderId,'Job Work Order',{integer:true}))))];
+ if(tripOrderIds.length){
+  const {rows}=await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[]) AND id=ANY($2::bigint[])',[woNames,tripOrderIds]);
+  const contracts=new Map(activeWorkOrders(rows.map(row=>({...row.record_data,id:String(row.id)})),data.location,data.bookDate).map(row=>[row.id,row]));
+  for(const trip of jobRows){
+   if(!trip.workOrderId)continue;
+   const contract=contracts.get(trip.workOrderId);
+   if(!contract)fail('Select an active job work contract for this site and report date.');
+   if(trip.masterJob&& !workOrderJobTypes(contract).includes(trip.jobType))fail('Select a job type listed on the chosen work order.');
+   trip.workOrderContract=woNumber(contract);
+  }
+ }
+
+ const optionalShift=kind==='lmv'||manualEntry&&kind==='vehicle'&&!input.scanCardId;
      const masterIds=[data.assetId,data.employeeId,data.shiftId];
      if(operatorSplit)masterIds.push(operatorSplit.secondOperatorId);
      if(input.workOrderId)masterIds.push(number(input.workOrderId,'Work Order',{integer:true}));
@@ -111,29 +142,37 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
        if(!secondOperator||!employeeAtLocation(secondOperator,data.location))fail('Select a second operator assigned to this location.');
        data.operatorSplit={...operatorSplit,secondOperatorName:text(secondOperator.employee||secondOperator.name||secondOperator.login),secondOperatorCaliberId:employeeCode(secondOperator)};
      }
-     const shift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
+     const baseShift=masters.find(row=>String(row.id)===String(data.shiftId)&&row.master_name==='Shift Master')?.record_data;
+     const manualShifts=manualEntry&&['day','night'].includes(input.manualShift)?(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[];
+     const shift=manualEntry&&isManualShift(input.manualShift)&&baseShift?manualShiftWindow({...input,shiftHours:data.shiftHours},baseShift,manualShifts):baseShift;
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
-     if(!asset||!employee&&!employeeOptional||!shift)fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     if(!asset||!employee&&!employeeOptional||(!optionalShift||data.shiftId)&&(!baseShift||!shift))fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
+     if(isJayantSecondShift({...baseShift,manualShift:input.manualShift})&&data.shiftHours!==9)fail('Jayant OC second shift requires 9 hours (12:00 PM to 9:00 PM).');
+     if(data.shiftHours===9&&!isJayantSecondShift({...baseShift,manualShift:input.manualShift}))fail('9 hours is allowed only for Jayant OC second shift.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
-     if(assetBookKind(asset)!==kind)fail('Select an asset from the correct log book category.');
-     const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift.site||shift.siteName);
+     if(!allowsLogBookKind(asset,kind))fail('Select an asset from the correct log book category.');
+     const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift?.site||shift?.siteName);
      const siteHolds=[];
-     if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location)){if(!twoStageEnabled())fail('The selected asset is assigned to a different location.');siteHolds.push({role:kind==='vehicle'?'vlb_door':'elb_door',assetId:String(data.assetId),assetSite,label:text(asset.door||asset.doorNo||equipmentDoorNumber(asset))});}
+     if(assetSite&&canonicalSiteName(assetSite)!==canonicalSiteName(data.location)){if(kind==='lmv'||!twoStageEnabled())fail('The selected asset is assigned to a different location.');siteHolds.push({role:kind==='vehicle'?'vlb_door':'elb_door',assetId:String(data.assetId),assetSite,label:text(asset.door||asset.doorNo||equipmentDoorNumber(asset))});}
      if(kind==='vehicle'&&twoStageEnabled())for(const row of data.trips)if(row.equipmentSite&&canonicalSiteName(row.equipmentSite)!==canonicalSiteName(data.location))siteHolds.push({role:'vlb_loader',assetId:String(row.equipmentId),assetSite:row.equipmentSite,label:row.equipmentName,trips:row.tripCount});
      data.siteHolds=siteHolds;
      if(shiftSite&&canonicalSiteName(shiftSite)!==canonicalSiteName(data.location))fail('The selected shift is assigned to a different location.');
-     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift.shiftName||shift.name||shift.shift),masterShiftStart:text(shift.startTime||shift.start)});
- if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
- else data.bookShiftCode=bookShiftCode(input.bookShiftCode)||bookShiftCode(data.cardShift)||bookShiftCode(shift.shiftCode)||bookShiftCode(data.shiftName)||'';
+     const manualLmvShift=kind==='lmv'&&optionalShift&&!shift?input.manualShift:'';
+     Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift?.shiftName||shift?.name||shift?.shift||(manualLmvShift==='day'?'Day':manualLmvShift==='night'?'Night':'')),masterShiftStart:text(shift?.startTime||shift?.start)});
+ if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||(optionalShift?bookShiftCode(input.bookShiftCode):'')||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
+ else data.bookShiftCode=(kind==='lmv'&&manualEntry?'':bookShiftCode(input.bookShiftCode))||bookShiftCode(data.cardShift)||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName)||'';
  data.chassis=text(asset.chassis||asset.chassisNo);
  const capacityPair=assetCapacityPair(asset);data.assetMake=capacityPair.make;data.assetModel=capacityPair.model;
  return data;
 }
 export async function insertLogBook(client,kind,data,requestKey,createdBy,batchOptions){
  requireOperationalDate(data.bookDate);
-       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy,undefined,{adding:true});await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}else await assertElbBatchWrite(client,data,{adding:true});
-       await assertCombinedShiftHmr(client,kind,data);
+       let meterBatch=null;
+       if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,createdBy,undefined,{adding:true});await assertSingleVlbCardPerShift(client,data,{batch,actor:createdBy});}
+       else if(kind==='equipment')meterBatch=await assertElbBatchWrite(client,data,{adding:true});
+       else if(kind==='lmv')await assertLmvBatchWrite(client,data);
+       await assertCombinedShiftMeters(client,kind,data,null,meterBatch);
        const id=(await client.query("SELECT nextval(pg_get_serial_sequence('mis_log_books','id')) AS id")).rows[0].id;
        const bookNo=kind==='vehicle'?await allocateVlbCardNumber(client,data):formatBookNumber(kind,data.bookDate,(await client.query('INSERT INTO mis_log_book_counters(book_type,book_date,last_number) VALUES($1,$2,1) ON CONFLICT(book_type,book_date) DO UPDATE SET last_number=mis_log_book_counters.last_number+1 RETURNING last_number',[kind,data.bookDate])).rows[0].last_number);
        const result=await client.query('INSERT INTO mis_log_books(id,book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[id,bookNo,kind,data.bookDate,data.location,data.assetId,JSON.stringify(data),requestKey,createdBy]);
@@ -144,15 +183,23 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
 }
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session)}){
  let ready;
- const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA).catch(error=>{ready=null;throw error}));
+ const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
  const batchScope=protect[2];
- registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers});
+ registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane:reportLane});
+ const attendanceAccess=(req,res,next)=>{
+  const kind=req.method==='POST'?req.body?.kind:req.query?.kind;
+  const page=kind==='vehicle'?'Vehicle Log Book':kind==='equipment'?'Equipment Log Book':'';
+  if(page&&misPageAllowed(req.session,page))return next();
+  return requireAdministrator(req,res,next);
+ };
+ registerShiftAttendance(app,{pool,protect:[requireSession,attendanceAccess,batchScope],ensureBooks:ensure});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
- registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor)=>applyBreakdownHours(data,{readHours,actor})},approvalOtp});
+ registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure,lane:reportLane});
+ registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
  app.get('/api/reports/operations',...protect,async(req,res,next)=>{
@@ -161,7 +208,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const valid=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
      if(!valid(from)||!valid(to)||to<from||(Date.parse(to)-Date.parse(from))/86400000>365)return res.status(400).json({error:'Choose a valid date range of at most 366 days.'});
      await ensure();
-     const sourceRecords=(await pool.query('SELECT id,book_no,book_type,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 ORDER BY book_date,id',[from,to])).rows;
+     const sourceRecords=(await pool.query("SELECT id,book_no,book_type,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 AND book_type IN ('vehicle','equipment') ORDER BY book_date,id",[from,to])).rows;
      const visibleRecords=sourceRecords.filter(r=>siteAllowed(req.logBookScope,r.data.location));
      const permittedSites=await filterLogBookSites(pool,req.logBookScope);
      const linked=await withVlbTripHandovers(pool,visibleRecords.filter(r=>r.book_type==='vehicle'),permittedSites);
@@ -170,43 +217,64 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r)}));
      const shifts=masters.filter(r=>r.master_name==='Shift Master').map(({id,record_data:r})=>({id:String(id),name:text(r.shiftName||r.name||r.shift),site:text(r.site||r.siteName)}));
      const exists=(await pool.query("SELECT to_regclass('mis_scan_cards') AS cards,to_regclass('mis_scan_batches') AS batches")).rows[0];
-     const scanRows=exists?.cards&&exists?.batches?(await pool.query("SELECT c.id,c.filename,c.status,c.draft,c.error,c.logbook_id,l.book_no,b.kind,to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') AS scanned_date FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE c.draft->>'bookDate' BETWEEN $1 AND $2 OR to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') BETWEEN $1 AND $2 OR c.draft ? '__caliberUtf8JsonV1' ORDER BY c.created_at,c.ordinal",[from,to])).rows:[];
+     const scanRows=exists?.cards&&exists?.batches?(await pool.query("SELECT c.id,c.filename,c.status,c.draft,c.error,c.logbook_id,l.book_no,b.kind,to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') AS scanned_date FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE COALESCE(to_jsonb(b)->'expected_context'->>'logBookKind','')<>'lmv' AND (c.draft->>'bookDate' BETWEEN $1 AND $2 OR to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') BETWEEN $1 AND $2 OR c.draft ? '__caliberUtf8JsonV1') ORDER BY c.created_at,c.ordinal",[from,to])).rows:[];
      const cards=scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(req.logBookScope,c.draft?.location);});
      res.set('Cache-Control','no-store').json({records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),cards,scanConnected:Boolean(exists?.cards&&exists?.batches)});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
- app.get('/api/log-books/options',...protect,async(req,res,next)=>{
+ app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
    try{await ensure();
-     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','Site master','Site Master','C-Dir Site & Office master','C-Dir Employee master',...woNames]]);
-     const assets=[],employees=[],shifts=[],workOrders=[],sites=new Set();const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
+     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
+     const assets=[],employees=[],shifts=[],workOrders=[],regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
-       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);if(site)sites.add(site);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),site});}
-       if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.designation||r.userGroup)});
-       if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);if(site)sites.add(site);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
-       if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
-       if(['Site master','Site Master','C-Dir Site & Office master'].includes(row.master_name)&&text(r.name||r.site||r.siteName))sites.add(text(r.name||r.site||r.siteName));
-       if(row.master_name==='Region master')for(const site of Array.isArray(r.sites)?r.sites:String(r.sites||'').split('|'))if(text(site))sites.add(text(site));
+       if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
+       if(row.master_name==='Employee master'||row.master_name==='ERP Employee master'||row.master_name==='C-Dir Employee master'||(!hasEmployees&&row.master_name==='Users & employees'))employees.push({id:String(row.id),name:text(r.employee||r.name||r.login),caliberId:employeeCode(r),caliberCode:employeeIdentity(r).caliberCode,employeeCode:text(r.employeeCode||r.erpEmployeeCode),masterName:row.master_name,site:text(r.site||r.location||r.currentLocation),designation:text(r.currentDesignationName)||text(r.designationName)||text(r.designation)||text(r.userGroup)});
+       if(row.master_name==='Shift Master'){const site=text(r.site||r.siteName);shifts.push({id:String(row.id),name:text(r.shiftName||r.name||r.shift),site,shiftCode:text(r.shiftCode),status:text(r.status),sourceMissing:Boolean(r.sourceMissing),effectiveFrom:text(r.effectiveFrom),effectiveTo:text(r.effectiveTo),startTime:text(r.startTime||r.start),endTime:text(r.endTime||r.end)});}
+       if(woNames.includes(row.master_name)&&!r.sourceMissing)workOrders.push({id:String(row.id),number:woNumber(r),jobs:workOrderJobTypes(r),status:text(r.status),site:text(r.site||r.location),workOrderDate:text(r.workOrderDate),begin:text(r.commencementDate),end:text(r.completionDate)});
+       if(row.master_name==='Region master')regionSites.push(...displaySiteSelection(r.sites));
+     }
+     const allowed=site=>siteAllowed(req.logBookScope,site);
+     const sites=displaySiteSelection(regionSites).filter(allowed).sort();
+     const siteNames=new Map(sites.map(site=>[canonicalSiteName(site),site]));
+     const siteLabel=site=>siteNames.get(canonicalSiteName(site))||displaySiteName(site);
+     const labelSites=records=>records.map(record=>({...record,site:siteLabel(record.site)}));
+     const accountLocation=siteLabel(logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)));
+     if(req.path==='/api/shift-attendance'){
+       return res.set('Cache-Control','private, no-store').json({
+        accountLocation,
+        assets:labelSites(assets.filter(r=>r.kind===req.query.kind&&allowed(r.site))),
+        employees:employees.filter(r=>displaySiteSelection(r.site).some(allowed)),
+        shifts:labelSites(shifts.filter(r=>allowed(r.site))),sites
+       });
      }
      const counterRows=(await pool.query("SELECT 'vehicle' AS kind,book_date::text AS book_day,last_number FROM mis_vlb_series_counters WHERE book_date>=$$2026-11-01$$ UNION ALL SELECT book_type AS kind,book_date::text AS book_day,last_number FROM mis_log_book_counters WHERE book_type='equipment' AND book_date>=$$2026-11-01$$")).rows;const bookNumberCounters={vehicle:{},equipment:{}};for(const r of counterRows)bookNumberCounters[r.kind][r.book_day]=Number(r.last_number);
      const vehicleCardCounters={M:{},S:{}};for(const r of (await pool.query('SELECT book_date::text AS book_day,shift,source,last_number FROM mis_vlb_card_counters WHERE book_date>=$$2026-11-01$$')).rows)vehicleCardCounters[r.source][r.book_day+'/'+r.shift]=Number(r.last_number);
-     const allowed=site=>siteAllowed(req.logBookScope,site);res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation:logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)),bookNumberCounters,vehicleCardCounters,assets:(await withEquipmentAliases(pool,assets)).filter(r=>allowed(r.site)),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:shifts.filter(r=>allowed(r.site)),sites:(req.query?.scan==='1'?REGION_DATA.flatMap(region=>region.sites):displaySiteSelection([...sites])).filter(allowed).sort(),workOrders:workOrders.filter(r=>allowed(r.site)),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
+     const scanAssets=req.query.logBookKind==='lmv'
+       ?assets.filter(asset=>asset.lmv||asset.kind==='equipment').map(asset=>asset.lmv?{...asset,kind:'vehicle'}:asset)
+       :assets;
+     res.set('Cache-Control','no-store');res.json({equipmentAliasOtp:aliasOtpEnabled(),canSelectSite:req.logBookScope.sites===null,accountLocation,bookNumberCounters,vehicleCardCounters,assets:labelSites((await withEquipmentAliases(pool,scanAssets)).filter(r=>allowed(r.site))),employees:employees.filter(r=>req.logBookScope.sites===null||displaySiteSelection(r.site).some(allowed)),shifts:labelSites(shifts.filter(r=>allowed(r.site))),sites,workOrders:labelSites(workOrders.filter(r=>allowed(r.site))),workOrderConnected:workOrders.length>0,breakdownHoursConnected:Boolean(pulseMasterSync?.status().connected)});
    }catch(error){next(error)}
  });
- const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await pool.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,shift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data;if(!asset||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:await pulseMasterSync.readBreakdownRequests({actor:input.actor}),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
+ // input.breakdownRows carries a feed read before the caller's advisory lock, and input.client
+ // the caller's transaction connection, so a save holds no second pool connection while locked.
+ const readBreakdownRows=async actor=>{if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');return pulseMasterSync.readBreakdownRequests({actor})};
+ const readHours=async(input)=>{requireOperationalDate(input.bookDate);if(!pulseMasterSync)throw new Error('Pulse breakdown connection unavailable.');const db=input.client||pool;const assetId=number(input.assetId,'Door number',{integer:true}),shiftId=number(input.shiftId,'Shift',{integer:true});const rows=(await db.query('SELECT id,master_name,record_data FROM master_records WHERE id=ANY($1::bigint[])',[[assetId,shiftId]])).rows;const asset=rows.find(r=>String(r.id)===String(assetId)&&r.master_name==='Equipment master')?.record_data,baseShift=rows.find(r=>String(r.id)===String(shiftId)&&r.master_name==='Shift Master')?.record_data,shift=input.manualEntry||input.manualShiftOverride||isManualShift(input.manualShift)?manualShiftWindow(input,baseShift,['day','night'].includes(input.manualShift)?(await db.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[]):baseShift;if(!asset||!baseShift||!shift)fail('Select valid vehicle and shift masters.');if(canonicalSiteName(asset.currentLocation||asset.site||asset.location)!==canonicalSiteName(input.location)||canonicalSiteName(shift.site||shift.siteName)!==canonicalSiteName(input.location))fail('Vehicle and shift must belong to this location.');return summarizePulseHours({rows:input.breakdownRows??await readBreakdownRows(input.actor),date:input.bookDate,site:input.location,asset,shift,shiftHours:Number(input.shiftHours),runningHours:input.runningHours==null?null:Number(input.runningHours)});};
  app.post('/api/log-books/hours',...protect,async(req,res)=>{try{requireLogBookSite(req.logBookScope,req.body.location);res.set('Cache-Control','no-store').json(await readHours({...req.body,actor:req.session.login||req.session.name}));}catch(e){res.status(e.status||400).json({error:e.message});}});
  app.get('/api/log-books/:kind',...protect,async(req,res,next)=>{
-   try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
+   try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind))return res.status(400).json({error:'Invalid log book type.'});
      const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
      const first=req.query.first==='1',last=req.query.last==='1';
+     const assetId=String(req.query.assetId??'');
+     if(assetId&&!/^\d+$/.test(assetId))return res.status(400).json({error:'Invalid equipment ID.'});
      const filters=savedLogBookFilters(req.query);
      if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
      const permittedSites=await filterLogBookSites(pool,filters.location?{sites:[canonicalSiteName(filters.location)]}:req.logBookScope);
-     const {rows}=await pool.query(`SELECT id,book_no,book_type,CASE WHEN jsonb_typeof(data->'manualAttachments')='array' THEN jsonb_set(data,'{manualAttachments}',(SELECT COALESCE(jsonb_agg(file-'data'),'[]'::jsonb) FROM jsonb_array_elements(data->'manualAttachments') file)) ELSE data END AS data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND ($4::text IS NULL OR book_no ILIKE $4 OR data->>'door' ILIKE $4 OR data->>'employeeName' ILIKE $4 OR data->>'caliberId' ILIKE $4 OR data->>'aFormNo' ILIKE $4 OR data->>'jobCardNo' ILIKE $4 OR site ILIKE $4) AND ($5::date IS NULL OR book_date>=$5::date) AND ($6::date IS NULL OR book_date<=$6::date) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites,filters.search,filters.from,filters.to]);
+     const {rows}=await pool.query(`SELECT id,book_no,book_type,CASE WHEN jsonb_typeof(data->'manualAttachments')='array' THEN jsonb_set(data,'{manualAttachments}',(SELECT COALESCE(jsonb_agg(file-'data'),'[]'::jsonb) FROM jsonb_array_elements(data->'manualAttachments') file)) ELSE data END AS data,created_at,updated_at,revision FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_type=$1 AND ($2::bigint IS NULL OR id<$2::bigint) AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND ($4::text IS NULL OR book_no ILIKE $4 OR data->>'door' ILIKE $4 OR data->>'employeeName' ILIKE $4 OR data->>'caliberId' ILIKE $4 OR data->>'aFormNo' ILIKE $4 OR data->>'jobCardNo' ILIKE $4 OR site ILIKE $4) AND ($5::date IS NULL OR book_date>=$5::date) AND ($6::date IS NULL OR book_date<=$6::date) AND ($7::bigint IS NULL OR asset_id=$7::bigint) ORDER BY id ${first?'ASC':'DESC'} LIMIT ${first||last?'1':'101'}`,[req.params.kind,before||null,permittedSites,filters.search,filters.from,filters.to,assetId||null]);
      const more=rows.length>100;const records=req.params.kind==='vehicle'?await withVlbTripHandovers(pool,rows.slice(0,100),permittedSites):rows.slice(0,100);res.set('Cache-Control','no-store').json({records,nextCursor:more?String(rows[99].id):null});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
  app.get('/api/log-books/:kind/:id/manual-attachments',...protect,async(req,res,next)=>{
-  try{await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid log book.'});
+  try{await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid log book.'});
    const record=(await pool.query('SELECT site,data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,req.params.kind])).rows[0];
    if(!record||!siteAllowed(req.logBookScope,record.site))return res.status(404).json({error:'Log book unavailable.'});
    res.set('Cache-Control','no-store').json({attachments:record.data.manualAttachments||[]});
@@ -214,35 +282,60 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  });
  app.get('/api/log-books/:kind/:id/source-image',...protect,async(req,res,next)=>{
    try{
-     await ensure();if(!['vehicle','equipment'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid saved log book.'});
+     await ensure();if(!['vehicle','equipment','lmv'].includes(req.params.kind)||!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid saved log book.'});
      const record=(await pool.query('SELECT id,site,data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,req.params.kind])).rows[0];
      if(!record||!siteAllowed(req.logBookScope,record.site))return res.status(404).json({error:'Saved scan is unavailable.'});
      if(!/^[a-f0-9-]{36}$/i.test(record.data.scanCardId||''))return res.status(404).json({error:'This record has no source scan.'});
-     const card=(await pool.query('SELECT image FROM mis_scan_cards WHERE id=$1 AND logbook_id=$2',[record.data.scanCardId,record.id])).rows[0];
+     const card=(await pool.query('SELECT image,image_blob_key,image_hash FROM mis_scan_cards WHERE id=$1 AND logbook_id=$2',[record.data.scanCardId,record.id])).rows[0];
      if(!card)return res.status(404).json({error:'Source scan is unavailable.'});
+     if(card.image_blob_key){
+       if(!imageStorage)return res.status(503).json({error:'Source scan storage is unavailable.'});
+       await imageStorage.hydrate(card);
+     }
+     if(!card.image?.length)return res.status(404).json({error:'Source scan is unavailable.'});
      res.set('Cache-Control','no-store').type(scanImageMime(card.image)).send(card.image);
    }catch(error){next(error)}
  });
  async function save(req,res,next){
    let client;
    try{
-     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body),updating=Boolean(req.params.id);
+     requireOperationalDate(req.body?.bookDate||systemBookDate());await ensure();const kind=req.params.kind,data=normalizeLogBook(kind,req.body,{manualEntry:true}),updating=Boolean(req.params.id);
      requireLogBookSite(req.logBookScope,data.location);
      const requestKey=text(req.body.requestKey||randomUUID());if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey))fail('Invalid save reference.');
      if(updating&&!/^\d+$/.test(req.params.id))fail('Invalid log book ID.');
-     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');await lockVlbBatchWrites(client);
+     // Pulse is read before any lock, so the remote call never runs while other users queue.
+     const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);
+     client=await pool.connect();await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared(709224102)');
+     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true,manualEntry:true}));
+     // The site, date and shift scope is locked before the record row, the same order the
+     // batch routes use, so a batch action and a card edit never wait on each other.
+     await lockVlbBatchScope(client,vlbRecordScope(data));
      if(updating){const prior=await client.query('SELECT site FROM mis_log_books WHERE id=$1 AND book_type=$2 AND book_date>=$$2026-11-01$$ FOR UPDATE',[req.params.id,kind]);if(prior.rows[0])requireLogBookSite(req.logBookScope,prior.rows[0].site);}
-     Object.assign(data,await resolveLogBookData(client,kind,req.body,{enforceEmployeeSite:true}));
-     await applyBreakdownHours(data,{readHours,actor:req.session.login||req.session.name});
+     await applyBreakdownHours(data,{readHours:lockedReadHours(input=>readHours({...input,client}),prefetched),actor});
 
      if(!updating)await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[requestKey]);
      let result;
+     let meterBatch=null;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='vehicle'?data.aFormNo:data.jobCardNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind,req.session.login||req.session.name);
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
-       else {if(prior)await assertElbBatchWrite(client,prior);await assertElbBatchWrite(client,data);}
-       await assertCombinedShiftHmr(client,kind,data,req.params.id);
+       else if(kind==='lmv'){
+         if(twoStageEnabled()&&prior&&vlbBatchScope(vlbRecordScope(prior))!==vlbBatchScope(vlbRecordScope(data)))fail('An existing LMV must stay in its original batch.',409);
+         await assertLmvBatchWrite(client,data);
+       }else if(kind==='equipment'){
+         const priorBatch=prior&&await assertElbBatchWrite(client,prior);
+         const batch=await assertElbBatchWrite(client,data);meterBatch=batch;
+         if(priorBatch&&batch&&priorBatch.id!==batch.id)fail('An existing ELB must stay in its original batch.',409);
+         if(prior?.entrySource==='batch-fleet'){
+           for(const key of ['entrySource','batchId','shiftStatus','statusReason','fleetTrips'])data[key]=prior[key];
+           if(batch&&String(prior.assetId)!==String(data.assetId)){
+             const fleet=await client.query('SELECT trips FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[batch.id,data.assetId]);
+             data.fleetTrips=fleet.rows[0]?.trips??0;
+           }
+         }
+       }
+       await assertCombinedShiftMeters(client,kind,data,req.params.id,meterBatch);
        const revision=number(req.body.revision,'Revision',{integer:true});
        result=await client.query('UPDATE mis_log_books SET book_date=$1,site=$2,asset_id=$3,data=$4::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$5 AND book_type=$6 AND revision=$7 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[data.bookDate,data.location,data.assetId,JSON.stringify(data),req.params.id,kind,revision]);
        if(!result.rowCount)throw Object.assign(new Error('This log book changed or is unavailable. Reload it before saving.'),{status:409});
@@ -268,7 +361,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
    let client;
    try{
      const {kind,id}=req.params;
-     if(!['vehicle','equipment'].includes(kind)||!/^\d+$/.test(id))fail('Invalid log book.');
+     if(!['vehicle','equipment','lmv'].includes(kind)||!/^\d+$/.test(id))fail('Invalid log book.');
      await ensure();
      client=await pool.connect();
      await client.query('BEGIN');
@@ -278,6 +371,16 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(!record)fail('Log book is unavailable.',404);
      requireLogBookSite(req.logBookScope,record.site);
      const actor=req.session.login||req.session.name;
+     if(kind==='lmv'){
+       if(!isMisAdministrator(req.session))fail('Only an MIS administrator can delete LMV entries.',403);
+       await assertLmvBatchWrite(client,record.data);
+       if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
+       await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
+       const scanTable=(await client.query("SELECT to_regclass('mis_scan_cards') AS name")).rows[0].name;
+       if(scanTable)await client.query("UPDATE mis_scan_cards SET review_note='Card deleted manually by user through LMV Log Book',revision=revision+1 WHERE logbook_id=$1",[id]);
+       await client.query('COMMIT');
+       return res.json({deleted:true});
+     }
      const links=kind==='vehicle'?'mis_vlb_batch_entries':'mis_elb_batch_entries';
      const batch=(await client.query('SELECT b.* FROM '+links+' e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1',[id])).rows[0];
      if(!await isOpenBatchForDeletion(client,batch,kind,actor))
@@ -285,14 +388,18 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(record.revision!==req.body?.revision)fail('This log book changed. Reload it before deleting.',409);
      await client.query('UPDATE mis_log_books SET deleted_at=NOW(),revision=revision+1 WHERE id=$1',[id]);
      await client.query('DELETE FROM '+links+' WHERE logbook_id=$1',[id]);
-     if(kind==='equipment')await client.query('UPDATE mis_vlb_batch_fleet SET logbook_id=NULL,shift_status=NULL,saved_at=NULL,saved_by=NULL WHERE batch_id=$1 AND logbook_id=$2',[batch.id,id]);
+     if(kind==='equipment')await client.query(`UPDATE mis_vlb_batch_fleet SET (logbook_id,shift_status,saved_at,saved_by)=(
+      SELECT l.id,COALESCE(NULLIF(l.data->>'shiftStatus',''),'working'),l.updated_at,l.created_by
+      FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id
+      WHERE e.batch_id=$1 AND l.asset_id=$3 AND l.deleted_at IS NULL ORDER BY l.id DESC LIMIT 1
+     ) WHERE batch_id=$1 AND logbook_id=$2`,[batch.id,id,record.asset_id]);
      await client.query('DELETE FROM mis_pulse_trip_verifications WHERE logbook_id=$1',[id]);
      await auditVlbBatch(client,batch,actor,'card_deleted',{kind,logbookId:id,revision:record.revision});
      await client.query('COMMIT');
      res.json({deleted:true});
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
  });
- return {initialize:ensure,readHours};
+ return {initialize:ensure,readHours,readBreakdownRows};
 }
 
 

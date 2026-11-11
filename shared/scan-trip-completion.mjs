@@ -20,6 +20,7 @@ function completeMachinesFromSummary(trips,summary,evidence={},summarySource='')
 // Derived values are kept separate from the literal extraction in raw_fields.
 export function completeScanTripDetails(input={},raw={}){
  raw=raw||{};
+ input=ignoreScanLoadingWithoutEquipment(input,{openingOnly:true});
  if(activeResponseRecoveryIssues(raw,input).length)return input; // Recovered loading cells still require literal review.
  const evidence=raw.gemini||raw.hybrid||{},originalRows=evidence.trips?.r||[],summaryEvidence=evidence.fields?.machineSummary||[];
  let trips=completeMachinesFromSummary((input.trips||[]).map(row=>({...row})),input.scanMachineSummary||[],summaryEvidence,input.scanMachineSummarySource);

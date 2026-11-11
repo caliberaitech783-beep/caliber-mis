@@ -31,11 +31,11 @@ test("shared tables number every row by default with the Sr. No. label and forwa
   assert.match(read("../src/table-actions.css"), /\.table-serial-header, \.table-serial-cell \{/);
 });
 
-test("report, backup and WhatsApp rule tables start with a Sr. No. column", () => {
+test("report, backup and WhatsApp rule tables include Sr. No. before data columns", () => {
   const main = read("../src/main.jsx");
-  assert.match(main, /<thead><tr>\{displayedColumns\[0\]\?\.key!=='requestShift'/);
+  assert.match(main, /<thead>(?:[\s\S]*?className="fleet-site-header"[\s\S]*?<\/tr>\})?<tr>\{rowAction&&<th className="batch-edit-action" scope="col">Action<\/th>\}\{displayedColumns\[0\]\?\.key!=='requestShift'/);
   assert.match(main, /<td className="table-serial-cell">\{firstVisibleRow \+ index\}<\/td>/);
-  assert.match(main, /colSpan=\{displayedColumns\.length \+ 1\} className="empty-state"/);
+  assert.match(main, /colSpan=\{displayedColumns\.length \+ 1 \+ Number\(Boolean\(rowAction\)\)\} className="empty-state"/);
   assert.match(read("../src/backup-administration.jsx"), /<thead><tr><th>Sr\. No\.<\/th><th>Date & time<\/th>/);
   assert.match(read("../src/backup-administration.jsx"), /history\.map\(\(row,index\)=><tr key=\{row\.id\}><td>\{index\+1\}<\/td>/);
   assert.match(read("../src/whatsapp-report-settings.jsx"), /<th scope="col">Sr\. No\.<\/th><th scope="col">Role<\/th>/);

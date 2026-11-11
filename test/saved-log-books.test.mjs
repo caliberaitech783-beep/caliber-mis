@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {savedLogBookFilters} from '../server/rules/saved-log-book-filters.mjs';
 import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
+import {createScanBlobStorage,imageHash} from '../server/services/scan-blob-storage.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
 
@@ -39,7 +40,18 @@ test('saved records filter before pagination, stay site-scoped and serve only th
   await db.query("UPDATE mis_log_books SET data=data||$1::jsonb WHERE id=$2",[JSON.stringify({scanCardId:card}),equipment]);
   const app=express();const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
   const requireSession=(req,res,next)=>{req.session={login:'site',role:'super',site:'Sasti OC',permissions:{separateMisCredentials:true,adminLevel:'Admin'}};next()};
-  registerLogBooks(app,{pool:{query},requireSession,requireAdministrator:(req,res,next)=>next()});
+  const blobKey='vehicle/'+batch+'/'+card+'.jpg';
+  let blobReads=0;
+  const imageStorage=createScanBlobStorage({account:'teststorage',container:'scanned-cards'},{
+    env:{IDENTITY_ENDPOINT:'http://identity.local',IDENTITY_HEADER:'test'},
+    fetchImpl:async url=>{
+      if(new URL(url).hostname==='identity.local')return Response.json({access_token:'test',expires_on:Date.now()/1000+3600});
+      assert.equal(url,'https://teststorage.blob.core.windows.net/scanned-cards/'+blobKey);
+      blobReads++;
+      return new Response(image);
+    },
+  });
+  registerLogBooks(app,{pool:{query},requireSession,requireAdministrator:(req,res,next)=>next(),imageStorage});
   app.use((error,req,res,next)=>res.status(error.status||500).json({error:error.message}));
   const server=app.listen(0);t.after(()=>{server.closeAllConnections();server.close()});
   const get=route=>fetch('http://127.0.0.1:'+server.address().port+route);
@@ -53,6 +65,15 @@ test('saved records filter before pagination, stay site-scoped and serve only th
   assert.equal((await get('/api/log-books/vehicle?location=Jayant%20OC')).status,403);
   assert.equal((await get('/api/log-books/vehicle?from=2026-02-30')).status,400);
   const source=await get('/api/log-books/vehicle/'+target+'/source-image');assert.equal(source.status,200);assert.match(source.headers.get('content-type'),/image\/jpeg/);assert.deepEqual(Buffer.from(await source.arrayBuffer()),image);
+  assert.equal(blobReads,0);
+  await db.query('UPDATE mis_scan_cards SET image=NULL,image_blob_key=$2,image_hash=$3 WHERE id=$1',[card,blobKey,imageHash(image)]);
+  const blobSource=await get('/api/log-books/vehicle/'+target+'/source-image');
+  assert.equal(blobSource.status,200);
+  assert.equal(blobSource.headers.get('content-type'),'image/jpeg');
+  assert.deepEqual(Buffer.from(await blobSource.arrayBuffer()),image);
   assert.equal((await get('/api/log-books/vehicle/'+other+'/source-image')).status,404);
   assert.equal((await get('/api/log-books/equipment/'+equipment+'/source-image')).status,404,'cannot borrow another record’s scan');
+  assert.equal(blobReads,1,'only the associated record reads the stored scan');
+  await db.query('UPDATE mis_scan_cards SET image_blob_key=NULL WHERE id=$1',[card]);
+  assert.equal((await get('/api/log-books/vehicle/'+target+'/source-image')).status,404,'a missing image is reported as unavailable');
 });

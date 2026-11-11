@@ -1,6 +1,7 @@
 import {recordCountLabel} from './iboss-record-count.mjs';
 import {createAccountPageLoader} from './iboss-account-loader.mjs';
 import React,{useEffect,useMemo,useState,useRef} from 'react';
+import {useStepBackTarget} from './step-back-registry.mjs';
 import {accountPrivileges} from '../shared/account-role-access.mjs';
 import {BookUser,Contact,Wallet,Landmark,Network,Settings,BookOpen,Percent,ArrowLeft,RefreshCw} from 'lucide-react';
 import {ACCOUNT_VIEWS,ACCOUNT_SECTIONS} from '../shared/iboss-accounts.mjs';
@@ -48,6 +49,7 @@ export default function IbossAccounts({token,ReportSection,initialSection='dashb
  const refresh=event=>{event.preventDefault();try{if(definition.dated)purchaseOrderRange(draft.from,draft.to);if(definition.asOf)purchaseOrderRange(draft.to,draft.to);setValidation('');setRange({...draft});setAttempt(value=>value+1);}catch(error){setValidation(error.message);}};
  const changeSection=(next,focus=false)=>{if(!visibleSections.some(([key])=>key===next))return;setSection(next);setView('');setValidation('');if(focus)queueMicrotask(()=>document.getElementById(`accounts-tab-${next}`)?.focus());};
  const sectionKeyDown=event=>{if(!visibleSections.length||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const index=visibleSections.findIndex(([key])=>key===section),last=visibleSections.length-1;changeSection(visibleSections[event.key==='Home'?0:event.key==='End'?last:event.key==='ArrowLeft'?(index+last)%visibleSections.length:(index+1)%visibleSections.length][0],true);};
+ useStepBackTarget(view?()=>{setView('');setValidation('');}:null);
  if(!visibleSections.length)return <section className="iboss-accounts"><h1>Accounts</h1><p>No Accounts privileges are assigned. Contact your administrator.</p></section>;
  return <section className="reports-workspace stock-statement iboss-accounts">
   <h1><Landmark aria-hidden="true"/> Accounts</h1>

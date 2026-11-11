@@ -37,7 +37,7 @@ test('site PM OTP unlocks VLB and reopens a closed batch; a PM may approve their
  const id=created.data.id,path='/'+id;
  assert.equal(created.data.stage,'vlb_open');assert.deepEqual(created.data.approvalOtps,[]);
  assert.equal((await call(path+'/approval-otp','POST',{purpose:'unlock_vlb',reason:'Wrong tipper on card 12'})).status,409,'nothing to unlock before Lock VLB');
- const locked=await call(path+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));assert.equal(locked.data.stage,'elb_open');
+ const locked=await call(path+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));assert.equal(locked.data.stage,'lmv_open');
  assert.equal(locked.data.canUnlockVlb,false);assert.equal(locked.data.canRequestUnlockOtp,true,'the MIS owner may ask the PM for an unlock OTP');
  assert.equal((await call(path,'GET',undefined,'pm')).data.canUnlockVlb,true);assert.equal((await call(path,'GET',undefined,'pm')).data.canRequestUnlockOtp,false,'the PM unlocks directly');
 
@@ -62,6 +62,7 @@ test('site PM OTP unlocks VLB and reopens a closed batch; a PM may approve their
 
  // Close, then reopen by OTP
  assert.equal((await call(path+'/lock-vlb','POST',{})).status,200);
+ assert.equal((await call(path+'/lock-lmv','POST',{})).status,200);
  const closed=await call(path+'/close','POST',{});assert.equal(closed.status,200,JSON.stringify(closed.data));assert.ok(closed.data.closed_at);assert.equal(closed.data.stage,'closed');
  assert.equal((await call(path+'/approval-otp','POST',{purpose:'unlock_vlb',reason:'Wrong tipper on card 12'})).status,409,'closed batches reopen first');
  assert.equal((await call(path+'/approval-otp','POST',{purpose:'reopen',reason:'Late scan card received'},'pm')).status,403,'PMs do not request reopening');
@@ -81,7 +82,7 @@ test('site PM OTP unlocks VLB and reopens a closed batch; a PM may approve their
  const blockedOtp=await call(path+'/approval-otp','POST',{purpose:'reopen',reason:'Second correction after closure'});assert.equal(blockedOtp.status,200,JSON.stringify(blockedOtp.data));
  const blocked=await call(path+'/approval-otp/'+blockedOtp.data.otp.id+'/verify','POST',{otp:sent[2].otp});
  assert.equal(blocked.status,200,JSON.stringify(blocked.data));assert.equal(blocked.data.approved,true);assert.equal(blocked.data.reopened,false);assert.match(blocked.data.error,/Close the open batch/);assert.ok(blocked.data.batch.closed_at);assert.equal(blocked.data.batch.canReopen,true,'the approval is kept for the Reopen button');
- assert.equal((await call('/'+other.data.id+'/lock-vlb','POST',{},'bob')).status,200);assert.equal((await call('/'+other.data.id+'/close','POST',{},'bob')).status,200);
+ assert.equal((await call('/'+other.data.id+'/lock-vlb','POST',{},'bob')).status,200);assert.equal((await call('/'+other.data.id+'/lock-lmv','POST',{},'bob')).status,200);assert.equal((await call('/'+other.data.id+'/close','POST',{},'bob')).status,200);
  const later=await call(path+'/reopen','POST',{});assert.equal(later.status,200,JSON.stringify(later.data));assert.equal(later.data.closed_at,null);
  assert.equal((await call(path+'/close','POST',{})).status,200);
 

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {PGlite} from '@electric-sql/pglite';
 import {hashPassword,verifyPassword} from '../server/services/password-auth.mjs';
-import {applyPulseSnapshot,createPulseMasterSync,validatePulseSnapshot,PULSE_MASTER_NAMES} from '../server/routes/pulse-master-sync.mjs';
+import {applyPulseSnapshot,createPulseMasterSync,validatePulseSnapshot,PULSE_MASTER_NAMES,PULSE_LMV_MASTER} from '../server/routes/pulse-master-sync.mjs';
 
 async function fixture(t){
  const db=new PGlite();t.after(()=>db.close());
@@ -14,6 +14,54 @@ async function fixture(t){
  return {db,pool:{query,connect:async()=>({query,release(){}})}};
 }
 const snapshot=(door='EQ-1')=>({'Equipment master':[{id:5,door,chassis:'CH-1'}],'Region master':[{id:7,name:'West',code:'WCL'}],'Shift Master':[{id:9,name:'A Shift',start:'06:00'}]});
+
+test('LMV snapshots adopt imported LMVs, skip demos and track their own source IDs',async t=>{
+ const {db,pool}=await fixture(t);
+ const {rows:[local]}=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[
+   JSON.stringify({category:'LMV',chassis:'LMV-CHASSIS'}),
+ ]);
+ const records=[
+   {id:5,category:'Other vehicles',chassisNo:'LMV-CHASSIS',reg:'LMV-REG',asset:'LMV-ASSET'},
+   {id:6,door:'DEMO-LMV-WCL-1',demo:true},
+ ];
+ const syncLmv=rows=>applyPulseSnapshot(pool,{[PULSE_LMV_MASTER]:rows},[PULSE_LMV_MASTER]);
+ await applyPulseSnapshot(pool,snapshot());
+ await syncLmv(records);
+ records[0].currentLocation='Updated site';
+ await syncLmv(records);
+ await applyPulseSnapshot(pool,snapshot('EQ-UPDATED'));
+ const rows=async()=>(await db.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master' ORDER BY id")).rows;
+ assert.deepEqual(await rows(),[
+   {id:local.id,record_data:{category:'LMV',chassisNo:'LMV-CHASSIS',reg:'LMV-REG',registration:'LMV-REG',asset:'LMV-ASSET',assetNo:'LMV-ASSET',currentLocation:'Updated site'}},
+   {id:local.id+1,record_data:{door:'EQ-UPDATED',chassis:'CH-1'}},
+ ]);
+ await assert.rejects(applyPulseSnapshot(pool,snapshot(),[PULSE_LMV_MASTER]),/did not return its LMV Master/);
+ assert.equal((await rows()).length,2);
+ await syncLmv([]);
+ assert.deepEqual((await rows()).map(row=>row.record_data.door),['EQ-UPDATED']);
+});
+
+test('startup automatically requests the separate LMV master using the saved Pulse account',async t=>{
+ const {pool}=await fixture(t),calls=[];
+ let finishStartup;
+ const startupFinished=new Promise(resolve=>{finishStartup=resolve});
+ const service=createPulseMasterSync({
+   pool,credentialStore:{read:async key=>key==='pulse-session'?{token:'test-session'}:null},
+   onSnapshot:finishStartup,
+   fetchImpl:async(url,{headers})=>{
+     assert.equal(headers.Authorization,'Bearer test-session');
+     const names=new URL(url).searchParams.get('names');
+     calls.push(names);
+     return Response.json(names===PULSE_LMV_MASTER?{[PULSE_LMV_MASTER]:[{id:5,door:'LMV-1'}]}:snapshot());
+   },
+ });
+ t.after(()=>service.stop());
+ await service.start();
+ await startupFinished;
+ assert.deepEqual(calls,[PULSE_LMV_MASTER,PULSE_MASTER_NAMES.join('|')]);
+ assert.equal(service.status().counts[PULSE_LMV_MASTER],1);
+ assert.ok(service.status().lmv.lastSuccess);
+});
 
 test('source updates preserve local IDs, adopt unique local matches and delete only linked source removals',async t=>{
  const {db,pool}=await fixture(t);
@@ -39,7 +87,10 @@ test('full Pulse snapshots leave previously linked regions and local site edits 
  await db.query("INSERT INTO pulse_master_links VALUES('Region master','7',$1)",[id]);
  for(const source of [snapshot(),{...snapshot(),'Region master':[]}])await applyPulseSnapshot(pool,source);
  assert.deepEqual((await db.query("SELECT id,record_data FROM master_records WHERE master_name='Region master'")).rows,[{id,record_data:local}]);
- await assert.rejects(applyPulseSnapshot(pool,snapshot(),['Region master']),/Invalid Pulse master/);
+ await assert.rejects(applyPulseSnapshot(pool,{},['Region master']),/did not return/);
+ await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Region master','{\"name\":\"Stale\"}')");
+ await applyPulseSnapshot(pool,snapshot(),['Region master']);
+ assert.deepEqual((await db.query("SELECT id,record_data FROM master_records WHERE master_name='Region master'")).rows,[{id,record_data:{name:'West',code:'WCL'}}]);
 });
 test('a failed transaction rolls back changes across all three masters',async t=>{
  const {db,pool}=await fixture(t);await applyPulseSnapshot(pool,snapshot());

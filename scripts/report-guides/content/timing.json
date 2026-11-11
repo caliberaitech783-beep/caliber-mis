@@ -1,0 +1,654 @@
+{
+  "id": "timing",
+  "group": "Trips & Productivity",
+  "title": "Trip Timing & Gap Report",
+  "menu": "Reports → Trips & Productivity → Trip Timing & Gap Report",
+  "en": {
+    "purpose": "Shows how long the trips of the saved Vehicle Log Books took, in two views: from loading to unloading of a trip, and from unloading to the loading of the next trip. Every time above 15 minutes is counted as a delay in one of three bands (15 to 20, 20 to 30 and 30+ minutes), by site, driver, door number and loading machine. A third view, All trip rows, lists every trip row with its times.",
+    "row": "In the two delay views a row changes as you go step by step: one site, then one date and shift of that site, then one driver (or one door number or one loading machine) of that shift, then one delayed trip, then one trip row of the card. In All trip rows, one row is one trip row of one saved Vehicle Log Book. A trip row can hold more than one trip.",
+    "filters": [
+      [
+        "From / To",
+        "First and last date to include, by the Book Date of the log book. From starts on the 1st of the current month and To on today's date. Dates before 01-11-2026 cannot be chosen, From must not be after To, and the range can be at most 366 days. If the dates are not valid, the screen shows \"Choose a valid date range of at most 366 days.\" and no data is loaded. Changing a date loads the data again."
+      ],
+      [
+        "Site",
+        "Keeps only the log books of one site. \"All\" keeps every site your login can see. Once a site is chosen, the Shift, Vehicle / equipment, Driver / operator and Work order lists show only that site's entries."
+      ],
+      [
+        "Shift",
+        "Keeps only the log books of the chosen shift. Every shift in the list belongs to one site, so shifts of the same name at two sites appear as separate entries. Choose Site first, then Shift."
+      ],
+      [
+        "Vehicle / equipment",
+        "Keeps only the log books of the chosen vehicle. It does not choose the loading equipment; use Loading equipment for that."
+      ],
+      [
+        "Driver / operator",
+        "Keeps only the log books saved in the name of the chosen person. The list has only the people found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Work order",
+        "Keeps only the log books saved against the chosen work order. The list has only the work orders found on the log books and scan cards of the chosen dates."
+      ],
+      [
+        "Loading equipment",
+        "Keeps only the trip rows loaded by the chosen loading equipment. It changes the table and the \"report rows\" count only; the logbooks, assets and trips counts above the table do not change."
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "Drop-down at the top with every report, listed under its group. Choosing a name opens that report."
+      ],
+      [
+        "Saved operational records",
+        "Line under the report name. It repeats the From and To dates in use."
+      ],
+      [
+        "Refresh",
+        "Loads the saved log books again for the same dates. Press it when log books were saved or corrected after the report was opened. While data is loading the button cannot be pressed and \"Loading complete report data…\" is shown."
+      ],
+      [
+        "Filters:",
+        "One line listing the selectors that are set. With none set it reads \"All sites, assets, shifts and employees\". The line uses short names: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder and loading. For shift, asset and employee it shows the record number of the choice, not its name."
+      ],
+      [
+        "logbooks",
+        "Number of saved log books, VLB and ELB together, that match the dates and filters."
+      ],
+      [
+        "assets",
+        "Number of different vehicles and equipment on those log books."
+      ],
+      [
+        "trips",
+        "Total trips on those log books."
+      ],
+      [
+        "report rows",
+        "Number of rows in the table below."
+      ],
+      [
+        "Loading → Unloading",
+        "First view button. It counts the minutes from the loading time to the unloading time of the same trip row. The report opens on this view."
+      ],
+      [
+        "Unloading → next Loading",
+        "Second view button. It counts the minutes from the unloading time of one trip row to the loading time of the next trip row on the same card."
+      ],
+      [
+        "All trip rows",
+        "Third view button. It shows the plain list of every trip row with L. time, U. time, Elapsed (min) and GAP (min)."
+      ],
+      [
+        "Step trail",
+        "Line under the view buttons, for example All sites › SITE › 05-11-26 · Shift 1 › DRIVER › book number. It shows where you are. Press an earlier name to go back to that step. The violet Back button at the start of this line, and the one beside Search this report, go back one step; while a step is open, the round back arrow at the top of the page does the same. Long column headings are written on two lines. Drag the right edge of a column heading to make the column wider or narrower, double-click the edge to fit it again; Reset table under Actions puts every column back."
+      ],
+      [
+        "Yellow line",
+        "One sentence above the table: how many of the timed trips (or gaps) were above 15 minutes, the percentage, the count in each band, and how many could not be judged."
+      ],
+      [
+        "Step 1 · All sites",
+        "One line per site and a last line ALL SITES. Press a site to open Step 2. Press a coloured number to open Step 2 with only the shifts that have that band."
+      ],
+      [
+        "Driver-wise / Door no.-wise / Loading machine-wise",
+        "Three buttons in Step 3. They show the same delays counted by driver, by vehicle door number or by loading machine."
+      ],
+      [
+        "Band buttons",
+        "All over 15 min, 15 to 20 min, 20 to 30 min and 30+ min, each with its count. In Step 2, Step 3 and Step 4 they keep only the chosen band. Press All over 15 min to see every band again."
+      ],
+      [
+        "Step 2",
+        "The chosen site date by date and shift by shift: one line per date and shift, newest first, and a last line ALL DATES. Press a line to open Step 3 for that shift. Press the last line to see the drivers for all the dates together."
+      ],
+      [
+        "Step 3",
+        "One line per driver (or door, or loading machine) of the chosen date and shift, the one with the most delays first, and a last line TOTAL. All the bands of a driver are on his one line, and the column \"Also over 15 min in ...\" adds his delays in the other view. Press a line to open Step 4. Press a coloured number to open Step 4 with that band only."
+      ],
+      [
+        "Step 4",
+        "Every delayed trip (or gap) behind the chosen line, newest first, with date, shift, book number, door number, trip serial, loading machine, the two times and the minutes. Press a line to open its card."
+      ],
+      [
+        "Step 5 · Trip card",
+        "Every trip row of that one Vehicle Log Book in order, with both timings side by side, so that a delay can be seen against the rest of the shift."
+      ],
+      [
+        "How this report counts",
+        "Press it to open the counting rules under the table."
+      ],
+      [
+        "Notice in All trip rows",
+        "\"Elapsed times cover each recorded row. Rows may represent multiple trips; they are not individual trip cycle times. First-row gaps are unavailable.\" It says that Elapsed (min) is for the whole row, that a row can hold more than one trip, and that the first row of a log book has no gap."
+      ],
+      [
+        "No matching records or exceptions found.",
+        "Shown inside the table when nothing matches the dates and filters."
+      ]
+    ],
+    "columns": [
+      [
+        "Date / Shift",
+        "Step 2. The Book Date and the shift saved on the cards. One line is one shift of one date at the chosen site."
+      ],
+      [
+        "Drivers with a delay",
+        "Delay views, Step 1. Number of different drivers of the site with at least one time above 15 minutes."
+      ],
+      [
+        "Trips timed / Gaps timed",
+        "Number of trip rows (or gaps) where both times are written and the time could be worked out. This is the base for the percentage."
+      ],
+      [
+        "Within 15 min",
+        "Times of 15 minutes or less. These are not delays."
+      ],
+      [
+        "15 to 20 min",
+        "Times of more than 15 and up to 20 minutes. Shown in yellow."
+      ],
+      [
+        "20 to 30 min",
+        "Times of more than 20 and up to 30 minutes. Shown in orange."
+      ],
+      [
+        "30+ min",
+        "Times of more than 30 minutes. Shown in red."
+      ],
+      [
+        "Total over 15 min",
+        "The three bands added together."
+      ],
+      [
+        "% over 15 min",
+        "Total over 15 min divided by Trips timed (or Gaps timed)."
+      ],
+      [
+        "Longest (min)",
+        "The longest single time on that line, in minutes."
+      ],
+      [
+        "Also over 15 min in Unloading → next Loading / in Loading → Unloading",
+        "The number of delays the same line has in the other view. A driver who is late in both views shows both on his one line."
+      ],
+      [
+        "Not judged",
+        "Rows that could not be timed: a time is not written, the card was saved without trip times, or the time works out longer than a shift. They are never counted as delays."
+      ],
+      [
+        "Drivers on it / Vehicles loaded",
+        "Door no.-wise: number of drivers who drove that vehicle. Loading machine-wise: number of vehicles that machine loaded."
+      ],
+      [
+        "Minutes taken / Gap minutes",
+        "Step 4. The minutes of that delayed trip or gap, in the colour of its band."
+      ],
+      [
+        "Unloaded at (previous trip) / Loaded again at",
+        "Step 4 of Unloading → next Loading. The unloading time of the trip before, and the loading time of this trip."
+      ],
+      [
+        "Band",
+        "Step 4. The band of that row in words."
+      ],
+      [
+        "Loading → Unloading (min) / Unloading → this loading (min)",
+        "Step 5. Both timings of every trip row of the card. A time above 15 minutes is coloured."
+      ],
+      [
+        "Remark",
+        "Step 5. Says when a row is the first trip of the card (no gap before it) or why a row could not be judged."
+      ],
+      [
+        "Date",
+        "Book Date of the log book. On screen it shows as DD-MM-YY, for example 13-12-26."
+      ],
+      [
+        "Site",
+        "Site saved on the log book."
+      ],
+      [
+        "Book NO",
+        "Book number the system gave when the log book was saved. A number that begins with VLB_M is a typed entry; one that begins with VLB_S came from a scanned card."
+      ],
+      [
+        "Door NO",
+        "Door number of the vehicle, for example V9001."
+      ],
+      [
+        "Caliber ID",
+        "Employee ID of the driver on the log book, for example CMPL90001."
+      ],
+      [
+        "Employee",
+        "Name of the driver on the log book, for example SAMPLE DRIVER 01."
+      ],
+      [
+        "Shift",
+        "Shift name saved on the log book."
+      ],
+      [
+        "Tr.Sr.No",
+        "Serial number of the trip row. It is the serial saved with the row; if none was saved, it is the position of the row in the log book (1, 2, 3 and so on)."
+      ],
+      [
+        "Equipment",
+        "Loading equipment written in the trip row."
+      ],
+      [
+        "Trips",
+        "Number of trips written in this trip row."
+      ],
+      [
+        "L. time",
+        "Loading time of the row in 24-hour time, for example 05:20. Blank if not saved."
+      ],
+      [
+        "U. time",
+        "Unloading time of the row in 24-hour time. Blank if not saved."
+      ],
+      [
+        "Elapsed (min)",
+        "Minutes from L. time to U. time of the same row. If U. time is earlier than L. time, it is taken as the next day. Blank if either time is missing or the log book was saved without trip times."
+      ],
+      [
+        "GAP (min)",
+        "Minutes from the U. time of the previous row of the same log book to the L. time of this row. Blank for the first row of every log book, when either of those two times is missing, and for log books saved without trip times."
+      ]
+    ],
+    "notes": [
+      "15 minutes or less is not a delay. Exactly 20 minutes falls in 15 to 20 min, and exactly 30 minutes falls in 20 to 30 min.",
+      "The first trip of a card has no gap before it, so Unloading → next Loading has fewer rows than Loading → Unloading.",
+      "A row with a time not written is shown under Not judged. It is not a delay and it is not in the percentage.",
+      "Tea and meal breaks are not removed. A break between two trips shows as a gap in Unloading → next Loading.",
+      "Times that cross 12 at night are counted forward: 23:55 to 00:07 is 12 minutes.",
+      "A delay is counted against the driver named on the card and against the loading machine written on the row being loaded.",
+      "In the delay views, Loading equipment keeps only the trip rows loaded by that machine. Step 5 always shows the whole card.",
+      "A site written in different spellings on the cards (for example \"Majri OB\" and \"majri ob\") is shown as one site in the delay views.",
+      "Only Vehicle Log Books are used. LMV log books and deleted log books are not shown.",
+      "When Trips is more than 1, Elapsed (min) covers all the trips of that row together. It is not the time of one trip.",
+      "GAP (min) is worked out inside one log book only. The gap between the last row of one log book and the first row of the next is not shown.",
+      "GAP (min) is saved with the log book. When Loading equipment hides some rows, each gap still refers to the row just before it in the log book.",
+      "The counts \"logbooks\", \"assets\" and \"trips\" above the table take all matching log books, VLB and ELB together. They do not change with Loading equipment.",
+      "\"Reset table\" in the Actions menu of the table also puts From back to the 1st of the current month and To back to today's date."
+    ],
+    "checklist": [
+      "Set From and To, and choose Site if you want one site only.",
+      "Press Loading → Unloading. Read the yellow line, then the site lines.",
+      "Press a site. You get one line for every date and shift. Press the shift you want to check.",
+      "The driver with the most delays in that shift is on top, with all his bands on one line. Read the column \"Also over 15 min in ...\" to see his delays in the other view.",
+      "Press the driver. Note the Book no. and Tr.Sr.No of each delayed trip, and press the line to see the whole card.",
+      "Compare the loading and unloading times of doubtful rows with the paper trip card.",
+      "Press Unloading → next Loading and do the same. In Step 3 press Loading machine-wise: if many vehicles wait at the same machine, the delay is at the machine and not with one driver.",
+      "Look at Not judged. Get the missing times written on those cards so that they are counted next time."
+    ],
+    "faq": [
+      [
+        "How do I see one driver for the whole period, not one shift?",
+        "In Step 2 press the last line, ALL DATES. Step 3 then lists the drivers for all the dates and shifts together."
+      ],
+      [
+        "Why is Trips timed less than the trips of the driver?",
+        "Rows with a time not written, and cards saved without trip times, are under Not judged. Trips timed + Not judged = all his trip rows."
+      ],
+      [
+        "A long gap was the meal break. Is it still counted?",
+        "Yes. Breaks are not removed. Open the card in Step 5 and read the times to judge it."
+      ],
+      [
+        "Why does a driver appear under a loading machine that was slow?",
+        "The gap before a loading is counted against the loading machine written on that row. Use Loading machine-wise to see whether the wait repeats at one machine."
+      ],
+      [
+        "What does \"longer than a shift\" mean in Remark?",
+        "The two times give more than 12 hours, which happens when a time is written wrongly. The row is not judged; correct the card."
+      ],
+      [
+        "Why is GAP (min) blank on the first row of a log book?",
+        "A gap needs the unloading time of the row before it in the same log book. The first row has no row before it."
+      ],
+      [
+        "Why are L. time, U. time, Elapsed (min) and GAP (min) all blank for a log book?",
+        "That log book was saved without trip times. Only the loading equipment and the number of trips were entered."
+      ],
+      [
+        "Why is Elapsed (min) very large on a row?",
+        "Either the row holds several trips, or its U. time is earlier than its L. time and was taken as the next day. Check Trips and both times on the trip card."
+      ],
+      [
+        "Does one row mean one trip?",
+        "Not always. The Trips column shows how many trips the row holds."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "सेव Vehicle Log Book की ट्रिप में कितना समय लगा, यह दो तरह से दिखाती है: एक ट्रिप के लोडिंग से अनलोडिंग तक, और अनलोडिंग से अगली ट्रिप की लोडिंग तक। 15 मिनट से ज़्यादा का हर समय देरी गिना जाता है और तीन बैंड में बँटता है (15 से 20, 20 से 30 और 30 से ज़्यादा मिनट), साइट, ड्राइवर, डोर नंबर और लोडिंग मशीन के हिसाब से। तीसरा व्यू All trip rows हर ट्रिप पंक्ति को उसके समय के साथ दिखाता है।",
+    "row": "देरी वाले दोनों व्यू में पंक्ति हर चरण पर बदलती है: पहले एक साइट, फिर उस साइट की एक तारीख़ और शिफ़्ट, फिर उस शिफ़्ट का एक ड्राइवर (या एक डोर नंबर या एक लोडिंग मशीन), फिर एक देरी वाली ट्रिप, फिर कार्ड की एक ट्रिप पंक्ति। All trip rows में एक पंक्ति का मतलब है एक सेव Vehicle Log Book की एक ट्रिप पंक्ति। एक ट्रिप पंक्ति में एक से ज़्यादा ट्रिप हो सकती हैं।",
+    "filters": [
+      [
+        "From / To",
+        "लॉग बुक की Book Date के हिसाब से पहली और आख़िरी तारीख़। खुलते समय From में चालू महीने की 1 तारीख़ और To में आज की तारीख़ होती है। 01-11-2026 से पहले की तारीख़ नहीं चुनी जा सकती, From की तारीख़ To के बाद की नहीं हो सकती, और अवधि ज़्यादा से ज़्यादा 366 दिन की हो सकती है। तारीख़ें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" लिखा आता है और डेटा नहीं आता। तारीख़ बदलते ही डेटा दोबारा आता है।"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट की लॉग बुक रखता है। \"All\" पर वे सभी साइट आती हैं जो आपके लॉगिन को दिखती हैं। साइट चुनने के बाद Shift, Vehicle / equipment, Driver / operator और Work order की सूची में सिर्फ़ उसी साइट के नाम आते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ चुनी हुई Shift की लॉग बुक रखता है। सूची की हर Shift किसी एक साइट की होती है, इसलिए दो साइट की एक ही नाम की Shift सूची में अलग-अलग आती हैं। पहले Site चुनें, फिर Shift।"
+      ],
+      [
+        "Vehicle / equipment",
+        "सिर्फ़ चुनी हुई गाड़ी की लॉग बुक रखता है। इससे लोडिंग मशीन नहीं चुनी जाती; उसके लिए Loading equipment का इस्तेमाल करें।"
+      ],
+      [
+        "Driver / operator",
+        "सिर्फ़ चुने हुए व्यक्ति के नाम पर सेव लॉग बुक रखता है। सूची में वही लोग आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Work order",
+        "सिर्फ़ चुने हुए वर्क ऑर्डर पर सेव लॉग बुक रखता है। सूची में वही वर्क ऑर्डर आते हैं जो चुनी हुई तारीख़ों की लॉग बुक या स्कैन कार्ड पर हैं।"
+      ],
+      [
+        "Loading equipment",
+        "सिर्फ़ उन ट्रिप पंक्तियों को रखता है जिनमें चुनी हुई लोडिंग मशीन लिखी है। इससे सिर्फ़ तालिका और \"report rows\" की गिनती बदलती है; तालिका के ऊपर की logbooks, assets और trips की गिनती नहीं बदलती।"
+      ]
+    ],
+    "screen": [
+      [
+        "Report",
+        "ऊपर की ड्रॉप-डाउन सूची, जिसमें सभी रिपोर्ट अपने ग्रुप के नीचे लिखी हैं। नाम चुनने पर वह रिपोर्ट खुलती है।"
+      ],
+      [
+        "Saved operational records",
+        "रिपोर्ट के नाम के नीचे की लाइन। इसमें चालू From और To तारीख़ें लिखी रहती हैं।"
+      ],
+      [
+        "Refresh",
+        "उन्हीं तारीख़ों की सेव लॉग बुक दोबारा लाता है। रिपोर्ट खोलने के बाद कोई लॉग बुक सेव या ठीक हुई हो तो इसे दबाएँ। डेटा आते समय यह बटन नहीं दबता और \"Loading complete report data…\" लिखा दिखता है।"
+      ],
+      [
+        "Filters:",
+        "एक लाइन जिसमें लगे हुए फ़िल्टर लिखे रहते हैं। कोई फ़िल्टर न लगा हो तो \"All sites, assets, shifts and employees\" लिखा आता है। इस लाइन में छोटे नाम आते हैं: site, shift, asset (Vehicle / equipment), employee (Driver / operator), workOrder और loading। shift, asset और employee के आगे चुने हुए नाम की जगह उसका रिकॉर्ड नंबर दिखता है।"
+      ],
+      [
+        "logbooks",
+        "तारीख़ों और फ़िल्टर से मेल खाती सेव लॉग बुक की गिनती, VLB और ELB दोनों मिलाकर।"
+      ],
+      [
+        "assets",
+        "उन लॉग बुक में कितनी अलग-अलग गाड़ियाँ और मशीनें हैं।"
+      ],
+      [
+        "trips",
+        "उन लॉग बुक की कुल ट्रिप।"
+      ],
+      [
+        "report rows",
+        "नीचे की तालिका में पंक्तियों की गिनती।"
+      ],
+      [
+        "Loading → Unloading",
+        "पहले व्यू का बटन। यह एक ही ट्रिप पंक्ति के लोडिंग समय से अनलोडिंग समय तक के मिनट गिनता है। रिपोर्ट इसी व्यू पर खुलती है।"
+      ],
+      [
+        "Unloading → next Loading",
+        "दूसरे व्यू का बटन। यह एक ट्रिप पंक्ति के अनलोडिंग समय से उसी कार्ड की अगली ट्रिप पंक्ति के लोडिंग समय तक के मिनट गिनता है।"
+      ],
+      [
+        "All trip rows",
+        "तीसरे व्यू का बटन। इसमें हर ट्रिप पंक्ति की सीधी सूची आती है, L. time, U. time, Elapsed (min) और GAP (min) के साथ।"
+      ],
+      [
+        "चरणों की लाइन",
+        "व्यू के बटनों के नीचे की लाइन, जैसे All sites › साइट › 05-11-26 · Shift 1 › ड्राइवर › बुक नंबर। इससे पता चलता है कि आप किस चरण पर हैं। पिछले चरण पर लौटने के लिए उसका नाम दबाएँ। इस लाइन की शुरुआत का बैंगनी Back बटन, और Search this report के पास वाला Back बटन, एक चरण पीछे ले जाते हैं; जब कोई चरण खुला हो, तो पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है। लंबे कॉलम शीर्षक दो लाइनों में लिखे जाते हैं। कॉलम को चौड़ा या पतला करने के लिए उसके शीर्षक का दायाँ किनारा खींचें, फिर से पहले जैसा फिट करने के लिए उस किनारे पर दो बार क्लिक करें; Actions में Reset table सभी कॉलम वापस पहले जैसे कर देता है।"
+      ],
+      [
+        "पीली लाइन",
+        "तालिका के ऊपर एक वाक्य: समय वाली कितनी ट्रिप (या गैप) 15 मिनट से ऊपर रहीं, उनका प्रतिशत, हर बैंड की गिनती, और कितनी पंक्तियाँ जाँची नहीं जा सकीं।"
+      ],
+      [
+        "Step 1 · All sites",
+        "हर साइट की एक लाइन और आख़िर में ALL SITES की लाइन। साइट दबाने पर Step 2 खुलता है। रंगीन संख्या दबाने पर Step 2 में सिर्फ़ उसी बैंड वाली शिफ़्ट आती हैं।"
+      ],
+      [
+        "Driver-wise / Door no.-wise / Loading machine-wise",
+        "Step 3 के तीन बटन। वही देरी ड्राइवर के हिसाब से, गाड़ी के डोर नंबर के हिसाब से या लोडिंग मशीन के हिसाब से गिनकर दिखाते हैं।"
+      ],
+      [
+        "बैंड के बटन",
+        "All over 15 min, 15 to 20 min, 20 to 30 min और 30+ min, हर एक अपनी गिनती के साथ। Step 2, Step 3 और Step 4 में ये सिर्फ़ चुना हुआ बैंड रखते हैं। सभी बैंड दोबारा देखने के लिए All over 15 min दबाएँ।"
+      ],
+      [
+        "Step 2",
+        "चुनी हुई साइट तारीख़ के हिसाब से और शिफ़्ट के हिसाब से: हर तारीख़ और शिफ़्ट की एक लाइन, सबसे नई पहले, और आख़िर में ALL DATES की लाइन। लाइन दबाने पर उस शिफ़्ट का Step 3 खुलता है। सभी तारीख़ों के ड्राइवर एक साथ देखने के लिए आख़िरी लाइन दबाएँ।"
+      ],
+      [
+        "Step 3",
+        "चुनी हुई तारीख़ और शिफ़्ट के हर ड्राइवर (या डोर, या लोडिंग मशीन) की एक लाइन, सबसे ज़्यादा देरी वाला सबसे ऊपर, और आख़िर में TOTAL की लाइन। ड्राइवर के सभी बैंड उसकी एक ही लाइन में होते हैं, और \"Also over 15 min in ...\" कॉलम में दूसरे व्यू की उसकी देरी भी जुड़ती है। लाइन दबाने पर Step 4 खुलता है। रंगीन संख्या दबाने पर Step 4 सिर्फ़ उसी बैंड के साथ खुलता है।"
+      ],
+      [
+        "Step 4",
+        "चुनी हुई लाइन के पीछे की हर देरी वाली ट्रिप (या गैप), सबसे नई पहले, तारीख़, शिफ़्ट, बुक नंबर, डोर नंबर, ट्रिप सीरियल, लोडिंग मशीन, दोनों समय और मिनट के साथ। लाइन दबाने पर उसका कार्ड खुलता है।"
+      ],
+      [
+        "Step 5 · Trip card",
+        "उस एक Vehicle Log Book की हर ट्रिप पंक्ति क्रम से, दोनों समय साथ-साथ, ताकि देरी को पूरी शिफ़्ट के सामने देखा जा सके।"
+      ],
+      [
+        "How this report counts",
+        "इसे दबाने पर तालिका के नीचे गिनती के नियम खुलते हैं।"
+      ],
+      [
+        "All trip rows में दिखने वाली सूचना",
+        "\"Elapsed times cover each recorded row. Rows may represent multiple trips; they are not individual trip cycle times. First-row gaps are unavailable.\" यह बताती है कि Elapsed (min) पूरी पंक्ति का समय है, एक पंक्ति में एक से ज़्यादा ट्रिप हो सकती हैं, और लॉग बुक की पहली पंक्ति का गैप नहीं होता।"
+      ],
+      [
+        "No matching records or exceptions found.",
+        "जब तारीख़ों और फ़िल्टर से कुछ भी मेल नहीं खाता, तब तालिका के अंदर यह लिखा आता है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Date / Shift",
+        "Step 2। कार्ड पर सेव Book Date और शिफ़्ट। एक लाइन चुनी हुई साइट की एक तारीख़ की एक शिफ़्ट है।"
+      ],
+      [
+        "Drivers with a delay",
+        "देरी वाले व्यू, Step 1। साइट के कितने अलग-अलग ड्राइवरों का कम से कम एक समय 15 मिनट से ऊपर रहा।"
+      ],
+      [
+        "Trips timed / Gaps timed",
+        "उन ट्रिप पंक्तियों (या गैप) की गिनती जिनमें दोनों समय लिखे हैं और समय निकाला जा सका। प्रतिशत इसी पर निकलता है।"
+      ],
+      [
+        "Within 15 min",
+        "15 मिनट या उससे कम के समय। ये देरी नहीं हैं।"
+      ],
+      [
+        "15 to 20 min",
+        "15 से ज़्यादा और 20 मिनट तक के समय। पीले रंग में।"
+      ],
+      [
+        "20 to 30 min",
+        "20 से ज़्यादा और 30 मिनट तक के समय। नारंगी रंग में।"
+      ],
+      [
+        "30+ min",
+        "30 मिनट से ज़्यादा के समय। लाल रंग में।"
+      ],
+      [
+        "Total over 15 min",
+        "तीनों बैंड का जोड़।"
+      ],
+      [
+        "% over 15 min",
+        "Total over 15 min को Trips timed (या Gaps timed) से भाग देकर।"
+      ],
+      [
+        "Longest (min)",
+        "उस लाइन का सबसे लंबा एक समय, मिनट में।"
+      ],
+      [
+        "Also over 15 min in Unloading → next Loading / in Loading → Unloading",
+        "उसी लाइन की दूसरे व्यू में कितनी देरी हैं। जो ड्राइवर दोनों व्यू में देर करता है, उसकी दोनों देरी उसकी एक ही लाइन में दिखती हैं।"
+      ],
+      [
+        "Not judged",
+        "वे पंक्तियाँ जिनका समय नहीं निकल सका: कोई समय लिखा नहीं है, कार्ड बिना ट्रिप समय के सेव हुआ, या समय एक शिफ़्ट से लंबा निकलता है। इन्हें कभी देरी नहीं गिना जाता।"
+      ],
+      [
+        "Drivers on it / Vehicles loaded",
+        "Door no.-wise में: उस गाड़ी को कितने ड्राइवरों ने चलाया। Loading machine-wise में: उस मशीन ने कितनी गाड़ियाँ लोड कीं।"
+      ],
+      [
+        "Minutes taken / Gap minutes",
+        "Step 4। उस देरी वाली ट्रिप या गैप के मिनट, उसके बैंड के रंग में।"
+      ],
+      [
+        "Unloaded at (previous trip) / Loaded again at",
+        "Unloading → next Loading का Step 4। पिछली ट्रिप का अनलोडिंग समय, और इस ट्रिप का लोडिंग समय।"
+      ],
+      [
+        "Band",
+        "Step 4। उस पंक्ति का बैंड शब्दों में।"
+      ],
+      [
+        "Loading → Unloading (min) / Unloading → this loading (min)",
+        "Step 5। कार्ड की हर ट्रिप पंक्ति के दोनों समय। 15 मिनट से ऊपर का समय रंगीन दिखता है।"
+      ],
+      [
+        "Remark",
+        "Step 5। बताता है कि पंक्ति कार्ड की पहली ट्रिप है (उससे पहले गैप नहीं) या पंक्ति क्यों नहीं जाँची जा सकी।"
+      ],
+      [
+        "Date",
+        "लॉग बुक की Book Date। स्क्रीन पर DD-MM-YY में दिखती है, जैसे 13-12-26।"
+      ],
+      [
+        "Site",
+        "लॉग बुक पर सेव साइट।"
+      ],
+      [
+        "Book NO",
+        "लॉग बुक सेव होते समय सिस्टम का दिया हुआ बुक नंबर। जो नंबर VLB_M से शुरू होता है वह हाथ से भरी एंट्री है, और जो VLB_S से शुरू होता है वह स्कैन किए हुए कार्ड से बनी है।"
+      ],
+      [
+        "Door NO",
+        "गाड़ी का डोर नंबर, जैसे V9001।"
+      ],
+      [
+        "Caliber ID",
+        "लॉग बुक के ड्राइवर की Employee ID, जैसे CMPL90001।"
+      ],
+      [
+        "Employee",
+        "लॉग बुक के ड्राइवर का नाम, जैसे SAMPLE DRIVER 01।"
+      ],
+      [
+        "Shift",
+        "लॉग बुक पर सेव Shift का नाम।"
+      ],
+      [
+        "Tr.Sr.No",
+        "ट्रिप पंक्ति का सीरियल नंबर। यह पंक्ति के साथ सेव सीरियल है; सीरियल सेव न हो तो लॉग बुक में पंक्ति का क्रम (1, 2, 3 ...) दिखता है।"
+      ],
+      [
+        "Equipment",
+        "ट्रिप पंक्ति में लिखी लोडिंग मशीन।"
+      ],
+      [
+        "Trips",
+        "इस ट्रिप पंक्ति में लिखी ट्रिप की संख्या।"
+      ],
+      [
+        "L. time",
+        "पंक्ति का लोडिंग समय, 24 घंटे की घड़ी में, जैसे 05:20। सेव न हो तो खाली।"
+      ],
+      [
+        "U. time",
+        "पंक्ति का अनलोडिंग समय, 24 घंटे की घड़ी में। सेव न हो तो खाली।"
+      ],
+      [
+        "Elapsed (min)",
+        "उसी पंक्ति के L. time से U. time तक के मिनट। U. time अगर L. time से पहले का हो तो उसे अगले दिन का माना जाता है। दोनों में से कोई समय न हो, या लॉग बुक बिना ट्रिप समय के सेव हो, तो खाली।"
+      ],
+      [
+        "GAP (min)",
+        "उसी लॉग बुक की पिछली पंक्ति के U. time से इस पंक्ति के L. time तक के मिनट। हर लॉग बुक की पहली पंक्ति में, इन दोनों में से कोई समय न होने पर, और बिना ट्रिप समय के सेव लॉग बुक में यह खाली रहता है।"
+      ]
+    ],
+    "notes": [
+      "15 मिनट या उससे कम देरी नहीं है। ठीक 20 मिनट 15 to 20 min में आता है, और ठीक 30 मिनट 20 to 30 min में।",
+      "कार्ड की पहली ट्रिप से पहले कोई गैप नहीं होता, इसलिए Unloading → next Loading में Loading → Unloading से कम पंक्तियाँ होती हैं।",
+      "जिस पंक्ति में कोई समय लिखा नहीं है वह Not judged में आती है। वह देरी नहीं है और प्रतिशत में नहीं गिनी जाती।",
+      "चाय और खाने का ब्रेक घटाया नहीं जाता। दो ट्रिप के बीच का ब्रेक Unloading → next Loading में गैप की तरह दिखता है।",
+      "रात 12 बजे के पार के समय आगे की ओर गिने जाते हैं: 23:55 से 00:07 तक 12 मिनट।",
+      "देरी कार्ड पर लिखे ड्राइवर के नाम गिनी जाती है, और उस लोडिंग मशीन के नाम जो लोड हो रही पंक्ति में लिखी है।",
+      "देरी वाले व्यू में Loading equipment सिर्फ़ उस मशीन से लोड हुई ट्रिप पंक्तियाँ रखता है। Step 5 हमेशा पूरा कार्ड दिखाता है।",
+      "कार्डों पर अलग-अलग तरह से लिखी गई एक ही साइट (जैसे \"Majri OB\" और \"majri ob\") देरी वाले व्यू में एक ही साइट के रूप में दिखती है।",
+      "सिर्फ़ Vehicle Log Book ली जाती हैं। LMV लॉग बुक और डिलीट की गई लॉग बुक नहीं दिखतीं।",
+      "जब Trips 1 से ज़्यादा हो, तो Elapsed (min) उस पंक्ति की सभी ट्रिप का मिला हुआ समय है। यह एक ट्रिप का समय नहीं है।",
+      "GAP (min) सिर्फ़ एक लॉग बुक के अंदर निकलता है। एक लॉग बुक की आख़िरी पंक्ति और अगली लॉग बुक की पहली पंक्ति के बीच का गैप नहीं दिखता।",
+      "GAP (min) लॉग बुक के साथ सेव होता है। Loading equipment चुनने से कुछ पंक्तियाँ छिप जाएँ तब भी हर गैप लॉग बुक में उससे ठीक पहले वाली पंक्ति से ही गिना रहता है।",
+      "तालिका के ऊपर की \"logbooks\", \"assets\" और \"trips\" की गिनती सभी मेल खाती लॉग बुक की है, VLB और ELB दोनों मिलाकर। Loading equipment चुनने से ये नहीं बदलतीं।",
+      "तालिका के Actions मेनू का \"Reset table\" From को भी वापस चालू महीने की 1 तारीख़ पर और To को आज की तारीख़ पर ले आता है।"
+    ],
+    "checklist": [
+      "From और To चुनें, और सिर्फ़ एक साइट देखनी हो तो Site चुनें।",
+      "Loading → Unloading दबाएँ। पहले पीली लाइन पढ़ें, फिर साइट की लाइनें।",
+      "कोई साइट दबाएँ। हर तारीख़ और शिफ़्ट की एक लाइन आती है। जिस शिफ़्ट को जाँचना है उसे दबाएँ।",
+      "उस शिफ़्ट में सबसे ज़्यादा देरी वाला ड्राइवर सबसे ऊपर होता है, और उसके सभी बैंड एक ही लाइन में होते हैं। दूसरे व्यू की उसकी देरी \"Also over 15 min in ...\" कॉलम में पढ़ें।",
+      "ड्राइवर दबाएँ। हर देरी वाली ट्रिप का Book no. और Tr.Sr.No नोट करें, और पूरा कार्ड देखने के लिए लाइन दबाएँ।",
+      "शक वाली पंक्तियों के लोडिंग और अनलोडिंग समय काग़ज़ के ट्रिप कार्ड से मिलाएँ।",
+      "Unloading → next Loading दबाकर यही दोहराएँ। Step 3 में Loading machine-wise दबाएँ: अगर कई गाड़ियाँ एक ही मशीन पर रुकती हैं, तो देरी मशीन पर है, किसी एक ड्राइवर की नहीं।",
+      "Not judged देखें। उन कार्डों पर छूटे हुए समय लिखवाएँ ताकि अगली बार वे गिने जाएँ।"
+    ],
+    "faq": [
+      [
+        "एक ड्राइवर को एक शिफ़्ट की जगह पूरी अवधि के लिए कैसे देखें?",
+        "Step 2 में आख़िरी लाइन ALL DATES दबाएँ। तब Step 3 में सभी तारीख़ों और शिफ़्टों के ड्राइवर एक साथ आते हैं।"
+      ],
+      [
+        "Trips timed ड्राइवर की कुल ट्रिप से कम क्यों है?",
+        "जिन पंक्तियों में समय लिखा नहीं है, और जो कार्ड बिना ट्रिप समय के सेव हुए, वे Not judged में हैं। Trips timed + Not judged = उसकी सभी ट्रिप पंक्तियाँ।"
+      ],
+      [
+        "लंबा गैप खाने के ब्रेक का था। क्या वह फिर भी गिना जाएगा?",
+        "हाँ। ब्रेक घटाए नहीं जाते। Step 5 में कार्ड खोलकर समय पढ़ें और ख़ुद तय करें।"
+      ],
+      [
+        "ड्राइवर उस लोडिंग मशीन के नीचे क्यों दिखता है जो धीमी थी?",
+        "लोडिंग से पहले का गैप उस पंक्ति में लिखी लोडिंग मशीन के नाम गिना जाता है। एक ही मशीन पर इंतज़ार बार-बार हो रहा है या नहीं, यह Loading machine-wise में देखें।"
+      ],
+      [
+        "Remark में \"longer than a shift\" का क्या मतलब है?",
+        "दोनों समय से 12 घंटे से ज़्यादा निकलता है, जो समय ग़लत लिखे जाने पर होता है। ऐसी पंक्ति जाँची नहीं जाती; कार्ड ठीक करवाएँ।"
+      ],
+      [
+        "लॉग बुक की पहली पंक्ति में GAP (min) खाली क्यों है?",
+        "गैप के लिए उसी लॉग बुक की पिछली पंक्ति का अनलोडिंग समय चाहिए। पहली पंक्ति से पहले कोई पंक्ति नहीं होती।"
+      ],
+      [
+        "किसी लॉग बुक में L. time, U. time, Elapsed (min) और GAP (min) सब खाली क्यों हैं?",
+        "वह लॉग बुक बिना ट्रिप समय के सेव हुई है। उसमें सिर्फ़ लोडिंग मशीन और ट्रिप की संख्या भरी गई है।"
+      ],
+      [
+        "किसी पंक्ति में Elapsed (min) बहुत ज़्यादा क्यों है?",
+        "या तो उस पंक्ति में कई ट्रिप हैं, या उसका U. time उसके L. time से पहले का है और उसे अगले दिन का माना गया। Trips और दोनों समय ट्रिप कार्ड से मिलाएँ।"
+      ],
+      [
+        "क्या एक पंक्ति का मतलब एक ट्रिप है?",
+        "हमेशा नहीं। Trips कॉलम बताता है कि उस पंक्ति में कितनी ट्रिप हैं।"
+      ]
+    ]
+  },
+  "asOf": {
+    "en": "Matches the system as of 11 November 2026",
+    "hi": "11 नवंबर 2026 तक के सिस्टम के अनुसार"
+  }
+}

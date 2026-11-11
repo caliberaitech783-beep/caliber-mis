@@ -19,7 +19,7 @@ const linkedScanSql=`SELECT ${scanColumns} FROM mis_scan_cards c JOIN mis_scan_b
 
 export async function discoverDeletionScope(c,records,{skipRequestId=null,assertSite=()=>{},imageStorage}={}){
  const ids=records.map(r=>String(r.id)),linkedIds=records.map(r=>r.data?.scanCardId).filter(Boolean);
- const tables={};for(const name of ['mis_scan_cards','mis_scan_backup_items','mis_vlb_batch_entries','mis_pulse_trip_verifications'])tables[name]=await hasTable(c,name);
+ const tables={};for(const name of ['mis_scan_cards','mis_scan_backup_items','mis_vlb_batch_entries','mis_elb_batch_entries','mis_vlb_batch_fleet','mis_pulse_trip_verifications'])tables[name]=await hasTable(c,name);
  const keys=records.filter(r=>cardNumber(r.data)).map(r=>({kind:r.book_type,date:dateKey(r.book_date||r.data?.bookDate),asset:String(r.asset_id),number:cardNumber(r.data)}));
  let scans=tables.mis_scan_cards?(await c.query(linkedScanSql,[ids,linkedIds])).rows:[];
  for(const scan of scans){
@@ -68,6 +68,10 @@ export async function discoverDeletionScope(c,records,{skipRequestId=null,assert
   FROM mis_vlb_batch_entries e WHERE e.logbook_id=ANY($1::bigint[]) OR e.snapshot->'data'->>'scanCardId'=ANY($2::text[])
   ORDER BY e.batch_id,e.logbook_id FOR UPDATE`,[ids,allScanIds])).rows:[];
  if(batchLinks.some(b=>!ids.includes(String(b.logbook_id))))deletionError('A saved-batch snapshot belongs to an unselected record. Include that record first.');
+ const elbLinks=tables.mis_elb_batch_entries?(await c.query(`SELECT e.batch_id,e.logbook_id,md5(e.snapshot::text) AS fingerprint
+  FROM mis_elb_batch_entries e WHERE e.logbook_id=ANY($1::bigint[]) ORDER BY e.batch_id,e.logbook_id FOR UPDATE`,[ids])).rows:[];
+ const fleetLinks=tables.mis_vlb_batch_fleet?(await c.query(`SELECT f.batch_id,f.asset_id,f.logbook_id,md5(to_jsonb(f)::text) AS fingerprint
+  FROM mis_vlb_batch_fleet f WHERE f.logbook_id=ANY($1::bigint[]) ORDER BY f.batch_id,f.asset_id FOR UPDATE`,[ids])).rows:[];
  const verification=tables.mis_pulse_trip_verifications?(await c.query('SELECT j.logbook_id,j.status,j.request_ref,md5(row_to_json(j)::text) AS fingerprint FROM mis_pulse_trip_verifications j WHERE logbook_id=ANY($1::bigint[]) ORDER BY logbook_id FOR UPDATE',[ids])).rows:[];
  snapshots.forEach(s=>{if(s.site)assertSite(s.site);});
  const sites=[...new Set(records.map(r=>r.site))],recordSite=sites.length===1?sites[0]:null;
@@ -98,7 +102,7 @@ export async function discoverDeletionScope(c,records,{skipRequestId=null,assert
  let next=0;await Promise.all(Array.from({length:Math.min(8,cloud.length)},async()=>{while(next<cloud.length){const item=cloud[next++],stat=await imageStorage.stat(item.key);if(typeof stat?.exists!=='boolean')deletionError('Cloud image verification is incomplete.',503);if(stat.exists&&stat.sha256&&stat.sha256!==item.imageHash)deletionError('A cloud image checksum changed. No deletion was prepared.');Object.assign(item,{exists:stat.exists,etag:stat.etag||null,bytes:stat.bytes??null,location:stat.location||item.key});if(item.exists&&!item.etag)deletionError('A cloud image cannot be bound to an exact version.',503);}}));
  cloud.sort((a,b)=>a.key.localeCompare(b.key));
  return {version:2,records:records.map(r=>({id:r.id,book_no:r.book_no,book_type:r.book_type,site:r.site,revision:r.revision,fingerprint:scopeHash(r)})),
-  scans:publicScans,backups:publicBackups,files,cloud,snapshots,batchLinks,verification,localFiles:[]};
+  scans:publicScans,backups:publicBackups,files,cloud,snapshots,batchLinks,...(elbLinks.length?{elbLinks}:{}),...(fleetLinks.length?{fleetLinks}:{}),verification,localFiles:[]};
 }
 
 export function bindLocalFiles(manifest,files){

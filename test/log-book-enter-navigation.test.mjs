@@ -1,3 +1,4 @@
+import {MANUAL_SHIFTS,manualShiftWindow} from '../shared/manual-shift.mjs';
 import {compactLogBookLabel,tripSerialNumber} from '../shared/log-book-labels.mjs';
 import {validateTripEquipment,resolveTripEquipment} from '../shared/trip-equipment-validation.mjs';
 import {blankJob,blankBreakdown,padManualRows} from '../shared/manual-log-book-details.mjs';
@@ -10,6 +11,7 @@ import {transformWithOxc} from 'vite';
 import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
 import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
 import * as rules from '../shared/trip-card-rules.mjs';
+import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {missingAssetMessage} from '../src/log-book-asset-options.mjs';
 import {manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift} from '../shared/manual-trip-time.mjs';
@@ -97,10 +99,10 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
- const scope={compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
-  for(const name of ['ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
+ const scope={MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+  for(const name of ['WorkOrderJobSelect','ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
-  const render=(kind='vehicle')=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'}})};
+  const render=(kind='vehicle',props={})=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
   render();slots[2]={sites:[],assets:[],employees:[],shifts:[],workOrders:[]};slots[9]=false;
   return {render,slots,runAccountLocation:()=>effects.find(effect=>effect.deps?.length===4&&effect.deps[2]===slots[2]).run(),focusLocation:()=>effects.find(effect=>effect.deps?.length===5).run()};
 }
@@ -120,10 +122,35 @@ test('VLB and ELB focus the first editable field once after masters load without
   } finally {globalThis.document=previous}
 }));
 
+test('LMV manual fills the default site without setting the shift',()=>{
+ const app=harness(),date=app.slots[0].bookDate;
+ app.slots[2]={...app.slots[2],canSelectSite:true,lmvEntrySite:'Sasti OC',sites:['Sasti OC','Jayant OC']};
+ app.render('lmv');app.runAccountLocation();
+ const tree=app.render('lmv');
+ assert.equal(all(tree,node=>node.props.name==='location')[0].props.value,'Sasti OC');
+ assert.equal(app.slots[0].bookDate,date);
+ assert.equal(app.slots[0].shiftId,'');
+});
+
+test('manual VLB and ELB allow Day, Night and 12 hours even with a selected batch',()=>{
+ for(const kind of ['vehicle','equipment']){
+  const app=harness(),props={vlbBatch:{id:'b1',site:'Jayant OC',report_date:'2026-11-01',shift:'S1'}};
+  let tree=app.render(kind,props);
+  const shift=all(tree,node=>node.props.name==='shiftId')[0];
+  assert.equal(shift.props.disabled,false);
+  shift.props.onChange({target:{value:'manual:day'}});tree=app.render(kind,props);
+  assert.equal(app.slots[0].manualShift,'day');assert.equal(app.slots[0].shiftHours,12);
+  const hours=all(tree,node=>node.props.name==='shiftHours')[0];assert.equal(hours.props.disabled,false);
+  assert.ok(all(hours,node=>node.type==='option'&&node.props.value===12).length);
+  all(tree,node=>node.props.name==='shiftId')[0].props.onChange({target:{value:'manual:night'}});
+  assert.equal(app.slots[0].manualShift,'night');assert.equal(app.slots[0].shiftHours,12);
+ }
+});
+
 test('ELB shares VLB keyboard flow and controls while retaining equipment fields',()=>withFrames(flush=>{
  const app=harness(),tree=app.render('equipment');
  const fields=all(tree,node=>node.props.label&&node.props.children);
- const labels=['Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','Job Card no.','Opening HMR','Closing HMR','Remark'];
+ const labels=['Book date','Equipment','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift Hrs','Job Card no.','Opening HMR','Closing HMR','Remark'];
  const ordered=fields.filter(node=>labels.includes(node.props.label));
  assert.deepEqual(ordered.map(node=>node.props.label),labels);
  assert.equal(fields.find(node=>node.props.label==='Location').props.children.props.readOnly,true);
@@ -145,11 +172,11 @@ test('rendered VLB header follows the requested sequence and driver is explicitl
   const tree=harness().render();
   const fields=all(tree,node=>node.props.label&&node.props.children);
   assert.deepEqual(fields.slice(0,17).filter(node=>!['Doc type','Book no.','Driver name'].includes(node.props.label)).map(node=>node.props.label),[
-    'Location','Book date','Project name','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift hour','A Form no. (Trip Card)',
+    'Location','Book date','Project name','Door no.','Wo.Cont.','Employee ID / Caliber ID','Shift','Shift Hrs','A Form no. (Trip Card)',
     'Opening KMR','Closing KMR','Opening HMR','Closing HMR','Remark',
   ]);
   assert.equal(fields.find(node=>node.props.label==='Driver name').props.skipEnter,true);
-  for(const label of ['Shift hour','Shift']) {
+  for(const label of ['Shift Hrs','Shift']) {
     const dropdown=fields.find(node=>node.props.label===label).props.children;
     assert.doesNotMatch(String(dropdown.props.onChange),/focusNextLogBookField/,'arrow changes must not move focus');
   }
@@ -210,7 +237,10 @@ test('VLB location comes from account, Shift precedes Shift Hours, and trip sear
  const location=all(tree,node=>node.props['aria-label']==='Location')[0];assert.equal(location.type,'input');assert.equal(location.props.readOnly,true);
  const shifts=all(tree,node=>['shiftId','shiftHours'].includes(node.props.name));assert.deepEqual(shifts.map(node=>node.props.name),['shiftId','shiftHours']);assert.equal(shifts[0].props.searchable,true);
  const equipment=all(tree,node=>node.props['aria-label']==='Equipment name row 1')[0];assert.equal(equipment.props.searchable,true);
- const choices=React.Children.toArray(equipment.props.children).filter(node=>node.props.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node?.props?.value);assert.deepEqual(choices.map(node=>node.props.value),['EX1']);
+ assert.equal(equipment.props.showOverflowValue,undefined);
+ assert.equal(choices[0].props['data-display-label'],'EX1');
+ assert.deepEqual(React.Children.toArray(choices[0].props.children),['Excavator',' · EX1']);
  all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes('New entry'))[0].props.onClick();assert.equal(app.slots[0].location,'Sasti OC');
 });
 
@@ -228,3 +258,14 @@ test('changing a shift or asset clears the prior manual BD fallback',()=>{
 });
 
 
+
+test('VLB trip selector displays a saved equipment label that differs from the master option',()=>{
+ const app=harness();
+ app.slots[2]={...app.slots[2],accountLocation:'Sasti OC',assets:[{id:'e1',kind:'equipment',site:'Sasti OC',door:'TPC-29',name:'Excavator'}]};
+ app.render();app.runAccountLocation();
+ app.slots[0].trips=[{...blankTrip(),equipmentId:'e1',equipmentName:'Tpc 29'}];
+ const equipment=all(app.render(),node=>node.props['aria-label']==='Equipment name row 1')[0];
+ assert.equal(equipment.props.value,'Tpc 29');
+ const choices=React.Children.toArray(equipment.props.children).filter(node=>node?.props?.value);
+ assert.deepEqual(choices.map(node=>node.props.value),['Tpc 29','TPC-29']);
+});

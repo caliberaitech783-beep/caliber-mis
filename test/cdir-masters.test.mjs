@@ -7,7 +7,7 @@ import { masterAccessAllows } from "../shared/admin-access.mjs";
 const data = JSON.parse(readFileSync(new URL("../public/cd/directory-data.json", import.meta.url), "utf8"));
 const server = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-const html = readFileSync(new URL("../public/cd/caliber-directory.html", import.meta.url), "utf8");
+const directoryScript = readFileSync(new URL("../public/cd/caliber-directory.js", import.meta.url), "utf8");
 
 test("the directory file splits into the seven C-Dir masters", () => {
   const masters = cdirMastersFromDirectory(data);
@@ -98,9 +98,9 @@ test("the directory is seeded once and C-Dir reads it live", () => {
   assert.ok(server.includes("const CDIR_SEEDED_SETTING_KEY='cdir_masters_seeded';"));
   assert.ok(server.includes("app.get('/api/cdir/directory',requireSession"));
   assert.ok(server.includes("currentBirthdayNames(new Date(),{loadRoster:cdirDirectory})"));
-  assert.match(html, /window\.cdirDirectoryReady = \(async function\(\)\{/);
-  assert.match(html, /fetch\("\/api\/cdir\/directory"/);
-  assert.match(html, /await window\.cdirDirectoryReady;\s*const DATA = JSON\.parse\(document\.getElementById\('directory-data'\)\.textContent\);/);
+  assert.match(directoryScript, /window\.cdirDirectoryReady = \(async function\(\)\{/);
+  assert.match(directoryScript, /fetch\("\/api\/cdir\/directory"/);
+  assert.match(directoryScript, /await window\.cdirDirectoryReady;[\s\S]*?const DATA = JSON\.parse\(document\.getElementById\('directory-data'\)\.textContent\);/);
   for (const name of Object.values(CDIR_MASTERS)) assert.ok(source.includes(`[CDIR_MASTERS.${Object.keys(CDIR_MASTERS).find((key) => CDIR_MASTERS[key] === name)},`), name);
   assert.ok(source.includes("Object.assign(masterFields, CDIR_MASTER_FIELDS);"));
   assert.ok(source.includes('cdirFieldKind(type) ? <CDirFieldInput key={key} name={key} label={label} type={type} defaultValue={editing[key]}'));

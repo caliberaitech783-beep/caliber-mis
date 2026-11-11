@@ -2,7 +2,7 @@ const fields={
  'wrong-door':new Set(['doorText','assetId']),
  'wrong-caliber':new Set(['employeeId']),
  'wrong-hmr':new Set(['openingHmr','closingHmr']),
- 'wrong-kmr':new Set(['openingKmr','closingKmr']),
+ 'wrong-kmr':new Set(['openingKmr','closingKmr','replacementKmr']),
  'mws-ted':new Set(['trips','scanMachineSummary','timeMode']),
 };
 export const isScanIssueFocus=group=>Object.hasOwn(fields,group);

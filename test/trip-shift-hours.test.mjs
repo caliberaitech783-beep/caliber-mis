@@ -27,7 +27,7 @@ test('manual marked-shift and linked-shift choices immediately supply the requir
   assert.deepEqual(manualTripShiftPatch('shiftId','1',[{id:'1',name:shift}]),{cardShift:shift,shiftHours:hours});
  }
  assert.deepEqual(manualTripShiftPatch('shiftId','1',[{id:'1',name:'Unclear'}]),{cardShift:'',shiftHours:''});
- assert.equal(scanFieldIssues({cardShift:'Day',shiftHours:8},'vehicle',{shiftRuleVersion:1}).shiftHours,'The marked shift requires 12 hours.');
+ assert.equal(scanFieldIssues({cardShift:'Day',shiftHours:8},'vehicle',{shiftRuleVersion:1}).shiftHours,undefined);
  assert.equal(extractCard('SHIFT HOURS: 8','equipment',[]).draft.shiftHours,8);
  assert.equal(extractCard('SHIFT HOURS: 8','equipment',[]).raw.shiftRuleVersion,undefined);
  assert.equal(scanFieldIssues({},'vehicle',{}).cardShift,undefined);
@@ -35,10 +35,20 @@ test('manual marked-shift and linked-shift choices immediately supply the requir
 test('vision instructions cover extended handwritten ticks and both shift groups',()=>{
  const prompt=cardPrompt('vehicle');assert.match(prompt,/tick may start inside a checkbox and extend well outside/);assert.match(prompt,/I \(A\), II \(B\), III \(C\) each mean 8 hours/);assert.match(prompt,/DAY SHIFT and NIGHT SHIFT each mean 12 hours/);
 });
-test('server rejects missing or mismatched marked shifts only for scans using the new rule',async()=>{
- const client={query:async()=>({rows:[]})},card={raw_fields:{shiftRuleVersion:1},draft:{cardShift:'Day',shiftHours:8},page_count:1,expected_pages:1};
- const wrong=await checkScanCard(client,'vehicle',card);assert.ok(wrong.errors.includes('The marked shift requires 12 hours.'));
+test('server requires a marked shift but accepts either shift-hours option for VLB scans',async()=>{
+ const masters=[
+  {id:1,master_name:'Equipment master',record_data:{category:'Vehicle',door:'TEST',currentLocation:'Jayant OB'}},
+  {id:2,master_name:'Employee master',record_data:{name:'Test Driver',site:'Jayant OB'}},
+  {id:3,master_name:'Shift Master',record_data:{site:'Jayant OB',shiftName:'Shift A',startTime:'05:00',endTime:'13:00'}},
+ ];
+ const client={query:async sql=>({rows:sql.includes('WHERE id=ANY')?masters:[]})};
+ const draft={bookDate:'2026-11-01',location:'Jayant OB',assetId:1,employeeId:2,shiftId:3,cardShift:'I',shiftHours:12,openingKmr:100,closingKmr:110,openingHmr:200,closingHmr:202};
+ const card={raw_fields:{shiftRuleVersion:1},draft,page_count:1,expected_pages:1};
+ const checked=await checkScanCard(client,'vehicle',card);
+ assert.deepEqual(checked.errors,[]);
+ assert.equal(checked.data.shiftHours,12);
+ assert.equal(checked.data.shiftName,'Shift A');
  const blank=await checkScanCard(client,'vehicle',{...card,draft:{shiftHours:8}});assert.ok(blank.errors.some(s=>s.startsWith('Select one clearly marked')));
  const existing=await checkScanCard(client,'vehicle',{...card,raw_fields:{}});assert.ok(!existing.errors.includes('The marked shift requires 12 hours.'));
- assert.equal(card.draft.shiftHours,8);
+ assert.equal(card.draft.shiftHours,12);
 });

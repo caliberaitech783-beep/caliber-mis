@@ -111,3 +111,20 @@ test("user and privilege changes revoke only the affected accounts", async () =>
   assert.ok((masterRoutes.match(/revokeAuthorizationSessions\(/g) || []).length >= 7);
   assert.doesNotMatch(masterRoutes, /DELETE FROM auth_sessions(?! WHERE)/);
 });
+
+test('full deployment carries forward old chunks without replacing newly built files', async t => {
+  const {preserveUiAssets} = await import('../scripts/preserve-live-ui-assets.mjs');
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mis-release-assets-'));
+  t.after(() => rm(directory, {recursive:true, force:true}));
+  const shared = 'vendor-AbCd1234.js', old = 'feature-DbCe4321.css';
+  await writeFile(path.join(directory, shared), 'new package copy');
+  const downloaded = [];
+  const count = await preserveUiAssets(
+    [shared, old, '../escape-AbCd1234.js', 'index.html'].map(name => ({name})),
+    {directory, readPublished: async name => { downloaded.push(name); return 'old release asset'; }},
+  );
+  assert.equal(count, 1);
+  assert.deepEqual(downloaded, [old]);
+  assert.equal(await readFile(path.join(directory, shared), 'utf8'), 'new package copy');
+  assert.equal(await readFile(path.join(directory, old), 'utf8'), 'old release asset');
+});

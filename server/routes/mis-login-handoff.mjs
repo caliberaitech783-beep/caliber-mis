@@ -8,10 +8,22 @@ const stateCookie='__Host-mis_credential_state',readyCookie='__Host-mis_credenti
 // second sign-in cannot replace the first tab's browser binding.
 const pendingCookie=state=>stateCookie+'_'+digest(state);
 const options={httpOnly:true,secure:true,sameSite:'lax',path:'/'};
+function signInFailure(req,res,status,error){
+ if(req.accepts?.(['json','html'])!=='html')return res.status(status).json({error});
+ return res.status(status).type('html').send(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Caliber MIS sign-in</title></head>
+<body><main>
+<h1>Continue to Caliber MIS</h1>
+<p>Start a fresh sign-in through Pulse to open MIS.</p>
+<p><a href="/api/mis-credentials/start">Sign in through Pulse</a></p>
+</main></body>
+</html>`);
+}
 export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,fetcher=fetch}){
- const safe=handler=>async(req,res)=>{
+ const safe=(handler,onFailure=(req,res,status,error)=>res.status(status).json({error}))=>async(req,res)=>{
   req.audit=false;res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
-  try{await handler(req,res);}catch{res.status(503).json({error:'MIS sign-in is temporarily unavailable. Start again from Pulse.'});}
+  try{await handler(req,res);}catch{onFailure(req,res,503,'MIS sign-in is temporarily unavailable. Start again from Pulse.');}
  };
  app.get('/api/mis-credentials/start',safe(async(_req,res)=>{
   const state=randomBytes(32).toString('base64url'),verifier=randomBytes(32).toString('base64url');
@@ -20,24 +32,24 @@ export function installMisLoginHandoff(app,{pool,sessionStore,credentialClient,f
   res.cookie(pendingCookie(state),state,{...options,maxAge:300000});
   const target=new URL('https://pulse.cmll.in/');target.searchParams.set('login','mis');target.searchParams.set('misState',state);target.searchParams.set('misChallenge',proof(verifier));
   res.redirect(303,target.toString());
- }));
+ },signInFailure));
  app.get('/api/mis-credentials/callback',safe(async(req,res)=>{
   const {code,state}=req.query;
-  if(!valid(code)||!valid(state))return res.status(400).json({error:'This MIS sign-in does not match your browser. Start again from Pulse.'});
+  if(!valid(code)||!valid(state))return signInFailure(req,res,400,'This MIS sign-in does not match your browser. Start again from Pulse.');
   const scopedCookie=pendingCookie(state),legacyMatch=cookie(req,stateCookie)===state;
-  if(cookie(req,scopedCookie)!==state&&!legacyMatch)return res.status(400).json({error:'This MIS sign-in does not match your browser. Start again from Pulse.'});
+  if(cookie(req,scopedCookie)!==state&&!legacyMatch)return signInFailure(req,res,400,'This MIS sign-in does not match your browser. Start again from Pulse.');
   res.clearCookie(scopedCookie,options);
   // Let attempts opened immediately before deployment finish as well.
   if(legacyMatch)res.clearCookie(stateCookie,options);
   const {rows}=await pool.query('DELETE FROM mis_login_pending WHERE state_hash=$1 AND expires_at>NOW() RETURNING verifier',[digest(state)]);
-  if(!rows[0])return res.status(400).json({error:'MIS sign-in has expired. Start again from Pulse.'});
+  if(!rows[0])return signInFailure(req,res,400,'MIS sign-in has expired. Start again from Pulse.');
   const response=await fetcher('https://pulse.cmll.in/api/integrations/mis/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,state,verifier:rows[0].verifier}),redirect:'error',signal:AbortSignal.timeout(15000)});
   const result=await response.json();
-  if(!response.ok||!valid(result.grant)||!result.profile?.permissions?.separateMisCredentials)return res.status(401).json({error:'Pulse could not complete MIS sign-in. Please start again.'});
+  if(!response.ok||!valid(result.grant)||!result.profile?.permissions?.separateMisCredentials)return signInFailure(req,res,401,'Pulse could not complete MIS sign-in. Please start again.');
   const token=randomUUID();await sessionStore.create({token,...result.profile});
   await pool.query('INSERT INTO mis_credential_sessions(session_token,grant_token) VALUES($1,$2)',[token,result.grant]);
   res.cookie(readyCookie+'_'+digest(state),token,{...options,maxAge:60000});res.redirect(303,'/?misCredentialReady='+state);
- }));
+ },signInFailure));
  app.get('/api/mis-credentials/session',safe(async(req,res)=>{
   const handoff=req.query?.handoff;
   if(handoff!==undefined&&!valid(handoff))return res.status(400).json({error:'Invalid MIS sign-in handoff. Start again from Pulse.'});

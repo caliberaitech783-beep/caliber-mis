@@ -9,7 +9,7 @@ const reportStyles = readFileSync(new URL("../src/reports-workspace.css", import
 test("all tabular masters place Actions beside Search", () => {
   const equipment = source.slice(source.indexOf("function Equipment("), source.indexOf("function Breakdown(", source.indexOf("function Equipment(")));
   const generic = source.slice(source.indexOf("function MasterPage("), source.indexOf("function MasterLoader("));
-  const hierarchy = source.slice(source.indexOf("function HierarchyMasterPage("), source.indexOf("function RegionMasterPage("));
+  const hierarchy = source.slice(source.indexOf("function HierarchyMasterPage("), source.indexOf("Generic = function GenericWithMasters("));
 
   assert.match(equipment, /placeholder="Search equipment, category, serial no\.\.\.\."[\s\S]*className="master-actions-slot"/);
   assert.match(equipment, /<ActionsTable toolbarTarget=\{actionsToolbarTarget\} toolbarPortal>/);

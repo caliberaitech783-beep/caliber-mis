@@ -1,5 +1,6 @@
 import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useState,useRef} from 'react';
+import {StepBackButton} from './step-back.jsx';
 import './log-book-deletion.css';
 import {inspectDeletionBackup,removeDeletionBackups,sameDeletionFiles} from './log-book-deletion-backups.mjs';
 import {DeletionManifest,DeletionCleanup} from './log-book-deletion-manifest.jsx';
@@ -10,8 +11,9 @@ const contains=(value,text)=>String(value??'').toLowerCase().includes(text.trim(
 const choices=(rows,value,current)=>[...new Set([...rows.map(value),current].filter(Boolean))].sort();
 const label=row=>`${row.book_no} · ID ${row.id} · ${type(row)} · ${row.data?source(row):"Audit"} · ${row.data?.bookDate||''} · ${row.data?.location||row.site||''} · ${row.data?.door||''}`;
 
-export default function LogBookDeletion({session,context}){
- const canViewHistory=session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase());
+export default function LogBookDeletion({session,context,onDeleted}){
+ const scope=context?.manualElbScope;
+ const canViewHistory=!context?.recordOnly&&session?.role==='super'&&['admin','super admin'].includes(String(session?.permissions?.adminLevel||'').trim().toLowerCase());
  const [rows,setRows]=useState([]),[cursor,setCursor]=useState(null),[history,setHistory]=useState([]),[view,setView]=useState('Entries');
  const [selected,setSelected]=useState(()=>new Set(context?.record?[String(context.record.id)]:[]));
  const [kind,setKind]=useState(context?.kind||''),[origin,setOrigin]=useState(context?.source||''),[search,setSearch]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState('');
@@ -20,9 +22,9 @@ export default function LogBookDeletion({session,context}){
  const folders=useRef(new Map());
  const [fileChecks,setFileChecks]=useState([]),[cleanup,setCleanup]=useState(null),[pending,setPending]=useState([]);
  const api=async(path,body)=>{const r=await fetch('/api/log-book-deletions/'+path,{method:body?'POST':'GET',cache:'no-store',headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok)throw Error(data.error||'Deletion service unavailable.');return data;};
- const load=async(before)=>{const result=await api('entries'+(before?'?before='+encodeURIComponent(before):''));if(!before&&context?.record&&!result.records.some(r=>String(r.id)===String(context.record.id))){const target=await api('entries?id='+encodeURIComponent(context.record.id));result.records.push(...target.records);}setRows(current=>before?[...new Map([...current,...result.records].map(r=>[String(r.id),r])).values()]:result.records);setCursor(result.nextCursor);};
+ const load=async(before)=>{const query=new URLSearchParams(scope||{});if(before)query.set('before',before);if(context?.recordOnly)query.set('id',context.record.id);const result=await api('entries?'+query);if(!before&&context?.record&&!result.records.some(r=>String(r.id)===String(context.record.id))){const target=await api('entries?id='+encodeURIComponent(context.record.id));result.records.push(...target.records);}setRows(current=>before?[...new Map([...current,...result.records].map(r=>[String(r.id),r])).values()]:result.records);setCursor(result.nextCursor);};
  const run=async fn=>{setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}};
- const loadPending=async()=>setPending((await api('pending')).requests);
+ const loadPending=async()=>{if(!context?.recordOnly)setPending((await api('pending')).requests);};
  useEffect(()=>{void run(async()=>{await load();await loadPending();});},[session.token]);
  useEffect(()=>{if(!cleanup||cleanup.complete||!cleanup.pendingCloud)return;const timer=setInterval(()=>{void api(cleanup.id+'/status').then(setCleanup).catch(e=>setError(e.message));},5000);return()=>clearInterval(timer);},[cleanup?.id,cleanup?.complete,cleanup?.pendingCloud]);
  const filtered=rows.filter(r=>(!kind||r.book_type===kind)&&(!origin||source(r)===origin)&&(!from||r.data.bookDate>=from)&&(!to||r.data.bookDate<=to)&&label(r).toLowerCase().includes(search.toLowerCase())&&(!columnSelect||selected.has(String(r.id))===(columnSelect==='Selected'))&&contains(`${r.book_no} ${r.id}`,columnBook)&&(!columnDate||r.data.bookDate===columnDate)&&(!columnLocation||r.data.location===columnLocation)&&contains(r.data.door,columnDoor));
@@ -36,11 +38,11 @@ export default function LogBookDeletion({session,context}){
  const filesReady=Boolean(preview?.filesReady&&sameDeletionFiles(fileChecks,preview.manifest.localFiles));
  const send=()=>run(async()=>{const files=await inspectAll();if(!filesReady||!sameDeletionFiles(files,preview.manifest.localFiles))throw Error('SSD files changed. Verify and approve the current exact list first.');await api(preview.id+'/otp',{approval});setSent(true);});
  const finishLocal=async state=>{let latest=state;await removeDeletionBackups({state,folders:folders.current,onReceipt:async receipt=>{latest=await api(state.id+'/local-receipts',{approval:state.approval,receipts:[receipt]});setCleanup(latest);}});latest=await api(state.id+'/status');setCleanup(latest);await loadPending();setNotice(latest.complete?'Every approved deletion step is complete.':'Cleanup is pending; see the remaining cloud images and SSD files below.');};
- const confirm=()=>run(async()=>{const files=await inspectAll();if(!sameDeletionFiles(files,preview.manifest.localFiles))throw Error('SSD files changed after approval. Prepare a fresh exact list.');const state=await api(preview.id+'/confirm',{approval,otp,files});setCleanup(state);reset();setSelected(new Set());setReason('');await load();await loadPending();if(state.pendingFiles.length)await finishLocal(state);else setNotice(state.complete?'Every approved deletion step is complete.':'Database records removed. Cloud image cleanup is still pending.');});
+ const confirm=()=>run(async()=>{const files=await inspectAll();if(!sameDeletionFiles(files,preview.manifest.localFiles))throw Error('SSD files changed after approval. Prepare a fresh exact list.');const state=await api(preview.id+'/confirm',{approval,otp,files});setCleanup(state);reset();setSelected(new Set());setReason('');onDeleted?.();await load();await loadPending();if(state.pendingFiles.length)await finishLocal(state);else setNotice(state.complete?'Every approved deletion step is complete.':'Database records removed. Cloud image cleanup is still pending.');});
  const download=()=>{const blob=new Blob([JSON.stringify({requestId:preview.id,scopeHash:preview.scopeHash,reason:preview.reason,impact:preview.impact,approval:preview.approval,...preview.manifest},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='deletion-'+preview.id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  return <section className="logbook-deletion">
-  <header><div><small>PULSE-II / MIS</small><h1>Deletion</h1><p>Bulk deletion for scanned and manually entered VLB and ELB records.</p></div><button disabled={busy||!!preview} onClick={()=>run(async()=>{setSelected(new Set());await load();})}>Refresh entries</button></header>
-  <p>Every deletion requires approval of the exact selection and a WhatsApp OTP sent to <strong>+91 9925565281</strong>. Selected records and linked source scans are permanently deleted from the application database. The exact list includes duplicate copies and registered backups. Cloud and SSD cleanup must both finish before deletion is marked complete. Unlisted exports and platform backups may retain copies.</p>
+  <header><div><small>PULSE-II / MIS</small><h1>Deletion</h1><p>{scope?`Manual ELBs for ${scope.site} · ${scope.date} · ${scope.shift}, across batches and unbatched entries.`:"Bulk deletion for scanned and manually entered VLB and ELB records."}</p></div><button disabled={busy||!!preview} onClick={()=>run(async()=>{setSelected(new Set());await load();})}>Refresh entries</button></header>
+  <p>Every deletion requires approval of the exact selection and a WhatsApp OTP sent to the number assigned to the deletion site. Selected records and linked source scans are permanently deleted from the application database. The exact list includes duplicate copies and registered backups. Cloud and SSD cleanup must both finish before deletion is marked complete. Unlisted exports and platform backups may retain copies.</p>
   {error&&<p role="alert" className="deletion-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
   {!preview&&!cleanup&&pending.length>0&&<aside><strong>Approved cleanups still pending</strong>{pending.map(p=><button key={p.id} disabled={busy} onClick={()=>run(async()=>setCleanup(await api(p.id+'/status')))}>Resume {p.id}</button>)}</aside>}
   {cleanup&&<DeletionCleanup state={cleanup} busy={busy} onChoose={chooseFolder} onResume={()=>run(()=>finishLocal(cleanup))} onRefresh={()=>run(async()=>{setCleanup(await api(cleanup.id+'/status'));await loadPending();})} onClose={()=>{setCleanup(null);void run(loadPending);}}/>}
@@ -60,7 +62,7 @@ export default function LogBookDeletion({session,context}){
     <button disabled={busy||!chosen.length||chosen.length>500||!reason.trim()} onClick={review}>Preview deletion ({chosen.length})</button><small>Up to 500 records per approved request.</small>
    </>:<><p>Latest 100 completed deletions. Permanent deletions have no application restore. Older deletions may have retained records.</p>{history.map(h=><details key={h.id}><summary>{new Date(h.completed_at||h.database_deleted_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} · {h.snapshot.length} entries · {h.actor} · {h.completed_at?"Complete":"Cleanup pending"}</summary><p>Request: {h.id}</p><p>Reason: {h.reason}</p><p>Approved: {h.approved_at} · WhatsApp accepted: {h.delivered_at} · WhatsApp OTP verified before database cleanup.</p><ul>{h.snapshot.map(r=><li key={r.id}>{label(r)}</li>)}</ul></details>)}</>}
   </>}
-  {preview&&<section className="deletion-review" aria-label="Exact deletion approval">
+  {preview&&<section className="deletion-review" aria-label="Exact deletion approval"><StepBackButton onBack={busy?null:reset} disabled={busy} label="Back to selection"/>
    <h2>Review {preview.records.length} exact records</h2><p>Request: {preview.id}</p><p><strong>Reason:</strong> {preview.reason}</p><p><strong>Impact and recovery:</strong> {preview.impact}</p>
    <DeletionManifest preview={preview} checks={fileChecks} busy={busy} sent={sent} onChoose={chooseFolder} onFinalize={finalizeFiles} onDownload={download}/>
    <ul>{preview.records.map(row=><li key={row.id}>{label(row)} · Revision {row.revision}</li>)}</ul>

@@ -1,3 +1,5 @@
+import {registerLmvImport} from './server/routes/lmv-import.mjs';
+import {reportLane} from './server/services/report-lane.mjs';
 import {assertProductionSecurityConfig,legacyPasswordRouteGuard} from './server/services/production-security-config.mjs';
 import {operationalScanSql} from './shared/operational-start.mjs';
 import {registerClientErrorReports} from './server/routes/client-error-report.mjs';
@@ -37,6 +39,7 @@ import {registerErpMasters} from './server/routes/erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './shared/telegram-bdms-period.mjs';
 import {registerPulseMasterSync} from './server/routes/pulse-master-sync.mjs';
 import {createPulseSignInBridge} from './server/services/pulse-signin-bridge.mjs';
+import {registerEquipmentMasterOtp} from './server/routes/equipment-master-otp.mjs';
 import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
 import {registerLogBooks} from './server/routes/log-book.mjs';
 import {accountLedgerQueries} from './server/rules/iboss-account-ledger.mjs';
@@ -176,6 +179,7 @@ import {archiveSchemaSql,previewRequestArchive,archiveRequests,restoreRequestArc
 import {serverErrorHandler} from './server/middleware/server-error-response.mjs';
 import {VEHICLE_TRANSFER_STATUS,applyAcceptedVehicleTransfer,transferMatchesEquipment,vehicleTransferAuditDetails,vehicleTransferStatus,vehicleTransferValidationError} from './shared/vehicle-transfer-workflow.mjs';
 import {legacyEtcRepairPlan,legacyEtcRepairReason} from './server/rules/legacy-etc-repair.mjs';
+import {isJayantSecondShift} from './shared/site-shift-hours.mjs';
 import {DUDHICHUA_EAST_SHIFTS,SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftIdentity} from './shared/shift-master.mjs';
 import {requestShiftLabel} from './shared/request-shift.mjs';
 import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,canManagePendingCorrection,canDeletePendingCorrection,normalizeRequestCorrectionChanges,requestCorrectionChangedFields,requestCorrectionFields,requestCorrectionReviewRemarkError,requestCorrectionSnapshot,requestCorrectionTimelineFields,requestCorrectionType,requestCorrectionTypesForManagerRoles,requestCorrectionValidationError} from './shared/request-correction-policy.mjs';
@@ -754,6 +758,9 @@ async function migrate(){
     CREATE INDEX IF NOT EXISTS master_records_user_employee_idx
       ON master_records ((lower(trim(record_data->>'employee'))))
       WHERE master_name='Users & employees';
+    CREATE INDEX IF NOT EXISTS master_records_user_first_name_idx
+      ON master_records ((lower(split_part(trim(record_data->>'employee'),' ',1))))
+      WHERE master_name='Users & employees';
     CREATE TABLE IF NOT EXISTS data_revisions (
       revision_key TEXT PRIMARY KEY,
       revision BIGINT NOT NULL DEFAULT 1,
@@ -1281,6 +1288,28 @@ async function migrate(){
         if(!matches.length)await client.query("INSERT INTO master_records(master_name,record_data) VALUES('Shift Master',$1::jsonb)",[JSON.stringify(record)]);
       }
       await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_shift_timings_0500_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
+    }
+    const {rows:jayantDayNightSeed}=await client.query("SELECT value FROM app_metadata WHERE key='jayant_day_night_shifts_seeded_v1' FOR UPDATE");
+    if(!jayantDayNightSeed.length){
+      const {rows:existingShifts}=await client.query("SELECT record_data FROM master_records WHERE master_name='Shift Master'");
+      const identities=new Set(existingShifts.map(row=>shiftIdentity(normalizeOperationalSiteFields(row.record_data))));
+      for(const [shiftName,startTime,endTime,shortCode] of [['Shift Day','05:00','17:00','D'],['Shift Night','17:00','05:00','N']]){
+        const record=normalizeOperationalSiteFields(normalizeShiftRecord({site:'Jayant OC',shiftName,startTime,endTime}));
+        if(!identities.has(shiftIdentity(record))&&!identities.has(shiftIdentity({...record,shiftCode:shortCode}))){
+          await client.query("INSERT INTO master_records (master_name,record_data) VALUES ('Shift Master',$1::jsonb)",[JSON.stringify(record)]);
+        }
+      }
+      await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_day_night_shifts_seeded_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
+    }
+    const {rows:jayantSecondUpdated}=await client.query("SELECT value FROM app_metadata WHERE key='jayant_second_shift_1200_2100_v1' FOR UPDATE");
+    if(!jayantSecondUpdated.length){
+      const {rows:shifts}=await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' FOR UPDATE");
+      for(const row of shifts){
+        const data=row.record_data||{};
+        if(!isJayantSecondShift(data))continue;
+        await client.query("UPDATE master_records SET record_data=$1::jsonb WHERE id=$2",[JSON.stringify({...data,startTime:'12:00:00',endTime:'21:00:00',...(data.start?{start:'12:00:00'}:{}),...(data.end?{end:'21:00:00'}:{})}),row.id]);
+      }
+      await client.query("INSERT INTO app_metadata(key,value,updated_at) VALUES('jayant_second_shift_1200_2100_v1','true',NOW()) ON CONFLICT(key) DO NOTHING");
     }
     // Privileged accounts must be provisioned explicitly by an authorized
     // administrator, never recreated with a known password during startup.
@@ -2328,12 +2357,14 @@ app.post('/api/login',async(req,res,next)=>{
     const username=String(req.body?.username||'').trim().toLowerCase();
     const password=String(req.body?.password||'');
     if(!username||!password)return res.status(400).json({error:'User name and password are required.'});
-    const {rows:userRows}=await pool.query(`SELECT id,record_data FROM master_records WHERE master_name='Users & employees'`);
-    // Filter by the submitted login before verifying any password hashes. A
-    // scrypt verification is deliberately costly, so checking all employee
-    // records here makes login scale linearly with the entire master and can
-    // starve the single App Service worker.
-    const loginRows=loginRecordCandidates(userRows,username);
+    // Fetch only records that can match this sign-in. The two expressions have
+    // partial indexes created during startup, so concurrent logins no longer
+    // scan and transfer the complete employee master through the shared pool.
+    const {rows:loginRows}=await pool.query(`SELECT id,record_data FROM master_records
+      WHERE master_name='Users & employees' AND (
+        lower(trim(record_data->>'login'))=$1
+        OR lower(split_part(trim(record_data->>'employee'),' ',1))=$1
+      )`,[username]);
     const candidates=loginRows.filter(row=>{
       const record=row.record_data;
       const passwordMatches=record.passwordHash
@@ -2551,9 +2582,8 @@ async function readSession(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token))return null;
   const local=await sessionStore.get(token);
-  const session=local?.permissions?.separateMisCredentials?await misCredentialClient.validateSession(token,local):(process.env.MIS_SSO_MODE==='off')?local:process.env.MIS_LEGACY_SSO_ENABLED==='true'?await misSharedSignIn.validateSession(token,local):null;
-  req.securitySession=session;
-  return session&&(process.env.MIS_SSO_MODE||'client')==='client'?{...session,sharedPulseIdentity:true}:session;
+  req.securitySession=local;
+  return local&&(process.env.MIS_SSO_MODE||'client')==='client'?{...local,sharedPulseIdentity:true}:local;
 }
 
 function sessionActivityDetails(req){
@@ -3574,7 +3604,7 @@ app.get('/api/health',async(_req,res)=>{
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
       cdirRosterRevision,
-      performance:{databasePool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},requestFeedCache:requestFeedCache.stats,slowRequestThresholdMs},
+      performance:{databasePool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},reportLane:reportLane.stats(),requestFeedCache:requestFeedCache.stats,slowRequestThresholdMs},
     });
   }catch(error){
     databaseReady=false;
@@ -7889,7 +7919,12 @@ const groqScanSettings=registerGroqScanSettings(app,{store:integrationSecrets,re
 const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(process.env.NEXUS_ERP_ORACLE_CONFIG?JSON.parse(process.env.NEXUS_ERP_ORACLE_CONFIG):null);
 // After every Pulse snapshot: retire aliases Pulse now carries as real doors, suspend aliases a real door now shadows (Telegram to the approver and the MIS managers).
 const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
-const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:createPulseSignInBridge({pool}),requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
+registerLmvImport(app,{pool,requireSession,requireAdministrator});
+const pulseSignInBridge=createPulseSignInBridge({pool});
+const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:pulseSignInBridge,requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
+// Equipment master is two-way with Pulse: changes made here reach Pulse after one shared OTP.
+registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
+ audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
 const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
@@ -7922,7 +7957,7 @@ if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;c
 const scanArchiveSettings=scanArchiveConfig();
 const scanBackup=registerScanBackup(app,{pool,requireSession,requireAdministrator,imageStorage:scanImageStorage,getSiteScope:logBookScope});
 registerClientErrorReports(app,{pool,requireSession,requireAdministrator,serverCommit:()=>deploymentSha});
-const bulkScanning=registerBulkCardScanning(app,{trackJob:(name,task)=>withoutRowSecurityRequest(()=>performanceMonitor.trackJob(name,task)),refreshPulseFleet:actor=>pulseMasterSync.sync('Equipment master',actor),readPulseFleet:actor=>pulseMasterSync.readEquipmentMasters(actor),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
+const bulkScanning=registerBulkCardScanning(app,{trackJob:(name,task)=>withoutRowSecurityRequest(()=>performanceMonitor.trackJob(name,task)),refreshPulseFleet:async actor=>{try{await pulseMasterSync.sync('Equipment master',actor)}catch(error){if(error.status!==403)throw error}},readPulseFleet:(actor,site,options)=>pulseMasterSync.readEquipmentMasters(actor,site,options),imageStorage:scanImageStorage,getSiteScope:logBookScope,pool,requireSession,requireAdministrator,getGroqConfig:groqScanSettings.getConfig,readHours:logBooks.readHours,readBreakdownRows:logBooks.readBreakdownRows,localDrafts:process.env.MIS_LOCAL_SCANNER_DATABASE==='true',archiveTarget:scanArchiveSettings?.target||null,archiveSavedBatch:scanArchiveSettings?createLocalCardArchive(scanArchiveSettings.root,{target:scanArchiveSettings.target}):null});
 const localScanner=registerLocalDocumentScanning(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,bulkScanning,enabled:process.env.LOCAL_SCAN_ENABLED==='true',inbox:process.env.LOCAL_SCAN_INBOX,outputRoot:process.env.LOCAL_SCAN_OUTPUT_ROOT});
 app.post('/api/master-sync/connections',requireSession,requireAdministrator,async(req,res)=>{req.audit=false;try{
  if(req.body.oracle){const c=req.body.oracle;if(typeof c.user!=='string'||typeof c.password!=='string'||!c.user||!c.password||!/^[-\w.]+:\d+\/[-\w.]+$/.test(c.connectString||''))return res.status(400).json({error:'Enter a valid Oracle user, password and host:port/service.'});const oracle=(await import('oracledb')).default;const connection=await oracle.getConnection({user:c.user,password:c.password,connectString:c.connectString,connectTimeout:15,transportConnectTimeout:10});try{connection.callTimeout=15000;await connection.execute('SELECT 1 FROM DUAL')}finally{await connection.close()}await integrationSecrets.write('oracle',{user:c.user,password:c.password,connectString:c.connectString});}

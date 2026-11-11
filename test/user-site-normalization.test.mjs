@@ -57,7 +57,7 @@ test('Jayant OC 2nd is merged into Jayant OC: NCL has three sites and every list
   assert.deepEqual(displaySiteSelection('Jayant OC | Jayant OC 2nd | Dudhichua OC | Dudhichua East OC'),['Jayant OC','Dudhichua OC','Dudhichua East OC']);
   assert.deepEqual(normalizeOperationalSiteFields({site:'Jayant OC 2nd',currentLocation:'JAYANT 2ND'}),{site:'Jayant OC',currentLocation:'Jayant OC'});
   assert.deepEqual(normalizeUserSiteFields({site:'Jayant OC 2nd',managerSites:'Jayant OC | Jayant OC 2nd'}),{site:'Jayant OC',managerSites:'Jayant OC'});
-  assert.match(ui,/const regionSites = \(record = \{\}\) => displaySiteSelection\(record\.sites\);/,'the Region master tabs dedupe stored site lists');
+  assert.match(ui,/sites: displaySiteSelection\(record\.sites\)\.join/,"the Region master table dedupes stored site lists");
 });
 
 test('the user form shows the same display names for manager sites and team locations',()=>{

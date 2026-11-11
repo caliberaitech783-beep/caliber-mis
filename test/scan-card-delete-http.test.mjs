@@ -9,7 +9,7 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  for(const [id,name,data]of [[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E5',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]])await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
  const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);let tail=Promise.resolve();const pool={query,connect:async()=>{const prior=tail;let done;tail=new Promise(r=>done=r);await prior;return {query,release:done}}};
  let deliveredOtp='',deliveryWorks=true;
- const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:req.get('X-Test-Actor')||'test-admin'};next()};const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,readPulseFleet:async()=>[{door:'V321',currentLocation:'Sasti OC'},{door:'E5',currentLocation:'Sasti OC'}],sendCardDeletionOtp:async request=>{assert.equal(request.to,'919925565281');deliveredOtp=request.otp;return deliveryWorks?{sent:true,messageId:'mock-only'}:{sent:false};},readHours:async()=>({breakdownHours:0}),ocr:{close(){}}});await service.start();await service.stop();app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:req.get('X-Test-Actor')||'test-admin'};next()};const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,readPulseFleet:async()=>[{door:'V321',currentLocation:'Sasti OC'},{door:'E5',currentLocation:'Sasti OC'}],sendCardDeletionOtp:async request=>{assert.equal(request.to,'917379771776');deliveredOtp=request.otp;return deliveryWorks?{sent:true,messageId:'mock-only'}:{sent:false};},readHours:async()=>({breakdownHours:0}),ocr:{close(){}}});await service.start();await service.stop();app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});const base='http://127.0.0.1:'+server.address().port;
  const call=async(url,body,method='POST',actor='test-admin')=>{const response=await fetch(base+url,{method,headers:{'Content-Type':'application/json','X-Test-Actor':actor},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
  const batch=randomUUID(),id=randomUUID(),other=randomUUID();
@@ -30,6 +30,17 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  assert.equal((await call(path+'/delete',payload)).status,409,'single use');
  const rows=(await db.query('SELECT * FROM mis_scan_cards ORDER BY ordinal')).rows;
  assert.equal(rows[0].image,null);assert.equal(rows[0].status,'rejected');assert.deepEqual(rows[0].draft,{});assert.equal(rows[0].raw_fields.manualDeletion.vehicle,'V-200');assert.equal(rows[1].image.length,10);assert.equal(rows[1].status,'review');
+ const batchPath='/api/scan-batches/'+batch;
+ for(const suffix of ['', '?progress=1']){
+  const listing=await call(batchPath+suffix,null,'GET');
+  assert.equal(listing.status,200,JSON.stringify(listing));
+  assert.deepEqual(listing.data.cards.map(card=>card.id),[other]);
+  assert.deepEqual(listing.data.batch.deletedCards,[{id,ordinal:1,vehicle:'V-200'}]);
+ }
+ const history=await call('/api/scan-batches',null,'GET');
+ assert.equal(history.data.batches.find(entry=>entry.id===batch).cards,1);
+ assert.equal((await fetch(base+path+'/image')).status,410);
+ assert.equal(await (await fetch(base+'/api/scan-cards/'+other+'/image')).text(),'test image');
  const second='/api/scan-cards/'+other,secondApproval='Approve deletion of card '+other+' revision 1';
  const stale=await call(second+'/deletion-otp',{revision:1,reason:'Test revision',approval:secondApproval},'POST','revision-user');assert.equal(stale.status,200);
  await db.query('UPDATE mis_scan_cards SET revision=2 WHERE id=$1',[other]);

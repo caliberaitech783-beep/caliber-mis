@@ -2,31 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("region master renders WCL and NCL graphical tabs with site subtabs", () => {
+test("Region / Site Master opens directly in the searchable master table", () => {
   const source = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  const styles = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  const regionSource = source.slice(source.indexOf("function RegionMasterPage"), source.indexOf("Generic = function GenericWithMasters"));
-
-  assert.match(source, /function RegionMasterPage\(/);
-  assert.match(source, /Subsidiaries = function SubsidiariesWithImport\(\{ gotoEquipment, requests = \[\] \} = \{\}\)/);
-  assert.match(source, /<RegionMasterPage records=\{records\}/);
-  assert.match(source, /requests=\{requests\}/);
-  assert.match(source, /gotoEquipment=\{gotoEquipment\}/);
-  assert.match(regionSource, /liveEquipmentMetrics\(siteRecords, siteRequests\)/);
-  assert.match(regionSource, /requests\.filter\(\(record\) => recordBelongsToSite\(record, site\)\)/);
-  assert.match(regionSource, /className="region-main-tabs"/);
-  assert.match(regionSource, /role="tablist" aria-label="Region tabs"/);
-  assert.match(regionSource, /className="region-site-tabs"/);
-  assert.match(regionSource, /aria-label=\{`\$\{activeRegion\.code\} site tabs`\}/);
-  assert.match(regionSource, /Manage regions and sites/);
-  assert.match(source, /useMasterRecords\("Region master"\)/);
-  assert.match(source, /if \(managing\) return <MasterPage name="Region master"/);
-  assert.match(regionSource, /Total equipment \/ vehicle/);
-  assert.match(regionSource, /On Road/);
-  assert.match(regionSource, /Off Road/);
-  assert.match(regionSource, /Idle/);
-  assert.match(styles, /\.region-master-page/);
-  assert.match(styles, /\.region-main-tabs/);
-  assert.match(styles, /\.region-site-tabs/);
-  assert.match(styles, /\.region-site-metrics/);
+  const region = source.slice(source.indexOf("function RegionSiteMaster"), source.indexOf("function InfoPulseTimelineModal"));
+  assert.match(source, /<RegionSiteMaster \/>/);
+  assert.match(region, /useMasterRecords\("Region master"\)/);
+  assert.match(region, /<MasterPage name="Region master" records=/);
+  assert.match(region, /displaySiteSelection\(record.sites\)/);
+  assert.match(region, /pulse.cmll.in/);
+  assert.doesNotMatch(region, /onAdd|onEdit|onDelete/);
 });

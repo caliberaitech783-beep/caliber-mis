@@ -1,3 +1,4 @@
+import {canonicalSiteName} from '../shared/site-location.mjs';
 import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
@@ -11,7 +12,7 @@ process.env.VLB_TWO_STAGE_BATCHES='0';
 const valid={doorText:'V321',bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',timeMode:'with',machineNotationRuleVersion:1,
  trips:[{rowNumber:1,equipmentName:'TPC50- 05008',equipmentId:'6',equipmentSource:'master-selection',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],
  scanMachineSummary:[{equipmentName:'T 50',tripCount:1}]};
-const masters=[[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}],[6,'Equipment master',{category:'Equipment',door:'TPC50- 05008',equipmentType:'TPC',equipmentNo:'05008',currentLocation:'Sasti OC'}]];
+const masters=[[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100',site:'Sasti OC'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}],[6,'Equipment master',{category:'Equipment',door:'TPC50- 05008',equipmentType:'TPC',equipmentNo:'05008',currentLocation:'Sasti OC'}]];
 
 test('the browser rule set sees the card as complete only when the Equipment Master is supplied',()=>{
  const raw={machineNotation:{version:1}},assets=masters.filter(([,name])=>name==='Equipment master').map(([id,,data])=>({...data,id:String(id),kind:data.category==='Vehicle'?'vehicle':'equipment',site:data.currentLocation}));
@@ -25,7 +26,7 @@ test('automatic saving judges completeness with the same master lists as the bro
  let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
  const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
  const app=express();app.use(express.json());const session=(q,s,n)=>{if(!q.headers.authorization)return s.sendStatus(401);q.session={login:'test-admin'};n()},admin=(q,s,n)=>q.headers.authorization==='admin'?n():s.sendStatus(403);
- const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readHours:async()=>({breakdownHours:0}),ocr:{close(){}},archiveSavedBatch:async()=>({status:'saved'})});await service.start();await prepareVlbFixture(db,valid);t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,getSiteScope:async()=>({sites:[canonicalSiteName(valid.location)]}),readHours:async()=>({breakdownHours:0}),ocr:{close(){}},archiveSavedBatch:async()=>({status:'saved'})});await service.start();await prepareVlbFixture(db,valid);t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
  const root='http://127.0.0.1:'+server.address().port,headers={Authorization:'admin','Content-Type':'application/json'};
  const batch=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Master options test','test-admin']);
@@ -38,4 +39,21 @@ test('automatic saving judges completeness with the same master lists as the bro
  const refused=await call(await add(2,{...valid,aFormNo:'76',trips:[valid.trips[0],{...valid.trips[0],rowNumber:2,loadingTime:'09:20',unloadingTime:'09:30'}]}));
  assert.equal(refused.status,409);
  assert.equal(refused.data.error.split('Check the machine assignment against the summary.').length-1,1,refused.data.error);
+ // The short code resolves at the card site even when another site uses it.
+ for(const [id,door,site] of [[7,'TPC63 - 05017','Sasti OC'],[8,'TPC63 - 05018','Jayant OC']]){
+  await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,'Equipment master',JSON.stringify({category:'Equipment',door,currentLocation:site})]);
+ }
+ process.env.VLB_TWO_STAGE_BATCHES='1';
+ t.after(()=>{process.env.VLB_TWO_STAGE_BATCHES='0';});
+ await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[9,'Equipment master',JSON.stringify({category:'Vehicle',door:'V329',currentLocation:'Sasti OC'})]);
+ const shortCode={...valid,aFormNo:'77',assetId:'9',doorText:'V329',
+  trips:[{rowNumber:1,equipmentName:'TPC63',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],
+  scanMachineSummary:[{equipmentName:'TPC63',tripCount:1}]};
+ const matched=await call(await add(3,shortCode));
+ assert.equal(matched.status,200,JSON.stringify(matched.data));
+ assert.equal(matched.data.record.data.trips[0].equipmentId,'7');
+ await db.query('UPDATE master_records SET record_data=$1 WHERE id=2',[JSON.stringify({name:'TEST DRIVER',empId:'EMP100',site:'Jayant OC'})]);
+ const wrongDriver=await call(await add(4,{...shortCode,aFormNo:'78'}));
+ assert.equal(wrongDriver.status,409);
+ assert.match(wrongDriver.data.error,/selected employee is not assigned to this location/i);
 });

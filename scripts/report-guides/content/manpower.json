@@ -1,0 +1,626 @@
+{
+  "id": "manpower",
+  "group": "Manpower & OT",
+  "title": "Manpower by Category",
+  "menu": "Reports → Manpower & OT → Manpower by Category",
+  "asOf": {
+    "en": "Matches the system as of 11 November 2026",
+    "hi": "11 नवंबर 2026 तक के सिस्टम के अनुसार"
+  },
+  "en": {
+    "purpose": "Shows how many machines and how many employees worked, step by step: first every site, then one site date by shift, then one date and shift by equipment category. Below the steps it lists the counts by category, group, make and model and every saved VLB and ELB card they come from, for whatever step is open. A site in-charge or MIS clerk uses it to see how the fleet was manned and to find cards whose employee or equipment details need checking.",
+    "row": "In “Manpower by Category, Make & Model” one row is one duty date, site, shift, category, equipment group, make and model. In “Vehicle & Employee Assignments” one row is one saved VLB or ELB card.",
+    "filters": [
+      [
+        "From / To",
+        "First and last duty date of the report. From opens on the 1st of the current month and To on today’s date. A date before 1 November 2026 cannot be chosen, To cannot be earlier than From, and the range can cover at most 31 days. Outside these limits nothing loads and the screen says “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+      ],
+      [
+        "Site",
+        "Keeps only the cards of one site. “All” means every site assigned to your login. Changing the site sets Saved batch and Door / equipment back to “All”."
+      ],
+      [
+        "Shift",
+        "Keeps only the cards of one shift. The list shows the shift codes found in the loaded records, for example S1, S2, S3."
+      ],
+      [
+        "Saved batch",
+        "Keeps only the cards saved in one batch. The list holds the batches dated within From and To and the batches of the loaded cards. A batch with no saved card can be chosen, but it gives no count."
+      ],
+      [
+        "Employee",
+        "Keeps only the cards whose Employee ID was matched to that employee. Each entry reads Employee ID · name, for example “CMPL90001 · SAMPLE DRIVER 01”. Cards with an unmatched ID are not shown while an employee is chosen."
+      ],
+      [
+        "Door / equipment",
+        "Keeps only the cards of one door number, for example V9001."
+      ],
+      [
+        "Today",
+        "Button. Sets From and To to today’s date. The other selections stay."
+      ],
+      [
+        "Clear selections",
+        "Button. Sets Site, Shift, Saved batch, Employee and Door / equipment back to “All”. The dates stay."
+      ],
+      [
+        "Auto-hide filters",
+        "Tick box. When ticked, the selectors are tucked away and only a bar with the current dates, site and shift stays on screen. Move the mouse over the bar, or press it, to open the selectors; they close when the mouse leaves. The choice is remembered in this browser."
+      ],
+      [
+        "Refresh reports",
+        "Button at the top right. Reads the saved records again with the same selections. It cannot be pressed while a load is running."
+      ]
+    ],
+    "screen": [
+      [
+        "REPORTS / MANPOWER & OT",
+        "The page heading, with the title “Manpower by Category” under it. The next line reads “Saved duties, clear assignments and shift-by-shift performance.”"
+      ],
+      [
+        "Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties",
+        "The tab row. Press a name to open that view. The dates and selections stay the same when you move between these five tabs."
+      ],
+      [
+        "Bar above the selectors",
+        "Shows the From and To dates in use, the site (or “All assigned sites”), the shift (or “All shifts”) and how many of Saved batch, Employee and Door / equipment are set, for example “2 more selections”. The bar can be pressed only when “Auto-hide filters” is ticked."
+      ],
+      [
+        "Loading saved records and checking shift patterns…",
+        "Shown while the report is being read. The tables appear when the reading is over."
+      ],
+      [
+        "Error message",
+        "If the report cannot be read, the reason is shown in place of the tables. For example, when the chosen dates hold more than 50,000 saved cards the screen says “This range contains too many saved cards. Select a shorter date range.”"
+      ],
+      [
+        "Line under the selectors",
+        "Repeats the dates, site and shift in use, then “Saved records only” and “Updated … IST”, the time at which this report was read."
+      ],
+      [
+        "Distinct assets",
+        "Count card. Number of different machines on the selected cards. A machine is one door number at one site. Cards left out of totals, and cards whose door number does not fit exactly one machine in the Equipment master, are not counted."
+      ],
+      [
+        "Distinct employees",
+        "Count card. Number of different employees matched on the selected cards. Cards left out of totals, and cards whose Employee ID was not matched, add nothing."
+      ],
+      [
+        "Employee shift duties",
+        "Count card. Number of rows that the Shift Performance tab shows for the same selections: one for each employee, site, date and shift."
+      ],
+      [
+        "Review items",
+        "Count card. Number of rows in the “Manpower Data Review” table at the bottom."
+      ],
+      [
+        "Step 1 · All sites",
+        "The first table: one line for every site assigned to your login, and an “All sites” line. Vehicles / equipment is the number of different machines, Employees the number of different employees, Duties one employee in one shift on one date, Saved cards the cards read. The All sites line equals the count cards above. Press any number on a line to open that site; press it again to close it. Its Generate button downloads the table."
+      ],
+      [
+        "Step 2 · date by shift",
+        "Opens under Step 1 when a site is pressed. One line for every date chosen, and an “All dates” line when more than one date is chosen. Each shift box shows the duties of that shift and, under it, the machines that worked. Then Day duties, Vehicles / equipment, Employees and Saved cards for the whole day. Press a box to open Step 3 for that date and shift; press the Day duties number for the whole day, or a number on the All dates line for every date."
+      ],
+      [
+        "Step 3 · by equipment category",
+        "Opens under Step 2 when a box is pressed. One line for each equipment category (the equipment group in the Equipment master, such as Volvo Tippers or Haulpak Dumper) with its machines, employees, duties and saved cards, and an “All categories” line. Press a category or one of its numbers: the two tables below then show only that category."
+      ],
+      [
+        "Line above the steps",
+        "Shows where you are, for example “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”. Press any part of it to step back to that level. The violet Back button at the start of the line goes back one level; the round back arrow at the top of the page does the same."
+      ],
+      [
+        "Manpower by Category, Make & Model",
+        "The counts by category, group, make and model, for what is open in the steps above: every site at first, then the opened site, date and shift, and category. The opened selection is added to its title. The line under the title repeats the selections and adds “Distinct assets and employees within each category”. If nothing matches it says “No saved asset assignments in this selection. An empty batch has no manpower count.”"
+      ],
+      [
+        "Vehicle & Employee Assignments",
+        "The saved cards, one by one, for what is open in the steps above. The opened selection is added to its title. If nothing matches it says “No saved assignments match these selections.”"
+      ],
+      [
+        "Manpower Data Review",
+        "The table at the bottom. It lists every problem found on the selected cards, one row for each problem, so that it can be corrected. If there is none it says “No card needs correction in these selections.”"
+      ],
+      [
+        "Sources and calculation rules",
+        "Press to open the written rules the report follows. The last line says that manpower requirements, shortages and relief availability are reserved for a later phase."
+      ]
+    ],
+    "columns": [
+      [
+        "Manpower by Category, Make & Model · Duty date",
+        "Book date of the cards counted in the row, written as year-month-day."
+      ],
+      [
+        "Manpower by Category, Make & Model · Site",
+        "Site of those cards."
+      ],
+      [
+        "Manpower by Category, Make & Model · Shift",
+        "Shift code of those cards, for example S1, S2 or S3."
+      ],
+      [
+        "Manpower by Category, Make & Model · Category",
+        "Category of the machine in the Equipment master. “Unresolved category” means the master has no category for it."
+      ],
+      [
+        "Manpower by Category, Make & Model · Equipment group",
+        "Group of the machine in the Equipment master. “Unresolved group” means the master has no group for it."
+      ],
+      [
+        "Manpower by Category, Make & Model · Make",
+        "Make name from the Equipment master. “Unresolved make” means it is blank. “Unresolved make code” followed by a number means the master holds only a number, with no name."
+      ],
+      [
+        "Manpower by Category, Make & Model · Model",
+        "Model name from the Equipment master, with the same “Unresolved model” wording when it is blank or only a number."
+      ],
+      [
+        "Manpower by Category, Make & Model · Distinct vehicles / equipment",
+        "Number of different machines in the row. A machine is one door number at one site, so two cards of the same door count once."
+      ],
+      [
+        "Manpower by Category, Make & Model · Distinct employees",
+        "Number of different matched employees on the row’s cards. An employee who changed equipment is counted in each row he worked in, so do not add this column down the table."
+      ],
+      [
+        "Manpower by Category, Make & Model · Unresolved assignment records",
+        "Number of cards in the row whose Employee ID could not be matched to the employee master."
+      ],
+      [
+        "Manpower by Category, Make & Model · Door numbers",
+        "Door numbers of the row’s cards, separated by “;”."
+      ],
+      [
+        "Manpower by Category, Make & Model · Source batches",
+        "Names of the batches in which the row’s cards were saved. Blank when the cards are in no batch."
+      ],
+      [
+        "Vehicle & Employee Assignments · Duty date",
+        "Book date of the card."
+      ],
+      [
+        "Vehicle & Employee Assignments · Site",
+        "Site of the card."
+      ],
+      [
+        "Vehicle & Employee Assignments · Shift",
+        "Shift code of the card. “Unresolved” means no shift could be read from the card, or its shift labels disagree."
+      ],
+      [
+        "Vehicle & Employee Assignments · Door / equipment",
+        "Door number saved on the card. If the card has none, the door number of the matched machine in the Equipment master."
+      ],
+      [
+        "Vehicle & Employee Assignments · Category",
+        "Category of the machine in the Equipment master. “Unresolved category” when the card has no Equipment master match or the master has no category."
+      ],
+      [
+        "Vehicle & Employee Assignments · Equipment group",
+        "Group of the machine in the Equipment master. “Unresolved group” when it is not available."
+      ],
+      [
+        "Vehicle & Employee Assignments · Make",
+        "Make name from the Equipment master. “Unresolved make” when it is not available; “Unresolved make code” with a number when the master holds only a number."
+      ],
+      [
+        "Vehicle & Employee Assignments · Model",
+        "Model name from the Equipment master, with the same “Unresolved model” wording."
+      ],
+      [
+        "Vehicle & Employee Assignments · Employee ID",
+        "Employee ID from the employee master when the card was matched. Otherwise the ID saved on the card."
+      ],
+      [
+        "Vehicle & Employee Assignments · Caliber ID",
+        "Caliber ID mapped to that employee in the master. Blank when the card was not matched."
+      ],
+      [
+        "Vehicle & Employee Assignments · Driver / operator",
+        "Name from the employee master when the card was matched. Otherwise the name saved on the card."
+      ],
+      [
+        "Vehicle & Employee Assignments · Assignment",
+        "“Matched employee ID” when the ID on the card was matched to one employee. “Needs identity review” when the ID is missing, not found, in conflict with the linked employee, or fits more than one employee. “Needs record review” when the card is left out of totals because its saved date or site disagrees with the log book, or its shift labels disagree."
+      ],
+      [
+        "Vehicle & Employee Assignments · Source batches",
+        "Names of the batches holding the card. “Saved VLB (no site batch)” or “Saved ELB (no site batch)” when it is in no batch."
+      ],
+      [
+        "Vehicle & Employee Assignments · Batch status",
+        "“Open” or “Closed” for the batch of the card. “Saved scan” when the card has only a scan batch. “Saved” when it has no batch. A card in an open batch can still change."
+      ],
+      [
+        "Vehicle & Employee Assignments · Saved card",
+        "Book number of the saved card."
+      ],
+      [
+        "Vehicle & Employee Assignments · Remarks / review",
+        "Every review reason found on the card, then the remark saved on the card, separated by “;”."
+      ],
+      [
+        "Manpower Data Review · Duty date",
+        "Book date of the card that has the problem."
+      ],
+      [
+        "Manpower Data Review · Site",
+        "Site of that card."
+      ],
+      [
+        "Manpower Data Review · Shift",
+        "Shift code of that card."
+      ],
+      [
+        "Manpower Data Review · Door / equipment",
+        "Door number of that card."
+      ],
+      [
+        "Manpower Data Review · Employee ID",
+        "Matched Employee ID, or the ID saved on the card when it was not matched."
+      ],
+      [
+        "Manpower Data Review · Driver / operator",
+        "Name of the driver or operator on that card."
+      ],
+      [
+        "Manpower Data Review · Saved card",
+        "Book number of the card. Use it to find the card."
+      ],
+      [
+        "Manpower Data Review · Log book",
+        "VLB or ELB. LMV items are shown only on OT & Multiple Duties."
+      ],
+      [
+        "Manpower Data Review · Source batches",
+        "Names of the batches holding the card, or “Saved VLB (no site batch)” / “Saved ELB (no site batch)”."
+      ],
+      [
+        "Manpower Data Review · What to correct",
+        "The problem in words. Examples: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"
+      ]
+    ],
+    "notes": [
+      "Only saved VLB and ELB log books dated 1 November 2026 or later are read. Pending scans and deleted records are excluded. LMV log books are used only by OT & Multiple Duties.",
+      "Counts are distinct inside each row. An employee who changed equipment appears in more than one row, so the Distinct employees column cannot be added to get a total; the “Distinct employees” card gives the total for the selection.",
+      "A repeated record or a possible repeated scan/card is counted once. The extra copy is left out of both tables and listed in Manpower Data Review.",
+      "A card stays in Vehicle & Employee Assignments but is left out of the first table when it is marked “Needs record review”, has no Equipment master match, has no door number, or its door number fits more than one machine at that site.",
+      "Category, group, make and model are read from the current Equipment master. A change in the master also changes how earlier dates are shown.",
+      "Only sites assigned to your login are loaded. Cards in an open batch are included and can still change."
+    ],
+    "checklist": [
+      "Set From, To and Site. Read the line under the selectors to confirm the selections and the “Updated” time. Press “Refresh reports” if cards were saved after that time.",
+      "Read the four count cards, then Step 1. Press a site, then a date and shift box, then an equipment category, to see where the machines and employees were. If “Review items” is not 0, open “Manpower Data Review” at the bottom first.",
+      "In “Manpower by Category, Make & Model”, compare Distinct vehicles / equipment with the Door numbers listed in the same row.",
+      "Where Unresolved assignment records is more than 0, find those cards in “Vehicle & Employee Assignments” (Assignment shows “Needs identity review”) and compare the Employee ID with the paper card.",
+      "Search for “Unresolved” to find machines with a missing category, group, make or model, and check those door numbers in the Equipment master.",
+      "Look at Batch status. Rows from an “Open” batch can change, so read the report again after the batch is closed."
+    ],
+    "faq": [
+      [
+        "Why is the sum of Distinct employees in the table more than the “Distinct employees” card?",
+        "The table counts an employee once in every row he worked in: each date, shift, category, make and model. The card counts each employee once for the whole selection."
+      ],
+      [
+        "A card was saved but I cannot find it here. Why?",
+        "Check From, To, Site and Shift, then press “Refresh reports”. Pending scans, deleted records and LMV log books are not read. A repeated copy of a card is left out and listed in “Manpower Data Review”."
+      ],
+      [
+        "What does “Unresolved make code” with a number mean?",
+        "The Equipment master holds only a number for the make of that machine, with no name. The same wording is used for the model. The card is also listed in “Manpower Data Review”."
+      ],
+      [
+        "Why is a card in “Vehicle & Employee Assignments” but not counted in the first table?",
+        "The first table counts only cards that are included in totals and whose door number fits exactly one machine in the Equipment master. Other cards stay in the second table and in “Manpower Data Review” with the reason."
+      ]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट चरण-दर-चरण बताती है कि कितनी मशीनें चलीं और उन पर कितने कर्मचारी थे: पहले सभी साइट, फिर एक साइट तारीख़ और Shift के अनुसार, फिर एक तारीख़ और Shift equipment category के अनुसार। चरणों के नीचे, जो चरण खुला है उसी के लिए, category, group, make और model की गिनती और वे सभी सेव किए हुए VLB और ELB कार्ड दिखते हैं जिनसे यह गिनती बनी है। साइट इंचार्ज या MIS क्लर्क इससे देखते हैं कि मशीनों पर कितने लोग लगे थे और किन कार्डों में कर्मचारी या मशीन की जानकारी जाँचनी है।",
+    "row": "“Manpower by Category, Make & Model” टेबल में एक लाइन का मतलब है एक ड्यूटी तारीख, साइट, Shift, category, equipment group, make और model। “Vehicle & Employee Assignments” टेबल में एक लाइन एक सेव किया हुआ VLB या ELB कार्ड है।",
+    "filters": [
+      [
+        "From / To",
+        "रिपोर्ट की पहली और आख़िरी ड्यूटी तारीख। शुरू में From में चालू महीने की 1 तारीख और To में आज की तारीख रहती है। 1 November 2026 से पहले की तारीख नहीं चुनी जा सकती, To की तारीख From से पहले की नहीं हो सकती, और एक बार में ज़्यादा से ज़्यादा 31 दिन चुने जा सकते हैं। इन सीमाओं के बाहर कुछ लोड नहीं होता और स्क्रीन पर लिखा आता है “Choose a valid range of up to 31 days, starting on or after 1 November 2026.”"
+      ],
+      [
+        "Site",
+        "सिर्फ़ एक साइट के कार्ड रखता है। “All” का मतलब है आपके login को दी गई सभी साइटें। साइट बदलने पर Saved batch और Door / equipment वापस “All” हो जाते हैं।"
+      ],
+      [
+        "Shift",
+        "सिर्फ़ एक Shift के कार्ड रखता है। सूची में वही Shift कोड आते हैं जो लोड हुए रिकॉर्ड में मिले हैं, जैसे S1, S2, S3।"
+      ],
+      [
+        "Saved batch",
+        "सिर्फ़ एक बैच में सेव हुए कार्ड रखता है। सूची में From से To के बीच की तारीख वाले बैच और लोड हुए कार्डों के बैच आते हैं। जिस बैच में कोई सेव कार्ड नहीं है वह भी चुना जा सकता है, पर उससे कोई गिनती नहीं बनती।"
+      ],
+      [
+        "Employee",
+        "सिर्फ़ वे कार्ड रखता है जिनका Employee ID उस कर्मचारी से मिल गया है। सूची में हर नाम Employee ID · नाम के रूप में दिखता है, जैसे “CMPL90001 · SAMPLE DRIVER 01”। कर्मचारी चुने रहने पर वे कार्ड नहीं दिखते जिनका ID किसी से नहीं मिला।"
+      ],
+      [
+        "Door / equipment",
+        "सिर्फ़ एक डोर नंबर के कार्ड रखता है, जैसे V9001।"
+      ],
+      [
+        "Today",
+        "बटन। From और To दोनों में आज की तारीख भर देता है। बाकी चुनाव वैसे ही रहते हैं।"
+      ],
+      [
+        "Clear selections",
+        "बटन। Site, Shift, Saved batch, Employee और Door / equipment को वापस “All” कर देता है। तारीखें नहीं बदलतीं।"
+      ],
+      [
+        "Auto-hide filters",
+        "टिक बॉक्स। टिक करने पर फ़िल्टर छिप जाते हैं और सिर्फ़ एक पट्टी दिखती है जिसमें अभी की तारीखें, साइट और Shift लिखे रहते हैं। फ़िल्टर खोलने के लिए माउस पट्टी पर ले जाएँ या पट्टी दबाएँ; माउस हटाने पर वे फिर छिप जाते हैं। यह चुनाव इसी ब्राउज़र में याद रहता है।"
+      ],
+      [
+        "Refresh reports",
+        "ऊपर दाईं ओर का बटन। उन्हीं चुनावों के साथ सेव रिकॉर्ड दोबारा पढ़ता है। जब तक रिपोर्ट लोड हो रही हो, यह बटन नहीं दबता।"
+      ]
+    ],
+    "screen": [
+      [
+        "REPORTS / MANPOWER & OT",
+        "पेज का शीर्षक, जिसके नीचे “Manpower by Category” लिखा रहता है। उसके बाद की लाइन है “Saved duties, clear assignments and shift-by-shift performance.”"
+      ],
+      [
+        "Manpower by Category · Manpower by Category Reconciliation · Shift Performance · Shift Attendance Equipment Wise · OT & Multiple Duties",
+        "टैब की पट्टी। जिस नाम को दबाएँगे वही रिपोर्ट खुलेगी। इन चारों टैब के बीच जाने पर तारीखें और चुनाव वही रहते हैं।"
+      ],
+      [
+        "फ़िल्टर के ऊपर की पट्टी",
+        "इसमें अभी की From और To तारीखें, साइट (या “All assigned sites”), Shift (या “All shifts”) और यह लिखा रहता है कि Saved batch, Employee और Door / equipment में से कितने चुने गए हैं, जैसे “2 more selections”। यह पट्टी तभी दबती है जब “Auto-hide filters” टिक हो।"
+      ],
+      [
+        "Loading saved records and checking shift patterns…",
+        "जब तक रिपोर्ट पढ़ी जा रही है तब तक यह लिखा रहता है। पढ़ना पूरा होने पर टेबल दिखती हैं।"
+      ],
+      [
+        "गलती का संदेश",
+        "अगर रिपोर्ट नहीं पढ़ी जा सकी तो टेबल की जगह उसका कारण लिखा आता है। जैसे, चुनी हुई तारीखों में 50,000 से ज़्यादा सेव कार्ड होने पर लिखा आता है “This range contains too many saved cards. Select a shorter date range.”"
+      ],
+      [
+        "फ़िल्टर के नीचे की लाइन",
+        "इसमें अभी की तारीखें, साइट और Shift दोबारा लिखे रहते हैं, फिर “Saved records only” और “Updated … IST”, यानी यह रिपोर्ट किस समय पढ़ी गई।"
+      ],
+      [
+        "Distinct assets",
+        "गिनती का कार्ड। चुने हुए कार्डों पर कितनी अलग-अलग मशीनें हैं। एक मशीन का मतलब है एक साइट का एक डोर नंबर। जो कार्ड कुल गिनती से बाहर रखे गए हैं, और जिनका डोर नंबर Equipment master की ठीक एक मशीन से नहीं मिलता, वे नहीं गिने जाते।"
+      ],
+      [
+        "Distinct employees",
+        "गिनती का कार्ड। चुने हुए कार्डों पर कितने अलग-अलग कर्मचारी मिले हैं। जो कार्ड कुल गिनती से बाहर रखे गए हैं, और जिनका Employee ID नहीं मिला, वे इसमें कुछ नहीं जोड़ते।"
+      ],
+      [
+        "Employee shift duties",
+        "गिनती का कार्ड। इन्हीं चुनावों पर Shift Performance टैब में जितनी लाइनें आती हैं, उतनी संख्या: हर कर्मचारी, साइट, तारीख और Shift की एक।"
+      ],
+      [
+        "Review items",
+        "गिनती का कार्ड। सबसे नीचे की “Manpower Data Review” टेबल में कितनी लाइनें हैं।"
+      ],
+      [
+        "Step 1 · All sites",
+        "पहली टेबल: आपके लॉगिन को दी गई हर साइट की एक लाइन, और “All sites” की लाइन। Vehicles / equipment यानी कितनी अलग-अलग मशीनें, Employees यानी कितने अलग-अलग कर्मचारी, Duties यानी एक कर्मचारी, एक Shift, एक तारीख़, और Saved cards यानी पढ़े गए कार्ड। All sites की लाइन ऊपर के गिनती वाले कार्डों के बराबर होती है। किसी लाइन की कोई भी संख्या दबाएँ तो वह साइट खुलेगी; बंद करने के लिए दोबारा दबाएँ। Generate बटन से यह टेबल डाउनलोड होती है।"
+      ],
+      [
+        "Step 2 · date by shift",
+        "साइट दबाने पर Step 1 के नीचे खुलती है। चुनी हुई हर तारीख़ की एक लाइन, और एक से ज़्यादा तारीख़ चुनने पर “All dates” की लाइन। हर Shift के खाने में उस Shift की ड्यूटी और उसके नीचे चली हुई मशीनें दिखती हैं। फिर पूरे दिन के Day duties, Vehicles / equipment, Employees और Saved cards। किसी खाने को दबाएँ तो उस तारीख़ और Shift का Step 3 खुलेगा; पूरे दिन के लिए Day duties की संख्या दबाएँ, या सभी तारीख़ों के लिए All dates की लाइन की संख्या।"
+      ],
+      [
+        "Step 3 · by equipment category",
+        "खाना दबाने पर Step 2 के नीचे खुलती है। हर equipment category (Equipment master का equipment group, जैसे Volvo Tippers या Haulpak Dumper) की एक लाइन, उसकी मशीनों, कर्मचारियों, ड्यूटी और सेव कार्डों के साथ, और “All categories” की लाइन। कोई category या उसकी संख्या दबाएँ: तब नीचे की दोनों टेबल सिर्फ़ उसी category की दिखेंगी।"
+      ],
+      [
+        "चरणों के ऊपर की लाइन",
+        "बताती है कि आप कहाँ हैं, जैसे “All sites › Sasti OC › 05-11-26 · Shift 1 › Volvo Tippers”। उस स्तर पर लौटने के लिए उसका कोई भी हिस्सा दबाएँ। लाइन की शुरुआत का बैंगनी Back बटन एक स्तर पीछे ले जाता है; पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है।"
+      ],
+      [
+        "Manpower by Category, Make & Model",
+        "category, group, make और model के अनुसार गिनती, ऊपर के चरणों में जो खुला है उसके लिए: शुरू में सभी साइट, फिर खोली हुई साइट, तारीख़ और Shift, और category। खोला हुआ चुनाव इसके नाम में जुड़ जाता है। नाम के नीचे की लाइन में चुनाव दोबारा लिखे रहते हैं और साथ में “Distinct assets and employees within each category”। कुछ न मिलने पर लिखा आता है “No saved asset assignments in this selection. An empty batch has no manpower count.”"
+      ],
+      [
+        "Vehicle & Employee Assignments",
+        "सेव किए हुए कार्ड, एक-एक करके, ऊपर के चरणों में जो खुला है उसके लिए। खोला हुआ चुनाव इसके नाम में जुड़ जाता है। कुछ न मिलने पर लिखा आता है “No saved assignments match these selections.”"
+      ],
+      [
+        "Manpower Data Review",
+        "सबसे नीचे की टेबल। चुने हुए कार्डों में जो भी गड़बड़ी मिली है वह यहाँ दिखती है, हर गड़बड़ी की एक लाइन, ताकि उसे ठीक किया जा सके। कोई गड़बड़ी न हो तो लिखा आता है “No card needs correction in these selections.”"
+      ],
+      [
+        "Sources and calculation rules",
+        "दबाने पर वे लिखे हुए नियम खुलते हैं जिन पर रिपोर्ट चलती है। आख़िरी लाइन बताती है कि manpower की ज़रूरत, कमी और relief की उपलब्धता बाद के चरण के लिए रखी गई है।"
+      ]
+    ],
+    "columns": [
+      [
+        "Manpower by Category, Make & Model · Duty date",
+        "इस लाइन में गिने गए कार्डों की बुक तारीख, साल-महीना-दिन के रूप में।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Site",
+        "उन कार्डों की साइट।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Shift",
+        "उन कार्डों का Shift कोड, जैसे S1, S2 या S3।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Category",
+        "Equipment master में मशीन की category। “Unresolved category” का मतलब है कि master में उसकी category नहीं है।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Equipment group",
+        "Equipment master में मशीन का group। “Unresolved group” का मतलब है कि master में उसका group नहीं है।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Make",
+        "Equipment master से make का नाम। “Unresolved make” का मतलब है कि वह खाली है। “Unresolved make code” और उसके बाद कोई नंबर हो तो master में सिर्फ़ नंबर है, नाम नहीं।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Model",
+        "Equipment master से model का नाम। खाली होने या सिर्फ़ नंबर होने पर उसी तरह “Unresolved model” लिखा आता है।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Distinct vehicles / equipment",
+        "इस लाइन में कितनी अलग-अलग मशीनें हैं। एक मशीन का मतलब है एक साइट का एक डोर नंबर, इसलिए एक ही डोर के दो कार्ड एक बार गिने जाते हैं।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Distinct employees",
+        "इस लाइन के कार्डों पर कितने अलग-अलग कर्मचारी मिले। जिस कर्मचारी ने मशीन बदली वह हर उस लाइन में गिना जाता है जहाँ उसने काम किया, इसलिए इस कॉलम को ऊपर से नीचे तक न जोड़ें।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Unresolved assignment records",
+        "इस लाइन के कितने कार्डों का Employee ID कर्मचारी master से नहीं मिल सका।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Door numbers",
+        "इस लाइन के कार्डों के डोर नंबर, “;” से अलग किए हुए।"
+      ],
+      [
+        "Manpower by Category, Make & Model · Source batches",
+        "जिन बैच में इस लाइन के कार्ड सेव हुए उनके नाम। कार्ड किसी बैच में न हों तो खाली।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Duty date",
+        "कार्ड की बुक तारीख।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Site",
+        "कार्ड की साइट।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Shift",
+        "कार्ड का Shift कोड। “Unresolved” का मतलब है कि कार्ड से Shift नहीं पढ़ी जा सकी, या उसके Shift के लेबल आपस में नहीं मिलते।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Door / equipment",
+        "कार्ड पर सेव डोर नंबर। कार्ड पर न हो तो Equipment master में मिली मशीन का डोर नंबर।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Category",
+        "Equipment master में मशीन की category। कार्ड का Equipment master से मिलान न हो या master में category न हो तो “Unresolved category”।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Equipment group",
+        "Equipment master में मशीन का group। उपलब्ध न हो तो “Unresolved group”।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Make",
+        "Equipment master से make का नाम। उपलब्ध न हो तो “Unresolved make”; master में सिर्फ़ नंबर हो तो “Unresolved make code” और वह नंबर।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Model",
+        "Equipment master से model का नाम, उसी तरह “Unresolved model” के साथ।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Employee ID",
+        "कार्ड का मिलान हो गया हो तो कर्मचारी master का Employee ID। नहीं तो कार्ड पर सेव ID।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Caliber ID",
+        "master में उस कर्मचारी से जुड़ा Caliber ID। कार्ड का मिलान न हुआ हो तो खाली।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Driver / operator",
+        "कार्ड का मिलान हो गया हो तो कर्मचारी master का नाम। नहीं तो कार्ड पर सेव नाम।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Assignment",
+        "“Matched employee ID”: कार्ड का ID एक कर्मचारी से मिल गया। “Needs identity review”: ID नहीं है, नहीं मिला, जुड़े हुए कर्मचारी से टकराता है, या एक से ज़्यादा कर्मचारियों से मिलता है। “Needs record review”: कार्ड कुल गिनती से बाहर है क्योंकि उसकी सेव तारीख या साइट लॉग बुक से नहीं मिलती, या उसके Shift के लेबल आपस में नहीं मिलते।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Source batches",
+        "जिन बैच में कार्ड है उनके नाम। किसी बैच में न हो तो “Saved VLB (no site batch)” या “Saved ELB (no site batch)”।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Batch status",
+        "कार्ड के बैच के लिए “Open” या “Closed”। कार्ड के पास सिर्फ़ स्कैन बैच हो तो “Saved scan”। कोई बैच न हो तो “Saved”। Open बैच का कार्ड अभी बदल सकता है।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Saved card",
+        "सेव किए हुए कार्ड का बुक नंबर।"
+      ],
+      [
+        "Vehicle & Employee Assignments · Remarks / review",
+        "कार्ड पर मिले जाँच के सभी कारण, फिर कार्ड पर सेव remark, “;” से अलग किए हुए।"
+      ],
+      [
+        "Manpower Data Review · Duty date",
+        "जिस कार्ड में गड़बड़ी है उसकी बुक तारीख।"
+      ],
+      [
+        "Manpower Data Review · Site",
+        "उस कार्ड की साइट।"
+      ],
+      [
+        "Manpower Data Review · Shift",
+        "उस कार्ड का Shift कोड।"
+      ],
+      [
+        "Manpower Data Review · Door / equipment",
+        "उस कार्ड का डोर नंबर।"
+      ],
+      [
+        "Manpower Data Review · Employee ID",
+        "मिला हुआ Employee ID, या मिलान न होने पर कार्ड पर सेव ID।"
+      ],
+      [
+        "Manpower Data Review · Driver / operator",
+        "उस कार्ड के ड्राइवर या ऑपरेटर का नाम।"
+      ],
+      [
+        "Manpower Data Review · Saved card",
+        "कार्ड का बुक नंबर। इसी से कार्ड ढूँढें।"
+      ],
+      [
+        "Manpower Data Review · Log book",
+        "VLB या ELB। LMV की लाइनें सिर्फ़ OT & Multiple Duties में दिखती हैं।"
+      ],
+      [
+        "Manpower Data Review · Source batches",
+        "जिन बैच में कार्ड है उनके नाम, या “Saved VLB (no site batch)” / “Saved ELB (no site batch)”।"
+      ],
+      [
+        "Manpower Data Review · What to correct",
+        "गड़बड़ी शब्दों में। उदाहरण: “Employee ID is missing or cannot be resolved to an employee master.”, “Equipment master match is missing.”, “Make is missing in Equipment master.”, “Possible repeated scan/card omitted from totals; compare the source cards.”"
+      ]
+    ],
+    "notes": [
+      "सिर्फ़ 1 November 2026 या उसके बाद की तारीख वाली सेव की हुई VLB और ELB लॉग बुक पढ़ी जाती हैं। पेंडिंग स्कैन और डिलीट किए गए रिकॉर्ड शामिल नहीं हैं। LMV लॉग बुक सिर्फ़ OT & Multiple Duties में काम आती हैं।",
+      "गिनती हर लाइन के अंदर अलग-अलग की है। जिस कर्मचारी ने मशीन बदली वह एक से ज़्यादा लाइनों में आता है, इसलिए Distinct employees कॉलम को जोड़कर कुल संख्या नहीं निकलती; पूरे चुनाव की कुल संख्या “Distinct employees” कार्ड में है।",
+      "दोहराया हुआ रिकॉर्ड या दोबारा स्कैन हुआ लगने वाला कार्ड एक ही बार गिना जाता है। उसकी दूसरी कॉपी दोनों टेबल से बाहर रहती है और Manpower Data Review में दिखती है।",
+      "कार्ड Vehicle & Employee Assignments में तो रहता है पर पहली टेबल में नहीं गिना जाता, जब उस पर “Needs record review” लिखा हो, Equipment master से उसका मिलान न हो, डोर नंबर न हो, या उसका डोर नंबर उस साइट की एक से ज़्यादा मशीनों से मिलता हो।",
+      "Category, group, make और model अभी के Equipment master से पढ़े जाते हैं। master में बदलाव करने पर पुरानी तारीखें भी नए नाम से दिखती हैं।",
+      "सिर्फ़ वही साइटें लोड होती हैं जो आपके login को दी गई हैं। Open बैच के कार्ड शामिल रहते हैं और वे अभी बदल सकते हैं।"
+    ],
+    "checklist": [
+      "From, To और Site चुनें। फ़िल्टर के नीचे की लाइन पढ़कर चुनाव और “Updated” का समय पक्का करें। उस समय के बाद कार्ड सेव हुए हों तो “Refresh reports” दबाएँ।",
+      "गिनती के चारों कार्ड पढ़ें, फिर Step 1। कोई साइट दबाएँ, फिर तारीख़ और Shift का खाना, फिर equipment category, और देखें कि मशीनें और कर्मचारी कहाँ लगे थे। “Review items” 0 न हो तो पहले सबसे नीचे “Manpower Data Review” खोलें।",
+      "“Manpower by Category, Make & Model” में Distinct vehicles / equipment को उसी लाइन के Door numbers से मिलाएँ।",
+      "जहाँ Unresolved assignment records 0 से ज़्यादा हो, वे कार्ड “Vehicle & Employee Assignments” में ढूँढें (Assignment में “Needs identity review” लिखा होगा) और Employee ID को काग़ज़ के कार्ड से मिलाएँ।",
+      "“Unresolved” खोजकर वे मशीनें निकालें जिनकी category, group, make या model नहीं है, और उन डोर नंबरों को Equipment master में जाँचें।",
+      "Batch status देखें। “Open” बैच की लाइनें बदल सकती हैं, इसलिए बैच बंद होने के बाद रिपोर्ट दोबारा पढ़ें।"
+    ],
+    "faq": [
+      [
+        "टेबल में Distinct employees का जोड़ “Distinct employees” कार्ड से ज़्यादा क्यों है?",
+        "टेबल एक कर्मचारी को हर उस लाइन में एक बार गिनती है जहाँ उसने काम किया: हर तारीख, Shift, category, make और model। कार्ड पूरे चुनाव में हर कर्मचारी को एक ही बार गिनता है।"
+      ],
+      [
+        "कार्ड सेव हुआ था पर यहाँ नहीं मिल रहा। क्यों?",
+        "From, To, Site और Shift जाँचें, फिर “Refresh reports” दबाएँ। पेंडिंग स्कैन, डिलीट किए गए रिकॉर्ड और LMV लॉग बुक नहीं पढ़ी जातीं। कार्ड की दोहराई हुई कॉपी बाहर रखी जाती है और “Manpower Data Review” में दिखती है।"
+      ],
+      [
+        "“Unresolved make code” और उसके साथ नंबर का क्या मतलब है?",
+        "Equipment master में उस मशीन के make की जगह सिर्फ़ एक नंबर है, नाम नहीं। model के लिए भी यही शब्द आते हैं। वह कार्ड “Manpower Data Review” में भी दिखता है।"
+      ],
+      [
+        "कार्ड “Vehicle & Employee Assignments” में है पर पहली टेबल में क्यों नहीं गिना गया?",
+        "पहली टेबल सिर्फ़ वे कार्ड गिनती है जो कुल गिनती में शामिल हैं और जिनका डोर नंबर Equipment master की ठीक एक मशीन से मिलता है। बाकी कार्ड दूसरी टेबल में और “Manpower Data Review” में कारण के साथ रहते हैं।"
+      ]
+    ]
+  }
+}

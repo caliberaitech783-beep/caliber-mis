@@ -1,5 +1,10 @@
 export const OPERATIONAL_START='2026-11-01';
 export const OPERATIONAL_START_MESSAGE='Operations start on 1 November 2026. Earlier dates and testing data are locked for all users.';
+// Where a report's From date opens: the 1st of the month of the given date, never before the first operating day.
+export function monthStartDate(date){
+ const first=date.slice(0,8)+'01';
+ return first<OPERATIONAL_START?OPERATIONAL_START:first;
+}
 export function operationalDate(value){
  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value&&value>=OPERATIONAL_START;
 }

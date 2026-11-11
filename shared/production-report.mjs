@@ -1,6 +1,7 @@
 import {operationalDate} from './operational-start.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-import {bookShiftCode,selectedMasterShift} from './trip-card-rules.mjs';
+import {cardWorkingHmr,shareCardOperator} from './log-book-shared-shift.mjs';
+import {bookShiftCode,selectedMasterShift,CARD_SHIFTS,normalizeCardShift} from './trip-card-rules.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
@@ -45,7 +46,7 @@ const sameSite=(a,b)=>canonicalSiteName(a)===canonicalSiteName(b);
 const active=b=>!b.deleted_at&&!b.archived_at;
 
 // Inputs are a consistent database snapshot. No totals leave this function while
-// any requested batch or contributing handover remains unprocessed.
+// any requested batch remains unprocessed.
 export function buildProductionReport({filters,records=[],assets=[],shifts=[],batches=[],capacities=[]}){
  const f=productionFilters(filters),issues=[],warnings=[];
  const issue=(code,message,reference='')=>issues.push({code,message,reference});
@@ -59,7 +60,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  const relevant=batches.filter(b=>active(b)&&sameSite(b.site,f.site)&&String(b.report_date||b.book_date).slice(0,10)===f.date&&selected.includes(bookShiftCode(b.shift)));
  const selectedRecords=records.filter(r=>sameSite(r.site||r.data?.location,f.site)&&String(r.book_date||r.data?.bookDate).slice(0,10)===f.date&&selected.includes(recordShift(r))&&!r.deleted_at);
  const vehicles=selectedRecords.filter(r=>r.book_type==='vehicle'),equipment=selectedRecords.filter(r=>r.book_type==='equipment');
- const recordMap=new Map(records.map(r=>[String(r.id),r])),assetMap=new Map(assets.map(a=>[String(a.id),a]));
+ const assetMap=new Map(assets.map(a=>[String(a.id),a]));
  const checkpoint=r=>{
   const memberships=(r.batches||[]).filter(active);
   if(memberships.length!==1||!memberships[0].closed_at)return false;
@@ -82,7 +83,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  const atSite=assets.filter(a=>sameSite(a.currentLocation||a.site||a.location,f.site)&&!a.sourceMissing&&text(a.status).toLowerCase()!=='inactive');
  // Include fleet rows, but distinguish an absent card from an explicit zero-trip card.
  for(const a of atSite)if(assetBookKind(a)==='vehicle')createRow(rowGroups,a);else createRow(machineGroups,a);
- const duplicates=new Set(),machineIndex=new Map();
+ const shiftCards=new Map(),machineIndex=new Map();
  for(const a of assets.filter(a=>assetBookKind(a)==='equipment'&&(atSite.includes(a)||equipment.some(r=>String(r.asset_id||r.data.assetId)===String(a.id))))){
   for(const alias of unique([door(a),a.equipmentName,...(Array.isArray(a.cardAliases)?a.cardAliases:[])].map(fleetDoorKey))){if(!machineIndex.has(alias))machineIndex.set(alias,[]);machineIndex.get(alias).push(a);}
  }
@@ -93,33 +94,37 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  const driver=d=>d.employeeId?`${text(d.employeeName)||'Name missing'} (${text(d.caliberId)||d.employeeId})`:'Unresolved driver / operator';
  for(const r of [...vehicles,...equipment]){
   const d=r.data,s=recordShift(r),a=assetMap.get(String(r.asset_id||d.assetId)),identity=[r.book_type,r.asset_id||d.assetId,s].join(':');
-  if(duplicates.has(identity))issue('duplicate','Multiple cards for the same asset and shift need review before totals can be generated.',r.book_no);duplicates.add(identity);
+  const peers=shiftCards.get(identity)||[];
+  if(peers.some(peer=>shareCardOperator(d,peer)))issue('duplicate','Multiple cards for the same asset, shift and driver or operator need review before totals can be generated.',r.book_no);
+  peers.push(d);
+  shiftCards.set(identity,peers);
   if(!a){issue('asset','Equipment master identity is missing.',r.book_no);continue;}
   if(d.bookDate!==f.date||!sameSite(d.location,f.site)){issue('metadata','Saved card date/site conflicts with its record.',r.book_no);continue;}
   const row=createRow(r.book_type==='vehicle'?rowGroups:machineGroups,a),cell=row.cells[s];cell.drivers.add(driver(d));cell.cards.push(r.book_no);
+  if(d.operatorSplit?.secondOperatorId)cell.drivers.add(driver({employeeId:d.operatorSplit.secondOperatorId,employeeName:d.operatorSplit.secondOperatorName,caliberId:d.operatorSplit.secondOperatorCaliberId}));
+  const hours=cardWorkingHmr(d);
+  if(hours!==null)cell.hours=round((cell.hours??0)+hours);
+  const limit=CARD_SHIFTS[normalizeCardShift(s)]?.hours;
+  if(limit&&cell.hours>limit)issue('hmr',`Combined working HMR for ${row.door} in ${s} is ${cell.hours} hours. The limit is ${limit} hours.`,r.book_no);
   if(!d.employeeId)warnings.push({message:'Driver / operator ID is missing.',reference:r.book_no});
   if(r.book_type==='equipment'){
-   const start=num(d.openingHmr),end=num(d.closingHmr),hours=start!==null&&end!==null&&start>=0&&end>=start?round(end-start):null;
-   if(hours===null)issue('hmr','ELB opening and closing HMR need correction.',r.book_no);else cell.hours=hours;
+   if(hours===null)issue('hmr','ELB opening and closing HMR need correction.',r.book_no);
    const scheduled=num(d.shiftHours),bd=num(d.breakdownHours),idle=num(d.idleHours);
    if(hours!==null&&scheduled!==null&&(hours>scheduled||bd!==null&&idle!==null&&hours+bd+idle>scheduled+0.01))warnings.push({message:'ELB HMR / breakdown / idle hours do not reconcile to scheduled hours. HMR difference is shown; source values were not changed.',reference:r.book_no});
    continue;
   }
   const pair=d.assetMake&&d.assetModel?assetCapacityPair(d):assetCapacityPair(a);row.make=pair.make;row.model=pair.model;
   for(const t of d.trips||[]){
-   const capacity=applicableCapacity(capacities,pair,f.date,{location:f.site,jobType:t.jobType});
-   if(!capacity){issue('capacity',`Approved capacity missing for ${f.site} · ${text(t.jobType)||'job type missing'} · ${pair.make||'unresolved make'} / ${pair.model||'unresolved model'} on ${f.date}.`,row.door);continue;}
-   capacityUsed.set(String(capacity.id),capacity);const approvedCapacity=Number(capacity.capacity);row.capacityValues.add(approvedCapacity);row.capacity=row.capacityValues.size===1?approvedCapacity:null;
    const entered=num(t.tripCount);if(entered===null||entered<0||!Number.isInteger(entered)){issue('trips','Entered trip count is invalid.',r.book_no);continue;}
    const count=num(t.completedTrips);if(count===null||count<0||!Number.isInteger(count)){issue('trips','Completed trip count is invalid.',r.book_no);continue;}
    if(count>entered){issue('trips','Completed trips exceed entered trips.',r.book_no);continue;}
-   if(t.unmatchedTrips>0)issue('handover','A loading/unloading entry has no matching completed trip. Resolve it before generating the report.',r.book_no);
    if(!count)continue;
-   const parts=(t.handoverLinks||[]).filter(l=>l.role==='unloading');
-   const contributions=parts.length?parts.map(l=>{const source=recordMap.get(String(l.counterpart.logBookId));if(!source||!checkpoint(source)){issue('handover-batch','The loading card for a completed handover is not in a processed batch.',r.book_no);return null;}return {trip:source.data.trips[l.counterpart.row-1],count:Number(l.tripCount)};}).filter(Boolean):[{trip:t,count}];
-   if(round(contributions.reduce((n,c)=>n+c.count,0))!==count){issue('handover-count','Completed handover quantities do not reconcile.',r.book_no);continue;}
+   const capacity=applicableCapacity(capacities,pair,f.date,{location:f.site,jobType:t.jobType});
+   if(!capacity){issue('capacity',`Approved capacity missing for ${f.site} · ${text(t.jobType)||'job type missing'} · ${pair.make||'unresolved make'} / ${pair.model||'unresolved model'} on ${f.date}.`,row.door);continue;}
+   capacityUsed.set(String(capacity.id),capacity);const approvedCapacity=Number(capacity.capacity);row.capacityValues.add(approvedCapacity);row.capacity=row.capacityValues.size===1?approvedCapacity:null;
    cell.trips+=count;cell.quantity=round(cell.quantity+count*approvedCapacity);
-   for(const part of contributions){const machine=machineFor(part.trip||{});if(!machine){issue('machine','Loading machine number is missing, ambiguous or outside this site. Correct the VLB equipment link.',`${r.book_no}: ${part.trip?.equipmentName||'blank'}`);continue;}const mc=createRow(machineGroups,machine).cells[s];mc.trips+=part.count;mc.quantity=round(mc.quantity+part.count*approvedCapacity);}
+   const machine=machineFor(t);if(!machine){issue('machine','Loading machine number is missing, ambiguous or outside this site. Correct the VLB equipment link.',`${r.book_no}: ${t.equipmentName||'blank'}`);continue;}
+   const mc=createRow(machineGroups,machine).cells[s];mc.trips+=count;mc.quantity=round(mc.quantity+count*approvedCapacity);
   }
  }
  for(const row of machineGroups.values())for(const s of selected){const c=row.cells[s];if(c.trips&&!c.cards.length)issue('elb',`Saved ELB is missing for loading machine ${row.door} in ${s}.`,row.door);}
@@ -131,5 +136,5 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
  });
  const doorRows=finish(rowGroups,false),machineRows=finish(machineGroups,true),totalTrips=doorRows.reduce((n,r)=>n+r.totalTrips,0),totalQuantity=round(doorRows.reduce((n,r)=>n+r.totalQuantity,0));
  if(machineRows.reduce((n,r)=>n+r.totalTrips,0)!==totalTrips||Math.abs(machineRows.reduce((n,r)=>n+r.totalQuantity,0)-totalQuantity)>0.01){issue('reconciliation','Door and machine totals do not match.');return blocked();}
- return {ready:true,filters:f,shifts:selected,status,issues,warnings,doorRows,machineRows,totalTrips,totalQuantity,capacityVersions:[...capacityUsed.values()].map(v=>({id:v.id,location:v.location||'',jobType:v.jobType||'',make:v.make,model:v.model,capacity:Number(v.capacity),effectiveFrom:v.effectiveFrom})),notes:['Quantity (CUM) = approved tipper capacity × completed trips. This is capacity-based volume, not a measured weighbridge quantity.','Trips and volume belong to the completion shift. Cross-shift loading cards must also belong to a processed batch.','Machine hours come from saved ELB HMR differences, once per machine and shift. They are not employee attendance or OT hours.','A dash means no card; zero means a saved card explicitly recorded no completed trips. Fleet coverage lists missing cards.','Processed means the existing Save & lock batch checkpoint. Reopening blocks fresh report generation until the batch is locked again.']};
+ return {ready:true,filters:f,shifts:selected,status,issues,warnings,doorRows,machineRows,totalTrips,totalQuantity,capacityVersions:[...capacityUsed.values()].map(v=>({id:v.id,location:v.location||'',jobType:v.jobType||'',make:v.make,model:v.model,capacity:Number(v.capacity),effectiveFrom:v.effectiveFrom})),notes:['Quantity (CUM) = approved tipper capacity × counted trips. This is capacity-based volume, not a measured weighbridge quantity.','Trips and volume belong to the loading shift.','Working HMR is summed across saved driver or operator cards for each asset and shift.','A dash means no card; zero means a saved card explicitly recorded no counted trips. Fleet coverage lists missing cards.','Processed means the existing Save & lock batch checkpoint. Reopening blocks fresh report generation until the batch is locked again.']};
 }

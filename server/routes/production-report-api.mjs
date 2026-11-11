@@ -1,13 +1,18 @@
-import {buildProductionReport,productionFilters,productionShifts,validateCapacity,assetCapacityPair,pairKey} from '../../shared/production-report.mjs';
+import {fleetCapacitySeed,fleetPopulationReports} from '../../shared/fleet-population.mjs';
+import {buildProductionReport,productionFilters,productionShifts,validateCapacity,assetCapacityPair,capacityKey,pairKey} from '../../shared/production-report.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {siteAllowed,requireLogBookSite} from '../../shared/log-book-access.mjs';
-import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {canonicalSiteName,equipmentSiteName} from '../../shared/site-location.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {REGION_DATA,displaySiteSelection} from '../../shared/region-scope.mjs';
 
-export const PRODUCTION_REPORT_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_capacity_versions(
+export const PRODUCTION_REPORT_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_fleet_capacities(
+ make_key TEXT NOT NULL,model_key TEXT NOT NULL,make TEXT NOT NULL,model TEXT NOT NULL,
+ bucket_capacity NUMERIC(10,3) NOT NULL CHECK(bucket_capacity>=0),
+ daily_capacity NUMERIC(12,3) NOT NULL CHECK(daily_capacity>=0),PRIMARY KEY(make_key,model_key));
+ CREATE TABLE IF NOT EXISTS mis_capacity_versions(
  id BIGSERIAL PRIMARY KEY,make TEXT NOT NULL,model TEXT NOT NULL,make_key TEXT NOT NULL,model_key TEXT NOT NULL,
  capacity NUMERIC(10,3) NOT NULL CHECK(capacity>0 AND capacity<=1000),effective_from DATE NOT NULL CHECK(effective_from>='2026-11-01'),
  reason TEXT NOT NULL,created_by TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -26,8 +31,39 @@ const masterList=(rows,name)=>rows.filter(r=>r.master_name===name).map(r=>({...r
 const capacityAssets=rows=>masterList(rows,'Equipment master').filter(a=>assetBookKind(a)==='vehicle'&&!a.sourceMissing);
 export const capacityRegionLocations=rows=>[...new Map([...REGION_DATA,...masterList(rows,'Region master')].flatMap(region=>displaySiteSelection(region.sites)).map(location=>[canonicalSiteName(location),location])).values()].sort((a,b)=>a.localeCompare(b));
 export function registerProductionReports(app,{pool,protect,ensureBooks}){
- let ready;const ensure=async()=>{await ensureBooks();await(ready??=(pool.query(PRODUCTION_REPORT_SCHEMA).catch(e=>{ready=null;throw e;})));};
+ let ready;const ensure=async()=>{await ensureBooks();await(ready??=(pool.query(PRODUCTION_REPORT_SCHEMA).then(()=>pool.query(
+  'INSERT INTO mis_fleet_capacities SELECT make_key,model_key,make,model,bucket,daily FROM jsonb_to_recordset($1::jsonb) AS seed(make_key text,model_key text,make text,model text,bucket numeric,daily numeric) ON CONFLICT DO NOTHING',
+  [JSON.stringify(fleetCapacitySeed.map(([make,model,bucket,daily])=>({make_key:capacityKey(make),model_key:capacityKey(model),make,model,bucket,daily})))])).catch(e=>{ready=null;throw e;})));};
  const admin=(req,res,next)=>isMisAdministrator(req.session)?next():res.status(403).json({error:'Capacity approvals require an authorized administrator.'});
+ const fleetColumns='make,model,bucket_capacity::float8 AS "bucketCapacity",daily_capacity::float8 AS "dailyCapacity"';
+ const fleetRows=async()=>{await ensure();return (await pool.query('SELECT '+fleetColumns+' FROM mis_fleet_capacities ORDER BY make_key,model_key')).rows};
+ app.get('/api/capacity-master/fleet',...protect,admin,async(req,res,next)=>{
+  try{res.set('Cache-Control','private, no-store').json({rows:await fleetRows()})}catch(e){next(e)}
+ });
+ app.put('/api/capacity-master/fleet',...protect,admin,async(req,res,next)=>{
+  const {make,model,bucketCapacity,dailyCapacity}=req.body||{};
+  if(![make,model].every(v=>typeof v==='string'&&v.trim()&&v.trim().length<=100)||
+   ![[bucketCapacity,9999999],[dailyCapacity,999999999]].every(([v,max])=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max)){
+   return res.status(400).json({error:'Enter a make, model and valid non-negative capacities.'});
+  }
+  try{
+   await ensure();
+   const [makeKey,modelKey]=[make,model].map(capacityKey);
+   await pool.query(`INSERT INTO mis_fleet_capacities VALUES($1,$2,$3,$4,$5,$6)
+    ON CONFLICT(make_key,model_key) DO UPDATE SET make=EXCLUDED.make,model=EXCLUDED.model,bucket_capacity=EXCLUDED.bucket_capacity,daily_capacity=EXCLUDED.daily_capacity`,
+    [makeKey,modelKey,make.trim(),model.trim(),bucketCapacity,dailyCapacity]);
+   res.json({rows:await fleetRows()});
+  }catch(e){next(e)}
+ });
+ app.get('/api/reports/fleet-population',...protect,async(req,res,next)=>{
+  try{
+   const capacities=await fleetRows();
+   const rows=await masterRows(pool),assets=masterList(rows,'Equipment master');
+   const locations=[...new Map([...capacityRegionLocations(rows),...assets.map(a=>equipmentSiteName(a)||a.siteName)]
+    .filter(site=>site&&siteAllowed(req.logBookScope,site)).map(site=>[canonicalSiteName(site),site])).values()];
+   res.set('Cache-Control','private, no-store').json(fleetPopulationReports({assets,locations,capacities}));
+  }catch(e){next(e)}
+ });
  app.get('/api/capacity-master',...protect,admin,async(req,res,next)=>{
   try{await ensure();const rows=await masterRows(pool),locations=capacityRegionLocations(rows),pairs=new Map();for(const a of capacityAssets(rows)){const p=assetCapacityPair(a),assetLocation=String(a.currentLocation||a.site||a.siteName||a.location||'').trim(),location=locations.find(site=>canonicalSiteName(site)===canonicalSiteName(assetLocation));if(location&&p.make&&p.model&&!/^\d+$/.test(p.make)){const k=canonicalSiteName(location)+'|'+pairKey(p);if(!pairs.has(k))pairs.set(k,{...p,location,vehicles:0});pairs.get(k).vehicles++;}}
    res.set('Cache-Control','private, no-store').json({locations,pairs:[...pairs.values()].sort((a,b)=>(a.location+' '+a.make+' '+a.model).localeCompare(b.location+' '+b.make+' '+b.model)),versions:(await pool.query(`SELECT ${versionSelect} FROM mis_capacity_versions ORDER BY location_key,job_type_key,make_key,model_key,effective_from DESC`)).rows});

@@ -9,5 +9,5 @@ test('Fleet reconciliation is a standalone page directly below Dashboard',()=>{
  assert.doesNotMatch(dashboard,/FleetReconciliation/,'Dashboard no longer embeds the fleet report');
  assert.match(sidebar,/select\('Dashboard'\)[\s\S]*select\('Fleet reconciliation'\)/,'the standalone tab follows Dashboard');
  assert.match(main,/if\(name==='Fleet reconciliation'\)return canOpenAdminPage\('Dashboard'\)/,'the new page inherits Dashboard access instead of being rejected as an unknown permission');
- assert.match(main,/renderedActive==='Fleet reconciliation' \? \(<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB \/ ELB, breakdown and idle details<\/summary><FleetReconciliation session=\{session\}\/><\/details>\)/,'the tab renders the existing report inside the requested site-fleet section');
+ assert.match(main,/renderedActive==='Fleet reconciliation' \? \(<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB \/ LMV \/ ELB, breakdown and idle details<\/summary><FleetReconciliation session=\{session\}\/><\/details>\)/,'the tab renders the existing report inside the requested site-fleet section');
 });

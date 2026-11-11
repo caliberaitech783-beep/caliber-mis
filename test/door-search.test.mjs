@@ -17,3 +17,18 @@ test('full-word and multi-letter door searches use the selected vehicle/equipmen
  assert.deepEqual(searchSiteDoors(assets,'equipment','Jayant OC','Hydra').map(r=>r.id),['hydra']);
  for(const input of ['V','VPC','v p c','Volvo'])assert.deepEqual(searchSiteDoors(assets,'equipment','Jayant OC',input).map(r=>r.id),['pc']);
 });
+
+test('LMV options show and search door and registration independently at the selected site',()=>{
+ const site='Sasti OC';
+ const assets=[
+  {id:'registration',lmv:true,site,lmvDoor:'',door:'BOLERO 1',name:'Bolero',registration:'MH34AB7301'},
+  {id:'both',lmv:true,site,lmvDoor:'LMV22',registration:'MH34AB2200'},
+  {id:'door',lmv:true,site,lmvDoor:'LMV23'},
+  {id:'other',lmv:true,site:'Jayant OC',registration:'MH34AB7301'},
+  {id:'truck',kind:'vehicle',site,registration:'MH34AB7301'},
+ ];
+ assert.deepEqual(assets.slice(0,3).map(asset=>doorLabel(asset,'lmv')),['MH34AB7301','LMV22 · MH34AB2200','LMV23']);
+ for(const [query,id] of [['7301','registration'],['mh34ab73','registration'],['LMV22','both'],['MH34AB22','both'],['LMV23','door']]){
+  assert.deepEqual(searchSiteDoors(assets,'lmv',site,query).map(asset=>asset.id),[id]);
+ }
+});

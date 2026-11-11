@@ -9,7 +9,7 @@ export function scanReviewTabForKey(id,key){
 }
 
 export function scanReviewFieldSection(key){
- return ['openingKmr','closingKmr','openingHmr','closingHmr'].includes(key)?'summary':'details';
+ return ['openingKmr','closingKmr','replacementKmr','openingHmr','closingHmr'].includes(key)?'summary':'details';
 }
 
 export function scanReviewHelp(message){

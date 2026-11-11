@@ -8,6 +8,8 @@ test("shared page header tracks and returns to the previous application page", a
   assert.match(source, /const pageHistory = useRef\(\[LOGIN_LANDING_PAGE\]\)/);
   assert.match(source, /pageHistory\.current\.push\(name\)/);
   assert.match(source, /pageHistory\.current\.pop\(\)/);
-  assert.match(source, /aria-label="Go back to previous page"/);
-  assert.match(source, /disabled=\{!canGoBack\}/);
+  assert.match(source, /aria-label=\{stepBack \? "Go back one step" : "Go back to previous page"\}/);
+  // Inside a step-by-step report the arrow goes back one step first.
+  assert.match(source, /onClick=\{stepBack \|\| goBack\}/);
+  assert.match(source, /disabled=\{!stepBack && !canGoBack\}/);
 });

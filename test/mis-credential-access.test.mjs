@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {misRequestAllowed,misPageAllowed,authorizeMisRequest} from '../shared/mis-application-access.mjs';
+
+test('Equipment master approval routes require the assigned menu and POST',()=>{
+ const session=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages}});
+ for(const path of ['/api/equipment-master/changes','/api/equipment-master/changes/pending-id/verify']){
+  assert.equal(misRequestAllowed(session(['Equipment master']),{path,method:'POST'}),true);
+  assert.equal(misRequestAllowed(session(['Employee master']),{path,method:'POST'}),false);
+  assert.equal(misRequestAllowed(session(['Equipment master']),{path,method:'GET'}),false);
+ }
+});
 import {installMisCredentialClient} from '../server/routes/mis-credential-client.mjs';
 const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Employee master','Vehicle Log Book','Trip Card Bulk Scan'],misMobileAccess:['Dashboard']}};
 test('MIS API permissions fail closed and follow assigned masters and working menus',()=>{
@@ -8,6 +17,10 @@ test('MIS API permissions fail closed and follow assigned masters and working me
  assert.equal(misRequestAllowed(session,{path:'/api/erp-masters/Company%20master',method:'GET'}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/log-books/equipment',method:'POST'}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/log-books/vehicle',method:'POST'}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'GET',query:{kind:'vehicle'}}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'POST',body:{kind:'vehicle'}}),true);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'POST',body:{kind:'equipment'}}),false);
+ assert.equal(misRequestAllowed(session,{path:'/api/shift-attendance',method:'DELETE',body:{kind:'vehicle'}}),false);
  assert.equal(misRequestAllowed(session,{path:'/api/unknown-new-feature',method:'GET'}),false);
  assert.equal(misPageAllowed(session,'Employee master','mobile'),false);assert.equal(misPageAllowed(session,'Employee master','desktop'),true);
 });

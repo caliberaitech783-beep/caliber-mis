@@ -3,7 +3,7 @@ export function createPulseSignInBridge({pool,fetchImpl=fetch}){
  let connected=false,timer;
  const rows=async(actor)=>{const result=await pool.query(`SELECT c.grant_token FROM mis_credential_sessions c JOIN auth_sessions s ON s.token=c.session_token
   WHERE s.created_at>NOW()-INTERVAL '7 days' AND ($1::text IS NULL OR lower(s.login_name)=lower($1))
-  AND (s.permissions->'misDesktopAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'] OR s.permissions->'misMobileAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'])
+  AND (s.permissions->'misDesktopAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan','Equipment Log Book','Job Card Bulk Scan'] OR s.permissions->'misMobileAccess' ?| ARRAY['Pulse Master Sync','Vehicle Log Book','Trip Card Bulk Scan'])
   ORDER BY s.created_at DESC LIMIT 1`,[actor||null]);if(!actor)connected=Boolean(result.rows.length);return result.rows;};
  const refresh=async()=>{try{await rows()}catch{connected=false}};
  return {

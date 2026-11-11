@@ -2,6 +2,7 @@ import React,{useEffect,useState} from 'react';
 import ScanBatchReport from './scan-batch-report.jsx';
 import CardReportGallery,{filterCardBatches} from './card-reports.jsx';
 import SmartSelect from './smart-select.jsx';
+import {startVisiblePoll} from './visible-poll.mjs';
 import './log-book-form.css';
 import './bulk-card-scanning.css';
 const uuid=value=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value||'');
@@ -23,9 +24,10 @@ export default function ScanBatchReports({kind,session,ReportSection}){
   setBatch(null);setCards([]);setError('');if(!selected){setLoading(false);return;}
   const controller=new AbortController();let inFlight=false;
   const load=async()=>{if(inFlight)return;inFlight=true;try{const data=await read('/api/scan-batches/'+selected,controller.signal);if(controller.signal.aborted)return;if(data.batch.kind!==kind)throw Error('Choose a '+code+' batch to view its report.');setBatch(data.batch);setCards(data.cards);setError('')}catch(e){if(!controller.signal.aborted)setError(e.message)}finally{inFlight=false;if(!controller.signal.aborted)setLoading(false)}};
-  setLoading(true);void load();const timer=setInterval(()=>void load(),5000);
+  // Every 5 s while the report is on screen; a hidden tab stops re-reading the whole batch.
+  setLoading(true);const stopPoll=startVisiblePoll(load,5000);
   window.history.replaceState(null,'',reportBatchUrl(window.location.href,selected));
-  return()=>{controller.abort();clearInterval(timer)};
+  return()=>{controller.abort();stopPoll()};
  },[selected,kind,session.token,refresh]);
  const older=async()=>{setMoreLoading(true);try{const data=await read('/api/scan-batches?offset='+nextOffset);setBatches(rows=>[...new Map([...rows,...data.batches.filter(b=>b.kind===kind)].map(b=>[b.id,b])).values()]);setNextOffset(data.nextOffset??null)}catch(e){setError(e.message)}finally{setMoreLoading(false)}};
  const visible=filterCardBatches(batches,kind,search);

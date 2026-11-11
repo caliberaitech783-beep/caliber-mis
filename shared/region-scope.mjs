@@ -1,8 +1,8 @@
 import {canonicalSiteName} from './site-location.mjs';
 
 export const REGION_DATA=[
-  {name:'Western Coalfields Limited',code:'WCL',state:'MH / MP',sites:['Sasti OC','Majri OC','Dhoptala OC (2nd)','Gauri Pauni OC (2nd)','Lalpeth OC']},
-  {name:'Northern Coalfields Limited',code:'NCL',state:'MP / UP',sites:['Jayant OC','Dudhichua OC','Dudhichua East OC']},
+  {name:'Western Coalfields Limited',code:'WCL',state:'MH',sites:['Sasti OC','Majri OC','Dhoptala OC (2nd)','Gauri Pauni OC (2nd)','Lalpeth OC']},
+  {name:'Northern Coalfields Limited',code:'NCL',state:'UP',sites:['Jayant OC','Dudhichua OC','Dudhichua East OC']},
 ];
 
 export const MANAGER_REGION_OPTIONS=['All',...REGION_DATA.map(({code})=>code)];

@@ -45,7 +45,7 @@ test('complete cards post independently without approval; retries, validation an
  assert.equal((await call(first)).data.record.id,saved.data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),1);
  assert.equal((await call(second)).status,409);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'review');
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=2 WHERE id=$2',[JSON.stringify({...valid,aFormNo:'76'}),second]);assert.equal((await call(second)).status,409);
- const excess=await call(second,2);assert.equal(excess.status,409);assert.match(excess.data.error,/second scanned card cannot be saved/i);
+ const excess=await call(second,2);assert.equal(excess.status,409);assert.match(excess.data.error,/second scanned card for the same driver cannot be saved/i);
  await db.query('UPDATE mis_scan_cards SET draft=$1,revision=3 WHERE id=$2',[JSON.stringify({...vehicle(7),aFormNo:'76',openingHmr:6,closingHmr:8,openingKmr:20,closingKmr:40}),second]);
  const concurrent=await Promise.all([call(second,3),call(second,3)]);assert.ok(concurrent.every(r=>r.status===200));assert.equal(concurrent[0].data.record.id,concurrent[1].data.record.id);assert.equal(Number((await db.query('SELECT count(*) n FROM mis_log_books')).rows[0].n),2);assert.ok(archives>0);
  const duplicate=await add(3,valid);assert.equal((await call(duplicate)).status,409);
@@ -56,8 +56,12 @@ test('complete cards post independently without approval; retries, validation an
  const persisted=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[fixed.data.record.id])).rows[0].data;assert.deepEqual(persisted.meterCorrectionHistory,audit);
  const correctedReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const cardsTable=correctedReport.tables.find(table=>table.name==='Cards');const errorIndex=cardsTable.columns.findIndex(column=>column.tone==='error'),fixedIndex=cardsTable.columns.findIndex(column=>column.tone==='corrected');assert.ok(errorIndex>0);assert.ok(cardsTable.rows.some(row=>/9 hours/.test(row[errorIndex])&&/6 hours/.test(row[fixedIndex])));
 
- const breached=await add(40,{...vehicle(9),aFormNo:'77A',closingHmr:9,closingKmr:251});const breachedSave=await call(breached);assert.equal(breachedSave.status,200,JSON.stringify(breachedSave));assert.match(breachedSave.data.record.data.meterRuleErrors.closingHmr,/Exceeds limit/);assert.match(breachedSave.data.record.data.meterRuleErrors.closingKmr,/Exceeds limit/);
- const errorReport=await(await fetch(reportBase+'/report',{headers:{Authorization:'admin'}})).json();const errorTable=errorReport.tables.find(t=>t.name==='Cards'),errorColumn=errorTable.columns.findIndex(c=>c.tone==='error');assert.ok(errorTable.rows.some(r=>String(r[errorColumn]).includes(breachedSave.data.record.data.employeeName)&&String(r[errorColumn]).includes(breachedSave.data.record.data.caliberId)&&/251 km/.test(r[errorColumn])));
+ const breached=await add(40,{...vehicle(9),aFormNo:'77A',closingHmr:9,closingKmr:251});const breachedSave=await call(breached);assert.equal(breachedSave.status,409,JSON.stringify(breachedSave));assert.match(breachedSave.data.error,/HMR.*Exceeds limit.*KMR.*Exceeds limit/);
+ assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[breached])).rows[0].status,'review');
+ const replacement=await add(41,{...vehicle(9),aFormNo:'77B',openingKmr:1000,closingKmr:900,replacementKmr:65});
+ const replacementSave=await call(replacement);assert.equal(replacementSave.status,200,JSON.stringify(replacementSave));
+ const replacementData=replacementSave.data.record.data;
+ assert.deepEqual([replacementData.openingKmr,replacementData.closingKmr,replacementData.totalRunningKmr],[1000,900,65]);
  const rejected=await add(5,{...valid,aFormNo:'78'});await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[rejected]);assert.equal((await call(rejected)).status,409);
  pulseAvailable=false;
  const fallback=await add(6,{...vehicle(10),aFormNo:'79'});const missing=await call(fallback);assert.equal(missing.status,409);assert.match(missing.data.error,/Enter BD hours manually/);assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[fallback])).rows[0].status,'review');

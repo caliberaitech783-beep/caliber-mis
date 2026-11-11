@@ -10,7 +10,8 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  const module=await import(new URL('../src/'+match[2],import.meta.url));
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
-for(const name of ['ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
+scope.useStepBackTarget=()=>({current:null});
+for(const name of ['WorkOrderJobSelect','ScanCardAbortDialog','ScanBatchMismatchDialog','ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','GroqScanSettings','EmployeeIdLookup','LocalScannerPanel','ScanLine','Upload','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
 const {code}=await transformWithOxc(source.replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setDirty=setDirty;testCapture.setDraft=setDraft;testCapture.setBatch=setBatch; testCapture.activeRef=activeRef; testCapture.setAliasCheckedBatches=setAliasCheckedBatches; testCapture.setBatches=setBatches; testCapture.setBatchCardSummary=setBatchCardSummary; testCapture.autoSaveFailures=autoSaveFailures; testCapture.setFailureTick=setFailureTick; const fleetCards=cards.filter').replace('const mismatchPromptedCards=useRef', 'testCapture.setContextGate=setContextGate; testCapture.setExpectedContext=setExpectedContext; const mismatchPromptedCards=useRef').replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
@@ -24,6 +25,19 @@ function harness(search='',kind='vehicle'){
  const render=(props={})=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
  return {render,window,listeners,effects,slots,testCapture};
 }
+test('manual DC to DEMO correction updates every matching trip and summary through the review controls',()=>{
+ const app=harness('&scanView=review');app.render();
+ const assets=[{id:'demo25',door:'DEMO25-49001',kind:'equipment',site:'Sasti OC'}];
+ const draft={location:'Sasti OC',machineNotationRuleVersion:1,trips:[{equipmentName:'DC25',tripCount:2},{equipmentName:'DC25',tripCount:4}],scanMachineSummary:[{equipmentName:'DC25',tripCount:6}]};
+ const card={id:'demo-card',batch_id:'batch1',ordinal:1,status:'review',draft,raw_fields:{},checks:{errors:[]}};
+ app.testCapture.setCards([card]);app.testCapture.setSelected(card.id);app.testCapture.setOptions({assets,employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});app.testCapture.setDraft(draft);
+ const tree=app.render();
+ nodes(tree,n=>n.props['data-trip-equipment']===0)[0].props.onChange({target:{value:'demo25'}});
+ const corrected=app.render();
+ assert.deepEqual(nodes(corrected,n=>n.props['data-trip-equipment']!==undefined).map(n=>n.props.value),['demo25','demo25']);
+ assert.equal(nodes(corrected,n=>n.props['aria-label']==='Machine-wise summary equipment row 1')[0].props.value,'demo25');
+});
+
 test('Wrong door review isolates door checks without changing full-card validation',()=>{
  const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
  const draft={doorText:'',assetId:'',bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[],openingHmr:'',closingHmr:''};
@@ -113,14 +127,16 @@ test('fleet reconciliation is collapsed below Card status on the VLB overview',(
 
 test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
- assert.match(source,/autoSaveError&&<div role="alert" className="scan-error"><strong>Automatic saving stopped at card \{autoSaveError\.ordinal\}\.<\/strong> \{autoSaveError\.message\}/);
+ assert.match(source,/role=\{autoSaveError.retryAt\?"status":"alert"\}/);
+ assert.match(source,/autoSaveError.retryAt\?"Automatic saving is waiting at card ":"Automatic saving stopped at card "/);
+ assert.match(source,/\{autoSaveError.ordinal\}\.<\/strong> \{autoSaveError.message\}/);
  assert.match(source,/autoSaveFailures\.current\.set\(key,e\.message\)/);
  assert.match(source,/autoSaveFailures\.current\.clear\(\);setFailureTick/);
 });
 
 test('a refused automatic save moves the card from All okay to Needs attention and the entry chip follows the tiles',()=>{
  const app=harness('&batch=batch-1');app.render();
- const okay=n=>({id:'card-'+n,batch_id:'batch-1',ordinal:n,filename:'ok'+n+'.png',status:'review',revision:3,checks:{errors:[],warnings:[]},draft:{bookDate:'2026-11-01',doorText:'V'+n,assetId:String(n),employeeId:'1',shiftId:'1',cardShift:'I',shiftHours:8,openingHmr:1,closingHmr:2,openingKmr:1,closingKmr:2,location:'Sasti OC',timeMode:'without',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]},raw_fields:{}});
+ const okay=n=>({id:'card-'+n,batch_id:'batch-1',ordinal:n,filename:'ok'+n+'.png',status:'review',revision:3,checks:{errors:[],warnings:[]},draft:{bookDate:'2026-11-01',doorText:'V'+n,assetId:String(n),employeeId:'1',shiftId:'1',cardShift:'I',shiftHours:8,openingHmr:1,closingHmr:2,openingKmr:10,closingKmr:11,location:'Sasti OC',timeMode:'without',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]},raw_fields:{}});
  const saved={...okay(9),status:'posted',book_no:'VLB_S/1ST-NOV26/S1/001'};
  app.testCapture.setBatch({id:'batch-1',kind:'vehicle',expected_context:{bookDate:'2026-11-01',location:'Sasti OC',cardShift:'I'}});
  app.testCapture.setCards([okay(1),okay(2),saved]);
@@ -139,14 +155,20 @@ test('a refused automatic save moves the card from All okay to Needs attention a
  assert.match(text(headline()),/Loading current batch total/,'never replace an unavailable saved total with raw scan counts');
  app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:121,manual_count:2,scan_count:119});
  tree=app.render({vlbBatch:{id:'vlb-1'}});
- assert.match(text(headline()),/Total cards in this batch: 121/);
+ assert.match(text(headline()),/Saved to log book: 121 cards/);
  assert.match(text(headline()),/Manual: 2/);
  assert.match(text(headline()),/Scan\/PDF: 119/);
+ assert.doesNotMatch(text(headline()),/ scanned/,'no "of N scanned" when saved records outnumber the listed scan cards');
+ app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:5,manual_count:1,scan_count:4});
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
+ assert.match(text(headline()),/Saved to log book: 5 cards · Manual: 1 · Scan\/PDF: 4 of 7 scanned/);
+ app.testCapture.setBatchCardSummary({batchId:'vlb-1',entry_count:121,manual_count:2,scan_count:119});
+ tree=app.render({vlbBatch:{id:'vlb-1'}});
  const total=React.Children.toArray(nodes(tree,n=>n.props.className==='scan-entry-breakdown')[0].props.children);
  assert.equal(total[0].props.children[0].props.children,'Scan entries:');
  assert.equal(total[0].props.children.slice(1,4).join(''),' B1 (3) + B2 (4) = ');
  assert.deepEqual(total[0].props.children[4].props.children,[7,' scan card','s']);
- assert.deepEqual(total[1].props.children,['Total Trips: ',24]);
+ assert.deepEqual(total[1].props.children,['Total Trips: ',16],'active entry uses loaded cards and other entries use their fetched totals');
  app.testCapture.autoSaveFailures.current.set('card-2:3','VLB is locked for batch B1. Ask the site PM to unlock VLB before adding or changing tipper cards.');
  app.testCapture.setFailureTick(n=>n+1);
  tree=app.render({vlbBatch:{id:'vlb-1'}});
@@ -261,6 +283,18 @@ test('all-site administrators can select any authorized scan site while keeping 
  assert.equal(nodes(tree,n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,false);
  nodes(tree,n=>n.props['aria-label']==='Site')[0].props.onChange({target:{value:'Not authorized'}});tree=app.render();
  nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.onChange({target:{value:'I'}});assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.children==='Scan')[0].props.disabled,true);
+});
+
+test('LMV scan fills the default site without choosing a date or shift',()=>{
+ const app=harness(),props={logBookKind:'lmv'};
+ app.render(props);
+ app.testCapture.setOptions({canSelectSite:true,lmvEntrySite:'Sasti OC',sites:['Sasti OC','Jayant OC'],shifts:[]});
+ app.render(props);
+ app.effects.find(fn=>/accountSite/.test(String(fn))&&/current.location/.test(String(fn)))();
+ const tree=app.render(props);
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Site')[0].props.value,'Sasti OC');
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Card date')[0].props.value,'');
+ assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift')[0].props.value,'');
 });
 
 test('opening a site batch keeps its own site ahead of the account default',()=>{
@@ -395,4 +429,13 @@ test('finished validation opens the unresolved card once without routing through
  const tree=app.render();
  nodes(tree,node=>node.type==='button'&&node.props.children==='Back to card status')[0].props.onClick();
  app.render();route();assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
+});
+
+test('a refused card can navigate Next in review without restarting background posting',()=>{
+ const app=harness('&scanView=review&scanGroup=all');app.render();
+ const draft={location:'Sasti OC',trips:[],scanMachineSummary:[]};
+ const cards=[1,2].map(n=>({id:'refused-'+n,batch_id:'b',ordinal:n,revision:1,status:'review',draft,raw_fields:{},checks:{errors:['Needs correction']}}));
+ app.testCapture.setCards(cards);app.testCapture.setSelected(cards[0].id);app.testCapture.setDraft(draft);app.testCapture.setOptions({assets:[],employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});
+ app.testCapture.autoSaveFailures.current.set(cards[0].id+':1','Vehicle already has a saved card');app.testCapture.setFailureTick(n=>n+1);
+ const tree=app.render();const next=nodes(tree,n=>n.type==='button'&&n.props.children==='Next')[0];assert.equal(next.props.disabled,false);next.props.onClick();assert.equal(new URL(app.window.location.href).searchParams.get('card'),cards[1].id);
 });

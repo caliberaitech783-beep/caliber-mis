@@ -1,3 +1,6 @@
+import {enableCalendarFieldClicks} from './calendar-field-click.mjs';
+import {isLmv} from '../shared/equipment-kind.mjs';
+import {lmvCsvFields,readLmvExport,saveLmvExport} from './lmv-import.mjs';
 import {browserSessionRequestInit} from './browser-session-transport.mjs';
 import './popup-close.css';
 import SmartSelect from './smart-select.jsx';
@@ -9,9 +12,11 @@ import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
 import EnvironmentBanner from './environment-banner.jsx';
 import OperationsReports from './operations-reports.jsx';
+import ReportGuide from './report-guide.jsx';
 import CapacityMaster from './capacity-master.jsx';
+import {FleetPopulationReport} from './fleet-population.jsx';
 import {operationReports} from './operations-report-model.mjs';
-import ScanBatchReports from './scan-batch-reports.jsx';
+import VlbBatchReports from './vlb-batch-reports.jsx';
 import ElbBatchReports from './elb-batch-reports.jsx';
 import EquipmentAliasAdminPanel,{EquipmentAliasCell,EquipmentAliasRevokeDialog,useEquipmentAliases} from './equipment-alias-admin.jsx';
 import {misPageAllowed} from '../shared/mis-application-access.mjs';
@@ -22,7 +27,7 @@ import VlbCreateBatch from './vlb-create-batch.jsx';
 import VlbBatchApprovals from './vlb-batch-approvals.jsx';
 import VlbEntryWorkspace,{rememberVlbEntryBatch} from './vlb-entry-workspace.jsx';
 import SavedLogBooks from './saved-log-books.jsx';
-import EmployeeMaster from './employee-master.jsx';
+import EmployeeMaster,{EmployeeCurrentLocation} from './employee-master.jsx';
 import {requestedMisPage,misPageUrl} from './mis-navigation.mjs';
 import BulkCardScanning from './bulk-card-scanning.jsx';
 import ErpMasters from './erp-masters.jsx';
@@ -69,6 +74,8 @@ import { TwelveHourDateTimeInput, TwelveHourTimeInput } from "./twelve-hour-inpu
 import SharedActionsTable from "./shared-actions-table.jsx";
 import { useTableLayouts, TableLayoutControls, TableLayoutSelect } from "./table-layouts.jsx";
 import { useColumnPreferences } from "./use-column-preferences.jsx";
+import { twoLineHeading, columnWidthStyle, useColumnWidths } from "./report-column-widths.mjs";
+import { StepBackButton, useStepBack } from "./step-back.jsx";
 import ReopenBreakdownForm from "./reopen-breakdown-form.jsx";
 import {capturePhotoForInput} from "./camera-upload.mjs";
 import {ComplaintMediaInputs,ComplaintMediaView} from "./complaint-media.jsx";
@@ -152,6 +159,7 @@ import { requestAcceptedLate, requestAwaitingAcceptance, arrivalRedFlagRequired,
 import { requestDeletable } from "../shared/request-deletion.mjs";
 import { elapsedLabel, elapsedMilliseconds } from "../shared/report-metrics.mjs";
 import { indiaDateTimeEpoch, indiaDateTimeInputValue, reportRowsWithinRange, validReportDateRange } from "../shared/report-date-range.mjs";
+import { monthStartDate } from "../shared/operational-start.mjs";
 import { IN_OUT_REPORT_TITLE } from "../shared/in-out-report.mjs";
 import { buildDepartmentReports, TICKET_ACCEPTANCE_REPORT_TITLE } from "../shared/department-reports.mjs";
 import { stageTimingRow, slowestStageGap } from "../shared/stage-timing-report.mjs";
@@ -384,6 +392,7 @@ import "./no-motion.css";
 import { APP_VERSION } from "./app-version.js";
 import { formatCountDelta } from "./fleet-count-trend.mjs";
 import DateInput from "./date-input.mjs";
+import { approveEquipmentChanges, equipmentChangeText, equipmentChanges } from "./equipment-otp-dialog.mjs";
 
 const vehicles = [];
 const breakdowns = [];
@@ -465,15 +474,20 @@ if (typeof window !== "undefined" && typeof window.fetch === "function" && !wind
       requestInit=browserSessionRequestInit({...requestInit,headers});
       requestInit = edgeSafeJsonInit(requestInit);
     }
+    const requestToken = new Headers(requestInit?.headers).get("Authorization");
     // While a deployment restarts the app the gateway answers 502/503/504 for
     // a few seconds. Read-only API calls wait and retry instead of showing an
     // error; writes are never replayed because the server may have applied them.
     const response = await fetchWithTransientRetry(nativeFetch, input, requestInit, {
       onRetry: ({attempt, reason, status}) => console.warn(`Retrying ${url} after a transient ${reason === "status" ? `HTTP ${status}` : "network failure"} (attempt ${attempt + 1}).`),
     });
-    if (response.status === 401 && authToken && url.startsWith("/api/") && !url.startsWith("/api/login")) {
-      clearStoredSession();
-      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+    if (response.status === 401 && authToken && url.startsWith("/api/")) {
+      const result = await response.clone().json().catch(() => null);
+      const expired = /^(Your sign-in has expired\.|This user account no longer exists\.)/.test(result?.error || "");
+      if (expired && requestToken === "Bearer " + authToken) {
+        clearStoredSession();
+        window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
+      }
     }
     if(response.status===403&&url.startsWith("/api/")){const result=await response.clone().json().catch(()=>null);if(result?.code==="MFA_REQUIRED")window.dispatchEvent(new CustomEvent("mis-security-required"));}
     return response;
@@ -726,8 +740,8 @@ function Login({ onLogin, theme, toggleTheme }) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.token}` },
       body: JSON.stringify({ preferredLanguage, secondaryLanguage }),
     }).catch(() => {});
-    sessionStorage.setItem("nerveCenterSession", session);
-    localStorage.removeItem("nerveCenterSession");
+    localStorage.setItem("nerveCenterSession", session);
+    sessionStorage.removeItem("nerveCenterSession");
     onLogin(JSON.parse(session));
   };
   const signIn = async () => {
@@ -739,6 +753,11 @@ function Login({ onLogin, theme, toggleTheme }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, portal:accountsPortal?'accounts':'operations', selectedRole:selectedLoginRole }),
       });
+      if(response.status===403){
+        // This server signs in through Pulse only: go there instead of leaving the user on a form that cannot work.
+        const refusal=await response.clone().json().catch(()=>null);
+        if(refusal?.code==='PULSE_SIGNIN_REQUIRED'){window.location.assign('/api/mis-credentials/start');return;}
+      }
       const data = await readApiJson(response, "Could not sign in.");
       if(data.requiresRoleSelection){setLoginRoles(data.roles||[]);setSelectedLoginRole('');return;}
       if (data.requiresPasswordChange) {
@@ -3163,7 +3182,7 @@ const masterFields = {
     ["name", "Region name"],
     ["code", "Short name"],
     ["state", "State code"],
-    ["sites", "Sites (separate with |)"],
+    ["sites", "Sites"],
   ],
   "Hierarchy master": [
     ["section", "Section"],
@@ -3417,8 +3436,44 @@ function FilterableHeader({
   durationSortOnly = isDurationColumn(label, sortKey),
   dateSortOnly = false,
   wrapHeader = false,
+  fitHeader = false,
+  width = 0,
+  onResize = null,
 }) {
   const [valueSearch, setValueSearch] = useState("");
+  const [resizing, setResizing] = useState(false);
+  const headingLines = fitHeader && !wrapHeader && !width ? twoLineHeading(label) : null;
+  // Drag the right edge of the heading to set the column width; double-click to fit it again.
+  const startResize = (event) => {
+    if (event.button > 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget, startX = event.clientX, startWidth = handle.parentElement.getBoundingClientRect().width;
+    let frame = 0, latest = startWidth;
+    const move = (moveEvent) => {
+      latest = startWidth + moveEvent.clientX - startX;
+      if (!frame) frame = window.requestAnimationFrame(() => { frame = 0; onResize(latest); });
+    };
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("column-resizing");
+      setResizing(false);
+    };
+    try { handle.setPointerCapture(event.pointerId); } catch {}
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+    document.body.classList.add("column-resizing");
+    setResizing(true);
+  };
+  const nudgeWidth = (event) => {
+    const step = event.key === "ArrowRight" ? 16 : event.key === "ArrowLeft" ? -16 : 0;
+    if (!step) return;
+    event.preventDefault();
+    onResize(event.currentTarget.parentElement.getBoundingClientRect().width + step);
+  };
   const triggerRef = useRef(null);
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
   const active = sort.key === sortKey,
@@ -3458,7 +3513,7 @@ function FilterableHeader({
     };
   }, [open]);
   return (
-    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""}`} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""} ${fitHeader ? "report-fit-header" : ""} ${width ? "column-resized" : ""}`} style={columnWidthStyle(width)} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
       <button
         ref={triggerRef}
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
@@ -3467,9 +3522,10 @@ function FilterableHeader({
         aria-expanded={open}
         aria-haspopup="dialog"
       >
-        <span>{label}</span><Icon aria-hidden="true" />
+        <span>{headingLines ? <>{headingLines[0]}<br />{headingLines[1]}</> : label}</span><Icon aria-hidden="true" />
         {filterValue && <i className="column-filter-dot" aria-label="Filtered" />}
       </button>
+      {onResize && <span className={`column-resize-handle ${resizing ? "dragging" : ""}`} role="separator" aria-orientation="vertical" aria-label={`Change the width of ${typeof label === "string" ? label : "this column"}`} title="Drag to make this column wider or narrower. Double-click to fit it again." tabIndex={0} onPointerDown={startResize} onDoubleClick={(event) => { event.stopPropagation(); onResize(null); }} onClick={(event) => event.stopPropagation()} onKeyDown={nudgeWidth} />}
       {open && createPortal(
         <div className="column-filter-popover column-filter-popover-portal" style={popoverPosition} role="dialog" aria-label={`${label} filter`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={() => onToggle(sortKey)}  aria-label="Close window">× Close</button></div>
           <div className="column-filter-popover-head">
@@ -4241,7 +4297,9 @@ function ActionsTable(props) {
   const children=/\b(dashboard-location-dates|workflow-table|breakdown-table-auto-fit)\b/.test(props.className || "")?withDashboardResponsibilityCells(props.children,shiftData.requests):props.children;
   return <SharedActionsTable {...props} printReport={printSavedReport} SavedReports={SavedReportsPanel} children={withRequestShiftCells(children,shiftData)} Menu={ReportActionsMenu} ColumnsDialog={ReportColumnSelector} SortDialog={ReportSortDialog} FilterDialog={TableParameterFilter} ExportMenu={ExportMenu} FilterableHeader={FilterableHeader} />;
 }
-function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true }) {
+// A click on a control inside the row (button, link, field) or a text selection is not a row click.
+const plainRowClick = (event) => !event.target.closest?.("button,a,input,select,textarea,label") && !window.getSelection?.().toString();
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4249,6 +4307,7 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
   visibleColumnKeys = appliedColumns;
   onVisibleColumnsChange = keys => { applyColumns(keys); notifyColumnsChange?.(keys); };
   if(columns[0]?.key==='requestShift'&&visibleColumnKeys.length)visibleColumnKeys=['requestShift',...visibleColumnKeys.filter(key=>key!=='requestShift')];
+  const [columnWidths, setColumnWidth, resetColumnWidths] = useColumnWidths(layoutKey || "report-table", columns);
   const [columnFilters, setColumnFilters] = useState({});
   const [savedReportDialog, setSavedReportDialog] = useState("");
   const [openFilter, setOpenFilter] = useState(null);
@@ -4321,13 +4380,20 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
     setPage(0);
   };
   const printSavedView = () => openSmartPrint({ title: reportTitle, columns, rows: sortedRows, onPrint: printTableReport, formatCell: exportCellText });
+  const headerGroups = displayedColumns.reduce((groups, column) => {
+    const label = column.headerGroup || "";
+    const previous = groups.at(-1);
+    if (previous?.label === label) previous.count++;
+    else groups.push({ label, count: 1 });
+    return groups;
+  }, []);
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
         {dateControl && !recordDateFilter && <RecordDateRange {...dateControl} />}
         <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {rows.length.toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
-        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
+        <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { resetColumnWidths(); onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
         <SavedReportsPanel title={reportTitle} tableKey={layoutKey} columns={columns} open={savedReportDialog} onOpenChange={setSavedReportDialog} currentView={currentSavedView} onApply={applySavedView} canPrint={dataReady} onPrint={printSavedView} />
         {activeFilterCount > 0 && <button type="button" className="report-active-filter" onClick={() => setFilterDialogOpen(true)}><ListFilter /><span>{activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}</span></button>}
       </div>
@@ -4336,13 +4402,21 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
     <>
       {toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
       <table className="report-filter-table">
-        <thead><tr>{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
+        <thead>{headerGroups.some(group => group.label) && <tr className="fleet-site-header">
+          {rowAction && <td aria-hidden="true"/>}{displayedColumns[0]?.key !== 'requestShift' && <td aria-hidden="true"/>}
+          {headerGroups.map(({ label, count }, index) => label
+            ? <th key={index} scope="colgroup" colSpan={count}>{label}</th>
+            : <td key={index} colSpan={count} aria-hidden="true"/>)}
+        </tr>}<tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
             durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
-            label={column.label}
+            fitHeader
+            width={columnWidths[column.key] || 0}
+            onResize={(value) => setColumnWidth(column.key, value)}
+            label={column.headerLabel || column.label}
             sortKey={column.key}
             sort={sort}
             onSort={changeSort}
@@ -4356,11 +4430,13 @@ function ReportTable({ columns = [], visibleColumnKeys = [], onVisibleColumnsCha
         ))}</tr></thead>
         <tbody>
           {pagedRows.length ? pagedRows.map((row, index) => (
-            <tr key={rowKey?.(row, index) ?? index} className={rowClassName?.(row, index) || ""}>
-              {displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
-              {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={column.key === "complaint" || column.wrap ? "report-complaint-cell" : undefined}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
+            <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
+              {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}
+              {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{firstVisibleRow + index}</td>}</React.Fragment>)}
             </tr>
-          )) : <tr><td colSpan={displayedColumns.length + 1} className="empty-state">{emptyMessage}</td></tr>}
+            {rowEditor?.(row, displayedColumns.length + 1 + Number(Boolean(rowAction)))}
+            </React.Fragment>
+          )) : <tr><td colSpan={displayedColumns.length + 1 + Number(Boolean(rowAction))} className="empty-state">{emptyMessage}</td></tr>}
         </tbody>
       </table>
       <div className="report-table-pagination"><span>{firstVisibleRow}-{lastVisibleRow} of {sortedRows.length.toLocaleString("en-IN")}</span><div><button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={currentPage === 0} aria-label="Previous report page" title="Previous page"><ChevronLeft /></button><b>{currentPage + 1} / {pageCount}</b><button type="button" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next report page" title="Next page"><ChevronRight /></button></div></div>
@@ -4730,7 +4806,7 @@ function CDirFieldInput({ name, label, type, defaultValue = "", required = false
     placeholder={`Search ${label.toLowerCase()}`} emptyText={`Not in the ${refMaster}. Add it there first.`} />;
 }
 
-function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelected, selectedRecords = [], onSaveAll, saveAllDisabled = false, userOptions = [], siteOptions = [], canCreateSuperAdmin = false }) {
+function MasterActions({ name, onLmvImported, records = [], onAdd, onDeleteAll, onDeleteSelected, selectedRecords = [], onSaveAll, saveAllDisabled = false, userOptions = [], siteOptions = [], canCreateSuperAdmin = false }) {
   const [mode, setMode] = useState(null),
     [selectedFile, setSelectedFile] = useState(null),
     [importing, setImporting] = useState(false),
@@ -4796,8 +4872,8 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
   };
   const chooseFile = (file) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      alert("Please select a CSV file.");
+    if (!/\.csv$/i.test(file.name) && !(onLmvImported && /\.xlsx$/i.test(file.name))) {
+      alert(onLmvImported ? "Please select a Pulse CSV or Excel export." : "Please select a CSV file.");
       return;
     }
     setSelectedFile(file);
@@ -4807,9 +4883,15 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
     if (!file || importing) return;
     setImporting(true);
     try {
-      const records = parseCsv(await file.text(), fields);
+      const records = onLmvImported ? await readLmvExport(file,parseCsv) : parseCsv(await file.text(), fields);
       if (!records.length) throw new Error("No usable rows were found.");
-      await onAdd(records);
+      if (onLmvImported) {
+        const result = await saveLmvExport(authToken,records);
+        onLmvImported();
+        alert(`Imported ${result.inserted}. Already present ${result.existing}. Conflicts ${result.conflicts}. Invalid rows ${result.invalid}.`);
+      } else {
+        await onAdd(records);
+      }
       setSelectedFile(null);
       setMode(null);
     } catch (error) {
@@ -4826,7 +4908,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
   };
   const template = () => runDownloadNotice('CSV template',() => {
     const csv =
-      fields
+      (onLmvImported ? lmvCsvFields : fields)
         .map(([, label]) => '"' + label.replaceAll('"', '""') + '"')
         .join(",") + "\n";
     const link = document.createElement("a");
@@ -4901,15 +4983,15 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
             <Save /> Save all
           </button>
         )}
-        <button className="secondary" onClick={() => setMode("import")}>
+        {name !== "Region master" && <button className="secondary" onClick={() => setMode("import")}>
           <Upload />
           Import
-        </button>
+        </button>}
         <ExportMenu title={name==='Users & employees'?'Login Details':name} columns={exportColumns} rows={records} />
-        <button className="primary" onClick={() => setMode("manual")}>
+        {name !== "Region master" && <button className="primary" onClick={() => setMode("manual")}>
           <Plus />
           Add record
-        </button>
+        </button>}
       </div>
       {mode === "delete-selected" && (
         <Modal title={`Review ${selectedRecordCount} selected equipment record${selectedRecordCount === 1 ? "" : "s"}`} close={() => !deletingSelected && setMode(null)} className="delete-selected-modal">
@@ -5073,7 +5155,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
         </Modal>
       )}
       {mode === "import" && (
-        <Modal title={"Import " + name} close={closeImport}>
+        <Modal title={onLmvImported ? "Import LMV Master" : "Import " + name} close={closeImport}>
           <div className="import-dropbox">
             <div
               className={`import-dropzone${dragActive ? " drag-active" : ""}`}
@@ -5097,7 +5179,7 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                 <Upload />
                 <Download />
               </div>
-              <h3>Drop your CSV file here</h3>
+              <h3>{onLmvImported ? "Drop your Pulse LMV export here" : "Drop your CSV file here"}</h3>
               <p>
                 or{" "}
                 <button type="button" onClick={() => fileInput.current?.click()}>
@@ -5105,13 +5187,13 @@ function MasterActions({ name, records = [], onAdd, onDeleteAll, onDeleteSelecte
                 </button>
               </p>
               <div className="import-file-notes">
-                <span>CSV files only</span>
-                <span>Uses the master template</span>
+                <span>{onLmvImported ? "CSV or Excel" : "CSV files only"}</span>
+                <span>{onLmvImported ? "Checks for existing LMVs" : "Uses the master template"}</span>
               </div>
               <input
                 ref={fileInput}
                 type="file"
-                accept=".csv,text/csv"
+                accept={onLmvImported ? ".csv,.xlsx" : ".csv,text/csv"}
                 onChange={(event) => chooseFile(event.target.files?.[0])}
               />
             </div>
@@ -5182,6 +5264,7 @@ function Equipment({
   onDelete,
   onDeleteAll,
   onDeleteSelected,
+  onLmvImported,
 }) {
   const [q, setQ] = useState(""),
     [road, setRoad] = useState(initialFilter),
@@ -5195,7 +5278,8 @@ function Equipment({
     [actionsToolbarTarget, setActionsToolbarTarget] = useState(null);
   // ALIAS column: written card labels mapped to this record (Pulse-II overlay keyed by equipment id), with revoke by the same OTP routes.
   const aliasSession = { token: authToken }, aliasData = useEquipmentAliases(authToken), [aliasRevoke, setAliasRevoke] = useState(null), aliasAdmin = isMisAdministrator(storedSession) || (storedSession?.role === 'super' && storedSession?.permissions?.adminLevel !== 'Manager');
-  const equipmentColumns = [
+  const isLmvView = pageTitle === "LMV Master";
+  const standardColumns = [
       ["currentLocation", "Current location"], ["equipmentName", "Equipment name"],
       ["category", "Equipment category"], ["group", "Equipment group"],
       ["itemName", "Item name"], ["itemSpecification", "Item specification name"],
@@ -5203,6 +5287,11 @@ function Equipment({
       ["manufacturerSerialNo", "Manufacturer serial no."], ["engineNo", "Engine no."],
       ["chassisNo", "Chassis no."], ["documentStatus", "Document status"], ["status", "Fleet status"],
     ],
+    equipmentColumns = isLmvView
+      ? [["status", "Equipment status (saved)"], ["acquisitionDate", "Acquisition date"],
+         ...standardColumns.filter(([key]) => !["status", "acquisitionDate"].includes(key)),
+         ["assetNo", "Asset no."]]
+      : standardColumns,
     equipmentValue = (record, key) => {
       if (key === "group") return equipmentGroupValue(record);
       if (key === "currentLocation") return record.currentLocation || record.location;
@@ -5303,7 +5392,7 @@ function Equipment({
             · {rows.length} records shown
           </p>
         </div>
-        <MasterActions name="Equipment master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} onDeleteSelected={onDeleteSelected} selectedRecords={rows} />
+        <MasterActions name="Equipment master" onLmvImported={onLmvImported} records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} onDeleteSelected={onDeleteSelected} selectedRecords={rows} />
       </header>
       <div className="toolbar">
         <div>
@@ -5340,6 +5429,7 @@ function Equipment({
         <ActionsTable toolbarTarget={actionsToolbarTarget} toolbarPortal>
           <thead>
             <tr>
+              {isLmvView && <th>Sr. No.</th>}
               {equipmentColumns.map(([key, label]) => (
                 <FilterableHeader
                   key={key}
@@ -5354,7 +5444,7 @@ function Equipment({
                   onFilterChange={(value) => updateColumnFilter(key, value)}
                 />
               ))}
-              <th>Alias</th>
+              {!isLmvView && <th>Alias</th>}
               <th>Actions</th>
             </tr>
           </thead>
@@ -5374,12 +5464,17 @@ function Equipment({
                   aria-label={`View details for ${v.equipmentName || v.door || "equipment"}`}
                   className="click"
                 >
+                  {isLmvView && <>
+                    <td>{i + 1}</td>
+                    <td><Status>{v.status || "Status not set"}</Status></td>
+                    <td>{v.acquisitionDate || v.acquired}</td>
+                  </>}
                   <td>
                     <MapPin /> {v.currentLocation || v.location}
                   </td>
                   <td>
                     <b>{v.door ? <a href="#vehicle-repair-history" className="vehicle-history-link" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openVehicleRepairHistory(v); }} aria-label={`View repair history for door number ${v.door}`} title="View breakdown and repair history">{v.equipmentName || v.door}</a> : v.equipmentName || "—"}</b>
-                    <small>{v.reg}</small>
+                    <small>{isLmvView ? v.registration || v.reg : v.reg}</small>
                   </td>
                   <td>
                     {v.category}
@@ -5387,15 +5482,15 @@ function Equipment({
                   <td>{equipmentGroupValue(v)}</td>
                   <td>{v.itemName}</td>
                   <td>{v.itemSpecification}</td>
-                  <td>{v.acquisitionDate || v.acquired}</td>
+                  {!isLmvView && <td>{v.acquisitionDate || v.acquired}</td>}
                   <td>{v.make}</td>
                   <td>{v.model}</td>
                   <td>{v.manufacturerSerialNo}</td>
                   <td>{v.engineNo}</td>
                   <td>{v.chassisNo}</td>
                   <td>{v.documentStatus}</td>
-                  <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>
-                  <EquipmentAliasCell aliases={aliasData.aliases} record={v} canRevoke={aliasAdmin} onRevoke={setAliasRevoke} />
+                  {isLmvView ? <td>{v.assetNo}</td> : <td><Status>{roadStatusFor(v)==="onroad"?"On road":roadStatusFor(v)==="offroad"?"Off road":roadStatusFor(v)==="idle"?"Idle":"Status not set"}</Status></td>}
+                  {!isLmvView && <EquipmentAliasCell aliases={aliasData.aliases} record={v} canRevoke={aliasAdmin} onRevoke={setAliasRevoke} />}
                   <td className="row-actions" onClick={(event) => event.stopPropagation()}>
                     {v.id ? (
                       <>
@@ -5412,7 +5507,7 @@ function Equipment({
               ))
             ) : (
               <tr>
-                <td colSpan="16" className="empty-state">
+                <td colSpan={equipmentColumns.length + 2} className="empty-state">
                   No equipment or vehicle records for this selection
                 </td>
               </tr>
@@ -6206,141 +6301,6 @@ function MaintenanceForm({ close, normal = false, onSubmit, equipmentRecords = [
         </footer>
       </form>
     </Modal>
-  );
-}
-function Subsidiaries({ gotoEquipment }) {
-  const [open, setOpen] = useState(null),
-    [q, setQ] = useState("");
-  const data = subsidiaryData.filter((x) => matchesSmartSearch(q, x.name, x.code, x.sites));
-  return (
-    <section className="panel pagepanel generic">
-      <header>
-        <div>
-          <h1>Region master</h1>
-          <p>
-            Click a region, then select Total, On Road, Off Road or Idle for any
-            site
-          </p>
-        </div>
-        <button className="primary">
-          <Plus />
-          Add record
-        </button>
-      </header>
-      <div className="toolbar">
-        <div>
-          <Search />
-          <input
-            data-smart-search
-            type="search"
-            placeholder="Search regions or sites"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="emptytable">
-        <ActionsTable>
-          <thead>
-            <tr>
-              <th>Region name</th>
-              <th>Short name</th>
-              <th>State code</th>
-              <th>Sites</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((s) => (
-              <React.Fragment key={s.code}>
-                <tr
-                  className="click drill-parent"
-                  onClick={() => setOpen(open === s.code ? null : s.code)}
-                >
-                  <td>
-                    <b>{s.name}</b>
-                  </td>
-                  <td>{s.code}</td>
-                  <td>{s.state}</td>
-                  <td>{s.sites.length} sites</td>
-                  <td>
-                    <ChevronRight
-                      className={open === s.code ? "drill-open" : ""}
-                    />
-                  </td>
-                </tr>
-                {open === s.code && (
-                  <tr className="drill-row">
-                    <td colSpan="5">
-                      <div className="site-drill">
-                        <div>
-                          <Building2 />
-                          <span>
-                            <b>{s.code} sites</b>
-                            <small>
-                              Equipment and vehicle road status by site
-                            </small>
-                          </span>
-                        </div>
-                        <div className="site-linked-list">
-                          {s.sites.map((site) => {
-                            const list = vehicles.filter(
-                                (v) => (v.currentLocation || v.location) === site,
-                              ),
-                              metrics=equipmentMetrics(list),
-                              on=metrics.onRoad,
-                              off=metrics.offRoad,
-                              idle=metrics.idle;
-                            return (
-                              <div className="site-linked" key={site}>
-                                <button
-                                  className="site-title"
-                                  onClick={() => gotoEquipment("all", site)}
-                                >
-                                  <MapPin />
-                                  {site}
-                                </button>
-                                <button
-                                  onClick={() => gotoEquipment("all", site)}
-                                >
-                                  <strong>{list.length}</strong>
-                                  <span>Total</span>
-                                </button>
-                                <button
-                                  className="on"
-                                  onClick={() => gotoEquipment("onroad", site)}
-                                >
-                                  <strong>{on}</strong>
-                                  <span>On Road</span>
-                                </button>
-                                <button
-                                  className="off"
-                                  onClick={() => gotoEquipment("offroad", site)}
-                                >
-                                  <strong>{off}</strong>
-                                  <span>Off Road</span>
-                                </button>
-                                <button
-                                  className="idle"
-                                  onClick={() => gotoEquipment("idle", site)}
-                                >
-                                  <strong>{idle}</strong>
-                                  <span>Idle</span>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </ActionsTable>
-      </div>
-    </section>
   );
 }
 function Generic({ name, requests = [] }) {
@@ -7176,9 +7136,9 @@ function UserSessionsPage({session}) {
     finally{if(!quiet)setLoading(false);}
   };
   useEffect(()=>{
-    load();
-    const timer=window.setInterval(()=>load({quiet:true}),3000);
-    return()=>window.clearInterval(timer);
+    // Every 3 s while the page is on screen; a hidden tab stops asking.
+    let first=true;
+    return startVisiblePoll(()=>{const quiet=!first;first=false;return load({quiet});},3000);
   },[session?.token]);
   const forceClose=async(row)=>{
     if(row.current)return;
@@ -7374,7 +7334,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7398,7 +7358,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         </div>
       </div>
       {controls}
-      {!children && showSearch && <div className="generated-report-search"><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{rows.length.toLocaleString("en-IN")} record{rows.length === 1 ? "" : "s"}</span></div>}
+      {!children && (showSearch || onBack) && <div className="generated-report-search">{onBack && <StepBackButton onBack={onBack} label={backLabel} />}{showSearch && <><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{rows.length.toLocaleString("en-IN")} record{rows.length === 1 ? "" : "s"}</span></>}</div>}
       {children || (
         <TableViewport className="reports-detail-table emptytable">
           <ReportTable
@@ -7411,6 +7371,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rows={rows}
             rowKey={rowKey}
             rowClassName={rowClassName}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
@@ -7445,7 +7406,7 @@ function withTimelineLinks(columns, token) {
   });
 }
 function ReportsPage(props) {
-  if (String(props.activeReportCategory).startsWith('operations-')) return <OperationsReports ReportSection={ReportSection} session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} />;
+  if (String(props.activeReportCategory).startsWith('operations-')) return <><StepBackButton onBack={()=>props.setActiveReportCategory?.('general')} label="Back to reports" className="reports-step-back" /><ReportGuide id={String(props.activeReportCategory).replace(/^operations-/, '')} /><OperationsReports ReportSection={ReportSection} session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} /></>;
   if (props.activeReportCategory === 'bd-ageing') return <BdAgeingReport key={props.session?.token} session={props.session} ReportSection={ReportSection} onBack={()=>props.setActiveReportCategory?.('general')} />;
   return <StandardReportsPage {...props} />;
 }
@@ -7487,10 +7448,10 @@ function StandardReportsPage({ requests = [], activeReportCategory = "general", 
   const [breakdownMonth, setBreakdownMonth] = useState(() => indiaDateTimeInputValue(new Date()).slice(0, 7));
   const [breakdownRegion, setBreakdownRegion] = useState("all");
   const [breakdownSite, setBreakdownSite] = useState("");
-  const [reportZipFrom, setReportZipFrom] = useState(() => indiaDateTimeInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+  const [reportZipFrom, setReportZipFrom] = useState(() => `${monthStartDate(indiaDateTimeInputValue(new Date()).slice(0,10))}T00:00`);
   const [reportZipTo, setReportZipTo] = useState(() => indiaDateTimeInputValue(new Date(Date.now() + 60 * 1000)));
   const reportGeneratedAt = useMemo(() => indiaDateTimeInputValue(new Date()), []);
-  const [availabilityFrom, setAvailabilityFrom] = useState(() => `${indiaDateTimeInputValue(new Date()).slice(0,7)}-01`);
+  const [availabilityFrom, setAvailabilityFrom] = useState(() => monthStartDate(indiaDateTimeInputValue(new Date()).slice(0,10)));
   const [reportFrom, setReportFrom] = useState("");
   const [reportTo, setReportTo] = useState("");
   const [selectedReportShift, setSelectedReportShift] = useState(ALL_SHIFTS_KEY);
@@ -8132,7 +8093,7 @@ function MasterPage({ name, records = [], onAdd, onEdit, onDelete, onDeleteAll, 
   const fields = masterFields[name],
     editFields = name === "Users & employees" ? [...fields, ...userPrivilegeFields, ...userSubmenuFields] : fields,
     displayFields = name === "Privilege" ? fields.slice(0, 2) : fields,
-    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master" || name === "Region master",
+    canManageRows = isCdirMaster(name) || name === "OEM master" || name === "Users & employees" || name === "Repair type master" || name === "Breakdown Sub-Category" || name === "Delayed Reason" || name === "Shift Master",
     masterValue = (record, key) => {
       if (name === "Users & employees" && key === "site") return userMasterLocation(record);
       const type = fields.find(([field]) => field === key)?.[2];
@@ -8627,7 +8588,18 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
       controller.abort();
     };
   }, [name, loadAttempt, authToken, enabled]);
+  // Equipment master is shared with Pulse: every change needs the one OTP sent to the
+  // authorised mobiles, then the list reloads with what Pulse applied.
+  const isEquipmentMaster = name === "Equipment master";
+  const approveEquipment = async (changes, { silent = false } = {}) => {
+    if (!changes.length) throw new Error("No saved equipment records were selected.");
+    const result = await approveEquipmentChanges({ token: authToken, changes });
+    setLoadAttempt((attempt) => attempt + 1);
+    if (!silent) alert(`Equipment master updated in Pulse: ${equipmentChangeText(result.summary)}.${result.synced === false ? " Pulse-II shows it after the next one-minute sync." : ""}`);
+    return result;
+  };
   const add = async (incoming, { silent = false } = {}) => {
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.add(incoming), { silent });
     const batches = batchMasterRecords(incoming);
     const saved = [];
     for (let index = 0; index < batches.length; index += 1) {
@@ -8683,6 +8655,10 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
     }
   };
   const edit = async (id, record) => {
+    if (isEquipmentMaster) {
+      await approveEquipment(equipmentChanges.edit(id, record), { silent: true });
+      return { ...record, id };
+    }
     const update = () => fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
       method: "PUT", cache:"no-store",
       headers: {"Content-Type": "application/json", Authorization: `Bearer ${authToken}`},
@@ -8706,6 +8682,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
     return details;
   };
   const remove = async (id, reason = "") => {
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(records.filter((record) => record.id === id)));
     const response = await fetch(`/api/masters/${encodeURIComponent(name)}/${id}`, {
       method: "DELETE",
       headers: {Authorization: `Bearer ${authToken}`, "X-Audit-Reason": reason},
@@ -8719,6 +8696,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
   };
   const removeAll = async () => {
     if (!confirm(`Delete all records from ${name}? This cannot be undone.`)) return;
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(records));
     const reason = window.prompt(`Enter the reason for deleting all ${name} records:`, "");
     if (reason === null) return;
     if (!reason.trim()) return alert("A deletion reason is required for the Audit Trail.");
@@ -8734,6 +8712,7 @@ function useMasterRecords(name, seed = [], {enabled = true} = {}) {
   const removeSelected = async (selectedRecords = [], reason = "") => {
     const ids = [...new Set(selectedRecords.map((record) => Number(record.id)).filter((id) => Number.isSafeInteger(id) && id > 0))];
     if (!ids.length) throw new Error("No saved equipment records match the current filters.");
+    if (isEquipmentMaster) return void await approveEquipment(equipmentChanges.remove(selectedRecords));
     if (!reason.trim()) throw new Error("A deletion reason is required for the Audit Trail.");
     const response = await fetch(`/api/masters/${encodeURIComponent(name)}/selected`, {
       method: "DELETE",
@@ -9252,6 +9231,7 @@ Breakdown = function BreakdownWithMasterEntry({ requests = [] }) {
 };
 const OriginalEquipment = Equipment;
 Equipment = function EquipmentWithData(props) {
+  const [lmvTab, setLmvTab] = useState(false);
   const [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad, onDeleteSelected] = useMasterRecords("Equipment master", vehicles);
   if (loadError && !loaded) return <MasterLoadError name="Equipment master" error={loadError} retry={retryLoad} />;
   if (!loaded) return <MasterLoader name="Equipment master" />;
@@ -9259,17 +9239,26 @@ Equipment = function EquipmentWithData(props) {
     onAdd(
       incoming.map(normalizeEquipmentRecord),
     );
-  return (
+  const showTabs = !props.pageTitle && (!props.initialCategory || props.initialCategory === "all");
+  const showLmv = showTabs && lmvTab;
+  return (<>
+    {showTabs && <div className="role-category-tabs" role="group" aria-label="Equipment master views">
+      <button type="button" aria-pressed={!showLmv} onClick={() => setLmvTab(false)}>Equipment Master</button>
+      <button type="button" aria-pressed={showLmv} onClick={() => setLmvTab(true)}>LMV Master</button>
+    </div>}
     <OriginalEquipment
+      key={showLmv ? "lmv" : "equipment"}
       {...props}
-      records={records}
+      pageTitle={showLmv ? "LMV Master" : props.pageTitle}
+      onLmvImported={showLmv ? retryLoad : undefined}
+      records={showLmv ? records.filter(isLmv) : records}
       onAdd={addEquipment}
       onEdit={(id, record) => onEdit(id, normalizeEquipmentRecord(record))}
       onDelete={onDelete}
-      onDeleteAll={onDeleteAll}
+      onDeleteAll={showLmv ? undefined : onDeleteAll}
       onDeleteSelected={onDeleteSelected}
     />
-  );
+  </>);
 };
 const OriginalGeneric = Generic;
 function PrivilegeMasterPage(props) {
@@ -9316,9 +9305,6 @@ function PrivilegeMasterPage(props) {
   if (missingUsers.length && failedSync !== syncKey) return <MasterLoader name="Privilege" />;
   return <MasterPage {...props} userOptions={userOptions} siteOptions={privilegeSiteOptions} />;
 }
-// One tab per site: stored Region master rows that still list a merged legacy
-// name (e.g. "Jayant OB 2nd") collapse onto the single display name.
-const regionSites = (record = {}) => displaySiteSelection(record.sites);
 const splitPipeValues = (value = "") => String(value || "").split(/\s*\|\s*/).map((item) => item.trim()).filter(Boolean);
 
 function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenReportSettings }) {
@@ -9579,111 +9565,6 @@ function HierarchyMasterPage({ records = [], onAdd, onEdit, onDeleteAll, onOpenR
   </>);
 }
 
-function RegionMasterPage({ records = [], requests = [], onAdd, onDeleteAll, gotoEquipment, onManage }) {
-  const normalizedRegions = records.map((record, index) => ({
-    ...record,
-    code: String(record.code || record.shortName || "").trim() || `REG-${index + 1}`,
-    sitesList: regionSites(record),
-  }));
-  const [activeRegionId, setActiveRegionId] = useState(() => normalizedRegions[0]?.id);
-  const activeRegion = normalizedRegions.find((region) => region.id === activeRegionId) || normalizedRegions[0];
-  const [activeSite, setActiveSite] = useState("");
-  const [query, setQuery] = useState("");
-  const [equipmentRecords] = useMasterRecords("Equipment master", vehicles);
-  const visibleSites = (activeRegion?.sitesList || []).filter((site) => matchesSmartSearch(query, activeRegion?.name, activeRegion?.code, site));
-  useEffect(() => {
-    const nextSite = visibleSites.includes(activeSite) ? activeSite : visibleSites[0] || "";
-    if (nextSite !== activeSite) setActiveSite(nextSite);
-  }, [activeRegionId, activeSite, visibleSites.join("|")]);
-  const siteMetrics = (site) => {
-    const siteRecords = equipmentRecords.filter((record) => recordBelongsToSite(record, site));
-    const siteRequests = requests.filter((record) => recordBelongsToSite(record, site));
-    const metrics = liveEquipmentMetrics(siteRecords, siteRequests);
-    return { total: siteRecords.length, onRoad: metrics.onRoad, offRoad: metrics.offRoad, idle: metrics.idle };
-  };
-  const regionEquipment = equipmentRecords.filter((record) => (activeRegion?.sitesList || []).some((site) => recordBelongsToSite(record, site)));
-  const regionTotals = liveEquipmentMetrics(regionEquipment, requests);
-  const selectedSiteMetrics = activeSite ? siteMetrics(activeSite) : { total: 0, onRoad: 0, offRoad: 0, idle: 0 };
-  const openEquipment = (road = "all", site = activeSite) => {
-    if (site && gotoEquipment) gotoEquipment(road, site);
-  };
-  const openRegionEquipment = (road) => {
-    if (activeRegion?.sitesList.length && gotoEquipment) gotoEquipment(road, "", "all", activeRegion.sitesList);
-  };
-  return (
-    <section className="region-master-page panel pagepanel">
-      <header>
-        <div>
-          <h1>{regionMasterTitle}</h1>
-          <p>{normalizedRegions.length} regions configured · Managed in Pulse‑II</p>
-          <button className="secondary" type="button" onClick={onManage}>Manage regions and sites</button>
-        </div>
-        <MasterActions name="Region master" records={records} onAdd={onAdd} onDeleteAll={onDeleteAll} />
-      </header>
-      <div className="region-master-toolbar">
-        <div className="region-main-tabs" role="tablist" aria-label="Region tabs">
-          {normalizedRegions.map((region) => (
-            <button key={region.id} type="button" role="tab" aria-selected={activeRegion?.id === region.id} className={activeRegion?.id === region.id ? "active" : ""} onClick={() => setActiveRegionId(region.id)}>
-              <Building2 />
-              <span><b>{region.code}</b><small>{region.name}</small></span>
-            </button>
-          ))}
-        </div>
-        <label className="region-search"><Search /><input data-smart-search type="search" placeholder="Search sites" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      </div>
-      {activeRegion ? (
-        <>
-          <div className="region-hero">
-            <div>
-              <span>{activeRegion.code}</span>
-              <h2>{activeRegion.name}</h2>
-              <p>{activeRegion.state || "State not assigned"} · {activeRegion.sitesList.length} sites</p>
-            </div>
-            <div className="region-summary-strip">
-              <button type="button" onClick={() => openRegionEquipment("all")}><strong>{regionTotals.total}</strong><span>Total</span></button>
-              <button type="button" onClick={() => openRegionEquipment("onroad")}><strong>{regionTotals.onRoad}</strong><span>On Road</span></button>
-              <button type="button" onClick={() => openRegionEquipment("offroad")}><strong>{regionTotals.offRoad}</strong><span>Off Road</span></button>
-              <button type="button" onClick={() => openRegionEquipment("idle")}><strong>{regionTotals.idle}</strong><span>Idle</span></button>
-            </div>
-          </div>
-          <div className="region-site-tabs" role="tablist" aria-label={`${activeRegion.code} site tabs`}>
-            {visibleSites.map((site) => (
-              <button key={site} type="button" role="tab" aria-selected={activeSite === site} className={activeSite === site ? "active" : ""} onClick={() => setActiveSite(site)}>
-                <MapPin />
-                <span>{site}</span>
-              </button>
-            ))}
-          </div>
-          {activeSite ? (
-            <div className="region-site-panel">
-              <header>
-                <div>
-                  <span>Selected site</span>
-                  <h3>{activeSite}</h3>
-                </div>
-                <button className="secondary" type="button" onClick={() => openEquipment("all", activeSite)}>Open equipment <ChevronRight /></button>
-              </header>
-              <div className="region-site-metrics">
-                {[
-                  ["all", "Total equipment / vehicle", selectedSiteMetrics.total, Gauge],
-                  ["onroad", "On Road", selectedSiteMetrics.onRoad, CheckCircle2],
-                  ["offroad", "Off Road", selectedSiteMetrics.offRoad, AlertTriangle],
-                  ["idle", "Idle", selectedSiteMetrics.idle, Clock],
-                ].map(([road, label, value, Icon]) => (
-                  <button key={road} type="button" className={`region-metric ${road}`} onClick={() => openEquipment(road, activeSite)}>
-                    <Icon />
-                    <span>{label}</span>
-                    <strong>{Number(value).toLocaleString("en-IN")}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : <p className="empty-state">No sites match this search.</p>}
-        </>
-      ) : <p className="empty-state">No regions configured.</p>}
-    </section>
-  );
-}
 Generic = function GenericWithMasters(props) {
   const name = props.name,
     [records, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords(name);
@@ -9707,16 +9588,18 @@ Generic = function GenericWithMasters(props) {
     <OriginalGeneric {...props} />
   );
 };
-const OriginalSubsidiaries = Subsidiaries;
-Subsidiaries = function SubsidiariesWithImport({ gotoEquipment, requests = [] } = {}) {
-  const [managing, setManaging] = useState(false);
-  const [storedRecords, onAdd, loaded, onEdit, onDelete, onDeleteAll, loadError, retryLoad] = useMasterRecords("Region master");
+function RegionSiteMaster() {
+  const [storedRecords, , loaded, , , , loadError, retryLoad] = useMasterRecords("Region master");
   if (loadError && !loaded) return <MasterLoadError name={regionMasterTitle} error={loadError} retry={retryLoad} />;
   if (!loaded) return <MasterLoader name={regionMasterTitle} />;
-  const records = storedRecords.map(record => ({...record, code: record.code || record.shortName || "", sites: regionSites(record).join(" | ")}));
-  if (managing) return <MasterPage name="Region master" records={records} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onDeleteAll={onDeleteAll} headerControl={<button className="secondary" type="button" onClick={() => setManaging(false)}>Back to region overview</button>} />;
-  return <RegionMasterPage records={records} requests={requests} onAdd={onAdd} onDeleteAll={onDeleteAll} gotoEquipment={gotoEquipment} onManage={() => setManaging(true)} />;
-};
+  const records = storedRecords.map(record => ({
+    ...record,
+    code: record.code || record.shortName || "",
+    sites: displaySiteSelection(record.sites).join(" | "),
+  }));
+  return <MasterPage name="Region master" records={records} headerControl={<p>Source: pulse.cmll.in</p>} />;
+}
+
 function InfoPulseTimelineModal({ overlayClassName = "", ...props }) {
   // Escape animated pulse rows so the lifecycle is neither clipped nor covered by sibling cards.
   return createPortal(<Modal {...props} overlayClassName={`${overlayClassName} pulse-timeline-overlay`} />, document.body);
@@ -11453,7 +11336,7 @@ function Normal({ logout, requests, requestsLoaded = true, requestsError = "", r
   return <div className={`normal${embedded ? " embedded-workspace" : ""}`} onPointerDown={isMaintenance ? preventTableAutoScroll : undefined}>
     {!embedded && <header><CaliberBrand className="logo" subtitle="Mobile user portal" /><nav className="normal-header-nav">{showDashboardMenu&&<button data-nav="dashboard" className={section === "dashboard" ? "active" : ""} onClick={() => setSection("dashboard")}><LayoutDashboard /> Dashboard</button>}{showDirectoryMenu&&<button data-nav="directory" className={section === "directory" ? "active" : ""} onClick={() => setSection("directory")}><BookOpen /> Directory (CD)</button>}{showRequestsMenu&&<button data-nav="requests" className={section === "profile" ? "active" : ""} onClick={() => setSection("profile")}><Wrench /> {isGeneral ? "Requests" : mobileRole}</button>}{showReportsMenu&&<button data-nav="reports" className={section === "reports" ? "active" : ""} onClick={() => setSection("reports")}><FileBarChart /> Reports</button>}{showTicketsMenu&&<button data-nav="tickets" className={section === "tickets" ? "active" : ""} onClick={() => setSection("tickets")}><Ticket /> Tickets</button>}{isMis&&<button data-nav="transfers" className={section === "transfers" ? "active" : ""} onClick={() => setSection("transfers")}><ArrowRightLeft /> Vehicle Transfer</button>}<BdmsAssistant session={session} token={authToken} /><AnnouncementHistoryButton token={authToken} /></nav><HeaderClock className="normal-header-clock" /><div className="normal-header-actions">{!isGeneral&&<HelpTraining role={mobileRole} location={assignedLocation} />}<NotificationBell session={session} onOpenEntry={(target) => {if(target?.kind==="cdir-deletion"){setDirectoryView("deletions");setSection("directory");return;}if(target?.kind==="employee-transfer"){setDirectoryView("transfer");setSection("directory");return;}const ticket=target?.kind==="ticket"&&showTicketsMenu;const transfer=target?.kind==="transfer"&&isMis;if(ticket)setSection("tickets");else if(transfer)setSection("transfers");else if(showRequestsMenu&&canSeeRequestMenu("View requests")){setSection("profile");setTab("requests")}}} /><span className="normal-header-user"><b>{mobileRole}</b><small>{session?.name || "Mobile User"}</small></span><UserProfile session={session} role={mobileRole} location={assignedLocation} apiToken={authToken} /><ThemeToggle theme={theme} onToggle={toggleTheme} /><button onClick={logout} aria-label="Sign out" className="sign-out-button"><DoorExitIcon /><span className="sign-out-label">Sign out</span></button></div></header>}
     <main>
-      {!embedded&&section==="dashboard"&&showDashboardMenu&&(dashboardRequestsReady ? <MisDashboard requests={misDashboardRequests} requestsError={dashboardRequestsError} requestsUpdatedAt={dashboardRequestsUpdatedAt} onRefreshRequests={refreshDashboardRequests} theme={theme} session={session} /> : <RequestDataState error={dashboardRequestsError} retry={refreshDashboardRequests} />)}
+      {!embedded&&section==="dashboard"&&showDashboardMenu&&(dashboardRequestsReady ? <MisDashboard requests={misDashboardRequests} requestsError={dashboardRequestsError} requestsUpdatedAt={dashboardRequestsUpdatedAt} onRefreshRequests={refreshDashboardRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={dashboardRequestsError} retry={refreshDashboardRequests} />)}
       {!embedded&&section==="directory"&&showDirectoryMenu&&<CdirModule token={session?.token || authToken} ReportSection={ReportSection} initialView={directoryView} onViewChange={setDirectoryView}/>}
       {!embedded&&section==="reports"&&showReportsMenu&&<ReportsPage requests={isMaintenance ? requests : isMis ? misWorkspaceRequests : dashboardRequests} activeReportCategory={userReportCategory} setActiveReportCategory={setUserReportCategory} permissions={{...permissions, department: mobileRole}} session={session} />}
       {!embedded&&section==="tickets"&&showTicketsMenu&&<TicketPage session={session} />}
@@ -11550,6 +11433,8 @@ function App() {
     [requestState, setRequestState] = useState({ token: "", loaded: false, error: "", updatedAt: 0 }),
     [menu, setMenu] = useState(false),
     [sidebarHidden,setSidebarHidden]=useState(()=>{try{return localStorage.getItem("caliberSidebarHidden")==="true";}catch{return false;}}),
+    [sidebarAuto,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
+    [sidebarPeek,setSidebarPeek]=useState(false),
     [canGoBack, setCanGoBack] = useState(false),
     [theme, setTheme] = useState(() => {
       const saved = localStorage.getItem("nerveCenterTheme");
@@ -11558,15 +11443,19 @@ function App() {
     }),
     [globalVehicleHistoryTarget, setGlobalVehicleHistoryTarget] = useState(null),
     [accountWorkspace,setAccountWorkspace]=useState("accounts"),
+    [employeeLocationOpen,setEmployeeLocationOpen]=useState(false),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
+  // Auto-hide: the menu stays closed and opens only while the pointer is at the left edge or inside it.
+  const sidebarClosed=sidebarAuto?!sidebarPeek:sidebarHidden;
+  const changeSidebarAuto=on=>{setSidebarAuto(on);setSidebarPeek(true);if(!on)changeSidebarHidden(false);try{localStorage.setItem("caliberSidebarAutoHide",String(on));}catch{}};
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
-      sessionStorage.setItem('nerveCenterSession',JSON.stringify(value));localStorage.removeItem('nerveCenterSession');
+      localStorage.setItem('nerveCenterSession',JSON.stringify(value));sessionStorage.removeItem('nerveCenterSession');
       setSharedSignedOut(false);setActive(LOGIN_LANDING_PAGE);setSession(value);
     };
     window.addEventListener('mis-shared-signin',receive);return()=>window.removeEventListener('mis-shared-signin',receive);
@@ -11615,19 +11504,12 @@ function App() {
   useEffect(()=>{
     if(!session?.token)return undefined;
     let lastHeartbeatAt=0,closed=false;
-    const closeInvalidSession=()=>{
-      if(closed)return;
-      closed=true;
-      clearStoredSession();
-      window.location.replace(`/?${SESSION_EXPIRED_PARAM}=1`);
-    };
     const heartbeat=async(force=false)=>{
       if(closed)return;
       if(!force&&Date.now()-lastHeartbeatAt<30000)return;
       lastHeartbeatAt=Date.now();
       try{
-        const response=await fetch('/api/session-heartbeat',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});
-        if(response.status===401)closeInvalidSession();
+        await fetch('/api/session-heartbeat',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});
       }catch{}
     };
     let activityHeartbeatHandle=null,activityHeartbeatUsesIdle=false;
@@ -11660,16 +11542,18 @@ function App() {
     .some((role)=>REQUEST_CORRECTION_MANAGER_ROLES.includes(role));
   const adminOnlyPages=new Set([...adminNav.map(([name])=>name),'Admin locks','Full Backup','Database']);
   const canOpenAdminPage = (name) => {
+    if(name==='Employee Current Location')return Boolean(session?.token);
+    if(['Fleet Capacity','Equipment Deployment'].includes(name))return canOpenAdminPage('Reports');
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
     if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
     if(name==='Scan Backup'||name==='Deletion')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
     if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
-    if(['Trip Card Bulk Scan','Job Card Bulk Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
+    if(['Trip Card Bulk Scan','Job Card Bulk Scan','LMV Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
     if(name==='Employee master')return isAdministrator;
     if(name==='Pulse Master Sync'||['Work Order master','Financial Year master','Company master'].includes(name))return isAdministrator;
-    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options','Saved VLB','Create VLB Batch'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
+    if(['Vehicle Log Book','Equipment Log Book','Vehicle Log Book Options','Equipment Log Book Options','LMV Log Book','LMV Manual','Saved VLB','Create VLB Batch'].includes(name))return !['HR User','HR Manager'].includes(session?.assignedRole)&&(accessAllows(activeNavigationPermissions.tabAccess,'Dashboard')||accessAllows(activeNavigationPermissions.tabAccess,'Reports'));
     if(session?.assignedRole==='HR User')return ['Dashboard','Reports','Tickets','CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(session?.assignedRole==='HR Manager')return ['CD','Employee Tenure Report','Employee Transfer','Record Deletion Approvals'].includes(name)||isCdirMaster(name);
     if(name==="User Sessions")return canViewUserSessions(session);
@@ -11750,6 +11634,7 @@ function App() {
     lastAuditedPage.current = active;
     recordUserActivity({module:"Navigation",action:"Open page",targetReference:active});
   }, [active,session?.token]);
+  const stepBack = useStepBack();
   const goBack = () => {
     if (pageHistory.current.length <= 1) return;
     pageHistory.current.pop();
@@ -11988,18 +11873,24 @@ function App() {
   // not change the current page. Preserve the page element across those root
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
-    requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+    requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
+  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
-  ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>) : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
+  ) : renderedActive==='Deletion' ? (<LogBookDeletion session={session}/>) : renderedActive==='Scan Backup' ? (<ScanCardBackup session={session}/>)
+  : renderedActive==='LMV Log Book' ? (<LogBookModeChoice kind="lmv" canScan={canOpenAdminPage('LMV Scan')} onManual={()=>selectMenu('LMV Manual')} onScan={()=>selectMenu('LMV Scan')}/>)
+  : renderedActive==='LMV Manual' ? (<VlbEntryWorkspace key="lmv-manual" kind="lmv" mode="manual" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><LogBookForm kind="lmv" session={session} onExit={()=>selectMenu('LMV Log Book')} onBulkScan={canOpenAdminPage('LMV Scan')?()=>selectMenu('LMV Scan'):undefined}/></VlbEntryWorkspace>)
+  : renderedActive==='LMV Scan' ? (<VlbEntryWorkspace key="lmv-scan" kind="lmv" mode="scan" session={session} ReportSection={ReportSection} onExit={()=>selectMenu('LMV Log Book')}><BulkCardScanning kind="vehicle" logBookKind="lmv" session={session} ReportSection={ReportSection}/></VlbEntryWorkspace>)
+  : ['Vehicle Log Book Options','Equipment Log Book Options'].includes(renderedActive) ? (<LogBookModeChoice onBatches={()=>selectMenu('Create VLB Batch')} kind={renderedActive==='Vehicle Log Book Options'?'vehicle':'equipment'} canSaved={renderedActive==='Vehicle Log Book Options'&&canOpenAdminPage('Saved VLB')} onSaved={()=>selectMenu('Saved VLB')} canScan={canOpenAdminPage(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')} onManual={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Vehicle Log Book':'Equipment Log Book')} onScan={()=>selectMenu(renderedActive==='Vehicle Log Book Options'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/>) : ['Trip Card Bulk Scan','Job Card Bulk Scan'].includes(renderedActive) ? (
     <VlbEntryWorkspace key={renderedActive} mode="scan" kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Trip Card Bulk Scan'?'Vehicle Log Book Options':'Equipment Log Book Options')}><BulkCardScanning ReportSection={ReportSection} key={renderedActive} kind={renderedActive==='Trip Card Bulk Scan'?'vehicle':'equipment'} session={session}/></VlbEntryWorkspace>
-  ) : renderedActive==='VLB Reports' ? (<ScanBatchReports ReportSection={ReportSection} key={renderedActive} kind="vehicle" session={session}/>
-  ) : renderedActive==='ELB Reports' ? (<ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/>
-  ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
+  ) : ['Fleet Capacity','Equipment Deployment'].includes(renderedActive) ? (
+    <><ReportGuide id={renderedActive==='Fleet Capacity'?'fleet-capacity':'equipment-deployment'}/><FleetPopulationReport key={renderedActive} session={session} ReportSection={ReportSection} capacity={renderedActive==='Fleet Capacity'}/></>
+  ) : renderedActive==='VLB Reports' ? (<><ReportGuide id="vlb-reports"/><VlbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/></>
+  ) : renderedActive==='ELB Reports' ? (<><ReportGuide id="elb-reports"/><ElbBatchReports ReportSection={ReportSection} key={renderedActive} session={session}/></>
+  ) : renderedActive==='Batch reopening approvals' ? (<VlbBatchApprovals session={session}/>) : ['Create VLB Batch','Saved VLB'].includes(renderedActive) ? (<VlbCreateBatch onExit={canGoBack?goBack:undefined} canDeleteManualElb={canOpenAdminPage('Deletion')} onApprovals={()=>selectMenu('Batch reopening approvals')} onManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Vehicle Log Book')}} onScan={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Trip Card Bulk Scan')}} onLmvManual={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Manual')}} onLmvScan={canOpenAdminPage('LMV Scan')?batch=>{rememberVlbEntryBatch(session,batch);selectMenu('LMV Scan')}:undefined} onElbEntry={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book Options')}} onEquipmentElb={batch=>{rememberVlbEntryBatch(session,batch);selectMenu('Equipment Log Book')}} ReportSection={ReportSection} session={session} onExit={()=>selectMenu('Vehicle Log Book Options')}/>
   ) : ['Vehicle Log Book','Equipment Log Book'].includes(renderedActive) ? (<>
-    <VlbEntryWorkspace key={renderedActive} mode="manual" ExportMenu={ExportMenu} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')}><LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></VlbEntryWorkspace></>
+    <VlbEntryWorkspace key={renderedActive} mode="manual" canDeleteElb={canOpenAdminPage('Deletion')} ExportMenu={ExportMenu} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} ReportSection={ReportSection} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')}><LogBookForm key={renderedActive} kind={renderedActive==='Vehicle Log Book'?'vehicle':'equipment'} session={session} onExit={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Vehicle Log Book Options':'Equipment Log Book Options')} onBulkScan={()=>selectMenu(renderedActive==='Vehicle Log Book'?'Trip Card Bulk Scan':'Job Card Bulk Scan')}/></VlbEntryWorkspace></>
   ) : renderedActive === "Stock Statement" ? (
     <StockStatement token={session?.token || authToken} ReportSection={ReportSection} />
   ) : renderedActive === "Purchase Order" ? (
@@ -12023,7 +11914,7 @@ function App() {
   ) : renderedActive === "CD" ? (
     <CaliberDirectoryPage token={session?.token || authToken} />
   ) : renderedActive === "Manager Profile" ? (
-    <MisDashboard session={session} canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
+    <MisDashboard session={session} canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} ReportSection={ReportSection} printDashboard={printDashboardReport} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
   ) : renderedActive === 'Telegram Integration' ? (<MisTelegram session={session}/>
   ) : ['Full Backup','Database'].includes(renderedActive) ? (<MisAdministration canScanBackup={canOpenAdminPage('Scan Backup')} page={renderedActive} session={session} ReportSection={ReportSection} onScanBackup={()=>selectMenu('Scan Backup')}/>
   ) : renderedActive === "Tickets" ? (
@@ -12055,9 +11946,9 @@ function App() {
   ) : renderedActive === "Equipment master" ? (
     <Equipment initialFilter={renderedEquipmentFilter} initialLocation={renderedEquipmentLocation} initialCategory={renderedEquipmentCategory} allowedLocations={renderedEquipmentLocations} statusRequests={requests} />
   ) : renderedActive === "Breakdown master" ? (
-    renderedBreakdownFleetFilter ? <Equipment initialFilter={renderedBreakdownFleetFilter} pageTitle="Breakdown master" statusRequests={requests} allowedLocations={renderedBreakdownFleetSites} /> : <Breakdown requests={requests} />
+    renderedBreakdownFleetFilter ? <><StepBackButton onBack={()=>{setBreakdownFleetFilter("");setBreakdownFleetSites([]);}} label="Back to all breakdowns" className="reports-step-back" /><Equipment initialFilter={renderedBreakdownFleetFilter} pageTitle="Breakdown master" statusRequests={requests} allowedLocations={renderedBreakdownFleetSites} /></> : <Breakdown requests={requests} />
   ) : renderedActive === "Region master" ? (
-    <Subsidiaries gotoEquipment={gotoEquipment} requests={requests} />
+    <RegionSiteMaster />
   ) : ORGANISATION_PAGE_NAMES.includes(renderedActive) ? (
     <OrganisationChartPage view={Object.keys(ORGANISATION_PAGES).find((key) => ORGANISATION_PAGES[key] === renderedActive)} />
   ) : renderedActive === "Meta API setup" ? (
@@ -12083,16 +11974,19 @@ function App() {
     session, theme,
   ]);
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
-  if (!session && sharedSignIn.mode==='client') return <MisSharedLogin error={sharedSignIn.error}/>;
+  // 'checking' = the server has not yet said which sign-in applies; never show the old password form on a guess.
+  if (!session && (sharedSignIn.mode==='client'||sharedSignIn.mode==='checking')) return <MisSharedLogin error={sharedSignIn.error} message={sharedSignIn.mode==='checking'?'Opening MIS sign-in…':undefined}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
   if (session.userType === "Account User") return <div className="accounts-user-workspace">
-    <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
-    <main>{accountWorkspace==="directory"?<CdirModule token={session.token} ReportSection={ReportSection}/> :ibossAccountsAllowed(session)?<IbossAccounts token={session.token} permissions={session.permissions} ReportSection={ReportSection} />:<p>Accounts access is not available. Contact your administrator.</p>}</main>
+    <header><CaliberBrand subtitle="Accounts" /><nav><button type="button" className={accountWorkspace==="accounts"?"active":""} onClick={()=>setAccountWorkspace("accounts")}>Accounts</button><button type="button" className={accountWorkspace==="directory"?"active":""} onClick={()=>setAccountWorkspace("directory")}><BookUser/> Directory</button><button type="button" onClick={()=>setEmployeeLocationOpen(true)}>Employee Current Location</button><AnnouncementHistoryButton token={session.token} /><button type="button" onClick={logout}><LogOut /> Sign out</button></nav></header>
+    <main>{employeeLocationOpen&&<Modal title="Employee Current Location" close={()=>setEmployeeLocationOpen(false)}><EmployeeCurrentLocation session={session}/></Modal>}{accountWorkspace==="directory"?<CdirModule token={session.token} ReportSection={ReportSection}/> :ibossAccountsAllowed(session)?<IbossAccounts token={session.token} permissions={session.permissions} ReportSection={ReportSection} />:<p>Accounts access is not available. Contact your administrator.</p>}</main>
     <AppBackgroundServices session={session} logout={logout} />
   </div>;
   if (session.role === "normal" && !["HR User","HR Manager"].includes(session.assignedRole))
     return (
       <RequestShiftProvider token={session.token} requests={requests}>
+        <div className="panel"><button type="button" onClick={()=>setEmployeeLocationOpen(true)}>Employee Current Location</button></div>
+        {employeeLocationOpen&&<Modal title="Employee Current Location" close={()=>setEmployeeLocationOpen(false)}><EmployeeCurrentLocation session={session}/></Modal>}
         {isSessionViewOnlyUser(session)&&<div className="panel"><button type="button" onClick={()=>selectMenu('User Sessions')}>Admin · User Sessions</button></div>}
         {isSessionViewOnlyUser(session)&&active==='User Sessions'&&<Modal title="User Sessions" close={()=>selectMenu('Dashboard')}><UserSessionsPage session={session}/></Modal>}
         <Normal
@@ -12115,17 +12009,21 @@ function App() {
       </RequestShiftProvider>
     );
   return (
-    <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarHidden?" sidebar-hidden":""}`}>
+    <RequestShiftProvider token={session.token} requests={requests}><div className={`app erp-shell${sidebarClosed||sidebarAuto?" sidebar-hidden":""}`}>
+      {sidebarAuto&&!sidebarPeek&&<div className="erp-sidebar-edge" aria-hidden="true" onMouseEnter={()=>setSidebarPeek(true)}/>}
 
 
       <ErpSidebar
-        hidden={sidebarHidden}
-        onHide={()=>{changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
+        hidden={sidebarClosed}
+        autoHide={sidebarAuto}
+        onAutoHide={()=>changeSidebarAuto(!sidebarAuto)}
+        onPointerInside={inside=>{if(sidebarAuto&&(inside||document.activeElement?.getAttribute("aria-label")!=="Search menu"))setSidebarPeek(inside);}}
+        onHide={()=>{if(sidebarAuto)setSidebarPeek(false);else changeSidebarHidden(true);requestAnimationFrame(()=>document.getElementById("erp-sidebar-toggle")?.focus());}}
         groups={[
-          {name:'Masters',pages:[...['Users & employees','Employee master','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
+          {name:'Masters',pages:[...['Users & employees','Employee master','Employee Current Location','Equipment master','Capacity master','Region master','Shift Master'].filter(canOpenAdminPage).map(page=>page==='Users & employees'?{label:'Login Details',page}:page==='Region master'?{label:regionMasterTitle,page}:page),...['Work Order master','Financial Year master','Company master'].filter(canOpenAdminPage).map(page=>({label:page==='Work Order master'?'Work Contract master':page,page})),...(canOpenAdminPage('Pulse Master Sync')?[{label:'Sync all masters',page:'Pulse Master Sync'}]:[])]},
           {name:'WhatsApp Integration',pages:whatsappNav.map(([name])=>name).filter(canOpenAdminPage)},
-          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
-          {name:'Reports',pages:[...['VLB Reports','ELB Reports'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
+          {name:'MIS',pages:[...(canOpenAdminPage('Batch reopening approvals')?[{label:'Batch reopening approvals',page:'Batch reopening approvals'}]:[]),{label:'Create Batch',page:'Create VLB Batch'},{label:'Vehicle Log Book (VLB)',page:'Vehicle Log Book Options',activePages:['Vehicle Log Book','Trip Card Bulk Scan','Saved VLB']},{label:'LMV Log Book (LMV)',page:'LMV Log Book',activePages:['LMV Manual','LMV Scan']},{label:'Equipment Log Book (ELB)',page:'Equipment Log Book Options',activePages:['Equipment Log Book','Job Card Bulk Scan','Create VLB Batch']}].filter(item=>canOpenAdminPage(item.page))},
+          {name:'Reports',pages:[...['VLB Reports','ELB Reports','Fleet Capacity','Equipment Deployment'].filter(canOpenAdminPage),...(canOpenAdminPage('Reports')?[...new Set(operationReports.map(r=>r.group))].map(group=>({label:group,children:operationReports.filter(r=>r.group===group).map(r=>({label:r.title,page:'Reports',reportCategory:'operations-'+r.id}))})):[])],keepEmpty:canOpenAdminPage('Reports')},
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
@@ -12154,18 +12052,18 @@ function App() {
       />
       <main className="content">
         <div className="top">
-          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarHidden?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarHidden} aria-controls="admin-primary-navigation" onClick={()=>changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarHidden?"Show menu":"Hide menu"}</span></button>
-          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
+          <button id="erp-sidebar-toggle" type="button" className="erp-sidebar-toggle" aria-label={sidebarClosed?"Show sidebar":"Hide sidebar"} aria-expanded={!sidebarClosed} aria-controls="admin-primary-navigation" onClick={()=>sidebarAuto?setSidebarPeek(!sidebarPeek):changeSidebarHidden(!sidebarHidden)}><Menu/><span>{sidebarClosed?"Show menu":"Hide menu"}</span></button>
+          <button type="button" className="menubtn" aria-label={menu ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menu} aria-controls="admin-primary-navigation" onClick={() => {if(sidebarAuto)setSidebarPeek(true);else if(sidebarHidden){setSidebarHidden(false);try{localStorage.setItem("caliberSidebarHidden","false");}catch{}}setMenu(!menu);}}>
             <Menu />
           </button>
           <div className="crumb">
             <button
               type="button"
               className="page-back"
-              onClick={goBack}
-              disabled={!canGoBack}
-              aria-label="Go back to previous page"
-              title={canGoBack ? "Back to previous page" : "No previous page"}
+              onClick={stepBack || goBack}
+              disabled={!stepBack && !canGoBack}
+              aria-label={stepBack ? "Go back one step" : "Go back to previous page"}
+              title={stepBack ? "Back one step" : canGoBack ? "Back to previous page" : "No previous page"}
             >
               <ArrowLeft />
             </button>
@@ -12194,6 +12092,7 @@ function App() {
 }
 document.documentElement.dataset.caliberUiVersion = APP_VERSION;
 
+enableCalendarFieldClicks(document);
 createRoot(document.getElementById("root")).render(
   <ApplicationErrorBoundary>
     <EnvironmentBanner />

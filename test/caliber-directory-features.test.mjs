@@ -4,9 +4,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const html = fs.readFileSync(new URL('../public/cd/caliber-directory.html', import.meta.url), 'utf8');
-const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-  .filter(match => !match[0].includes('type="application/json"') && !/^<script\s[^>]*\bsrc=/.test(match[0])).map(match => match[1]);
-const source = scripts[0];
+const source = fs.readFileSync(new URL('../public/cd/caliber-directory.js', import.meta.url), 'utf8');
 const functions = new Map();
 // Run the page's actual named helpers against synthetic data, without a browser or staff records.
 for (const pattern of [/^  function (\w+)\([^\n]*?\{[^\n]*\}\r?$/gm,
@@ -40,7 +38,8 @@ function fixture() {
 }
 
 test('C-dir dashboard scripts parse and keep the supplied feature controls', () => {
-  for (const script of scripts) assert.doesNotThrow(() => new vm.Script(script));
+  assert.match(html, /<script src="\/cd\/caliber-directory\.js"><\/script>/);
+  assert.doesNotThrow(() => new vm.Script(source));
   for (const id of ['sidebarToggle','sidebarPin','navDockBar','gfSite','gfDept','gfDesig','gfName',
     'notifBellBtn','notesBellBtn','btnExportEdits','btnImportEdits']) {
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id);
@@ -113,7 +112,7 @@ test('category ordering precedes rank and privacy mode masks phone displays', ()
   rows.sort(app.catOrderCmp);
   assert.deepEqual(rows.map(row=>row.cat), ['A','A1','A2','B']);
   assert.equal(app.displayPhone('9999999999'), '99••••••99');
-  assert.match(functions.get('renderPersonView'), /Call \$\{displayPhone\(p.contact\)\}/);
+  assert.match(functions.get('renderPersonView'), /Call \$\{escapeHtml\(displayPhone\(p.contact\)\)\}/);
 });
 
 test('current-view CSV exports the selected rows and respects contact masking', () => {

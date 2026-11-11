@@ -6,11 +6,11 @@ test('each file selection creates its own batch instead of appending to the prev
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  const start=src.indexOf('const upload=async event=>'),end=src.indexOf('\n const update=',start);assert.ok(start>=0&&end>start);
  const memberships=new Map([['earlier-batch',[]]]),urls=[],created=[],reviewVisits=[];const activeRef={current:'earlier-batch'},addonUploadRef={current:false};const noop=()=>{};
- let fixtureCards=2;let loads=0;const scope={SmartSelect: "select",uploadWithRetry,MAX_SCAN_ENTRY_CARDS,SCAN_UPLOAD_CONCURRENCY:3,createPdfUploadSession,transferScanGroups,openUploadPdf:async()=>{throw Error('PDF loader is mocked by page fixtures');},contextSaving:false,awaitingContext:false,contextReady:()=>true,expectedContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,batch:{id:'earlier-batch'},activeRef,addonUploadRef,uploadingRef:{current:false},uploadController:{current:null},uploadBase:{current:0},cards:[],uploadStarted:{current:0},selectedRevision:{current:null},contextGate:null,
+ let fixtureCards=2;let loads=0;const scope={SmartSelect: "select",uploadWithRetry,MAX_SCAN_ENTRY_CARDS,SCAN_UPLOAD_CONCURRENCY:3,createPdfUploadSession,transferScanGroups,openUploadPdf:async()=>{throw Error('PDF loader is mocked by page fixtures');},contextSaving:false,awaitingContext:false,contextReady:()=>true,scanContext:{bookDate:"2026-10-30",location:"Sasti OC",cardShift:"I"},dirty:false,kind:'vehicle',reviewPage:true,navigateReview:open=>reviewVisits.push(open),pagesPerCard:1,batch:{id:'earlier-batch'},activeRef,addonUploadRef,uploadingRef:{current:false},uploadController:{current:null},uploadAttempt:{current:null},cards:[],duplicates:[],uploadStarted:{current:0},selectedRevision:{current:null},contextGate:null,
   window:{location:{href:'https://pulse-ll.cmll.in/?page=trip-scan&batch=earlier-batch&card=old-card'},history:{replaceState:(a,b,url)=>urls.push(url)}},
   api:async(url,config)=>{if(url==='/api/scan-batches'){const id='new-batch-'+(created.length+1);created.push(id);memberships.set(id,[]);return {id};}const id=url.split('/')[3];assert.ok(config.body instanceof Blob);assert.equal(config.headers['Content-Type'],'image/png');memberships.get(id).push(JSON.parse(decodeURIComponent(config.headers['X-Scan-Metadata'])));return {};},
   uploadPageCount:async()=>fixtureCards,pages:async function*(){for(let p=0;p<fixtureCards/2;p++){yield {blob:new Blob(['1'],{type:'image/png'}),name:'page 1',rendered:true};yield {blob:new Blob(['2'],{type:'image/png'}),name:'page 2',rendered:true};}},prepareScanImages:async()=>{throw Error('Rendered PDF pages must not be re-encoded');},load:async()=>{loads++;},list:async()=>{},
-  setExpectedContext:noop,setWorkflowTab:noop,setBusy:noop,setUploading:noop,setUploadElapsed:noop,setUploadedCount:noop,setUploadTotal:noop,setError:noop,setNotice:noop,setCards:noop,setSelected:noop,setBatch:noop,setGroupFilter:noop,setFilter:noop,setArchiveResult:noop,setResults:noop,setProgress:noop,setDuplicates:noop,scanUploadNotice:()=>''};
+  setExpectedContext:noop,setWorkflowTab:noop,setBusy:noop,setUploading:noop,setUploadElapsed:noop,setUploadedCount:noop,setUploadTotal:noop,setUploadStopped:noop,setUploadExtraction:noop,setError:noop,setNotice:noop,setCards:noop,setSelected:noop,setBatch:noop,setGroupFilter:noop,setFilter:noop,setArchiveResult:noop,setResults:noop,setProgress:noop,setDuplicates:noop,scanUploadNotice:()=>'',formatExtractionTime:()=>''};
  const upload=new Function(...Object.keys(scope),src.slice(start,end)+';return upload;')(...Object.values(scope));
  for(let i=0;i<2;i++)await upload({target:{files:[{name:'Trip cards.pdf',size:1000}],value:'Trip cards.pdf'}});
  assert.equal(loads,2,'one final batch refresh per upload instead of one for every page');
@@ -34,7 +34,9 @@ test('each file selection creates its own batch instead of appending to the prev
 test('PDF uploads expose elapsed timing and a real abort controller',()=>{
  const src=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  assert.match(readFileSync(new URL('../src/scan-upload-timer.jsx',import.meta.url),'utf8'),/className="scan-upload-timer" role="timer"/);
- assert.match(src,/Trip cards uploaded: \{uploadedCount\}\/\{uploadTotal\|\|'…'\}/);
+ assert.match(src,/Uploaded: \{uploadSent-matchedUploadCount\}\/\{uploadTotal\|\|'…'\}/);
+ assert.match(src,/Extracted: \{uploadExtraction.extracted\}\/\{uploadTotal\}/);
+ assert.match(src,/uploadStopped\?'Upload stopped'/);
  assert.match(src,/setUploadTotal\(Math\.ceil\(totalPages\/pagesPerCard\)\)/);
  assert.match(src,/\(uploading\|\|pending\.length>0\).*className="scan-abort" onClick=\{abortUpload\}>Abort/);
  assert.match(src,/signal:controller\.signal/);

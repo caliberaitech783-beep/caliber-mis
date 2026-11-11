@@ -1,5 +1,17 @@
 const abortError=()=>new DOMException('Upload aborted.','AbortError');
 
+export function summarizeUploadExtraction(receipts,cards){
+ const statuses=new Map(cards.map(card=>[card.id,card.status]));
+ const summary={extracted:0,failed:0,skipped:0};
+ for(const receipt of receipts){
+  const status=statuses.get(receipt.id);
+  if(receipt.skipped||status==='rejected')summary.skipped++;
+  else if(status==='error')summary.failed++;
+  else if(['review','approved','posted'].includes(status))summary.extracted++;
+ }
+ return summary;
+}
+
 // Retain only the first counted PDF, so the common single-PDF upload opens once
 // without holding every selected PDF in memory at the same time.
 export function createPdfUploadSession(open){
@@ -23,18 +35,27 @@ export function createPdfUploadSession(open){
 // Sends start in page order; the caller assigns ordinals in that order so
 // responses may finish in any order. After a failure no further card starts,
 // but requests already in flight are awaited so their results are known.
-export async function transferScanGroups(groups,{prepare,send,signal,concurrency=1}){
+export async function transferScanGroups(groups,{prepare,send,signal,concurrency=1,preflightFirst=false}){
  if(!Number.isInteger(concurrency)||concurrency<1)throw Error('Upload concurrency must be a positive integer.');
  const iterator=groups[Symbol.asyncIterator]();
  const check=()=>{if(signal?.aborted)throw abortError();};
+ const isPdfFirst=group=>Array.isArray(group)&&group.some(page=>/\.pdf\s*·\s*page 1\b/i.test(String(page?.name||'')));
  const next=async()=>{try{check();const item=await iterator.next();if(item.done)return {done:true};check();return {group:item.value,body:await prepare(item.value)};}catch(error){return {error};}};
  const inflight=new Set();let failure;
  let pending=next();
  try{
+  const first=await pending;
+  if(first.error)throw first.error;if(first.done)return;
+  const pdfFirst=isPdfFirst(first.group);
+  if(preflightFirst||pdfFirst){check();await send(first.group,first.body);pending=next();}
+  else pending=Promise.resolve(first);
   for(;;){
    while(inflight.size>=concurrency&&!failure)await Promise.race(inflight);
    if(failure)break;
    const item=await pending;if(failure)break;if(item.error){failure=item.error;break;}if(item.done)break;
+   if(isPdfFirst(item.group)){
+    await Promise.all(inflight);if(failure)break;check();await send(item.group,item.body);pending=next();continue;
+   }
    pending=next();check();
    const task=send(item.group,item.body).then(()=>inflight.delete(task),error=>{inflight.delete(task);failure??=error;});
    inflight.add(task);

@@ -39,10 +39,9 @@ test("Breakdown status tabs use roving focus and identify their panel", () => {
   assert.match(breakdown, /statusPanelLabelledBy=\{`breakdown-status-tab-/);
 });
 
-test("a UI deployment reload preserves the signed-in browser session", () => {
+test("a UI deployment notice leaves the signed-in browser session in place", () => {
   const versionCheck = readFileSync(new URL('../src/site-update-notice.jsx',import.meta.url),'utf8');
-  assert.match(versionCheck, /window\.location\.replace\(url\.pathname\+url\.search\+url\.hash\)/);
-  assert.match(versionCheck, /onClick=\{refresh\}/);
+  assert.doesNotMatch(versionCheck, /window\.location|Refresh now/);
   assert.doesNotMatch(versionCheck, /removeItem\("nerveCenterSession"\)/);
   assert.doesNotMatch(versionCheck, /authToken = ""/);
 });

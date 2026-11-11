@@ -1,3 +1,4 @@
+import {isJayantSecondShift} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -7,14 +8,16 @@ import {transformWithOxc} from 'vite';
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
-import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
 
 async function compile(file,scope,names){
- scope={employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
+ scope={StepBackButton:()=>null,...scope};
+ scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
+ scope={isJayantSecondShift,employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -44,14 +47,14 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5',site:'Jayant OC'},{id:'6',name:'Other site employee',caliberId:'C6',site:'Sasti OC'}]},onChanged(){},onDismiss(){}})};
  let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
  await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
- assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)']]);
+ assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)'],'Previous ELB entries']);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
  assert.match(html,/Caliber ID/);assert.match(html,/Select Caliber ID/);assert.match(html,/C5 · Ramesh/);assert.doesNotMatch(html,/C6|Other site employee/);
  assert.match(html,/1.500/);assert.match(html,/Hydraulic leak/);assert.match(html,/BD-1/);
  assert.equal(nodes(tree,n=>n.type==='input'&&n.props['aria-label']==='Breakdown Hrs').length,0,'Pulse total is read only');
  const tabs=nodes(tree,n=>n.props.role==='tab');tabs[1].props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.id==='elb-breakdown-panel')[0].props.hidden,false);
  tabs[0].props.onClick();tree=render();
- const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select')[0].props.onChange({target:{value:'5'}});
+ const inputs=nodes(tree,n=>n.type==='input');inputs.filter(n=>n.props.step==='0.01')[0].props.onChange({target:{value:'1200'}});inputs.filter(n=>n.props.step==='0.01')[1].props.onChange({target:{value:'1206.5'}});nodes(tree,n=>n.type==='select'&&n.props['data-elb-entry']==='operator')[0].props.onChange({target:{value:'5'}});
  tree=render();let htmlAfterHours=renderToStaticMarkup(tree);assert.match(htmlAfterHours,/Idle hours<\/span><input[^>]*readOnly=""[^>]*value="1\.5"/);assert.doesNotMatch(htmlAfterHours,/Status reason/);assert.equal((htmlAfterHours.match(/<span>Remark/g)||[]).length,1);
  await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'1.5');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
@@ -73,17 +76,20 @@ test('Surface Miner ELB shows the saved operator split and its combined HMR',asy
  assert.match(html,/First operator 4.00 h · Second operator 4.00 h · Combined HMR 8.00 h/);
 });
 
-test('embedded ELB form stays directly below the selected equipment row',async()=>{
+test('Dudhicau West PL82 opens in a stable editor outside the machine table',async()=>{
  const h=hooks();
  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch:async()=>({ok:true,json:async()=>({})}),crypto:{randomUUID:()=>'key'}},['VlbFleetStepper']);
- const batch={id:'batch1',site:'Jayant OC',report_date:'2026-11-02',shift:'S1',fleet,statuses};
+ const machines=fleet.map(item=>item.door==='G-08'?{...item,door:'PL82',equipmentName:'Wheel Loader'}:item);
+ const batch={id:'batch1',site:'Dudhicau West',report_date:'2026-11-02',shift:'S1',fleet:machines,statuses};
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[]},embedded:true})};
  let tree=render(),html=renderToStaticMarkup(tree);
- assert.match(html,/aria-selected="true"[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
- assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+ assert.match(html,/<\/table><\/div><\/section><section class="vlb-fleet-machine-editor"/);
  button(tree,'Enter ELB').props.onClick();tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/aria-selected="true"><td>G-08[\s\S]*?<\/tr><tr class="vlb-fleet-inline-entry">/);
- assert.equal((html.match(/vlb-fleet-inline-entry/g)||[]).length,1);
+ assert.match(html,/aria-selected="true"><td>PL82/);
+ assert.match(html,/<\/table><\/div><\/section><section class="vlb-fleet-machine-editor"[\s\S]*?id="vlb-fleet-stepper-title">PL82/);
+ const search=nodes(tree,node=>node.type==='input'&&node.props.type==='search')[0];
+ search.props.onChange({target:{value:'No matching equipment'}});
+ assert.match(renderToStaticMarkup(render()),/id="vlb-fleet-stepper-title">PL82/);
 });
 
 test('switching machines ignores late Pulse responses and failed lookups show retry instead of zero',async()=>{
@@ -138,14 +144,14 @@ test('holds panel lists held assets with the express transfer button and walks t
 });
 
 test('create batch shows the stage indicator and Close batch only for two-stage batches',async()=>{
- const h=hooks();const calls=[];let elbEntry=null,equipmentElb=null;
+ const h=hooks();const calls=[];let elbEntry=null,equipmentElb=null,lmvManual=null,lmvScan=null;
  const fetch=async(url,request)=>{calls.push({url,method:request.method,body:request.body?JSON.parse(request.body):null});return {ok:true,json:async()=>({id:'batch1',twoStage:true,stage:'elb_open',records:[]})}};
  const Stepper=()=>null,Holds=()=>null,Equipment=()=>null;
  const {VlbCreateBatch,stageLabel}=await compile('vlb-create-batch.jsx',{React,SmartSelect:'select',useState:h.useState,useRef:h.useRef,useEffect:()=>{},fetch,canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,VlbBatchCardDetails:()=>null,VlbBatchReport:()=>null,VlbBatchGovernance:()=>null,VlbReopenDialog:()=>null,VlbFleetStepper:Stepper,VlbBatchHolds:Holds,NewEquipmentRequest:Equipment,window:{prompt:()=>'Correct VLB card V07'}},['VlbCreateBatch','stageLabel']);
  assert.equal(stageLabel('vlb_open'),'VLB open');assert.equal(stageLabel('elb_open'),'ELB open');assert.equal(stageLabel('closed'),'ELB locked · Batch closed');assert.equal(stageLabel(undefined,{closed_at:'2026-11-01'}),'ELB locked · Batch closed');
  const options={sites:['Jayant OC'],shifts:[{site:'Jayant OC',name:'Shift A',shiftCode:'I'}]},selection={site:'Jayant OC',date:'2026-11-01',shift:'S1'};
  const base={id:'batch1',name:'CMLL/JAYANT OC/1ST-NOV-26/S1/B01',site:'Jayant OC',report_date:'2026-11-01',shift:'S1',records:[],created_by:'alice'};
- const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){},onElbEntry:batch=>{elbEntry=batch},onEquipmentElb:batch=>{equipmentElb=batch}})};
+ const render=()=>{h.reset();return VlbCreateBatch({session:{token:'t'},onExit(){},onManual(){},onScan(){},onLmvManual:batch=>{lmvManual=batch},onLmvScan:batch=>{lmvScan=batch},onElbEntry:batch=>{elbEntry=batch},onEquipmentElb:batch=>{equipmentElb=batch}})};
  render();h.slots[0]=options;h.slots[1]=selection;h.slots[8]=false;h.slots[13]=true;h.slots[14]={login:'alice',mis:true};
  // Legacy payload: no stage indicator, Save & lock batch everywhere, no two-stage components rendered.
  h.slots[3]=[{...base,created_by:'alice'}];h.slots[4]=base;h.slots[5]=base;
@@ -157,18 +163,28 @@ test('create batch shows the stage indicator and Close batch only for two-stage 
  const vlbStage={...base,twoStage:true,stage:'vlb_open',canLockVlb:false,lockBlockers:['Awaiting transfer: VPC-019 from NIGAHI (2 cards, 17 trips).'],holds:[],fleet:[]};
  h.slots[3]=[{...base,stage:'vlb_open'}];h.slots[5]=vlbStage;h.slots[4]={...base,stage:'vlb_open'};h.slots[23]=true;
  tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 ELB open<\/li><li>3 ELB locked · Batch closed<\/li><\/ol>/);
- assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);assert.match(html,/Lock VLB first/);
+ assert.match(html,/<ol class="vlb-stage-steps"[^>]*><li aria-current="step" class="current">1 VLB open<\/li><li>2 LMV open<\/li><li>3 ELB open<\/li><li>4 ELB locked · Batch closed<\/li><\/ol>/);
+ assert.equal(button(tree,'Lock VLB').props.disabled,true);assert.match(html,/Lock VLB is blocked: Awaiting transfer: VPC-019 from NIGAHI/);button(tree,'Add LMV manually').props.onClick();assert.equal(lmvManual,vlbStage);button(tree,'Scan or upload LMV PDF').props.onClick();assert.equal(lmvScan,vlbStage);
  assert.equal(button(tree,'Save &amp; lock batch'),undefined);assert.equal(button(tree,'Close batch'),undefined);assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr')[1]),/<td>VLB open<\/td>/);assert.ok(button(nodes(tree,n=>n.type==='tr')[1],'Open batch'));
  assert.equal(nodes(tree,n=>n.type===Holds).length,1);assert.equal(nodes(tree,n=>n.type===Equipment).length,0);
  button(tree,'Create new equipment').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.type===Equipment).length,1);assert.equal(nodes(tree,n=>n.type===Equipment)[0].props.batch,vlbStage);
  button(tree,'Hide new equipment form').props.onClick();
  h.slots[5]={...vlbStage,canLockVlb:true,lockBlockers:[]};tree=render();assert.equal(button(tree,'Lock VLB').props.disabled,false);await button(tree,'Lock VLB').props.onClick();assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-vlb');assert.equal(calls.at(-1).method,'POST');
+ const lmvStage={...base,twoStage:true,stage:'lmv_open',canLockLmv:true,lmvRecords:[
+  {id:1,data:{}},{id:2,data:{scanCardId:'scan',scanEntrySource:'scan'}},{id:3,data:{scanCardId:'pdf',scanEntrySource:'upload'}},
+ ]};
+ h.slots[5]=lmvStage;
+ tree=render();html=renderToStaticMarkup(tree);
+ assert.match(html,/<li aria-current="step" class="current">2 LMV open<\/li>/);
+ for(const label of ['Manual (1)','Scan (1)','PDF (1)'])assert.ok(button(tree,label));
+ assert.equal(button(tree,'ELB entry · Lock LMV first').props.disabled,true);
+ await button(tree,'Lock LMV').props.onClick();
+ assert.equal(calls.at(-1).url,'/api/vlb-batches/batch1/lock-lmv');
  // ELB stage: the batch remains visible, while entry moves to ELB Manual instead of opening a second stepper here.
  const elbStage={...base,twoStage:true,stage:'elb_open',canEnterFleet:true,canClose:false,canUnlockVlb:true,closeBlockers:['Machines without a saved ELB: VPC-019 loaded 42 trips, no ELB saved.'],holds:[],statuses,fleetProgress:{total:3,saved:1,remaining:1,optionalUnsaved:1,skipped:0,drafts:0,loaders:1},fleet:[{assetId:'19',door:'VPC-019',equipmentName:'Excavator',trips:42,saved_at:null,draft:null},{assetId:'7',door:'D-07',equipmentName:'Dozer',trips:0,saved_at:'2026-11-01T03:00:00Z',shift_status:'maintenance',book_no:'ELB-1',logbook:{employeeName:'Ramesh',caliberId:'C5',openingHmr:120,closingHmr:124,totalWorkingHmr:4,breakdownHours:1,idleHours:3,availabilityHours:4,jobCardNo:'JC-9',remark:'Service',bookDate:'2026-11-01',location:'Jayant OC',shiftName:'Shift A'}}]};
  h.slots[3]=[{...base,stage:'elb_open',created_by:'bob'}];h.slots[4]={...base,stage:'elb_open',canClose:false};h.slots[5]=elbStage;
  tree=render();html=renderToStaticMarkup(tree);
- assert.match(html,/<li>1 VLB open<\/li><li aria-current="step" class="current">2 ELB open<\/li>/);
+ assert.match(html,/<li>1 VLB open<\/li><li>2 LMV open<\/li><li aria-current="step" class="current">3 ELB open<\/li>/);
  assert.equal(button(tree,'Continue ELB entries'),undefined);assert.equal(button(tree,'Start ELB entries'),undefined);
  assert.match(html,/ELBs saved: 1 · Required remaining: 1 · 1 optional with no saved ELB · 1 loading machine/);assert.doesNotMatch(html,/1 draft/);
  assert.match(html,/<td>VPC-019<\/td><td>Excavator<\/td><td>42<\/td><td>Not saved<\/td><td>—<\/td><td>—<\/td>/);
@@ -324,4 +340,33 @@ test('machine report headers toggle numeric sorting and keep missing values last
  button(tree,'Trips').props.onClick();tree=render();assert.deepEqual(doors(tree),['V2','V10','V3','D10','D2']);assert.equal(nodes(tree,n=>n.type==='th'&&n.props['aria-sort']==='ascending').length,1);
  button(tree,'Trips').props.onClick();tree=render();assert.deepEqual(doors(tree),['V10','V2','V3','D10','D2']);
  button(tree,'Door').props.onClick();tree=render();assert.deepEqual(doors(tree),['V2','V3','V10','D2','D10']);assert.equal(report.loaders[0].door,'V10');assert.match(renderToStaticMarkup(tree),/Totals · 5 machines/);
+});
+
+test('a batch owner can start an additional ELB card from the same machine row',async()=>{
+ const h=hooks(),calls=[];
+ const savedFleet=fleet.map(item=>item.assetId==='7'?{...item,logbook_revision:4,logbook:{employeeId:'1',openingHmr:100,closingHmr:104}}:item);
+ const fetch=async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return {ok:true,json:async()=>({fleet:savedFleet})}};
+ const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'relief-key'}},['VlbFleetStepper']);
+ const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',stage:'elb_open',fleet:savedFleet,statuses,canEnterFleet:true},options:{employees:[]},embedded:true})};
+ button(render(),'Add relief card').props.onClick();
+ h.slots[9]={key:'batch1:7:::',loading:false,data:{breakdownHours:0,breakdowns:[],shiftHours:8},error:''};
+ const tree=render();
+ assert.ok(nodes(tree,n=>n.type==='input'&&n.props.value==='104').length,'the prior closing HMR pre-fills the opening HMR');
+ await button(tree,'Save relief card').props.onClick();
+ assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');
+ assert.equal(calls[0].body.additionalCard,true);
+ assert.equal(calls[0].body.employeeId,'');
+ assert.equal(calls[0].body.revision,undefined);
+ assert.equal(calls[0].body.requestKey,'relief-key');
+});
+
+test('Jayant OC S2 displays nine hours even when an older saved card contains eight',async()=>{
+ for(const [site,shift,expected] of [['Jayant OC','S2',[9]],['jayant ob','S2',[9]],['Jayant OC','S1',[8,12]],['Sasti OC','S2',[8,12]]]){
+  const h=hooks();
+  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
+  const tree=VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',site,shift,fleet:[{...fleet[0],logbook:{shiftHours:8}}]},options:{employees:[]},embedded:true});
+  const select=nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift Hrs')[0];
+  assert.deepEqual(nodes(select,n=>n.type==='option').map(n=>n.props.value),expected);
+  assert.equal(select.props.value,expected[0]);
+ }
 });

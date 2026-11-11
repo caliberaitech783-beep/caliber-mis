@@ -1,4 +1,8 @@
+import {isJayantSecondShift} from '../shared/site-shift-hours.mjs';
 import React,{useState,useEffect} from 'react';
+import PreviousElbEntries from './previous-elb-entries.jsx';
+import WorkOrderJobSelect from './work-order-job-select.jsx';
+import {activeWorkOrders} from '../shared/trip-card-rules.mjs';
 import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
@@ -22,7 +26,7 @@ export const focusNextElbField=event=>{
  event.preventDefault();fields[index+1].focus();
 };
 export const firstUnsavedIndex=(fleet=[])=>{
- let index=fleet.findIndex(row=>!row.saved_at&&!row.skipped);
+ let index=fleet.findIndex(row=>!row.saved_at&&!row.skipped&&!row.tripExempt);
  if(index<0)index=fleet.findIndex(row=>!row.saved_at);
  return index<0?0:index;
 };
@@ -37,7 +41,8 @@ const text=value=>value==null?'':String(value);
 export const fleetDraftFields=(row={})=>{
  const source=row.logbook||{};
  return {
-  shiftStatus:'working',employeeId:text(source.employeeId),
+  ...(Array.isArray(source.jobDetails)?{jobDetails:source.jobDetails}:{}),
+  shiftStatus:'working',manualShift:source.manualShift||'',shiftHours:source.shiftHours??'',employeeId:text(source.employeeId),
   ...(source.operatorSplit?{secondOperatorId:text(source.operatorSplit.secondOperatorId),handoverHmr:text(source.operatorSplit.handoverHmr)}:{}),
   openingHmr:text(source.openingHmr),closingHmr:text(source.closingHmr),manualBreakdownHours:text(source.manualBreakdownHours),
   statusReason:text(source.statusReason),jobCardNo:text(source.jobCardNo),remark:text(source.remark),idleHours:text(source.idleHours??source.idleHoursEntered),
@@ -45,7 +50,7 @@ export const fleetDraftFields=(row={})=>{
 };
 // Walks the ELB fleet one machine at a time. Next saves through the fleet endpoint and moves on to
 // the next unsaved machine. Pulse breakdowns are fetched for each selected machine.
-const machineStatus=item=>item.saved_at?'Saved':item.skipped?'Skipped':'Not saved';
+const machineStatus=item=>item.saved_at?'Saved':item.tripExempt?'Trip-exempt':item.skipped?'Skipped':'Not saved';
 const machineColumns=[
  {key:'door',label:'Machine no.',value:item=>item.door},
  {key:'equipment',label:'Equipment Master match',value:item=>item.equipmentName||'—'},
@@ -54,16 +59,19 @@ const machineColumns=[
 ];
 const machineCollator=new Intl.Collator('en-IN',{numeric:true,sensitivity:'base'});
 
-export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu}){
+export default function VlbFleetStepper({session,batch,options,onChanged,onDismiss,embedded=false,ExportMenu,canDeleteElb}){
  const [fleet,setFleet]=useState(()=>batch?.fleet||[]);
  const [index,setIndex]=useState(()=>firstUnsavedIndex(batch?.fleet||[]));
  const [form,setForm]=useState(()=>fleetDraftFields((batch?.fleet||[])[firstUnsavedIndex(batch?.fleet||[])]));
  const [dirty,setDirty]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
 
  const row=fleet[index]||null;
+ const jayantSecond=isJayantSecondShift({site:batch.site,shift:batch.shift,manualShift:form.manualShift});
  const canEditSaved=batch?.canEditSavedFleet===true;
  const [activeTab,setActiveTab]=useState('working'),[pulseTick,setPulseTick]=useState(0),[pulseLookup,setPulseLookup]=useState({key:'',loading:false,data:null,error:''});
- const lookupKey=[batch?.id,row?.assetId,batch?.report_date,batch?.site,batch?.shift].join(':');
+ const [reliefRequestKey,setReliefRequestKey]=useState('');
+ const additional=Boolean(reliefRequestKey);
+ const lookupKey=[batch?.id,row?.assetId,batch?.report_date,batch?.site,batch?.shift].join(':')+(form.manualShift||form.shiftHours?':'+form.manualShift+':'+form.shiftHours:'');
  const api=async(url,method,body,signal)=>{
   const response=await fetch(url,{method,signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
   let data={};try{data=await response.json()}catch{data={}}
@@ -74,29 +82,29 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   if(!row?.assetId||!batch?.id)return;
   const controller=new AbortController();let cancelled=false;
   setPulseLookup({key:lookupKey,loading:true,data:null,error:''});
-  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns`,'GET',undefined,controller.signal).then(data=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data,error:''});}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
+  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns${form.shiftHours?'?'+new URLSearchParams({shiftHours:jayantSecond?9:form.shiftHours,manualShift:form.manualShift||''}):''}`,'GET',undefined,controller.signal).then(data=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data,error:''});}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
   return()=>{cancelled=true;controller.abort();};
  },[lookupKey,pulseTick,session.token]);
  const pulse=pulseLookup.key===lookupKey?pulseLookup.data:null;
  const pulseLoading=pulseLookup.key!==lookupKey||pulseLookup.loading;
  const pulseError=pulseLookup.key===lookupKey?pulseLookup.error:'';
- const goTo=next=>{const target=fleet[next];if(!target||target.saved_at&&!canEditSaved)return;setIndex(next);setForm(fleetDraftFields(target));setDirty(false);setError('');setNotice('')};
+ const goTo=next=>{const target=fleet[next];if(!target||target.saved_at&&!canEditSaved)return;setReliefRequestKey('');setIndex(next);setEditingJobs(false);setForm(fleetDraftFields(target));setDirty(false);setError('');setNotice('')};
  const nextUnsaved=(list,from)=>{
-  for(let step=1;step<=list.length;step++){const i=(from+step)%list.length;if(!list[i].saved_at&&!list[i].skipped)return i}
+  for(let step=1;step<=list.length;step++){const i=(from+step)%list.length;if(!list[i].saved_at&&!list[i].skipped&&!list[i].tripExempt)return i}
   for(let step=1;step<=list.length;step++){const i=(from+step)%list.length;if(!list[i].saved_at)return i}
   return -1;
  };
  const update=(key,value)=>{setForm(current=>({...current,[key]:value}));setDirty(true);setError('')};
  const next=async()=>{
-  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved)return;
+  if(!row||busy||pulseLoading||!pulse||row.saved_at&&!canEditSaved&&!additional)return;
   if(operatorSplit?.error){setError(operatorSplit.error);return}
   setBusy(true);setError('');setNotice('');
   try{
-   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,revision:row.logbook_revision,idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:crypto.randomUUID()});
+   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,...(jayantSecond?{shiftHours:9}:{}),...(additional?{additionalCard:true}:{revision:row.logbook_revision}),idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:reliefRequestKey||crypto.randomUUID()});
    const list=result.fleet||fleet.map(item=>item.assetId===row.assetId?{...item,saved_at:new Date().toISOString(),shift_status:form.shiftStatus,draft:null,skipped:false}:item);
-   setFleet(list);setDirty(false);onChanged?.(result);
+   setFleet(list);setReliefRequestKey('');setDirty(false);onChanged?.(result);
    const target=nextUnsaved(list,list.findIndex(item=>item.assetId===row.assetId));
-   if(target<0)setNotice('Every machine in the fleet list is saved. Close this dialog and close the batch.');
+   if(target<0){setForm(fleetDraftFields(list.find(item=>item.assetId===row.assetId)));setNotice('Every machine in the fleet list is saved. Close this dialog and close the batch.');}
    else{const item=list[target];setIndex(target);setForm(fleetDraftFields(item))}
   }catch(e){setError(e.message)}finally{setBusy(false)}
  };
@@ -134,6 +142,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  );
  const reportMachines=visibleMachines.map(({item})=>item);
  const machineReportTitle=['ELB Manual machines',batch?.name,batch?.site,batch?.report_date,batch?.shift].filter(Boolean).join(' · ');
+ const [editingJobs,setEditingJobs]=useState(false);
  if(!row)return embedded?<section className="logbook-section vlb-fleet-stepper"><p>The fleet list for this batch is empty.</p></section>:<div className="logbook-dialog-backdrop"><div role="dialog" aria-modal="true" aria-label="Machine entry" className="logbook-dialog vlb-fleet-stepper"><div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss}  aria-label="Close window">× Close</button></div><p>The fleet list for this batch is empty.</p><div className="vlb-batch-actions"><button type="button" onClick={dismiss}>Close dialog</button></div></div></div>;
  const trips=Number(row.trips)||0;
  const workingStatus=true;
@@ -141,7 +150,9 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const surfaceMiner=isSurfaceMiner(row);
  const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
- const idleHours=fleetIdleHours(pulse?.shiftHours,hours);
+ const idleHours=fleetIdleHours(jayantSecond?9:form.shiftHours||pulse?.shiftHours,hours);
+ const jobs=form.jobDetails||[];
+ const contracts=activeWorkOrders(options?.workOrders||[],batch.site,batch.report_date);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
  const machineEntry=<>{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}
   <header className="vlb-fleet-stepper-header"><div><span className="logbook-eyebrow">Machine {index+1} of {fleet.length} · {saved} of {fleet.length} saved</span><h2 id="vlb-fleet-stepper-title">{!embedded&&<div className="mis-popup-close-bar"><button type="button" className="mis-popup-close" onClick={dismiss} disabled={busy} aria-label="Close window">× Close</button></div>}{row.door}{row.equipmentName?' · '+row.equipmentName:''}</h2><p>{embedded?<>{[batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')} · {trips} VLB trip{trips===1?'':'s'} · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>:<>{trips} trip{trips===1?'':'s'} loaded · {Number(row.sourceCards??row.source_cards)||0} source card{(Number(row.sourceCards??row.source_cards)||0)===1?'':'s'}</>}{row.saved_at?' · Saved'+(row.book_no?' as '+row.book_no:''):row.skipped?' · Skipped':''}</p></div>{!embedded&&<button type="button" disabled={busy} onClick={dismiss}>Close dialog</button>}</header>
@@ -149,9 +160,10 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <nav className="vlb-status-buttons" role="tablist" aria-label="ELB entry tabs">
    <button type="button" id="elb-working-tab" role="tab" aria-selected={activeTab==='working'} aria-controls="elb-working-panel" onClick={()=>setActiveTab('working')}>Working</button>
    <button type="button" id="elb-breakdown-tab" role="tab" aria-selected={activeTab==='breakdowns'} aria-controls="elb-breakdown-panel" onClick={()=>setActiveTab('breakdowns')}>Breakdown details{pulse?' ('+(pulse.breakdowns?.length||0)+')':''}</button>
+   <button type="button" id="elb-previous-tab" role="tab" aria-selected={activeTab==='previous'} aria-controls="elb-previous-panel" onClick={()=>setActiveTab('previous')}>Previous ELB entries</button>
   </nav>
   <p className="logbook-message">{batch.site} · {batch.report_date} · {batch.shift} · {row.door}</p>
-  {pulseLoading&&<p role="status">Fetching breakdown hours from Pulse…</p>}
+  <div className="logbook-fields"><label className="logbook-field"><span>Shift</span><SmartSelect aria-label="Manual ELB Shift" disabled={busy} value={form.manualShift||''} onChange={event=>{const manualShift=event.target.value;setForm(current=>({...current,manualShift,shiftHours:['day','night'].includes(manualShift)?12:(current.shiftHours||pulse?.shiftHours||8)}));setDirty(true);setError('');}}><option value="">Batch shift · {batch.shift}</option><option value="day">Day</option><option value="night">Night</option></SmartSelect></label><label className="logbook-field"><span>Shift Hrs</span><SmartSelect aria-label="Manual ELB Shift Hrs" disabled={busy} value={jayantSecond?9:form.shiftHours||pulse?.shiftHours||8} onChange={event=>update('shiftHours',Number(event.target.value))}>{jayantSecond?<option value={9}>9 Hrs</option>:<><option value={8}>8 Hrs</option><option value={12}>12 Hrs</option></>}</SmartSelect></label></div><p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
   {pulseError&&<p className="logbook-message error" role="alert">Pulse breakdown lookup failed: {pulseError} <button type="button" onClick={()=>setPulseTick(n=>n+1)}>Retry Pulse</button></p>}
   <div id="elb-working-panel" role="tabpanel" aria-labelledby="elb-working-tab" hidden={activeTab!=='working'}>
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
@@ -186,11 +198,29 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
    {pulse&&(pulse.breakdowns||[]).length>0&&<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Pulse reference</th><th>Breakdown description</th><th>Start · IST</th><th>End · IST</th><th>Status</th><th>Hours in shift</th></tr></thead><tbody>{pulse.breakdowns.map((event,i)=><tr key={(event.reference||'event')+':'+i}><td>{event.reference||'—'}</td><td>{event.description}</td><td>{new Date(event.start).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</td><td>{event.end?new Date(event.end).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Ongoing'}</td><td>{event.status}</td><td>{Number(event.hours).toFixed(3)}</td></tr>)}</tbody></table></div>}
    {pulse&&<p><small>Only time within this shift is counted. Overlapping events are counted once in the total. Source: pulse.cmll.in · Updated {new Date(pulse.fetchedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small> <button type="button" disabled={busy||pulseLoading} onClick={()=>setPulseTick(n=>n+1)}>Refresh Pulse</button></p>}
   </section>
-  <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved} onClick={next}>{busy?'Saving…':row.saved_at?'Save changes':'Next'}</button>{dirty&&<span className="vlb-draft-indicator" role="status">Not saved · select Next to save this ELB</span>}</div>
+  <section id="elb-previous-panel" role="tabpanel" aria-labelledby="elb-previous-tab" hidden={activeTab!=='previous'} className="logbook-section">
+   {activeTab==='previous'&&<PreviousElbEntries key={lookupKey} session={session} batch={batch} assetId={row.assetId} canDelete={canDeleteElb} onDeleted={async record=>{
+    setBusy(true);setError('');
+    try{
+     const result=await api('/api/vlb-batches/'+batch.id+'/fleet','GET');
+     setFleet(result.fleet);onChanged?.(result);
+     if(!dirty&&String(record.id)===String(row.logbook_id))setForm(fleetDraftFields(result.fleet.find(machine=>machine.assetId===row.assetId)));
+    }catch(e){setError(e.message)}finally{setBusy(false)}
+   }}/>}
+  </section>
+  <section className="logbook-section">
+   <div className="logbook-section-title"><h3>Equipment jobs</h3><button type="button" disabled={busy} onClick={()=>setEditingJobs(value=>!value)}>{editingJobs?'Done editing jobs':'Edit jobs'}</button></div>
+   {jobs.map((job,i)=><div className="vlb-batch-actions" key={i}>
+    <WorkOrderJobSelect row={job} contracts={contracts} label={'Equipment job '+(i+1)} disabled={!editingJobs||busy} onChange={value=>update('jobDetails',jobs.map((entry,n)=>n===i?{...entry,...value}:entry))}/>
+    {editingJobs&&<button type="button" disabled={busy} onClick={()=>update('jobDetails',jobs.filter((_,n)=>n!==i))}>Remove job</button>}
+   </div>)}
+   {editingJobs&&<button type="button" disabled={busy||jobs.length>=300} onClick={()=>update('jobDetails',[...jobs,{}])}>Add job</button>}
+  </section>
+  <div className="vlb-batch-actions vlb-fleet-stepper-actions"><button type="button" disabled={busy||index<=0} onClick={previous}>Previous</button><button type="button" disabled={busy||!!row.saved_at} onClick={skip}>Skip</button><button type="button" className="vlb-approval-primary" disabled={busy||pulseLoading||!pulse||!!row.saved_at&&!canEditSaved&&!additional} onClick={next}>{busy?'Saving…':additional?'Save relief card':row.saved_at?'Save changes':'Next'}</button>{additional&&<button type="button" disabled={busy} onClick={()=>{setReliefRequestKey('');setForm(fleetDraftFields(row));setDirty(false);setError('')}}>Cancel relief card</button>}{dirty&&<span className="vlb-draft-indicator" role="status">{additional?'Relief card has unsaved changes':'Not saved · select Next to save this ELB'}</span>}</div>
   {error&&<p className="logbook-message error" role="alert">{error}</p>}
   {notice&&<p className="logbook-message success" role="status">{notice}</p>}
  </>;
- const machineRows=visibleMachines.map(({item,itemIndex})=><React.Fragment key={item.assetId}><tr key={item.assetId} aria-selected={itemIndex===index}>{machineColumns.map(column=><td key={column.key}>{column.value(item)}</td>)}<td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button>{batch.stage==='elb_open'&&(batch.canEnterFleet||canEditSaved)&&item.saved_at&&item.logbook_id&&<button type="button" disabled={busy||dirty} aria-label={'Delete ELB '+item.book_no} onClick={()=>deleteSaved(item)}>Delete ELB</button>}</td></tr>{itemIndex===index&&<tr className="vlb-fleet-inline-entry"><td colSpan={machineColumns.length+1}>{machineEntry}</td></tr>}</React.Fragment>);
- const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{embedded?<section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Site equipment</h2><span>{saved} of {fleet.length} saved · ELB is optional for machines with zero trips</span></div><div className="vlb-fleet-machine-toolbar"><label>Smart Search<input data-smart-search type="search" placeholder="Machine, equipment, trips or ELB book no." value={machineQuery} onChange={event=>setMachineQuery(event.target.value)}/></label><label>ELB status<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">All statuses</option>{['Not saved','Skipped','Saved'].map(status=><option key={status}>{status}</option>)}</select></label><label>Sort by<select value={machineSort} onChange={event=>setMachineSort(event.target.value)}><option value="">Batch order</option>{machineColumns.map(({key,label})=><optgroup key={key} label={label}><option value={key+':asc'}>{label} · {key==='trips'?'Lowest first':'A–Z'}</option><option value={key+':desc'}>{label} · {key==='trips'?'Highest first':'Z–A'}</option></optgroup>)}</select></label><button type="button" disabled={!machineQuery&&!statusFilter&&!machineSort} onClick={()=>{setMachineQuery('');setStatusFilter('');setMachineSort('')}}>Reset view</button>{ExportMenu&&visibleMachines.length>0&&<div className="vlb-fleet-machine-exports"><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} printOnly/><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} label="Export" smartLabels smartPrintItem={false}/></div>}</div><p className="vlb-fleet-machine-count" role="status">{visibleMachines.length} of {fleet.length} machines shown</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{machineColumns.map(({key,label})=><th key={key} scope="col" aria-sort={sortKey===key?(direction==='desc'?'descending':'ascending'):undefined}>{label}</th>)}<th scope="col">Action</th></tr></thead><tbody>{machineRows}{!visibleMachines.length&&<tr><td colSpan={machineColumns.length+1}>No machines match this search and status filter.</td></tr>}</tbody></table></div></section>:machineEntry}</div>;
+ const machineRows=visibleMachines.map(({item,itemIndex})=><tr key={item.assetId} aria-selected={itemIndex===index}>{machineColumns.map(column=><td key={column.key}>{column.value(item)}</td>)}<td><button type="button" disabled={busy||dirty||!!item.saved_at&&!canEditSaved||itemIndex===index} onClick={()=>goTo(itemIndex)}>{item.saved_at?(canEditSaved?(itemIndex===index?'Editing':'Edit'):'Saved'):itemIndex===index?'Selected':'Enter ELB'}</button>{batch.stage==='elb_open'&&(batch.canEnterFleet||canEditSaved)&&item.saved_at&&<button type="button" disabled={busy||dirty} onClick={()=>{setIndex(itemIndex);setReliefRequestKey(crypto.randomUUID());setForm({...fleetDraftFields(),openingHmr:text(item.logbook?.closingHmr)});setError('');setNotice('')}}>Add relief card</button>}{batch.stage==='elb_open'&&(batch.canEnterFleet||canEditSaved)&&item.saved_at&&item.logbook_id&&<button type="button" disabled={busy||dirty} aria-label={'Delete ELB '+item.book_no} onClick={()=>deleteSaved(item)}>Delete ELB</button>}</td></tr>);
+ const content=<div role={embedded?undefined:'dialog'} aria-modal={embedded?undefined:true} aria-labelledby="vlb-fleet-stepper-title" className={(embedded?'logbook-section embedded-vlb-fleet-stepper':'logbook-dialog')+' vlb-fleet-stepper'}>{embedded?<><section className="logbook-section vlb-fleet-machine-list"><div className="logbook-section-title"><h2>Site equipment</h2><span>{saved} of {fleet.length} saved · ELB is optional for machines with zero trips</span></div><div className="vlb-fleet-machine-toolbar"><label>Smart Search<input data-smart-search type="search" placeholder="Machine, equipment, trips or ELB book no." value={machineQuery} onChange={event=>setMachineQuery(event.target.value)}/></label><label>ELB status<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">All statuses</option>{['Not saved','Skipped','Saved','Trip-exempt'].map(status=><option key={status}>{status}</option>)}</select></label><label>Sort by<select value={machineSort} onChange={event=>setMachineSort(event.target.value)}><option value="">Batch order</option>{machineColumns.map(({key,label})=><optgroup key={key} label={label}><option value={key+':asc'}>{label} · {key==='trips'?'Lowest first':'A–Z'}</option><option value={key+':desc'}>{label} · {key==='trips'?'Highest first':'Z–A'}</option></optgroup>)}</select></label><button type="button" disabled={!machineQuery&&!statusFilter&&!machineSort} onClick={()=>{setMachineQuery('');setStatusFilter('');setMachineSort('')}}>Reset view</button>{ExportMenu&&visibleMachines.length>0&&<div className="vlb-fleet-machine-exports"><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} printOnly/><ExportMenu title={machineReportTitle} columns={machineColumns} rows={reportMachines} label="Export" smartLabels smartPrintItem={false}/></div>}</div><p className="vlb-fleet-machine-count" role="status">{visibleMachines.length} of {fleet.length} machines shown</p><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{machineColumns.map(({key,label})=><th key={key} scope="col" aria-sort={sortKey===key?(direction==='desc'?'descending':'ascending'):undefined}>{label}</th>)}<th scope="col">Action</th></tr></thead><tbody>{machineRows}{!visibleMachines.length&&<tr><td colSpan={machineColumns.length+1}>No machines match this search and status filter.</td></tr>}</tbody></table></div></section><section className="vlb-fleet-machine-editor" aria-labelledby="vlb-fleet-stepper-title">{machineEntry}</section></>:machineEntry}</div>;
  return embedded?content:<div className="logbook-dialog-backdrop">{content}</div>;
 }

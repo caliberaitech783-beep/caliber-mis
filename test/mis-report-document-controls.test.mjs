@@ -57,7 +57,7 @@ test('saved report Print uses the committed restored view and waits until printi
 test('generated reports keep full filtered sorted exports and all print columns beyond one page',async()=>{
  const h=hooks(),FilterableHeader=()=>null,RecordDateRange=()=>null,SavedReportsPanel=()=>null,printed=[];let exported;
  const scope={React,...h,primaryRecordDateColumn,encodeDateRange,parseDateRange,matchesDateRange,cellMatchesFilterValues,isDurationColumn,defaultDurationSort,compareDurationValues,ensureJobReferenceVisibleKeys,sameReportView,matchesSmartSearch,reportTime12,
-  useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,useColumnPreferences:(_table,_columns,visible)=>[visible,()=>{}],mobileTablePageSize:()=>0,
+  useRequestShiftData:()=>({shifts:[]}),requestShiftColumns:columns=>columns,useColumnPreferences:(_table,_columns,visible)=>[visible,()=>{}],useColumnWidths:()=>[{},()=>{},()=>{}],columnWidthStyle:()=>undefined,StepBackButton:()=>null,mobileTablePageSize:()=>0,
   useTableLayouts:()=>({layouts:[]}),openSmartPrint:model=>printed.push(model),printTableReport:()=>{},exportCellText:String,FilterableHeader,RecordDateRange,SavedReportsPanel,
   TableLayoutSelect:()=>null,ReportActionsMenu:()=>null,SmartSelect:'select',ListFilter:'i',TableParameterFilter:()=>null,ReportColumnSelector:()=>null,ReportSortDialog:()=>null,ChevronLeft:'i',ChevronRight:'i',createPortal:tree=>tree};
  const sort=main.slice(main.indexOf('const sortCollator ='),main.indexOf('const WORKFLOW_INITIAL_RENDER_ROWS'));

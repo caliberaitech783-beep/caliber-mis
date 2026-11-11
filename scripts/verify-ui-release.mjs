@@ -8,7 +8,7 @@ export function embeddedUiVersion(script){
   const identifier=/\.caliberUiVersion\s*=\s*([A-Za-z_$][\w$]*)/.exec(script)?.[1];
   if(!identifier)return '';
   const escaped=identifier.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  const values=[...script.matchAll(new RegExp('\\b'+escaped+'\\s*=\\s*["\'`]([0-9a-f]{7,64})["\'`]','gi'))].map(match=>match[1].toLowerCase());
+  const values=[...script.matchAll(new RegExp('(?<![\\w$])'+escaped+'\\s*=\\s*["\'`]([0-9a-f]{7,64})["\'`]','gi'))].map(match=>match[1].toLowerCase());
   return new Set(values).size===1?values[0]:'';
 }
 const scriptPaths=html=>[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)].map(match=>match[1]);

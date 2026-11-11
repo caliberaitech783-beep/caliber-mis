@@ -74,6 +74,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
  const masters=[
   ['Equipment master',{category:'Vehicle',door:'V1',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
+  ['Equipment master',{category:'LMV',door:'L1',currentLocation:'Sasti OC',equipmentName:'Pickup'}],
   ['Equipment master',{category:'Vehicle',door:'V2',currentLocation:'Sasti OC',equipmentName:'Tipper'}],
   ['Users & employees',{login:'alice',employee:'Alice',employeeId:'CM-1',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
   ['Users & employees',{login:'bob',employee:'Bob',employeeId:'CM-2',userRoles:'MIS User',status:'active',site:'Sasti OC'}],
@@ -98,6 +99,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.twoStage,true);assert.equal(created.data.stage,'vlb_open');assert.equal(created.data.canLockVlb,false,'empty batch cannot lock');
  const batch='/api/vlb-batches/'+created.data.id;
  const card=(door,trips)=>({bookDate:'2026-12-18',location:'Sasti OC',assetId:ids[door],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,cardShift:'I',openingKmr:1000,closingKmr:1050,openingHmr:100,closingHmr:106,timeMode:'without',trips,requestKey:randomUUID()});
+ const lmv=()=>({...card('L1',[]),manualEntry:true});
+ assert.equal((await call('/api/log-books/lmv','POST',{...lmv(),bookDate:'2026-12-19'})).status,409,'LMV requires an existing batch for its site, date and shift');
+ assert.equal((await call(batch+'/lock-lmv','POST',{})).status,409);
  const first=await call('/api/log-books/vehicle','POST',card('V1',[{equipmentName:'V19',tripCount:5},{equipmentName:'VPC 019',tripCount:3}]));
  assert.equal(first.status,201,JSON.stringify(first.data));assert.deepEqual(first.data.data.siteHolds,[]);
  const elbEarly=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids.D1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:1,closingHmr:3,requestKey:randomUUID()});
@@ -112,7 +116,20 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  await db.query("UPDATE master_records SET record_data=record_data||'{\"currentLocation\":\"Sasti OC\"}' WHERE id=$1",[ids['VPC-077']]);
  view=await call(batch);assert.equal(view.data.holds.length,0,'transfer clears the hold without any batch action');
  {const bob=await call(batch+'/lock-vlb','POST',{},'bob');assert.equal(bob.status,403,JSON.stringify(bob.data));}
- const locked=await call(batch+'/lock-vlb','POST',{});assert.equal(locked.status,200,JSON.stringify(locked.data));
+ const savedLmv=await call('/api/log-books/lmv','POST',lmv());
+ assert.equal(savedLmv.status,201,JSON.stringify(savedLmv.data));
+ const vlbLocked=await call(batch+'/lock-vlb','POST',{});
+ assert.equal(vlbLocked.status,200,JSON.stringify(vlbLocked.data));
+ assert.equal(vlbLocked.data.stage,'lmv_open');
+ assert.equal(vlbLocked.data.canClose,false);
+ assert.equal((await call(batch+'/close','POST',{})).status,409);
+ assert.equal((await call('/api/log-books/equipment','POST',{...card('D1',[]),openingHmr:1,closingHmr:3})).status,409,'ELB waits for the LMV lock');
+ assert.deepEqual((await call(batch)).data.lmvRecords.map(row=>row.id),[savedLmv.data.id]);
+ assert.equal((await call(batch+'/lock-lmv','POST',{},'bob')).status,403);
+ const locked=await call(batch+'/lock-lmv','POST',{});
+ assert.equal(locked.status,200,JSON.stringify(locked.data));
+ assert.equal((await call('/api/log-books/lmv','POST',lmv())).status,409);
+ assert.equal((await call('/api/log-books/lmv/'+savedLmv.data.id,'DELETE',{revision:savedLmv.data.revision})).status,409);
  assert.equal(locked.data.stage,'elb_open');assert.ok(locked.data.vlb_locked_at);assert.equal(locked.data.canClose,true);assert.equal(locked.data.canContinue,false);
  assert.deepEqual(locked.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
  assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
@@ -146,7 +163,29 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const elbForm=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-18',location:'Sasti OC',assetId:ids['VPC-077'],employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:40,closingHmr:44,shiftStatus:'working',requestKey:randomUUID()});
  assert.equal(elbForm.status,201,JSON.stringify(elbForm.data));
  view=await call(batch);assert.deepEqual(view.data.fleetProgress,{total:3,saved:2,remaining:0,optionalUnsaved:1,skipped:0,drafts:0,loaders:2});assert.deepEqual(view.data.closeBlockers,[]);
- assert.equal(view.data.machineReport.totals.trips,12);assert.equal(view.data.machineReport.totals.hours,9);assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1.6);
+ const relief={...editInput,additionalCard:true,employeeId:ids.bob,openingHmr:505,closingHmr:508,requestKey:randomUUID()};
+ const over=await call(fleet(ids['VPC-019']),'POST',{...relief,closingHmr:508.001});
+ assert.equal(over.status,409,JSON.stringify(over.data));
+ assert.match(over.data.error,/Combined working HMR/);
+ const added=await call(fleet(ids['VPC-019']),'POST',relief);
+ assert.equal(added.status,200,JSON.stringify(added.data));
+ assert.notEqual(added.data.record.id,loader.data.record.id);
+ assert.equal((await call(fleet(ids['VPC-019']),'POST',relief)).data.record.id,added.data.record.id);
+ view=await call(batch);
+ assert.deepEqual(view.data.closeBlockers,[]);
+ assert.equal(view.data.fleetProgress.saved,2);
+ assert.equal(view.data.machineReport.totals.trips,12);
+ assert.equal(view.data.machineReport.totals.hours,12);
+ assert.equal(view.data.machineReport.loaders[0].tripsPerHour,1);
+ assert.equal(view.data.fleet[0].shiftSummary.hours,8);
+ assert.match(view.data.fleet[0].shiftSummary.operator,/Alice, Bob/);
+ const reliefPath='/api/log-books/equipment/'+added.data.record.id;
+ assert.equal((await call(reliefPath,'DELETE',{revision:added.data.record.revision})).status,200);
+ view=await call(batch);
+ assert.equal(view.data.fleet[0].logbook_id,loader.data.record.id);
+ assert.equal(view.data.fleet[0].shiftSummary.hours,5);
+ assert.deepEqual(view.data.closeBlockers,[]);
+ assert.equal((await call(fleet(ids['VPC-019']),'POST',{...relief,requestKey:randomUUID()})).status,200);
  const adminView=await call(batch,'GET',undefined,'admin');assert.equal(adminView.data.canClose,true);
  const adminList=await call('/api/vlb-batches','GET',undefined,'admin');assert.equal(adminList.data.batches.find(row=>row.id===created.data.id)?.canClose,true);
  assert.equal((await call(batch+'/close','POST',{},'bob')).status,403,'non-owner MIS users cannot close');
@@ -166,6 +205,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const frozen=(await db.query('SELECT closed_at,stage,vlb_locked_at,closure_revision FROM mis_vlb_batches WHERE id=$1',[created.data.id])).rows[0];
  for(const door of ['V3','V4','V5']){const result=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[JSON.stringify({category:'Vehicle',door,currentLocation:'Sasti OC',equipmentName:'Tipper'})]);ids[door]=String(result.rows[0].id);}
  const lateInput=card('V3',[{equipmentName:'V19',tripCount:2}]);
+ assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,409,'the final lock prevents late VLB additions');
+ // Batches closed before the LMV stage still accept legacy late entries.
+ await db.query('UPDATE mis_vlb_batches SET lmv_locked_at=NULL WHERE id=$1',[created.data.id]);
  const late=await call('/api/log-books/vehicle','POST',lateInput);assert.equal(late.status,201,JSON.stringify(late.data));
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,200,'retry remains idempotent');
  assert.equal((await call('/api/log-books/vehicle/'+late.data.id,'PUT',{...lateInput,revision:late.data.revision,remark:'changed'})).status,409,'late VLB is immediately locked');
@@ -184,4 +226,16 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...card('V1',first.data.data.trips),revision:first.data.revision})).status,409,'VLB stage lock still protects existing cards');
  assert.equal((await call(batch)).data.stage,'elb_open');
 
+});
+
+test('LDM drills with legacy trip counts do not block ELB closure at any site', () => {
+ const fleet=[
+  {door:'LDM10 - 1243',site:'Sasti',trips:1},
+  {door:'DR-08',equipment_name:'ldm 08',site:'Jayant',trips:2},
+  {door:'VPC43 - 80069',site:'Sasti',trips:3},
+ ];
+ assert.deepEqual(closureBlockers({stage:'elb_open',fleet:fleet.slice(0,2)}),[]);
+ assert.match(closureBlockers({stage:'elb_open',fleet})[0],/VPC43.*3 trips/);
+ assert.equal(fleetProgress(fleet).remaining,1);
+ assert.equal(machineReportRows(fleet).totals.trips,3);
 });

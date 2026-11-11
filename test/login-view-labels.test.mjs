@@ -12,7 +12,9 @@ test("login uses one account form and lets the saved user type choose the worksp
   assert.match(login, /<h2>\{accountsPortal\?'Accounts sign in':'Welcome Back'\}<\/h2>/);
   assert.match(source, /<b>One secure login<\/b>/);
   assert.doesNotMatch(server, /filterRowsByRequestedRole|requestedRole/);
-  assert.match(server, /const loginRows=loginRecordCandidates\(userRows,username\)/);
+  assert.match(server, /lower\(trim\(record_data->>'login'\)\)=\$1/);
+  assert.match(server, /lower\(split_part\(trim\(record_data->>'employee'\),' ',1\)\)=\$1/);
+  assert.match(server, /CREATE INDEX IF NOT EXISTS master_records_user_first_name_idx/);
 });
 
 test("login password opens the full keyboard instead of the iOS telephone keypad", () => {

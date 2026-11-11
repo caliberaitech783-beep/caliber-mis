@@ -13,6 +13,11 @@ browser and backend check this capability. Existing account assignments are not
 changed. Existing non-MIS administrator authentication is retained.
 
 User Sessions and Audit Trail provide inspection, history and report exports.
+Each login holds one live session per application: signing in from another
+device signs the earlier device out on its next request. Logins listed in
+`SESSION_LIMIT_EXCEPTIONS` (default `mohitchadda=3`) keep that many sessions at
+once; `SINGLE_SESSION_PER_LOGIN=0` switches the rule off. The match is on the
+login name only.
 MIS does not expose the existing session force-close, log deletion, automatic
 clean-up or database restore controls. Database shows the local MIS database
 connection and active log-book/scan counts.

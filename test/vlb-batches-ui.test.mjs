@@ -7,13 +7,16 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
-import {bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
+import {withLmvEntrySite} from '../src/vlb-entry-context.mjs';
+import {activeWorkOrders,bookShiftCode,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {vlbRecordSource,vlbRecordEntryType,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {requestedMisPage,misPageUrl} from '../src/mis-navigation.mjs';
 import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
+ scope={StepBackButton:()=>null,...scope};
+ scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -35,6 +38,34 @@ test('VLB and ELB show three entry options and both permissions can open the sha
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/fleet/7',method:'POST'}),true);
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches/00000000-0000-4000-8000-000000000001/close',method:'POST'}),true);
  assert.equal(misRequestAllowed(elbSession,{path:'/api/vlb-batches',method:'POST'}),false,'ELB-only access cannot create or lock the VLB stage');
+});
+
+test('LMV Manual and Scan preselect the account site in the batch picker',async()=>{
+ for(const entryMode of ['manual','scan']){
+  const slots=[],effects=[];
+  let cursor=0;
+  const useState=initial=>{
+   const index=cursor++;
+   if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
+   return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
+  };
+  const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
+   React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:effect=>effects.push(effect),
+   canonicalSiteName,displaySiteName,withLmvEntrySite,bookShiftCode,systemBookDate,
+   fetch:async url=>{
+    assert.equal(url,'/api/log-books/options'+(entryMode==='scan'?'?scan=1':''));
+    return {ok:true,json:async()=>({accountLocation:'Sasti OC',sites:['Jayant OC'],shifts:[]})};
+   }
+  },['VlbCreateBatch']);
+  const render=()=>{cursor=0;effects.length=0;return VlbCreateBatch({session:{login:'operator',token:'test'},entryMode,entryKind:'lmv'})};
+  render();
+  const cleanup=effects.find(effect=>String(effect).includes('/api/log-books/options'))();
+  await new Promise(resolve=>setImmediate(resolve));
+  const [select]=nodes(render(),node=>node.type==='select');
+  assert.equal(select.props.value,'Sasti OC');
+  assert.ok(nodes(select,node=>node.type==='option').some(option=>option.props.children==='Sasti OC'));
+  cleanup();
+ }
 });
 
 test('dedicated PM navigation permits only review routes without granting VLB editing permissions',()=>{
@@ -134,4 +165,62 @@ test('opened batch search and shared export controls use only its saved snapshot
  const table=nodes(tree,n=>n.type===ReportTable)[0];assert.equal(table.props.smartPrintAction,true);assert.equal(table.props.query,'V12');
  table.props.onExportViewChange({sourceRows:records,columns:[vlbBatchColumns[0]],rows:[records[1]]});
  cursor=0;tree=shared(report.props);const menu=nodes(tree,n=>n.type===ExportMenu)[0];assert.deepEqual(menu.props.rows,[records[1]]);assert.deepEqual(menu.props.columns,[vlbBatchColumns[0]]);assert.equal(menu.props.label,'Generate');
+});
+
+test('Create Batch edits VLB and ELB from the selected row and respects their lock stages',async()=>{
+ const slots=[];
+ let cursor=0;
+ const useState=initial=>{
+  const index=cursor++;
+  if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;
+  return [slots[index],value=>slots[index]=typeof value==='function'?value(slots[index]):value];
+ };
+ const stub=()=>null,Report=()=>null,Editor=()=>null;
+ const deletions=[];let approve=false;
+ const {VlbCreateBatch}=await compile('vlb-create-batch.jsx',{
+  React,useState,useRef:value=>useState(()=>({current:value}))[0],useEffect:stub,SmartSelect:'select',
+  canonicalSiteName,displaySiteName,bookShiftCode,systemBookDate,vlbRecordSource,vlbRecordEntryType,
+  VlbBatchCardDetails:stub,VlbBatchReport:Report,VlbBatchGovernance:stub,VlbBatchHolds:stub,LogBookForm:Editor,window:{confirm:()=>approve},
+  fetch:async(url,request)=>{deletions.push([url,request.method,JSON.parse(request.body)]);return {ok:true,json:async()=>({deleted:true})}}
+ },['VlbCreateBatch']);
+ const vehicle={id:1,book_no:'VLB-1',revision:2,data:{openingKmr:10}};
+ const equipment={id:1,book_no:'ELB-1',revision:3,data:{openingHmr:20}};
+ const batch={id:'b1',name:'Batch 1',twoStage:true,stage:'vlb_open',canEditSavedFleet:true,records:[vehicle],elbRecords:[equipment]};
+ const render=()=>{cursor=0;return VlbCreateBatch({session:{token:'test'}})};
+ const report=tree=>nodes(tree,node=>node.type===Report)[0].props;
+ const button=(tree,label)=>nodes(tree,node=>node.type==='button'&&node.props['aria-label']===label)[0];
+ render();
+ slots[5]=batch;slots[8]=false;slots[14]={login:'admin',admin:true};
+ assert.ok(button(report(render()).rowAction(vehicle),'Edit VLB-1'));
+ report(render()).renderField(vehicle,'Opening KMR',10).props.onClick();
+ let editor=nodes(report(render()).rowEditor(vehicle,8),node=>node.type===Editor)[0];
+ assert.equal(editor.props.initialRecord,vehicle);
+ assert.equal(editor.props.focusField,'Opening KMR');
+ editor.props.onExit();
+ assert.equal(report(render()).rowEditor(vehicle,8),false);
+
+ const deleteVlb=button(report(render()).rowAction(vehicle),'Delete VLB-1');
+ await deleteVlb.props.onClick();
+ assert.equal(deletions.length,0);
+ approve=true;
+ await deleteVlb.props.onClick();
+ assert.deepEqual(deletions,[['/api/log-books/vehicle/1','DELETE',{revision:2}]]);
+
+ slots[5]={...batch,stage:'elb_open'};
+ assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
+ button(render(),'Edit Opening HMR for ELB-1').props.onClick();
+ editor=nodes(render(),node=>node.type===Editor)[0];
+ assert.equal(editor.props.kind,'equipment');
+ assert.equal(editor.props.initialRecord,equipment);
+ assert.equal(editor.props.focusField,'Opening HMR');
+ editor.props.onSaved();
+ assert.equal(nodes(render(),node=>node.type===Editor).length,0);
+ assert.equal(slots[9],2,'saving refreshes batch details');
+ await button(render(),'Delete ELB-1').props.onClick();
+ assert.deepEqual(deletions[1],['/api/log-books/equipment/1','DELETE',{revision:3}]);
+
+ slots[5]={...batch,stage:'closed',closed_at:'closed'};
+ assert.equal(button(render(),'Edit ELB-1'),undefined);
+ assert.equal(button(render(),'Delete ELB-1'),undefined);
+ assert.match(renderToStaticMarkup(report(render()).rowAction(vehicle)),/Locked/);
 });

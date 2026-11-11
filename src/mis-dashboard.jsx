@@ -1,17 +1,17 @@
 import React from 'react';
 import LogBookDashboard from './log-book-dashboard.jsx';
 
-export default function MisDashboard({title='MIS dashboard',session,goto}) {
+export default function MisDashboard({title='MIS dashboard',session,goto,ReportSection,printDashboard}) {
   const canReadLogbooks=session?.role==='super'&&['admin','super admin'].includes(String(session.permissions?.adminLevel||'').toLowerCase());
   return (
-    <section aria-label={title} className="erp-mis-dashboard">
+    <section aria-label={title} className="erp-mis-dashboard" data-print-fit="">
       <header className="erp-front-banner">
         <span className="erp-brand-icon"><img src="/pulse-ii-icon.png" alt="Caliber Pulse-II" /></span>
         <div>
           <h1>{title==='MIS dashboard'?'Caliber Pulse-II':title}</h1>
         </div>
       </header>
-      {title==='MIS dashboard'&&canReadLogbooks&&<LogBookDashboard key={session.token} session={session} goto={goto}/>}
+      {title==='MIS dashboard'&&canReadLogbooks&&<LogBookDashboard key={session.token} session={session} goto={goto} ReportSection={ReportSection} printDashboard={printDashboard}/>}
       {title!=='MIS dashboard'&&<div className="erp-logbook-workspace" aria-label={`${title} workspace`} />}
     </section>
   );

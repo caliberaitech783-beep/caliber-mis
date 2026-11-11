@@ -7,6 +7,7 @@ import {createCanvas} from '@napi-rs/canvas';
 import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
+import {scanFleetSignature} from '../shared/scan-fleet-assignment.mjs';
 
 async function fixture(t,options={}){
  const db=new PGlite(),calls=[];
@@ -43,6 +44,31 @@ test('upload progress reads stay constant-size in database work and cannot mark 
  assert.equal(complete.cards.length,40);assert.ok(complete.cards.every(card=>card.checks.errors.length>0));
  assert.ok(calls.length>=80,'normal refresh still validates every card against current data');
  console.log(`40-card polling: ${calls.length} database calls for full review; ${lightweightCalls} for upload progress`);
+});
+
+test('opening a review replaces a stored legacy master-sync denial with a fresh fleet check',async t=>{
+ const legacyError='Your Pulse account is not authorised to sync all four masters.';
+ const {db,add,url}=await fixture(t,{readPulseFleet:async(actor,site)=>{
+  assert.equal(actor,'test-admin');
+  assert.equal(site,'Sasti OC');
+  return [{door:'V1',currentLocation:site}];
+ }});
+ const id=await add(1),draft={location:'Sasti OC',doorText:'V1'};
+ await db.query('UPDATE mis_scan_cards SET draft=$1,raw_fields=$2 WHERE id=$3',[draft,{fleetReview:{signature:scanFleetSignature(draft),issues:[],error:legacyError}},id]);
+ const first=await (await fetch(url)).json();
+ assert.equal(first.cards[0].raw_fields.fleetReview,undefined);
+ assert.ok(!first.cards[0].checks.errors.includes(legacyError));
+ for(let attempt=0;attempt<100;attempt++){
+  const {rows}=await db.query('SELECT raw_fields FROM mis_scan_cards WHERE id=$1',[id]);
+  if(rows[0].raw_fields.fleetReview.error===''){
+   const refreshed=await (await fetch(url)).json();
+   assert.deepEqual(refreshed.cards[0].raw_fields.fleetReview.issues,[]);
+   assert.equal(refreshed.cards[0].raw_fields.fleetReview.error,'');
+   return;
+  }
+  await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ assert.fail('Fleet review did not refresh');
 });
 
 test('a slow Pulse fleet response does not hold the only extraction worker',async t=>{

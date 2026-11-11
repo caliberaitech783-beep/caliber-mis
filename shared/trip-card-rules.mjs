@@ -1,41 +1,44 @@
 import {normalizeScannedTime,validScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
-export function meterPlacementIssues(draft={},kind='vehicle'){
- if(kind!=='vehicle')return {};
- const hmr=draft.openingHmr,kmr=draft.openingKmr;
- if(hmr==null||kmr==null||String(hmr).trim()===''||String(kmr).trim()===''||!Number.isFinite(Number(hmr))||!Number.isFinite(Number(kmr))||Number(hmr)<0||Number(kmr)<0||Number(kmr)>Number(hmr)||Number(hmr)===0&&Number(kmr)===0)return {};
- return {
-  openingHmr:'Opening HMR must be lower than Opening KMR. Check whether the HMR and KMR readings are entered in the wrong boxes.',
-  openingKmr:'Opening KMR must be greater than Opening HMR. Check whether the HMR and KMR readings are entered in the wrong boxes.'
- };
+export function kmrMeterReplaced({openingKmr,closingKmr}={}){
+ return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
+  && Number(closingKmr)<Number(openingKmr);
 }
+export const VLB_SHIFT_KMR_LIMIT=250;
 export function shiftMeterIssues(draft={},kind='vehicle'){
- const issues={...meterPlacementIssues(draft,kind)},hours=Number(draft.shiftHours);
- if(![8,12].includes(hours))return issues;
- for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+ const issues={},hours=Number(draft.shiftHours);
+ if(![8,9,12].includes(hours))return issues;
+ for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
-  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:hours===8?250:350;
-  if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<opening)continue;
-  const difference=closing-opening;
-  if(difference-limit>Number.EPSILON*Math.max(1,Math.abs(opening),Math.abs(closing))*4){
+  const opening=Number(a),closing=Number(b),limit=meter==='Hmr'?hours:VLB_SHIFT_KMR_LIMIT;
+  const replaced=meter==='Kmr'&&kmrMeterReplaced(draft);
+  if(!Number.isFinite(opening)||!Number.isFinite(closing)||opening<0||closing<0||(!replaced&&closing<opening))continue;
+  const field=replaced?'replacementKmr':'closing'+meter;
+  const actual=draft.replacementKmr;
+  if(replaced&&(!['string','number'].includes(typeof actual)||String(actual).trim()===''||!Number.isFinite(Number(actual))||Number(actual)<0)){
+   issues[field]='Enter the actual distance travelled in km for the KMR replacement.';
+   continue;
+  }
+  const difference=replaced?Number(actual):closing-opening;
+  if(difference-limit>Number.EPSILON*(replaced?limit:Math.max(1,Math.abs(opening),Math.abs(closing)))*4){
    const format=n=>Number(n.toFixed(3)),unit=meter==='Hmr'?'hours':'km';
-   issues['closing'+meter]=`${meter.toUpperCase()} difference (closing - opening) is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
+   const label=replaced?'Actual KMR distance':meter.toUpperCase()+' difference (closing - opening)';
+   issues[field]=`${label} is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;
   }
  }
  return issues;
 }
-// Meter rule breaches are reported after saving; missing/non-numeric inputs
-// still need a usable reading before a card can be saved.
+// Include historical meter discrepancies for review and reports.
 export function meterRuleIssues(draft={},kind='vehicle'){
  const issues={...shiftMeterIssues(draft,kind)};
- for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){
+ for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   for(const prefix of ['opening','closing']){
    const key=prefix+meter,value=draft[key];
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
   }
   const a=draft['opening'+meter],b=draft['closing'+meter];
-  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&kmrMeterReplaced(draft)))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
  }
  return issues;
 }
@@ -51,13 +54,24 @@ export function isUnloadingOnlyTrip(row){
  return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
 }
 // A blank loader with a recorded unload is an unloading handover on scanned cards.
-export function ignoreScanLoadingWithoutEquipment(draft){
+export function ignoreScanLoadingWithoutEquipment(draft,{openingOnly=false}={}){
  if(draft?.timeMode==='without'||!Array.isArray(draft?.trips))return draft;
  let changed=false;
- const trips=draft.trips.map(row=>{
+ const trips=draft.trips.map((row,index)=>{
+  if(openingOnly&&(index!==0||Number(row?.rowNumber||1)!==1))return row;
   const estimate=row?.timeEstimates?.unloadingTime;
   const estimatedUnload=estimate?.anchorField==='loadingTime'&&estimate.value===row.unloadingTime;
-  if(!row?.loadingTime||String(row.equipmentName??'').trim()||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;
+  if(!row||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;
+  const blankLoader=!String(row.equipmentName??'').trim();
+  // Older drafts could borrow a loader for the first row even when its paper loader cell was blank.
+  const borrowedOpeningLoader=index===0&&Number(row.rowNumber||1)===1&&row.equipmentSource==='previous-shift'
+   &&!String(row.equipmentNotation?.original??row.originalEquipmentName??'').trim();
+  if(borrowedOpeningLoader){
+   changed=true;
+   const {equipmentId,equipmentSite,equipmentSource,equipmentNotation,equipmentProvenance,timeEstimates,...trip}=row;
+   return {...trip,equipmentName:'',loadingTime:''};
+  }
+  if(!row.loadingTime||!blankLoader)return row;
   changed=true;
   const {timeEstimates,...trip}=row;
   return {...trip,loadingTime:''};
@@ -76,6 +90,13 @@ export function machineDiscrepancies(trips=[],printed=[]){
  const detailTotal=machineTripTotal(trips),summaryTotal=machineTripTotal(printed);
  if(detailTotal!==summaryTotal)issues.push('Total trips: detail trips '+detailTotal+', scanned summary '+summaryTotal+'. Machine summary must equal Trip Details; count each trip once.');
  return issues;
+}
+export const WORK_ORDER_MASTERS=['Work Order master','Work order master','Work Order Master','WO master'];
+export function workOrderJobTypes(order){
+ return [...new Set((Array.isArray(order.jobs)?order.jobs:[]).map(job=>String(job?.jobType||'').trim()).filter(Boolean))];
+}
+export function activeWorkOrders(rows,site,date){
+ return matchingWorkOrders(rows,site,date).filter(r=>date&&(!r.workOrderDate||r.workOrderDate<=date)&&!['inactive','completed','closed','cancelled'].includes(String(r.status||'').trim().toLowerCase()));
 }
 export function matchingWorkOrders(rows,site,date){return rows.filter(r=>canonicalSiteName(r.site||r.location)===canonicalSiteName(site)&&site&&!r.sourceMissing&&(!(r.begin||r.commencementDate)||(r.begin||r.commencementDate)<=date)&&(!(r.end||r.completionDate)||(r.end||r.completionDate)>=date));}
 export function normalizeCardShift(value){const code=bookShiftCode(String(value||'').replace(/\s*\([ABC]\)\s*$/i,''));return ({S1:'I',S2:'II',S3:'III',D:'Day',N:'Night'})[code]||'';}
@@ -115,7 +136,7 @@ export function cardShiftLabel(rows,site,selection,date){
 }
 
 export function bookShiftCode(value){const key=String(value||'').trim().toUpperCase().replace(/^SHIFT\s*|\s*SHIFT$/g,'').replace(/[ ._-]/g,'');return ({'1':'S1','2':'S2','3':'S3',I:'S1',II:'S2',III:'S3',A:'S1',B:'S2',C:'S3',S1:'S1',S2:'S2',S3:'S3',DAY:'D',NIGHT:'N',D:'D',N:'N'})[key]||'';}
-export function formatBookNumber(kind,date,counter,shift){if(kind==='vehicle'&&!bookShiftCode(shift))throw new Error('Select Shift I, II, III, Day or Night before generating a Vehicle Log Book number.');const [year,month,day]=date.split('-');return kind==='vehicle'?`CAL/VLB/${day}${month}${year.slice(-2)}/${bookShiftCode(shift)}/${String(counter).padStart(4,'0')}`:`CAL/ELB/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;}
+export function formatBookNumber(kind,date,counter,shift){if(kind==='vehicle'&&!bookShiftCode(shift))throw new Error('Select Shift I, II, III, Day or Night before generating a Vehicle Log Book number.');const [year,month,day]=date.split('-');return kind==='vehicle'?`CAL/VLB/${day}${month}${year.slice(-2)}/${bookShiftCode(shift)}/${String(counter).padStart(4,'0')}`:`CAL/${kind==='lmv'?'LMV':'ELB'}/${day}-${month}-${year.slice(-2)}/${String(counter).padStart(3,'0')}`;}
 
 export function tripClockForShift(value,shift,master){const m=String(normalizeScannedTime(value)).match(/^(\d{1,2}):(\d{2})$/);if(!m)return normalizeScannedTime(value);let h=Number(m[1]);const start=String(master?.startTime||master?.start||'').match(/^(\d{2}):(\d{2})/);if(start&&h>=1&&h<=12&&Number(m[2])<60){const from=Number(start[1])*60+Number(start[2]),hours=CARD_SHIFTS[shift]?.hours||8;const candidates=[h%12,h%12+12].filter(hour=>(hour*60+Number(m[2])-from+1440)%1440<=hours*60);if(candidates.length===1)return String(candidates[0]).padStart(2,'0')+':'+m[2];return normalizeScannedTime(value);}if(shift==='I'&&h>=1&&h<=4)h+=12;if(shift==='II'&&h>=1&&h<=9)h+=12;if(shift==='III'){if(h>=9&&h<=11)h+=12;else if(h===12)h=0;}return String(h).padStart(2,'0')+':'+m[2];}
 

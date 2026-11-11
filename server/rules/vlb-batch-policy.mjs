@@ -14,6 +14,7 @@ export const VLB_BATCH_SCHEMA=`
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS closure_revision INTEGER NOT NULL DEFAULT 0;
  -- Preserve the legacy per-user open-slot index. Admin batches use creator_login
  -- for attribution and a NULL legacy slot so different authorized sites can stay open.
+ ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS work_order_id BIGINT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS creator_login TEXT;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
  ${VLB_BATCH_RETENTION_SCHEMA}
@@ -74,7 +75,22 @@ export const VLB_BATCH_SCHEMA=`
  ${VLB_APPROVAL_OTP_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
-export const lockVlbBatchWrites=client=>client.query("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))");
+// Batch writers lock one site, date and shift, so six sites save at the same time
+// while a save and a close of the same batch still queue behind each other. The
+// whole-table lock remains for deletions and restores, which take it exclusively;
+// scoped writers hold it shared, so those rare actions wait for every writer.
+const BATCH_WRITE_LOCK="hashtext('mis_vlb_saved_batches')";
+export const lockVlbBatchWrites=client=>client.query(`SELECT pg_advisory_xact_lock(${BATCH_WRITE_LOCK})`);
+export function vlbBatchScope({site,bookDate,shift}){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(bookDate||'')))throw new Error('VLB batch scope needs an ISO book date.');
+ return [canonicalSiteName(site||''),bookDate,String(shift||'')].join('|');
+}
+export const vlbRecordScope=data=>({site:data.location,bookDate:data.bookDate,shift:vlbRecordShift(data)});
+export async function lockVlbBatchScope(client,scope){
+ const key=vlbBatchScope(scope);
+ await client.query(`SELECT pg_advisory_xact_lock_shared(${BATCH_WRITE_LOCK})`);
+ await client.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',['mis_vlb_saved_batches',key]);
+}
 export const auditVlbBatch=(client,batch,actor,action,detail={})=>client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[batch.id,batchLogin(actor),action,JSON.stringify(detail)]);
 export async function matchingVlbBatch(client,data){
  const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND book_date>=$$2026-11-01$$ AND shift=$2 AND archived_at IS NULL ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
@@ -84,13 +100,14 @@ export async function matchingVlbBatch(client,data){
 }
 export async function isOpenBatchForDeletion(client,batch,kind,actor){
  if(!batch||batch.deleted_at||batch.archived_at||batch.closed_at)return false;
+ if(twoStageEnabled()&&batch.stage==='lmv_open')return false;
  if(twoStageEnabled()&&(batch.stage==='elb_open')!==(kind==='equipment'))return false;
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))return false;
  return !batch.trial_reopened_until||!(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired;
 }
 export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=false}={}){
  requireOperationalDate(data.bookDate);
- await lockVlbBatchWrites(client);
+ await lockVlbBatchScope(client,vlbRecordScope(data));
  let linked;
  if(recordId)linked=(await client.query('SELECT b.*,b.book_date::text AS report_date FROM mis_vlb_batch_entries e JOIN mis_vlb_batches b ON b.id=e.batch_id WHERE e.logbook_id=$1',[recordId])).rows[0];
  if(linked&&(canonicalSiteName(linked.site)!==canonicalSiteName(data.location)||linked.report_date!==data.bookDate||linked.shift!==vlbRecordShift(data)))batchFail('A batched card must retain its original site, date and shift.');
@@ -100,13 +117,15 @@ export async function assertVlbBatchWrite(client,data,actor,recordId,{adding=fal
  requireOperationalDate(batch.report_date);
  if(!(adding&&batch.closed_at)&&batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)batchFail('The VLB reopening trial has expired. Save and lock this batch, then request site PM approval before changing cards.',403);
  if(batch.closed_at&&!adding)batchFail('This site/date/shift batch is closed. Request site PM approval and reopen the existing batch before changing existing cards.');
- if(twoStageEnabled()&&batch.stage==='elb_open'&&!adding)batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before changing existing tipper cards.');
+ if(twoStageEnabled()&&(batch.stage==='lmv_open'||batch.lmv_locked_at||batch.stage==='elb_open'&&!adding))batchFail('VLB is locked for batch '+batch.name+'. Ask the site PM to unlock VLB before changing existing tipper cards.');
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))batchFail('This batch was reopened for another MIS user. Only the MIS user approved by the site PM can add or change cards.',403);
  return batch;
 }
 export async function lockSavedVlbBatches(client,actor,recordIds){
  if(!recordIds.length)return [];
- await lockVlbBatchWrites(client);
+ // Site, date and shift never change after creation, so the scopes are read first and locked in one order.
+ const scopes=(await client.query('SELECT DISTINCT b.site,b.book_date::text AS book_date,b.shift FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id WHERE e.logbook_id=ANY($1::bigint[])',[recordIds])).rows;
+ for(const scope of scopes.map(row=>({site:row.site,bookDate:row.book_date,shift:row.shift})).sort((a,b)=>vlbBatchScope(a).localeCompare(vlbBatchScope(b))))await lockVlbBatchScope(client,scope);
  const batches=(await client.query(`SELECT DISTINCT b.* FROM mis_vlb_batches b JOIN mis_vlb_batch_entries e ON e.batch_id=b.id
   WHERE e.logbook_id=ANY($1::bigint[]) AND b.closed_at IS NULL AND b.amendment_by IS NOT NULL AND b.continuous_entry=FALSE`,[recordIds])).rows;
  for(const batch of batches){

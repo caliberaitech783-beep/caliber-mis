@@ -17,7 +17,7 @@ export function firstScanProblems(extracted,kind,context={}){
  const d=extracted.draft,issues=manualScanIssues(d,kind,extracted.raw),meters=meterRuleIssues(d,kind),found=[];
  if(!d.assetId||!present(d.doorText)||issues.assetId||issues.doorText)found.push('door');
  if(!d.employeeId||issues.employeeId)found.push('caliber');
- for(const [group,suffix]of [['hmr','Hmr'],...(kind==='vehicle'?[['kmr','Kmr']]:[])])if(['opening','closing'].some(prefix=>{const key=prefix+suffix;return !present(d[key])||!Number.isFinite(Number(d[key]))||issues[key]||meters[key]||d.meterReviewMessages?.[key]}))found.push(group);
+ for(const [group,suffix]of [['hmr','Hmr'],...(kind==='vehicle'?[['kmr','Kmr']]:[])])if((group==='kmr'&&meters.replacementKmr)||['opening','closing'].some(prefix=>{const key=prefix+suffix;return !present(d[key])||!Number.isFinite(Number(d[key]))||issues[key]||meters[key]||d.meterReviewMessages?.[key]}))found.push(group);
  if(kind==='vehicle'&&(!(d.trips||[]).length||!(d.scanMachineSummary||[]).length||issues.scanMachineSummary||Object.keys(issues).some(key=>key.startsWith('trips.'))||machineDiscrepancies(d.trips,d.scanMachineSummary).length))found.push('trips');
  if(!d.bookDate||issues.bookDate||context.bookDate&&d.bookDate!==context.bookDate)found.push('date');
  if(!d.location||issues.location||context.location&&canonicalSiteName(d.location)!==canonicalSiteName(context.location))found.push('site');

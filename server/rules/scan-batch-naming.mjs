@@ -11,7 +11,8 @@ export function tripBatchPrefix(context,user){
  const selected=requireScanUploadContext('vehicle',context);
  const username=segment(user).replace(/\s+/g,'');
  if(!username)throw new Error('A signed-in username is required to name a Trip Card batch.');
- return `CMLL/${selected.bookDate}/${segment(selected.location)}/${bookShiftCode(selected.cardShift)}/${username}`;
+ const series=selected.logBookKind==='lmv'?'CMLL/LMV':'CMLL';
+ return `${series}/${selected.bookDate}/${segment(selected.location)}/${bookShiftCode(selected.cardShift)}/${username}`;
 }
 
 // Allocate and insert in one statement: concurrent callers serialize on the

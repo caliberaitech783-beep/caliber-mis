@@ -1,0 +1,130 @@
+{
+  "id": "door-production",
+  "group": "Trips & Productivity",
+  "title": "Day-wise Door Number Report",
+  "menu": "Reports → Trips & Productivity → Day-wise Door Number Report",
+  "en": {
+    "purpose": "This report shows, for one site and one date, the completed trips, working HMR and quantity in cubic metres (CUM) of every tipper, Shift by Shift. It is made only from saved VLB cards whose batch has been locked with Save & lock batch. A site in-charge or MIS clerk uses it to check production door number by door number.",
+    "row": "One row is one tipper (door number) at the selected site on the selected date. Every active vehicle listed at that site in the Equipment master gets a row, even when no VLB card was saved for it. The last row, TOTAL (complete selection), adds up all the rows.",
+    "filters": [
+      ["1. Site", "Choose the site. Only sites allowed for your login are listed. Changing the site clears the Shift and Applicable schedule choices."],
+      ["2. Date", "The card date for the report. It opens on today's date. Dates before 1 November 2026 cannot be chosen. Changing the date clears the Shift and Applicable schedule choices."],
+      ["3. Report type", "Shift-wise shows one Shift. Day-wise shows every Shift of that date side by side, with totals for the day."],
+      ["Shift", "Shown when Report type is Shift-wise. It lists only the Shifts found in the Shift Master for that site and date (Shift 1, Shift 2, Shift 3, Day shift, Night shift). One must be chosen."],
+      ["Applicable schedule", "Shown only when Report type is Day-wise and the Shift Master has both a three-shift schedule and a Day/Night schedule for that site and date. Choose Shift 1 / 2 / 3 or Day / Night."],
+      ["Show report", "Loads the report for the choices made. The button stays disabled until Site, Date and Shift (or schedule) are filled. While loading it reads Checking batches…. If any choice is changed afterwards, the result is cleared; press Show report again."]
+    ],
+    "screen": [
+      ["Door number / Machine number", "Two buttons under the heading. Door number is this report. Machine number opens the Day-wise Machine Number Report; the choices already made stay as they are."],
+      ["No active, unambiguous Shift Master schedule is available for this site and date.", "Shown after a site is chosen when no usable Shift is found in the Shift Master for that site and date. Show report stays disabled in that case."],
+      ["Message in the red box", "Shown under the selection when the report cannot be loaded, for example This location is not assigned to your login. or Too many cards or unresolved handovers for one report. Review the outstanding trip links first."],
+      ["Shift status boxes", "After Show report, one box for each Shift in the report. It shows the Shift name and its status, the number of saved VLB cards and the batch name (or Batch not created). The statuses are Processed, Not processed, Missing / duplicate batch, No saved VLB cards and Batch snapshot needs review. Processed means there is exactly one batch for that Shift, it is locked, and every VLB card of the Shift is in it unchanged since the lock."],
+      ["Report not generated", "Shown in place of the table when any check fails. Each line states the problem and the card number, batch name or door number it refers to. After the corrections, press Show report again. Print and export appear only when all checks pass."],
+      ["Completed trips", "Total completed trips of all tippers in the selection."],
+      ["Quantity (CUM)", "Total quantity of the selection: counted trips × approved capacity, added for all tippers."],
+      ["Matched · Door and machine trip / quantity totals", "Tells that the trip and quantity totals of the door-wise table and the machine-wise table are equal. The report is generated only when they are equal."],
+      ["Source data review", "Shown when some cards need a look but do not stop the report. Each line gives the card number and the remark, for example Driver / operator ID is missing."],
+      ["Line under the table heading", "Site, date, Shifts covered, the processed batch names with their revision number (the number goes up each time the batch is locked), and the date and time the report was generated (IST)."],
+      ["TOTAL (complete selection)", "The last row of the table. It adds the trips, HMR and quantity columns of all rows."],
+      ["Sources, capacity versions and calculation rules", "Press to open. It lists the calculation rules, the capacity approvals used (site, job type, make / model, CUM/trip, effective date and approval number) and how to refresh the report after a correction."]
+    ],
+    "columns": [
+      ["Sr. No.", "Running number. Rows are in door number order."],
+      ["Door No.", "Door number of the tipper as in the Equipment master, for example V9001. In the last row it reads TOTAL (complete selection)."],
+      ["Make", "Make of the tipper. Taken from the saved VLB card when the card carries both make and model, otherwise from the Equipment master."],
+      ["Model", "Model of the tipper, from the same source as Make. Make and Model decide which approved capacity is used."],
+      ["Shift 1 driver", "Drivers named on the saved VLB cards of this tipper in that Shift, as name and Employee ID, for example SAMPLE DRIVER 01 (CMPL90001). More than one driver is separated by a semicolon. Unresolved driver / operator means the card has no Employee ID saved. — means no card. The same column repeats for every Shift in the report (Shift 2 driver, Shift 3 driver, Day shift driver, Night shift driver)."],
+      ["Shift 1 HMR", "Working HMR of the tipper in that Shift, added over all its saved cards of that Shift. For each card it is the total working HMR saved on the card, or closing HMR − opening HMR when that total is not saved. — when no card gives usable readings. Repeats for every Shift in the report."],
+      ["Shift 1 trips", "Completed trips of the tipper counted in that Shift. A trip is counted on the card that records its loading; a row that has only an unloading time is not counted again. — means no saved card; 0 means a card is saved with no counted trips. Repeats for every Shift in the report."],
+      ["Total HMR", "Sum of the Shift HMR columns of the row. — when no Shift has HMR."],
+      ["Capacity (CUM/trip)", "Approved capacity per trip used for this tipper. It is the latest capacity approval for the site, job type, make and model with an effective date on or before the report date; if there is none for that site and job type, an older approval saved without site and job type is used. — when the tipper has no counted trips or when more than one capacity applied to its trips."],
+      ["Total trips", "Sum of the Shift trips columns of the row."],
+      ["Quantity (CUM)", "Counted trips × approved capacity per trip, added for all Shifts of the row."],
+      ["Card coverage", "Cards available when a VLB card is saved for every Shift in the report. Otherwise it names the Shifts without a card, for example S1: no saved VLB card (S1, S2, S3 are Shift 1, 2, 3; D is Day; N is Night)."]
+    ],
+    "notes": [
+      "Quantity (CUM) is worked out from the approved capacity per trip. It is not a weighbridge measurement.",
+      "Trips and quantity belong to the Shift in which the tipper was loaded.",
+      "No figures are shown until the batch of every Shift in the selection is locked. Reopening a batch, or a card changed after the lock, stops the report until the batch is locked again.",
+      "Two cards of one tipper in the same Shift with different drivers (a relief driver) are joined in one row; their trips and HMR are added. Two cards for the same tipper, Shift and driver stop the report for review.",
+      "The report also stops when the combined working HMR of a tipper in one Shift is more than the Shift length: 8 hours for Shift 1, 2 and 3, 12 hours for Day and Night.",
+      "A downloaded report keeps the generation time printed on it. After a correction, lock the batch again and press Show report for fresh figures."
+    ],
+    "checklist": [
+      "Choose 1. Site, 2. Date and 3. Report type (and Shift or Applicable schedule), then press Show report.",
+      "Check that every Shift status box reads Processed. If Report not generated appears, read each line and note the card, batch or door it names.",
+      "In Card coverage, find the tippers that show no saved VLB card and check whether that tipper worked in that Shift.",
+      "Compare the Completed trips and Quantity (CUM) figures above the table with the TOTAL (complete selection) row.",
+      "Read each line under Source data review and open the named card to check it.",
+      "Open Sources, capacity versions and calculation rules and check the capacity listed for each make and model."
+    ],
+    "faq": [
+      ["Why does the screen say Report not generated?", "One of the checks failed. Examples: a Shift batch is not locked, a card was changed after the lock, an approved capacity is missing, the loading machine on a VLB card could not be identified, or a loading machine has no saved ELB card. The list under the heading names each problem and the card, batch or door."],
+      ["What is the difference between — and 0 in a trips column?", "— means no VLB card is saved for that tipper in that Shift. 0 means a card is saved but it has no counted trips."],
+      ["Why is Capacity (CUM/trip) blank for a tipper that has trips?", "More than one approved capacity was used for its trips, for example trips under different job types. Quantity (CUM) still uses the capacity that applies to each trip. The approvals used are listed under Sources, capacity versions and calculation rules."],
+      ["A card was corrected. How do I get the new figures?", "Lock the batch again with Save & lock batch, then press Show report. Until then the Shift shows Not processed or Batch snapshot needs review and the report is not generated."]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट एक साइट और एक तारीख के लिए हर टिपर की पूरी हुई ट्रिप, working HMR और घन मीटर (CUM) में मात्रा, Shift के हिसाब से दिखाती है। यह सिर्फ़ उन सेव किए गए VLB कार्ड से बनती है जिनका बैच Save & lock batch से लॉक हो चुका है। साइट इंचार्ज या MIS क्लर्क इससे डोर नंबर के हिसाब से प्रोडक्शन जाँचते हैं।",
+    "row": "एक लाइन चुनी हुई साइट और तारीख पर एक टिपर (डोर नंबर) की होती है। Equipment master में उस साइट पर दर्ज हर चालू गाड़ी की लाइन बनती है, चाहे उसका VLB कार्ड सेव न हुआ हो। आख़िरी लाइन TOTAL (complete selection) सब लाइनों का जोड़ है।",
+    "filters": [
+      ["1. Site", "साइट चुनें। सूची में सिर्फ़ वही साइट आती हैं जो आपके लॉगिन को दी गई हैं। साइट बदलने पर Shift और Applicable schedule का चुनाव हट जाता है।"],
+      ["2. Date", "जिस तारीख के कार्ड की रिपोर्ट चाहिए। शुरू में आज की तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं चुनी जा सकती। तारीख बदलने पर Shift और Applicable schedule का चुनाव हट जाता है।"],
+      ["3. Report type", "Shift-wise में एक Shift दिखती है। Day-wise में उस तारीख की सभी Shift साथ-साथ दिखती हैं और दिन का जोड़ भी आता है।"],
+      ["Shift", "Report type में Shift-wise चुनने पर दिखता है। इसमें सिर्फ़ वही Shift आती हैं जो उस साइट और तारीख के लिए Shift Master में मिलती हैं (Shift 1, Shift 2, Shift 3, Day shift, Night shift)। एक चुनना ज़रूरी है।"],
+      ["Applicable schedule", "सिर्फ़ तब दिखता है जब Report type में Day-wise हो और Shift Master में उस साइट और तारीख के लिए तीन Shift वाला और Day/Night वाला, दोनों शेड्यूल हों। Shift 1 / 2 / 3 या Day / Night चुनें।"],
+      ["Show report", "चुनी हुई जानकारी की रिपोर्ट लाता है। जब तक Site, Date और Shift (या schedule) नहीं भरे जाते, यह बटन बंद रहता है। लोड होते समय इस पर Checking batches… लिखा आता है। बाद में कोई चुनाव बदलने पर नतीजा हट जाता है; Show report फिर दबाएँ।"]
+    ],
+    "screen": [
+      ["Door number / Machine number", "हेडिंग के नीचे दो बटन। Door number यही रिपोर्ट है। Machine number दबाने पर Day-wise Machine Number Report खुलती है; पहले से चुनी हुई जानकारी वैसी ही रहती है।"],
+      ["No active, unambiguous Shift Master schedule is available for this site and date.", "साइट चुनने के बाद तब दिखता है जब उस साइट और तारीख के लिए Shift Master में कोई काम की Shift नहीं मिलती। ऐसे में Show report बटन बंद रहता है।"],
+      ["Message in the red box", "चुनाव के नीचे तब दिखता है जब रिपोर्ट लोड नहीं हो पाती, जैसे This location is not assigned to your login. या Too many cards or unresolved handovers for one report. Review the outstanding trip links first."],
+      ["Shift status boxes", "Show report के बाद रिपोर्ट की हर Shift का एक डिब्बा आता है। इसमें Shift का नाम और उसकी स्थिति, सेव किए गए VLB कार्ड की गिनती और बैच का नाम (या Batch not created) दिखता है। स्थितियाँ ये हैं: Processed, Not processed, Missing / duplicate batch, No saved VLB cards और Batch snapshot needs review। Processed का मतलब है कि उस Shift का ठीक एक बैच है, वह लॉक है, और Shift का हर VLB कार्ड उसी में है और लॉक के बाद बदला नहीं गया।"],
+      ["Report not generated", "कोई भी जाँच फेल होने पर टेबल की जगह यह दिखता है। हर लाइन में गड़बड़ी और उससे जुड़ा कार्ड नंबर, बैच का नाम या डोर नंबर लिखा होता है। सुधार के बाद Show report फिर दबाएँ। प्रिंट और एक्सपोर्ट तभी आते हैं जब सब जाँच पास हों।"],
+      ["Completed trips", "चुनी हुई जानकारी में सब टिपर की पूरी हुई ट्रिप का जोड़।"],
+      ["Quantity (CUM)", "चुनी हुई जानकारी की कुल मात्रा: गिनी गई ट्रिप × मंज़ूर capacity, सब टिपर का जोड़।"],
+      ["Matched · Door and machine trip / quantity totals", "बताता है कि डोर वाली टेबल और मशीन वाली टेबल में ट्रिप और मात्रा का जोड़ बराबर है। रिपोर्ट तभी बनती है जब दोनों बराबर हों।"],
+      ["Source data review", "तब दिखता है जब कुछ कार्ड देखने लायक हैं पर रिपोर्ट को रोकते नहीं। हर लाइन में कार्ड नंबर और टिप्पणी होती है, जैसे Driver / operator ID is missing."],
+      ["Line under the table heading", "साइट, तारीख, शामिल Shift, प्रोसेस हुए बैच के नाम और उनका revision नंबर (बैच हर बार लॉक होने पर यह नंबर बढ़ता है), और रिपोर्ट बनने की तारीख और समय (IST)।"],
+      ["TOTAL (complete selection)", "टेबल की आख़िरी लाइन। इसमें सब लाइनों के ट्रिप, HMR और मात्रा वाले कॉलम का जोड़ होता है।"],
+      ["Sources, capacity versions and calculation rules", "दबाने पर खुलता है। इसमें हिसाब के नियम, इस्तेमाल हुई capacity की मंज़ूरियाँ (साइट, job type, make / model, CUM/trip, लागू होने की तारीख और मंज़ूरी नंबर) और सुधार के बाद रिपोर्ट ताज़ा करने का तरीका लिखा होता है।"]
+    ],
+    "columns": [
+      ["Sr. No.", "क्रम संख्या। लाइनें डोर नंबर के क्रम में होती हैं।"],
+      ["Door No.", "टिपर का डोर नंबर, जैसा Equipment master में है, जैसे V9001। आख़िरी लाइन में यहाँ TOTAL (complete selection) लिखा आता है।"],
+      ["Make", "टिपर का make। अगर सेव किए गए VLB कार्ड पर make और model दोनों हैं तो कार्ड से, नहीं तो Equipment master से लिया जाता है।"],
+      ["Model", "टिपर का model, वहीं से जहाँ से Make आता है। Make और Model से तय होता है कि कौन-सी मंज़ूर capacity लगेगी।"],
+      ["Shift 1 driver", "उस Shift में इस टिपर के सेव किए गए VLB कार्ड पर लिखे ड्राइवर, नाम और Employee ID के साथ, जैसे SAMPLE DRIVER 01 (CMPL90001)। एक से ज़्यादा ड्राइवर हों तो बीच में सेमीकोलन आता है। Unresolved driver / operator का मतलब है कि कार्ड पर Employee ID सेव नहीं है। — का मतलब कार्ड नहीं है। यही कॉलम रिपोर्ट की हर Shift के लिए दोहराया जाता है (Shift 2 driver, Shift 3 driver, Day shift driver, Night shift driver)।"],
+      ["Shift 1 HMR", "उस Shift में टिपर का working HMR, उस Shift के उसके सब सेव कार्ड का जोड़। हर कार्ड के लिए यह कार्ड पर सेव total working HMR है; वह सेव न हो तो closing HMR − opening HMR। अगर किसी कार्ड से काम की रीडिंग न मिले तो — आता है। रिपोर्ट की हर Shift के लिए दोहराया जाता है।"],
+      ["Shift 1 trips", "उस Shift में गिनी गई टिपर की पूरी हुई ट्रिप। ट्रिप उसी कार्ड पर गिनी जाती है जिस पर उसकी लोडिंग लिखी है; जिस लाइन में सिर्फ़ अनलोडिंग का समय है वह दोबारा नहीं गिनी जाती। — का मतलब कोई कार्ड सेव नहीं है; 0 का मतलब कार्ड सेव है पर उसमें गिनने लायक ट्रिप नहीं है। रिपोर्ट की हर Shift के लिए दोहराया जाता है।"],
+      ["Total HMR", "उस लाइन के सब Shift HMR कॉलम का जोड़। किसी भी Shift में HMR न हो तो — आता है।"],
+      ["Capacity (CUM/trip)", "इस टिपर के लिए लगाई गई प्रति ट्रिप मंज़ूर capacity। यह उस साइट, job type, make और model की सबसे नई मंज़ूरी है जिसकी लागू तारीख रिपोर्ट की तारीख या उससे पहले की है; उस साइट और job type की कोई मंज़ूरी न हो तो बिना साइट और job type के सेव की गई पुरानी मंज़ूरी लगती है। टिपर की कोई ट्रिप न गिनी गई हो, या उसकी ट्रिप पर एक से ज़्यादा capacity लगी हों, तो — आता है।"],
+      ["Total trips", "उस लाइन के सब Shift trips कॉलम का जोड़।"],
+      ["Quantity (CUM)", "गिनी गई ट्रिप × प्रति ट्रिप मंज़ूर capacity, उस लाइन की सब Shift का जोड़।"],
+      ["Card coverage", "रिपोर्ट की हर Shift का VLB कार्ड सेव हो तो Cards available लिखा आता है। नहीं तो जिन Shift का कार्ड नहीं है उनका नाम आता है, जैसे S1: no saved VLB card (S1, S2, S3 यानी Shift 1, 2, 3; D यानी Day; N यानी Night)।"]
+    ],
+    "notes": [
+      "Quantity (CUM) प्रति ट्रिप मंज़ूर capacity से निकाली जाती है। यह वे-ब्रिज का नाप नहीं है।",
+      "ट्रिप और मात्रा उस Shift में गिनी जाती हैं जिसमें टिपर लोड हुआ था।",
+      "जब तक चुनी हुई हर Shift का बैच लॉक नहीं होता, कोई आँकड़ा नहीं दिखता। बैच दोबारा खोलने पर, या लॉक के बाद कार्ड बदलने पर, रिपोर्ट तब तक रुकी रहती है जब तक बैच फिर लॉक न हो।",
+      "एक ही Shift में एक टिपर के दो कार्ड अलग-अलग ड्राइवर के हों (रिलीफ़ ड्राइवर) तो वे एक ही लाइन में जुड़ते हैं; उनकी ट्रिप और HMR जोड़ दिए जाते हैं। एक ही टिपर, Shift और ड्राइवर के दो कार्ड हों तो रिपोर्ट जाँच के लिए रुक जाती है।",
+      "अगर एक Shift में किसी टिपर का कुल working HMR Shift की लंबाई से ज़्यादा हो तो भी रिपोर्ट रुक जाती है: Shift 1, 2 और 3 के लिए 8 घंटे, Day और Night के लिए 12 घंटे।",
+      "डाउनलोड की हुई रिपोर्ट पर उसके बनने का समय छपा रहता है। सुधार के बाद बैच फिर लॉक करें और नए आँकड़ों के लिए Show report दबाएँ।"
+    ],
+    "checklist": [
+      "1. Site, 2. Date और 3. Report type (और Shift या Applicable schedule) चुनें, फिर Show report दबाएँ।",
+      "देखें कि हर Shift के डिब्बे में Processed लिखा है। अगर Report not generated आए तो हर लाइन पढ़ें और उसमें लिखा कार्ड, बैच या डोर नोट करें।",
+      "Card coverage में वे टिपर ढूँढें जिनमें no saved VLB card लिखा है और जाँचें कि वह टिपर उस Shift में चला था या नहीं।",
+      "टेबल के ऊपर के Completed trips और Quantity (CUM) के आँकड़े TOTAL (complete selection) लाइन से मिलाएँ।",
+      "Source data review की हर लाइन पढ़ें और उसमें लिखा कार्ड खोलकर जाँचें।",
+      "Sources, capacity versions and calculation rules खोलें और हर make और model के लिए लिखी capacity जाँचें।"
+    ],
+    "faq": [
+      ["स्क्रीन पर Report not generated क्यों आता है?", "कोई एक जाँच फेल हुई है। जैसे: किसी Shift का बैच लॉक नहीं है, लॉक के बाद कोई कार्ड बदला गया है, मंज़ूर capacity नहीं मिली, VLB कार्ड पर लिखी लोडिंग मशीन पहचानी नहीं जा सकी, या किसी लोडिंग मशीन का ELB कार्ड सेव नहीं है। हेडिंग के नीचे की सूची में हर गड़बड़ी और उसका कार्ड, बैच या डोर लिखा होता है।"],
+      ["trips कॉलम में — और 0 में क्या फ़र्क है?", "— का मतलब है कि उस Shift में उस टिपर का कोई VLB कार्ड सेव नहीं है। 0 का मतलब है कि कार्ड सेव है पर उसमें गिनने लायक ट्रिप नहीं है।"],
+      ["जिस टिपर की ट्रिप हैं उसका Capacity (CUM/trip) खाली क्यों है?", "उसकी ट्रिप पर एक से ज़्यादा मंज़ूर capacity लगी हैं, जैसे अलग-अलग job type की ट्रिप। Quantity (CUM) में फिर भी हर ट्रिप पर उसकी अपनी capacity लगती है। इस्तेमाल हुई मंज़ूरियाँ Sources, capacity versions and calculation rules में लिखी होती हैं।"],
+      ["कार्ड सुधारा गया है। नए आँकड़े कैसे मिलेंगे?", "Save & lock batch से बैच फिर लॉक करें, फिर Show report दबाएँ। तब तक Shift में Not processed या Batch snapshot needs review दिखता है और रिपोर्ट नहीं बनती।"]
+    ]
+  }
+}

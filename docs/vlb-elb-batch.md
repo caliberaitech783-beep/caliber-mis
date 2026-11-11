@@ -347,3 +347,14 @@ The feature is on by default. Setting  on the App Service turns it off without a
 Open items before go-live: the two Pulse write endpoints (section 6), a per-site option for a destination-PM OTP, and the team's change list from the trial.
 
 2 November 2026: PM approval by OTP for batch reopening and Unlock VLB added (`server/services/vlb-approval-otp.mjs`, `src/vlb-approval-otp.jsx`), self-approval of a reopening request allowed for a PM who is also the requester. Tests: `test/vlb-approval-otp.test.mjs`, `test/vlb-approval-otp-ui.test.mjs`. No new switch: it is available wherever the OTP delivery is configured, which it is on live.
+
+## Locking (8 November 2026)
+
+Batch writers lock one site, date and shift with `lockVlbBatchScope` (a shared hold on
+`hashtext('mis_vlb_saved_batches')` plus an exclusive two-key advisory lock on the scope).
+Card saves through `assertVlbBatchWrite` and `assertElbBatchWrite`, the batch routes
+(create, close, lock VLB, unlock VLB, fleet draft, fleet entry, reopen, approvals) and
+the manual log-book form all use it, so six sites work at the same time while a save
+and a close of the same batch still queue behind each other. Batch deletions, restores
+and the PM trial keep the whole-table exclusive lock, so they wait for every writer.
+Pulse breakdown hours are read before any lock is taken; see SCAN-PERFORMANCE.md.

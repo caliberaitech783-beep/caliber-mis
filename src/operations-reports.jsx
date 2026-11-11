@@ -3,19 +3,23 @@ import SmartSelect from './smart-select.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import ProductionReports from './production-reports.jsx';
 import MeterContinuityReport from './meter-continuity-report.jsx';
+import BatchStatusReport from './batch-status-report.jsx';
+import TripTimingReport from './trip-timing-report.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 import {encodeDateRange,parseDateRange} from './date-range-filter.mjs';
+import {monthStartDate} from '../shared/operational-start.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
  if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
- if(['manpower','employee','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
+ if(props.reportId==='batch-status')return <BatchStatusReport {...props}/>;
+ if(['manpower','manpower-reconciliation','employee','attendance','ot'].includes(props.reportId))return <ManpowerReports {...props}/>;
  return <SavedOperationReports {...props}/>;
 }
 function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportSection}){
- const [filters,setFilters]=useState(()=>({from:today().slice(0,7)+'-01',to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
+ const [filters,setFilters]=useState(()=>({from:monthStartDate(today()),to:today(),site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''}));
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),[monthly,setMonthly]=useState(false);
  const id=operationReports.some(r=>r.id===reportId)?reportId:'daily',definition=operationReports.find(r=>r.id===id);
  const valid=filters.from&&filters.to&&filters.from>='2026-11-01'&&filters.to>='2026-11-01'&&filters.from<=filters.to&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<=365;
@@ -29,13 +33,15 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const options=(key,label)=>[...new Map(optionRows.filter(r=>!filters.site||r.location===filters.site).map(r=>[String(r[key]||''),r[label]||r[key]])).entries()].filter(([v])=>v).sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
  const field=(key,label,choices)=> <label>{label}<SmartSelect value={filters[key]} onChange={e=>set(key,e.target.value)} disabled={id==='missing'&&['employee','workOrder'].includes(key)}><option value="">All</option>{choices.map(([value,text])=><option key={value} value={value}>{text}</option>)}</SmartSelect></label>;
  const canExport=Boolean(data)&&!busy&&!error&&valid&&data.reportRange===filters.from+'|'+filters.to;
- const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||today().slice(0,7)+'-01',to:range?.to||today()}));}};
+ const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||monthStartDate(today()),to:range?.to||today()}));}};
+ // The table of the chosen report. The Trip Timing tab shows it as its "All trip rows" view, beside the two delay views.
+ const table=<ReportSection key={id} reportKey={definition.title} recordDateFilter={recordDateFilter} dataReady={canExport} title={definition.title+' · '+filters.from+' to '+filters.to} category={'operations-'+id} description={'Filters: '+(Object.entries(effective).filter(([key,value])=>value&&!['from','to'].includes(key)).map(([key,value])=>key+': '+value).join(' · ')||'All assigned records')} columns={report.columns.map((label,index)=>({key:id+'-'+index,label,value:row=>row[index]}))} rows={report.rows} emptyMessage="No matching records or exceptions found."/>;
  return <section className="operations-reports">
   <header><div><small>MIS / REPORTS / {definition.group}</small><h1>{definition.title}</h1><p>Saved operational records · {filters.from} to {filters.to}</p></div><div className="op-actions"><button onClick={()=>setReload(v=>v+1)} disabled={busy}>Refresh</button></div></header>
   <div className="op-report-picker"><label>Report<SmartSelect value={id} onChange={e=>onSelect(e.target.value)}>{[...new Set(operationReports.map(r=>r.group))].map(group=><optgroup label={group} key={group}>{operationReports.filter(r=>r.group===group).map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</optgroup>)}</SmartSelect></label></div>
   <div className="op-filters"><label>From<input type="date" min="2026-11-01" value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min="2026-11-01" value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{field('site','Site',[...new Set([...all.map(r=>r.location),...(data?.assets||[]).map(a=>a.site)])].filter(Boolean).sort().map(v=>[v,v]))}{field('shift','Shift',options('shiftId','shiftName'))}{field('asset','Vehicle / equipment',options('assetId','door'))}{field('employee','Driver / operator',options('employeeId','employeeName'))}{field('workOrder','Work order',options('workOrderContract','workOrderContract'))}{['loading','timing'].includes(id)&&field('loading','Loading equipment',[...new Set(all.flatMap(r=>(r.trips||[]).map(t=>t.equipmentName)))].sort().map(v=>[v,v]))}{id==='trends'&&<label>Grouping<SmartSelect value={monthly?'monthly':'daily'} onChange={e=>setMonthly(e.target.value==='monthly')}><option value="daily">Daily</option><option value="monthly">Monthly</option></SmartSelect></label>}</div>
   {!valid&&<p role="alert">Choose a valid date range of at most 366 days.</p>}{error&&<p role="alert">{error}</p>}{busy&&<p role="status">Loading complete report data…</p>}
-  {data&&valid&&!error&&<><p className="op-filter-summary">Filters: {Object.entries(effective).filter(([k,v])=>v&&!['from','to'].includes(k)).map(([k,v])=>k+': '+v).join(' · ')||'All sites, assets, shifts and employees'}</p><div className="op-totals"><span><b>{selected.length}</b> logbooks</span><span><b>{new Set(selected.map(r=>r.assetId)).size}</b> assets</span><span><b>{selected.reduce((s,r)=>s+r.tripsTotal,0)}</b> trips</span><span><b>{report.rows.length}</b> report rows</span></div>{requirements[id]&&<p className="op-notice"><b>Additional data required:</b> {requirements[id]}.</p>}{report.note&&<p className="op-notice">{report.note}</p>}{id==='scans'&&!data.scanConnected&&<p role="status">Scan data source is not available.</p>}<ReportSection key={id} reportKey={definition.title} recordDateFilter={recordDateFilter} dataReady={canExport} title={definition.title+' · '+filters.from+' to '+filters.to} category={'operations-'+id} description={'Filters: '+(Object.entries(effective).filter(([key,value])=>value&&!['from','to'].includes(key)).map(([key,value])=>key+': '+value).join(' · ')||'All assigned records')} columns={report.columns.map((label,index)=>({key:id+'-'+index,label,value:row=>row[index]}))} rows={report.rows} emptyMessage="No matching records or exceptions found."/></>}
+  {data&&valid&&!error&&<><p className="op-filter-summary">Filters: {Object.entries(effective).filter(([k,v])=>v&&!['from','to'].includes(k)).map(([k,v])=>k+': '+v).join(' · ')||'All sites, assets, shifts and employees'}</p><div className="op-totals"><span><b>{selected.length}</b> logbooks</span><span><b>{new Set(selected.map(r=>r.assetId)).size}</b> assets</span><span><b>{selected.reduce((s,r)=>s+r.tripsTotal,0)}</b> trips</span><span><b>{report.rows.length}</b> report rows</span></div>{requirements[id]&&<p className="op-notice"><b>Additional data required:</b> {requirements[id]}.</p>}{report.note&&id!=='timing'&&<p className="op-notice">{report.note}</p>}{id==='scans'&&!data.scanConnected&&<p role="status">Scan data source is not available.</p>}{id==='timing'?<TripTimingReport records={selected} loading={filters.loading} period={filters.from+' to '+filters.to} ReportSection={ReportSection} dataReady={canExport} rowsView={<>{report.note&&<p className="op-notice">{report.note}</p>}{table}</>}/>:table}</>}
  </section>;
 }
 

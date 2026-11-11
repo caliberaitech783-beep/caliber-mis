@@ -1,6 +1,12 @@
-## One manual VLB card per tipper per shift, late batch alerts, meter continuity report, Pending in Pulse
+## Shared shifts in VLB and ELB
 
-A manual VLB save or edit is refused with 409 (`code: duplicate_card`) when another active vehicle card exists for the same site, date, shift and tipper; the message names the existing card. The form then asks for a reason of at least ten characters and resubmits with `duplicateReason`; the server keeps it on the card with `duplicateOf` and writes `card_added_duplicate` to `mis_vlb_batch_audit`. The batch report shows an **Additional card** column only when a batch contains one. Scanned cards are not covered by this rule; they keep their unique index on the printed card number. `server/rules/vlb-duplicate-card.mjs` holds the rule.
+Save a separate trip card for each driver or operator who worked on the same vehicle or equipment during a shift. In ELB Manual, select **Add relief card** on the saved machine row. The opening HMR defaults to the previous card's closing HMR.
+
+MIS adds the cards' working HMR for the same asset, site, date and shift. It refuses saves above 8 HMR for shifts I, II and III or 12 HMR for Day and Night. Production reports show one row per asset with the combined shift HMR, operators and trip totals. Each source card remains available under its own card number.
+
+The manual VLB override for a repeated card with the same driver still requires a reason of at least ten characters and records it in the batch audit. Scan duplicate checks continue to identify repeat uploads and printed card numbers.
+
+## Late batch alerts, meter continuity report and Pending in Pulse
 
 `server/routes/vlb-batch-alerts.mjs` runs a minute worker (disable with `VLB_BATCH_ALERTS=0`). For every Shift Master row in force today and yesterday it computes the shift end in India time and sends a Telegram message through the MIS outbox when no batch exists two hours after shift end, or the batch is still open six hours after shift end, repeating every two hours until the condition clears. Recipients are the site Project Managers (same lookup as the express OTPs) plus the production head logins from the settings; with neither configured, the site's MIS users. Offsets, reminder interval, production head logins and Pulse administrator logins live in `app_settings` under `vlb_batch_alerts` and are edited on the Telegram Integration page (`/api/vlb-batch-alerts/settings`, `/state`, `/run`). State per alert is kept in `mis_vlb_batch_alert_state`.
 
@@ -442,6 +448,7 @@ Since the transient-failure hardening the app no longer answers a bare `Server e
 - `server/middleware/server-error-response.mjs` turns database connection drops (PostgreSQL restarts, slot swaps, `ECONNRESET`, SQLSTATE classes 08/57/53/40) into HTTP 503 with `Retry-After: 5` and the message "The server is reconnecting to the database. Please retry in a moment." Route errors that carry a status keep that status and message; anything else is a 500 whose message tells the user to retry or contact the administrator. Every 500 is logged with its method and URL, so search the Log Stream for `[500]`.
 - `pool.on('error')` and `process.on('unhandledRejection')` keep the process alive when an idle database connection breaks; before this a single dropped idle connection exited Node and every user saw errors until App Service restarted the container.
 - `src/api-transient-retry.mjs` makes the browser wait and retry read-only `/api/` requests that receive 408/425/429/502/503/504 or a dropped connection (about 19 seconds across five attempts, honouring `Retry-After`). Writes are never replayed. A message still reaches the user only when the outage outlasts the retry window.
+- Reads from Pulse are reused for a short window (`server/routes/pulse-master-sync.mjs`: `PULSE_FEED_REUSE_MS` 20 s for the breakdown feed, per actor; `PULSE_FLEET_REUSE_MS` 30 s for the fleet of a site). Every card save and auto-save used to read Pulse's whole breakdown feed and whole fleet again; at scanning speed across six sites those reads filled Pulse's ten database connections, and Pulse's own sign-in (which the MIS sign-in goes through) timed out with HTTP 504 on 10 Nov 2026. A recheck in equipment review still reads the fleet fresh, and a trip verification clears the feed window for that actor.
 
 If a user still reports a server error, the Log Stream line tagged `[500]` names the failing route and stack; fix that route and add a regression test.
 

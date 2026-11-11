@@ -1,0 +1,98 @@
+{
+  "id": "billing",
+  "group": "Commercial",
+  "title": "Contractor Billing",
+  "menu": "Reports → Commercial → Contractor Billing",
+  "en": {
+    "purpose": "This tab is kept for a contractor billing report. Today it does not show any rate, billable quantity or bill amount: the table has one row that names the data still needed (\"Contract rates, billable quantities and billing rules\") with the status \"Source not connected\". The totals line above the table still counts the saved log books, assets and trips for the chosen dates.",
+    "row": "The table has a single row. It is not a bill or a billing line; it only names the data the report needs and says that its source is not connected.",
+    "filters": [
+      ["From", "First book date for the totals line. It opens on the 1st of the current month (India time). Dates before 1 November 2026 are not accepted. It does not change the table row."],
+      ["To", "Last book date for the totals line. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and nothing is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
+      ["Site", "Narrows the saved log books counted in the totals line to that site. \"All\" means every site assigned to your login. The table row stays the same."],
+      ["Shift", "Narrows the totals line to log books of that shift. The table row stays the same."],
+      ["Vehicle / equipment", "Narrows the totals line to log books of that door number. The table row stays the same."],
+      ["Driver / operator", "Narrows the totals line to log books of that person. The table row stays the same."],
+      ["Work order", "Narrows the totals line to log books saved against that work order. It does not bring any contract rate onto the screen, and the table row stays the same."]
+    ],
+    "screen": [
+      ["Report", "Picker at the top of the screen. It lists all reports under their groups; choosing a name opens that report."],
+      ["Refresh", "Loads the saved records for the chosen dates again. On this report it updates only the totals line."],
+      ["Filters:", "One line showing what is selected in Site, Shift, Vehicle / equipment, Driver / operator and Work order, written as \"site: …\", \"shift: …\", \"asset: …\", \"employee: …\" and \"workOrder: …\". With nothing selected it reads \"All sites, assets, shifts and employees\". Site and Work order appear by name; Shift, Vehicle / equipment and Driver / operator appear as the system's internal number."],
+      ["logbooks", "Number of saved VLB and ELB log books that match the dates and selectors."],
+      ["assets", "Number of different doors on those log books."],
+      ["trips", "Total trips on those log books. This is a count of trips, not a billable quantity."],
+      ["report rows", "Always 1 on this report."],
+      ["Additional data required: Contract rates, billable quantities and billing rules.", "Notice naming the data this report still needs."],
+      ["This report needs an additional data source. No quantities, rates or results have been estimated.", "Notice confirming that nothing on this tab is calculated or estimated."]
+    ],
+    "columns": [
+      ["Required data", "The data the report needs: \"Contract rates, billable quantities and billing rules\"."],
+      ["Status", "Always \"Source not connected\"."]
+    ],
+    "notes": [
+      "No rate, billable quantity or amount is produced on this tab. The table cannot be used as a bill or as a billing statement.",
+      "The only figures on the screen are in the totals line (logbooks, assets, trips). They come from saved VLB and ELB log books of sites assigned to your login.",
+      "Log books, trips and hours grouped by site and work order can be read in Site / Work Order Summary under Reports → Operations.",
+      "Download as PDF, Download as Excel and Smart Print give the same one-row table.",
+      "The screen does not say when the data source will be connected."
+    ],
+    "checklist": [
+      "Open the report and read the notice \"Additional data required: Contract rates, billable quantities and billing rules.\"",
+      "Confirm that the table shows one row with Status \"Source not connected\".",
+      "If you need the number of trips for a work order, set From, To, Site and Work order and read trips in the totals line.",
+      "Do not read any figure on this tab as a billable quantity or an amount."
+    ],
+    "faq": [
+      ["Why does the table have only one row?", "The report has no source for contract rates, billable quantities or billing rules, so it only shows which data is needed and the status \"Source not connected\"."],
+      ["Does choosing a Work order show its bill?", "No. It only narrows the totals line to log books saved against that work order. No rate or amount is shown."],
+      ["Can the download be used as a billing statement?", "No. The download contains the same one row, \"Source not connected\"."]
+    ]
+  },
+  "hi": {
+    "purpose": "यह टैब ठेकेदार की बिलिंग की रिपोर्ट के लिए रखा गया है। अभी यह कोई दर, बिल में लगने वाली मात्रा या बिल की रकम नहीं दिखाता: टेबल में एक ही लाइन है जो बताती है कि कौन-सा डेटा अभी चाहिए (\"Contract rates, billable quantities and billing rules\") और उसका Status \"Source not connected\" है। टेबल के ऊपर की कुल गिनती वाली लाइन फिर भी चुनी हुई तारीखों की सेव लॉग बुक, asset और ट्रिप गिनती है।",
+    "row": "टेबल में सिर्फ़ एक लाइन है। यह बिल या बिल की कोई लाइन नहीं है; यह सिर्फ़ बताती है कि रिपोर्ट को कौन-सा डेटा चाहिए और उसका स्रोत जुड़ा नहीं है।",
+    "filters": [
+      ["From", "कुल गिनती वाली लाइन के लिए पहली बुक तारीख। स्क्रीन खुलने पर चालू महीने की 1 तारीख (भारतीय समय) रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती। इससे टेबल की लाइन नहीं बदलती।"],
+      ["To", "कुल गिनती वाली लाइन के लिए आख़िरी बुक तारीख। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और कुछ नहीं दिखता। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
+      ["Site", "कुल गिनती वाली लाइन में सिर्फ़ उस साइट की सेव लॉग बुक गिनता है। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट। टेबल की लाइन वही रहती है।"],
+      ["Shift", "कुल गिनती वाली लाइन में सिर्फ़ उस Shift की लॉग बुक गिनता है। टेबल की लाइन वही रहती है।"],
+      ["Vehicle / equipment", "कुल गिनती वाली लाइन में सिर्फ़ उस डोर नंबर की लॉग बुक गिनता है। टेबल की लाइन वही रहती है।"],
+      ["Driver / operator", "कुल गिनती वाली लाइन में सिर्फ़ उस व्यक्ति की लॉग बुक गिनता है। टेबल की लाइन वही रहती है।"],
+      ["Work order", "कुल गिनती वाली लाइन में सिर्फ़ उस work order पर सेव लॉग बुक गिनता है। इससे स्क्रीन पर कोई contract दर नहीं आती, और टेबल की लाइन वही रहती है।"]
+    ],
+    "screen": [
+      ["Report", "स्क्रीन के ऊपर की सूची। इसमें सभी रिपोर्ट अपने-अपने ग्रुप के नीचे हैं; नाम चुनने पर वह रिपोर्ट खुल जाती है।"],
+      ["Refresh", "चुनी हुई तारीखों का सेव रिकॉर्ड दोबारा लाता है। इस रिपोर्ट में इससे सिर्फ़ कुल गिनती वाली लाइन बदलती है।"],
+      ["Filters:", "एक लाइन जो बताती है कि Site, Shift, Vehicle / equipment, Driver / operator और Work order में क्या चुना है। यह \"site: …\", \"shift: …\", \"asset: …\", \"employee: …\" और \"workOrder: …\" के रूप में लिखा आता है। कुछ न चुना हो तो \"All sites, assets, shifts and employees\" आता है। Site और Work order नाम से दिखते हैं; Shift, Vehicle / equipment और Driver / operator सिस्टम के अंदरूनी नंबर से दिखते हैं।"],
+      ["logbooks", "तारीखों और फ़िल्टर से मिलने वाली सेव की गई VLB और ELB लॉग बुक की गिनती।"],
+      ["assets", "उन लॉग बुक पर अलग-अलग डोर कितने हैं।"],
+      ["trips", "उन लॉग बुक पर कुल ट्रिप। यह ट्रिप की गिनती है, बिल में लगने वाली मात्रा नहीं।"],
+      ["report rows", "इस रिपोर्ट में हमेशा 1।"],
+      ["Additional data required: Contract rates, billable quantities and billing rules.", "सूचना जो बताती है कि इस रिपोर्ट को अभी कौन-सा डेटा चाहिए।"],
+      ["This report needs an additional data source. No quantities, rates or results have been estimated.", "सूचना जो साफ़ करती है कि इस टैब पर कुछ भी निकाला या अंदाज़े से भरा नहीं गया है।"]
+    ],
+    "columns": [
+      ["Required data", "रिपोर्ट को जो डेटा चाहिए: \"Contract rates, billable quantities and billing rules\"।"],
+      ["Status", "हमेशा \"Source not connected\"।"]
+    ],
+    "notes": [
+      "इस टैब पर कोई दर, बिल में लगने वाली मात्रा या रकम नहीं बनती। इस टेबल को बिल या बिलिंग स्टेटमेंट की तरह इस्तेमाल नहीं किया जा सकता।",
+      "स्क्रीन पर आँकड़े सिर्फ़ कुल गिनती वाली लाइन में हैं (logbooks, assets, trips)। ये आपके लॉगिन को दी गई साइट की सेव VLB और ELB लॉग बुक से आते हैं।",
+      "साइट और work order के हिसाब से लॉग बुक, ट्रिप और घंटे Reports → Operations में Site / Work Order Summary में पढ़े जा सकते हैं।",
+      "Download as PDF, Download as Excel और Smart Print में भी यही एक लाइन की टेबल मिलती है।",
+      "स्क्रीन यह नहीं बताती कि डेटा का स्रोत कब जुड़ेगा।"
+    ],
+    "checklist": [
+      "रिपोर्ट खोलें और सूचना \"Additional data required: Contract rates, billable quantities and billing rules.\" पढ़ें।",
+      "देखें कि टेबल में एक ही लाइन है और Status में \"Source not connected\" लिखा है।",
+      "अगर किसी work order की ट्रिप की गिनती चाहिए तो From, To, Site और Work order भरें और कुल गिनती वाली लाइन में trips पढ़ें।",
+      "इस टैब के किसी भी आँकड़े को बिल में लगने वाली मात्रा या रकम न समझें।"
+    ],
+    "faq": [
+      ["टेबल में सिर्फ़ एक लाइन क्यों है?", "रिपोर्ट के पास contract की दरों, बिल में लगने वाली मात्रा या बिलिंग के नियमों का कोई स्रोत नहीं है, इसलिए यह सिर्फ़ बताती है कि कौन-सा डेटा चाहिए और Status \"Source not connected\" दिखाती है।"],
+      ["क्या Work order चुनने पर उसका बिल दिखता है?", "नहीं। इससे सिर्फ़ कुल गिनती वाली लाइन उस work order पर सेव लॉग बुक तक सीमित होती है। कोई दर या रकम नहीं दिखती।"],
+      ["क्या डाउनलोड को बिलिंग स्टेटमेंट की तरह इस्तेमाल किया जा सकता है?", "नहीं। डाउनलोड में भी वही एक लाइन है, \"Source not connected\"।"]
+    ]
+  }
+}

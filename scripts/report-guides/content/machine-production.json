@@ -1,0 +1,126 @@
+{
+  "id": "machine-production",
+  "group": "Trips & Productivity",
+  "title": "Day-wise Machine Number Report",
+  "menu": "Reports → Trips & Productivity → Day-wise Machine Number Report",
+  "en": {
+    "purpose": "This report shows, for one site and one date, how many tipper trips each loading machine loaded in each Shift, the quantity in cubic metres (CUM) of those trips, and the machine's working HMR from its saved ELB cards. The trips come from saved VLB cards whose batch has been locked with Save & lock batch. A site in-charge or MIS clerk uses it to check production machine by machine.",
+    "row": "One row is one machine at the selected site on the selected date. Every active machine (equipment) listed at that site in the Equipment master gets a row, even when it has no ELB card and loaded no trips. The last row, TOTAL (complete selection), adds up all the rows.",
+    "filters": [
+      ["1. Site", "Choose the site. Only sites allowed for your login are listed. Changing the site clears the Shift and Applicable schedule choices."],
+      ["2. Date", "The card date for the report. It opens on today's date. Dates before 1 November 2026 cannot be chosen. Changing the date clears the Shift and Applicable schedule choices."],
+      ["3. Report type", "Shift-wise shows one Shift. Day-wise shows every Shift of that date side by side, with totals for the day."],
+      ["Shift", "Shown when Report type is Shift-wise. It lists only the Shifts found in the Shift Master for that site and date (Shift 1, Shift 2, Shift 3, Day shift, Night shift). One must be chosen."],
+      ["Applicable schedule", "Shown only when Report type is Day-wise and the Shift Master has both a three-shift schedule and a Day/Night schedule for that site and date. Choose Shift 1 / 2 / 3 or Day / Night."],
+      ["Show report", "Loads the report for the choices made. The button stays disabled until Site, Date and Shift (or schedule) are filled. While loading it reads Checking batches…. If any choice is changed afterwards, the result is cleared; press Show report again."]
+    ],
+    "screen": [
+      ["Door number / Machine number", "Two buttons under the heading. Machine number is this report. Door number opens the Day-wise Door Number Report; the choices already made stay as they are."],
+      ["No active, unambiguous Shift Master schedule is available for this site and date.", "Shown after a site is chosen when no usable Shift is found in the Shift Master for that site and date. Show report stays disabled in that case."],
+      ["Message in the red box", "Shown under the selection when the report cannot be loaded, for example This location is not assigned to your login. or Too many cards or unresolved handovers for one report. Review the outstanding trip links first."],
+      ["Shift status boxes", "After Show report, one box for each Shift in the report. It shows the Shift name and its status, the number of saved VLB cards and the batch name (or Batch not created). The statuses are Processed, Not processed, Missing / duplicate batch, No saved VLB cards and Batch snapshot needs review. Processed means there is exactly one batch for that Shift, it is locked, and every VLB card of the Shift is in it unchanged since the lock."],
+      ["Report not generated", "Shown in place of the table when any check fails. Each line states the problem and the card number, batch name or machine number it refers to. After the corrections, press Show report again. Print and export appear only when all checks pass."],
+      ["Completed trips", "Total completed trips in the selection. It is the same figure as in the Door number report."],
+      ["Quantity (CUM)", "Total quantity of the selection: counted trips × approved tipper capacity. It is the same figure as in the Door number report."],
+      ["Matched · Door and machine trip / quantity totals", "Tells that the trip and quantity totals of the door-wise table and the machine-wise table are equal. The report is generated only when they are equal."],
+      ["Source data review", "Shown when some cards need a look but do not stop the report. Each line gives the card number and the remark, for example Driver / operator ID is missing. or ELB hours that do not add up to the scheduled hours."],
+      ["Line under the table heading", "Site, date, Shifts covered, the processed batch names with their revision number (the number goes up each time the batch is locked), and the date and time the report was generated (IST)."],
+      ["TOTAL (complete selection)", "The last row of the table. It adds the trips, HMR and quantity columns of all rows."],
+      ["Sources, capacity versions and calculation rules", "Press to open. It lists the calculation rules, the capacity approvals used (site, job type, make / model, CUM/trip, effective date and approval number) and how to refresh the report after a correction."]
+    ],
+    "columns": [
+      ["Sr. No.", "Running number. Rows are in machine number order."],
+      ["Machine / M No.", "Number of the machine as in the Equipment master. In the last row it reads TOTAL (complete selection)."],
+      ["Shift 1 operator", "Operators named on the saved ELB cards of this machine in that Shift, as name and Employee ID, for example SAMPLE DRIVER 01 (CMPL90001). More than one operator is separated by a semicolon. Unresolved driver / operator means the card has no Employee ID saved. — means no card. The same column repeats for every Shift in the report (Shift 2 operator, Shift 3 operator, Day shift operator, Night shift operator)."],
+      ["Shift 1 HMR", "Working HMR of the machine in that Shift, added over all its saved ELB cards of that Shift. For each card it is the total working HMR saved on the card, or closing HMR − opening HMR when that total is not saved. — when there is no card. Repeats for every Shift in the report."],
+      ["Shift 1 trips", "Tipper trips loaded by this machine in that Shift. Every counted trip on a VLB card is added to the loading machine recorded against that trip. — means no saved ELB card and no trips; 0 means an ELB card is saved but no counted trip names this machine. Repeats for every Shift in the report."],
+      ["Shift 1 quantity (CUM)", "Quantity loaded by the machine in that Shift: each trip × the approved capacity of the tipper that carried it. — and 0 follow the same rule as the trips column. Repeats for every Shift in the report."],
+      ["Total HMR", "Sum of the Shift HMR columns of the row. — when no Shift has HMR."],
+      ["Total trips", "Sum of the Shift trips columns of the row."],
+      ["Quantity (CUM)", "Sum of the Shift quantity columns of the row."],
+      ["Card coverage", "Cards available when an ELB card is saved for every Shift in the report. Otherwise it names the Shifts without a card, for example S1: no saved ELB card (S1, S2, S3 are Shift 1, 2, 3; D is Day; N is Night)."]
+    ],
+    "notes": [
+      "Quantity (CUM) uses the approved capacity of the tipper that carried each trip. It is not a weighbridge measurement and not a bucket count of the machine.",
+      "Trips and quantity belong to the Shift in which the tipper was loaded.",
+      "The loading machine of a trip is taken from the equipment link saved on the VLB trip row. If there is no link, the machine name written on the row must match exactly one machine of the site by its number, equipment name or a saved card alias; otherwise the report is not generated.",
+      "If a machine has loaded trips in a Shift but no ELB card is saved for it in that Shift, the report is not generated and the machine is named in the list.",
+      "An ELB card whose opening and closing HMR cannot give working hours stops the report. ELB hours that do not add up to the scheduled hours are only listed under Source data review; the saved values are not changed.",
+      "The report also stops when the combined working HMR of a machine in one Shift is more than the Shift length: 8 hours for Shift 1, 2 and 3, 12 hours for Day and Night."
+    ],
+    "checklist": [
+      "Choose 1. Site, 2. Date and 3. Report type (and Shift or Applicable schedule), then press Show report.",
+      "Check that every Shift status box reads Processed. If Report not generated appears, read each line and note the card, batch or machine it names.",
+      "In Card coverage, find the machines that show no saved ELB card and check whether that machine worked in that Shift.",
+      "For a machine that shows HMR but 0 trips, check on the VLB cards of that Shift whether its number was written as the loading machine.",
+      "Compare the Completed trips and Quantity (CUM) figures above the table with the TOTAL (complete selection) row and with the Door number report.",
+      "Read each line under Source data review and open the named card to check it."
+    ],
+    "faq": [
+      ["What does Loading machine number is missing, ambiguous or outside this site. Correct the VLB equipment link. mean?", "A counted trip on the named VLB card has a loading machine that is blank, matches more than one machine, or is not a machine of this site. The line shows the card number and the machine name as written on the card."],
+      ["What does Saved ELB is missing for loading machine … mean?", "VLB cards show trips loaded by that machine in the named Shift, but no ELB card of that machine is saved for the same date and Shift. Until that ELB card is saved, the report is not generated."],
+      ["What is the difference between — and 0 in a trips column?", "— means no ELB card is saved for that machine in that Shift. 0 means an ELB card is saved but no counted trip on the VLB cards names this machine."],
+      ["Why are the machine totals always equal to the door totals?", "Each counted trip is added once to its tipper and once to its loading machine, with the same quantity. If the two totals differ, the report is not generated."]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट एक साइट और एक तारीख के लिए दिखाती है कि हर लोडिंग मशीन ने हर Shift में टिपर की कितनी ट्रिप लोड कीं, उन ट्रिप की घन मीटर (CUM) में मात्रा कितनी है, और मशीन के सेव किए गए ELB कार्ड से उसका working HMR कितना है। ट्रिप उन सेव किए गए VLB कार्ड से आती हैं जिनका बैच Save & lock batch से लॉक हो चुका है। साइट इंचार्ज या MIS क्लर्क इससे मशीन के हिसाब से प्रोडक्शन जाँचते हैं।",
+    "row": "एक लाइन चुनी हुई साइट और तारीख पर एक मशीन की होती है। Equipment master में उस साइट पर दर्ज हर चालू मशीन (equipment) की लाइन बनती है, चाहे उसका ELB कार्ड न हो और उसने कोई ट्रिप लोड न की हो। आख़िरी लाइन TOTAL (complete selection) सब लाइनों का जोड़ है।",
+    "filters": [
+      ["1. Site", "साइट चुनें। सूची में सिर्फ़ वही साइट आती हैं जो आपके लॉगिन को दी गई हैं। साइट बदलने पर Shift और Applicable schedule का चुनाव हट जाता है।"],
+      ["2. Date", "जिस तारीख के कार्ड की रिपोर्ट चाहिए। शुरू में आज की तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं चुनी जा सकती। तारीख बदलने पर Shift और Applicable schedule का चुनाव हट जाता है।"],
+      ["3. Report type", "Shift-wise में एक Shift दिखती है। Day-wise में उस तारीख की सभी Shift साथ-साथ दिखती हैं और दिन का जोड़ भी आता है।"],
+      ["Shift", "Report type में Shift-wise चुनने पर दिखता है। इसमें सिर्फ़ वही Shift आती हैं जो उस साइट और तारीख के लिए Shift Master में मिलती हैं (Shift 1, Shift 2, Shift 3, Day shift, Night shift)। एक चुनना ज़रूरी है।"],
+      ["Applicable schedule", "सिर्फ़ तब दिखता है जब Report type में Day-wise हो और Shift Master में उस साइट और तारीख के लिए तीन Shift वाला और Day/Night वाला, दोनों शेड्यूल हों। Shift 1 / 2 / 3 या Day / Night चुनें।"],
+      ["Show report", "चुनी हुई जानकारी की रिपोर्ट लाता है। जब तक Site, Date और Shift (या schedule) नहीं भरे जाते, यह बटन बंद रहता है। लोड होते समय इस पर Checking batches… लिखा आता है। बाद में कोई चुनाव बदलने पर नतीजा हट जाता है; Show report फिर दबाएँ।"]
+    ],
+    "screen": [
+      ["Door number / Machine number", "हेडिंग के नीचे दो बटन। Machine number यही रिपोर्ट है। Door number दबाने पर Day-wise Door Number Report खुलती है; पहले से चुनी हुई जानकारी वैसी ही रहती है।"],
+      ["No active, unambiguous Shift Master schedule is available for this site and date.", "साइट चुनने के बाद तब दिखता है जब उस साइट और तारीख के लिए Shift Master में कोई काम की Shift नहीं मिलती। ऐसे में Show report बटन बंद रहता है।"],
+      ["Message in the red box", "चुनाव के नीचे तब दिखता है जब रिपोर्ट लोड नहीं हो पाती, जैसे This location is not assigned to your login. या Too many cards or unresolved handovers for one report. Review the outstanding trip links first."],
+      ["Shift status boxes", "Show report के बाद रिपोर्ट की हर Shift का एक डिब्बा आता है। इसमें Shift का नाम और उसकी स्थिति, सेव किए गए VLB कार्ड की गिनती और बैच का नाम (या Batch not created) दिखता है। स्थितियाँ ये हैं: Processed, Not processed, Missing / duplicate batch, No saved VLB cards और Batch snapshot needs review। Processed का मतलब है कि उस Shift का ठीक एक बैच है, वह लॉक है, और Shift का हर VLB कार्ड उसी में है और लॉक के बाद बदला नहीं गया।"],
+      ["Report not generated", "कोई भी जाँच फेल होने पर टेबल की जगह यह दिखता है। हर लाइन में गड़बड़ी और उससे जुड़ा कार्ड नंबर, बैच का नाम या मशीन नंबर लिखा होता है। सुधार के बाद Show report फिर दबाएँ। प्रिंट और एक्सपोर्ट तभी आते हैं जब सब जाँच पास हों।"],
+      ["Completed trips", "चुनी हुई जानकारी में पूरी हुई ट्रिप का जोड़। यह वही आँकड़ा है जो Door number रिपोर्ट में आता है।"],
+      ["Quantity (CUM)", "चुनी हुई जानकारी की कुल मात्रा: गिनी गई ट्रिप × टिपर की मंज़ूर capacity। यह वही आँकड़ा है जो Door number रिपोर्ट में आता है।"],
+      ["Matched · Door and machine trip / quantity totals", "बताता है कि डोर वाली टेबल और मशीन वाली टेबल में ट्रिप और मात्रा का जोड़ बराबर है। रिपोर्ट तभी बनती है जब दोनों बराबर हों।"],
+      ["Source data review", "तब दिखता है जब कुछ कार्ड देखने लायक हैं पर रिपोर्ट को रोकते नहीं। हर लाइन में कार्ड नंबर और टिप्पणी होती है, जैसे Driver / operator ID is missing. या ELB के घंटे जो तय (scheduled) घंटों से मेल नहीं खाते।"],
+      ["Line under the table heading", "साइट, तारीख, शामिल Shift, प्रोसेस हुए बैच के नाम और उनका revision नंबर (बैच हर बार लॉक होने पर यह नंबर बढ़ता है), और रिपोर्ट बनने की तारीख और समय (IST)।"],
+      ["TOTAL (complete selection)", "टेबल की आख़िरी लाइन। इसमें सब लाइनों के ट्रिप, HMR और मात्रा वाले कॉलम का जोड़ होता है।"],
+      ["Sources, capacity versions and calculation rules", "दबाने पर खुलता है। इसमें हिसाब के नियम, इस्तेमाल हुई capacity की मंज़ूरियाँ (साइट, job type, make / model, CUM/trip, लागू होने की तारीख और मंज़ूरी नंबर) और सुधार के बाद रिपोर्ट ताज़ा करने का तरीका लिखा होता है।"]
+    ],
+    "columns": [
+      ["Sr. No.", "क्रम संख्या। लाइनें मशीन नंबर के क्रम में होती हैं।"],
+      ["Machine / M No.", "मशीन का नंबर, जैसा Equipment master में है। आख़िरी लाइन में यहाँ TOTAL (complete selection) लिखा आता है।"],
+      ["Shift 1 operator", "उस Shift में इस मशीन के सेव किए गए ELB कार्ड पर लिखे ऑपरेटर, नाम और Employee ID के साथ, जैसे SAMPLE DRIVER 01 (CMPL90001)। एक से ज़्यादा ऑपरेटर हों तो बीच में सेमीकोलन आता है। Unresolved driver / operator का मतलब है कि कार्ड पर Employee ID सेव नहीं है। — का मतलब कार्ड नहीं है। यही कॉलम रिपोर्ट की हर Shift के लिए दोहराया जाता है (Shift 2 operator, Shift 3 operator, Day shift operator, Night shift operator)।"],
+      ["Shift 1 HMR", "उस Shift में मशीन का working HMR, उस Shift के उसके सब सेव ELB कार्ड का जोड़। हर कार्ड के लिए यह कार्ड पर सेव total working HMR है; वह सेव न हो तो closing HMR − opening HMR। कार्ड न हो तो — आता है। रिपोर्ट की हर Shift के लिए दोहराया जाता है।"],
+      ["Shift 1 trips", "उस Shift में इस मशीन से लोड हुई टिपर की ट्रिप। VLB कार्ड की हर गिनी गई ट्रिप उस लोडिंग मशीन में जुड़ती है जो उस ट्रिप के सामने दर्ज है। — का मतलब ELB कार्ड सेव नहीं है और ट्रिप भी नहीं है; 0 का मतलब ELB कार्ड सेव है पर किसी गिनी गई ट्रिप में इस मशीन का नाम नहीं है। रिपोर्ट की हर Shift के लिए दोहराया जाता है।"],
+      ["Shift 1 quantity (CUM)", "उस Shift में मशीन से लोड हुई मात्रा: हर ट्रिप × उस ट्रिप को ले जाने वाले टिपर की मंज़ूर capacity। — और 0 का नियम trips कॉलम जैसा ही है। रिपोर्ट की हर Shift के लिए दोहराया जाता है।"],
+      ["Total HMR", "उस लाइन के सब Shift HMR कॉलम का जोड़। किसी भी Shift में HMR न हो तो — आता है।"],
+      ["Total trips", "उस लाइन के सब Shift trips कॉलम का जोड़।"],
+      ["Quantity (CUM)", "उस लाइन के सब Shift quantity कॉलम का जोड़।"],
+      ["Card coverage", "रिपोर्ट की हर Shift का ELB कार्ड सेव हो तो Cards available लिखा आता है। नहीं तो जिन Shift का कार्ड नहीं है उनका नाम आता है, जैसे S1: no saved ELB card (S1, S2, S3 यानी Shift 1, 2, 3; D यानी Day; N यानी Night)।"]
+    ],
+    "notes": [
+      "Quantity (CUM) में हर ट्रिप पर उस टिपर की मंज़ूर capacity लगती है जो ट्रिप ले गया। यह वे-ब्रिज का नाप नहीं है और मशीन की बकेट की गिनती भी नहीं है।",
+      "ट्रिप और मात्रा उस Shift में गिनी जाती हैं जिसमें टिपर लोड हुआ था।",
+      "ट्रिप की लोडिंग मशीन VLB की ट्रिप लाइन पर सेव equipment लिंक से ली जाती है। लिंक न हो तो लाइन पर लिखा मशीन का नाम साइट की ठीक एक मशीन से उसके नंबर, equipment नाम या सेव किए गए कार्ड alias से मिलना चाहिए; नहीं तो रिपोर्ट नहीं बनती।",
+      "अगर किसी मशीन की किसी Shift में लोड की हुई ट्रिप हैं पर उस Shift का उसका ELB कार्ड सेव नहीं है, तो रिपोर्ट नहीं बनती और सूची में उस मशीन का नाम आता है।",
+      "जिस ELB कार्ड के opening और closing HMR से काम के घंटे नहीं निकलते, वह रिपोर्ट को रोक देता है। ELB के जो घंटे तय (scheduled) घंटों से मेल नहीं खाते वे सिर्फ़ Source data review में लिखे जाते हैं; सेव की हुई वैल्यू बदली नहीं जाती।",
+      "अगर एक Shift में किसी मशीन का कुल working HMR Shift की लंबाई से ज़्यादा हो तो भी रिपोर्ट रुक जाती है: Shift 1, 2 और 3 के लिए 8 घंटे, Day और Night के लिए 12 घंटे।"
+    ],
+    "checklist": [
+      "1. Site, 2. Date और 3. Report type (और Shift या Applicable schedule) चुनें, फिर Show report दबाएँ।",
+      "देखें कि हर Shift के डिब्बे में Processed लिखा है। अगर Report not generated आए तो हर लाइन पढ़ें और उसमें लिखा कार्ड, बैच या मशीन नोट करें।",
+      "Card coverage में वे मशीनें ढूँढें जिनमें no saved ELB card लिखा है और जाँचें कि वह मशीन उस Shift में चली थी या नहीं।",
+      "जिस मशीन में HMR है पर trips 0 है, उसके लिए उस Shift के VLB कार्ड पर जाँचें कि लोडिंग मशीन में उसका नंबर लिखा गया था या नहीं।",
+      "टेबल के ऊपर के Completed trips और Quantity (CUM) के आँकड़े TOTAL (complete selection) लाइन से और Door number रिपोर्ट से मिलाएँ।",
+      "Source data review की हर लाइन पढ़ें और उसमें लिखा कार्ड खोलकर जाँचें।"
+    ],
+    "faq": [
+      ["Loading machine number is missing, ambiguous or outside this site. Correct the VLB equipment link. का क्या मतलब है?", "बताए गए VLB कार्ड की किसी गिनी गई ट्रिप में लोडिंग मशीन खाली है, एक से ज़्यादा मशीन से मिलती है, या इस साइट की मशीन नहीं है। लाइन में कार्ड नंबर और कार्ड पर लिखा मशीन का नाम दिखता है।"],
+      ["Saved ELB is missing for loading machine … का क्या मतलब है?", "VLB कार्ड में बताई गई Shift में उस मशीन से लोड हुई ट्रिप हैं, पर उसी तारीख और Shift का उस मशीन का ELB कार्ड सेव नहीं है। जब तक वह ELB कार्ड सेव नहीं होता, रिपोर्ट नहीं बनती।"],
+      ["trips कॉलम में — और 0 में क्या फ़र्क है?", "— का मतलब है कि उस Shift में उस मशीन का कोई ELB कार्ड सेव नहीं है। 0 का मतलब है कि ELB कार्ड सेव है पर VLB कार्ड की किसी गिनी गई ट्रिप में इस मशीन का नाम नहीं है।"],
+      ["मशीन का जोड़ हमेशा डोर के जोड़ के बराबर क्यों होता है?", "हर गिनी गई ट्रिप एक बार अपने टिपर में और एक बार अपनी लोडिंग मशीन में, उसी मात्रा के साथ जुड़ती है। दोनों जोड़ अलग हों तो रिपोर्ट नहीं बनती।"]
+    ]
+  }
+}

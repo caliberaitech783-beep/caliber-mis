@@ -1,0 +1,118 @@
+{
+  "id": "scans",
+  "group": "Utilisation & Exceptions",
+  "title": "Scan Review & Reconciliation",
+  "menu": "Reports → Utilisation & Exceptions → Scan Review & Reconciliation",
+  "en": {
+    "purpose": "Lists the scanned cards whose date falls in the chosen dates, with the status of each card, the book number of the saved log book if one was created from it, and any error. A MIS clerk uses it to see which scanned cards are still waiting, which failed, and which became saved log books.",
+    "row": "One row is one scanned card.",
+    "filters": [
+      ["From", "First card date to include. The card date is the book date on the card; if the card has no book date, the date it was scanned (India time) is used. It opens on the 1st of the current month. Dates before 1 November 2026 are not accepted."],
+      ["To", "Last card date to include. It cannot be earlier than From, and From to To can cover at most 366 days. If the dates are not valid the screen shows \"Choose a valid date range of at most 366 days.\" and no report is shown. Keep in mind: Actions → Reset table also puts From back to the 1st of the current month and To back to today."],
+      ["Site", "Keeps only cards on which that site was read. Cards with no site read are left out. \"All\" means every site assigned to your login."],
+      ["Shift", "Keeps only cards on which that shift was identified. Cards with no shift identified are left out."],
+      ["Vehicle / equipment", "Keeps only cards on which that door was identified. Cards with no door identified are left out."],
+      ["Driver / operator", "Keeps only cards on which that person was identified. Cards with no person identified are left out."],
+      ["Work order", "Keeps only cards that carry that work order. Cards that do not carry it are left out."]
+    ],
+    "screen": [
+      ["Report", "Picker at the top of the screen. It lists all reports under their groups; choosing a name opens that report."],
+      ["Refresh", "Loads the scanned cards and saved records for the chosen dates again. Press it after more cards have been scanned or reviewed. Changing Site, Shift or the other selectors does not need Refresh."],
+      ["Filters:", "One line showing what is selected in Site, Shift, Vehicle / equipment, Driver / operator and Work order, written as \"site: …\", \"shift: …\", \"asset: …\", \"employee: …\" and \"workOrder: …\". With nothing selected it reads \"All sites, assets, shifts and employees\". Site and Work order appear by name; Shift, Vehicle / equipment and Driver / operator appear as the system's internal number."],
+      ["logbooks", "Number of saved VLB and ELB log books that match the dates and selectors. This counts saved log books, not scanned cards."],
+      ["assets", "Number of different doors on those saved log books."],
+      ["trips", "Total trips on those saved log books."],
+      ["report rows", "Number of scanned cards listed in the table below."],
+      ["Includes pending, approved, posted, rejected and failed cards. Cards without a book date use the scan date (India time). Employee, shift, asset and site filters exclude cards whose corresponding fields are unreadable.", "Notice shown above the table on this report. It states which cards are listed, which date is used, and how the selectors treat unread cards."],
+      ["Scan data source is not available.", "Shown only when the screen cannot find the scan card records. The table then has no cards to list."]
+    ],
+    "columns": [
+      ["Card ID", "The system's own ID of the scanned card (a long code)."],
+      ["File", "File name of the scanned image."],
+      ["Date", "Book date on the card. If the card has no book date, the date it was scanned (India time)."],
+      ["Site", "Site on the scanned entry of the card. \"—\" if it was not read."],
+      ["Caliber ID", "Employee ID on the scanned entry of the card. \"—\" if it was not read."],
+      ["Employee", "Employee name on the scanned entry of the card. \"—\" if it was not read."],
+      ["Status", "Status stored on the card: \"queued\" or \"reading\" (waiting to be read, or being read), \"review\" (read and waiting to be checked), \"approved\", \"posted\" (saved as a log book), \"rejected\", or \"error\" (reading failed)."],
+      ["Saved book", "Book number of the saved log book linked to this card. \"—\" if no log book is linked."],
+      ["Error", "Error message stored on the card, if any."]
+    ],
+    "notes": [
+      "The logbooks, assets and trips totals count saved log books for the same dates and selectors. Only report rows counts scanned cards.",
+      "Choosing a Site, Shift, Vehicle / equipment, Driver / operator or Work order leaves out every card on which that field is not available. Keep them on \"All\" to see unread and failed cards.",
+      "A card without a book date is placed under the date it was scanned (India time).",
+      "Cards from LMV scan batches are not included.",
+      "A login limited to certain sites receives only cards whose site was read as one of those sites. Cards with no site read are not shown to such a login.",
+      "If the screen shows \"Scan data source is not available.\", no cards are listed; the totals for saved log books are still shown."
+    ],
+    "checklist": [
+      "Set From and To to the dates of the cards, and keep all selectors on \"All\".",
+      "Click the Status heading to sort. Note the cards with status \"error\" and read the Error column.",
+      "Note the cards still in \"queued\", \"reading\" or \"review\"; these have not become saved log books.",
+      "For cards with status \"posted\", check that Saved book shows a book number.",
+      "Compare the number of cards scanned for the day with report rows."
+    ],
+    "faq": [
+      ["Why did cards disappear when I chose a site?", "A card is kept only if that site was read on it. Cards with no site read are left out. Set Site back to \"All\"."],
+      ["Why is the logbooks total different from the number of rows?", "logbooks counts saved log books. The table lists scanned cards, including those waiting, rejected or failed."],
+      ["What does \"Scan data source is not available.\" mean?", "The screen could not find the scan card records, so no cards are listed."],
+      ["A card is shown under a date different from the one written on it. Why?", "If the book date was not read, the card is shown under the date it was scanned."]
+    ]
+  },
+  "hi": {
+    "purpose": "यह रिपोर्ट वे स्कैन किए हुए कार्ड दिखाती है जिनकी तारीख चुनी हुई तारीखों में आती है: हर कार्ड का Status, उससे बनी सेव लॉग बुक का बुक नंबर (अगर बनी हो), और कोई गलती हो तो वह। MIS क्लर्क इससे देखते हैं कि कौन-से स्कैन कार्ड अभी रुके हैं, कौन-से फ़ेल हुए और कौन-से सेव लॉग बुक बन गए।",
+    "row": "एक लाइन का मतलब है एक स्कैन किया हुआ कार्ड।",
+    "filters": [
+      ["From", "पहली कार्ड तारीख जो रिपोर्ट में लेनी है। कार्ड की तारीख उस पर लिखी बुक तारीख है; कार्ड में बुक तारीख न हो तो जिस दिन वह स्कैन हुआ (भारतीय समय) वह तारीख ली जाती है। स्क्रीन खुलने पर चालू महीने की 1 तारीख रहती है। 1 नवंबर 2026 से पहले की तारीख नहीं ली जाती।"],
+      ["To", "आख़िरी कार्ड तारीख जो रिपोर्ट में लेनी है। यह From से पहले की नहीं हो सकती, और From से To तक ज़्यादा से ज़्यादा 366 दिन हो सकते हैं। तारीखें सही न हों तो स्क्रीन पर \"Choose a valid date range of at most 366 days.\" आता है और रिपोर्ट नहीं दिखती। ध्यान रखें: Actions → Reset table दबाने पर From फिर से चालू महीने की 1 तारीख और To फिर से आज की तारीख हो जाती है।"],
+      ["Site", "सिर्फ़ वे कार्ड रखता है जिन पर वह साइट पढ़ी गई। जिन कार्ड पर साइट नहीं पढ़ी गई वे हट जाते हैं। \"All\" का मतलब है आपके लॉगिन को दी गई सभी साइट।"],
+      ["Shift", "सिर्फ़ वे कार्ड रखता है जिन पर वह Shift पहचानी गई। जिन कार्ड पर Shift नहीं पहचानी गई वे हट जाते हैं।"],
+      ["Vehicle / equipment", "सिर्फ़ वे कार्ड रखता है जिन पर वह डोर पहचाना गया। जिन कार्ड पर डोर नहीं पहचाना गया वे हट जाते हैं।"],
+      ["Driver / operator", "सिर्फ़ वे कार्ड रखता है जिन पर वह व्यक्ति पहचाना गया। जिन कार्ड पर व्यक्ति नहीं पहचाना गया वे हट जाते हैं।"],
+      ["Work order", "सिर्फ़ वे कार्ड रखता है जिन पर वह work order दर्ज है। जिन कार्ड पर वह दर्ज नहीं है वे हट जाते हैं।"]
+    ],
+    "screen": [
+      ["Report", "स्क्रीन के ऊपर की सूची। इसमें सभी रिपोर्ट अपने-अपने ग्रुप के नीचे हैं; नाम चुनने पर वह रिपोर्ट खुल जाती है।"],
+      ["Refresh", "चुनी हुई तारीखों के स्कैन कार्ड और सेव रिकॉर्ड दोबारा लाता है। और कार्ड स्कैन या जाँच होने के बाद इसे दबाएँ। Site, Shift या दूसरे फ़िल्टर बदलने पर Refresh दबाने की ज़रूरत नहीं।"],
+      ["Filters:", "एक लाइन जो बताती है कि Site, Shift, Vehicle / equipment, Driver / operator और Work order में क्या चुना है। यह \"site: …\", \"shift: …\", \"asset: …\", \"employee: …\" और \"workOrder: …\" के रूप में लिखा आता है। कुछ न चुना हो तो \"All sites, assets, shifts and employees\" आता है। Site और Work order नाम से दिखते हैं; Shift, Vehicle / equipment और Driver / operator सिस्टम के अंदरूनी नंबर से दिखते हैं।"],
+      ["logbooks", "तारीखों और फ़िल्टर से मिलने वाली सेव की गई VLB और ELB लॉग बुक की गिनती। यह सेव लॉग बुक गिनता है, स्कैन कार्ड नहीं।"],
+      ["assets", "उन सेव लॉग बुक पर अलग-अलग डोर कितने हैं।"],
+      ["trips", "उन सेव लॉग बुक पर कुल ट्रिप।"],
+      ["report rows", "नीचे की टेबल में दिखाए गए स्कैन कार्ड की गिनती।"],
+      ["Includes pending, approved, posted, rejected and failed cards. Cards without a book date use the scan date (India time). Employee, shift, asset and site filters exclude cards whose corresponding fields are unreadable.", "इस रिपोर्ट में टेबल के ऊपर दिखने वाली सूचना। यह बताती है कि कौन-से कार्ड सूची में हैं, कौन-सी तारीख ली जाती है, और फ़िल्टर बिना पढ़े कार्ड के साथ क्या करते हैं।"],
+      ["Scan data source is not available.", "यह सिर्फ़ तब दिखता है जब स्क्रीन को स्कैन कार्ड का रिकॉर्ड नहीं मिलता। तब टेबल में दिखाने के लिए कोई कार्ड नहीं होता।"]
+    ],
+    "columns": [
+      ["Card ID", "स्कैन कार्ड की सिस्टम की अपनी ID (एक लंबा कोड)।"],
+      ["File", "स्कैन की गई फ़ोटो की फ़ाइल का नाम।"],
+      ["Date", "कार्ड की बुक तारीख। कार्ड में बुक तारीख न हो तो जिस दिन वह स्कैन हुआ (भारतीय समय)।"],
+      ["Site", "कार्ड की स्कैन एंट्री पर दर्ज साइट। न पढ़ी गई हो तो \"—\"।"],
+      ["Caliber ID", "कार्ड की स्कैन एंट्री पर दर्ज Employee ID। न पढ़ी गई हो तो \"—\"।"],
+      ["Employee", "कार्ड की स्कैन एंट्री पर दर्ज कर्मचारी का नाम। न पढ़ा गया हो तो \"—\"।"],
+      ["Status", "कार्ड पर सेव स्थिति: \"queued\" या \"reading\" (पढ़े जाने का इंतज़ार, या पढ़ा जा रहा है), \"review\" (पढ़ लिया गया, जाँच का इंतज़ार), \"approved\", \"posted\" (लॉग बुक के रूप में सेव हो गया), \"rejected\", या \"error\" (पढ़ना फ़ेल हुआ)।"],
+      ["Saved book", "इस कार्ड से जुड़ी सेव लॉग बुक का बुक नंबर। कोई लॉग बुक न जुड़ी हो तो \"—\"।"],
+      ["Error", "कार्ड पर सेव गलती का संदेश, अगर कोई हो।"]
+    ],
+    "notes": [
+      "logbooks, assets और trips की गिनती उन्हीं तारीखों और फ़िल्टर की सेव लॉग बुक की है। सिर्फ़ report rows स्कैन कार्ड गिनता है।",
+      "Site, Shift, Vehicle / equipment, Driver / operator या Work order चुनने पर हर वह कार्ड हट जाता है जिस पर वह जानकारी उपलब्ध नहीं है। बिना पढ़े और फ़ेल कार्ड देखने के लिए इन्हें \"All\" पर रखें।",
+      "जिस कार्ड में बुक तारीख नहीं है, वह उस तारीख के नीचे आता है जिस दिन वह स्कैन हुआ (भारतीय समय)।",
+      "LMV स्कैन बैच के कार्ड इसमें शामिल नहीं हैं।",
+      "जिस लॉगिन को कुछ ही साइट दी गई हैं, उसे सिर्फ़ वे कार्ड मिलते हैं जिन पर उन्हीं में से कोई साइट पढ़ी गई है। जिन कार्ड पर साइट नहीं पढ़ी गई वे ऐसे लॉगिन को नहीं दिखते।",
+      "अगर स्क्रीन पर \"Scan data source is not available.\" दिखे तो कोई कार्ड नहीं दिखाया जाता; सेव लॉग बुक की गिनती फिर भी दिखती है।"
+    ],
+    "checklist": [
+      "From और To में कार्ड की तारीखें रखें और सभी फ़िल्टर \"All\" पर रखें।",
+      "Status के शीर्षक पर क्लिक करके क्रम लगाएँ। \"error\" वाले कार्ड नोट करें और Error कॉलम पढ़ें।",
+      "वे कार्ड नोट करें जो अभी \"queued\", \"reading\" या \"review\" में हैं; ये अभी सेव लॉग बुक नहीं बने हैं।",
+      "\"posted\" वाले कार्ड में देखें कि Saved book में बुक नंबर है।",
+      "उस दिन स्कैन किए गए कार्ड की गिनती को report rows से मिलाएँ।"
+    ],
+    "faq": [
+      ["साइट चुनते ही कार्ड गायब क्यों हो गए?", "कार्ड तभी रहता है जब उस पर वही साइट पढ़ी गई हो। जिन कार्ड पर साइट नहीं पढ़ी गई वे हट जाते हैं। Site को वापस \"All\" पर रखें।"],
+      ["logbooks की गिनती लाइनों की गिनती से अलग क्यों है?", "logbooks सेव लॉग बुक गिनता है। टेबल में स्कैन कार्ड हैं, जिनमें रुके हुए, rejected और फ़ेल कार्ड भी शामिल हैं।"],
+      ["\"Scan data source is not available.\" का क्या मतलब है?", "स्क्रीन को स्कैन कार्ड का रिकॉर्ड नहीं मिला, इसलिए कोई कार्ड नहीं दिखाया गया।"],
+      ["एक कार्ड उस पर लिखी तारीख से अलग तारीख के नीचे क्यों दिख रहा है?", "अगर बुक तारीख पढ़ी नहीं गई तो कार्ड उस तारीख के नीचे दिखता है जिस दिन वह स्कैन हुआ।"]
+    ]
+  }
+}

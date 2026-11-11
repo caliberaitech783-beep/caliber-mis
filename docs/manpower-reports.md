@@ -21,3 +21,160 @@ The separately approved OT flags are:
 OT loads one adjoining day on both sides of the chosen range, subject to the operational cutoff and site authorization. Shift, vehicle and batch filters select events without discarding linked duties. Same-day and overnight events can share a duty; event hours must not be summed across rows. Written RED/ORANGE/REVIEW reasons are included in screen, print and exported data. Scheduled times are IST. Actual employee clock-in/out and attendance are unavailable in the current logbook source. HMR hours are machine performance, not attendance or payable OT. Payable OT hours/rates/rounding, required manpower, shortages and relief staffing are outside this release.
 
 The new calculation and API tests cover approved patterns, midnight boundaries, date-effective schedules, duplicate cards, IDs, empty batches, vehicle changes, incomplete data and access scope. `test/manpower-report-postgres.test.mjs` exercises the actual SQL and HTTP handler in an isolated schema when `DELETION_TEST_DATABASE_URL` points to the local test `caliber_mis` database; the existing CI/release workflow provides this database. Run `npm test` and `npm run build` before release.
+
+## OT & Multiple Duties: sites first (9 Nov 2026)
+
+- The OT view always loads every site assigned to the login. The top row shows RED / ORANGE / REVIEW totals and one card per site; duty details appear after a site is opened. The Site selector opens the same site.
+- Opening a site adds a table of flagged drivers by category. Driver category is the current designation in the Employee master (`currentDesignationName`, then `designationName`); the equipment worked is shown beside it.
+- Pressing a colour lists the drivers with that flag and their earlier repeats at the same site. Earlier repeats come from `GET /api/reports/manpower/ot-history`, which reads only when asked, one week at a time, up to 90 days before the selected dates and never before 1 November 2026. It uses the same duty rules as the report but skips trip-handover linking, which does not affect shift patterns.
+- The old count cards, colour legend and HMR notice were removed from this view; the calculation notes remain under "Sources and calculation rules".
+- Filters on all Manpower & OT views have an "Auto-hide filters" option and a "Today" button. The current From–To dates stay visible when the filters are tucked away. The side menu has its own "Auto-hide menu" option. Both choices are remembered per browser.
+
+
+## OT by log book: VLB, ELB and LMV (9 Nov 2026)
+
+- The OT view reads all three log books. Saved LMV log books count as duties, so an LMV shift next to a VLB or ELB shift is flagged like any other pattern. The other Manpower views (category, shift performance, attendance) stay VLB and ELB only, and LMV review items are shown on the OT view only.
+- Every flagged duty carries the log books it was saved in (`logBooks`, shown as the "Log book" column, for example "VLB + LMV"). A duty saved in two log books is listed under both, so the VLB, ELB and LMV rows can add up to more than the "All" row.
+- The flag summary is a grid: one row for all log books and one each for VLB, ELB and LMV, with RED / ORANGE / REVIEW counts. Pressing a row narrows the page to that log book; pressing a count also lists those drivers with their earlier repeats.
+- Each site card lists the three log books with their red, orange and review counts (`otSites[].books`).
+- Earlier repeats read the same three log books and count the driver across all of them.
+- HMR is optional on an LMV card. A card saved without it still counts as a duty; its hours show as unavailable and it is not listed for review.
+
+## Driver category drill-down (9 Nov 2026)
+
+- In an opened site, the "flagged drivers by driver category" table is clickable. Pressing a category name or its driver count lists that category; pressing a red, orange or review number lists only that colour within it. Pressing the same choice again shows every category.
+- The choice adds a drivers table (one row per driver: red, orange and review duties, log book, duty dates, shifts and equipment) and narrows the duty table under it. It does not change the totals, the site cards or the earlier-repeats list above.
+- A colour pressed in the category table takes priority over a colour pressed in the totals grid for the two lists under the table.
+
+## Driver OT counts and history (9 Nov 2026)
+
+- The drivers list has two columns right after the name: OT in the month and OT in the calendar year of the report's To date. One OT is one flagged duty (red, orange or review) at the opened site. An overnight pair counts once, on the day it started.
+- Pressing a driver's name opens his history for that year: a month-wise table (red, orange, review, OT times, with a year total) and every flagged duty, newest first. Pressing the name again, or "Close history", closes it.
+- The counts come from `GET /api/reports/manpower/ot-drivers?site=...&to=...` (same access chain and site scope as the report, site required). It reads the site one month at a time from the later of 1 January and 1 November 2026 up to today, using the slim card read of the earlier-repeats lookup, and holds no transaction open. The page asks once per site and month, only while a drivers list is open.
+- Cost grows through the year: by December the busiest site needs twelve monthly reads. If that becomes slow, store monthly counts instead of recomputing them.
+
+## Shift Attendance Equipment Wise (9 Nov 2026)
+
+"Shift Attendance" is renamed **Shift Attendance Equipment Wise** in the side menu, the tab, the heading and the exported file. It opens in three steps instead of one flat list.
+
+1. **All sites, shift-wise.** One row per site assigned to the login (a site with no duty shows zeros), with Shift 1, Shift 2, Shift 3 and All shifts, plus an All sites row. The numbers are actual duties. Choosing a site in the filter loads that site only and opens it directly.
+2. **Duties by equipment.** Pressing a number lists that site and shift by equipment, with two totals and four colour counts.
+3. **Driver list.** Pressing an equipment (or a colour count) lists its drivers. Date, site and shift are in the heading and the export title; each returns as a column only when the list covers more than one (a date range, All sites, All shifts, All equipment).
+
+Two totals:
+
+- **Actual duties**: one per driver per date and shift, whatever number of machines were driven. This is the number to use for salary.
+- **Equipment-wise duties**: the driver counted once on every equipment group worked in that shift. A driver on a tipper and then a grader adds one to each.
+- The one actual duty sits on the machine with the most HMR hours in that shift; when hours are missing or equal, on the card saved first. The other machine's row shows "Actual duty: No — second machine" and names the main machine. The same rule applies to a driver who worked at two sites in one shift, so site totals never double count.
+- Two machines of the same group in one shift are one equipment-wise duty with both door numbers.
+
+Equipment names:
+
+- The name is the machine's **group in the Equipment master** (`group`, then `equipmentGroup`, then `itemName`), found through the door number on the saved card. Spelling differences in capitals and spaces are merged ("Water Tanker" and "WATER TANKER" are one row); the master is not rewritten. The tipper groups already carry the make (Volvo Tippers, Scania Tippers), so the make is not added to the name; make and model are a column in the driver list.
+- A machine with no group, or a card with no Equipment master match, is listed under "Group missing in master" and stays in Data Review. A make saved as a number shows "Make not named".
+- A zero-trip attendance entry names the equipment only when no card was saved for that driver and shift (its chosen machine, else "No equipment assigned"). Beside a saved card it adds its reason and remarks to the card's rows, never a second machine.
+- Names follow the current master, so renaming a group there changes earlier dates too. Rows are ordered with the most duties first.
+
+Row colours (one per row, in this order of priority):
+
+| Colour | Meaning |
+| --- | --- |
+| Red | Back-to-back shifts, Shift 3 followed by the next day's Shift 1, or all three shifts |
+| Orange | Shift 1 and Shift 3 with a gap |
+| Brown | The OT report's "Review" pattern: two duties whose timing is not confirmed |
+| Blue | Present with 0 trips: zero-trip attendance, or a VLB card saved with 0 trips |
+| White | Normal duty |
+
+- Red, orange and brown come from the same events as OT & Multiple Duties (saved VLB, ELB and LMV cards), so the two reports agree. Both shifts of the pattern are coloured and the note names the other shift. Review is brown in the OT view as well.
+- An equipment operator with a saved ELB card is never blue: that work is measured in hours, not trips. A zero-trip driver without a card is not checked for red or orange, because OT reads saved cards only.
+- Every row also carries the colour in words ("Duty flag") and the other shift or machine ("Duty note"), so exports and prints keep the meaning.
+
+Data: `GET /api/reports/manpower` adds `attendanceEquipment` (one row per driver, date, shift, site and equipment group, with `actual`, `flag`, `flagLabel`, `note`) and `attendanceSites`. `shiftAttendance` (one row per actual duty) is unchanged. LMV log books are not part of this report.
+
+## Missing batches, driver history and a simpler OT page (10 Nov 2026)
+
+Owner's review of the live screens on 9 Nov 2026. This section replaces the OT layout described above (log-book grid, site cards, driver category table, earlier repeats).
+
+Shift Attendance Equipment Wise:
+
+- **Batch behind each shift.** Every site-and-shift box takes a state from the batch for that site, date and shift (`attendanceShifts`): the whole box is **red** while no batch has been created, **outlined orange** while the batch is created but not closed ("VLB open", "LMV open" or "ELB open", the stage from the batch rules), plain once it is closed. A line above the table counts the shifts without a batch and the open batches.
+- A shift is reported as missing its batch only after it has ended by the Shift Master times, so the running shift is not red. A site is expected to run the shifts its Shift Master holds on that date (Shift 1 to 3 when it has none). A site with no work therefore stays red.
+- Over several dates the box says how many days are pending ("3 days no batch"), and the opened site and shift lists the dates. The All shifts and All sites boxes carry the note without being painted.
+- A red or orange box opens even when it has no duty, and says in words which batch is missing or open.
+- **Driver history.** The driver list has "OT in <month>" and "OT in <year>" beside the name, and the name opens the month-wise history: duties, red, orange, brown and OT times per month, then every flagged duty. In a list of every site, the counts are read for the site of the driver whose name is pressed.
+- A coloured row keeps its colour under the mouse pointer.
+
+OT & Multiple Duties, now in the same three steps:
+
+1. One line per site: red, orange, brown and drivers, plus All sites. The Site selection narrows the lines; one site opens by itself.
+2. Pressing a number lists those drivers, one row each (red, orange, brown, cases in the selected dates, OT in the month and year), with each case listed under them.
+3. Pressing a driver's name opens the same month-wise history.
+
+- Log book (VLB, ELB, LMV) is one selector at the top instead of a split in every block. A duty saved in two log books still counts under both.
+- Driver category is a column of the drivers list; the separate category table and the "earlier repeats" list are removed from the screen. `GET /api/reports/manpower/ot-history` remains but the page no longer calls it.
+
+All Manpower & OT pages:
+
+- The table's own From / To date bar is switched off (`recordDateFilter={false}`); the dates at the top of the page are the only date control.
+- **Manpower Data Review** lists saved cards with a data problem that affects the counts, for the MIS team to correct. On the attendance and OT pages it is one line ("31 saved cards need correction") that opens the list; on Manpower by Category and Shift Performance it stays in full.
+- A site is shown under one properly written name (Shift Master first, then batches, then cards). A stored lower-case key such as "jayant ob" appears only when no better spelling exists, and the Site selector lists each site once.
+
+Data: `GET /api/reports/manpower` adds `attendanceShifts` (`siteKey`, `date`, `shift`, `state` = `none` | `vlb_open` | `lmv_open` | `elb_open` | `closed` | `not_due`, `batch`) and `employeeKey` on `attendanceEquipment` rows; the batch read now includes `shift` and `stage`. `GET /api/reports/manpower/ot-drivers` adds `duties` (actual duties per month, saved VLB and ELB cards) and lists every driver of the site, not only flagged ones.
+
+## OT date by shift (10 Nov 2026)
+
+Owner's sketch of 10 Nov 2026 (a marked-up copy of the site summary workbook): site, then date by shift, then drivers, then the driver's red and orange counts for the month and the year.
+
+- An opened site now shows a **date by shift** table between the site lines and the drivers list: one row per selected date, one column per shift (Shift 1 to 3, plus any other shift code found), then Cases and Drivers, and an All dates row when more than one date is selected.
+- **A case is placed once, on the date and shift of its first duty** (`startDate`, `startShift` on every `ot` event). Shift 1 with Shift 2 or Shift 3, and all three shifts, sit under Shift 1; Shift 2 with Shift 3 under Shift 2; Shift 3 with the next day's Shift 1 under Shift 3 of the first day. The table therefore adds up to the site's line. This is the same day rule as the month and year counts.
+- A case that began in Shift 3 on the evening before the From date is part of the site's line (the report reads one adjoining day), so it gets its own row, marked "night before the selected dates".
+- Each box holds a pressable number per colour. Pressing one narrows the drivers list and the case table to that date, shift and colour; the Cases number narrows to the date; the All dates row narrows to a shift. Pressing the same number again, or "Show all dates and shifts", returns to the whole site. The site's drivers are still listed as soon as the site opens.
+- The drivers list replaces "OT in <month>" and "OT in <year>" with four columns: Red and Orange in the month, Red and Orange in the year. Brown stays in the driver's history. The colour columns for the selection are named "Red / Orange / Brown in selected dates". Shift Attendance Equipment Wise keeps its two combined OT columns.
+- The date-by-shift table is a screen table like the site lines: it has no Generate button. The drivers list and the case table under it export what is selected.
+- No new read: the table is built in the page from the cases already loaded.
+
+## Second machine column (10 Nov 2026)
+
+Owner's request on the live "duties by equipment" table of Shift Attendance Equipment Wise.
+
+- A **Second machine** column sits beside Actual duties: equipment-wise duties minus actual duties (128 minus 124 shows 4). It is the number of rows where that equipment was a driver's second machine in the shift.
+- Pressing the number lists only those drivers (`actual` false); the title ends with "Second machine only" and Duty note names the machine that carries the actual duty. Pressing it again closes the list.
+- Two machines of the same equipment group in one shift are still one row with both door numbers, so they are not part of this number.
+## OT in five steps, with duties, equipment categories and OT % (10 Nov 2026)
+
+Owner's final workbook of 10 Nov 2026 (`docs/OT-Multiple-Duties-Drill-Down-Plan-FINAL-2026-11-10.xlsx`): site, then date by shift, then equipment category, then drivers, then the driver's history. Decisions left blank in the workbook took option A.
+
+- **Cases and duties.** The site lines still count cases (one driver, several shifts). From the date table down every number is a duty (one driver, one shift, one date) and a duty carries the strongest colour of the cases it is part of. A driver who worked Shift 1 and Shift 2 is therefore red under both shifts, and the date table no longer adds up to the site line's case counts. This replaces the "case placed once, where it started" table of the same day; `startDate` and `startShift` stay on `ot` events but the page no longer reads them.
+- **OT %** is always duties of that colour divided by all duties of the same line. A line with no duty shows "—".
+- **Step 1** adds Total duties, Red OT % and Orange OT %. Every number on a site line opens that site; colours are chosen further down.
+- **Step 2** shows, per date and shift, the duties and the red, orange and brown duties among them, then Day duties, OT duties, Red OT % and Orange OT %. A strip of equipment categories above the table narrows it to one category. The duties number of a box opens Step 3; a coloured number goes straight to those drivers; Day duties opens the whole day and the All dates line every date.
+- **Step 3** lists the opened date and shift by equipment category: People, Equipment worked (different door numbers), Red OT and %, Orange OT and %, Brown, Total OT and %. For a whole day or all dates a Duties column is added, People means different persons and the percentages stay on duties.
+- **Equipment category** is the equipment group in the Equipment master, written the same way as on Shift Attendance Equipment Wise. A duty on two machines in one shift sits on the one with the most HMR hours, so People adds up to the duties.
+- **Step 4** lists one row per duty of the opened category (or of all), OT duties first, with the other shift worked, the colour and reason, and red and orange for the month and year. The case table under it holds only the cases behind the listed OT duties.
+- **Step 5** is the same history; it gains "OT % of duties" (duties named in the month's cases, out of the duties worked, never above them). Shift Attendance Equipment Wise shows the same column.
+- A trail above the tables (All sites › site › date and shift › category) steps back.
+- Steps 1 to 3 are drawn inside the shared report frame, so each has a Generate button and exports what the table shows.
+
+Data: `GET /api/reports/manpower` adds `otDuties`, one line per duty from saved VLB, ELB and LMV cards within the selections: `date`, `shift`, `site`, `siteKey`, the driver, `category` (designation), `equipment`, `doors`, `makeModel`, `logBooks`, `flag` (`red` | `orange` | `review` | `normal`), `flagLabel`, `others`, `hours`, `trips`, `books`. No new read.
+
+## Manpower by Category in steps (10 Nov 2026)
+
+The owner's first request showed the Manpower by Category tab; the five-step change of the same day reached only OT & Multiple Duties. This tab now opens the same way.
+
+- **Step 1, all sites**: one line per assigned site and an All sites line, with different vehicles and machines, different employees, duties (one employee, one shift, one date) and saved cards. The All sites line equals the four count cards above it.
+- **Step 2, date by shift** for the opened site: each box shows the duties of the shift and the machines that worked; then the day's duties, machines, employees and saved cards.
+- **Step 3, equipment category** for the opened date and shift (or a whole day, or all dates): machines, employees, duties and saved cards per equipment group, written as on the other Manpower & OT tabs.
+- The two existing tables (Category, Make & Model; Vehicle & Employee Assignments) stay at the bottom and follow what is open: every site at first, then the site, the date and shift, the category. Their titles name the selection.
+- A trail above the steps steps back. Steps 1 to 3 have a Generate button.
+
+Data: `details` rows add `siteKey`, `equipment`, `assetKey`, `employeeKey` and `dutyKey` (empty on a card left out of totals, so the page's distinct counts equal `totals`); `summary` rows add `siteKey` and `equipment`. No new read.
+
+## Manpower by Category Reconciliation (10 Nov 2026)
+
+Owner's request of 10 Nov 2026: "how many machines were available at the site as per fleet reconciliation versus how many were deployed for active production and how many were there where there were zero trips and how many were there where there were 0 kilometer ... shift wise", placed under Manpower by Category. It is the fifth Manpower & OT tab, id `manpower-reconciliation`, second in the tab row.
+
+- **Available** is the fleet of the Fleet reconciliation screen: Equipment master records whose current location is the site, one per chassis (`assetIdentity`), without LMVs. The master holds today's location only, so the same list is used for every selected date; a card of a machine the master now places elsewhere is counted apart as "Not in fleet list".
+- **Card saved**: a fleet machine with a saved VLB or ELB card in the shift. **Active production**: a VLB card with at least one trip, or an ELB card with running hours or trips. **Zero trips**: card saved, not active (so Card saved = Active + Zero trips). **Zero km**: a VLB whose kilometres for the shift add up to 0; it overlaps the other two. **No card**: Available minus Card saved. **Deployed %**: Card saved of Available.
+- Steps: every site; one site, one line per date and shift; one date and shift by equipment category; the machines, one line per machine, date and shift, with status, trips, kilometres, hours, driver and cards. Totals over several shifts are machine-shifts.
+- Not included: breakdown and idle reasons (they need the live Pulse breakdown read of the Fleet reconciliation screen, one shift at a time) and LMVs. The owner did not answer the two questions on what counts as deployed and on LMVs; both columns (Card saved and Active production) are shown so either reading can be used.
+- Data: `GET /api/reports/manpower` adds `fleet` (`siteKey`, `key`, `door`, `equipment`, `makeModel`) and `fleetWork` (one line per site, date, shift and machine with `inFleet`, `trips`, `km`, `hours`, `active`, `zeroKm`, `employees`, `books`), both limited to the sites of the login. No new read.
