@@ -9,6 +9,8 @@ const groups={
 };
 export async function readScanWithRecovery(read,isActive=async()=>true){
  try{return await read({});}catch(error){
+  // The Gemini reader already applies its own cooldown and retry budget.
+  if(error.provider==='gemini'&&error.status===429)throw error;
   if(!await isActive()||error.status&&error.status<500&&error.status!==429||/billing|api.?key|HTTP (?:400|401|402|403)|scanned on the|Invalid card type/i.test(error.message||''))throw error;
   const result=await read({forceRead:true});
   return {...result,firstScanReadRecovery:{attempted:true,recovered:true}};

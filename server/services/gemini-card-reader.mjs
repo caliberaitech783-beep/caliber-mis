@@ -64,22 +64,74 @@ export function geminiMinIntervalMs(env=process.env){const value=Number(env.MIS_
 let imagePreparation=Promise.resolve();
 export const MAX_GEMINI_CONCURRENCY=10;
 const keyGates=new Map();
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000,shareGateByKey=false}={}){
- let pending=0,active=0;const ownGate={last:0,chain:Promise.resolve()},queue=[],inFlight=new Map();
+const RATE_LIMIT_BACKOFF_MS=[10000,20000,40000];
+const RATE_LIMIT_SPACING_MS=12500;
+const RATE_LIMIT_IDLE_RESET_MS=60000;
+const MAX_AUTOMATIC_COOLDOWN_MS=60000;
+const requestGate=()=>({last:0,notBefore:0,blockedUntil:0,paced:false,chain:Promise.resolve()});
+const rateLimitError=()=>Object.assign(Error(geminiHttpError(429)),{status:429,provider:'gemini'});
+
+async function readRateLimit(response,now){
+ const header=response.headers?.get('retry-after')?.trim();
+ const headerDelay=header&&/^\d+(?:\.\d+)?$/.test(header)
+  ? Number(header)*1000 : header ? Date.parse(header)-now() : 0;
+ const body=await response.json?.().catch(()=>null);
+ const details=Array.isArray(body?.error?.details)?body.error.details:[];
+ let delayMs=Number.isFinite(headerDelay)?Math.max(0,headerDelay):0;
+ let quotaExhausted=false;
+ for(const detail of details){
+  const retryDelay=/^(\d+(?:\.\d+)?)s$/.exec(detail?.retryDelay);
+  const retryMs=retryDelay?Math.ceil(Number(retryDelay[1])*1000):0;
+  if(Number.isFinite(retryMs))delayMs=Math.max(delayMs,retryMs);
+  for(const violation of Array.isArray(detail?.violations)?detail.violations:[]){
+   if(/per[_ -]?(?:day|month)|daily|monthly/i.test(violation?.quotaId+' '+violation?.quotaMetric)||
+      String(violation?.quotaValue)==='0')quotaExhausted=true;
+  }
+ }
+ return {delayMs,quotaExhausted};
+}
+
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now,minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000,shareGateByKey=false}={}){
+ let pending=0,active=0;const ownGate=requestGate(),queue=[],inFlight=new Map();
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Gemini concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
- // Share a start gate across all workers, including retries. Faster starts are
- // still bounded, and HTTP 429 responses retain their existing Retry-After fallback.
- // With shareGateByKey, every reader in this process that uses the same key
- // shares one gate, so site lanes that fall back to the shared key never start
- // faster together than one reader would; a site with its own key gets its own.
- const gateFor=key=>{if(!shareGateByKey)return ownGate;const id=createHash('sha256').update(key).digest('hex');if(!keyGates.has(id))keyGates.set(id,{last:0,chain:Promise.resolve()});return keyGates.get(id);};
- async function startRequest(key){const gate=gateFor(key);const turn=gate.chain.then(async()=>{await sleep(Math.max(0,gate.last+minIntervalMs-Date.now()));gate.last=Date.now();});gate.chain=turn.catch(()=>{});await turn;}
+ // Readers using the same key in this process share start spacing and cooldowns.
+ const gateFor=key=>{
+  if(!shareGateByKey)return ownGate;
+  const id=createHash('sha256').update(key).digest('hex');
+  if(!keyGates.has(id))keyGates.set(id,requestGate());
+  return keyGates.get(id);
+ };
+ async function startRequest(gate,onStart){
+  const turn=gate.chain.then(async()=>{
+   let notified=false;
+   while(true){
+    const time=now();
+    if(gate.blockedUntil>time)throw rateLimitError();
+    if(time>=Math.max(gate.last+RATE_LIMIT_IDLE_RESET_MS,gate.notBefore))gate.paced=false;
+    const spacing=gate.paced?Math.max(minIntervalMs,RATE_LIMIT_SPACING_MS):minIntervalMs;
+    const delay=Math.max(gate.notBefore,gate.last+spacing)-time;
+    if(delay<=0){
+     if(!notified){
+      notified=true;
+      await onStart();
+      continue;
+     }
+     gate.last=time;
+     return;
+    }
+    // Another in-flight response may extend the cooldown during this wait.
+    await sleep(delay);
+   }
+  });
+  gate.chain=turn.catch(()=>{});
+  await turn;
+ }
  async function run(image,kind,onProgress,forceRead=false){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v16.json`);
   let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
-   const key=await getKey();await onProgress?.('extracting');
+   const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
    const preparation=imagePreparation.then(async()=>{
     const source=await prepareImage(image),views=await prepareViews(source);
     return [{text:cardPrompt(kind)+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
@@ -87,22 +139,50 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    imagePreparation=preparation.then(()=>{},()=>{});
    const parts=await preparation;
    const totalStarted=Date.now();
-   let retryInstruction='';
-   for(let attempt=0;attempt<2;attempt++){
-    await onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()});
-    const requestParts=attempt?[...parts,{text:retryInstruction}]:parts;
+   let retryInstruction='',attempt=0,rateLimitRetries=0,requests=0;
+   while(attempt<2){
+    const requestParts=retryInstruction?[...parts,{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
-    await startRequest(key);const started=Date.now();let res;
+    await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
+    const started=Date.now();let res;
+    requests++;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
-    catch{if(attempt<1){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:2000});await sleep(2000);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
-    if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<1){const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});await res.body?.cancel?.();await sleep(delayMs);continue;}await res.body?.cancel?.();throw Error(geminiHttpError(res.status));}
+    catch{if(++attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:2000});await sleep(2000);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
+    if(res.status===429){
+     // Pause the key as soon as the response headers arrive, then use any
+     // longer delay Google gives us in Retry-After or google.rpc.RetryInfo.
+     const backoff=RATE_LIMIT_BACKOFF_MS[Math.min(rateLimitRetries,RATE_LIMIT_BACKOFF_MS.length-1)];
+     gate.paced=true;
+     gate.notBefore=Math.max(gate.notBefore,now()+backoff);
+     const {delayMs,quotaExhausted}=await readRateLimit(res,now);
+     if(delayMs>MAX_AUTOMATIC_COOLDOWN_MS){
+      gate.blockedUntil=Math.max(gate.blockedUntil,now()+delayMs);
+      throw rateLimitError();
+     }
+     gate.notBefore=Math.max(gate.notBefore,now()+delayMs);
+     if(quotaExhausted||rateLimitRetries===RATE_LIMIT_BACKOFF_MS.length)throw rateLimitError();
+     rateLimitRetries++;
+     await onProgress?.('retrying',{attempt:rateLimitRetries+1,maxAttempts:RATE_LIMIT_BACKOFF_MS.length+1,reason:'Gemini rate limit (HTTP 429)',delayMs:Math.max(gate.notBefore,gate.last+RATE_LIMIT_SPACING_MS)-now()});
+     continue;
+    }
+    if(!res.ok){
+     await res.body?.cancel?.();
+     if([500,502,503,504].includes(res.status)&&++attempt<2){
+      const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));
+      await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});
+      await sleep(delayMs);
+      continue;
+     }
+     throw Error(geminiHttpError(res.status));
+    }
+    attempt++;
     let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}
-    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:attempt+1,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
+    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     const parsed=parseCardResponse(record.raw,kind);
     const malformed=parsed.issues.filter(issue=>/invalid response|expected four cells|unreadable or invalid|printed trip number unreadable|duplicate printed numbers|gaps or out-of-order|not clearly confirmed|equipment (?:number|fleet prefix) missing or unreadable/i.test(issue));
     const noSummary=summaryMissing(parsed,kind);
-    if(attempt<1&&(parsed.fields.site.status!=='clear'||malformed.length||noSummary)){
+    if(attempt<2&&(parsed.fields.site.status!=='clear'||malformed.length||noSummary)){
      const siteMissing=parsed.fields.site.status!=='clear',missingMachineNumber=malformed.some(issue=>/equipment number missing or unreadable/.test(issue)),reason=[siteMissing?'printed site missing or unclear':'',missingMachineNumber?'equipment number missing in NO column':malformed.length?'malformed card content':'',noSummary?'machine-wise summary not returned':''].filter(Boolean).join('; ');
      retryInstruction=(noSummary?'The previous response returned no machine-wise summary. Re-inspect the MACHINE-WISE SUMMARY box below the trip table in the summary band views and return every populated row in fields.machineSummary. ':'')+(missingMachineNumber?'Re-inspect the M and adjacent NO columns for every populated trip and machine-summary row. The previous response dropped machine numbers. For a V in M and 5 in NO, transcribe equipmentType V and equipmentNumber 5. Read the number from that row; never guess it from another card or the fleet master. ':'')+(siteMissing?'Re-inspect the printed SITE header in the full image and upright header detail. If it is legible, transcribe it exactly with status clear; do not infer it from other fields. ':'')+(malformed.length?'The previous response contained malformed or incomplete content. Re-read every populated header, meter, summary and trip-table cell from the images. Return every trip row as exactly [tripNo,equipmentType,equipmentNumber,loadingTime,unloadingTime], preserving blank cells as empty strings and unreadable cells as null. Do not omit visible loading or unloading times.':'');
      await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason,delayMs:0});continue;

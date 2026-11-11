@@ -60,7 +60,7 @@ test('ELB HMR and operator recover without requiring vehicle KMR or trip tables'
 test('temporary extraction errors receive one fresh read, but configuration errors and cancelled work do not',async()=>{
  let calls=0;const result=await readScanWithRecovery(async options=>{if(++calls===1)throw Error('Temporary interrupted OCR response');assert.equal(options.forceRead,true);return {text:'Recovered'}});
  assert.equal(calls,2);assert.equal(result.firstScanReadRecovery.recovered,true);
- for(const [error,active]of [[Object.assign(Error('Forbidden'),{status:403}),true],[Error('aborted'),false]]){
+ for(const [error,active]of [[Object.assign(Error('Forbidden'),{status:403}),true],[Error('aborted'),false],[Object.assign(Error('Gemini quota exhausted'),{provider:'gemini',status:429}),true]]){
   calls=0;await assert.rejects(readScanWithRecovery(async()=>{calls++;throw error},async()=>active));assert.equal(calls,1);
  }
  calls=0;await assert.rejects(readScanWithRecovery(async()=>{calls++;throw Error('Still unavailable')}));assert.equal(calls,2);

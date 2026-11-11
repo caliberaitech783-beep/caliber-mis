@@ -31,10 +31,66 @@ test('ELB excludes vehicle fields and rejects vehicle trips; malformed output ne
  const bad=response('equipment');bad.trips={p:true,r:[[1,'V19','','']]};assert.throws(()=>parseCardResponse(JSON.stringify(bad),'equipment'));
  assert.throws(()=>parseCardResponse('{','vehicle'),/invalid JSON/);
 });
-test('rate-limited requests retry at most twice; bounded queue rejects excess scans and never falls back',async t=>{
+test('persistent rate limiting uses bounded backoff and never falls back',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-single-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
- const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',maxPending:1,minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{calls++;return {ok:false,status:429,headers:{get:()=> '1'}}}});
- const first=reader.recognize(Buffer.from('one'));await assert.rejects(reader.recognize(Buffer.from('two')),/queue full/);await assert.rejects(first,/HTTP 429/);assert.equal(calls,2);
+ let now=100000;
+ const starts=[];
+ const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',maxPending:1,minIntervalMs:0,
+  now:()=>now,sleep:async ms=>{now+=ms;},fetchImpl:async()=>{
+   starts.push(now);
+   calls++;
+   return new Response(JSON.stringify({error:{details:[{retryDelay:'15.5s'}]}}),{status:429,headers:{'Retry-After':'1'}});
+  }});
+ const first=reader.recognize(Buffer.from('one'));
+ await assert.rejects(reader.recognize(Buffer.from('two')),/queue full/);
+ await assert.rejects(first,{status:429,message:/HTTP 429/});
+ assert.equal(calls,4);
+ assert.deepEqual(starts,[100000,115500,135500,175500]);
+});
+
+test('a Gemini cooldown delays other cards on the same key while a different site keeps reading',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-key-cooldown-'));
+ t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const calls=[];
+ let now=100000, wake;
+ const options={prepareViews:async()=>[],minIntervalMs:0,shareGateByKey:true,now:()=>now,
+  sleep:ms=>new Promise(resolve=>{wake=()=>{now+=ms;resolve();};}),
+  fetchImpl:async(_url,init)=>{
+   const key=init.headers['x-goog-api-key'];
+   calls.push({key,now});
+   if(calls.length===1)return new Response('{}',{status:429,headers:{'Retry-After':'18'}});
+   return ok(JSON.stringify(response()));
+  }};
+ const sasti=createGeminiCardReader({...options,getKey:async()=>'cooldown-sasti',cacheDir:path.join(dir,'sasti')});
+ const sameKey=createGeminiCardReader({...options,getKey:async()=>'cooldown-sasti',cacheDir:path.join(dir,'shared-sasti')});
+ const other=createGeminiCardReader({...options,getKey:async()=>'cooldown-other',cacheDir:path.join(dir,'other')});
+ const waiting=sasti.recognize(Buffer.from('rate limited'));
+ while(!wake)await new Promise(resolve=>setImmediate(resolve));
+ const next=sameKey.recognize(Buffer.from('next on key'));
+ await other.recognize(Buffer.from('different key'));
+ assert.deepEqual(calls,[{key:'cooldown-sasti',now:100000},{key:'cooldown-other',now:100000}]);
+ const resume=wake;
+ wake=null;
+ resume();
+ await waiting;
+ while(!wake)await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:118000});
+ wake();
+ await next;
+ assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:130500});
+});
+
+test('exhausted daily quota does not consume automatic retry attempts',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-daily-quota-'));
+ t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ let calls=0;
+ const reader=createGeminiCardReader({prepareViews:async()=>[],cacheDir:dir,getKey:async()=>'test',minIntervalMs:0,
+  fetchImpl:async()=>{
+   calls++;
+   return new Response(JSON.stringify({error:{details:[{violations:[{quotaId:'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}]}]}}),{status:429});
+  }});
+ await assert.rejects(reader.recognize(Buffer.from('card')),{status:429});
+ assert.equal(calls,1);
 });
 
 test('HTTP 402 identifies the billing fix and is not retried',async t=>{

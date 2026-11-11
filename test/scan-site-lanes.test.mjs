@@ -61,9 +61,10 @@ test('a clean stop lets the card being read finish and hands nothing back twice'
 
 test('readers on the same shared key share one start gate; a site key has its own',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gate-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
- const waits=[];const sleep=async ms=>{waits.push(ms);};
+ let time=100000;
+ const waits=[];const sleep=async ms=>{waits.push(ms);time+=ms;};
  const fetchImpl=async()=>({ok:false,status:400,headers:{get:()=>null},body:{cancel(){}}});
- const reader=key=>createGeminiCardReader({cacheDir:dir,getKey:async()=>key,prepareViews:async()=>[],minIntervalMs:60000,sleep,fetchImpl,shareGateByKey:true});
+ const reader=key=>createGeminiCardReader({cacheDir:dir,getKey:async()=>key,prepareViews:async()=>[],minIntervalMs:60000,now:()=>time,sleep,fetchImpl,shareGateByKey:true});
  const a=reader('shared-key'),b=reader('shared-key'),c=reader('site-key');
  await a.recognize(Buffer.from('a')).catch(()=>{});await b.recognize(Buffer.from('b')).catch(()=>{});await c.recognize(Buffer.from('c')).catch(()=>{});
  assert.ok(waits.filter(ms=>ms>0).length===1,'only the second reader on the shared key waited for the gate: '+waits);
