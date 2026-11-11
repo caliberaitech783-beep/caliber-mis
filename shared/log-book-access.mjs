@@ -15,6 +15,7 @@ export function logBookSiteScope(session={},user={}) {
   return {sites:[],label:'Unassigned'};
 }
 export const siteAllowed=(scope,site)=>scope?.sites===null||reportScopeIncludesSite(scope,site);
+export const scanDeletionAllowed=(scope,batch)=>Boolean(batch?.expected_context?.location&&siteAllowed(scope,batch.expected_context.location));
 export const employeeAtLocation=(employee,location)=>Boolean(canonicalSiteName(location)&&displaySiteSelection(employee.site||employee.location||employee.currentLocation).some(site=>canonicalSiteName(site)===canonicalSiteName(location)));
 export function requireLogBookSite(scope,site){
   if(!siteAllowed(scope,site))throw Object.assign(new Error('This location is not assigned to your login.'),{status:403});

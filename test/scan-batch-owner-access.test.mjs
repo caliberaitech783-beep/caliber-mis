@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {allowedScanBatches,requireLogBookSite,logBookSiteScope} from '../shared/log-book-access.mjs';
+import {allowedScanBatches,requireLogBookSite,logBookSiteScope,scanDeletionAllowed} from '../shared/log-book-access.mjs';
 const previousRule=async(client,_scope,login)=>(await client.query("SELECT b.id FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING b.created_by=$1 AND bool_and(COALESCE(c.status,'queued')<>'posted')",[login])).rows.map(row=>row.id);
+
+test('card deletion follows the confirmed batch site, not uploader ownership or another card OCR location',()=>{
+ const scope=logBookSiteScope({role:'normal',site:'Dudhichua OB'});
+ assert.equal(scanDeletionAllowed(scope,{created_by:'another-user',expected_context:{location:'Dudhichua OB'}}),true);
+ assert.equal(scanDeletionAllowed(scope,{created_by:'same-user',expected_context:{location:'Jayant OC'}}),false);
+ assert.equal(scanDeletionAllowed(scope,{created_by:'same-user',expected_context:{}}),false);
+});
 
 test('owner access never exposes known out-of-scope cards during partial posting',async t=>{
  const db=new PGlite();

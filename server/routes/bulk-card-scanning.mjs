@@ -26,7 +26,7 @@ import {applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../s
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {SCAN_IMAGE_TYPES,scanImageDimensions,scanImageMime} from '../rules/scan-image-format.mjs';
 import {scanBlobKey} from '../services/scan-blob-storage.mjs';
-import {allowedScanBatches,requireLogBookSite,filterLogBookSites} from '../../shared/log-book-access.mjs';
+import {allowedScanBatches,requireLogBookSite,filterLogBookSites,scanDeletionAllowed} from '../../shared/log-book-access.mjs';
 import {fillScanTripEstimates} from '../../shared/scan-trip-estimates.mjs';
 import {completeScanTripDetails} from '../../shared/scan-trip-completion.mjs';
 import {canAutoSaveScanCard} from '../../shared/scan-auto-save.mjs';
@@ -152,7 +152,11 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  if(req.allowedSiteBatches!==null&&req.params.id){
   let batchId=req.params.id;
   if(req.path.startsWith('/api/scan-cards/'))batchId=(await pool.query('SELECT batch_id FROM mis_scan_cards WHERE id=$1',[req.params.id])).rows[0]?.batch_id;
-  if(!req.allowedSiteBatches.includes(batchId))return res.status(403).json({error:'This scan batch is not assigned to your site or region.'});
+  if(!req.allowedSiteBatches.includes(batchId)){
+   const deletionRequest=/(?:\/deletion-otp|\/delete|\/card-deletions\/(?:otp|confirm))$/.test(req.path);
+   const batch=deletionRequest?(await pool.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batchId])).rows[0]:null;
+   if(!deletionRequest||!scanDeletionAllowed(req.logBookScope,batch))return res.status(403).json({error:'This scan batch is not assigned to your site or region.'});
+  }
  }
  if(req.body?.draft?.location&&req.body.action!=='reject')requireLogBookSite(req.logBookScope,req.body.draft.location);
  next();

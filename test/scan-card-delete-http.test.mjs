@@ -2,6 +2,7 @@ import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {remainingScanCards,scanReviewPosition} from '../src/scan-review-queue.mjs';
+import {logBookSiteScope} from '../shared/log-book-access.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('single-card deletion requires exact approval, delivered OTP, owner and unchanged revision',async t=>{
@@ -9,12 +10,12 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  for(const [id,name,data]of [[1,'Equipment master',{category:'Vehicle',door:'V321',currentLocation:'Sasti OC'}],[2,'C-Dir Employee master',{name:'TEST DRIVER',empId:'EMP100'}],[3,'Shift Master',{site:'Sasti OC',shiftName:'Shift I'}],[4,'Equipment master',{category:'Equipment',door:'E5',currentLocation:'Sasti OC'}],[5,'Work Order master',{site:'Sasti OC',workOrderNo:'WO1'}]])await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[id,name,JSON.stringify(data)]);
  const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);let tail=Promise.resolve();const pool={query,connect:async()=>{const prior=tail;let done;tail=new Promise(r=>done=r);await prior;return {query,release:done}}};
  let deliveredOtp='',deliveryWorks=true;
- const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:req.get('X-Test-Actor')||'test-admin'};next()};const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,readPulseFleet:async()=>[{door:'V321',currentLocation:'Sasti OC'},{door:'E5',currentLocation:'Sasti OC'}],sendCardDeletionOtp:async request=>{assert.equal(request.to,'917379771776');deliveredOtp=request.otp;return deliveryWorks?{sent:true,messageId:'mock-only'}:{sent:false};},readHours:async()=>({breakdownHours:0}),ocr:{close(){}}});await service.start();await service.stop();app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
+ const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:req.get('X-Test-Actor')||'test-admin'};next()};const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,getSiteScope:async()=>logBookSiteScope({role:'normal',site:'Sasti OC'}),readPulseFleet:async()=>[{door:'V321',currentLocation:'Sasti OC'},{door:'E5',currentLocation:'Sasti OC'}],sendCardDeletionOtp:async request=>{assert.equal(request.to,'917379771776');deliveredOtp=request.otp;return deliveryWorks?{sent:true,messageId:'mock-only'}:{sent:false};},readHours:async()=>({breakdownHours:0}),ocr:{close(){}}});await service.start();await service.stop();app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});const base='http://127.0.0.1:'+server.address().port;
  const call=async(url,body,method='POST',actor='test-admin')=>{const response=await fetch(base+url,{method,headers:{'Content-Type':'application/json','X-Test-Actor':actor},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
  const batch=randomUUID(),id=randomUUID(),other=randomUUID();
  await db.query("INSERT INTO mis_scan_batches(id,kind,name,created_by,expected_context) VALUES($1,'vehicle','Deletion fixture','test-admin',$2::jsonb)",[batch,JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',cardShift:'I',confirmed:true})]);
- for(const [index,cardId] of [id,other].entries())await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'fixture.png',$4,$5,$6::jsonb,'review')",[cardId,batch,index+1,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:'Sasti OC',door:'V-200'})]);
+ for(const [index,cardId] of [id,other].entries())await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,status) VALUES($1,$2,$3,'fixture.png',$4,$5,$6::jsonb,'review')",[cardId,batch,index+1,Buffer.from('test image'),randomUUID(),JSON.stringify({bookDate:'2026-12-30',location:index?'Jayant OC':'Sasti OC',door:'V-200'})]);
  const path='/api/scan-cards/'+id,approval='Approve deletion of card '+id+' revision 1';
  const request={revision:1,reason:'Test-only fixture',approval};
  assert.equal((await call(path+'/delete',{otp:'123456',approval})).status,409);
@@ -24,10 +25,11 @@ test('single-card deletion requires exact approval, delivered OTP, owner and unc
  const payload={requestId:issued.data.requestId,otp:deliveredOtp,approval};
  assert.equal((await call(path+'/delete',payload,'POST','different-user')).status,409);
  assert.equal((await call(path+'/delete',{...payload,otp:'000000'})).status,400);
- assert.equal((await call(path+'/fleet-review',{action:'delete',revision:1})).status,409);
+ assert.equal((await call(path+'/fleet-review',{action:'delete',revision:1})).status,403,'only the audited deletion endpoints receive the confirmed-site exception');
  assert.equal((await db.query('SELECT image FROM mis_scan_cards WHERE id=$1',[id])).rows[0].image.length,10);
  const deleted=await call(path+'/delete',payload);assert.equal(deleted.status,200,JSON.stringify(deleted));
  assert.equal((await call(path+'/delete',payload)).status,409,'single use');
+ await db.query("UPDATE mis_scan_cards SET draft=draft||'{\"location\":\"Sasti OC\"}'::jsonb WHERE id=$1",[other]);
  const rows=(await db.query('SELECT * FROM mis_scan_cards ORDER BY ordinal')).rows;
  assert.equal(rows[0].image,null);assert.equal(rows[0].status,'rejected');assert.deepEqual(rows[0].draft,{});assert.equal(rows[0].raw_fields.manualDeletion.vehicle,'V-200');assert.equal(rows[1].image.length,10);assert.equal(rows[1].status,'review');
  const batchPath='/api/scan-batches/'+batch;
