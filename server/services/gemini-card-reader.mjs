@@ -68,8 +68,8 @@ const keyGates=new Map();
 const RATE_LIMIT_BACKOFF_MS=[10000,20000,40000];
 const RATE_LIMIT_SPACING_MS=12500;
 const RATE_LIMIT_IDLE_RESET_MS=60000;
-const MAX_AUTOMATIC_COOLDOWN_MS=60000;
-const requestGate=()=>({last:0,notBefore:0,blockedUntil:0,paced:false,chain:Promise.resolve()});
+const MAX_TIMER_DELAY_MS=2_147_483_647;
+const requestGate=()=>({last:0,notBefore:0,paced:false,chain:Promise.resolve()});
 const rateLimitError=()=>Object.assign(Error(geminiHttpError(429)),{status:429,provider:'gemini'});
 
 async function readRateLimit(response,now){
@@ -107,8 +107,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    let notified=false;
    while(true){
     const time=now();
-    if(gate.blockedUntil>time)throw rateLimitError();
-    if(time>=Math.max(gate.last+RATE_LIMIT_IDLE_RESET_MS,gate.notBefore))gate.paced=false;
+    if(time>=Math.max(gate.last,gate.notBefore)+RATE_LIMIT_IDLE_RESET_MS)gate.paced=false;
     const spacing=gate.paced?Math.max(minIntervalMs,RATE_LIMIT_SPACING_MS):minIntervalMs;
     const delay=Math.max(gate.notBefore,gate.last+spacing)-time;
     if(delay<=0){
@@ -121,7 +120,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      return;
     }
     // Another in-flight response may extend the cooldown during this wait.
-    await sleep(delay);
+    await sleep(Math.min(delay,MAX_TIMER_DELAY_MS));
    }
   });
   gate.chain=turn.catch(()=>{});
@@ -156,12 +155,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      gate.paced=true;
      gate.notBefore=Math.max(gate.notBefore,now()+backoff);
      const {delayMs,quotaExhausted}=await readRateLimit(res,now);
-     if(delayMs>MAX_AUTOMATIC_COOLDOWN_MS){
-      gate.blockedUntil=Math.max(gate.blockedUntil,now()+delayMs);
-      throw rateLimitError();
-     }
+     if(quotaExhausted)throw rateLimitError();
+     // A long retry window is still a temporary pause for this key.
+     // Keep waiting cards behind the gate instead of marking them failed.
      gate.notBefore=Math.max(gate.notBefore,now()+delayMs);
-     if(quotaExhausted||rateLimitRetries===RATE_LIMIT_BACKOFF_MS.length)throw rateLimitError();
+     if(rateLimitRetries===RATE_LIMIT_BACKOFF_MS.length)throw rateLimitError();
      rateLimitRetries++;
      await onProgress?.('retrying',{attempt:rateLimitRetries+1,maxAttempts:RATE_LIMIT_BACKOFF_MS.length+1,reason:'Gemini rate limit (HTTP 429)',delayMs:Math.max(gate.notBefore,gate.last+RATE_LIMIT_SPACING_MS)-now()});
      continue;

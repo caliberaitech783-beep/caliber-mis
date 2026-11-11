@@ -48,7 +48,7 @@ test('persistent rate limiting uses bounded backoff and never falls back',async 
  assert.deepEqual(starts,[100000,115500,135500,175500]);
 });
 
-test('a Gemini cooldown delays other cards on the same key while a different site keeps reading',async t=>{
+test('a Gemini cooldown over a minute keeps same-key cards waiting while a different site keeps reading',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-key-cooldown-'));
  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const calls=[];
@@ -58,7 +58,7 @@ test('a Gemini cooldown delays other cards on the same key while a different sit
   fetchImpl:async(_url,init)=>{
    const key=init.headers['x-goog-api-key'];
    calls.push({key,now});
-   if(calls.length===1)return new Response('{}',{status:429,headers:{'Retry-After':'18'}});
+   if(calls.length===1)return new Response(JSON.stringify({error:{details:[{retryDelay:'75s'}]}}),{status:429});
    return ok(JSON.stringify(response()));
   }};
  const sasti=createGeminiCardReader({...options,getKey:async()=>'cooldown-sasti',cacheDir:path.join(dir,'sasti')});
@@ -74,10 +74,10 @@ test('a Gemini cooldown delays other cards on the same key while a different sit
  resume();
  await waiting;
  while(!wake)await new Promise(resolve=>setImmediate(resolve));
- assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:118000});
+ assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:175000});
  wake();
  await next;
- assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:130500});
+ assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:187500});
 });
 
 test('exhausted daily quota does not consume automatic retry attempts',async t=>{
