@@ -4,6 +4,7 @@ import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {bookShiftCode,selectedMasterShift,systemBookDate} from '../shared/trip-card-rules.mjs';
 import {ZERO_TRIP_REASONS} from '../shared/zero-trip-reasons.mjs';
+import SmartSelect from './smart-select.jsx';
 
 export default function ShiftAttendance({kind,session,batch,onClose}){
  const [options,setOptions]=useState(null),[error,setError]=useState(''),[saved,setSaved]=useState(false),[busy,setBusy]=useState(false);
@@ -49,9 +50,9 @@ export default function ShiftAttendance({kind,session,batch,onClose}){
     <label className="logbook-field">Shift<select required value={selectedShift?shift:''} onChange={e=>setShift(e.target.value)}>
      <option value="">Select shift</option>{shifts.map(({code,row})=><option key={code} value={code}>{row?(row.name||code)+' · '+row.startTime+'–'+row.endTime:code==='D'?'Day Shift':'Night Shift'}</option>)}
     </select></label>
-    <label className="logbook-field">{vehicle?'Driver':'Operator'}<select required value={employeeId} onChange={e=>setEmployee(e.target.value)}>
+    <label className="logbook-field">{vehicle?'Driver':'Operator'}<SmartSelect searchable required aria-label={vehicle?'Driver':'Operator'} value={employeeId} onChange={e=>setEmployee(e.target.value)}>
      <option value="">Select employee</option>{options.employees.filter(row=>employeeAtLocation(row,site)).map(row=><option key={row.id} value={row.id}>{row.name} · {row.caliberId||row.employeeCode}</option>)}
-    </select></label>
+    </SmartSelect></label>
     <label className="logbook-field">{vehicle?'Vehicle':'Equipment'} (optional)<select value={assetId} onChange={e=>setAsset(e.target.value)}>
      <option value="">Unassigned</option>{options.assets.filter(row=>row.kind===kind&&canonicalSiteName(row.site)===siteKey).map(row=><option key={row.id} value={row.id}>{row.door} · {row.name}</option>)}
     </select></label>
