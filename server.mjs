@@ -3600,6 +3600,7 @@ app.get('/api/health',async(_req,res)=>{
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
+      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length};}catch{return null;}})(),
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
@@ -8674,6 +8675,16 @@ app.use((error,req,res,next)=>{
 app.use(serverErrorHandler());
 
 app.listen(port,process.env.LISTEN_HOST||'0.0.0.0',()=>console.log(`CALIBER ERP listening on port ${port}`));
+// Azure sends SIGTERM before restarting or swapping this app. Stop taking new
+// scan cards, let the cards being read finish (up to 45 s), hand back any that
+// did not, then exit, so a deploy neither loses nor re-reads a card.
+let shuttingDown=false;
+process.once('SIGTERM',()=>{
+  if(shuttingDown)return;shuttingDown=true;
+  console.log(`Stopping: finishing ${bulkScanning.activeReads()} scan card(s) being read.`);
+  const force=setTimeout(()=>process.exit(0),Number(process.env.MIS_SHUTDOWN_DRAIN_MS||45000)+10000);force.unref();
+  bulkScanning.stop({drainMs:Number(process.env.MIS_SHUTDOWN_DRAIN_MS||45000),releaseLeases:true}).catch(error=>console.error('Scan shutdown failed:',error?.message)).finally(()=>process.exit(0));
+});
 
 function backendResultSummary(result){
   if(result===undefined||result===null)return 'Completed';

@@ -1,0 +1,108 @@
+name: Deploy scan engines (nightly)
+
+# The scan engines (server/scan-engine.mjs) run on their own Azure Web App,
+# named by the repository variable SCAN_ENGINE_APP (for example
+# caliber-mis-scan-engine). They are deployed only:
+#   - every night at 20:45 IST, and only when a file the engine runs changed
+#     since the commit the engine is running (scripts/scan-engine-files.mjs);
+#   - or by hand (Run workflow), for an urgent fix the owner approved.
+# A merge to main therefore never restarts the engines during a shift. When
+# they do restart, each engine finishes the cards it is reading first and
+# Pulse-II reads any site whose engine is down (docs/scan-engines-runbook.md).
+on:
+  schedule:
+    - cron: '15 15 * * *'   # 20:45 IST
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Deploy even if no engine file changed (owner-approved urgent fix only)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: caliber-mis-scan-engine-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.SCAN_ENGINE_APP != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ENGINE_APP: ${{ vars.SCAN_ENGINE_APP }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Decide whether the engines need this release
+        id: plan
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
+          LIVE=''
+          if curl --fail --silent --max-time 20 "https://${ENGINE_APP}.azurewebsites.net/health" -o engine-health.json; then
+            LIVE="$(node -e "const h=require('./engine-health.json');if(/^[0-9a-f]{40}$/.test(h.commit||''))process.stdout.write(h.commit)" || true)"
+          fi
+          echo "Engines are running: ${LIVE:-unknown}; main is ${RELEASE_COMMIT}"
+          if [[ "$FORCE" == "true" ]]; then echo "deploy=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [[ "$LIVE" == "$RELEASE_COMMIT" ]]; then echo "deploy=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [[ ! "$LIVE" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "${LIVE}^{commit}" 2>/dev/null; then echo "deploy=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --name-only "$LIVE" "$RELEASE_COMMIT" > changed.txt
+          RESULT="$(node scripts/scan-engine-files.mjs changed.txt)"
+          echo "deploy=${RESULT#changed=}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.deploy == 'true'
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install exact locked dependencies
+        if: steps.plan.outputs.deploy == 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Test the scan queue, lanes and leases
+        if: steps.plan.outputs.deploy == 'true'
+        run: node --test test/scan-site-lanes.test.mjs test/scan-extraction-queue.test.mjs test/gemini-card-reader.test.mjs test/gemini-production.test.mjs
+
+      - name: Record the release commit
+        if: steps.plan.outputs.deploy == 'true'
+        run: |
+          printf '%s\n' "$RELEASE_COMMIT" > DEPLOYMENT_SHA
+          node --check server/scan-engine.mjs
+
+      - name: Login to Azure
+        if: steps.plan.outputs.deploy == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+
+      - name: Deploy the scan engines
+        if: steps.plan.outputs.deploy == 'true'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.SCAN_ENGINE_APP }}
+          package: .
+
+      - name: Verify every engine is running the release
+        if: steps.plan.outputs.deploy == 'true'
+        run: |
+          for attempt in {1..36}; do
+            if curl --fail --silent --max-time 20 "https://${ENGINE_APP}.azurewebsites.net/health" -o engine-health.json && node -e "const h=require('./engine-health.json');if(h.commit!==process.env.RELEASE_COMMIT||h.status!=='ok')process.exit(1);console.log(h.engines.map(e=>e.site+': '+(e.running?'running':'down')+', key '+e.key).join('\n'))"; then
+              echo "All scan engines are running ${RELEASE_COMMIT}."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "The scan engines did not report the release as running. Pulse-II keeps reading those sites meanwhile."
+          exit 1

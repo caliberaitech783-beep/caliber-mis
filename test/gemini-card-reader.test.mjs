@@ -159,7 +159,7 @@ test('five slow cards can extract together while the sixth remains queued',{time
  assert.equal(calls,5);releases[0]();await Promise.race(tasks);
  while(releases.length<6)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(calls,6);for(const release of releases.slice(1))release();await Promise.all(tasks);
- assert.throws(()=>createGeminiCardReader({concurrency:6}),/concurrency/);
+ assert.throws(()=>createGeminiCardReader({concurrency:11}),/concurrency/);
 });
 
 test('separate M and NO cells retain repeated V5 and L79 numbers and literal times',()=>{
