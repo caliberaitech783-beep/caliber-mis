@@ -5,8 +5,8 @@ import {displaySiteName} from './region-scope.mjs';
 import {assetBookKind} from './equipment-kind.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
 import {generateOtp,hashOtp,otpExpiresAt,checkOtpAttempt,resendTooSoon,otpFail,OTP_TTL_MINUTES} from './otp-approval.mjs';
-import {aliasWrittenText,aliasWrittenKey,assetIdentifiers,attachEquipmentAliases} from './equipment-alias-rules.mjs';
-export {aliasWrittenText,aliasWrittenKey,assetIdentifiers,aliasForSelection,attachEquipmentAliases} from './equipment-alias-rules.mjs';
+import {aliasWrittenText,aliasWrittenKey,assetIdentifiers,attachEquipmentAliases,deriveLetterRules,attachLetterRules} from './equipment-alias-rules.mjs';
+export {aliasWrittenText,aliasWrittenKey,assetIdentifiers,aliasForSelection,attachEquipmentAliases,deriveLetterRules,attachLetterRules,letterRuleForAlias} from './equipment-alias-rules.mjs';
 
 // A written machine on a card (body "L21") that Pulse calls something else (DEMO21-00179).
 // A reviewer maps the written text to the Pulse record once. With EQUIPMENT_ALIAS_OTP on,
@@ -44,6 +44,7 @@ export const EQUIPMENT_ALIAS_SCHEMA=`
  ALTER TABLE mis_equipment_aliases ADD COLUMN IF NOT EXISTS revoke_otp_id UUID;
  ALTER TABLE mis_equipment_aliases ADD COLUMN IF NOT EXISTS revoke_route TEXT;
  ALTER TABLE mis_equipment_aliases ADD COLUMN IF NOT EXISTS revoke_reason TEXT;
+ ALTER TABLE mis_equipment_aliases ADD COLUMN IF NOT EXISTS all_sites BOOLEAN NOT NULL DEFAULT TRUE;
  DROP INDEX IF EXISTS mis_equipment_aliases_one_active;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_equipment_aliases_one_live ON mis_equipment_aliases(kind,written_key,equipment_id) WHERE status IN ('pending','active','suspended');
  CREATE INDEX IF NOT EXISTS mis_equipment_aliases_equipment ON mis_equipment_aliases(equipment_id) WHERE status IN ('active','suspended');
@@ -79,11 +80,26 @@ export async function loadEquipmentAliases(pool,{statuses=['active','suspended']
  const links=await tablePresent(pool,'pulse_master_links');
  return (await pool.query(`SELECT a.*,${links?'l.source_id':'NULL::text AS source_id'} FROM mis_equipment_aliases a ${links?LINK_SQL:''} WHERE a.status=ANY($1::text[]) ORDER BY a.created_at`,[statuses])).rows;
 }
-export const withEquipmentAliases=async(pool,assets,options)=>attachEquipmentAliases(assets,await loadEquipmentAliases(pool),options);
+// All-site letter rules come from active aliases whose written number equals the Pulse door
+// number (see equipment-alias-rules.mjs). They are read fresh with the aliases, so a rule
+// approved at one site applies on the next card at every site and in every scan engine.
+// all_sites is read through to_jsonb so an engine that starts before Pulse-II has added the
+// column still treats every approved alias as an all-site rule (the column default).
+export async function loadLetterRules(pool){
+ if(!await tablePresent(pool,'mis_equipment_aliases'))return [];
+ const {rows}=await pool.query("SELECT a.id,a.kind,a.written_key,a.written_text,a.site,a.equipment_id,m.record_data FROM mis_equipment_aliases a JOIN master_records m ON m.id=a.equipment_id AND m.master_name='Equipment master' WHERE a.status='active' AND COALESCE((to_jsonb(a)->>'all_sites')::boolean,TRUE) ORDER BY a.created_at");
+ return deriveLetterRules(rows);
+}
+export async function withEquipmentAliases(pool,assets,options){
+ const aliases=await loadEquipmentAliases(pool);
+ const attached=attachEquipmentAliases(assets,aliases,options);
+ if(!aliases.some(alias=>alias.status==='active'))return attached;
+ return attachLetterRules(attached,await loadLetterRules(pool));
+}
 
 export const publicAlias=row=>row?{id:row.id,equipmentId:String(row.equipment_id),kind:row.kind,writtenKey:row.written_key,writtenText:row.written_text,status:row.status,site:row.site,book:row.book,batchId:row.batch_id,requestedBy:row.requested_by,createdAt:row.created_at,
  approvalRoute:row.approval_route||null,emergencyReason:row.emergency_reason||null,nitishOtpCount:Number(row.nitish_otp_count||0),approvedBy:row.approved_by||null,approvedAt:row.approved_at||null,suspendedReason:row.suspended_reason||null,suspendedAt:row.suspended_at||null,retiredAt:row.retired_at||null,
- revokedBy:row.revoked_by||null,revokedAt:row.revoked_at||null,revokeRoute:row.revoke_route||null,revokeReason:row.revoke_reason||null,...(row.equipment_door!==undefined?{equipmentDoor:row.equipment_door,equipmentName:row.equipment_name,equipmentSite:row.equipment_site}:{}),...(row.history?{history:row.history}:{}),...(row.otps?{otps:row.otps}:{})}:null;
+ allSites:row.all_sites!==false,revokedBy:row.revoked_by||null,revokedAt:row.revoked_at||null,revokeRoute:row.revoke_route||null,revokeReason:row.revoke_reason||null,...(row.equipment_door!==undefined?{equipmentDoor:row.equipment_door,equipmentName:row.equipment_name,equipmentSite:row.equipment_site}:{}),...(row.history?{history:row.history}:{}),...(row.otps?{otps:row.otps}:{})}:null;
 export const publicAliasOtp=row=>row?{id:row.id,aliasId:row.alias_id,purpose:row.purpose,route:row.route,reason:row.reason,requestedBy:row.requested_by,requestedAt:row.requested_at,expiresAt:row.expires_at,sentTo:row.sent_to,channels:row.channels,attempts:row.attempts,status:row.status}:null;
 
 export const aliasHistory=(client,aliasId,action,actor,detail={})=>client.query('INSERT INTO mis_equipment_alias_history(alias_id,action,actor,detail) VALUES($1,$2,$3,$4::jsonb)',[aliasId,action,login(actor)||'system',JSON.stringify(detail)]);
@@ -246,6 +262,17 @@ export async function revokeEquipmentAlias(pool,id,revokedBy,reason=''){
  return row;
 }
 
+// An administrator can keep a machine's alias but stop it teaching the other sites (or turn
+// it back on). The alias itself, its approval and its history are unchanged.
+export async function setAliasAllSites(pool,id,allSites,actor,reason=''){
+ await ensureEquipmentAliases(pool);
+ if(!uuid(id))fail('Invalid alias.',404);
+ const row=(await pool.query("UPDATE mis_equipment_aliases SET all_sites=$2 WHERE id=$1 AND status IN ('pending','active','suspended') RETURNING *",[id,Boolean(allSites)])).rows[0];
+ if(!row)fail('Alias not found or no longer live.',404);
+ await aliasHistory(pool,row.id,allSites?'all_sites_on':'all_sites_off',actor,{reason:text(reason).slice(0,300)});
+ return row;
+}
+
 // Held scan cards re-run their Pulse fleet check on the next batch read once an alias changes.
 export const requeueHeldScanCards=pool=>pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields-'fleetReview' WHERE status IN('review','approved','error') AND jsonb_typeof(raw_fields->'fleetReview'->'issues')='array' AND jsonb_array_length(raw_fields->'fleetReview'->'issues')>0").catch(e=>{if(e?.code!=='42P01')throw e;});
 
@@ -378,7 +405,15 @@ export function registerEquipmentAliases(app,{pool,protect=[],requireAdministrat
   await ensureEquipmentAliases(pool);
   const all=req.query.all==='1',site=canonicalSiteName(String(req.query.site||''));
   const rows=(await pool.query(`SELECT * FROM mis_equipment_aliases WHERE ($1::boolean OR status IN ('pending','active','suspended')) ORDER BY created_at DESC`,[all])).rows.filter(r=>!site||canonicalSiteName(r.site)===site);
-  res.json({...(await settings()),aliases:await detailed(rows,actorOf(req))});
+  res.json({...(await settings()),aliases:await detailed(rows,actorOf(req)),letterRules:await loadLetterRules(pool)});
+ }));
+ app.get('/api/equipment-aliases/letter-rules',...guard,handle(async(req,res)=>res.json({letterRules:await loadLetterRules(pool)})));
+ app.put('/api/equipment-aliases/:id/all-sites',...guard,...admin,handle(async(req,res)=>{
+  const allSites=req.body?.allSites===true;
+  const row=await setAliasAllSites(pool,req.params.id,allSites,actorOf(req),req.body?.reason||'');
+  audit(req,{action:allSites?'Equipment alias applied at all sites':'Equipment alias limited to its own machine',reference:row.written_text+' → equipment '+row.equipment_id,details:publicAlias(row)});
+  await onChange(row);
+  res.json({alias:publicAlias(row),letterRules:await loadLetterRules(pool)});
  }));
  app.post('/api/equipment-aliases',...guard,handle(async(req,res)=>{
   const result=await createEquipmentAlias(pool,{...req.body,requestedBy:actorOf(req),otp:otpEnabled()});

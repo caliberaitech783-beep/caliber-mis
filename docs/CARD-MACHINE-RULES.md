@@ -59,6 +59,17 @@ every later batch. The row shows "Written: L21 · Identified: LPC · No. 21 ·
 mapped by saved alias". Saved logbooks are never rewritten; reports resolve
 text-only rows through the matcher and the alias table at read time.
 
+### All-site letter rules
+
+An approved alias that keeps the number and changes only the letter (written
+`L21` for `DEMO21-00179`) also teaches every site that written `L##` (LPC) is
+Pulse `DEMO##`. All seven site engines read the rule from the same alias table on
+the next card, so a mapping made at Sasti resolves `L35` to Majri's `DEMO35`
+("mapped by all-site letter rule"). A real door or saved alias of another
+machine at the site always wins, and a label that two machines answer goes to
+review. Revoking, suspending or limiting the alias to "This machine only"
+switches the rule off at every site. Details: `equipment-alias-otp-spec.md` §14.
+
 ### The mismatch box and the OTP rule (EQUIPMENT_ALIAS_OTP)
 
 With `EQUIPMENT_ALIAS_OTP=1` every card-versus-Pulse mismatch is resolved
