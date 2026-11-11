@@ -1,3 +1,4 @@
+import {MASTER_SYNC_INTERVAL_MS} from '../rules/master-sync-schedule.mjs';
 import {validateAttachment} from '../rules/attachment-validation.mjs';
 import {readErpSnapshot} from '../services/erp-master-source.mjs';
 import {ERP_MASTER_FIELDS,WORK_BASIC_FIELDS} from '../../shared/erp-master-fields.mjs';
@@ -8,7 +9,7 @@ export async function applyErpSnapshot(pool,groups,master){validateSnapshot(grou
 export function registerErpMasters(app,{pool,config,requireSession,requireAdministrator,readSource=readErpSnapshot}){
  let busy=false,timer,initialized=false;const protect=[requireSession,requireAdministrator];
  const initialize=async()=>{await pool.query(ERP_MASTER_SCHEMA);initialized=true;};
- const status=async()=>({configured:Boolean(typeof config==='function'?await config():config),busy,intervalSeconds:300,...(await pool.query('SELECT last_success,counts,error FROM erp_master_sync_state WHERE id=1')).rows[0]});
+ const status=async()=>({configured:Boolean(typeof config==='function'?await config():config),busy,intervalSeconds:MASTER_SYNC_INTERVAL_MS/1000,...(await pool.query('SELECT last_success,counts,error FROM erp_master_sync_state WHERE id=1')).rows[0]});
  const sync=async(master)=>{const activeConfig=typeof config==='function'?await config():config;if(!activeConfig)throw Object.assign(new Error('ERP connection is not configured.'),{status:503});if(busy)throw Object.assign(new Error('ERP sync is already running.'),{status:409});busy=true;try{return await applyErpSnapshot(pool,await readSource(activeConfig),master);}catch(e){await pool.query('INSERT INTO erp_master_sync_state(id,error) VALUES(1,$1) ON CONFLICT(id) DO UPDATE SET error=EXCLUDED.error',[e.code?`ERP sync failed (${e.code}). The last good copy is available.`:e.message]);throw e;}finally{busy=false;}};
  app.get('/api/erp-masters/status',...protect,async(req,res,next)=>{try{res.set('Cache-Control','no-store').json(await status());}catch(e){next(e)}});
  app.post('/api/erp-masters/sync',...protect,async(req,res)=>{try{await sync();res.json(await status());}catch(e){res.status(e.status||502).json({error:e.code?`ERP sync failed (${e.code}). Please retry.`:e.message})}});
@@ -18,5 +19,5 @@ export function registerErpMasters(app,{pool,config,requireSession,requireAdmini
  app.get('/api/erp-masters/attachments/:id',...protect,async(req,res,next)=>{try{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid attachment.'});const file=(await pool.query('SELECT filename,content FROM erp_master_attachments WHERE id=$1',[req.params.id])).rows[0];if(!file)return res.status(404).json({error:'Attachment not found.'});res.set('Content-Type','application/octet-stream').set('X-Content-Type-Options','nosniff').set('Cache-Control','no-store').attachment(file.filename).send(file.content);}catch(e){next(e)}});
  // ERP-owned copies can only be updated by the source sync.
  app.use('/api/masters/:master',(req,res,next)=>ERP_MASTER_FIELDS[req.params.master]&&!['GET','HEAD'].includes(req.method)?res.status(409).json({error:'Use the ERP master page. Synced records are maintained in the ERP source.'}):next());
- return {sync,status,async start(){if(!initialized)await initialize();if(config){void sync().catch(()=>{});timer=setInterval(()=>{if(!busy)void sync().catch(()=>{})},300000);timer.unref?.();}},initialize,stop(){clearInterval(timer)}};
+ return {sync,status,async start(){if(!initialized)await initialize();if(config&&!timer){void sync().catch(()=>{});timer=setInterval(()=>{if(!busy)void sync().catch(()=>{})},MASTER_SYNC_INTERVAL_MS);timer.unref?.();}},initialize,stop(){clearInterval(timer);timer=undefined}};
 }

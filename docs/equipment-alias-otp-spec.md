@@ -147,7 +147,7 @@ current aliases to unsaved rows only.
 
 ## 7. Real-time checks on every Pulse snapshot
 
-The fleet sync already runs about once a minute. On each snapshot, for every active
+The automatic fleet sync runs once an hour. On each snapshot, for every active
 alias:
 
 - Redundant: the asset now has a real door equal to the written key. Retire the alias

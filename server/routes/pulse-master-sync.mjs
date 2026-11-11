@@ -1,3 +1,4 @@
+import {MASTER_SYNC_INTERVAL_MS} from '../rules/master-sync-schedule.mjs';
 import {readFile,writeFile,mkdir,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {masterAccessAllows} from '../../shared/admin-access.mjs';
@@ -93,7 +94,7 @@ export async function applyPulseSnapshot(pool,input,selectedNames=PULSE_MASTER_N
          data.passwordHash=previous?.passwordHash||hashPassword(randomBytes(32).toString('hex'));
          data.mustChangePassword=previous?.mustChangePassword===true;
        }
-       // The sync runs every minute and Pulse rarely changes; an unchanged record needs no statement.
+       // An unchanged Pulse record needs no write.
        // Each UPDATE statement also bumped the master-data revision, which reloads every master copy.
        if(localById.has(String(localId))&&sameMasterData(localById.get(String(localId)),data))continue;
        await client.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name=$3 AND record_data IS DISTINCT FROM $1::jsonb',[JSON.stringify(data),localId,target]);
@@ -136,7 +137,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
    return body;
  };
  const fetchMasters=async(sourceToken)=>validatePulseSnapshot(await request(`/api/masters?names=${encodeURIComponent(PULSE_MASTER_NAMES.join('|'))}`,{headers:{Authorization:`Bearer ${sourceToken}`,'Cache-Control':'no-cache'}}));
- const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:60,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES,region:{lastSuccess:regionLastSuccess,error:regionError},lmv:{connected:Boolean(token),lastSuccess:lmvLastSuccess,error:lmvError}});
+ const status=()=>({source:SOURCE,connected:Boolean(token)||Boolean(sharedSignIn?.status().connected),connectionMode:token?'manual':'shared-sign-in',username,intervalSeconds:MASTER_SYNC_INTERVAL_MS/1000,lastSuccess,lastAttempt,error,counts,busy,masters:PULSE_MASTER_NAMES,region:{lastSuccess:regionLastSuccess,error:regionError},lmv:{connected:Boolean(token),lastSuccess:lmvLastSuccess,error:lmvError}});
  const save=async(sourceToken,sourceUsername)=>{
    if(credentialStore){await credentialStore.write('pulse-session',{token:sourceToken,username:sourceUsername});return;}if(!stateFile)throw new Error('Local Pulse sync storage is not configured.');
    await mkdir(path.dirname(stateFile),{recursive:true});
@@ -245,7 +246,7 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      try{const saved=await credentialStore?.read('pulse-session')||(stateFile?JSON.parse(await readFile(stateFile,'utf8')):{});token=String(saved.token||'');username=String(saved.username||'');}catch(e){if(e.code!=='ENOENT')error='Saved Pulse connection could not be read. Reconnect Pulse.';}
      let hasSavedCredentials=false;try{hasSavedCredentials=Boolean(await credentialStore?.read('pulse'))}catch{error='Saved legacy Pulse credentials could not be read. Normal Pulse sign-in can reconnect automatically.';}
      if(token||hasSavedCredentials||sharedSignIn?.status().connected)void refresh();
-     timer=setInterval(()=>{if(token||credentialStore)void refresh();},60000);timer.unref?.();
+     timer=setInterval(()=>{if(token||sharedSignIn?.status().connected)void refresh();},MASTER_SYNC_INTERVAL_MS);timer.unref?.();
    },
    stop(){clearInterval(timer);sharedSignIn?.stop();},
  };

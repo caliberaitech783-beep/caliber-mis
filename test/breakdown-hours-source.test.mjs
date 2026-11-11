@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../shared/breakdown-hours-source.mjs';
+import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,createBreakdownRowsPrefetchCache,lockedReadHours} from '../shared/breakdown-hours-source.mjs';
 const data=()=>({bookDate:'2026-10-28',location:'Sasti OC',assetId:1,shiftId:2,shiftHours:8,totalWorkingHmr:4,availabilityHours:4,idleHours:4,manualBreakdownHours:'2.5'});
 test('Pulse is always tried first and its actual zero beats a manual fallback',async()=>{
  let calls=0;const result=await applyBreakdownHours(data(),{readHours:async input=>{calls++;assert.equal(input.runningHours,4);return {breakdownHours:0,source:'Pulse'}}});
@@ -25,6 +25,17 @@ test('the Pulse feed is read once before the lock and reused inside it',async()=
  const seen=[];const readHours=lockedReadHours(async input=>{seen.push(input);return {breakdownHours:1}},prefetched);
  const result=await applyBreakdownHours(data(),{readHours,actor:'operator'});
  assert.equal(reads,1);assert.deepEqual(seen[0].breakdownRows,[{id:1}]);assert.equal(seen[0].runningHours,4);assert.equal(result.breakdownHoursSource,'pulse');
+});
+test('automatic saves share one recent Pulse feed and retry after expiry or failure',async()=>{
+ let time=100,reads=0,fail=false;
+ const cached=createBreakdownRowsPrefetchCache(async actor=>{reads++;if(fail)throw Error('Pulse offline');return [{actor,reads}]},{ttlMs:30,now:()=>time});
+ const [first,concurrent]=await Promise.all([cached('operator'),cached('operator')]);
+ assert.equal(reads,1);assert.equal(first,concurrent);assert.deepEqual(first.rows,[{actor:'operator',reads:1}]);
+ assert.equal((await cached('operator')).rows[0].reads,1);
+ assert.equal((await cached('other')).rows[0].reads,2,'different users do not share authorization-scoped feeds');
+ time=131;assert.equal((await cached('operator')).rows[0].reads,3,'expired feeds refresh');
+ fail=true;time=200;assert.match((await cached('operator')).error.message,/offline/);
+ fail=false;assert.equal((await cached('operator')).rows[0].reads,5,'a failed fetch is never cached');
 });
 test('a failed prefetch repeats its failure inside the lock, so the manual fallback is unchanged',async()=>{
  const prefetched=await prefetchBreakdownRows(async()=>{throw Error('Pulse offline')});

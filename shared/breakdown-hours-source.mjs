@@ -26,6 +26,18 @@ export async function prefetchBreakdownRows(readBreakdownRows,actor){
  if(typeof readBreakdownRows!=='function')return null;
  try{return {rows:await readBreakdownRows(actor)}}catch(error){return {error}}
 }
+export function createBreakdownRowsPrefetchCache(readBreakdownRows,{ttlMs=30000,now=Date.now}={}){
+ const cache=new Map();
+ return async actor=>{
+  const key=String(actor||''),current=cache.get(key),time=now();
+  if(current&&current.expiresAt>time)return current.promise;
+  const promise=prefetchBreakdownRows(readBreakdownRows,actor);
+  cache.set(key,{expiresAt:time+ttlMs,promise});
+  const result=await promise;
+  if(result?.error&&cache.get(key)?.promise===promise)cache.delete(key);
+  return result;
+ };
+}
 export function lockedReadHours(readHours,prefetched){
  if(!prefetched||typeof readHours!=='function')return readHours;
  return async input=>{if(prefetched.error)throw prefetched.error;return readHours({...input,breakdownRows:prefetched.rows})};
