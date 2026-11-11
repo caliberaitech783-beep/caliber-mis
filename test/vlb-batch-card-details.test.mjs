@@ -32,3 +32,21 @@ test('viewing a batch card reveals and focuses its details with a return action'
  assert.equal(tree.props.tabIndex,-1);
  const back=tree.props.children.find(child=>child?.type===StepBack);assert.equal(back.props.label,'Back to batch report');back.props.onBack();assert.equal(closed,true);
 });
+
+test('ELB trip card picker lists only matching cards and exposes saved trips without a scan',async()=>{
+ const {tripSerialNumber}=await import('../shared/log-book-labels.mjs');
+ let selected='';
+ const Component=await compile('elb-trip-cards.jsx','ElbTripCards',{React,useEffect:()=>{},useState:initial=>initial===''?[selected,value=>selected=value]:[initial,()=>{}],tripSerialNumber});
+ const matching={id:7,book_no:'VLB/7',data:{door:'TIPPER-7',timeMode:'without',trips:[{equipmentName:'Other loader',tripCount:9},{equipmentName:'Loader 19',tripCount:2}]}};
+ const batch={records:[matching,{id:8,book_no:'VLB/8',data:{}}],elbTripCardRows:{19:{7:[1]}}};
+ const props={batch,equipment:{asset_id:19},token:'test'};
+ const tree=Component(props);
+ assert.match(renderToStaticMarkup(tree),/VLB\/7/);
+ assert.doesNotMatch(renderToStaticMarkup(tree),/VLB\/8|Loader 19/);
+ tree.props.children[1].props.children[0].props.children[0].props.onClick();
+ const html=renderToStaticMarkup(Component(props));
+ assert.match(html,/Loader 19/);
+ assert.match(html,/No original scan was saved for this trip card/);
+ assert.doesNotMatch(html,/Other loader|VLB\/8/);
+ assert.match(renderToStaticMarkup(Component({...props,equipment:{asset_id:20}})),/No VLB trip cards in this batch/);
+});

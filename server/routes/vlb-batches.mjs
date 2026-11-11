@@ -56,7 +56,7 @@ async function details(client,batch,req){
  const trialExpired=Boolean(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired);
  const grant=requests.find(r=>r.requested_by===req.batchActor.login&&r.status==='approved'&&r.closure_revision===batch.closure_revision);
  const grantValid=grant?batchPmAtSite(await req.batchGetActor({login:grant.decided_by},client),batch.site):false;
- const stageInfo=await stageDetails(client,batch);
+ const stageInfo=await stageDetails(client,batch,{tripCardRecords:records.filter(record=>siteAllowed(req.logBookScope,record.site||record.data?.location))});
  const owner=isOwner(batch,req.batchActor);
  const lmvRecords=stageInfo.stage==='lmv_open'?(await client.query(
   "SELECT id,book_no,book_type,data,revision FROM mis_log_books WHERE book_type='lmv' AND book_date=$1 AND deleted_at IS NULL ORDER BY id",
