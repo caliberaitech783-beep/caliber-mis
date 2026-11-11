@@ -12042,8 +12042,7 @@ function App() {
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
-          {name:'Telegram Integration',direct:true,pages:canOpenAdminPage('Telegram Integration')?['Telegram Integration']:[]},
-          {name:'Automation Centre',direct:true,pages:canOpenAdminPage('Automation Centre')?['Automation Centre']:[]},
+          {name:'Telegram & WhatsApp',pages:[{label:'Telegram Integration',page:'Telegram Integration'},{label:'Telegram/WhatsApp Automation Centre',page:'Automation Centre'}].filter(entry=>canOpenAdminPage(entry.page))},
           {name:'Admin',pages:MIS_ADMIN_PAGES.filter(canOpenAdminPage)},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}

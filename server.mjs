@@ -7972,7 +7972,7 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
   pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',
   scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
-registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre});
+registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch});
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);

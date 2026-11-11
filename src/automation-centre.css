@@ -39,6 +39,9 @@
 .automation-form label{display:grid;gap:6px;font-weight:600}
 .automation-form .automation-check{display:flex;align-items:center;gap:10px;font-weight:500}
 .automation-form .automation-check input{width:18px;height:18px;accent-color:#56309a}
+.automation-people{margin:0;padding:10px 12px 10px 30px;border-radius:8px;background:#f3eefa;font-size:14px;line-height:1.6}
+.automation-people .is-waiting{color:#a32445}
+.automation-people .is-ready{color:#0b6b4c}
 .automation-actions{display:flex;flex-wrap:wrap;gap:10px}
 .automation-actions button[type=submit]{background:#56309a;border-color:#56309a;color:#fff}
 :root[data-theme="dark"] .automation-centre{color:#f1edf7}

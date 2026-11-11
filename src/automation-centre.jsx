@@ -69,8 +69,9 @@ export default function AutomationCentre({session,onOpenPage}){
     <label className="automation-check"><input type="checkbox" checked={form.telegram} onChange={event=>setForm({...form,telegram:event.target.checked})}/>Telegram message</label>
     <label className="automation-check"><input type="checkbox" checked={form.whatsapp} onChange={event=>setForm({...form,whatsapp:event.target.checked})}/>WhatsApp message</label>
     <p className="automation-note">WhatsApp delivers a plain message only to a number that has written to the Caliber WhatsApp number in the last 24 hours. For guaranteed delivery a message template has to be approved by Meta first; until then Telegram is the dependable channel.</p>
-    <label>People (Pulse-II logins, separated by commas)<input value={form.logins} onChange={event=>setForm({...form,logins:event.target.value})} placeholder="Leave blank to send to the MIS managers"/></label>
-    <p className="automation-note">Each person must have connected Telegram on the Telegram Integration page to receive the Telegram message.</p>
+    <label>People (Pulse-II login or mobile number, separated by commas)<input value={form.logins} onChange={event=>setForm({...form,logins:event.target.value})} placeholder="Leave blank to send to the MIS managers"/></label>
+    {data.recipientCheck?.length>0&&<ul className="automation-people">{data.recipientCheck.map(person=><li key={person.entry} className={person.telegramLinked?'is-ready':'is-waiting'}><b>{person.entry}</b>: {person.note}</li>)}</ul>}
+    <p className="automation-note">A mobile number is matched with the mobile number in the person's Users &amp; employees record. Telegram cannot write to a phone number by itself: each person must once press Connect my Telegram on the Telegram Integration page, signed in with their own login.</p>
     <div className="automation-actions"><button type="submit" disabled={busy}>{busy?'Saving…':'Save'}</button><button type="button" onClick={()=>onOpenPage?.('Equipment Deployment')}>Open Equipment Deployment</button><button type="button" onClick={()=>onOpenPage?.('Telegram Integration')}>Open Telegram Integration</button></div>
    </form>}
   </>}

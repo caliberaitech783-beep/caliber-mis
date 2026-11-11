@@ -20,7 +20,9 @@ export const EQUIPMENT_MISMATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_equipment_mismatch_seen(
   run_id BIGINT NOT NULL REFERENCES mis_equipment_mismatch_runs(id) ON DELETE CASCADE,login_name TEXT NOT NULL,
   seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(run_id,login_name));`;
-export const DEFAULT_MISMATCH_SETTINGS=Object.freeze({enabled:true,intervalHours:6,popup:true,telegram:true,whatsapp:false,logins:[]});
+// People are entered on the Automation Centre page as a Pulse-II login or as the mobile number in their
+// Users & employees record; an empty list means the MIS managers. No number is kept in the code.
+export const DEFAULT_MISMATCH_SETTINGS=Object.freeze({enabled:true,intervalHours:6,popup:true,telegram:true,whatsapp:false,logins:Object.freeze([])});
 const INTERVALS=[1,2,3,4,6,8,12,24];
 const HOUR=3600000,RETRY_MS=30*60000,MANUAL_GAP_MS=2*60000;
 
@@ -31,7 +33,25 @@ export function normalizeMismatchSettings(input={}){
  const hours=Number(input.intervalHours);
  return {enabled:flag('enabled'),intervalHours:INTERVALS.includes(hours)?hours:DEFAULT_MISMATCH_SETTINGS.intervalHours,
   popup:flag('popup'),telegram:flag('telegram'),whatsapp:flag('whatsapp'),
-  logins:[...new Set((Array.isArray(input.logins)?input.logins:String(input.logins||'').split(/[,\s;]+/)).map(loginOf).filter(Boolean))].slice(0,30)};
+  logins:input.logins===undefined?[...DEFAULT_MISMATCH_SETTINGS.logins]
+   :[...new Set((Array.isArray(input.logins)?input.logins:String(input.logins||'').split(/[,;\n]+/)).map(entry=>isMobile(entry)?mobileKey(entry):loginOf(entry)).filter(Boolean))].slice(0,30)};
+}
+// A mobile number as people type it: +91 90000 00002, 09000000002, 9000000002. Compared on its last ten digits.
+function mobileKey(value){return text(value).replace(/\D/g,'').slice(-10);}
+function isMobile(value){return /^\+?[\d\s-]{10,16}$/.test(text(value))&&text(value).replace(/\D/g,'').length>=10;}
+// Turns the saved people list into Pulse-II logins: a login stays as it is, a mobile number becomes
+// the login or logins whose user record carries that number.
+export async function resolveRecipients(pool,entries){
+ const people=entries.map(entry=>({entry,mobile:isMobile(entry),logins:isMobile(entry)?[]:[entry]}));
+ if(people.some(person=>person.mobile)){
+  const {rows}=await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees'");
+  for(const {record_data:user} of rows){
+   if(!user||user.sourceMissing||!loginOf(user.login))continue;
+   const numbers=new Set([user.whatsapp,user.mobile,user.phone,user.contact].map(mobileKey).filter(key=>key.length===10));
+   for(const person of people)if(person.mobile&&numbers.has(mobileKey(person.entry))&&!person.logins.includes(loginOf(user.login)))person.logins.push(loginOf(user.login));
+  }
+ }
+ return {people,logins:[...new Set(people.flatMap(person=>person.logins))],unknown:people.filter(person=>!person.logins.length).map(person=>person.entry)};
 }
 export async function readMismatchSettings(pool){
  try{return normalizeMismatchSettings((await pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',[EQUIPMENT_MISMATCH_SETTING_KEY])).rows[0]?.setting_value||{});}
@@ -76,7 +96,16 @@ export function scopedMismatchResult(result,scope){
 export function createEquipmentMismatchWorker({pool,pulse,telegram=null,whatsapp=null,defaultLogins=async()=>[],ensureSchema=async()=>{},now=()=>Date.now(),intervalMs=5*60000,log=console}){
  let ready,running=false,timer;
  const ensure=()=>ready??=(async()=>{await ensureSchema();await pool.query(EQUIPMENT_MISMATCH_SCHEMA);})().catch(e=>{ready=null;throw e;});
- const recipients=async settings=>settings.logins.length?settings.logins:[...new Set((await defaultLogins().catch(()=>[])).map(loginOf).filter(Boolean))];
+ const resolved=async settings=>settings.logins.length?resolveRecipients(pool,settings.logins):{people:[],logins:[...new Set((await defaultLogins().catch(()=>[])).map(loginOf).filter(Boolean))],unknown:[]};
+ const recipients=async settings=>(await resolved(settings)).logins;
+ // For the settings screen: who each entry is, and whether that person has connected Telegram.
+ async function recipientCheck(settings){
+  const {people}=await resolved(settings);
+  const linked=new Set((await pool.query('SELECT login_name FROM mis_telegram_links').catch(()=>({rows:[]}))).rows.map(row=>loginOf(row.login_name)));
+  return people.map(person=>({entry:person.entry,logins:person.logins,telegramLinked:person.logins.some(name=>linked.has(name)),
+   note:!person.logins.length?'No Pulse-II user has this mobile number. Add it to the Users & employees record, or enter the login.'
+    :(person.mobile?'Pulse-II login '+person.logins.join(', ')+'. ':'')+(person.logins.some(name=>linked.has(name))?'Telegram connected.':'Telegram not connected yet: press Connect my Telegram on the Telegram Integration page.')}));
+ }
  async function claim(slot,trigger,by){
   const inserted=(await pool.query('INSERT INTO mis_equipment_mismatch_runs(slot_key,trigger_type,requested_by) VALUES($1,$2,$3) ON CONFLICT(slot_key) DO NOTHING RETURNING id',[slot,trigger,by])).rows[0];
   if(inserted)return inserted.id;
@@ -85,8 +114,8 @@ export function createEquipmentMismatchWorker({pool,pulse,telegram=null,whatsapp
  }
  async function deliver(settings,result,slot,nowMs){
   const message='Caliber Pulse-II\n'+equipmentMismatchMessage(result,{checkedAt:indiaStamp(nowMs)})+'\nhttps://pulse-ll.cmll.in/?page=equipment-deployment';
-  const logins=await recipients(settings),notes=[];let telegramSent=0,whatsappSent=0;
-  if(!logins.length)notes.push('No recipient is set and no MIS manager was found.');
+  const {logins,unknown}=await resolved(settings),notes=unknown.map(entry=>`${entry}: no Pulse-II user has this mobile number`);let telegramSent=0,whatsappSent=0;
+  if(!logins.length&&!unknown.length)notes.push('No recipient is set and no MIS manager was found.');
   for(const to of logins){
    if(settings.telegram&&telegram){
     try{if(await telegram.send(to,message,`equipment-mismatch:${slot}:${to}`))telegramSent++;else notes.push(`${to}: Telegram not linked`);}
@@ -136,7 +165,7 @@ export function createEquipmentMismatchWorker({pool,pulse,telegram=null,whatsapp
  }
  const start=()=>{if(timer)return;const tick=()=>void runOnce().catch(e=>log.error?.('Equipment list check:',e.code||e.message));tick();timer=setInterval(tick,intervalMs);timer.unref?.();};
  const stop=()=>{if(timer)clearInterval(timer);timer=undefined;};
- return {runOnce,runNow,start,stop,ensure,recipients};
+ return {runOnce,runNow,start,stop,ensure,recipients,recipientCheck};
 }
 
 const RUN_COLUMNS='id::text AS id,trigger_type AS "trigger",requested_by AS "requestedBy",status,matches,machine_count AS "machineCount",error,telegram_sent AS "telegramSent",whatsapp_sent AS "whatsappSent",delivery_note AS "deliveryNote",started_at AS "startedAt",checked_at AS "checkedAt"';

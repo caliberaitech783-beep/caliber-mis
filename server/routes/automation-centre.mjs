@@ -72,15 +72,16 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  return {overview,rollUp,counts,start,stop,ensure};
 }
 
-export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre}){
+export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null}){
  const guard=[requireSession,requireAdministrator];
- app.get('/api/automation-centre',...guard,async(req,res,next)=>{try{req.audit=false;res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:await readMismatchSettings(pool)});}catch(e){next(e);}});
+ const people=async settings=>mismatchWorker?.recipientCheck?mismatchWorker.recipientCheck(settings).catch(()=>null):null;
+ app.get('/api/automation-centre',...guard,async(req,res,next)=>{try{req.audit=false;const settings=await readMismatchSettings(pool);res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:settings,recipientCheck:await people(settings)});}catch(e){next(e);}});
  app.put('/api/automation-centre/equipment-mismatch',...guard,async(req,res,next)=>{try{
   const input=req.body||{};
   if(input.intervalHours!==undefined&&![1,2,3,4,6,8,12,24].includes(Number(input.intervalHours)))return res.status(400).json({error:'Choose how often to check: 1, 2, 3, 4, 6, 8, 12 or 24 hours.'});
-  if(input.logins!==undefined&&!Array.isArray(input.logins)&&typeof input.logins!=='string')return res.status(400).json({error:'Enter the logins separated by commas.'});
+  if(input.logins!==undefined&&!Array.isArray(input.logins)&&typeof input.logins!=='string')return res.status(400).json({error:'Enter the logins or mobile numbers separated by commas.'});
   const saved=await writeMismatchSettings(pool,{...await readMismatchSettings(pool),...input});
   req.audit={eventType:'Administration',module:'Automation Centre',action:'Change equipment list mismatch automation',targetReference:'equipment-mismatch',details:saved};
-  res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:saved});
+  res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:saved,recipientCheck:await people(saved)});
  }catch(e){next(e);}});
 }

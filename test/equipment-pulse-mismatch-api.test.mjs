@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
-import {createEquipmentMismatchWorker,registerEquipmentMismatch,mismatchSlot,normalizeMismatchSettings,writeMismatchSettings} from '../server/routes/equipment-pulse-mismatch.mjs';
+import {createEquipmentMismatchWorker,registerEquipmentMismatch,mismatchSlot,normalizeMismatchSettings,writeMismatchSettings,readMismatchSettings,resolveRecipients} from '../server/routes/equipment-pulse-mismatch.mjs';
 import {createAutomationCentre,registerAutomationCentre} from '../server/routes/automation-centre.mjs';
 import {MIS_TELEGRAM_SCHEMA} from '../server/routes/mis-telegram.mjs';
 import {normalizeWhatsAppReportSettings} from '../shared/whatsapp-report-settings.mjs';
@@ -35,6 +35,8 @@ async function serve(t,register){
 
 test('settings keep to the allowed hours and a clean login list',()=>{
  assert.deepEqual(normalizeMismatchSettings({}),{enabled:true,intervalHours:6,popup:true,telegram:true,whatsapp:false,logins:[]});
+ assert.deepEqual(normalizeMismatchSettings({logins:''}).logins,[],'an emptied list means the MIS managers');
+ assert.deepEqual(normalizeMismatchSettings({logins:'+91 90000 00002, 09000000002, Boss'}).logins,['9000000002','boss']);
  assert.deepEqual(normalizeMismatchSettings({intervalHours:5,logins:' A1, a1 ;B2 ',whatsapp:true,enabled:false}),{enabled:false,intervalHours:6,popup:true,telegram:true,whatsapp:true,logins:['a1','b2']});
  const at=Date.parse('2026-11-11T16:10:00Z');// 21:40 IST
  assert.equal(mismatchSlot(at,6),'scheduled:2026-11-11:6h:3');
@@ -96,6 +98,24 @@ test('a mismatch is checked once per slot, sent by Telegram, popped up until OK,
 
  await writeMismatchSettings(pool,{enabled:false});
  assert.deepEqual(await worker.runOnce(),{disabled:true});
+});
+
+test('a mobile number in the people list reaches the Pulse-II login that carries it',async t=>{
+ const {db,pool,add}=await setup(t);
+ await add('Users & employees',{login:'Owner1',mobile:'+91 90000 00002'});
+ await add('Users & employees',{login:'gone',mobile:'9000000002',sourceMissing:true});
+ await add('Users & employees',{login:'pm1',whatsapp:'9000000001'});
+ await add('Equipment master',{door:'NEW-7',chassis:'CH7',group:'Drill',currentLocation:'Sasti OB'});
+ await db.query("INSERT INTO mis_telegram_links(login_name,chat_id) VALUES('owner1','555')");
+ await writeMismatchSettings(pool,{logins:'9000000002, 9111111111, pm1'});
+ const sent=[];
+ const worker=createEquipmentMismatchWorker({pool,telegram:{async send(login,message,key){sent.push(login);return true;}},pulse:{status:()=>({connected:true}),readEquipmentList:async()=>[{id:1,door:'EX-01',chassis:'CH1',group:'Excavator',currentLocation:'Sasti'}]}});
+ assert.deepEqual(await resolveRecipients(pool,['9000000002','9111111111','pm1']).then(r=>[r.logins,r.unknown]),[['owner1','pm1'],['9111111111']]);
+ const run=await worker.runOnce();
+ assert.deepEqual(sent,['owner1','pm1']);assert.match(run.note,/9111111111: no Pulse-II user has this mobile number/);
+ const check=await worker.recipientCheck(await readMismatchSettings(pool));
+ assert.deepEqual(check.map(p=>[p.entry,p.telegramLinked]),[['9000000002',true],['9111111111',false],['pm1',false]]);
+ assert.match(check[0].note,/Pulse-II login owner1. Telegram connected./);assert.match(check[2].note,/Telegram not connected yet/);
 });
 
 test('the Automation Centre lists every rule with its channels and counts to date',async t=>{
