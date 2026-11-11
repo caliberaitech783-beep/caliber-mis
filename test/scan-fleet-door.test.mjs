@@ -44,3 +44,12 @@ test('automatic matching displays the exact canonical master door without changi
  const recovered=linkedScanEquipment([{id:'s188',door:'S-188',kind:'vehicle',site:'Sasti OB'}],'S-88','Sasti OB','vehicle');
  assert.equal(recovered?.id,'s188');assert.equal(canonicalLinkedScanDoor(recovered,'S-88'),'S-88');
 });
+
+test('an exact scanned door wins over an old alias on another vehicle',async()=>{
+ const {linkedScanEquipment}=await import('../shared/scan-fleet-door.mjs');
+ const rows=[
+  {id:'hp02',door:'HP-02',kind:'vehicle',site:'Sasti OC'},
+  {id:'s102',door:'S-102',kind:'vehicle',site:'Sasti OC',cardAliases:['HP-02']},
+ ];
+ assert.equal(linkedScanEquipment(rows,'HP-02','Sasti OC','vehicle')?.id,'hp02');
+});

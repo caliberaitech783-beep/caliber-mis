@@ -49,25 +49,33 @@ const identifiers=row=>{
  const aliases=Array.isArray(row.cardAliases)?row.cardAliases.filter(Boolean):[];
  return [...(doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean)),...aliases];
 };
+const masterIdentifiers=row=>{
+ const doors=[row.door,row.doorNo,equipmentDoorNumber(row)].filter(value=>value&&/\d/.test(value));
+ return doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean);
+};
 // Options/master arrays are replaced on refresh. Index each stable array once,
 // rather than rescanning the entire fleet for every trip on each keystroke.
 const masterIndexes=new WeakMap();
 function masterIndex(rows,site,kind){
  let indexes=masterIndexes.get(rows);if(!indexes){indexes=new Map();masterIndexes.set(rows,indexes);}
  const cacheKey=kind+'\0'+canonicalSiteName(site);if(indexes.has(cacheKey))return indexes.get(cacheKey);
- const index=new Map();
+ const index=new Map(),masterDoors=new Map();
  for(const row of rows){
   if(kind==='equipment'&&assetBookKind(row)!=='equipment'||row.kind&&row.kind!==kind||site&&canonicalSiteName(row.currentLocation||row.site||row.location)!==canonicalSiteName(site))continue;
   for(const identifier of identifiers(row)){const key=cardMachineKey(identifier,kind);if(!key)continue;if(!index.has(key))index.set(key,new Set());index.get(key).add(row);}
+  for(const identifier of masterIdentifiers(row)){const key=cardMachineKey(identifier,kind);if(!key)continue;if(!masterDoors.has(key))masterDoors.set(key,new Set());masterDoors.get(key).add(row);}
  }
- indexes.set(cacheKey,index);return index;
+ const result={all:index,masterDoors};indexes.set(cacheKey,result);return result;
 }
 export function matchCardMachine(rows=[],value,site='',kind='equipment'){
  const machine=identifyCardMachine(value,kind,{allowSuffix:true});
  if(machine&&!machine.hasNumber)return {machine,matches:[],match:null,status:'missing-number'};
  if(/^\d+$/.test(text(value)))return {machine:null,matches:[],match:null,status:'missing-prefix'};
- const target=cardMachineKey(value,kind),index=masterIndex(rows,site,kind);
- const matches=target?[...(index.get(target)||[])]:[];
+ const target=cardMachineKey(value,kind),indexes=masterIndex(rows,site,kind),index=indexes.all;
+ // A literal door in Equipment Master always wins over a learned alias using
+ // the same written key.
+ const exactMaster=target?[...(indexes.masterDoors.get(target)||[])]:[];
+ const matches=exactMaster.length?exactMaster:target?[...(index.get(target)||[])]:[];
  if(matches.length)return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':'ambiguous'};
  // Recover one omitted or duplicated digit only inside the selected site and
  // fleet prefix. Exact matches above always win, and ambiguity never guesses.

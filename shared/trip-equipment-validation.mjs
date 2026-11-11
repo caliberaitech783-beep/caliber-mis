@@ -2,7 +2,7 @@ import {assetBookKind} from './equipment-kind.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
 const clean=v=>String(v??'').trim(),key=v=>clean(v).toUpperCase().replace(/[ ._-]/g,'');
-const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc'};
+const families={V:'Vpc',VOLVO:'Vpc',VPC:'Vpc',T:'Tpc',TA:'Tpc',TATA:'Tpc',TPC:'Tpc',L:'Lpc',LPC:'Lpc',S:'Spc',SPC:'Spc',DEMO:'Demo'};
 const machinePrefix=value=>{const prefix=key(value);return prefix==='DE'?'DEMO':prefix;};
 // Parse before removing separators: the trailing serial is not part of the door number.
 const parse=v=>{const m=clean(v).toUpperCase().match(/^([A-Z][A-Z ._]*?)?[ ._\/-]*([0-9]+)(?:\s*[-·–—(/]\s*[^\r\n]+)?$/);return m?{prefix:machinePrefix(m[1]),number:String(Number(m[2]))}:null;};
@@ -59,11 +59,17 @@ export function resolveTripEquipment(row={},assets=[],location='',{anySite=false
  const originalKey=key(original);
  const candidates=new Set(equipment.byKey.get(originalKey));
  if(parsed)for(const entry of equipment.byNumber.get(parsed.number)||[])candidates.add(entry);
- const broadMatches=[...candidates].filter(entry=>(anySite||entry.site===site)&&matchLabels(entry.record).some(value=>{
+ let broadMatches=[...candidates].filter(entry=>(anySite||entry.site===site)&&matchLabels(entry.record).some(value=>{
   const label=parse(value);
   if(parsed&&label)return parsed.number===label.number&&(!parsed.prefix||parsed.prefix===label.prefix||family&&families[label.prefix]===family);
   return key(value)===originalKey;
  })).sort((left,right)=>left.position-right.position).map(entry=>entry.record);
+ // DE is the card abbreviation for DEMO. Prefer the master record whose own
+ // DEMO number matches exactly, before considering aliases left on duplicates.
+ if(parsed?.prefix==='DEMO'){
+  const exactDemo=broadMatches.filter(record=>labels(record).some(value=>{const label=parse(value);return label?.prefix==='DEMO'&&label.number===parsed.number;}));
+  if(exactDemo.length)broadMatches=exactDemo;
+ }
  const exactSerial=serialIdentity(original),serialMatches=exactSerial?broadMatches.filter(r=>matchLabels(r).some(v=>serialIdentity(v)===exactSerial)):[];
  const matches=exactSerial?serialMatches:broadMatches;
  const selected=clean(row.equipmentId),selectedMatches=selected?matches.filter(r=>String(r.id)===selected):[];
