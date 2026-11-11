@@ -216,7 +216,14 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  }
  async function requireFleet(card,draft,actor){
   if(card.raw_fields?.fleetRejection)fail(card.raw_fields.fleetRejection.message,409);
-  const review=await enforceFleet(card,draft,card.raw_fields,actor);
+  // The card reached automatic save only after its current draft passed the Pulse
+  // fleet review. Reuse that signed result instead of downloading the same fleet
+  // again for every card in the entry. A changed draft has a different signature
+  // and still performs a fresh check before it can save.
+  const prior=card.raw_fields?.fleetReview;
+  const review=prior?.signature===scanFleetSignature(draft)&&!prior.error&&!prior.issues?.length
+   ?prior
+   :await enforceFleet(card,draft,card.raw_fields,actor);
   if(review?.error||review?.issues.length)fail(review.error||'Equipment is not assigned to this site. Choose Reject card or complete the existing transfer in Pulse.',409);
   if(card.raw_fields?.fleetBlock&&review&&!review.error&&!review.issues.length)await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields-'fleetBlock' WHERE id=$1 AND revision=$2 AND status IN('review','approved','error')",[card.id,card.revision]);
  }

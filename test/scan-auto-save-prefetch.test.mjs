@@ -2,6 +2,7 @@ import {prepareVlbFixture} from './operational-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import express from 'express';import {PGlite} from '@electric-sql/pglite';import {randomUUID} from 'node:crypto';
 import {registerBulkCardScanning} from '../server/routes/bulk-card-scanning.mjs';import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import {scanFleetSignature} from '../shared/scan-fleet-assignment.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 const valid={doorText:'V321',bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I',assetId:'1',employeeId:'2',shiftId:'3',workOrderId:'5',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:20,aFormNo:'75',jobCardNo:'E75',timeMode:'with',trips:[{equipmentName:'D19',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],scanMachineSummary:[{equipmentName:'D19',tripCount:1}]};
 
@@ -16,8 +17,8 @@ test('automatic saving reads Pulse once before its locks and holds the scan lock
  const query=(q,a)=>{if(q==='BEGIN')events.push('BEGIN');if(q.includes('pg_advisory_xact_lock')){events.push(q);return Promise.resolve({rows:[]})}return !a&&q.includes(';')?db.exec(q):db.query(q,a)};
  const pool={query,connect:async()=>{const previous=tail;let done;tail=new Promise(r=>done=r);await previous;return {query,release(){done()}}}};
  const app=express();app.use(express.json());const session=(q,s,n)=>{if(!q.headers.authorization)return s.sendStatus(401);q.session={login:'test-admin'};n()},admin=(q,s,n)=>q.headers.authorization==='admin'?n():s.sendStatus(403);
- const feed=[{id:'pulse-row'}],inputs=[];
- const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readBreakdownRows:async actor=>{events.push('prefetch:'+actor);return feed},readHours:async input=>{inputs.push(input);return {breakdownHours:0}},ocr:{close(){}}});
+ const feed=[{id:'pulse-row'}],inputs=[];let fleetReads=0;
+ const service=registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:admin,readBreakdownRows:async actor=>{events.push('prefetch:'+actor);return feed},readHours:async input=>{inputs.push(input);return {breakdownHours:0}},readPulseFleet:async()=>{fleetReads++;return []},ocr:{close(){}}});
  await service.start();await prepareVlbFixture(db,valid);t.after(()=>service.stop());app.use((e,q,s,n)=>s.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>{server.closeAllConnections();server.close()});
  const root='http://127.0.0.1:'+server.address().port;
@@ -25,7 +26,7 @@ test('automatic saving reads Pulse once before its locks and holds the scan lock
  const batch=randomUUID(),context={bookDate:valid.bookDate,location:valid.location,cardShift:valid.cardShift};
  await db.query('INSERT INTO mis_scan_batches(id,kind,name,created_by) VALUES($1,$2,$3,$4)',[batch,'vehicle','Prefetch test','test-admin']);
  const card=randomUUID();
- await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,1,'test.png',$3,$4,$5,$6::jsonb,'review')",[card,batch,Buffer.from('retained image'),randomUUID(),JSON.stringify(valid),JSON.stringify({extractionDraft:valid})]);
+ await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,1,'test.png',$3,$4,$5,$6::jsonb,'review')",[card,batch,Buffer.from('retained image'),randomUUID(),JSON.stringify(valid),JSON.stringify({extractionDraft:valid,fleetReview:{signature:scanFleetSignature(valid),issues:[],error:'',checkedAt:new Date().toISOString()}})]);
  for(const [route,body] of [['/context',{expectedContext:context}],['/validate-context',{action:'proceed'}]]){const r=await post('/api/scan-batches/'+batch+route,body);assert.equal(r.status,200,JSON.stringify(r));}
  events.length=0;
  const saved=await post('/api/scan-cards/'+card+'/auto-save',{revision:1});
@@ -33,6 +34,7 @@ test('automatic saving reads Pulse once before its locks and holds the scan lock
  assert.deepEqual(events.filter(e=>e.startsWith('prefetch:')),['prefetch:test-admin'],'the feed is read exactly once');
  assert.ok(events.indexOf('prefetch:test-admin')<events.indexOf('BEGIN'),'Pulse is read before the transaction opens');
  assert.equal(inputs.length,1);assert.equal(inputs[0].breakdownRows,feed,'the saved feed reaches the hours reader');assert.ok(inputs[0].client,'master reads use the transaction connection');
+ assert.equal(fleetReads,0,'automatic save reuses the matching fleet review already shown as okay');
  assert.ok(events.includes('SELECT pg_advisory_xact_lock_shared(709224102)'),'the scan lock is shared');
  assert.ok(!events.includes('SELECT pg_advisory_xact_lock(709224102)'),'no exclusive scan lock remains');
  assert.ok(events.includes('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))'),'the site, date and shift scope is locked');

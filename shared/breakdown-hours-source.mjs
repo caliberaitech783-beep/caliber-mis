@@ -26,7 +26,7 @@ export async function prefetchBreakdownRows(readBreakdownRows,actor){
  if(typeof readBreakdownRows!=='function')return null;
  try{return {rows:await readBreakdownRows(actor)}}catch(error){return {error}}
 }
-export function createBreakdownRowsPrefetchCache(readBreakdownRows,{ttlMs=30000,now=Date.now}={}){
+export function createBreakdownRowsPrefetchCache(readBreakdownRows,{ttlMs=300000,now=Date.now}={}){
  const cache=new Map();
  return async actor=>{
   const key=String(actor||''),current=cache.get(key),time=now();
