@@ -22,7 +22,7 @@ import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../../shared/
 import {withEquipmentAliases,loadEquipmentAliases,attachEquipmentAliases,scanBatchMismatches,createEquipmentAlias,aliasOtpEnabled,publicAlias,requeueHeldScanCards as requeueHeldScanCardsFor} from '../../shared/equipment-aliases.mjs';
 import {selectTripEquipment,resolvedMachineName,cardMachineKey} from '../../shared/scan-machine-rules.mjs';
 import {assetBookKind,isLmv} from '../../shared/equipment-kind.mjs';
-import {applyBreakdownHours,prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
+import {applyBreakdownHours,prefetchBreakdownRows,createBreakdownRowsPrefetchCache,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {SCAN_IMAGE_TYPES,scanImageDimensions,scanImageMime} from '../rules/scan-image-format.mjs';
 import {scanBlobKey} from '../services/scan-blob-storage.mjs';
@@ -143,6 +143,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT}){
  if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>5)throw Error('Scan concurrency must be between 1 and 5.');
+ const prefetchAutoSaveBreakdownRows=createBreakdownRowsPrefetchCache(readBreakdownRows);
  // Pulse fleet rows carry the saved card aliases of their linked local record, so an aliased written label is not held as "not registered".
  if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async (actor,site)=>withEquipmentAliases(pool,await readSourceFleet(actor,site),{by:'source'});}
  let workers=0,timer,stopped=false;const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{
@@ -403,7 +404,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(!Number.isSafeInteger(req.body.revision))fail('Reload the card before automatic saving.',409);
   const initial=await getCard(pool,req.params.id);if(initial.raw_fields?.fleetRestoration&&initial.raw_fields?.fleetBlock)fail('Review this restored card and save corrections before automatic saving.',409);await requireFleet(initial,initial.draft,req.session.login||req.session.name);
   // Pulse is read before any lock; inside the transaction the saved feed answers without a remote call.
-  const actor=req.session.login||req.session.name,prefetched=await prefetchBreakdownRows(readBreakdownRows,actor);const c=await pool.connect();let batch,record;
+  const actor=req.session.login||req.session.name,prefetched=await prefetchAutoSaveBreakdownRows(actor);const c=await pool.connect();let batch,record;
   try{
    await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[initial.batch_id]);
    batch=await getBatch(c,initial.batch_id);const card=await getCard(c,initial.id,true);
