@@ -9,14 +9,18 @@ import {summarizePulseHours} from '../server/rules/log-book-hours.mjs';
 import {assertCombinedShiftMeters} from '../server/rules/log-book-shift-hmr.mjs';
 const shift={site:'Jayant OC',shiftCode:'B',startTime:'12:00:00',endTime:'21:00:00'};
 const batch={id:'1',site:'jayant ob',shift:'S2',stage:'elb_open',report_date:'2026-11-01'};
-test('Jayant second shift requires exactly noon to 9 PM and other shifts reject 9 hours',()=>{
+test('Jayant Shift Master duration is accepted across batch and manual log-book paths',()=>{
  assert.equal(fleetShiftHours(shift),9);
+ assert.equal(fleetShiftHours({...shift,startTime:'13:00',endTime:'20:30'}),7.5);
  assert.equal(normalizeShiftRecord({...shift,shiftName:'Shift B'}).startTime,'12:00:00');
- assert.throws(()=>normalizeShiftRecord({...shift,shiftName:'Shift B',startTime:'13:00'}),/12:00 PM/);
- for(const patch of [{site:'Sasti OC'},{shiftCode:'A'},{shiftCode:'C'},{shiftCode:'DAY'}])assert.throws(()=>fleetShiftHours({...shift,...patch}),/valid/);
- for(const hours of [8,12,9.5,0])assert.throws(()=>manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:hours}),/requires 9/);
- assert.equal(manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:9}),9);
- assert.equal(manualShiftHours({location:'Jayant OC',bookShiftCode:'S1',shiftHours:8}),8);
+ assert.deepEqual(
+  (({startTime,endTime})=>({startTime,endTime}))(normalizeShiftRecord({...shift,shiftName:'Shift B',startTime:'13:00',endTime:'20:30'})),
+  {startTime:'13:00:00',endTime:'20:30:00'},
+ );
+ assert.throws(()=>fleetShiftHours({...shift,site:'Sasti OC'}),/valid/);
+ for(const hours of [7.5,8,9,12])assert.equal(manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:hours}),hours);
+ assert.equal(manualShiftHours({location:'Jayant OC',bookShiftCode:'S1',shiftHours:7.5}),7.5);
+ for(const hours of [0,24.01])assert.throws(()=>manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:hours}),/8-hour/);
  assert.throws(()=>manualShiftHours({location:'Sasti OC',bookShiftCode:'S2',shiftHours:9}),/8-hour/);
  assert.equal(manualShiftWindow({location:'Jayant OC',shiftHours:9},shift).endTime,'21:00');
 });

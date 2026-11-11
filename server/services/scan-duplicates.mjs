@@ -1,5 +1,6 @@
 import {operationalScanSql} from '../../shared/operational-start.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {fingerprintScanImage,closestFingerprint,scanFingerprintSettings} from './scan-fingerprint.mjs';
 
@@ -27,6 +28,8 @@ export const REMOVED_FROM_BATCH_NOTE='Removed from batch: wrong date, site or sh
 
 export function duplicateNote(original){return 'Duplicate of card '+original.ordinal+' in entry '+(original.entryName||original.batchId);}
 export const cardNumberKey=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+export const scanDoorValue=card=>String(card?.draft?.doorTextWritten||card?.raw_fields?.door||card?.draft?.doorText||card?.draft?.door||'').trim();
+export const scanDoorKey=(card,kind)=>cardMachineKey(scanDoorValue(card),kind);
 
 export async function fingerprintForUpload(image){
  try{return await fingerprintScanImage(image);}catch(error){console.error('Scan fingerprint failed:',error?.message||String(error));return null;}
@@ -83,7 +86,7 @@ export async function restoreDuplicateCard(client,card,actor){
 export function contentIdentityCertain(card,kind,context){
  const draft=card.draft||{},review=draft.extractionReviewFields||[];
  const numberField=kind==='vehicle'?'aFormNo':'jobCardNo';
- if(!cardNumberKey(draft[numberField])||!String(draft.assetId||'').trim())return false;
+ if(!cardNumberKey(draft[numberField])||!scanDoorKey(card,kind))return false;
  if(review.includes(numberField)||review.includes('assetId')||review.includes('doorText'))return false;
  if(context?.bookDate&&draft.bookDate!==context.bookDate)return false;
  return !['system-fallback','scan-unreadable'].includes(draft.bookDateSource);
@@ -91,12 +94,15 @@ export function contentIdentityCertain(card,kind,context){
 
 // Same date, door and card number on a live card in any entry for this date,
 // site and shift (earlier cards win), or in a saved log book.
-export async function findContentDuplicate(client,kind,card,batch,{bookDate,assetId,number}){
- if(!bookDate||!assetId||!number)return null;
+export async function findContentDuplicate(client,kind,card,batch,{bookDate,door,number}){
+ const doorKey=cardMachineKey(door||scanDoorValue(card),kind);
+ if(!bookDate||!doorKey||!number)return null;
  const batches=await sameContextBatches(client,batch);
- const sibling=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.id<>$2 AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND c.draft->>'bookDate'=$3 AND c.draft->>'assetId'=$4 AND regexp_replace(upper(COALESCE(NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo','')),'[^A-Z0-9]','','g')=$5 AND (c.created_at<$6 OR (c.created_at=$6 AND c.id<$2)) ORDER BY c.created_at,c.id LIMIT 1`,[batches.map(b=>b.id),card.id,bookDate,String(assetId),number,card.created_at])).rows[0];
+ const siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.raw_fields,c.draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.id<>$2 AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND c.draft->>'bookDate'=$3 AND regexp_replace(upper(COALESCE(NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND (c.created_at<$5 OR (c.created_at=$5 AND c.id<$2)) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),card.id,bookDate,number,card.created_at])).rows;
+ const sibling=siblings.map(row=>decodeScanRow(row)).find(row=>scanDoorKey(row,kind)===doorKey);
  if(sibling)return {kind:'card',...originalSummary(sibling)};
- const saved=(await client.query("SELECT l.id,l.book_no,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.asset_id=$3 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND COALESCE(l.data->>'scanCardId','')<>$5 LIMIT 1",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,assetId,number,card.id])).rows[0];
+ const savedRows=(await client.query("SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$3 AND COALESCE(l.data->>'scanCardId','')<>$4",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
+ const saved=savedRows.find(row=>cardMachineKey(row.data?.door||row.data?.doorText,kind)===doorKey);
  if(saved){const origin=saved.scan_card_id?(await client.query('SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1',[saved.scan_card_id])).rows[0]:null;return {kind:'logbook',cardId:origin?.id||null,batchId:origin?.batch_id||null,entryName:origin?.batch_name||null,ordinal:origin?.ordinal||null,bookNo:saved.book_no};}
  return null;
 }
@@ -113,7 +119,7 @@ export async function applyContentDuplicate(client,kind,card,batch){
  const context=batch.expected_context;if(!context||card.status!=='review'||card.duplicate_of)return null;
  if(!contentIdentityCertain(card,kind,context))return null;
  const draft=card.draft||{},number=cardNumberKey(kind==='vehicle'?draft.aFormNo:draft.jobCardNo);
- const original=await findContentDuplicate(client,kind,card,batch,{bookDate:draft.bookDate,assetId:draft.assetId,number});
+ const original=await findContentDuplicate(client,kind,card,batch,{bookDate:draft.bookDate,door:scanDoorValue(card),number});
  if(!original||!original.cardId)return null;
  await client.query("UPDATE mis_scan_cards SET status='rejected',duplicate_of=$2,review_note=$3,checked_by='system',checked_at=NOW(),raw_fields=raw_fields||jsonb_build_object('duplicate',$4::jsonb),revision=revision+1 WHERE id=$1 AND status='review' AND duplicate_of IS NULL",[card.id,original.cardId,duplicateNote(original),JSON.stringify({reason:'content',original,decidedAt:new Date().toISOString()})]);
  return original;

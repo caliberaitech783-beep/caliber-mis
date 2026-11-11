@@ -130,7 +130,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  if(data&&number){
   // The same card number, door and date on a live card in any entry for this date, site and shift, or in a saved log book, is a duplicate. A certain identity blocks with the original named; an uncertain one asks the operator to confirm first.
   const batch={id:card.batch_id,kind,expected_context:context};
-  const original=await findContentDuplicate(client,kind,card,batch,{bookDate:data.bookDate,assetId:String(data.assetId),number});
+  const original=await findContentDuplicate(client,kind,card,batch,{bookDate:data.bookDate,door:input.doorTextWritten||card.raw_fields?.door||input.doorText||data.door,number});
   if(original)errors.push(original.kind==='logbook'&&!original.ordinal?'Card already exists in '+original.bookNo+'.':contentDuplicateMessage(original,contentIdentityCertain({...card,draft:input},kind,context)));
  }
  if(card.raw_fields?.duplicateSuspect?.ordinal&&!errors.some(e=>/duplicate/i.test(e)))warnings.push('This scan looks like card '+card.raw_fields.duplicateSuspect.ordinal+' in entry '+(card.raw_fields.duplicateSuspect.entryName||'')+'. Confirm it is a different card before saving.');

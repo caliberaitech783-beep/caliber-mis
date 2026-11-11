@@ -87,8 +87,8 @@ test('a rescan of a card already saved to the log book is skipped and names the 
  const {entry,upload,db}=await harness(t);
  const b01=await entry(shift1,'B01'),b02=await entry(shift1,'B02');
  const first=await upload(b01.id,drawCard({seed:7,writing:'SAVED'}),1);assert.equal(first.status,201);
- const book=(await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('MAJ/0007','vehicle','2026-11-01','Majri OB',1,$1,$2,'alice') RETURNING id",[JSON.stringify({bookDate:'2026-11-01',location:'Majri OB',cardShift:'I',scanCardId:first.data.id,scanCardNumber:'A7'}),randomUUID()])).rows[0];
- await db.query("UPDATE mis_scan_cards SET status='posted',logbook_id=$2,draft=$3::jsonb WHERE id=$1",[first.data.id,book.id,JSON.stringify({bookDate:'2026-11-01',assetId:'1',aFormNo:'A7'})]);
+ const book=(await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('MAJ/0007','vehicle','2026-11-01','Majri OB',1,$1,$2,'alice') RETURNING id",[JSON.stringify({bookDate:'2026-11-01',location:'Majri OB',door:'V1',cardShift:'I',scanCardId:first.data.id,scanCardNumber:'A7'}),randomUUID()])).rows[0];
+ await db.query("UPDATE mis_scan_cards SET status='posted',logbook_id=$2,draft=$3::jsonb WHERE id=$1",[first.data.id,book.id,JSON.stringify({bookDate:'2026-11-01',assetId:'1',doorText:'V1',aFormNo:'A7'})]);
  const again=await upload(b02.id,drawCard({seed:7,writing:'SAVED',shiftX:5,noise:8}),1);
  assert.equal(again.status,200,JSON.stringify(again));assert.equal(again.data.duplicateSkipped,true);assert.equal(again.data.original.bookNo,'MAJ/0007');
  // Once the saved record is deleted the paper may be scanned again.
@@ -104,7 +104,7 @@ test('a borderline scan is read and tagged as a suspect; a certain content match
  const suspect=await upload(b02.id,drawCard({seed:11,writing:'ELEVEN',shiftX:12,shiftY:8,noise:14}),1);
  assert.equal(suspect.status,201,JSON.stringify(suspect));assert.equal(suspect.data.duplicateSuspect.cardId,first.data.id);assert.equal(suspect.data.duplicateSuspect.entryName,b01.name);
  const context={id:b01.id,kind:'vehicle',expected_context:{...shift1,confirmed:true}};
- const draft={bookDate:'2026-11-01',bookDateSource:'scan',location:'Majri OB',assetId:'5',aFormNo:'A-11',extractionReviewFields:[]};
+ const draft={bookDate:'2026-11-01',bookDateSource:'scan',location:'Majri OB',assetId:'5',doorText:'V5',aFormNo:'A-11',extractionReviewFields:[]};
  await db.query("UPDATE mis_scan_cards SET status='review',draft=$2::jsonb WHERE id=$1",[first.data.id,JSON.stringify(draft)]);
  // Certain identity (door and card number read cleanly) on the entry date: rejected as a duplicate of the original.
  await db.query("UPDATE mis_scan_cards SET status='review',draft=$2::jsonb WHERE id=$1",[suspect.data.id,JSON.stringify(draft)]);
@@ -122,8 +122,13 @@ test('a borderline scan is read and tagged as a suspect; a certain content match
  assert.equal(contentIdentityCertain(unsureCard,'vehicle',context.expected_context),false);
  assert.equal(await applyContentDuplicate(pool,'vehicle',unsureCard,{...context,id:b02.id}),null);
  assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[unsure.data.id])).rows[0].status,'review');
- const found=await findContentDuplicate(pool,'vehicle',unsureCard,{...context,id:b02.id},{bookDate:'2026-11-01',assetId:'5',number:'A11'});
+ const found=await findContentDuplicate(pool,'vehicle',unsureCard,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V5',number:'A11'});
  assert.equal(found.cardId,first.data.id);
+ const differentDoor={...unsureCard,draft:{...unsureCard.draft,doorText:'V6'}};
+ assert.equal(await findContentDuplicate(pool,'vehicle',differentDoor,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V6',number:'A11'}),null,'the same linked asset and card number cannot duplicate a different written door');
+ await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('MAJ/0012','vehicle','2026-11-01','Majri OB',5,$1,$2,'alice')",[JSON.stringify({door:'V5',scanCardNumber:'A12'}),randomUUID()]);
+ assert.equal(await findContentDuplicate(pool,'vehicle',differentDoor,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V6',number:'A12'}),null,'a saved card with the same number but a different written door is not a duplicate');
+ assert.equal((await findContentDuplicate(pool,'vehicle',unsureCard,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V5',number:'A12'})).bookNo,'MAJ/0012','a saved card with the same written door remains a duplicate');
  assert.equal(contentDuplicateMessage(found,false),'Possible duplicate of card 1 in entry '+b01.name+'. Confirm the card number and door before saving.');
  assert.equal(contentDuplicateMessage(found,true),'Same card number, door and date already appear on card 1 in entry '+b01.name+'. Reject this card or correct the values.');
  // A card dated differently from its entry is never certain: the mismatch gate handles it.
