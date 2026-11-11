@@ -1,4 +1,3 @@
-import {isJayantSecondShift} from './site-shift-hours.mjs';
 const TIME_PATTERN=/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 const TWELVE_HOUR_TIME_PATTERN=/^(0?[1-9]|1[0-2]):(\d{2})(?::(\d{2}))?\s*([AP]M)$/i;
 const ISO_DATE_PATTERN=/^(\d{4})-(\d{2})-(\d{2})$/;
@@ -76,7 +75,6 @@ export function normalizeShiftRecord(record={}){
   const endTime=normalizeTime(record.endTime||record.end,'End');
   const shiftCode=String(record.shiftCode||defaultShiftCode(shiftName)).trim().toUpperCase();
   if(!shiftCode)throw new Error('Shift Code is required.');
-  if(isJayantSecondShift({site,shiftCode})&&(startTime!=='12:00:00'||endTime!=='21:00:00'))throw new Error('Jayant OC second shift must run from 12:00 PM to 9:00 PM (9 hours).');
   const effectiveFrom=normalizeDate(record.effectiveFrom,'Effective From');
   const effectiveTo=normalizeDate(record.effectiveTo,'Effective To');
   if(effectiveFrom&&effectiveTo&&effectiveTo<effectiveFrom)

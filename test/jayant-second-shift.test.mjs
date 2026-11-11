@@ -9,10 +9,13 @@ import {summarizePulseHours} from '../server/rules/log-book-hours.mjs';
 import {assertCombinedShiftMeters} from '../server/rules/log-book-shift-hmr.mjs';
 const shift={site:'Jayant OC',shiftCode:'B',startTime:'12:00:00',endTime:'21:00:00'};
 const batch={id:'1',site:'jayant ob',shift:'S2',stage:'elb_open',report_date:'2026-11-01'};
-test('Jayant second shift requires exactly noon to 9 PM and other shifts reject 9 hours',()=>{
+test('Jayant Shift Master accepts site timings while log books retain the nine-hour operating rule',()=>{
  assert.equal(fleetShiftHours(shift),9);
  assert.equal(normalizeShiftRecord({...shift,shiftName:'Shift B'}).startTime,'12:00:00');
- assert.throws(()=>normalizeShiftRecord({...shift,shiftName:'Shift B',startTime:'13:00'}),/12:00 PM/);
+ assert.deepEqual(
+  (({startTime,endTime})=>({startTime,endTime}))(normalizeShiftRecord({...shift,shiftName:'Shift B',startTime:'13:00',endTime:'20:30'})),
+  {startTime:'13:00:00',endTime:'20:30:00'},
+ );
  for(const patch of [{site:'Sasti OC'},{shiftCode:'A'},{shiftCode:'C'},{shiftCode:'DAY'}])assert.throws(()=>fleetShiftHours({...shift,...patch}),/valid/);
  for(const hours of [8,12,9.5,0])assert.throws(()=>manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:hours}),/requires 9/);
  assert.equal(manualShiftHours({location:'Jayant OC',bookShiftCode:'S2',shiftHours:9}),9);
