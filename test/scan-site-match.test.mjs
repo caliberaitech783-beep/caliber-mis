@@ -50,6 +50,8 @@ test('new Trip Cards display OB while preserving literal OC evidence and master 
  assert.equal(JSON.stringify(masters),original);
  assert.equal(tripCardLocation('Rock OC / OC (East)'),'Rock OB / OB (East)');
  assert.equal(tripCardLocation('SASTI 001'),'Sasti OB');
+ assert.equal(tripCardLocation('MAJRI 001'),'Majri OB');
+ assert.equal(matchScannedSite(['MAJRI 001'],['Sasti OB','Majri OB']),'Majri OB');
  assert.equal(tripCardLocation('ROCK CLOCK OC123'),'ROCK CLOCK OC123');
  assert.deepEqual(tripCardLocationChoices(['Majri OC','Majri OB'],'Majri OB',true),['Majri OB']);
  assert.deepEqual(tripCardLocationChoices(['Majri OC'],'Majri OC',false),['Majri OC']);
