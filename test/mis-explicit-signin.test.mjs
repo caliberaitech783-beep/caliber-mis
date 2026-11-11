@@ -30,16 +30,17 @@ test('only a completed shared-sign-in callback exchanges the server-held handoff
   assert.deepEqual(result.redirects,[]);
 });
 
-test('a fresh MIS page shows sign-in even when browser storage contains a previous session',async()=>{
+test('refreshing MIS restores the saved session instead of signing the user out',async()=>{
   const entry=readFileSync(new URL('../src/mis-entry.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/enableCalendarFieldClicks\(document\);[\s\S]*$/,'');
   const {code}=await transformWithOxc(entry,'mis-entry.jsx',{jsx:{runtime:'classic'}});
   const Login=()=>null,Workspace=()=>null;
-  let options;
+  let options,receivedSession;
+  const saved={token:'old-synthetic-session'};
   const scope={React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],useEffect:()=>{},
-    useMisSharedSignIn:(_session,settings)=>{options=settings;return {error:''};},MisSharedLogin:Login,MisWorkspace:Workspace,
-    sessionStorage:{getItem:()=>JSON.stringify({token:'old-synthetic-session'})},localStorage:{getItem:()=>JSON.stringify({token:'old-synthetic-session'})}};
+    useMisSharedSignIn:(session,settings)=>{receivedSession=session;options=settings;return {error:''};},MisSharedLogin:Login,MisWorkspace:Workspace,
+    sessionStorage:{getItem:()=>JSON.stringify(saved),setItem:()=>{},removeItem:()=>{}},localStorage:{getItem:()=>null,removeItem:()=>{}}};
   const App=new Function(...Object.keys(scope),`${code};return MisApp;`)(...Object.values(scope));
-  assert.equal(App().type,Login);assert.equal(options.autoStart,true);
+  assert.equal(App().type,Workspace);assert.deepEqual(receivedSession,saved);assert.equal(options.autoStart,true);
 });
 
 

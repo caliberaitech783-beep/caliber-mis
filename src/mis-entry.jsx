@@ -8,16 +8,20 @@ import './mis-workspace.css';
 
 const sessionKey='nerveCenterSession';
 function clearSession(){sessionStorage.removeItem(sessionKey);localStorage.removeItem(sessionKey);}
+function readSession(){
+  try{return JSON.parse(localStorage.getItem(sessionKey)||sessionStorage.getItem(sessionKey)||'null');}
+  catch{return null;}
+}
+function saveSession(session){sessionStorage.setItem(sessionKey,JSON.stringify(session));}
 
 function MisApp(){
-  const [session,setSession]=useState(null);
+  const [session,setSession]=useState(readSession);
   const [signedOut,setSignedOut]=useState(false);
   const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:true});
   useEffect(()=>{
-    clearSession();
     const receive=event=>{
       if(!event.detail?.token)return;
-      setSignedOut(false);setSession(event.detail);
+      saveSession(event.detail);setSignedOut(false);setSession(event.detail);
     };
     window.addEventListener('mis-shared-signin',receive);
     return()=>window.removeEventListener('mis-shared-signin',receive);
