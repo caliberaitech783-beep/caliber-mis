@@ -12,7 +12,7 @@ const fleetPopulation=['src/fleet-population.jsx','shared/fleet-population.mjs']
 const tabCode={'fleet-capacity':fleetPopulation,'equipment-deployment':fleetPopulation,ot:manpower,manpower,'manpower-reconciliation':manpower,employee:manpower,attendance:manpower,'door-production':production,'machine-production':production,
  'meter-continuity':['src/meter-continuity-report.jsx','shared/meter-continuity-report.mjs'],
  'vlb-reports':['src/vlb-batch-reports.jsx','src/vlb-batch-report.jsx','src/scan-batch-reports.jsx','src/scan-batch-report.jsx'],
- 'elb-reports':['src/elb-batch-reports.jsx'],
+ 'elb-reports':['src/elb-batch-reports.jsx','src/elb-trip-cards.jsx'],
  'batch-status':['src/batch-status-report.jsx','src/batch-status-report.css','shared/batch-status-report.mjs'],
  timing:[...sharedScreen,'src/trip-timing-report.jsx','shared/trip-timing-report.mjs']};
 export const guideText=id=>id==='ot'?['scripts/report-guides/ot-guide.mjs','scripts/report-guides/ot-guide-hi.mjs']:['scripts/report-guides/content/'+id+'.json'];

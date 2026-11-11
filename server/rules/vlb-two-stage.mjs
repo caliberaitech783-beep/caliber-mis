@@ -87,7 +87,7 @@ export const describeHolds=holds=>holds.map(h=>`${h.label||'Asset '+h.assetId} f
 
 // Every loading machine named on a tipper card, resolved to its Equipment master id.
 // V19, VL19 and VPC 019 reconcile to one machine because the id, not the label, is the key.
-export function buildMachineSnapshot(records,assets,site){
+export function buildMachineSnapshot(records,assets,site,onResolvedTrip){
  const equipment=assets.filter(asset=>assetBookKind(asset)==='equipment'),index=new Map(equipment.map(asset=>[machineKey(asset),asset]));
  const machines=new Map(),unresolved=[];
  for(const record of records){
@@ -100,6 +100,7 @@ export function buildMachineSnapshot(records,assets,site){
    if(!asset){const match=resolveTripEquipment(row,equipment,data.location||site);if(match.error){unresolved.push({bookNo:record.book_no,row:i+1,label:text(row.equipmentName),error:match.error});return;}asset=index.get(String(match.equipmentId));}
    if(!asset){unresolved.push({bookNo:record.book_no,row:i+1,label:text(row.equipmentName),error:'Loading machine is missing from the Equipment master.'});return;}
    const key=machineKey(asset);
+   onResolvedTrip?.(key,record,i);
    if(!machines.has(key))machines.set(key,{assetId:key,label:assetLabel(asset)||text(row.equipmentName),door:assetDoor(asset),trips:0,sourceCards:0});
    const machine=machines.get(key);machine.trips+=Number(row.tripCount)||0;
    if(!seen.has(key)){seen.add(key);machine.sourceCards+=1;}

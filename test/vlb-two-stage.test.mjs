@@ -151,7 +151,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const loader=await call(fleet(ids['VPC-019']),'POST',{shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7'});
  assert.equal(loader.status,200,JSON.stringify(loader.data));assert.equal(loader.data.record.book_type,'equipment');assert.equal(loader.data.record.data.shiftStatus,'working');assert.equal(loader.data.record.data.fleetTrips,8);
  assert.equal(loader.data.fleetProgress.saved,1);assert.equal(loader.data.fleet[0].draft,null);
- assert.equal((await call(batch)).data.canEditSavedFleet,true,'admin capability is supplied by the server');
+ const withTripCards=(await call(batch)).data;
+ assert.equal(withTripCards.canEditSavedFleet,true,'admin capability is supplied by the server');
+ assert.deepEqual(withTripCards.elbTripCardRows,{[ids['VPC-019']]:{[first.data.id]:[0,1]}},'the ELB links only to the same-batch rows loaded by its equipment');
  const editInput={shiftStatus:'working',employeeId:ids.alice,openingHmr:500,closingHmr:505,jobCardNo:'JC-7',remark:'Admin correction',revision:loader.data.record.revision};
  const edited=await call(fleet(ids['VPC-019']),'POST',editInput);
  assert.equal(edited.status,200,JSON.stringify(edited.data));

@@ -63,7 +63,9 @@ test('printed machine-number inference compares only the loading rows to the pri
 
 test('ELB machine snapshot excludes carry-over rows separately for each card',()=>{
  const record=(book_no,trips)=>({book_no,data:{location:site,trips}});
- const result=buildMachineSnapshot([record('A',[carry,loaded]),record('B',[carry,loaded]),record('C',[carry])],assets,site);
+ const sourceRows=[];
+ const result=buildMachineSnapshot([record('A',[carry,loaded]),record('B',[carry,loaded]),record('C',[carry])],assets,site,(assetId,card,index)=>sourceRows.push([assetId,card.book_no,index]));
+ assert.deepEqual(sourceRows,[['19','A',1],['19','B',1]]);
  assert.deepEqual(result.machines.map(m=>[m.assetId,m.trips,m.sourceCards]),[['19',2,2]]);
  assert.deepEqual(result.unresolved,[]);
  const onlyCarry=buildMachineSnapshot([record('C',[carry])],assets,site);

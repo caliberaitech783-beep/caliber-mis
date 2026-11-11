@@ -3,6 +3,7 @@ import {StepBackButton} from './step-back.jsx';
 import {SavedLogBookDetails} from './saved-log-books.jsx';
 import LogBookForm from './log-book-form.jsx';
 import PulseTripVerification from './pulse-trip-verification.jsx';
+import ElbTripCards from './elb-trip-cards.jsx';
 
 export default function VlbBatchCardDetails({session,batch,record,ReportSection,canEdit,onChanged,onClose,kind="vehicle"}){
  const [image,setImage]=useState(''),[error,setError]=useState(''),[editing,setEditing]=useState(false);
@@ -19,6 +20,6 @@ export default function VlbBatchCardDetails({session,batch,record,ReportSection,
  return <section id="vlb-selected-card-details" className="logbook-section vlb-selected-card-details" tabIndex={-1} aria-label={'Saved '+label+' '+current.book_no}><h2>Batch {batch.name} · {current.book_no}</h2>
   {onClose&&<StepBackButton onBack={onClose} label="Back to batch report"/>}
   {canEdit&&<button type="button" onClick={()=>setEditing(value=>!value)}>{editing?'Back to saved details':'Edit this '+label}</button>}
-  {editing&&canEdit?<LogBookForm key={current.id} kind={kind} session={session} vlbBatch={batch} initialRecord={current} onExit={()=>setEditing(false)} onSaved={()=>{setEditing(false);onChanged?.()}}/>:<><SavedLogBookDetails record={current} kind={kind} imageUrl={image} imageError={error} ReportSection={ReportSection}/>{vehicle&&<PulseTripVerification session={session} logbookId={current.id}/>}</>}
+  {editing&&canEdit?<LogBookForm key={current.id} kind={kind} session={session} vlbBatch={batch} initialRecord={current} onExit={()=>setEditing(false)} onSaved={()=>{setEditing(false);onChanged?.()}}/>:<><SavedLogBookDetails record={current} kind={kind} imageUrl={image} imageError={error} ReportSection={ReportSection} relatedTripCards={!vehicle&&<ElbTripCards key={current.id} batch={batch} equipment={current} token={session.token}/>}/>{vehicle&&<PulseTripVerification session={session} logbookId={current.id}/>}</>}
  </section>;
 }
