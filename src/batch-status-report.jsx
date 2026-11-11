@@ -39,7 +39,8 @@ export const stageColumns=[column('stage','Stage'),column('clockHours','Clock ti
 export const reworkColumns=[column('label','Rework in this batch'),column('count','Count')];
 export const actionColumns=[column('sr','Sr'),column('at','Time',r=>when(r.at)),column('stage','Stage'),column('action','Action'),column('item','Item'),column('by','Done by'),column('gapMinutes','Gap from previous action (minutes)'),column('workMinutes','Working time (minutes)'),column('remark','Remark')];
 
-export default function BatchStatusReport({session,ReportSection}){
+// On the dashboard (embedded) the page is kept short: one-line Live now heading, a summary that can be hidden, no search box and no notes.
+export default function BatchStatusReport({session,ReportSection,embedded=false}){
  const [filters,setFilters]=useState(()=>({from:monthStart(today()),to:today()})),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [run,setRun]=useState(()=>({query:new URLSearchParams({from:monthStart(today()),to:today()}).toString(),at:0}));
  const [siteKey,setSiteKey]=useState(''),[stage,setStage]=useState(''),[batchId,setBatchId]=useState(''),[detail,setDetail]=useState(null),[detailError,setDetailError]=useState(''),[actionStage,setActionStage]=useState('');
@@ -59,6 +60,8 @@ export default function BatchStatusReport({session,ReportSection}){
 
  const [live,setLive]=useState(null),[liveError,setLiveError]=useState('');
  const reportShown=Boolean(result);
+ const [summaryHidden,setSummaryHidden]=useState(()=>{try{return localStorage.getItem('caliberBatchSummaryHidden')==='1';}catch{return false;}});
+ const toggleSummary=()=>setSummaryHidden(hidden=>{try{localStorage.setItem('caliberBatchSummaryHidden',hidden?'0':'1');}catch{}return !hidden;});
  // Working now re-reads once a minute while the page is on screen, and not at all in a hidden tab.
  useEffect(()=>{
   setLive(null);setLiveError('');if(!reportShown)return;
@@ -89,22 +92,22 @@ export default function BatchStatusReport({session,ReportSection}){
   </form>
   {!valid&&<p role="status">Choose a range of at most {MAX_DAYS} days, on or after 01-11-26.</p>}
   {error&&<p role="alert" className="production-error">{error}</p>}
-  {report&&<nav className="bs-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>}
+  {report&&<nav className="bs-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}{embedded&&level===1&&report.sites.length>0&&<button type="button" className="bs-summary-toggle" aria-expanded={!summaryHidden} onClick={toggleSummary}>{summaryHidden?'Show summary':'Hide summary'}</button>}</nav>}
   {report&&level===1&&<>
-   {report.sites.length>0&&<ul className="bs-insight">{sitesInsights(report.sites,report.total).map(line=><li key={line}>{line}</li>)}</ul>}
+   {report.sites.length>0&&<ul className={'bs-insight'+(embedded&&summaryHidden?' bs-insight-hidden':'')}>{sitesInsights(report.sites,report.total).map(line=><li key={line}>{line}</li>)}</ul>}
    {liveError&&<p role="alert" className="production-error">Working now could not be read: {liveError}</p>}
-   <ReportSection key="bs-live" title={'Live now · '+(live?live.count+' working':'reading…')} category="batch-status-live" description={liveSummary(live)+(live?' As on '+when(live.asOf)+'. Refreshes every minute while this page is on screen. Press a line to open that site.':'')}
+   <ReportSection key="bs-live" title={'Live now · '+(live?live.count+' working'+(embedded?' · as on '+when(live.asOf):''):'reading…')} category="batch-status-live" description={embedded?'':liveSummary(live)+(live?' As on '+when(live.asOf)+'. Refreshes every minute while this page is on screen. Press a line to open that site.':'')}
     rows={live?.people||[]} columns={liveColumns} rowKey={r=>r.id} showSearch={false} onRowClick={r=>r.siteKey&&openSite(r.siteKey)} emptyMessage={live?'Nobody has saved anything in a batch in the last '+live.windowMinutes+' minutes.':'Reading who is working now…'}/>
    <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site, best first'+asOf+'. Done = Locked out of Shifts due. Green = '+GOOD_PERCENT+'% or more done, orange = '+POOR_PERCENT+'% to '+(GOOD_PERCENT-1)+'%, red = below '+POOR_PERCENT+'%. Balance = Batch not created + VLB open + LMV open + ELB open; each shift is counted once, at the stage where it stands now. Press a site to see it shift by shift.'}
-    rows={report.sites.length?[...report.sites.map(s=>({...s,...siteLiveCells(live,s.siteKey)})),{...report.total,...siteLiveCells(live,'')}]:[]} columns={siteColumns} rowKey={r=>r.id} isTotalRow={r=>r.id==="all-sites"} rowClassName={r=>(r.id==='all-sites'?'bs-total ':'')+(r.rating?'bs-band-'+r.rating:'')} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
-   <details className="bs-notes"><summary>How this report counts</summary><ul>
+    rows={report.sites.length?[...report.sites.map(s=>({...s,...siteLiveCells(live,s.siteKey)})),{...report.total,...siteLiveCells(live,'')}]:[]} columns={siteColumns} rowKey={r=>r.id} showSearch={!embedded} isTotalRow={r=>r.id==="all-sites"} rowClassName={r=>(r.id==='all-sites'?'bs-total ':'')+(r.rating?'bs-band-'+r.rating:'')} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
+   {!embedded&&<details className="bs-notes"><summary>How this report counts</summary><ul>
     <li>A site is counted from the date of its first batch. A shift is counted once its end time (from the Shift Master) has passed, so Shifts due grows during the day: each shift of today is added the moment it ends. Of which today's shifts shows how many of today's shifts are already counted.</li>
     <li>Done is Locked as a percentage of Shifts due. Rank 1 is the site with the highest Done; sites with the same percentage share a rank. Performance: Good (green) from {GOOD_PERCENT}%, Average (orange) from {POOR_PERCENT}% to {GOOD_PERCENT-1}%, Poor (red) below {POOR_PERCENT}%.</li>
     <li>Locked within {TARGET_HOURS} hours and the average are measured from the end of the shift to the time the batch was locked.</li>
     <li>Slowest stage is the stage with the highest average clock time among the locked batches of the site.</li>
     <li>If a batch was unlocked or reopened, the times shown are its final lock times; the last column counts how often that happened.</li>
     <li>Working now lists the people who saved something in a batch at the site in the last 10 minutes: a trip card, an LMV log book, a machine entry, a lock or an unlock. Someone checking a card without saving it is not shown until they save. Last action is the time of the latest save at the site in the last 24 hours. Both refresh every minute while this page is on screen.</li>
-   </ul></details>
+   </ul></details>}
   </>}
   {report&&level===2&&<>
    <p className="bs-insight">{shiftsInsight(siteShifts)}</p>
