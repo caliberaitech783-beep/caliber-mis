@@ -13,7 +13,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv
  // typing. Keep actual missing/invalid values and specific conflicts visible.
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options,lmv);
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
- if(kind==='vehicle'&&raw.provider==='gemini'&&Array.isArray(options?.assets)&&draft.doorText&&draft.assetId){
+ if(kind==='vehicle'&&!lmv&&Array.isArray(options?.assets)&&draft.doorText&&draft.assetId){
   const {match,status}=matchCardMachine(options.assets,draft.doorText,draft.location,kind);
   if(status!=='matched'||String(match.id)!==String(draft.assetId))issues.doorText||='The door number must uniquely match the linked vehicle in Equipment Master for this site.';
  }

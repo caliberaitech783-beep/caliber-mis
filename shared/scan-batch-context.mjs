@@ -50,6 +50,11 @@ export function scanContextGate(context,cards=[]){
  const waiting=active.some(c=>['queued','reading'].includes(c.status));
  return {context,waiting,mismatches:[],blocked:Boolean(context.cancelled||!context.confirmed||waiting)};
 }
+export function scanCardSaveContextBlocked(gate,kind){
+ if(!gate?.blocked)return false;
+ return kind!=='vehicle'||gate.context.logBookKind==='lmv'||gate.context.cancelled||!gate.context.confirmed||Boolean(gate.mismatches?.length);
+}
+
 export function requireScanUploadContext(kind,value){
  if(kind!=='vehicle'&&value?.logBookKind==='lmv')throw new Error('LMV scanning uses the Trip Card format.');
  if(kind==='vehicle'||value!==undefined)return parseScanContext(value);

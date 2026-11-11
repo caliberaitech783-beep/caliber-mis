@@ -32,7 +32,7 @@ export function cardReviewGroup(card,kind,options=null,context=null){
  if(card.status!=='rejected'&&card.context_mismatch?.length)return 'error';
  if(card.status==='error')return 'error';
  if(card.status==='rejected'||!hasCardData(card,kind))return 'red';
- if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options)).length||(card.checks?.errors||[]).length||blockingScanWarnings(card.checks?.warnings).length)return 'brown';
+ if(Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options,context?.logBookKind==='lmv')).length||(card.checks?.errors||[]).length||blockingScanWarnings(card.checks?.warnings).length)return 'brown';
  return 'orange';
 }
 export function reviewGroupSummary(cards,kind,options=null,context=null){
@@ -57,9 +57,9 @@ export function withAutoSaveFailures(cards,failures){
  });
 }
 
-export function cardIssueGroups(card,kind,options=null){
+export function cardIssueGroups(card,kind,options=null,context=null){
  if(['queued','reading','posted','rejected'].includes(card.status)||!hasCardData(card,kind))return [];
- const draft=card.draft||{},issues=manualScanIssues(draft,kind,card.raw_fields,options),errors=(card.checks?.errors||[]).join(' '),groups=[];
+ const draft=card.draft||{},issues=manualScanIssues(draft,kind,card.raw_fields,options,context?.logBookKind==='lmv'),errors=(card.checks?.errors||[]).join(' '),groups=[];
  if(issues.doorText||issues.assetId||/door number|linked equipment|vehicle.*not.*found/i.test(errors)||(card.raw_fields?.fleetReview?.issues||[]).some(issue=>issue.fields?.includes('doorText')))groups.push('wrong-door');
  if(issues.employeeId||/caliber|employee|driver|operator/i.test(errors))groups.push('wrong-caliber');
  if(issues.openingHmr||issues.closingHmr||/\bHMR\b/i.test(errors))groups.push('wrong-hmr');
@@ -69,7 +69,7 @@ export function cardIssueGroups(card,kind,options=null){
 }
 export function cardDisplayGroup(card,kind,options=null,context=null){
  const primary=cardReviewGroup(card,kind,options,context);
- return primary==='brown'?(cardIssueGroups(card,kind,options)[0]||primary):primary;
+ return primary==='brown'?(cardIssueGroups(card,kind,options,context)[0]||primary):primary;
 }
 export function matchesCardGroup(card,group,kind,options=null,context=null){
  if(group==='all')return true;

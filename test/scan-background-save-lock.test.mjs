@@ -8,23 +8,21 @@ const end=source.indexOf('\n },[reviewPage,cards',start);
 const body=source.slice(start,end).replace('void (async()=>','return (async()=>');
 function fixture(reviewPage=false){
  const state={autoSaving:null,calls:[],failures:new Map(),waits:[]};
- const context={reviewPage,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},contextBlocked:false,cards:[1,2].map(n=>({id:'c'+n,batch_id:'b',revision:1,ordinal:n})),card:null,correctedRevisions:{current:new Map()},bdFallbackMissing:false,kind:'vehicle',lmv:false,canAutoSaveScanCard:c=>!state.failures.has(c.id+':'+c.revision),autoSaveAttempts:{current:new Set()},autoSaveFailures:{current:state.failures},activeRef:{current:'b'},selectedCardRef:{current:''},bdFetchUnavailable:{current:false},autoSavingRef:{current:null},autoSavePaused:{current:false},setAutoSaveWait:w=>{if(w)state.waits.push(w)},autoSaveWithBusyRetry:(perform,config)=>autoSaveWithBusyRetry(perform,{...config,sleep:async()=>{}}),isBusyAutoSaveError,busyAutoSaveStoppedMessage,setAutoSaving:v=>state.autoSaving=v,setFailureTick:()=>{},setPulseHours:()=>{},setPulseHoursError:()=>{},setNotice:()=>{},setAutoSaveError:e=>state.error=e,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},applySavedScanCard:c=>c,list:()=>{throw Error('refused save must not await refresh')},setError:()=>{},api:async(path,config)=>{state.calls.push(path);assert.ok(config.signal instanceof AbortSignal);throw Error('Vehicle already has a saved card');}};
+ const context={reviewPage,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},contextBlocked:false,cards:[1,2].map(n=>({id:'c'+n,batch_id:'b',revision:1,ordinal:n})),card:null,bdFallbackMissing:false,kind:'vehicle',lmv:false,canAutoSaveScanCard:c=>!state.failures.has(c.id+':'+c.revision),autoSaveAttempts:{current:new Set()},autoSaveFailures:{current:state.failures},activeRef:{current:'b'},selectedCardRef:{current:''},bdFetchUnavailable:{current:false},autoSavingRef:{current:null},autoSavePaused:{current:false},setAutoSaveWait:w=>{if(w)state.waits.push(w)},autoSaveWithBusyRetry:(perform,config)=>autoSaveWithBusyRetry(perform,{...config,sleep:async()=>{}}),isBusyAutoSaveError,busyAutoSaveStoppedMessage,setAutoSaving:v=>state.autoSaving=v,setFailureTick:()=>{},setPulseHours:()=>{},setPulseHoursError:()=>{},setNotice:()=>{},setAutoSaveError:e=>state.error=e,setCards:()=>{},setResults:()=>{},setArchiveResult:()=>{},applySavedScanCard:c=>c,list:()=>{throw Error('refused save must not await refresh')},setError:()=>{},api:async(path,config)=>{state.calls.push(path);assert.ok(config.signal instanceof AbortSignal);throw Error('Vehicle already has a saved card');}};
  return {state,context,run:()=>new Function(...Object.keys(context),body)(...Object.values(context))};
 }
-test('review leaves untouched cards alone',async()=>{
- const f=fixture(true);await f.run();assert.equal(f.state.autoSaving,null);assert.deepEqual(f.state.calls,[]);
+test('equipment review does not start the VLB background queue',async()=>{
+ const f=fixture(true);f.context.kind='equipment';await f.run();assert.equal(f.state.autoSaving,null);assert.deepEqual(f.state.calls,[]);
 });
-test('review posts only the latest validated correction without a manual save',async()=>{
+test('VLB review posts eligible cards while the rest are still being validated',async()=>{
  const f=fixture(true);
- f.context.correctedRevisions.current.set('c1',1);
- f.context.correctedRevisions.current.set('c2',0);
  f.context.api=async path=>{f.state.calls.push(path);return {record:{id:1,book_no:'VLB/1'}};};
  f.context.cards[0].validationPending=true;
  await f.run();
- assert.deepEqual(f.state.calls,[]);
+ assert.deepEqual(f.state.calls,['/api/scan-cards/c2/auto-save']);
  f.context.cards[0].validationPending=false;
  await f.run();
- assert.deepEqual(f.state.calls,['/api/scan-cards/c1/auto-save']);
+ assert.deepEqual(f.state.calls,['/api/scan-cards/c2/auto-save','/api/scan-cards/c1/auto-save']);
 });
 test('refused cards are attempted once each and the queue releases its lock',async()=>{
  const f=fixture();

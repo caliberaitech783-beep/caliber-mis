@@ -6,8 +6,8 @@ export function scanReportCardStatus(card,kind,options,context,row){
  let tone=cardReviewGroup(card,kind,options,context);
  if(row?.deleted||row?.contextIssues?.length||(card.status==='posted'&&!row?.saved))tone='error';
  const processing=['queued','reading'].includes(card.status),saved=row?.saved;
- const fieldIssues=processing||saved||card.status==='rejected'?{}:manualScanIssues(card.draft||{},kind,card.raw_fields||{},options);
- const groups=cardIssueGroups(card,kind,options);
+ const fieldIssues=processing||saved||card.status==='rejected'?{}:manualScanIssues(card.draft||{},kind,card.raw_fields||{},options,context?.logBookKind==='lmv');
+ const groups=cardIssueGroups(card,kind,options,context);
  const badges=groups.map(id=>({id,label:CARD_GROUPS.find(group=>group.id===id).label}));
  const messages=processing||saved?[]:[...new Set([...(row?.contextIssues||[]),...(card.checks?.errors||[]),...Object.values(fieldIssues),...(card.error?[card.error]:[])])];
  const cells={};

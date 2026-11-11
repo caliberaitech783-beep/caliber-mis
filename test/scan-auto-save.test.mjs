@@ -31,11 +31,14 @@ test('complete cards post independently without approval; retries, validation an
  const add=async(ordinal,draft,hash=randomUUID())=>{const id=randomUUID();await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,draft,raw_fields,status) VALUES($1,$2,$3,'test.png',$4,$5,$6,$7::jsonb,'review')",[id,batch,ordinal,Buffer.from('retained image'),hash,JSON.stringify(draft),JSON.stringify({extractionDraft:draft})]);return id};
  const first=await add(1,valid),second=await add(2,{...valid,aFormNo:'76',employeeId:''});
  assert.equal((await call(first)).status,409,'a complete legacy card still needs a saved selection');
+ await db.query("UPDATE mis_scan_cards SET status='reading' WHERE id=$1",[second]);
  const setupRoot='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
  for(const [route,body] of [['/context',{expectedContext:context}],['/validate-context',{action:'proceed'}]]){const checked=await fetch(setupRoot+route,{method:'POST',headers:{Authorization:'admin','Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(checked.status,200,await checked.text())}
  assert.equal((await call(first,1,'')).status,401);assert.equal((await call(first,1,'normal')).status,403);
  assert.equal((await call(first,99)).status,409);
  const saved=await call(first);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.status,'posted');assert.equal(saved.data.archive,null);assert.equal(archives,0);
+ assert.equal((await db.query('SELECT status FROM mis_scan_cards WHERE id=$1',[second])).rows[0].status,'reading');
+ await db.query("UPDATE mis_scan_cards SET status='review' WHERE id=$1",[second]);
  const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;assert.equal(stored.scanSaveMode,'automatic-validation');assert.equal(stored.autoSavedBy,'test-admin');assert.equal(stored.reviewedBy,undefined);
  const reportBase='http://127.0.0.1:'+server.address().port+'/api/scan-batches/'+batch;
  const reportResponse=await fetch(reportBase+'/report?cards=another-batch',{headers:{Authorization:'admin'}});assert.equal(reportResponse.status,200);const report=await reportResponse.json();assert.equal(report.batchId,batch);assert.equal(report.counts.cards,2);assert.equal(report.counts.saved,1);assert.equal(report.counts.pending,1);assert.equal(report.totals.trips,1);assert.equal(report.tables[1].rows.length,1,'only saved matching cards enter Excel');
