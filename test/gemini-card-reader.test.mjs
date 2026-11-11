@@ -116,7 +116,7 @@ test('one missing or malformed field cannot discard valid header, meter and trip
 });
 test('invalid response envelopes and unsafe trip rows still fail rather than inventing data',()=>{
  for(const fields of [null,[],false])assert.throws(()=>parseCardResponse(JSON.stringify({...response(),fields}),'vehicle'),/Invalid Priority A JSON/);
- const card=response();card.trips.r[0][0]=-1;const recovered=parseCardResponse(JSON.stringify(card),'vehicle');assert.ok(recovered.issues.some(issue=>issue.includes('printed trip number unreadable')));
+ const card=response();card.trips.r[0][0]=-1;const recovered=parseCardResponse(JSON.stringify(card),'vehicle');assert.equal(recovered.trips.r[0][0],1);assert.equal(recovered.issues.some(issue=>/trip number|trip numbering/i.test(issue)),false);
 });
 test('a new-parser cached malformed name retains original evidence without another AI request',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-field-recovery-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));

@@ -14,10 +14,11 @@ test('one malformed row retains readable headers and rows, flags each invalid ce
  const input=response();input.trips.r.push(['2','PL19',830,{bad:true}]);const original=JSON.stringify(input);
  const out=parseCardResponse(original,'vehicle');assert.equal(out.fields.door.value,'V/19');assert.deepEqual(out.trips.r[0],input.trips.r[0]);assert.deepEqual(out.trips.r[1],[2,'PL19',null,null]);assert.ok(out.issues.some(i=>i.includes('loading time')));assert.ok(out.issues.some(i=>i.includes('unloading time')));assert.equal(JSON.stringify(input),original);
 });
-test('null summaries, object rows and missing trip numbers require review instead of whole-card failure',()=>{
+test('missing or inconsistent OCR trip serials normalize to card row order without blocking the card',()=>{
  const input=response();input.fields.machineSummary=null;input.trips.r=[{rowNumber:'7',equipmentName:'PL1',loadingTime:'12: 2',unloadingTime:'12:12'},[null,'H9','','']];const out=parseCardResponse(JSON.stringify(input),'vehicle');
- assert.deepEqual(out.trips.r[0],[7,'PL1','12: 2','12:12']);assert.equal(out.trips.r.length,2);assert.ok(out.issues.some(i=>i.includes('review position')));assert.ok(out.issues.some(i=>i.includes('Machine summary')));
+ assert.deepEqual(out.trips.r,[[1,'PL1','12: 2','12:12'],[2,'H9','','']]);assert.equal(out.issues.some(i=>/trip number|trip numbering/i.test(i)),false);assert.ok(out.issues.some(i=>i.includes('Machine summary')));
 });
+test('legacy trip-number recovery notes no longer block an otherwise corrected card',()=>{const raw={responseRecoveryIssues:['Trip row 2: printed trip number unreadable; the displayed number is a review position.','Trip numbering: duplicate printed numbers; check every row against the original scan.']};assert.equal(responseReviewNeeded(raw,{trips:[{rowNumber:1},{rowNumber:1}]}),false);assert.equal(scanFieldIssues({trips:[{rowNumber:1},{rowNumber:1}]},'vehicle',raw).responseRecoveryConfirmed,undefined);});
 test('recovery review cannot be bypassed by omitting the client flag or sending a truthy string',async()=>{
  const raw={responseRecoveryIssues:['Trip row 2: loading time unreadable']};assert.equal(responseReviewNeeded(raw,{}),true);assert.equal(responseReviewNeeded(raw,{responseRecoveryConfirmed:'yes'}),true);assert.equal(responseReviewNeeded(raw,{responseRecoveryConfirmed:true}),false);
  assert.ok(scanFieldIssues({},'vehicle',raw).responseRecoveryConfirmed);

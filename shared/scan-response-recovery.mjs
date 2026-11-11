@@ -44,17 +44,16 @@ export function recoverCardResponse(parsed,kind,fieldNames){
   if(typeof row[1]==='string')missingNumber(row[1],label);
   if(row.length!==4)issues.push(label+': expected four cells; inspect all cells against the original scan.');
   const number=typeof row[0]==='string'&&/^\d{1,3}$/.test(row[0])?Number(row[0]):row[0];
-  // A positional identifier is only for presenting the review row, never OCR evidence.
+  // Printed trip serials are fixed row positions on the card. OCR may miss or repeat
+  // the tiny serial column, so row order is the reliable fallback and must not block saving.
   const validNumber=Number.isInteger(number)&&number>=1&&number<=120;
-  if(!validNumber)issues.push(label+': printed trip number unreadable; the displayed number is a review position.');
   return [validNumber?number:index+1,...[1,2,3].map((cell)=>{
    const value=row[cell];if(value===null||typeof value==='string'&&value.length<=100)return value;
    if(cell===1&&typeof value==='number'&&Number.isFinite(value)){issues.push(label+': equipment has no readable fleet prefix.');return String(value);}
    issues.push(label+': '+['','equipment','loading time','unloading time'][cell]+' unreadable or invalid; check the original scan.');return null;
   })];
  })};
- if(new Set(trips.r.map(row=>row[0])).size!==trips.r.length)issues.push('Trip numbering: duplicate printed numbers; check every row against the original scan.');
- if(trips.r.some((row,index)=>index>0&&row[0]!==trips.r[index-1][0]+1))issues.push('Trip numbering: gaps or out-of-order numbers; confirm the complete table against the original scan.');
+ if(new Set(trips.r.map(row=>row[0])).size!==trips.r.length||trips.r.some((row,index)=>index>0&&row[0]!==trips.r[index-1][0]+1))trips.r=trips.r.map((row,index)=>[index+1,...row.slice(1)]);
  if(kind==='vehicle'&&parsed.trips?.p!==true)issues.push('Trip table was not clearly confirmed by the reader.');
  return {fields,trips,issues:[...new Set(issues)]};
 }
@@ -62,6 +61,7 @@ export function recoverCardResponse(parsed,kind,fieldNames){
 // Keep the literal OCR notes, but only surface equipment issues for loading rows.
 export function activeResponseRecoveryIssues(raw={},draft={}){
  return (raw.responseRecoveryIssues||[]).filter(issue=>{
+  if(/printed trip number unreadable|duplicate printed numbers|trip numbering: (?:duplicate|gaps|out-of-order)/i.test(String(issue)))return false;
   const match=String(issue).match(/^Trip row (\d+): equipment\b/i);if(!match)return true;
   const index=Number(match[1])-1,source=(raw.gemini||raw.hybrid)?.trips?.r?.[index];
   const row=source?(draft.trips||[]).find((row,i)=>Number(row.rowNumber||i+1)===Number(source[0])):draft.trips?.[index];
@@ -70,7 +70,5 @@ export function activeResponseRecoveryIssues(raw={},draft={}){
 }
 export const responseReviewNeeded=(raw={},draft={})=>Boolean(activeResponseRecoveryIssues(raw,draft).length&&draft.responseRecoveryConfirmed!==true);
 export function recoveredTripNumberIssues(raw={},draft={}){
- if(!activeResponseRecoveryIssues(raw,draft).length)return {};
- const counts=new Map();for(const row of draft.trips||[])counts.set(Number(row.rowNumber),(counts.get(Number(row.rowNumber))||0)+1);
- return Object.fromEntries((draft.trips||[]).flatMap((row,index)=>Number.isInteger(Number(row.rowNumber))&&Number(row.rowNumber)>=1&&Number(row.rowNumber)<=120&&counts.get(Number(row.rowNumber))===1?[]:[['trips.'+index+'.rowNumber','Enter the unique printed trip number (1–120) from the original scan.']]));
+ return {};
 }
