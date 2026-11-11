@@ -1,11 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {recoverFirstScanFields,firstScanProblems,readScanWithRecovery} from '../server/services/scan-first-field-recovery.mjs';
+import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
 const good=()=>({raw:{door:'V321',employeeCode:'EMP1'},draft:{doorText:'V321',assetId:'1',employeeId:'2',location:'Sasti OC',bookDate:'2026-12-19',bookDateSource:'scan',cardShift:'I',shiftId:'3',shiftHours:8,openingHmr:100,closingHmr:104,openingKmr:200,closingKmr:240,trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[{equipmentName:'LPC01',tripCount:2}],timeMode:'without',extractionReviewFields:[],meterReviewFields:[]}});
 const context={bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I'};
-test('all valid fields require no second read',async()=>{
+test('a valid VLB door still needs an independent matching image read before automatic saving',async()=>{
  assert.deepEqual(firstScanProblems(good(),'vehicle',context),[]);
- await recoverFirstScanFields({kind:'vehicle',extracted:good(),context,readAgain:()=>assert.fail('already valid')});
+ let calls=0;const result=await recoverFirstScanFields({kind:'vehicle',extracted:good(),context,readAgain:async()=>{calls++;return {}},extract:async()=>good()});
+ assert.equal(calls,1);assert.deepEqual(result.raw.doorVerification,{status:'confirmed',first:'V321',second:'V321'});
+});
+test('conflicting fresh door evidence cannot replace the first read or pass automatic verification',async()=>{
+ const candidate=good();Object.assign(candidate.draft,{doorText:'V559',assetId:'559'});
+ const result=await recoverFirstScanFields({kind:'vehicle',extracted:good(),context,readAgain:async()=>({}),extract:async()=>candidate});
+ assert.equal(result.draft.doorText,'V321');
+ assert.deepEqual(result.raw.doorVerification,{status:'conflict',first:'V321',second:'V559'});
+});
+test('Gemini VLB cards auto-save only after matching independent door evidence',()=>{
+ const base={status:'review',draft:good().draft,checks:{errors:[],warnings:[]}};
+ assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'conflict',first:'V655',second:'V559'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'unavailable',first:'V655'}}},'vehicle'),false);
+ assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'confirmed',first:'V559',second:'V/559'}}},'vehicle'),true);
 });
 test('one original-image reread recovers door, Caliber, HMR, KMR, summary and date/shift together',async()=>{
  const extracted=good();Object.assign(extracted.draft,{assetId:'',employeeId:'',openingHmr:'',closingKmr:150,bookDate:'2026-12-18',shiftId:'',cardShift:'',scanMachineSummary:[{equipmentName:'LPC01',tripCount:9}]});let calls=0;
@@ -28,7 +42,7 @@ test('wrong-site retry, cancellation and an already-used recovery budget cannot 
  for(const mode of ['site','cancelled','used']){
   const extracted=good();extracted.draft.employeeId='';const candidate=good();candidate.draft.location='Jayant OC';let calls=0;
   const result=await recoverFirstScanFields({kind:'vehicle',extracted,context,alreadyRetried:mode==='used',onProgress:()=>mode==='cancelled'?false:true,readAgain:async()=>{calls++;return {}},extract:async()=>candidate});
-  assert.equal(result.draft.employeeId,'');assert.equal(calls,mode==='site'?1:0);
+  assert.equal(result.draft.employeeId,'');assert.equal(calls,mode==='cancelled'?0:1);
  }
 });
 test('ELB HMR and operator recover without requiring vehicle KMR or trip tables',async()=>{
