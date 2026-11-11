@@ -23,3 +23,13 @@ test('linked equipment resolves padded fleet doors within location and type, wit
  const extracted=extractCard('Site: Jayant OC\nDoor No: S/01','vehicle',[master(1,'Equipment master',{door:'Scania 1',category:'vehicle',site:'Jayant OC'})]);
  assert.equal(extracted.draft.assetId,'1');assert.equal(extracted.draft.doorText,'S/01');
 });
+
+test('vehicle matching keeps exact three-digit doors and recovers one missing digit only within the site',async()=>{
+ const {linkedScanEquipment}=await import('../shared/scan-fleet-door.mjs');
+ const rows=[{id:'s134',door:'S134',kind:'vehicle',site:'Sasti OC'},{id:'s34-other',door:'S34',kind:'vehicle',site:'Jayant OC'},{id:'v833',door:'V833',kind:'vehicle',site:'Sasti OC'}];
+ assert.equal(linkedScanEquipment(rows,'S/134','Sasti OC','vehicle')?.id,'s134');
+ assert.equal(linkedScanEquipment(rows,'S/34','Sasti OC','vehicle')?.id,'s134');
+ assert.equal(linkedScanEquipment(rows,'S/34','Jayant OC','vehicle')?.id,'s34-other');
+ assert.equal(linkedScanEquipment([...rows,{id:'s234',door:'S234',kind:'vehicle',site:'Sasti OC'}],'S/34','Sasti OC','vehicle'),null);
+ assert.equal(linkedScanEquipment(rows,'V/833','Sasti OC','vehicle')?.id,'v833');
+});

@@ -140,14 +140,14 @@ test('meter-cell colons become decimal points while trip clock times retain thei
  assert.equal(parsed.trips.r[0][2],'12:38');assert.equal(card.fields.openingKmr.value,'83995:6');
 });
 
-test('V/252 cannot acquire a duplicated separator digit before equipment lookup',async t=>{
+test('a duplicated OCR digit is preserved but can resolve uniquely within the selected site',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-v252-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const card=response();card.fields.door=field('V/1252');card.fields.site=field('Sasti OC');
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,fetchImpl:async()=>ok(JSON.stringify(card))});
  const result=await reader.recognize(Buffer.from('V/252'));
- assert.equal(result.handwrittenFields.door,'V/252');assert.equal(result.extraction.doorFormatting.original,'V/1252');
+ assert.equal(result.handwrittenFields.door,'V/1252');assert.equal(result.extraction.doorFormatting.original,'V/1252');
  const extracted=extractCard(result.text,'vehicle',[{id:252,master_name:'Equipment master',record_data:{door:'Volvo 252',category:'vehicle',site:'Sasti OC'}}],result);
- assert.equal(extracted.draft.doorText,'V/252');assert.equal(extracted.draft.assetId,'252');
+ assert.equal(extracted.draft.doorText,'V/1252');assert.equal(extracted.draft.assetId,'252');
 });
 
 test('five slow cards can extract together while the sixth remains queued',{timeout:5000},async t=>{

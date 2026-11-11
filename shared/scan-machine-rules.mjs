@@ -66,9 +66,19 @@ export function matchCardMachine(rows=[],value,site='',kind='equipment'){
  const machine=identifyCardMachine(value,kind,{allowSuffix:true});
  if(machine&&!machine.hasNumber)return {machine,matches:[],match:null,status:'missing-number'};
  if(/^\d+$/.test(text(value)))return {machine:null,matches:[],match:null,status:'missing-prefix'};
- const target=cardMachineKey(value,kind);
- const matches=target?[...(masterIndex(rows,site,kind).get(target)||[])]:[];
- return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':matches.length>1?'ambiguous':'not-found'};
+ const target=cardMachineKey(value,kind),index=masterIndex(rows,site,kind);
+ const matches=target?[...(index.get(target)||[])]:[];
+ if(matches.length)return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':'ambiguous'};
+ // Recover one omitted or duplicated digit only inside the selected site and
+ // fleet prefix. Exact matches above always win, and ambiguity never guesses.
+ const parts=kind==='vehicle'&&target.match(/^([A-Z]+)(\d+)$/),near=[];
+ if(parts)for(const [candidate,assets] of index){
+  const other=candidate.match(/^([A-Z]+)(\d+)$/);if(!other||other[1]!==parts[1]||Math.abs(other[2].length-parts[2].length)!==1)continue;
+  const [shorter,longer]=other[2].length<parts[2].length?[other[2],parts[2]]:[parts[2],other[2]];
+  if([...longer].some((_,i)=>longer.slice(0,i)+longer.slice(i+1)===shorter))near.push(...assets);
+ }
+ const recovered=[...new Set(near)];
+ return {machine,matches:recovered,match:recovered.length===1?recovered[0]:null,status:recovered.length===1?'recovered':recovered.length>1?'ambiguous':'not-found'};
 }
 // True when only an approved card alias on the record answers the written key (no real door does).
 export function resolvedByAlias(row,value,kind='equipment'){
