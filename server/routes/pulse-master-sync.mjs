@@ -208,6 +208,12 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      }
      return structuredClone(await pending);
    },
+   // Pulse's whole equipment list as it stands now, for the equipment list check (a few reads a day).
+   async readEquipmentList(){
+     const snapshot=!token&&sharedSignIn?await sharedSignIn.request('masters',{}):await authorizedRequest('/api/masters?names=Equipment%20master');
+     if(!Array.isArray(snapshot?.['Equipment master'])||!snapshot['Equipment master'].length)throw Error('Pulse returned no equipment list.');
+     return snapshot['Equipment master'];
+   },
    async readBreakdownRequests({fresh=false,actor}={}){
      if(!token&&sharedSignIn){
        // One read of Pulse's feed per actor per window; callers only read the rows.

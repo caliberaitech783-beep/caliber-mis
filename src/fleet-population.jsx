@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import './production-reports.css';
+import {EquipmentPulseMatch} from './equipment-pulse-mismatch.jsx';
 
 const fields=[['make','Make'],['model','Model'],['bucketCapacity','Bucket Capacity'],['dailyCapacity','Daily Capacity (cu.m)']];
 const columns=fields.map(([key,label])=>({key,label,value:row=>row[key],...(key.endsWith('Capacity')?{render:row=>row[key]??''}:{})}));
@@ -79,5 +80,6 @@ export function FleetPopulationReport({session,ReportSection,capacity}){
   <ReportSection title={title} category={capacity?'fleet-capacity':'equipment-deployment'}
    description={capacity?'Current fleet by make and model. Site capacity is population multiplied by daily capacity.':'Current equipment population by equipment group and location.'}
    columns={reportColumns} rowClassName={row=>row===total?'fleet-population-total':undefined} rows={[...rows,total]} rowKey={row=>JSON.stringify(capacity?[row.make,row.model]:[row.equipment])}/>
+  {!capacity&&<EquipmentPulseMatch session={session}/>}
  </section>;
 }

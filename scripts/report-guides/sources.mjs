@@ -9,7 +9,7 @@ const sharedScreen=['src/operations-reports.jsx','src/operations-report-model.mj
 const manpower=['src/manpower-reports.jsx','server/rules/manpower-report.mjs'];
 const production=['src/production-reports.jsx','shared/production-report.mjs'];
 const fleetPopulation=['src/fleet-population.jsx','shared/fleet-population.mjs'];
-const tabCode={'fleet-capacity':fleetPopulation,'equipment-deployment':fleetPopulation,ot:manpower,manpower,'manpower-reconciliation':manpower,employee:manpower,attendance:manpower,'door-production':production,'machine-production':production,
+const tabCode={'fleet-capacity':fleetPopulation,'equipment-deployment':[...fleetPopulation,'src/equipment-pulse-mismatch.jsx','shared/equipment-pulse-mismatch.mjs'],ot:manpower,manpower,'manpower-reconciliation':manpower,employee:manpower,attendance:manpower,'door-production':production,'machine-production':production,
  'meter-continuity':['src/meter-continuity-report.jsx','shared/meter-continuity-report.mjs'],
  'vlb-reports':['src/vlb-batch-reports.jsx','src/vlb-batch-report.jsx','src/scan-batch-reports.jsx','src/scan-batch-report.jsx'],
  'elb-reports':['src/elb-batch-reports.jsx','src/elb-trip-cards.jsx'],

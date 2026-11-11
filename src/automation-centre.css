@@ -1,0 +1,48 @@
+.automation-centre{padding:22px;min-width:0;color:var(--ink,#18223b)}
+.automation-head{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:flex-start;justify-content:space-between}
+.automation-head>div:first-child{flex:1 1 420px;min-width:0}
+.automation-head>div:last-child{display:grid;gap:6px;justify-items:end}
+.automation-head h1{margin:0 0 6px;font-size:28px}
+.automation-head p{margin:0;line-height:1.5}
+.automation-centre button{min-height:40px;padding:9px 16px;border:1px solid #d9c9ef;border-radius:8px;background:var(--panel,#fff);color:var(--purple,#56309a);font-weight:700;cursor:pointer}
+.automation-centre button:disabled{opacity:.55;cursor:default}
+.automation-centre [role=alert]{padding:12px;border-radius:7px;background:#fff0f2;color:#a32445}
+.automation-centre [role=status]{padding:12px;border-radius:7px;background:#e9f6ef;color:#0b6b4c}
+.automation-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 14px}
+.automation-tabs button{border-radius:999px}
+.automation-tabs button.is-active{background:#56309a;border-color:#56309a;color:#fff}
+.automation-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0 0 16px}
+.automation-totals>div{padding:14px 16px;border:1px solid #d9c9ef;border-radius:10px;background:var(--panel,#fff)}
+.automation-totals dt{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#5b4a7a}
+.automation-totals dd{margin:6px 0 0;font-size:26px;font-weight:800}
+.automation-filter{display:inline-flex;align-items:center;gap:10px;margin:0 0 12px;font-weight:600}
+.automation-filter select,.automation-form select,.automation-form input:not([type=checkbox]){min-height:40px;padding:8px 10px;border:1px solid #d9c9ef;border-radius:7px;background:var(--panel,#fff);color:inherit;min-width:0}
+.automation-table{overflow-x:auto;border:1px solid #d9c9ef;border-radius:10px}
+.automation-table table{width:100%;min-width:980px;border-collapse:collapse;font-size:14px}
+.automation-table :is(th,td){padding:10px 12px;border-bottom:1px solid #e6def2;text-align:left;vertical-align:top}
+.automation-table th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#5b4a7a;background:#f3eefa;white-space:nowrap}
+.automation-table tr:last-child td{border-bottom:0}
+.automation-table small{display:block;margin-top:4px;font-size:12px;line-height:1.4;color:#5b4a7a}
+.automation-code{display:inline-block;padding:2px 9px;border-radius:999px;background:#56309a;color:#fff;font-size:12px;font-weight:800}
+.automation-channel{display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:800;white-space:nowrap}
+.automation-channel.is-on{background:#e3f4ec;color:#0b6b4c}
+.automation-channel.is-off{background:#fde8ec;color:#a32445}
+.automation-channel.is-none{background:transparent;color:#7b7391;font-weight:600;padding-left:0}
+.automation-number{text-align:right!important;font-variant-numeric:tabular-nums;white-space:nowrap}
+.automation-number small{white-space:normal;text-align:right;max-width:190px;margin-left:auto}
+.automation-total-row td{background:#f3eefa}
+.automation-centre .automation-link{display:block;min-height:0;margin-top:6px;padding:0;border:0;background:none;text-decoration:underline;font-weight:600}
+.automation-note{max-width:900px;margin:10px 0;font-size:13px;line-height:1.5;color:#5b4a7a}
+.automation-form{display:grid;gap:14px;max-width:760px;padding:18px;border:1px solid #d9c9ef;border-radius:10px}
+.automation-form h2{margin:0;font-size:19px}
+.automation-form p{margin:0;line-height:1.5}
+.automation-form label{display:grid;gap:6px;font-weight:600}
+.automation-form .automation-check{display:flex;align-items:center;gap:10px;font-weight:500}
+.automation-form .automation-check input{width:18px;height:18px;accent-color:#56309a}
+.automation-actions{display:flex;flex-wrap:wrap;gap:10px}
+.automation-actions button[type=submit]{background:#56309a;border-color:#56309a;color:#fff}
+:root[data-theme="dark"] .automation-centre{color:#f1edf7}
+:root[data-theme="dark"] .automation-centre :is(.automation-totals>div,.automation-table,.automation-form){border-color:#4b4366}
+:root[data-theme="dark"] .automation-table th,:root[data-theme="dark"] .automation-total-row td{background:#2a2540;color:#c9bde6}
+:root[data-theme="dark"] .automation-table :is(th,td){border-color:#3a3550}
+:root[data-theme="dark"] .automation-centre :is(small,.automation-note,.automation-totals dt){color:#c9bde6}
