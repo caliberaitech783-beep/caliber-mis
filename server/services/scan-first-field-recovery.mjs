@@ -1,6 +1,7 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {normalizeCardShift,meterRuleIssues,machineDiscrepancies} from '../../shared/trip-card-rules.mjs';
 import {manualScanIssues} from '../../src/scan-manual-fields.mjs';
+import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
 const present=value=>value!==null&&value!==undefined&&String(value).trim()!=='';
 const groups={
  door:['doorText','assetId'],caliber:['employeeId'],hmr:['openingHmr','closingHmr'],kmr:['openingKmr','closingKmr'],
@@ -26,15 +27,21 @@ export function firstScanProblems(extracted,kind,context={}){
 }
 // One fresh read for all problem groups together, before the card enters review.
 export async function recoverFirstScanFields({kind,extracted,context={},allowMissingSite=false,alreadyRetried=false,readAgain,extract,onProgress}){
- const problems=firstScanProblems(extracted,kind,context);
- if(alreadyRetried||!problems.length||!extracted.draft.location&&!allowMissingSite)return extracted;
- const audit={attempted:true,groups:problems,recovered:[]};extracted.raw.firstScanFieldRecovery=audit;
+ const detectedProblems=firstScanProblems(extracted,kind,context),problems=alreadyRetried?[]:detectedProblems,verifyDoor=kind==='vehicle'&&present(extracted.draft.doorText)&&Boolean(extracted.draft.assetId);
+ if((alreadyRetried&&!verifyDoor)||(!problems.length&&!verifyDoor)||!extracted.draft.location&&!allowMissingSite)return extracted;
+ const recoveryGroups=[...new Set([...problems,...(verifyDoor?['door']:[])])];
+ const audit={attempted:true,groups:recoveryGroups,recovered:[]};extracted.raw.firstScanFieldRecovery=audit;
+ if(verifyDoor)extracted.raw.doorVerification={status:'pending',first:extracted.draft.doorText};
  if(problems.includes('door'))extracted.raw.firstScanDoorRecovery={attempted:true,originalDoor:extracted.draft.doorText||'',recovered:false};
  try{
-  if(await onProgress?.('retrying',{reason:'Rechecking '+problems.join(', ')+' against the original card',attempt:2,maxAttempts:2})===false)return extracted;
-  const result=await readAgain({forceRead:true,recoveryFields:problems}),candidate=await extract(result);
+  if(await onProgress?.('retrying',{reason:'Rechecking '+recoveryGroups.join(', ')+' against the original card',attempt:2,maxAttempts:2})===false)return extracted;
+  const result=await readAgain({forceRead:true,recoveryFields:recoveryGroups}),candidate=await extract(result);
   const remaining=firstScanProblems(candidate,kind,context),site=canonicalSiteName(context.location||extracted.draft.location);
-  if(!candidate.draft.location||site&&canonicalSiteName(candidate.draft.location)!==site)return extracted;
+  if(!candidate.draft.location||site&&canonicalSiteName(candidate.draft.location)!==site){if(verifyDoor)extracted.raw.doorVerification={...extracted.raw.doorVerification,status:'conflict',second:candidate.draft.doorText||''};return extracted;}
+  if(verifyDoor){
+   const first=cardMachineKey(extracted.draft.doorText,'vehicle'),second=cardMachineKey(candidate.draft.doorText,'vehicle');
+   extracted.raw.doorVerification={status:first&&second&&first===second&&candidate.draft.assetId?'confirmed':'conflict',first:extracted.draft.doorText,second:candidate.draft.doorText||''};
+  }
   for(const group of problems){
    if(remaining.includes(group))continue;
    if(group==='site'){
@@ -54,6 +61,6 @@ export async function recoverFirstScanFields({kind,extracted,context={},allowMis
   if(audit.recovered.includes('door'))extracted.raw.firstScanDoorRecovery={...extracted.raw.firstScanDoorRecovery,recovered:true,door:extracted.draft.doorText,assetId:extracted.draft.assetId};
   audit.remaining=firstScanProblems(extracted,kind,context);
   audit.evidence={provider:result.provider||candidate.raw.provider,fields:candidate.raw.gemini?.fields||candidate.raw.hybrid?.fields||candidate.raw.handwritingCandidates};
- }catch{audit.unavailable=true;}
+ }catch{audit.unavailable=true;if(verifyDoor)extracted.raw.doorVerification={...extracted.raw.doorVerification,status:'unavailable'};}
  return extracted;
 }

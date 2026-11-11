@@ -6,6 +6,7 @@ export const blockingScanWarnings=warnings=>(warnings||[]).filter(message=>!OPTI
 
 export function canAutoSaveScanCard(card,kind,options=null,lmv=false){
  if(!card||!['review','approved'].includes(card.status)||!card.checks||card.context_mismatch?.length||card.raw_fields?.fleetBlock||card.raw_fields?.fleetRejection)return false;
+ if(kind==='vehicle'&&card.raw_fields?.provider==='gemini'&&card.raw_fields?.doorVerification?.status!=='confirmed')return false;
  if(card.raw_fields?.fleetReview&&scanFleetBlockingMessage(card))return false;
  if(card.checks.errors?.length||blockingScanWarnings(card.checks.warnings).length)return false;
  return !Object.keys(manualScanIssues(card.draft,kind,card.raw_fields,options,lmv)).length;
