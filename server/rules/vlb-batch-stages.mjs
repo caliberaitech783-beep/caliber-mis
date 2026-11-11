@@ -196,7 +196,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  }
  let record;
  if(row.logbook_id&&!additional){
-  await assertCombinedShiftMeters(client,'equipment',data,row.logbook_id);
+  await assertCombinedShiftMeters(client,'equipment',data,row.logbook_id,batch);
   const result=await client.query('UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND deleted_at IS NULL RETURNING id,book_no,book_type,book_date::text,site,asset_id,data,revision,created_at,updated_at',[JSON.stringify(data),row.logbook_id]);
   record=result.rows[0];
  }
