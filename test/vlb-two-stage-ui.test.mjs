@@ -47,6 +47,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5',site:'Jayant OC'},{id:'6',name:'Other site employee',caliberId:'C6',site:'Sasti OC'}]},onChanged(){},onDismiss(){}})};
  let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
  await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
+ assert.match(calls[0].url,/\/breakdowns\?shiftHours=8(?:&|%26)manualShift=/,'the displayed default is sent on the first Pulse lookup');
  assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)'],'Previous ELB entries']);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
  assert.match(html,/Caliber ID/);assert.match(html,/Select Caliber ID/);assert.match(html,/C5 · Ramesh/);assert.doesNotMatch(html,/C6|Other site employee/);
@@ -58,7 +59,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  tree=render();let htmlAfterHours=renderToStaticMarkup(tree);assert.match(htmlAfterHours,/Idle hours<\/span><input[^>]*readOnly=""[^>]*value="1\.5"/);assert.doesNotMatch(htmlAfterHours,/Status reason/);assert.equal((htmlAfterHours.match(/<span>Remark/g)||[]).length,1);
  await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'1.5');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
- await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url==='/api/vlb-batches/batch1/fleet/8/breakdowns'));
+ await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url.startsWith('/api/vlb-batches/batch1/fleet/8/breakdowns?shiftHours=8')));
  cleanup?.();
 });
 
@@ -273,7 +274,7 @@ test('saved ELB buttons stay disabled after saving and unsaved machines remain s
  assert.equal(button(tree,'Enter ELB').props.disabled,false);
  button(tree,'Saved').props.onClick();tree=render();
  assert.match(renderToStaticMarkup(nodes(tree,n=>n.type==='tr'&&n.props['aria-selected']===true)[0]),/VPC-019/,'saved rows cannot be selected even through the handler');
- h.slots[9]={key:'batch1:19:::',loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
+ h.slots[9]={key:['batch1','19','','','','',8].join(':'),loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
  await button(tree,'Next').props.onClick();tree=render();
  const savedButtons=nodes(tree,n=>n.type==='button'&&n.props.children==='Saved');
  assert.equal(savedButtons.length,2);
@@ -290,7 +291,7 @@ test('admins can open saved ELBs, edit prefilled values and save the current rev
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',fleet:savedFleet,statuses,canEditSavedFleet:true},options:{employees:[]},embedded:true})};
  let tree=render();assert.equal(button(tree,'Edit').props.disabled,false);button(tree,'Edit').props.onClick();tree=render();
  const remark=nodes(tree,n=>n.type==='input'&&n.props.value==='Original')[0];assert.ok(remark,'saved data pre-fills the editor');remark.props.onChange({target:{value:'Corrected'}});
- h.slots[9]={key:'batch1:7:::',loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
+ h.slots[9]={key:['batch1','7','','','','',8].join(':'),loading:false,data:{breakdownHours:0,breakdowns:[]},error:''};tree=render();
  assert.equal(button(tree,'Skip').props.disabled,true);
  await button(tree,'Save changes').props.onClick();
  assert.equal(calls[0].url,'/api/vlb-batches/batch1/fleet/7');assert.equal(calls[0].body.revision,4);assert.equal(calls[0].body.statusReason,'Corrected');
@@ -349,7 +350,7 @@ test('a batch owner can start an additional ELB card from the same machine row',
  const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{},fetch,crypto:{randomUUID:()=>'relief-key'}},['VlbFleetStepper']);
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',stage:'elb_open',fleet:savedFleet,statuses,canEnterFleet:true},options:{employees:[]},embedded:true})};
  button(render(),'Add relief card').props.onClick();
- h.slots[9]={key:'batch1:7:::',loading:false,data:{breakdownHours:0,breakdowns:[],shiftHours:8},error:''};
+ h.slots[9]={key:['batch1','7','','','','',8].join(':'),loading:false,data:{breakdownHours:0,breakdowns:[],shiftHours:8},error:''};
  const tree=render();
  assert.ok(nodes(tree,n=>n.type==='input'&&n.props.value==='104').length,'the prior closing HMR pre-fills the opening HMR');
  await button(tree,'Save relief card').props.onClick();
