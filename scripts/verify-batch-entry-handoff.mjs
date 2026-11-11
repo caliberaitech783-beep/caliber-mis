@@ -10,7 +10,8 @@ const fixture=`
 import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import VlbCreateBatch from '../src/vlb-create-batch.jsx';
-import VlbEntryWorkspace,{rememberVlbEntryBatch} from '../src/vlb-entry-workspace.jsx';
+import VlbEntryWorkspace from '../src/vlb-entry-workspace.jsx';
+import {rememberVlbEntryBatch} from '../src/vlb-entry-context.mjs';
 import LogBookForm from '../src/log-book-form.jsx';
 import BulkCardScanning from '../src/bulk-card-scanning.jsx';
 const session={login:'handoff-test',token:'synthetic',role:'super'};

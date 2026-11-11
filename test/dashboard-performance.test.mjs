@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
+import { gzipSync } from "node:zlib";
 
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const metrics = readFileSync(new URL("../shared/dashboard-equipment-metrics.mjs", import.meta.url), "utf8");
@@ -40,5 +41,19 @@ test("fleet counts and detail rows resolve requests with indexes instead of nest
 
 test("production build separates framework, icons and large reporting libraries", () => {
   const config = readFileSync(new URL("../vite.config.mjs", import.meta.url), "utf8");
-  for (const chunk of ["react-vendor", "icons", "pdf-vendor", "image-export-vendor", "replay-vendor"]) assert.match(config, new RegExp(`return "${chunk}"`));
+  for (const chunk of ["react-vendor", "icons", "image-export-vendor", "replay-vendor"]) assert.match(config, new RegExp(`return "${chunk}"`));
+});
+
+const dist = new URL("../dist/", import.meta.url);
+const entry = new URL("index.html", dist);
+test("the built entry defers PDF, scanning, and batch reports", { skip: !existsSync(entry) }, () => {
+  const html = readFileSync(entry, "utf8");
+  const startupAssets = [...html.matchAll(/(?:src|href)="(\/app-assets\/[^"]+)"/g)].map(([, asset]) => asset);
+  assert.ok(startupAssets.length > 0);
+  let compressedBytes = 0;
+  for (const asset of startupAssets) {
+    assert.doesNotMatch(asset, /\/(?:pdf-vendor|jspdf|bulk-card-scanning|vlb-batch-reports)-/);
+    compressedBytes += gzipSync(readFileSync(new URL(asset.slice(1), dist))).length;
+  }
+  assert.ok(compressedBytes < 750_000, `Startup assets total ${compressedBytes} compressed bytes`);
 });

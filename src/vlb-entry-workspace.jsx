@@ -4,8 +4,6 @@ import ElbBatchManual from './elb-batch-manual.jsx';
 import FleetReconciliation from './fleet-reconciliation.jsx';
 import ShiftAttendance from './shift-attendance.jsx';
 
-export {rememberVlbEntryBatch} from './vlb-entry-context.mjs';
-
 // A batch belongs to its site/date/shift and can be continued from either entry mode.
 // ELB manual and scan use the same picker: with two-stage batches the editor opens only once VLB is locked.
 export const elbEntryBlocker=(kind,batch)=>{

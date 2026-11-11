@@ -64,7 +64,8 @@ test('scan / upload batches stay one click away and are the fallback for scan-on
 
 test('the Reports menu opens the shift batch page for VLB Reports',()=>{
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- assert.match(main,/renderedActive==='VLB Reports' \? \(<><ReportGuide id="vlb-reports"\/><VlbBatchReports /);assert.match(main,/import VlbBatchReports from '\.\/vlb-batch-reports\.jsx'/);
+ assert.match(main,/renderedActive==='VLB Reports' \? \(<><ReportGuide id="vlb-reports"\/><VlbBatchReports /);
+ assert.match(main,/const VlbBatchReports=createLazyFeature\(\(\)=>import\("\.\/vlb-batch-reports\.jsx"\)/);
 });
 
 test('clicking a report row opens that card, while controls and text selection inside the row do not',async()=>{
