@@ -18,6 +18,7 @@ for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  const module=await import(new URL('../src/'+match[2],import.meta.url));
  for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
 }
+scope.useStepBackTarget=()=>({current:null});
 for(const name of ['ScanEquipmentReviewDialog','ScanExtractionStatus','ScanExtractionLine','ScanCorrectionStatus','BreakdownHoursField','ScanBatchReport','SmartSelect','EmployeeIdLookup','LocalScannerPanel','ScanAliasMismatchDialog','ScanDuplicateList','ScanUploadTimer','ScanLine','Check','Save','Plus','Trash2','RefreshCw','ZoomIn','ZoomOut'])scope[name]=()=>null;
 scope.ApplicationErrorBoundary=({children})=>children;
 scope.ScanBatchMismatchDialog=({gate})=>React.createElement('section',{className:'scan-mismatch-dialog'},gate.mismatches.length);

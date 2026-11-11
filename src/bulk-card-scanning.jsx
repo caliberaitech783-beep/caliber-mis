@@ -63,6 +63,7 @@ import {startVisiblePoll} from './visible-poll.mjs';
 import {SCAN_PROGRESS_ACTIVE_MS,VLB_CARD_COUNT_POLL_MS,scanProgressActive,shouldReadScanProgress} from '../shared/scan-progress-poll.mjs';
 import WorkOrderJobSelect from './work-order-job-select.jsx';
 import React,{useState,useEffect,useRef} from 'react';
+import {useStepBackTarget} from './step-back-registry.mjs';
 import LogBookForm from './log-book-form.jsx';
 import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
 import {ScanLine,Check,Save,Plus,Trash2,RefreshCw,ZoomIn,ZoomOut} from 'lucide-react';
@@ -201,6 +202,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const closeFleetDialog=card=>{setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));};
  const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle'){const origin=new URL(window.location.href);origin.searchParams.delete('scanEquipment');window.history.replaceState(null,'',origin.pathname+origin.search+origin.hash);navigateReview(true,'all');const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.set('scanReviewReturn',card.id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}};
  const backFromReview=()=>{navigateReview(false);const url=new URL(window.location.href);url.searchParams.delete('scanReviewReturn');url.searchParams.delete('scanEquipment');setFleetOpenId('');window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
+ useStepBackTarget(reviewPage&&!busy?backFromReview:null);
  const [expectedContext,setExpectedContext]=useState(()=>vlbBatch?vlbEntryContext(vlbBatch):{bookDate:'',location:'',cardShift:''}),[scannerBusy,setScannerBusy]=useState(false),[contextGate,setContextGate]=useState(null);const addonUploadRef=useRef(false);
  useEffect(()=>{
   if(reviewPage){if(selected&&!fleetDismissed.has(selected))setFleetDismissed(keys=>new Set([...keys,selected]));return;}

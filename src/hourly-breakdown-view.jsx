@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from "react";
+import { useStepBackTarget } from "./step-back-registry.mjs";
 import { ArrowLeft } from "lucide-react";
 import { hourlyBreakdownView, breakdownElapsed } from "./hourly-breakdown.mjs";
 import "./hourly-breakdown-view.css";
@@ -16,6 +17,7 @@ function moveBetweenTabs(event, index, count, choose) {
 }
 
 export default function HourlyBreakdownView({ requests, sites, onBack, ActionsTable }) {
+  useStepBackTarget(onBack);
   const [hours, setHours] = useState(1);
   const [site, setSite] = useState("");
   const [now, setNow] = useState(Date.now);

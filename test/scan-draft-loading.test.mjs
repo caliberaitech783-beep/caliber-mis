@@ -11,6 +11,7 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
   for(const name of match[1].split(',').map(v=>v.trim()))scope[name]=module[name];
  }
  source=source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
+ scope.useStepBackTarget=()=>({current:null});
  source=source.slice(0,source.indexOf(' const originalScan='))+' return {draft,dirty,update,visibleField};\n}';
  const model={card:{id:'one',revision:1,status:'reading',draft:{},raw_fields:{}}};
  source=source.replace('const card=cards.find(c=>c.id===selected);','const card=model.card;');

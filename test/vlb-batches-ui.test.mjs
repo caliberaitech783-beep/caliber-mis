@@ -15,6 +15,7 @@ import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
+ scope={StepBackButton:()=>null,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
