@@ -10,6 +10,32 @@ test('Equipment master approval routes require the assigned menu and POST',()=>{
   assert.equal(misRequestAllowed(session(['Equipment master']),{path,method:'GET'}),false);
  }
 });
+test('equipment alias routes follow the scan, log book and Equipment master menus',()=>{
+ const user=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages}});
+ const admin=pages=>({role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:[...pages,'Users & employees']}});
+ const id='0b4d5f7e-1c2a-4b3d-9e8f-123456789abc',otp='9a8b7c6d-5e4f-4a3b-8c2d-abcdef012345';
+ // Learning a mapping while saving a card (scan review or manual entry) and reading the list.
+ for(const pages of [['Trip Card Bulk Scan'],['Job Card Bulk Scan'],['Vehicle Log Book'],['Equipment Log Book'],['Equipment master']]){
+  assert.equal(misRequestAllowed(user(pages),{path:'/api/equipment-aliases',method:'POST'}),true,pages[0]);
+  assert.equal(misRequestAllowed(user(pages),{path:'/api/equipment-aliases',method:'GET'}),true,pages[0]);
+  assert.equal(misRequestAllowed(user(pages),{path:'/api/equipment-aliases/settings',method:'GET'}),true,pages[0]);
+  assert.equal(misRequestAllowed(user(pages),{path:`/api/equipment-aliases/${id}/otp`,method:'POST'}),true,pages[0]);
+  assert.equal(misRequestAllowed(user(pages),{path:`/api/equipment-aliases/${id}/otp/${otp}/verify`,method:'POST'}),true,pages[0]);
+ }
+ // Unrelated menus stay closed.
+ for(const method of ['GET','POST'])assert.equal(misRequestAllowed(user(['Employee master','Dashboard']),{path:'/api/equipment-aliases',method}),false);
+ assert.equal(misRequestAllowed(user(['Reports']),{path:'/api/equipment-aliases/settings',method:'GET'}),false);
+ // Approver change and direct revoke remain administrator actions.
+ assert.equal(misRequestAllowed(user(['Equipment master']),{path:'/api/equipment-aliases/settings',method:'PUT'}),false);
+ assert.equal(misRequestAllowed(admin(['Equipment master']),{path:'/api/equipment-aliases/settings',method:'PUT'}),true);
+ assert.equal(misRequestAllowed(user(['Equipment master']),{path:`/api/equipment-aliases/${id}`,method:'DELETE'}),false);
+ assert.equal(misRequestAllowed(admin(['Equipment master']),{path:`/api/equipment-aliases/${id}`,method:'DELETE'}),true);
+ assert.equal(misRequestAllowed(admin([]),{path:`/api/equipment-aliases/${id}`,method:'DELETE'}),false);
+ // Wrong methods and unknown sub-routes still fail closed.
+ assert.equal(misRequestAllowed(user(['Trip Card Bulk Scan']),{path:'/api/equipment-aliases',method:'DELETE'}),false);
+ assert.equal(misRequestAllowed(user(['Trip Card Bulk Scan']),{path:`/api/equipment-aliases/${id}/otp`,method:'GET'}),false);
+ assert.equal(misRequestAllowed(user(['Trip Card Bulk Scan']),{path:'/api/equipment-aliases/export',method:'GET'}),false);
+});
 import {installMisCredentialClient} from '../server/routes/mis-credential-client.mjs';
 const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Employee master','Vehicle Log Book','Trip Card Bulk Scan'],misMobileAccess:['Dashboard']}};
 test('MIS API permissions fail closed and follow assigned masters and working menus',()=>{
