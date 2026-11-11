@@ -41,6 +41,17 @@ export function misRequestAllowed(session,req){
  if(route==='/api/exports/pdf')return req.method==='POST'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(route==='/api/saved-reports')return (read||req.method==='POST')&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
  if(/^\/api\/saved-reports\/[^/]+$/.test(route))return req.method==='DELETE'&&['Reports','Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Dashboard'].some(allowed);
+ // Equipment aliases (written card label -> Pulse record) are learned in scan review and manual
+ // book entry and listed under Equipment master. Changing the approver and direct revoke stay
+ // administrator actions; the route itself also requires an administrator for those.
+ if(route==='/api/equipment-aliases'||route.startsWith('/api/equipment-aliases/')){
+  const menu=['Trip Card Bulk Scan','Job Card Bulk Scan','Vehicle Log Book','Equipment Log Book','Equipment master'].some(allowed);
+  if(route==='/api/equipment-aliases/settings')return menu&&(read||req.method==='PUT'&&isMisAdministrator(session));
+  if(route==='/api/equipment-aliases')return menu&&(read||req.method==='POST');
+  if(/^\/api\/equipment-aliases\/[0-9a-f-]{36}\/otp(?:\/[0-9a-f-]{36}\/verify)?$/i.test(route))return menu&&req.method==='POST';
+  if(/^\/api\/equipment-aliases\/[0-9a-f-]{36}$/i.test(route))return menu&&req.method==='DELETE'&&isMisAdministrator(session);
+  return false;
+ }
  if(route.startsWith('/api/masters/'))return allowed(decodeURIComponent(req.params?.master||route.split('/')[3]||''));
  if(/^\/api\/equipment-master\/changes(?:\/[^/]+\/verify)?\/?$/i.test(route))return req.method==='POST'&&allowed('Equipment master');
  if(route==='/api/employee-master/location')return req.method==='GET';

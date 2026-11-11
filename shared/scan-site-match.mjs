@@ -3,6 +3,7 @@ import {canonicalSiteName} from './site-location.mjs';
 export const tripCardLocation=value=>{
  const location=String(value??'').trim();
  if(/^sasti\s*0*1$/i.test(location))return 'Sasti OB';
+ if(/^majri\s*0*1$/i.test(location))return 'Majri OB';
  return location.replace(/\boc\b/gi,'OB');
 };
 export function tripCardLocationChoices(sites=[],current='',enabled=false){
@@ -36,7 +37,7 @@ function matchDchSite(readings,sites){
 export function matchScannedSite(readings,sites){
  const unique=[...new Map(sites.filter(Boolean).map(s=>[canonicalSiteName(s),s])).values()];
  const dch=matchDchSite(readings.filter(Boolean),unique);if(dch!==null)return dch;
- for(const reading of readings.filter(Boolean)){const exact=unique.filter(s=>canonicalSiteName(s)===canonicalSiteName(reading));if(exact.length===1)return exact[0];}
+ for(const reading of readings.filter(Boolean)){const exact=unique.filter(s=>canonicalSiteName(s)===canonicalSiteName(tripCardLocation(reading)));if(exact.length===1)return exact[0];}
  const scores=unique.map(site=>({site,score:Math.min(...readings.filter(Boolean).map(r=>base(r).length>=6?distance(base(r),base(site)):99))})).sort((a,b)=>a.score-b.score);
  return scores[0]?.score<=1&&scores[0].score<(scores[1]?.score??99)?scores[0].site:'';
 }
