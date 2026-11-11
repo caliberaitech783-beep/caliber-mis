@@ -11,7 +11,7 @@ test('DE card notation resolves the exact DEMO machine number before duplicate a
  ];
  for(const input of ['DE 25','DE25','DEMO25']){
   const result=resolveTripEquipment({equipmentName:input},master,'Sasti OC');
-  assert.equal(result.error,undefined,input);assert.equal(result.equipmentId,'demo25',input);assert.equal(result.equipmentName,'Demo 25',input);
+  assert.equal(result.error,undefined,input);assert.equal(result.equipmentId,'demo25',input);assert.equal(result.equipmentName,'DEMO25-49001',input);
  }
 });
 test('U correction is disabled when a genuine U-type machine code exists',()=>assert.ok(resolveTripEquipment({equipmentName:'U150'},[...assets,{id:8,kind:'equipment',equipmentName:'U99',site:'Other'}],'Jayant').error));

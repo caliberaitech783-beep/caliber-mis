@@ -86,9 +86,11 @@ test('every Pulse snapshot retires redundant aliases, suspends shadowed ones wit
  assert.equal(suspended.status,'suspended');assert.match(suspended.suspended_reason,/L21 is now a real door \(L 21, record 7\)/);
  assert.equal(telegram.sent.length,2);assert.match(telegram.sent[0].message,/equipment alias suspended/);
  assert.equal((await db.query("SELECT raw_fields FROM mis_scan_cards WHERE id='held'")).rows[0].raw_fields.fleetReview,undefined,'held cards are rechecked');
- // The matcher now reports the written key as ambiguous instead of resolving silently.
+  // The real master door takes priority over the suspended legacy alias.
  const assets=await withEquipmentAliases(pool,(await db.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})));
- assert.equal(matchCardMachine(assets,'L21',site,'equipment').status,'ambiguous');
+  const resolved=matchCardMachine(assets,'L21',site,'equipment');
+  assert.equal(resolved.status,'matched');
+  assert.equal(String(resolved.match.id),'7');
  assert.equal(await reconcileEquipmentAliases(pool,{telegram}).then(r=>r.suspended),0,'already suspended: no second alert');
  // The shadowing record transfers away: the approved alias answers again.
  await db.query("UPDATE master_records SET record_data=record_data||'{\"currentLocation\":\"Jayant OC\"}' WHERE id=7");

@@ -51,7 +51,7 @@ export function resolveTripEquipment(row={},assets=[],location='',{anySite=false
   const record=equipment.byId.get(String(row.equipmentId));
   if(!record||record.sourceMissing||!anySite&&canonicalSiteName(record.currentLocation||record.site||record.location)!==site)return {error:'Selected equipment is no longer available at '+location+'. Select equipment registered at this site.'};
   const label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
-  return {equipmentId:String(record.id),equipmentName:label?families[label.prefix]+' '+label.number:clean(labels(record)[0]),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};
+  return {equipmentId:String(record.id),equipmentName:label&&label.prefix!=='DEMO'?families[label.prefix]+' '+label.number:clean(labels(record)[0]),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};
  }
  // UP registrations are vehicle identifiers, not a U-type machine code.
  if(parsed?.prefix==='U'&&equipment.hasUMachine)return {error:'U cannot be interpreted as V: a U-type machine code exists in the master. Check the card.'};
@@ -77,6 +77,6 @@ export function resolveTripEquipment(row={},assets=[],location='',{anySite=false
  const unique=[...new Map((selectedMatches.length?selectedMatches:matches).map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
  if(unique.length!==1)return {error:unique.length?'Multiple equipment records match '+original+(anySite?'':' at '+location)+'. Select the correct equipment.':original+(anySite?' is not in the Equipment master at any site.':' is not assigned to '+location+'.')+' Check the machine and number.'};
  const record=unique[0],label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
- return {equipmentName:label?families[label.prefix]+' '+label.number:clean(labels(record)[0]),equipmentId:String(record.id),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};
+ return {equipmentName:label&&label.prefix!=='DEMO'?families[label.prefix]+' '+label.number:clean(labels(record)[0]),equipmentId:String(record.id),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};
 }
 export function validateTripEquipment(draft={},assets=[],options={}){const issues={},result={...draft};for(const field of ['trips','scanMachineSummary'])result[field]=(draft[field]||[]).map((row,i)=>{const match=resolveTripEquipment(row,assets,draft.location,options);if(match.error){if(field!=='trips'||tripEquipmentRequired(row,draft.timeMode))issues[field+'.'+i+'.equipmentName']=match.error;return row;}return {...row,...match};});return {draft:result,issues};}
