@@ -29,6 +29,11 @@ test('numeric equipment without a type stays unresolved for human review',()=>{
  const r=resolveTripGrid({rows:[row(1,blank(),cell('875'))],summary:[]},'');assert.equal(r.trips[0].equipmentName,'');assert.ok(r.issues.length);
  assert.equal(cleanTripCell('time','08:75'),'');assert.equal(cleanTripCell('number','2B9'),'');assert.equal(cleanTripCell('time','8.20'),'08:20');
 });
+test('a loading-time digit joined to the equipment number is removed only when the machine summary confirms one door',()=>{
+ const joined={rows:[row(4,cell('V'),cell('837'))],summary:[{rowNumber:1,equipmentType:cell('V'),equipmentNo:cell('83'),count:cell('1')}]};
+ const corrected=resolveTripGrid(joined,'');assert.equal(corrected.trips[0].equipmentName,'V83');assert.ok(corrected.issues.some(issue=>issue.includes('crossed into the loading-time column')));
+ const unknown=resolveTripGrid({...joined,summary:[{rowNumber:1,equipmentType:cell('V'),equipmentNo:cell('95'),count:cell('1')}]},'');assert.equal(unknown.trips[0].equipmentName,'');assert.ok(unknown.issues.some(issue=>issue.includes('does not match the machine-wise summary')));
+});
 test('standard printed grid anchors locate readings even when the title OCR fails',async()=>{
  const c=createCanvas(1200,1600),x=c.getContext('2d');x.fillStyle='#777';x.fillRect(0,0,1200,1600);x.fillStyle='white';x.fillRect(250,0,700,1000);x.fillStyle='blue';x.font=ocrFixtureFont(24);x.fillText('30511',380,234);
  const bytes=c.toBuffer('image/png');assert.ok((await readingCellImages(bytes,'SHIFT\nMACHINE-WISE SUMMARY')).openingHmr);
