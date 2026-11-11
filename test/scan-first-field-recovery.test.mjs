@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {recoverFirstScanFields,firstScanProblems,readScanWithRecovery} from '../server/services/scan-first-field-recovery.mjs';
 import {cardReviewGroup} from '../shared/scan-card-groups.mjs';
-import {cardMachineKey} from '../shared/scan-machine-rules.mjs';
 import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
 const good=()=>({raw:{door:'V321',employeeCode:'EMP1'},draft:{doorText:'V321',assetId:'1',employeeId:'2',location:'Sasti OC',bookDate:'2026-12-19',bookDateSource:'scan',cardShift:'I',shiftId:'3',shiftHours:8,openingHmr:100,closingHmr:104,openingKmr:200,closingKmr:240,trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[{equipmentName:'LPC01',tripCount:2}],timeMode:'without',extractionReviewFields:[],meterReviewFields:[]}});
 const context={bookDate:'2026-12-19',location:'Sasti OC',cardShift:'I'};
@@ -17,17 +16,17 @@ test('conflicting fresh door evidence cannot replace the first read or pass auto
  assert.equal(result.draft.doorText,'V321');
  assert.deepEqual(result.raw.doorVerification,{status:'conflict',first:'V321',second:'V559'});
 });
-test('Gemini VLB cards auto-save only after matching independent door evidence',()=>{
- const base={status:'review',draft:{...good().draft,doorText:'V559'},checks:{errors:[],warnings:[]}};
- assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'conflict',first:'V655',second:'V559'}}},'vehicle'),false);
- assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'unavailable',first:'V655'}}},'vehicle'),false);
- assert.equal(canAutoSaveScanCard({...base,raw_fields:{provider:'gemini',doorVerification:{status:'confirmed',first:'V559',second:'V/559'}}},'vehicle'),true);
- const unverified={...base,raw_fields:{provider:'gemini'}};
- assert.equal(cardReviewGroup(unverified,'vehicle'),'brown');
- const confirmed={...unverified,draft:{...unverified.draft,doorReviewConfirmation:{door:cardMachineKey('V559','vehicle'),assetId:'1'}}};
- assert.equal(cardReviewGroup(confirmed,'vehicle'),'orange');
- assert.equal(canAutoSaveScanCard(confirmed,'vehicle'),true);
- assert.equal(canAutoSaveScanCard({...confirmed,draft:{...confirmed.draft,assetId:'2'}},'vehicle'),false);
+test('a unique linked vehicle master match allows automatic saving without an OCR reread',()=>{
+ const card={status:'review',draft:good().draft,checks:{errors:[],warnings:[]},raw_fields:{provider:'gemini',doorVerification:{status:'unavailable'}}};
+ const vehicle={id:'1',kind:'vehicle',site:'Sasti OC',door:'V/321'};
+ const loadingEquipment={id:'3',kind:'equipment',site:'Sasti OC',door:'LPC01'};
+ const options={assets:[vehicle,loadingEquipment]};
+ assert.equal(cardReviewGroup(card,'vehicle',options),'orange');
+ assert.equal(canAutoSaveScanCard(card,'vehicle',options),true);
+ for(const assets of [[loadingEquipment],[{...vehicle,door:'V559'},loadingEquipment],[vehicle,{...vehicle,id:'2'},loadingEquipment]]){
+  assert.equal(cardReviewGroup(card,'vehicle',{assets}),'brown');
+  assert.equal(canAutoSaveScanCard(card,'vehicle',{assets}),false);
+ }
 });
 test('one original-image reread recovers door, Caliber, HMR, KMR, summary and date/shift together',async()=>{
  const extracted=good();Object.assign(extracted.draft,{assetId:'',employeeId:'',openingHmr:'',closingKmr:150,bookDate:'2026-12-18',shiftId:'',cardShift:'',scanMachineSummary:[{equipmentName:'LPC01',tripCount:9}]});let calls=0;
