@@ -1,10 +1,9 @@
 import {meterRuleIssues,shiftMeterIssues} from '../shared/trip-card-rules.mjs';
-import {normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
+import {matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues} from '../shared/scan-machine-rules.mjs';
 import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
 import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
-import {linkedScanEquipment} from '../shared/scan-fleet-door.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 
 export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv=false){
@@ -15,8 +14,8 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options,lmv);
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
  if(kind==='vehicle'&&raw.provider==='gemini'&&Array.isArray(options?.assets)&&draft.doorText&&draft.assetId){
-  const match=linkedScanEquipment(options.assets,draft.doorText,draft.location,kind);
-  if(!match||String(match.id)!==String(draft.assetId))issues.doorText||='The door number must uniquely match the linked vehicle in Equipment Master for this site.';
+  const {match,status}=matchCardMachine(options.assets,draft.doorText,draft.location,kind);
+  if(status!=='matched'||String(match.id)!==String(draft.assetId))issues.doorText||='The door number must uniquely match the linked vehicle in Equipment Master for this site.';
  }
  for(const key of draft.meterReviewFields||[])if(draft.meterReviewMessages?.[key])issues[key]=draft.meterReviewMessages[key];
  if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift']]){

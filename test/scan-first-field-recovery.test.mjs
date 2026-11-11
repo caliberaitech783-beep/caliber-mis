@@ -23,7 +23,7 @@ test('a unique linked vehicle master match allows automatic saving without an OC
  const options={assets:[vehicle,loadingEquipment]};
  assert.equal(cardReviewGroup(card,'vehicle',options),'orange');
  assert.equal(canAutoSaveScanCard(card,'vehicle',options),true);
- for(const assets of [[loadingEquipment],[{...vehicle,door:'V559'},loadingEquipment],[vehicle,{...vehicle,id:'2'},loadingEquipment]]){
+ for(const assets of [[loadingEquipment],[{...vehicle,door:'V559'},loadingEquipment],[{...vehicle,door:'V3321'},loadingEquipment],[vehicle,{...vehicle,id:'2'},loadingEquipment]]){
   assert.equal(cardReviewGroup(card,'vehicle',{assets}),'brown');
   assert.equal(canAutoSaveScanCard(card,'vehicle',{assets}),false);
  }
