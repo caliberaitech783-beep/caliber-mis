@@ -21,7 +21,8 @@ const shiftSql=`CASE COALESCE(NULLIF(data->>'cardShift',''),data->>'batchShift',
 // if cards are saved for one in the selected dates it comes back, so no saved card is ever hidden.
 export const DASHBOARD_REMOVED_SITES=new Set(['Lalpeth OC'].map(site=>canonicalSiteName(site)));
 export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,kinds=['vehicle','equipment']}){
- const names=new Map(sites.filter(site=>!DASHBOARD_REMOVED_SITES.has(canonicalSiteName(site))).map(site=>[canonicalSiteName(site),displaySiteName(site)]));
+ // A master record with no real site ("-" or blank) is not a site: it must not show as an empty row.
+ const names=new Map(sites.filter(site=>canonicalSiteName(site)&&!DASHBOARD_REMOVED_SITES.has(canonicalSiteName(site))).map(site=>[canonicalSiteName(site),displaySiteName(site)]));
  for(const row of rows)names.set(canonicalSiteName(row.site),displaySiteName(row.site));
  const allSites=[...names.values()].sort((a,b)=>a.localeCompare(b));
  const selected=canonicalSiteName(location),siteRows=allSites.filter(site=>!selected||canonicalSiteName(site)===selected).map(site=>({site,vehicle:0,equipment:0}));

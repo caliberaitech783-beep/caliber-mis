@@ -29,3 +29,8 @@ test('dashboard aggregates all saved rows, aliases and zero sites; filters and p
  }finally{server?.closeAllConnections();await new Promise(r=>server?server.close(r):r());await db.close()}
 });
 test('range validation rejects impossible calendar dates',()=>{assert.throws(()=>dashboardFilters({from:'2026-11-31',to:'2026-12-01'}));});
+
+test('a master record with a dash or blank for its site adds no empty row to the dashboard',()=>{
+ const summary=summarizeLogBooks({rows:[],sites:['-',' ','Sasti OC'],from:'2026-11-01',to:'2026-11-02'});
+ assert.deepEqual(summary.sites,['Sasti OC']);assert.deepEqual(summary.bySite.map(row=>row.site),['Sasti OC']);
+});
