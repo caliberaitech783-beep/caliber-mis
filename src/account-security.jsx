@@ -17,6 +17,7 @@ export function useAccountSecurity(session,{enabled=Boolean(session?.browserSess
     const result=await migration.json();if(!migration.ok)throw Error(result.error||'Please sign in again.');
     sessionStorage.setItem('nerveCenterSession',JSON.stringify(result));window.location.reload();return;
    }
+   sessionStorage.setItem('nerveCenterSession',JSON.stringify(session));
    localStorage.removeItem('nerveCenterSession');
    const response=await fetch('/api/security/account',{headers:{Authorization:`Bearer ${session.token}`},cache:'no-store'}),result=await response.json();
    if(!response.ok)throw Error(result.error||'Account verification is unavailable.');

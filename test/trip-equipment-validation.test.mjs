@@ -4,6 +4,16 @@ import {resolveTripEquipment,validateTripEquipment} from '../shared/trip-equipme
 const assets=[{id:1,kind:'equipment',equipmentName:'Volvo150',site:'Jayant'},{id:2,kind:'equipment',door:'Tpc 20',site:'Jayant'},{id:3,kind:'equipment',door:'Lpc 30',site:'Jayant'},{id:4,kind:'equipment',door:'Spc 40',site:'Jayant'},{id:5,kind:'equipment',door:'Vpc 999',site:'Other'}];
 test('approved aliases resolve only against location equipment',()=>{for(const [input,expected] of [['V150','Vpc 150'],['U150','Vpc 150'],['T20','Tpc 20'],['TA20','Tpc 20'],['L30','Lpc 30'],['S40','Spc 40'],['150','Vpc 150']])assert.equal(resolveTripEquipment({equipmentName:input},assets,'Jayant').equipmentName,expected);});
 test('wrong site, wrong family, missing and ambiguous numbers require review',()=>{for(const input of ['V999','T150','V','V151'])assert.ok(resolveTripEquipment({equipmentName:input},assets,'Jayant').error);assert.ok(resolveTripEquipment({equipmentName:'150'},[...assets,{id:6,kind:'equipment',door:'Tpc150',site:'Jayant'}],'Jayant').error);});
+test('DE card notation resolves the exact DEMO machine number before duplicate aliases',()=>{
+ const master=[
+  {id:'demo19',kind:'equipment',door:'DEMO19-15295',site:'Sasti OC',cardAliases:['DE25']},
+  {id:'demo25',kind:'equipment',door:'DEMO25-49001',site:'Sasti OC',cardAliases:['DE25']},
+ ];
+ for(const input of ['DE 25','DE25','DEMO25']){
+  const result=resolveTripEquipment({equipmentName:input},master,'Sasti OC');
+  assert.equal(result.error,undefined,input);assert.equal(result.equipmentId,'demo25',input);assert.equal(result.equipmentName,'DEMO25-49001',input);
+ }
+});
 test('U correction is disabled when a genuine U-type machine code exists',()=>assert.ok(resolveTripEquipment({equipmentName:'U150'},[...assets,{id:8,kind:'equipment',equipmentName:'U99',site:'Other'}],'Jayant').error));
 test('details and summary share identity and preserve source reading',()=>{const result=validateTripEquipment({location:'Jayant',trips:[{equipmentName:'U150',tripCount:2}],scanMachineSummary:[{equipmentName:'V150',tripCount:2}]},assets);assert.deepEqual(result.issues,{});assert.equal(result.draft.trips[0].equipmentId,'1');assert.equal(result.draft.trips[0].originalEquipmentName,'U150');assert.equal(result.draft.trips[0].equipmentName,result.draft.scanMachineSummary[0].equipmentName);});
 

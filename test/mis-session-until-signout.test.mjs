@@ -20,3 +20,10 @@ test('successful sign-in persists until the explicit sign-out clears storage',()
   const logout=source.slice(source.indexOf('logout = () =>'),source.indexOf('addRequest = async'));
   assert.match(logout,/clearStoredSession\(\)/);
 });
+
+test('secure browser session is moved into tab storage before persistent storage is cleared',()=>{
+  const source=fs.readFileSync(new URL('../src/account-security.jsx',import.meta.url),'utf8');
+  const browserSession=source.slice(source.indexOf("if(!isBrowserSessionToken"),source.indexOf("const response=await fetch('/api/security/account'"));
+  assert.match(browserSession,/sessionStorage\.setItem\('nerveCenterSession',JSON\.stringify\(session\)\)/);
+  assert.ok(browserSession.indexOf("sessionStorage.setItem('nerveCenterSession',JSON.stringify(session))")<browserSession.indexOf("localStorage.removeItem('nerveCenterSession')",browserSession.indexOf('window.location.reload();return;')));
+});

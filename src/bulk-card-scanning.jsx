@@ -29,7 +29,7 @@ import {trimScanPreview} from './scan-preview-crop.mjs';
 import ScanCorrectionStatus from './scan-correction-status.jsx';
 import ScanExtractionStatus,{formatExtractionTime,ScanExtractionLine} from './scan-extraction-status.jsx';
 import {SCAN_UPLOAD_ACCEPT,scanUploadType} from './scan-upload-file.mjs';
-import {linkedScanEquipment} from '../shared/scan-fleet-door.mjs';
+import {canonicalLinkedScanDoor,linkedScanEquipment} from '../shared/scan-fleet-door.mjs';
 import BreakdownHoursField from './breakdown-hours-field.jsx';
 import {handoverTimeNote} from './scan-handover-review.mjs';
 import ScanBatchReport from './scan-batch-report.jsx';
@@ -456,9 +456,9 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   }})();
  },[reviewPage,cards,kind,options,dirty,busy,fleetBusy,connectionError,saveTick,bdFallbackMissing,pulseHours?.breakdownHours,contextBlocked,autoSaving,autoSaveError]);
  useEffect(()=>{
-  if(!card||!options||!draft.location||['queued','reading','posted'].includes(card.status)||draft.assetId||(kind==='vehicle'&&!dirtyRef.current))return;
+  if(!card||!options||!draft.location||['queued','reading','posted'].includes(card.status)||draft.assetId)return;
   const linked=linkedScanEquipment(options.assets||[],draft.doorText,draft.location,kind);
-  if(linked){setDraft(d=>({...d,assetId:String(linked.id),manualBreakdownHours:''}));setDirty(true);setChecked(false);}
+  if(linked){setDraft(d=>({...d,doorText:canonicalLinkedScanDoor(linked,d.doorText,kind),assetId:String(linked.id),manualBreakdownHours:''}));setDirty(true);setChecked(false);}
  },[options,card?.id,card?.status,draft.doorText,draft.location,draft.assetId,kind]);
  const readonly=!card||['queued','reading','posted'].includes(card.status);
  useEffect(()=>{if(!card||!options||!draft.bookDate||!['vehicle','equipment'].includes(kind)||(kind==='vehicle'&&!dirtyRef.current))return;const changes={};const orders=matchingWorkOrders(options.workOrders||[],draft.location,draft.bookDate);const latest=orders.find(row=>row.id===String(vlbBatch?.work_order_id))||latestWorkOrder(options.workOrders||[],draft.location,draft.bookDate);if(!draft.workOrderId&&latest)changes.workOrderId=latest.id;const shift=selectedMasterShift(options.shifts||[],draft.location,draft.cardShift,draft.bookDate);if(!draft.shiftId&&shift)changes.shiftId=shift.id;const hours=CARD_SHIFTS[draft.cardShift]?.hours;if(hours&&(kind==='vehicle'?!draft.shiftHours:Number(draft.shiftHours)!==hours))changes.shiftHours=hours;if(!draft.employeeId&&card.raw_fields?.employeeCode){const value=String(card.raw_fields.employeeCode).trim().toUpperCase();const matched=(options.employees||[]).filter(r=>[r.caliberId,r.employeeCode].some(v=>String(v||'').toUpperCase()===value));const preferred=matched.filter(r=>r.masterName==='Employee master');const candidates=preferred.length?preferred:matched;if(candidates.length===1)changes.employeeId=candidates[0].id;}if(changes.shiftId||changes.shiftHours)changes.manualBreakdownHours='';if(Object.keys(changes).length){setDraft(d=>({...d,...changes}));setDirty(true);setChecked(false);}},[options,draft.bookDate,draft.location,draft.cardShift,card?.id]);
