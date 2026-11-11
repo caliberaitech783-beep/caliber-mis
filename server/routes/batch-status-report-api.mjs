@@ -4,6 +4,8 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {batchStatusFilters,buildBatchStatusReport,buildBatchDetail} from '../../shared/batch-status-report.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
+import {buildWorkingNow,LAST_ACTION_HOURS} from '../../shared/batch-status-live.mjs';
+import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 
 const BATCH_COLUMNS=`b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.stage,b.created_at,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,COALESCE(b.creator_login,b.created_by,'') AS created_by`;
 const shiftMaster=async client=>(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master' ORDER BY id")).rows.map(r=>({...r.record_data,id:String(r.id)}));
@@ -48,6 +50,50 @@ export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>
    finally{client?.release();}
    });
    res.set('Cache-Control','private, no-store').json(report);
+  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
+ });
+ // Working now: who saved something in a batch in the last 10 minutes, and when each site last saw a save.
+ // Reads one day of batch history (index mis_vlb_batch_audit_occurred_idx) and that day's LMV log books.
+ app.get('/api/reports/batch-status/live',...protect,async(req,res,next)=>{
+  try{
+   await ensureBooks();
+   const live=await lane.run(reportKey('batch-status-live',req),async()=>{
+   let client;
+   try{
+   client=await pool.connect();
+   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+   const allowed=row=>siteAllowed(req.logBookScope,row.site);
+   const current=now(),since=new Date(current-LAST_ACTION_HOURS*3600000).toISOString();
+   // Batches are dated by shift; a save in the last day can belong to a shift up to two days earlier.
+   const fromDate=new Date(current+19800000-3*86400000).toISOString().slice(0,10),earliest=fromDate<OPERATIONAL_START?OPERATIONAL_START:fromDate;
+   const audit=(await client.query(`SELECT a.actor,a.action,a.occurred_at AS at,b.id AS "batchId",b.name AS "batchName",b.site,b.book_date::text AS date,b.shift
+    FROM mis_vlb_batch_audit a JOIN mis_vlb_batches b ON b.id=a.batch_id
+    WHERE a.occurred_at>=$1 AND b.deleted_at IS NULL AND b.archived_at IS NULL AND b.book_date>=$2
+    ORDER BY a.occurred_at DESC LIMIT 20000`,[since,earliest])).rows.filter(allowed);
+   // LMV log books are saved outside the batch history; each is matched to its batch by site, date and shift.
+   const lmv=(await client.query(`SELECT created_by AS actor,created_at AS at,site,book_date::text AS date,
+    jsonb_build_object('location',data->'location','bookShiftCode',data->'bookShiftCode','cardShift',data->'cardShift','shiftName',data->'shiftName') AS data
+    FROM mis_log_books WHERE book_type='lmv' AND deleted_at IS NULL AND book_date>=$2 AND created_at>=$1 ORDER BY created_at DESC LIMIT 5000`,[since,earliest])).rows
+    .map(r=>({actor:r.actor,action:'lmv_saved',at:r.at,site:r.data.location||r.site,date:r.date,shift:vlbRecordShift(r.data)})).filter(allowed);
+   if(lmv.length){
+    const scope=(site,date,shift)=>canonicalSiteName(site)+'|'+date+'|'+(bookShiftCode(shift)||shift);
+    const batches=(await client.query(`SELECT id,name,site,book_date::text AS date,shift FROM mis_vlb_batches
+     WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date=ANY($1::date[])`,[[...new Set(lmv.map(b=>b.date))]])).rows;
+    const byScope=new Map(batches.map(b=>[scope(b.site,b.date,b.shift),b]));
+    for(const book of lmv){const batch=byScope.get(scope(book.site,book.date,book.shift));if(batch){book.batchId=batch.id;book.batchName=batch.name;book.shift=batch.shift;}}
+   }
+   const actions=[...audit,...lmv];
+   const logins=[...new Set(actions.map(a=>String(a.actor||'').trim().toLowerCase()).filter(Boolean))];
+   const names=logins.length?Object.fromEntries((await client.query(`SELECT lower(trim(record_data->>'login')) AS login,
+    COALESCE(NULLIF(trim(record_data->>'employee'),''),NULLIF(trim(record_data->>'name'),'')) AS name
+    FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=ANY($1::text[])`,[logins])).rows.filter(r=>r.name).map(r=>[r.login,r.name])):{};
+   await client.query('COMMIT');
+   client.release();client=null;
+   return buildWorkingNow({now:current,actions,names});
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
+   finally{client?.release();}
+   });
+   res.set('Cache-Control','private, no-store').json(live);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
  });
  // Steps 3 and 4: one batch, its milestones and every recorded action.

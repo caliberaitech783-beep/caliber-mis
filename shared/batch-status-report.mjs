@@ -159,6 +159,9 @@ const ACTIONS={created:['Batch','Batch created'],restored_to_batch_list:['Batch'
  vlb_unlocked:['Rework','VLB unlocked'],reopen_requested:['Rework','Reopening requested'],reopen_approved:['Rework','Reopening approved'],reopen_rejected:['Rework','Reopening rejected'],reopen_request_withdrawn:['Rework','Reopening request withdrawn'],
  reopened:['Rework','Batch reopened'],approval_otp_sent:['Rework','Approval code sent'],approval_invalidated:['Rework','Approval cancelled'],saved_lock_policy_enabled:['Batch','Locked by the system']};
 
+// Stage of a recorded batch action: VLB, LMV, ELB, Batch, Rework or Other.
+export const actionStage=action=>ACTIONS[action]?.[0]||'Other';
+
 // Steps 3 and 4 for one batch: its milestones, the time taken in each stage and every recorded action.
 export function buildBatchDetail({batch,shifts=[],events=[],lmvBooks=[],now=Date.now()}){
  const code=bookShiftCode(batch.shift)||batch.shift,shiftEnd=shiftEndTime(shifts,batch.site,code,batch.date),m=milestones(batch,events),stage=batchStageKey(batch);
