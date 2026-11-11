@@ -13,12 +13,12 @@ function tripTimes(trips){
   .map(key=>seconds(row[key])));
 }
 
-export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}}){
+export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={},context=draft}){
  const assetId=String(draft.assetId??'');
- const date=draft.bookDate;
- const shift=vlbRecordShift({cardShift:draft.cardShift});
+ const date=context.bookDate;
+ const shift=vlbRecordShift({cardShift:context.cardShift});
  const times=tripTimes(draft.trips);
- const identity=[assetId,date,shift,draft.location,...times].join('|');
+ const identity=[assetId,date,shift,context.location,...times].join('|');
  const source=draft.openingMeterCarryover;
  const next={...draft};
  const values={};
