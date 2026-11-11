@@ -8,6 +8,7 @@ import {allCardDetailViews} from './gemini-card-images.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {normalizeCardShift} from '../../shared/trip-card-rules.mjs';
 import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
+import {siteKeySlug} from '../rules/scan-lanes.mjs';
 import {MODEL,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
 
 export {MODEL};
@@ -18,7 +19,14 @@ export function geminiHttpError(status){
  if([401,403].includes(status))return `Gemini extraction failed (HTTP ${status}). The server API key is invalid or does not have access to this Gemini model. Ask an administrator to verify MIS_GEMINI_API_KEY, then click Retry OCR. The original scan is retained; no alternate provider was used.`;
  return `Gemini extraction failed (HTTP ${status}). The Gemini service rejected the request. Click Retry OCR after the service is available. The original scan is retained; no alternate provider was used.`;
 }
-export async function configuredGeminiKey(env=process.env){
+// Each site can read with its own Gemini key (its own Google Cloud project and
+// quota): GEMINI_API_KEY_<SITE>, for example GEMINI_API_KEY_SASTI_OB. A site
+// without its own key reads with the shared GEMINI_API_KEY.
+export function geminiSiteKeyName(site){const slug=siteKeySlug(site);return slug?'GEMINI_API_KEY_'+slug:'';}
+export function geminiKeySource(env=process.env,site=''){const name=geminiSiteKeyName(site);return name&&env[name]?.trim()?'site':'shared';}
+export async function configuredGeminiKey(env=process.env,site=''){
+ const siteKey=geminiSiteKeyName(site);
+ if(siteKey&&env[siteKey]?.trim())return env[siteKey].trim();
  if(env.GEMINI_API_KEY?.trim())return env.GEMINI_API_KEY.trim();
  if(env.MIS_LOCAL_SCANNER_DATABASE==='true')return localGeminiKey();
  throw Error('Gemini key is not configured on the MIS server. Contact your administrator; no alternate provider was used.');
@@ -54,12 +62,18 @@ export function geminiMinIntervalMs(env=process.env){const value=Number(env.MIS_
 // Limit native decoding/encoding across readers; API calls remain concurrent.
 // Five cards each preparing six canvases at once can otherwise crowd uploads.
 let imagePreparation=Promise.resolve();
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000}={}){
- let pending=0,active=0,last=0,gate=Promise.resolve();const queue=[],inFlight=new Map();
- if(!Number.isInteger(concurrency)||concurrency<1||concurrency>5)throw Error('Gemini concurrency must be between 1 and 5.');
+export const MAX_GEMINI_CONCURRENCY=10;
+const keyGates=new Map();
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000,shareGateByKey=false}={}){
+ let pending=0,active=0;const ownGate={last:0,chain:Promise.resolve()},queue=[],inFlight=new Map();
+ if(!Number.isInteger(concurrency)||concurrency<1||concurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Gemini concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
  // Share a start gate across all workers, including retries. Faster starts are
  // still bounded, and HTTP 429 responses retain their existing Retry-After fallback.
- async function startRequest(){const turn=gate.then(async()=>{await sleep(Math.max(0,last+minIntervalMs-Date.now()));last=Date.now();});gate=turn.catch(()=>{});await turn;}
+ // With shareGateByKey, every reader in this process that uses the same key
+ // shares one gate, so site lanes that fall back to the shared key never start
+ // faster together than one reader would; a site with its own key gets its own.
+ const gateFor=key=>{if(!shareGateByKey)return ownGate;const id=createHash('sha256').update(key).digest('hex');if(!keyGates.has(id))keyGates.set(id,{last:0,chain:Promise.resolve()});return keyGates.get(id);};
+ async function startRequest(key){const gate=gateFor(key);const turn=gate.chain.then(async()=>{await sleep(Math.max(0,gate.last+minIntervalMs-Date.now()));gate.last=Date.now();});gate.chain=turn.catch(()=>{});await turn;}
  async function run(image,kind,onProgress,forceRead=false){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v16.json`);
@@ -78,7 +92,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     await onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()});
     const requestParts=attempt?[...parts,{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
-    await startRequest();const started=Date.now();let res;
+    await startRequest(key);const started=Date.now();let res;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
     catch{if(attempt<1){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:2000});await sleep(2000);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
     if(!res.ok){if([429,500,502,503,504].includes(res.status)&&attempt<1){const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});await res.body?.cancel?.();await sleep(delayMs);continue;}await res.body?.cancel?.();throw Error(geminiHttpError(res.status));}

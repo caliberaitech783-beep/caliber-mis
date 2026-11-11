@@ -1,0 +1,92 @@
+# Six scan engines: setup and switch-on runbook
+
+Date: 11 November 2026. Code: branch `feat/six-scan-engines`.
+
+## What changes
+
+| | Before | After |
+|---|---|---|
+| Queue | One queue for every site inside Pulse-II | One queue per site |
+| Cards read at once | 5 for the whole company | 8 per site in the engines (setting `MIS_SCAN_LANE_CONCURRENCY`, max 10) |
+| Gemini key | One shared key | One key per site (`GEMINI_API_KEY_<SITE>`), shared key as fallback |
+| Where reading runs | Inside Pulse-II, on the same server as the screens | A separate Azure Web App, one process per site |
+| A Pulse-II restart | Every card being read went back for a second Gemini read | Cards being read finish first (up to 45 s); unfinished cards are handed back once |
+| An engine restart | n/a | Only at 20:45 IST, only when engine code changed; each engine finishes its cards first |
+| An engine stops | n/a | Pulse-II reads that site itself within a minute |
+
+Nothing changes in production until the settings below are switched on. Merging the code alone keeps one shared queue, as before, and adds the lease and clean-stop behaviour.
+
+## Setting names for each site
+
+| Site | Gemini key setting |
+|---|---|
+| Sasti OC | `GEMINI_API_KEY_SASTI_OB` |
+| Majri OC | `GEMINI_API_KEY_MAJRI_OB` |
+| Dhoptala OC (2nd) | `GEMINI_API_KEY_DHOPTALA_OB_2ND` |
+| Gauri Pauni OC (2nd) | `GEMINI_API_KEY_GAURI_PAUNI_OB_2ND` |
+| Jayant OC | `GEMINI_API_KEY_JAYANT_OB` |
+| Dudhichua OC | `GEMINI_API_KEY_DUDHICHUA_OB` |
+| Dudhichua East OC | `GEMINI_API_KEY_DUDHICHUA_EAST_OB` |
+| Any site without its own key | `GEMINI_API_KEY` (existing) |
+
+The names use OB because that is how the app stores site names internally. The engine health page (step 3) prints the exact setting name for each engine.
+
+## Step 1: one Gemini key per site (owner)
+
+For each site:
+
+1. In Google Cloud console, create a new project, for example `caliber-scan-sasti`. **Separate projects are what give separate limits; several keys in one project share one limit.**
+2. Link the project to a billing account (Billing > Link a billing account).
+3. Enable the "Generative Language API".
+4. Create an API key (APIs & Services > Credentials), restricted to the Generative Language API.
+5. Check the project's rate limit for the model the app uses (`gemini-3.1-flash-lite`) under Quotas.
+
+Keys are never shared in chat or put in the repository. They go into Azure settings only (steps 2 and 4).
+
+## Step 2: the engine Web App (owner)
+
+1. Create a Linux Web App, Node 22, named `caliber-mis-scan-engine`, in resource group `coalmine-fleet-maintenance-rg`. Put it on its **own App Service plan**: the present plan is shared with Pulse and Pulse-II, and the point is to keep reading off their CPU. B2 (2 cores) is enough for seven engines because most of their time is spent waiting for Gemini. The portal shows the monthly price when you pick the size.
+2. Configuration > General settings > Startup command: `node server/scan-engine.mjs`. Always On: on.
+3. Identity > System assigned: on. Then on the scan storage account, grant this identity **Storage Blob Data Reader** (the engine only reads card images).
+4. On the PostgreSQL server `coalmine-fleet-pg-783`, allow the engine app's outbound IP addresses (Networking), if access is not already open to Azure services.
+5. Application settings (copy the values from `caliber-mis-783`):
+   - `DATABASE_URL`, and `MIS_DATABASE_CONNECTION_MODE` if Pulse-II has it
+   - `MIS_GEMINI_API` = `true`, `GEMINI_API_KEY` (shared fallback)
+   - one `GEMINI_API_KEY_<SITE>` per site from the table above
+   - `MIS_SCAN_BLOB_ENABLED`, `MIS_SCAN_BLOB_ACCOUNT`, `MIS_SCAN_BLOB_CONTAINER`
+   - `MIS_SCAN_ENGINE_SITES` = `Sasti OC;Majri OC;Dhoptala OC (2nd);Gauri Pauni OC (2nd);Jayant OC;Dudhichua OC;Dudhichua East OC`
+   - optional `MIS_SCAN_LANE_CONCURRENCY` = `8` (cards read at once per site, max 10)
+6. Give the GitHub deploy identity (the one in the `AZUREAPPSERVICE_CLIENTID_…` secret) the Website Contributor role on the new app.
+7. In GitHub > Settings > Variables, add `SCAN_ENGINE_APP` = `caliber-mis-scan-engine`.
+8. Run the workflow "Deploy scan engines (nightly)" once by hand with "force" ticked, after 20:00.
+
+## Step 3: check the engines
+
+Open `https://caliber-mis-scan-engine.azurewebsites.net/health`. Every engine should show `"running": true` and `"key": "site"`. `"key": "shared"` means that site's setting name is wrong or empty.
+
+## Step 4: switch Pulse-II over (after 20:00)
+
+On `caliber-mis-783`, add:
+
+- `MIS_SCAN_LANES` = `sites` (Pulse-II's own fallback reading also uses one queue per site)
+- `MIS_SCAN_ENGINES` = `external` (leave each site with a running engine to that engine)
+- the same `GEMINI_API_KEY_<SITE>` settings, so fallback reading also uses each site's key
+
+Saving settings restarts Pulse-II once. `https://pulse-ll.cmll.in/api/health` then shows `"scanReading": {"mode": "external", "liveEngines": 7, …}`.
+
+**To undo:** delete `MIS_SCAN_ENGINES` on Pulse-II. Pulse-II then reads every site again.
+
+## Step 5: no-downtime Pulse-II releases (owner)
+
+1. Check that the plan of `caliber-mis-783` is Standard or Premium (deployment slots need it); if it is Basic, scale it up.
+2. Deployment slots > Add slot `staging`, cloning settings from production.
+3. In production Configuration, tick "Deployment slot setting" on every setting, so the values stay with production when a release swaps in.
+4. Stop the `staging` slot (the release workflow starts it when needed).
+5. In GitHub variables, add `MIS_STAGING_SLOT` = `staging`.
+
+From then on, a release starts in the slot, is checked there, and Azure swaps it in. The previous version is stopped 60 seconds later and finishes its cards first. Releases that change only screens already go out without a restart.
+
+## Rules that still apply
+
+- No merges to `main` between 06:00 and 20:00 on scanning days, except an urgent fix the owner approves.
+- Engine code goes live at 20:45 IST at the earliest. Until then the engines run the previous version.

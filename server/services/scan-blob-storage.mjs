@@ -6,7 +6,9 @@ export const imageHash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export const scanBlobKey=(kind,batchId,id,image)=>`${kind}/${batchId}/${id}${scanImageExtension(image)}`.toLowerCase();
 export function scanBlobConfig(env=process.env){
  if(env.MIS_LOCAL_SCANNER_DATABASE==='true'||env.MIS_SCAN_BLOB_ENABLED!=='true')return null;
- if(env.WEBSITE_SITE_NAME!=='caliber-mis-783')throw Error('Scan Blob storage is limited to Pulse-II.');
+ // Pulse-II itself, or its scan engine app (caliber-mis-scan-*), which only reads images.
+ const engine=env.MIS_SCAN_ENGINE_PROCESS==='true'&&/^caliber-mis-scan-[a-z0-9-]{1,40}$/.test(env.WEBSITE_SITE_NAME||'');
+ if(env.WEBSITE_SITE_NAME!=='caliber-mis-783'&&!engine)throw Error('Scan Blob storage is limited to Pulse-II.');
  const account=env.MIS_SCAN_BLOB_ACCOUNT,container=env.MIS_SCAN_BLOB_CONTAINER||'scanned-cards';
  if(!/^[a-z0-9]{3,24}$/.test(account||'')||!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/.test(container))throw Error('Invalid scan Blob account or container.');
  return {account,container};
