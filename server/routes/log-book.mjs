@@ -286,8 +286,13 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const record=(await pool.query('SELECT id,site,data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,req.params.kind])).rows[0];
      if(!record||!siteAllowed(req.logBookScope,record.site))return res.status(404).json({error:'Saved scan is unavailable.'});
      if(!/^[a-f0-9-]{36}$/i.test(record.data.scanCardId||''))return res.status(404).json({error:'This record has no source scan.'});
-     const card=(await pool.query('SELECT image FROM mis_scan_cards WHERE id=$1 AND logbook_id=$2',[record.data.scanCardId,record.id])).rows[0];
+     const card=(await pool.query('SELECT image,image_blob_key,image_hash FROM mis_scan_cards WHERE id=$1 AND logbook_id=$2',[record.data.scanCardId,record.id])).rows[0];
      if(!card)return res.status(404).json({error:'Source scan is unavailable.'});
+     if(card.image_blob_key){
+       if(!imageStorage)return res.status(503).json({error:'Source scan storage is unavailable.'});
+       await imageStorage.hydrate(card);
+     }
+     if(!card.image?.length)return res.status(404).json({error:'Source scan is unavailable.'});
      res.set('Cache-Control','no-store').type(scanImageMime(card.image)).send(card.image);
    }catch(error){next(error)}
  });
