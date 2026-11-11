@@ -80,10 +80,10 @@ test('machine OCR notes on unloading rows do not mark or count a card as an erro
  assert.equal(canAutoSaveScanCard(onlyUnload,'vehicle',options),true);
 });
 
-test('recovery filtering follows printed rows and retains non-equipment errors and loading-row errors',()=>{
+test('recovery filtering follows printed rows and retains loading equipment and unreadable time errors',()=>{
  const raw={gemini:{trips:{r:[[7,null,'','08:10'],[8,'V','08:30','']]}},responseRecoveryIssues:['Trip row 1: equipment unreadable','Trip row 2: equipment number missing','Trip row 1: unloading time unreadable','Trip numbering: duplicate printed numbers']};
  const draft={...valid,trips:[{...load,rowNumber:8},{...unload,rowNumber:7}]};
- assert.deepEqual(activeResponseRecoveryIssues(raw,draft),raw.responseRecoveryIssues.slice(1));
+ assert.deepEqual(activeResponseRecoveryIssues(raw,draft),['Trip row 2: equipment number missing','Trip row 1: unloading time unreadable']);
  assert.equal(responseReviewNeeded(raw,draft),true);
  assert.ok(activeResponseRecoveryIssues(raw,{...draft,trips:[]}).includes(raw.responseRecoveryIssues[0]));
 });
