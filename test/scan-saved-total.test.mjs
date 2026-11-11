@@ -18,7 +18,7 @@ test('confirmed saves update the combined total immediately for corrected and al
 
 test('all valid cards drain in one pass even with a card missing breakdown hours',async()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
- const start=source.indexOf(" useEffect(()=>{\n  if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current");
+ const start=source.indexOf(" useEffect(()=>{\n  if(!options||dirty||busy||fleetBusy||connectionError||savingRef.current");
  const end=source.indexOf("\n },[reviewPage,cards,kind,options",start);
  assert.ok(start>=0&&end>start);
  const body=source.slice(start+" useEffect(()=>{".length,end);
