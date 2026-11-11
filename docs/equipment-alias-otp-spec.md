@@ -224,3 +224,36 @@ route, reference to the alias) instead of `mis_vlb_approval_otps`, because that
 table requires a batch id and manual-entry mappings have none. Alias history is
 `mis_equipment_alias_history`. The approver setting is `app_settings` key
 `equipment_alias_approver`. Phase 2 (Pulse card-label field) is unchanged.
+
+## 14. All-site letter rules (11 November 2026)
+
+Every site's scan engine reads the same database, so one approved mapping now
+teaches all sites, not only its own machine.
+
+- **Which mappings teach a rule.** An *active* alias whose written number equals the
+  Pulse door number, with only the letter different. Example: written `L21` mapped
+  to `DEMO21-00179` (keys `LPC21` and `DEMO21`) gives the rule "written LPC## is
+  Pulse DEMO##". A mapping with a different number (`L21` to `DEMO35`) stays a
+  one-machine alias.
+- **Where it applies.** At every site, on the next card read, in every engine and
+  in Pulse-II fallback reading, manual VLB/ELB entry, the Pulse fleet check and the
+  reports that use `withEquipmentAliases`. A card written `L35` at Majri resolves
+  to Majri's `DEMO35` with the review line "mapped by all-site letter rule".
+- **Never guesses.** A real door or a saved alias of another machine at the site
+  always wins (Majri's real `LPC40` stays `L40`). If two rules give one written
+  label two machines at a site (`L` to `DEMO` and `L` to `U`, with `DEMO50` and
+  `U50` present), the label matches both and the card goes to review.
+- **No separate copy.** Rules are derived from the alias table every time it is
+  read (`loadLetterRules`). So the alias lifecycle drives the rule: pending (OTP
+  not yet given) teaches nothing; approval switches the rule on everywhere;
+  revoke, suspension or retirement switches it off everywhere.
+- **This machine only.** An administrator can keep a machine's alias but stop it
+  teaching the other sites (`mis_equipment_aliases.all_sites`, default true; Equipment
+  master > Equipment aliases > "This machine only" / "Use at all sites"). Each
+  change is in the alias history and the audit log.
+- **Transfers.** An alias stays on its Pulse record. When the machine is transferred
+  (same record, new `currentLocation`), its own written label works at the new site
+  and stops at the old one.
+- API: `GET /api/equipment-aliases/letter-rules`; `GET /api/equipment-aliases`
+  also returns `letterRules`; `PUT /api/equipment-aliases/:id/all-sites`
+  `{allSites}` (administrators). Tests: `test/equipment-letter-rules.test.mjs`.

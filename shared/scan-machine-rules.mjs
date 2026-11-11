@@ -96,6 +96,14 @@ export function resolvedByAlias(row,value,kind='equipment'){
  const real=doors.length?doors:[row.registration,row.reg,row.name,row.equipmentName].filter(Boolean);
  return !real.some(label=>cardMachineKey(label,kind)===target)&&aliases.some(label=>cardMachineKey(label,kind)===target);
 }
+// True when the written key reached the record only through an all-site letter rule
+// (written L## is Pulse DEMO## everywhere), not through an alias saved on this machine.
+export function resolvedByLetterRule(row,value,kind='equipment'){
+ const rule=Array.isArray(row?.cardRuleAliases)?row.cardRuleAliases:[];if(!rule.length)return false;
+ const target=cardMachineKey(value,kind);if(!target||!resolvedByAlias(row,value,kind))return false;
+ const saved=(row.cardAliases||[]).filter(label=>label&&!rule.includes(label));
+ return rule.some(label=>cardMachineKey(label,kind)===target)&&!saved.some(label=>cardMachineKey(label,kind)===target);
+}
 export const resolvedMachineName=row=>text(row.door||row.doorNo||equipmentDoorNumber(row)||row.name||row.equipmentName);
 export function siteEquipmentOptions(assets=[],site=''){
  const selectedSite=canonicalSiteName(site);
@@ -156,7 +164,8 @@ export function scannedTripEquipmentRow(row={},assets=[],site='',version=2){
  const result=site?matchCardMachine(assets,lookup,site,'equipment'):{match:null};
  const resolved=result.match?resolvedMachineName(result.match):lookup;
  const alias=Boolean(result.match)&&resolvedByAlias(result.match,lookup);
- return {...row,equipmentName:resolved,equipmentNotation:alias?{original:value,resolved,alias:true}:{original:value,resolved}};
+ const rule=alias&&resolvedByLetterRule(result.match,lookup);
+ return {...row,equipmentName:resolved,equipmentNotation:alias?{original:value,resolved,alias:true,...(rule?{letterRule:true}:{})}:{original:value,resolved}};
 }
 export function tripBodyEquipmentReference(value,version=2){
  if(value==null)return value;
@@ -188,7 +197,7 @@ export function cardMachineHint(value,kind){
 export function aliasMachineHint(row={}){
  const notation=row.equipmentNotation;if(!notation?.alias||!notation.original)return '';
  const machine=identifyCardMachine(notation.original,'trip-body',{allowSuffix:true});
- return `Written: ${notation.original}${machine?' · Identified: '+machine.label+(machine.number?' · No. '+machine.number:''):''} · mapped by saved alias`;
+ return `Written: ${notation.original}${machine?' · Identified: '+machine.label+(machine.number?' · No. '+machine.number:''):''} · mapped by ${notation.letterRule?'all-site letter rule':'saved alias'}`;
 }
 // A derived parsing aid only. The original OCR text and field values stay intact.
 export function compactScanEquipmentReferences(line){
