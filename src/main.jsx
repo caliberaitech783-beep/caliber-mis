@@ -399,7 +399,6 @@ import { approveEquipmentChanges, equipmentChangeText, equipmentChanges } from "
 const vehicles = [];
 const breakdowns = [];
 const storedSession = (() => {
-  if(new URLSearchParams(window.location.search).get("login")==="1")return null;
   try {
     return JSON.parse(
       localStorage.getItem("nerveCenterSession") ||
@@ -11467,6 +11466,7 @@ function App() {
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
       localStorage.setItem('nerveCenterSession',JSON.stringify(value));sessionStorage.removeItem('nerveCenterSession');
+      const loginUrl=new URL(window.location.href);loginUrl.searchParams.delete('login');window.history.replaceState(null,'',loginUrl.pathname+loginUrl.search+loginUrl.hash);
       setSharedSignedOut(false);setActive(LOGIN_LANDING_PAGE);setSession(value);
     };
     window.addEventListener('mis-shared-signin',receive);return()=>window.removeEventListener('mis-shared-signin',receive);

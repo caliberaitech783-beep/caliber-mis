@@ -13,6 +13,10 @@ test('successful sign-in persists until the explicit sign-out clears storage',()
   const source=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   assert.match(source,/localStorage\.setItem\("nerveCenterSession", session\)/);
   assert.match(source,/localStorage\.setItem\('nerveCenterSession',JSON\.stringify\(value\)\)/);
+  const restore=source.slice(source.indexOf('const storedSession'),source.indexOf('let authToken'));
+  assert.doesNotMatch(restore,/login.*return null/);
+  const sharedSignIn=source.slice(source.indexOf("const receive=event=>{const value=event.detail"),source.indexOf("window.addEventListener('mis-shared-signin'"));
+  assert.match(sharedSignIn,/searchParams\.delete\('login'\)/);
   const logout=source.slice(source.indexOf('logout = () =>'),source.indexOf('addRequest = async'));
   assert.match(logout,/clearStoredSession\(\)/);
 });
