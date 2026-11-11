@@ -1,11 +1,11 @@
-import {isJayantSecondShift,validShiftHours} from './site-shift-hours.mjs';
+import {validShiftHours} from './site-shift-hours.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {bookShiftCode} from './trip-card-rules.mjs';
 export const MANUAL_SHIFTS=[{value:'day',label:'Day'},{value:'night',label:'Night'}];
 export const isManualShift=value=>MANUAL_SHIFTS.some(row=>row.value===value);
 export function manualShiftHours(input={}){
  const hours=Number(input.shiftHours);
- if(!Number.isFinite(hours)||hours<=0||hours>24||!validShiftHours(hours,input))throw Object.assign(new Error(isJayantSecondShift(input)?'Jayant OC second shift requires 9 hours (12:00 PM to 9:00 PM).':'Select an 8-hour or 12-hour shift.'),{status:400});
+ if(!Number.isFinite(hours)||hours<=0||hours>24||!validShiftHours(hours,input))throw Object.assign(new Error('Select an 8-hour or 12-hour shift.'),{status:400});
  return hours;
 }
 export function manualShiftWindow(input={},base={},shifts=[]){

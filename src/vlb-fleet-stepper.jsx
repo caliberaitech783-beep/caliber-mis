@@ -1,4 +1,4 @@
-import {isJayantSecondShift} from '../shared/site-shift-hours.mjs';
+import {isJayantSite} from '../shared/site-shift-hours.mjs';
 import React,{useState,useEffect} from 'react';
 import PreviousElbEntries from './previous-elb-entries.jsx';
 import WorkOrderJobSelect from './work-order-job-select.jsx';
@@ -66,8 +66,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const [dirty,setDirty]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
 
  const row=fleet[index]||null;
- const jayantSecond=isJayantSecondShift({site:batch.site,shift:batch.shift,manualShift:form.manualShift});
- const lookupShiftHours=jayantSecond?9:(Number(form.shiftHours)||8);
+ const jayantSite=isJayantSite({site:batch.site});
+ const lookupShiftHours=Number(form.shiftHours)||8;
  const canEditSaved=batch?.canEditSavedFleet===true;
  const [activeTab,setActiveTab]=useState('working'),[pulseTick,setPulseTick]=useState(0),[pulseLookup,setPulseLookup]=useState({key:'',loading:false,data:null,error:''});
  const [reliefRequestKey,setReliefRequestKey]=useState('');
@@ -83,7 +83,8 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   if(!row?.assetId||!batch?.id)return;
   const controller=new AbortController();let cancelled=false;
   setPulseLookup({key:lookupKey,loading:true,data:null,error:''});
-  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns?${new URLSearchParams({shiftHours:lookupShiftHours,manualShift:form.manualShift||''})}`,'GET',undefined,controller.signal).then(data=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data,error:''});}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
+  const parameters=new URLSearchParams({manualShift:form.manualShift||'',...(!jayantSite?{shiftHours:lookupShiftHours}:{})});
+  void api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}/breakdowns?${parameters}`,'GET',undefined,controller.signal).then(data=>{if(!cancelled){setPulseLookup({key:lookupKey,loading:false,data,error:''});if(jayantSite&&Number(data.shiftHours)>0)setForm(current=>({...current,shiftHours:Number(data.shiftHours)}));}}).catch(error=>{if(!cancelled)setPulseLookup({key:lookupKey,loading:false,data:null,error:error.message});});
   return()=>{cancelled=true;controller.abort();};
  },[lookupKey,pulseTick,session.token]);
  const pulse=pulseLookup.key===lookupKey?pulseLookup.data:null;
@@ -101,7 +102,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   if(operatorSplit?.error){setError(operatorSplit.error);return}
   setBusy(true);setError('');setNotice('');
   try{
-   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,...(jayantSecond?{shiftHours:9}:{}),...(additional?{additionalCard:true}:{revision:row.logbook_revision}),idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:reliefRequestKey||crypto.randomUUID()});
+   const result=await api(`/api/vlb-batches/${batch.id}/fleet/${row.assetId}`,'POST',{...form,...(jayantSite&&pulse?.shiftHours?{shiftHours:pulse.shiftHours}:{}),...(additional?{additionalCard:true}:{revision:row.logbook_revision}),idleHours:idleHours===null?'':String(idleHours),shiftStatus:'working',entryMode:'working-only',requestKey:reliefRequestKey||crypto.randomUUID()});
    const list=result.fleet||fleet.map(item=>item.assetId===row.assetId?{...item,saved_at:new Date().toISOString(),shift_status:form.shiftStatus,draft:null,skipped:false}:item);
    setFleet(list);setReliefRequestKey('');setDirty(false);onChanged?.(result);
    const target=nextUnsaved(list,list.findIndex(item=>item.assetId===row.assetId));
@@ -164,7 +165,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
    <button type="button" id="elb-previous-tab" role="tab" aria-selected={activeTab==='previous'} aria-controls="elb-previous-panel" onClick={()=>setActiveTab('previous')}>Previous ELB entries</button>
   </nav>
   <p className="logbook-message">{batch.site} · {batch.report_date} · {batch.shift} · {row.door}</p>
-  <div className="logbook-fields"><label className="logbook-field"><span>Shift</span><SmartSelect aria-label="Manual ELB Shift" disabled={busy} value={form.manualShift||''} onChange={event=>{const manualShift=event.target.value;setForm(current=>({...current,manualShift,shiftHours:['day','night'].includes(manualShift)?12:(current.shiftHours||pulse?.shiftHours||8)}));setDirty(true);setError('');}}><option value="">Batch shift · {batch.shift}</option><option value="day">Day</option><option value="night">Night</option></SmartSelect></label><label className="logbook-field"><span>Shift Hrs</span><SmartSelect aria-label="Manual ELB Shift Hrs" disabled={busy} value={lookupShiftHours} onChange={event=>update('shiftHours',Number(event.target.value))}>{jayantSecond?<option value={9}>9 Hrs</option>:<><option value={8}>8 Hrs</option><option value={12}>12 Hrs</option></>}</SmartSelect></label></div><p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
+  <div className="logbook-fields"><label className="logbook-field"><span>Shift</span><SmartSelect aria-label="Manual ELB Shift" disabled={busy} value={form.manualShift||''} onChange={event=>{const manualShift=event.target.value;setForm(current=>({...current,manualShift,shiftHours:['day','night'].includes(manualShift)?12:(current.shiftHours||pulse?.shiftHours||8)}));setDirty(true);setError('');}}><option value="">Batch shift · {batch.shift}</option><option value="day">Day</option><option value="night">Night</option></SmartSelect></label><label className="logbook-field"><span>Shift Hrs</span><SmartSelect aria-label="Manual ELB Shift Hrs" disabled={busy||jayantSite} value={lookupShiftHours} onChange={event=>update('shiftHours',Number(event.target.value))}>{jayantSite?<option value={lookupShiftHours}>{lookupShiftHours} Hrs</option>:<><option value={8}>8 Hrs</option><option value={12}>12 Hrs</option></>}</SmartSelect></label></div><p className="vlb-fleet-pulse-status" role="status">{pulseLoading?'Fetching breakdown hours from Pulse…':pulse?'Pulse breakdown hours loaded.':''}</p>
   {pulseError&&<p className="logbook-message error" role="alert">Pulse breakdown lookup failed: {pulseError} <button type="button" onClick={()=>setPulseTick(n=>n+1)}>Retry Pulse</button></p>}
   <div id="elb-working-panel" role="tabpanel" aria-labelledby="elb-working-tab" hidden={activeTab!=='working'}>
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>

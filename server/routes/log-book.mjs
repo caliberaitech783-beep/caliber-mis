@@ -148,8 +148,6 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      if(enforceEmployeeSite&&employee&&!employeeAtLocation(employee,data.location))fail('The selected employee is not assigned to this location.');
      const employeeOptional=kind==='equipment'&&NON_WORKING_STATUSES.includes(data.shiftStatus)&&!data.employeeId;
      if(!asset||!employee&&!employeeOptional||(!optionalShift||data.shiftId)&&(!baseShift||!shift))fail('An asset, employee or shift no longer exists. Refresh the masters and select again.');
-     if(isJayantSecondShift({...baseShift,manualShift:input.manualShift})&&data.shiftHours!==9)fail('Jayant OC second shift requires 9 hours (12:00 PM to 9:00 PM).');
-     if(data.shiftHours===9&&!isJayantSecondShift({...baseShift,manualShift:input.manualShift}))fail('9 hours is allowed only for Jayant OC second shift.');
      if(input.workOrderId){const wo=masters.find(row=>String(row.id)===String(input.workOrderId)&&woNames.includes(row.master_name))?.record_data;if(!wo)fail('Select a valid Work Order from its master.');const woSite=text(wo.site||wo.location);if(woSite&&canonicalSiteName(woSite)!==canonicalSiteName(data.location))fail('The Work Order belongs to a different location.');data.workOrderId=String(input.workOrderId);data.workOrderContract=woNumber(wo);}
      if(!allowsLogBookKind(asset,kind))fail('Select an asset from the correct log book category.');
      const assetSite=text(asset.currentLocation||asset.site||asset.location),shiftSite=text(shift?.site||shift?.siteName);

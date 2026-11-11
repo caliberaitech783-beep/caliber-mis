@@ -1,4 +1,4 @@
-import {isJayantSecondShift} from '../shared/site-shift-hours.mjs';
+import {isJayantSite} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -17,7 +17,7 @@ import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.m
 async function compile(file,scope,names){
  scope={StepBackButton:()=>null,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
- scope={isJayantSecondShift,employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
+ scope={isJayantSite,employeeAtLocation,matchesSmartSearch,isSurfaceMiner,splitSurfaceMinerHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));
@@ -47,7 +47,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  const render=()=>{h.reset();return VlbFleetStepper({session:{token:'t'},batch,options:{employees:[{id:'5',name:'Ramesh',caliberId:'C5',site:'Jayant OC'},{id:'6',name:'Other site employee',caliberId:'C6',site:'Sasti OC'}]},onChanged(){},onDismiss(){}})};
  let tree=render();assert.equal(button(tree,'Next').props.disabled,true,'waits for Pulse instead of treating pending data as zero');
  await new Promise(setImmediate);tree=render();let html=renderToStaticMarkup(tree);
- assert.match(calls[0].url,/\/breakdowns\?shiftHours=8(?:&|%26)manualShift=/,'the displayed default is sent on the first Pulse lookup');
+ assert.match(calls[0].url,/\/breakdowns\?manualShift=$/,'Jayant uses the batch Shift Master duration for the Pulse lookup');
  assert.deepEqual(nodes(tree,n=>n.props.role==='tab').map(n=>n.props.children),['Working',['Breakdown details',' (1)'],'Previous ELB entries']);
  assert.equal(nodes(tree,n=>n.props['aria-label']==='Shift status').length,0,'the six status selectors are removed');
  assert.match(html,/Caliber ID/);assert.match(html,/Select Caliber ID/);assert.match(html,/C5 · Ramesh/);assert.doesNotMatch(html,/C6|Other site employee/);
@@ -59,7 +59,7 @@ test('ELB has Working and Breakdown details tabs and fetches Pulse for each mach
  tree=render();let htmlAfterHours=renderToStaticMarkup(tree);assert.match(htmlAfterHours,/Idle hours<\/span><input[^>]*readOnly=""[^>]*value="1\.5"/);assert.doesNotMatch(htmlAfterHours,/Status reason/);assert.equal((htmlAfterHours.match(/<span>Remark/g)||[]).length,1);
  await button(tree,'Next').props.onClick();const save=calls.find(c=>c.method==='POST');assert.equal(save.body.entryMode,'working-only');assert.equal(save.body.openingHmr,'1200');assert.equal(save.body.employeeId,'5');assert.equal(save.body.idleHours,'1.5');
  tree=render();assert.match(renderToStaticMarkup(tree),/G-08/);assert.equal(button(tree,'Next').props.disabled,true,'the previous equipment total is not reused');
- await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url.startsWith('/api/vlb-batches/batch1/fleet/8/breakdowns?shiftHours=8')));
+ await new Promise(setImmediate);tree=render();assert.match(renderToStaticMarkup(tree),/No breakdown found/);assert.ok(calls.some(c=>c.url.startsWith('/api/vlb-batches/batch1/fleet/8/breakdowns?manualShift=')));
  cleanup?.();
 });
 
@@ -361,13 +361,14 @@ test('a batch owner can start an additional ELB card from the same machine row',
  assert.equal(calls[0].body.requestKey,'relief-key');
 });
 
-test('Jayant OC S2 displays nine hours even when an older saved card contains eight',async()=>{
- for(const [site,shift,expected] of [['Jayant OC','S2',[9]],['jayant ob','S2',[9]],['Jayant OC','S1',[8,12]],['Sasti OC','S2',[8,12]]]){
+test('Jayant OC displays its server-provided Shift Master duration without an editable 8/12 restriction',async()=>{
+ for(const [site,shift,expected,disabled] of [['Jayant OC','S2',[8],true],['jayant ob','S2',[8],true],['Jayant OC','S1',[8],true],['Sasti OC','S2',[8,12],false]]){
   const h=hooks();
   const {VlbFleetStepper}=await compile('vlb-fleet-stepper.jsx',{React,SmartSelect:'select',useState:h.useState,useEffect:()=>{}},['VlbFleetStepper']);
   const tree=VlbFleetStepper({session:{token:'t'},batch:{id:'batch1',site,shift,fleet:[{...fleet[0],logbook:{shiftHours:8}}]},options:{employees:[]},embedded:true});
   const select=nodes(tree,n=>n.props['aria-label']==='Manual ELB Shift Hrs')[0];
   assert.deepEqual(nodes(select,n=>n.type==='option').map(n=>n.props.value),expected);
   assert.equal(select.props.value,expected[0]);
+  assert.equal(select.props.disabled,disabled);
  }
 });

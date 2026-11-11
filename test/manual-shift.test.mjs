@@ -20,7 +20,7 @@ for(const kind of ['vehicle','equipment'])test(kind+' manual and scan normalizat
  assert.equal(saved.shiftHours,12);assert.equal(saved.manualShift,'day');assert.equal(saved.shiftName,'Day');assert.equal(saved.bookShiftCode,'S1');assert.equal(saved.idleHours,1);
  if(kind==='vehicle')assert.equal(normalizeLogBook(kind,payload).shiftHours,12);
  else assert.throws(()=>normalizeLogBook(kind,payload),/requires 8 hours/);
- assert.throws(()=>normalizeLogBook(kind,{...payload,shiftHours:9},{manualEntry:true}),/8-hour or 12-hour/);
+ assert.equal(normalizeLogBook(kind,{...payload,shiftHours:9,closingHmr:108},{manualEntry:true}).shiftHours,9);
 });
 test('manual combined HMR uses the selected 12 hours while scan entries retain their shift limit',async()=>{
  const client={query:async()=>({rows:[{site:'Jayant OC',data:{cardShift:'I',totalWorkingHmr:4,shiftHours:8}}]})};
