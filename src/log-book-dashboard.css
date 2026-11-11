@@ -89,3 +89,20 @@
 [data-printing] .lb-reports table tbody tr:last-child>*{background-color:#ece4f8!important}
 [data-printing] .lb-kpi-top{color:#2c2344!important}
 [data-printing] .lb-kpi strong{color:#56309a!important}[data-printing] .lb-tone-coral strong{color:#f34856!important}[data-printing] .lb-tone-amber strong{color:#a86613!important}
+/* Completed in the last 6, 12 and 24 hours, and the period buttons of the site comparison. */
+.lb-recent{margin-bottom:22px}.lb-recent h3{display:flex;align-items:center;gap:8px}.lb-recent-asof{font-size:11px;color:var(--lb-muted)}
+.lb-recent-table{padding:0 20px 18px;overflow-x:auto}.lb-recent-table table{width:100%;border-collapse:collapse}
+.lb-recent-table thead th{text-align:right;font-size:12px;font-weight:700;color:var(--lb-muted);padding:10px 14px;border-bottom:2px solid var(--lb-line)}.lb-recent-table thead th:first-child{text-align:left}
+.lb-recent-table tbody th{text-align:left;font-size:14px;font-weight:650;color:var(--lb-ink);padding:12px 14px;border-bottom:1px solid var(--lb-line)}.lb-recent-table tbody th small{display:block;font-size:11px;font-weight:500;color:var(--lb-muted);margin-top:2px}
+.lb-recent-table tbody td{text-align:right;padding:8px 14px;border-bottom:1px solid var(--lb-line)}.lb-recent-table tbody tr:last-child>*{border-bottom:0}
+.lb-dashboard .lb-recent-figure{min-width:74px;border:1px solid var(--lb-line);border-radius:9px;background:#f6f1fd;color:var(--lb-purple);font-size:22px;font-weight:750;padding:6px 14px;text-align:right}.lb-dashboard .lb-recent-figure:hover:not(:disabled){background:#ebe0fa}.lb-dashboard .lb-recent-figure:disabled{background:transparent;color:var(--lb-muted);border-color:transparent}
+[data-theme=dark] .lb-dashboard .lb-recent-figure{background:#33254a;color:#cdb0fb}
+.lb-recent-switch,.lb-window-pick{display:inline-flex;flex-wrap:wrap;gap:6px}.lb-site-controls{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.lb-dashboard .lb-window-pick button,.lb-dialog .lb-recent-switch button{border:1px solid #d9cce8;border-radius:999px;background:var(--lb-surface);color:var(--lb-purple);font-size:12px;font-weight:650;padding:7px 14px;white-space:nowrap}
+.lb-dashboard .lb-window-pick button[aria-pressed=true],.lb-dialog .lb-recent-switch button[aria-pressed=true]{background:var(--lb-purple);border-color:var(--lb-purple);color:#fff}
+.lb-site-wait{padding:24px 20px}.lb-reports>.lb-sites{max-width:none;padding:0;overflow:visible}.lb-sites .lb-bars{max-height:none}
+@media(max-width:540px){.lb-site-controls{align-items:flex-start}.lb-recent-table{padding:0 8px 12px}.lb-dashboard .lb-recent-figure{min-width:56px;font-size:18px;padding:5px 9px}}
+[data-printing] .lb-reports .op-filters{display:none!important}
+[data-printing] .lb-recent{border:1px solid #d9cfe8;border-radius:16px}[data-printing] .lb-recent-table tbody th{font-size:19px}[data-printing] .lb-recent-table thead th{font-size:15px}[data-printing] .lb-recent-figure{font-size:30px!important;background:transparent!important;border:0!important;color:#3d1f78!important}
+/* On the dashboard Trip Timing & Gap stands alone: no list of the other reports to switch to. */
+.lb-reports .op-report-picker{display:none}

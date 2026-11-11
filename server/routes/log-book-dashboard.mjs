@@ -3,6 +3,8 @@ import {REGION_DATA,displaySiteName} from '../../shared/region-scope.mjs';
 import {siteAllowed,requireLogBookSite,filterLogBookSites} from '../../shared/log-book-access.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
+import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
+import {RECENT_WINDOWS,recentWindow,buildRecentActivity} from '../../shared/recent-activity.mjs';
 
 export const dashboardShift=value=>({I:'S1',II:'S2',III:'S3',Day:'D',Night:'N',DN:'D',S1:'S1',S2:'S2',S3:'S3',D:'D',N:'N'})[value]||'';
 export function dashboardFilters(query={}){
@@ -28,14 +30,16 @@ export function summarizeLogBooks({rows,sites,from,to,location='',draftCount=0,k
  for(const row of rows){if(!kinds.includes(row.book_type)||!days.has(row.day))continue;const target=bySite.get(canonicalSiteName(row.site));if(!target)continue;target[row.book_type]+=Number(row.count);days.get(row.day)[row.book_type]+=Number(row.count);}
  return {from,to,sites:allSites,kinds,bySite:siteRows,trend:[...days.values()],totals:{vehicle:siteRows.reduce((sum,r)=>sum+r.vehicle,0),equipment:siteRows.reduce((sum,r)=>sum+r.equipment,0),activeSites:siteRows.filter(r=>r.vehicle+r.equipment>0).length,recoveryDrafts:draftCount}};
 }
-export function registerLogBookDashboard(app,{pool,protect,ensureBooks}){
+export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>Date.now()}){
  const handle=fn=>async(req,res,next)=>{try{await ensureBooks();res.set('Cache-Control','no-store');await fn(req,res)}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}};
  const context=async req=>{
-  const filters=dashboardFilters(req.query);if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
+  // With hours (6, 12 or 24) the time of the save decides, so every operational card date is read.
+  const hours=recentWindow(req.query.hours);
+  const filters=dashboardFilters(hours?{...req.query,from:OPERATIONAL_START,to:''}:req.query);if(filters.location)requireLogBookSite(req.logBookScope,filters.location);
   let permitted=await filterLogBookSites(pool,req.logBookScope);
   if(filters.location){const rows=(await pool.query('SELECT DISTINCT site FROM mis_log_books')).rows;permitted=rows.map(r=>r.site).filter(site=>siteAllowed(req.logBookScope,site)&&canonicalSiteName(site)===canonicalSiteName(filters.location));}
   const kinds=['vehicle','equipment'].filter(kind=>!req.session.permissions?.separateMisCredentials||misPageAllowed(req.session,kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book'));
-  return {filters,kinds,params:[filters.from,filters.to,permitted,kinds,filters.shift]};
+  return {filters,kinds,hours,params:[filters.from,filters.to,permitted,kinds,filters.shift]};
  };
  const where=`deleted_at IS NULL AND book_date BETWEEN $1::date AND $2::date AND ($3::text[] IS NULL OR site=ANY($3::text[])) AND book_type=ANY($4::text[]) AND ($5='' OR ${shiftSql}=$5)`;
  app.get('/api/dashboard/log-books',...protect,handle(async(req,res)=>{
@@ -50,11 +54,24 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks}){
   }
   res.json({...summarizeLogBooks({rows,sites,from:filters.from,to:filters.to,location:filters.location,draftCount,kinds}),shift:filters.shift,updatedAt:new Date().toISOString()});
  }));
+ // Completed in the last 6, 12 and 24 hours: cards by the time they were saved, shifts by the time they were locked.
+ app.get('/api/dashboard/log-books/recent',...protect,handle(async(req,res)=>{
+  const kinds=['vehicle','equipment'].filter(kind=>!req.session.permissions?.separateMisCredentials||misPageAllowed(req.session,kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book'));
+  const current=now(),since=hours=>new Date(current-hours*3600000).toISOString(),allowed=row=>siteAllowed(req.logBookScope,row.site);
+  const cards=(await pool.query(`SELECT CASE WHEN book_type='lmv' THEN COALESCE(NULLIF(data->>'location',''),site) ELSE site END AS site,book_type,
+   count(*) FILTER (WHERE created_at>=$1::timestamptz)::int AS h6,count(*) FILTER (WHERE created_at>=$2::timestamptz)::int AS h12,count(*)::int AS h24
+   FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$4::date AND created_at>=$3::timestamptz AND book_type=ANY($5::text[]) GROUP BY 1,2`,
+   [...RECENT_WINDOWS.map(since),OPERATIONAL_START,['vehicle','lmv','equipment']])).rows.filter(allowed);
+  const batches=(await pool.query(`SELECT id,name,site,book_date::text AS date,shift,vlb_locked_at,lmv_locked_at,closed_at FROM mis_vlb_batches
+   WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date>=$2::date AND (vlb_locked_at>=$1::timestamptz OR lmv_locked_at>=$1::timestamptz OR closed_at>=$1::timestamptz)
+   ORDER BY book_date,id LIMIT 5000`,[since(Math.max(...RECENT_WINDOWS)),OPERATIONAL_START])).rows.filter(allowed);
+  res.json(buildRecentActivity({now:current,cards,batches,kinds}));
+ }));
  app.get('/api/dashboard/log-books/records',...protect,handle(async(req,res)=>{
-  const {filters,kinds,params}=await context(req),kind=String(req.query.kind||'');
+  const {filters,kinds,hours,params}=await context(req),kind=String(req.query.kind||'');
   if(!kinds.includes(kind))return res.status(403).json({error:'This logbook type is not available to your login.'});
   const before=String(req.query.before||'');if(before&&!/^\d+$/.test(before))return res.status(400).json({error:'Invalid page cursor.'});
-  const rows=(await pool.query(`SELECT id,book_no,book_type,book_date::text AS day,site,data->>'door' AS door,data->>'cardShift' AS shift FROM mis_log_books WHERE ${where} AND book_type=$6 AND ($7::bigint IS NULL OR id<$7::bigint) ORDER BY id DESC LIMIT 101`,[...params,kind,before||null])).rows.filter(row=>!filters.location||canonicalSiteName(row.site)===canonicalSiteName(filters.location));
+  const rows=(await pool.query(`SELECT id,book_no,book_type,book_date::text AS day,site,data->>'door' AS door,data->>'cardShift' AS shift FROM mis_log_books WHERE ${where} AND book_type=$6 AND ($7::bigint IS NULL OR id<$7::bigint)${hours?' AND created_at>=$8::timestamptz':''} ORDER BY id DESC LIMIT 101`,[...params,kind,before||null,...(hours?[new Date(now()-hours*3600000).toISOString()]:[])])).rows.filter(row=>!filters.location||canonicalSiteName(row.site)===canonicalSiteName(filters.location));
   res.json({records:rows.slice(0,100),nextCursor:rows.length>100?String(rows[99].id):null});
  }));
 }
