@@ -13,3 +13,10 @@ export function fleetDoorKey(value,kind='vehicle'){
 export function linkedScanEquipment(rows=[],door,site='',kind='vehicle'){
  return matchCardMachine(rows.filter(row=>!kind||row.kind===kind),door,site,kind||'vehicle').match;
 }
+
+// Once an exact normalized OCR key matches a master record, show and save the
+// master's canonical label. Recovery that changes digits keeps the scan text.
+export function canonicalLinkedScanDoor(asset,written,kind='vehicle'){
+ const canonical=String(asset?.door||asset?.doorNo||asset?.registration||'').trim();
+ return canonical&&fleetDoorKey(canonical,kind)===fleetDoorKey(written,kind)?canonical:written;
+}

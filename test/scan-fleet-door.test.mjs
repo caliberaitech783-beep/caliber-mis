@@ -33,3 +33,14 @@ test('vehicle matching keeps exact three-digit doors and recovers one missing di
  assert.equal(linkedScanEquipment([...rows,{id:'s234',door:'S234',kind:'vehicle',site:'Sasti OC'}],'S/34','Sasti OC','vehicle'),null);
  assert.equal(linkedScanEquipment(rows,'V/833','Sasti OC','vehicle')?.id,'v833');
 });
+
+test('automatic matching displays the exact canonical master door without changing digits',async()=>{
+ const {canonicalLinkedScanDoor,linkedScanEquipment}=await import('../shared/scan-fleet-door.mjs');
+ const rows=[{id:'s88',door:'S-88',kind:'vehicle',site:'Sasti OB'},{id:'s81',door:'S-81',kind:'vehicle',site:'Sasti OB'}];
+ for(const written of ['S-88','S 88','S/88','s88']){
+  const asset=linkedScanEquipment(rows,written,'Sasti OB','vehicle');
+  assert.equal(asset?.id,'s88',written);assert.equal(canonicalLinkedScanDoor(asset,written),'S-88',written);
+ }
+ const recovered=linkedScanEquipment([{id:'s188',door:'S-188',kind:'vehicle',site:'Sasti OB'}],'S-88','Sasti OB','vehicle');
+ assert.equal(recovered?.id,'s188');assert.equal(canonicalLinkedScanDoor(recovered,'S-88'),'S-88');
+});
