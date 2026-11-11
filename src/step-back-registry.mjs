@@ -10,6 +10,11 @@ const changed=()=>listeners.forEach(listener=>listener());
 const subscribe=listener=>{listeners.add(listener);return()=>listeners.delete(listener);};
 const latest=()=>steps.at(-1)||null;
 
+// True while the given step is the innermost one on screen.
+export function useIsInnermostStep(step){
+  return useSyncExternalStore(subscribe,()=>latest()===step,()=>true);
+}
+
 // The top bar reads this: null when no screen has a step to go back to.
 export function useStepBack(){
   const step=useSyncExternalStore(subscribe,latest,()=>null);

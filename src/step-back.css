@@ -67,3 +67,7 @@
 body.column-resizing, body.column-resizing * { cursor: col-resize !important; user-select: none !important; }
 @media print { .column-resize-handle { display: none; } }
 [data-printing] .column-resize-handle { display: none; }
+
+/* Night mode: the step line (where you are) inherited the dark report text. */
+:root[data-theme="dark"] :is(.tt-crumbs, .bs-crumbs, .mp-trail) { color: #efe7f5; }
+:root[data-theme="dark"] :is(.tt-crumbs, .bs-crumbs, .mp-trail) > strong { color: #ffffff; }
