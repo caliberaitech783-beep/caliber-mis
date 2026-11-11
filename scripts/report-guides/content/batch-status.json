@@ -16,6 +16,7 @@
       ["REPORTS / OPERATIONS", "The page heading, with the title “Batch Status & Turnaround” under it."],
       ["All sites › (site) › (batch) › (stage) actions", "The step trail. It shows which step is open. Press an earlier name to go back to that step. The violet Back button at the start of this line, and the one beside Search this report, go back one step; while a step is open, the round back arrow at the top of the page does the same. Long column headings are written on two lines. Drag the right edge of a column heading to make the column wider or narrower, double-click the edge to fit it again; Reset table under Actions puts every column back."],
       ["Yellow box", "One to four lines in plain words worked out from the table below it, for example how many shifts are not yet locked, which site is at rank 1 and which is last, and how many of today's shifts are already counted."],
+      ["Live now · (number) working", "A small table above Step 1: one line for each person who saved something in a batch in the last 10 minutes, with the site, the shift, the stage they are working in (VLB, LMV or ELB), how many saves they made in those 10 minutes and how long ago the last one was. It reads again every minute while the page is on screen, and stops while the browser tab is hidden. Press a line to open that site in Step 2. When nobody is saving, it says so."],
       ["Step 1 · All sites · (dates)", "One line per site, the best site first, and a last line ALL SITES. The coloured edge and the coloured Rank, Done and Performance show the rating: green for Good, orange for Average, red for Poor. Press a site to open Step 2 for that site. Press ALL SITES to see the shifts of every site together."],
       ["How this report counts", "Press to read the counting rules used on this page."],
       ["All shifts · Locked · Batch not created · VLB open · LMV open · ELB open", "Buttons above Step 2, each with its number of shifts. Press one to list only the shifts at that stage."],
@@ -28,6 +29,8 @@
     "columns": [
       ["Step 1 · Rank", "Position of the site by Done (% of shifts due). Rank 1 is the best. Sites with the same percentage have the same rank. ALL SITES has no rank."],
       ["Step 1 · Site", "Site name."],
+      ["Step 1 · Working now", "How many people saved something in a batch at this site in the last 10 minutes, and their names, for example 2 · Ramesh Kumar, Sunil. A dash when nobody did. Someone checking a card without saving it appears once they save. ALL SITES shows the total number of people."],
+      ["Step 1 · Last action", "How long ago anyone last saved something in a batch at this site, within the last 24 hours, for example 3 min ago. A dash when there was no save in the last 24 hours."],
       ["Step 1 · Shifts due", "Shifts of the period whose end time has passed. A shift of today is added the moment it ends, so this number grows during the day. A site is counted from the date of its first batch."],
       ["Step 1 · Of which today's shifts", "How many of today's shifts have ended and are already counted in Shifts due, for example 1 of 3. A dash when the period does not include today."],
       ["Step 1 · Locked", "Shifts whose batch is locked (closed)."],
@@ -47,6 +50,7 @@
       ["Step 2 · Date", "Date of the shift."],
       ["Step 2 · Shift", "Shift 1, Shift 2, Shift 3, Day shift or Night shift."],
       ["Step 2 · Stage now", "Batch not created, VLB open, LMV open, ELB open or Locked."],
+      ["Step 2 · Working now", "Names of the people who saved something in the batch of this shift in the last 10 minutes, with the stage they are working in, for example Ramesh Kumar (VLB). A dash when nobody did."],
       ["Step 2 · Pending for (hours since shift ended)", "For a shift that is not locked: hours from the end of the shift until the report was taken."],
       ["Step 2 · Wait before batch created (hours)", "Hours from the end of the shift to the time the batch was created."],
       ["Step 2 · VLB stage (hours)", "Hours from batch created to VLB locked."],
@@ -88,7 +92,8 @@
       "Batches locked before the VLB, LMV and ELB stages were introduced have no stage lock times; their stage hours show a dash.",
       "Deleted batches and batches removed from the batch list are not counted.",
       "A shift whose end time has not passed is not yet due and is not listed, unless its batch already exists.",
-      "Shift end times come from the Shift Master of the site. Without a Shift Master entry, Shift 1, 2 and 3 are taken as 05:00-13:00, 13:00-21:00 and 21:00-05:00."
+      "Shift end times come from the Shift Master of the site. Without a Shift Master entry, Shift 1, 2 and 3 are taken as 05:00-13:00, 13:00-21:00 and 21:00-05:00.",
+      "Working now counts saves, not open pages: a trip card, an LMV log book, a machine entry, a lock or an unlock in the last 10 minutes. The same 10 minutes separate work from waiting in Work on website. Working now, Last action and Live now read again every minute while the page is on screen; the rest of the report changes only when you press Show report."
     ],
     "checklist": [
       "Choose the dates and press Show report.",
@@ -118,6 +123,7 @@
       ["REPORTS / OPERATIONS", "पेज का शीर्षक, जिसके नीचे “Batch Status & Turnaround” लिखा रहता है।"],
       ["All sites › (साइट) › (batch) › (चरण) actions", "चरणों की पट्टी। यह बताती है कि कौन सा Step खुला है। पीछे जाने के लिए पहले वाला नाम दबाएँ। इस लाइन की शुरुआत का बैंगनी Back बटन, और Search this report के पास वाला Back बटन, एक चरण पीछे ले जाते हैं; जब कोई चरण खुला हो, तो पेज के ऊपर का गोल पीछे वाला तीर भी यही करता है। लंबे कॉलम शीर्षक दो लाइनों में लिखे जाते हैं। कॉलम को चौड़ा या पतला करने के लिए उसके शीर्षक का दायाँ किनारा खींचें, फिर से पहले जैसा फिट करने के लिए उस किनारे पर दो बार क्लिक करें; Actions में Reset table सभी कॉलम वापस पहले जैसे कर देता है।"],
       ["पीला बॉक्स", "नीचे की तालिका से निकाली गई एक से चार सीधी लाइनें, जैसे कितनी Shift अभी Locked नहीं हैं, कौन सी साइट Rank 1 पर है और कौन सबसे आख़िर में, और आज की कितनी Shift गिनती में आ चुकी हैं।"],
+      ["Live now · (संख्या) working", "Step 1 के ऊपर एक छोटी तालिका: हर उस व्यक्ति की एक लाइन जिसने पिछले 10 मिनट में किसी batch में कुछ सेव किया, साथ में साइट, Shift, वह किस चरण में काम कर रहा है (VLB, LMV या ELB), उन 10 मिनट में कितने सेव किए और आख़िरी सेव कितनी देर पहले हुआ। जब तक पेज स्क्रीन पर है, यह हर मिनट दोबारा पढ़ती है, और ब्राउज़र टैब छिपा होने पर रुक जाती है। किसी लाइन को दबाने पर उस साइट का Step 2 खुलता है। जब कोई सेव नहीं कर रहा होता, तो यही लिखा आता है।"],
       ["Step 1 · All sites · (तारीखें)", "हर साइट की एक लाइन, सबसे अच्छी साइट सबसे ऊपर, और आख़िर में ALL SITES की लाइन। किनारे का रंग और Rank, Done और Performance का रंग रेटिंग बताता है: Good के लिए हरा, Average के लिए नारंगी, Poor के लिए लाल। किसी साइट को दबाने पर उसका Step 2 खुलता है। ALL SITES दबाने पर सभी साइटों की Shift एक साथ दिखती हैं।"],
       ["How this report counts", "इसे दबाकर इस पेज के गिनती के नियम पढ़ें।"],
       ["All shifts · Locked · Batch not created · VLB open · LMV open · ELB open", "Step 2 के ऊपर के बटन, हर एक के साथ Shift की संख्या। किसी एक को दबाने पर सिर्फ़ उसी चरण की Shift दिखती हैं।"],
@@ -130,6 +136,8 @@
     "columns": [
       ["Step 1 · Rank", "Done (% of shifts due) के हिसाब से साइट का स्थान। Rank 1 सबसे अच्छी है। बराबर प्रतिशत वाली साइटों की Rank एक ही होती है। ALL SITES की कोई Rank नहीं होती।"],
       ["Step 1 · Site", "साइट का नाम।"],
+      ["Step 1 · Working now", "पिछले 10 मिनट में इस साइट के किसी batch में कितने लोगों ने कुछ सेव किया, और उनके नाम, जैसे 2 · Ramesh Kumar, Sunil। किसी ने नहीं किया तो डैश। जो व्यक्ति card देख रहा है पर सेव नहीं किया, वह सेव करने के बाद दिखता है। ALL SITES में कुल लोगों की संख्या दिखती है।"],
+      ["Step 1 · Last action", "पिछले 24 घंटे में इस साइट के किसी batch में आख़िरी सेव कितनी देर पहले हुआ, जैसे 3 min ago। पिछले 24 घंटे में कोई सेव नहीं हुआ तो डैश।"],
       ["Step 1 · Shifts due", "अवधि की वे Shift जिनका ख़त्म होने का समय निकल चुका है। आज की Shift ख़त्म होते ही इसमें जुड़ जाती है, इसलिए यह संख्या दिन में बढ़ती रहती है। साइट की गिनती उसके पहले batch की तारीख से होती है।"],
       ["Step 1 · Of which today's shifts", "आज की कितनी Shift ख़त्म होकर Shifts due में गिनी जा चुकी हैं, जैसे 1 of 3। अवधि में आज की तारीख न हो तो डैश दिखता है।"],
       ["Step 1 · Locked", "वे Shift जिनका batch Locked (बंद) है।"],
@@ -149,6 +157,7 @@
       ["Step 2 · Date", "Shift की तारीख।"],
       ["Step 2 · Shift", "Shift 1, Shift 2, Shift 3, Day shift या Night shift।"],
       ["Step 2 · Stage now", "Batch not created, VLB open, LMV open, ELB open या Locked।"],
+      ["Step 2 · Working now", "पिछले 10 मिनट में इस Shift के batch में जिन लोगों ने कुछ सेव किया उनके नाम, और वे किस चरण में काम कर रहे हैं, जैसे Ramesh Kumar (VLB)। किसी ने नहीं किया तो डैश।"],
       ["Step 2 · Pending for (hours since shift ended)", "जो Shift Locked नहीं है उसके लिए: Shift ख़त्म होने से रिपोर्ट निकालने तक के घंटे।"],
       ["Step 2 · Wait before batch created (hours)", "Shift ख़त्म होने से batch बनने तक के घंटे।"],
       ["Step 2 · VLB stage (hours)", "batch बनने से VLB लॉक होने तक के घंटे।"],
@@ -190,7 +199,8 @@
       "जो batch VLB, LMV और ELB चरण शुरू होने से पहले Locked हुए, उनके चरण के लॉक समय नहीं हैं; उनके चरण के घंटों में डैश दिखता है।",
       "मिटाए गए batch और batch सूची से हटाए गए batch नहीं गिने जाते।",
       "जिस Shift का ख़त्म होने का समय अभी नहीं निकला वह due नहीं है और सूची में नहीं आती, जब तक उसका batch पहले से न बना हो।",
-      "Shift ख़त्म होने का समय साइट के Shift Master से लिया जाता है। Shift Master में entry न हो तो Shift 1, 2 और 3 को 05:00-13:00, 13:00-21:00 और 21:00-05:00 माना जाता है।"
+      "Shift ख़त्म होने का समय साइट के Shift Master से लिया जाता है। Shift Master में entry न हो तो Shift 1, 2 और 3 को 05:00-13:00, 13:00-21:00 और 21:00-05:00 माना जाता है।",
+      "Working now सेव गिनता है, खुले पेज नहीं: पिछले 10 मिनट में trip card, LMV log book, machine entry, लॉक या unlock। यही 10 मिनट Work on website में काम और इंतज़ार को अलग करते हैं। जब तक पेज स्क्रीन पर है, Working now, Last action और Live now हर मिनट दोबारा पढ़े जाते हैं; बाक़ी रिपोर्ट तभी बदलती है जब आप Show report दबाते हैं।"
     ],
     "checklist": [
       "तारीखें चुनें और Show report दबाएँ।",

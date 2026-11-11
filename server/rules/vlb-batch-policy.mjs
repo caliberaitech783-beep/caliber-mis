@@ -63,6 +63,8 @@ export const VLB_BATCH_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),detail JSONB NOT NULL DEFAULT '{}');
+ -- Batch Status, Working now: reads the last day of history every minute per viewer.
+ CREATE INDEX IF NOT EXISTS mis_vlb_batch_audit_occurred_idx ON mis_vlb_batch_audit(occurred_at DESC);
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS continuous_entry BOOLEAN NOT NULL DEFAULT FALSE;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS saved_lock_policy BOOLEAN NOT NULL DEFAULT FALSE;
  WITH migrated AS (
