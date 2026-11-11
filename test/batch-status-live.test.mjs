@@ -10,7 +10,7 @@ import {displaySiteName} from '../shared/region-scope.mjs';
 
 const now=new Date('2026-11-11T10:00:00+05:30').getTime();
 const ago=minutes=>new Date(now-minutes*60000).toISOString();
-const A='00000000-0000-4000-8000-00000000000a',B='00000000-0000-4000-8000-00000000000b',J='00000000-0000-4000-8000-00000000000c';
+const W='00000000-0000-4000-8000-00000000000f',A='00000000-0000-4000-8000-00000000000a',B='00000000-0000-4000-8000-00000000000b',J='00000000-0000-4000-8000-00000000000c';
 const sasti=canonicalSiteName('Sasti'),jayant=canonicalSiteName('Jayant');
 
 test('working now means a save in a batch within the last 10 minutes; last action looks back one day',()=>{
@@ -54,12 +54,14 @@ test('the live route reads only permitted sites, matches LMV books to their batc
   CREATE TABLE mis_vlb_batch_audit(id BIGSERIAL PRIMARY KEY,batch_id UUID,actor TEXT,action TEXT,occurred_at TIMESTAMPTZ,detail JSONB DEFAULT '{}');`);
  await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Users & employees',$1),('Users & employees',$2)",[JSON.stringify({login:'Ramesh',employee:'Ramesh Kumar',phone:'secret-phone'}),JSON.stringify({login:'lmv.clerk',name:'LMV CLERK'})]);
  const deleted='00000000-0000-4000-8000-00000000000d';
- for(const [id,name,site,date,shift,del] of [[A,'SASTI-S1','Sasti','2026-11-11','S1',null],[B,'SASTI-S3','Sasti','2026-11-10','S3',null],[J,'JAYANT-S1','Jayant','2026-11-11','S1',null],[deleted,'GONE','Sasti','2026-11-11','S2',ago(30)]])
+ for(const [id,name,site,date,shift,del] of [[A,'SASTI-S1','Sasti','2026-11-11','S1',null],[B,'SASTI-S3','Sasti','2026-11-10','S3',null],[J,'JAYANT-S1','Jayant','2026-11-11','S1',null],[W,'SASTI-2ND NOV-S2','Sasti','2026-11-02','S2',null],[deleted,'GONE','Sasti','2026-11-11','S2',ago(30)]])
   await db.query('INSERT INTO mis_vlb_batches(id,name,site,book_date,shift,stage,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,name,site,date,shift,'vlb_open',del]);
  // The route compares with the server clock, so the history is written relative to the database's NOW().
- const rows=[[A,'ramesh','card_added',2],[A,'ramesh','card_updated',4],[B,'sunil','machine_saved',30],[J,'jayant.op','card_added',1],[deleted,'ghost','card_added',1],[A,'yesterday','card_added',26*60]];
+ const rows=[[A,'ramesh','card_added',2],[A,'ramesh','card_updated',4],[B,'sunil','machine_saved',30],[J,'jayant.op','card_added',1],[deleted,'ghost','card_added',1],[W,'late.entry','card_added',1],[A,'yesterday','card_added',26*60]];
  for(const [batch,actor,action,minutes] of rows)await db.query(`INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,occurred_at,detail) VALUES($1,$2,$3,NOW()-($4::int*INTERVAL '1 minute'),'{"private":"must-not-leak"}')`,[batch,actor,action,minutes]);
  await db.query(`INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,created_by,created_at) VALUES('CAL/LMV/1','lmv',$1,'Sasti',1,$2,'lmv.clerk',NOW()-INTERVAL '3 minutes')`,[new Date(Date.now()+19800000).toISOString().slice(0,10),JSON.stringify({location:'Sasti',bookShiftCode:'S1',private:'must-not-leak'})]);
+ // Sites enter shifts a week late: a save now into a 2 Nov batch is work happening now.
+ await db.query(`INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,created_by,created_at) VALUES('CAL/LMV/2','lmv','2026-11-02','Sasti',1,$1,'lmv.late',NOW()-INTERVAL '5 minutes')`,[JSON.stringify({location:'Sasti',bookShiftCode:'S2'})]);
  await db.query('UPDATE mis_vlb_batches SET book_date=$1 WHERE id=ANY($2::uuid[])',[new Date(Date.now()+19800000).toISOString().slice(0,10),[A,J]]);
  const statements=[],query=(sql,args)=>{statements.push(sql);return db.query(sql,args);},pool={query,connect:async()=>({query,release(){}})};
  const app=express();const auth=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.logBookScope=req.headers.authorization==='admin'?{sites:null}:{sites:[sasti]};next();};
@@ -68,11 +70,11 @@ test('the live route reads only permitted sites, matches LMV books to their batc
  const call=(token='reader')=>fetch(`http://127.0.0.1:${server.address().port}/api/reports/batch-status/live`,{headers:token?{Authorization:token}:{}});
  assert.equal((await call('')).status,401);
  let response=await call(),live=await response.json();assert.equal(response.status,200,JSON.stringify(live));assert.match(response.headers.get('cache-control'),/no-store/);
- assert.deepEqual(live.people.map(p=>[p.name,p.saves,p.stage,p.batchId]).sort(),[['LMV CLERK',1,'LMV',A],['Ramesh Kumar',2,'VLB',A]],'LMV book matched to its batch; 30 minutes ago is not working now; deleted batch and other site left out');
- assert.equal(live.count,2);assert.deepEqual(Object.keys(live.sites),[sasti],'Jayant is not shown to a Sasti login');
- assert.equal(live.sites[sasti].minutesAgo,2);
+ assert.deepEqual(live.people.map(p=>[p.name,p.saves,p.stage,p.batchId]).sort(),[['LMV CLERK',1,'LMV',A],['Ramesh Kumar',2,'VLB',A],['late.entry',1,'VLB',W],['lmv.late',1,'LMV',W]],'LMV books matched to their batch, including a week-old batch; 30 minutes ago is not working now; deleted batch and other site left out');
+ assert.equal(live.count,4);assert.deepEqual(Object.keys(live.sites),[sasti],'Jayant is not shown to a Sasti login');
+ assert.equal(live.sites[sasti].minutesAgo,1);
  assert.equal(JSON.stringify(live).includes('must-not-leak')||JSON.stringify(live).includes('secret-phone'),false);
- live=await (await call('admin')).json();assert.equal(live.count,3);assert.equal(live.sites[jayant].count,1);
+ live=await (await call('admin')).json();assert.equal(live.count,5);assert.equal(live.sites[jayant].count,1);
  assert.equal(statements.some(sql=>/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/i.test(sql)),false,'the live route only reads');
 });
 
