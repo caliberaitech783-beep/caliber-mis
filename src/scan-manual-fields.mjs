@@ -4,7 +4,18 @@ import {isBlankHandoverIssue} from './scan-handover-review.mjs';
 import {scanFieldIssues} from './scan-field-review.mjs';
 import {machineDiscrepancies,machineTripTotal,tripEquipmentRequired,ignoreScanLoadingWithoutEquipment} from '../shared/trip-card-rules.mjs';
 import {scanTripTimeInputs} from './scan-time-input.mjs';
+import {cardMachineKey} from '../shared/scan-machine-rules.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
+
+export function scanDoorNeedsConfirmation(draft={},raw={},kind='vehicle'){
+ if(kind!=='vehicle'||raw.provider!=='gemini')return false;
+ const door=cardMachineKey(draft.doorText,kind);
+ if(!door||!draft.assetId)return false;
+ const verification=raw.doorVerification;
+ const confirmed=draft.doorReviewConfirmation;
+ return !(verification?.status==='confirmed'&&door===cardMachineKey(verification.first,kind))
+  &&!(confirmed?.door===door&&confirmed?.assetId===String(draft.assetId));
+}
 
 export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv=false){
  if(kind==='vehicle')input=ignoreScanLoadingWithoutEquipment(input);
@@ -13,6 +24,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv
  // typing. Keep actual missing/invalid values and specific conflicts visible.
  const issues=scanFieldIssues({...draft,extractionReviewFields:[],meterReviewFields:[]},kind,raw,options,lmv);
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
+ if(scanDoorNeedsConfirmation(draft,raw,kind))issues.doorText||='Check the door number against the original scan and confirm it.';
  for(const key of draft.meterReviewFields||[])if(draft.meterReviewMessages?.[key])issues[key]=draft.meterReviewMessages[key];
  if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift']]){
   if(draft[key]&&Array.isArray(options[collection])&&!options[collection].some(row=>String(row.id)===String(draft[key])))issues[key]=label+' is not available in the current master list.';
