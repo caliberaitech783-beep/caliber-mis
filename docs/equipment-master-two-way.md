@@ -7,7 +7,7 @@ Pulse (pulse.cmll.in) and Pulse-II (pulse-ll.cmll.in) show the same Equipment ma
 1. In either app, open **Masters → Equipment master** and add a record, edit one, delete one, delete selected or all records, or import a sheet.
 2. The app shows **Approve Equipment master changes**. Pulse sends **one** six-digit OTP by WhatsApp to all three authorised mobiles: 9850396090, 7828619175 and 9423604667. The message says how many records are added, edited and deleted, and which app asked.
 3. An approver reads the code out. Enter it and choose **Verify & apply**. The whole action is applied together, or nothing is applied.
-4. Pulse writes the change. Pulse-II pulls the Equipment master straight away when the change came from Pulse-II. Otherwise it picks the change up in its normal one-minute sync.
+4. Pulse writes the change. Pulse-II pulls the Equipment master straight away when the change came from Pulse-II. Otherwise it picks the change up during its next hourly sync.
 
 The OTP is valid for 10 minutes and can be tried 5 times. Use **Resend OTP** for a new code. **Cancel** changes nothing.
 
