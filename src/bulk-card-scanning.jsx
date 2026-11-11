@@ -412,13 +412,16 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const reviewComplete=Boolean(!scanMatchingPending&&!bdFallbackMissing&&card&&options&&!Object.keys(manualIssues).length&&!reviewErrors.length&&!blockingReviewWarnings.length);
  useEffect(()=>{
   if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current||uploadingRef.current||contextBlocked||autoSavingRef.current||autoSavePaused.current===activeRef.current)return;
-  const next=cards.find(c=>c.batch_id===activeRef.current&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options,lmv)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
-  if(!next)return;
-  const key=next.id+':'+next.revision;
-  autoSaveAttempts.current.add(key);
-  autoSavingRef.current=next;
-  setAutoSaving(next);
-  void (async()=>{try{
+  const queue=cards.filter(c=>c.batch_id===activeRef.current&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options,lmv)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
+  if(!queue.length)return;
+  autoSavingRef.current=queue[0];
+  void (async()=>{try{for(const next of queue){
+   if(activeRef.current!==next.batch_id)break;
+   const key=next.id+':'+next.revision;
+   autoSaveAttempts.current.add(key);
+   autoSavingRef.current=next;
+   setAutoSaving(next);
+   try{
    // A busy server (503, gateway restart, dropped connection, timeout) is waited out and the
    // same card is tried again; the route answers with the existing book if it was already saved.
    const result=await autoSaveWithBusyRetry(()=>api('/api/scan-cards/'+next.id+'/auto-save',{method:'POST',signal:AbortSignal.timeout(60000),body:JSON.stringify({revision:next.revision})}),{shouldContinue:()=>activeRef.current===next.batch_id,onWait:wait=>setAutoSaveWait({ordinal:next.ordinal,batch_id:next.batch_id,seconds:Math.round(wait.delayMs/1000),nextAttempt:wait.nextAttempt,totalAttempts:wait.totalAttempts})});
@@ -427,14 +430,14 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
    setResults(rows=>[...rows.filter(r=>String(r.id)!==String(result.record.id)),result.record]);
    if(result.archive)setArchiveResult(result.archive);
    setNotice('Card '+next.ordinal+' saved automatically as '+result.record.book_no+'.');
-  }catch(e){
+   }catch(e){
    if(isBusyAutoSaveError(e)){
     // Not a refusal of this card: it stays out of Needs attention and is tried again on Retry.
     autoSaveAttempts.current.delete(key);
     if(activeRef.current!==next.batch_id)return;
     autoSavePaused.current=next.batch_id;
     setAutoSaveError({ordinal:next.ordinal,batchId:next.batch_id,retryAt:Date.now()+60000,message:busyAutoSaveStoppedMessage(e.attempts||1)});
-    return;
+    break;
    }
    autoSaveFailures.current.set(key,e.message);
    setFailureTick(n=>n+1);
@@ -444,7 +447,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
     setNotice('Card '+next.ordinal+': '+e.message);
     if(next.id===selectedCardRef.current){setPulseHours(null);setPulseHoursError(e.message);}
    }else setAutoSaveError({ordinal:next.ordinal,message:e.message});
-  }finally{
+   }
+  }}finally{
    autoSavingRef.current=null;
    setAutoSaveWait(null);
    setAutoSaving(null);

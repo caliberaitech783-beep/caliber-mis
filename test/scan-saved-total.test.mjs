@@ -16,7 +16,7 @@ test('confirmed saves update the combined total immediately for corrected and al
  assert.equal(applySavedScanCard(cards[0],{...records[0],data:{...records[0].data,scanBatchId:'other'}}),cards[0]);
 });
 
-test('valid cards save in order across separate passes, even with a card missing breakdown hours',async()=>{
+test('all valid cards drain in one pass even with a card missing breakdown hours',async()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const start=source.indexOf(" useEffect(()=>{\n  if(reviewPage||!options||dirty||busy||fleetBusy||connectionError||savingRef.current");
  const end=source.indexOf("\n },[reviewPage,cards,kind,options",start);
@@ -30,10 +30,6 @@ test('valid cards save in order across separate passes, even with a card missing
   return {record:{id,book_no:'BOOK-'+id,data:{scanCardId,scanBatchId:'batch',totalTrips:1}}};
  };
  const scope={reviewPage:false,activeRef:{current:'batch'},contextBlocked:false,options:{},dirty:false,busy:false,fleetBusy:false,connectionError:'',savingRef:{current:false},uploadingRef:{current:false},bdFetchUnavailable:{current:true},cards:rows,card:rows[0],bdFallbackMissing:true,kind:'vehicle',lmv:false,canAutoSaveScanCard:()=>true,autoSaveAttempts:{current:new Set()},autoSavingRef:{current:null},autoSavePaused:{current:false},setAutoSaveWait:()=>{},autoSaveWithBusyRetry,isBusyAutoSaveError,busyAutoSaveStoppedMessage,setAutoSaving:()=>{},api,setCards:fn=>{rows=fn(rows);},applySavedScanCard,setResults:()=>{},setArchiveResult:()=>{},setNotice:()=>{},load:async id=>{calls.push('load '+id);},list:async()=>{calls.push('list');},selectedCardRef:{current:'blocked'},setPulseHours:()=>{},setPulseHoursError:()=>{},setAutoSaveError:()=>{}};
- new Function(...Object.keys(scope),body)(...Object.values(scope));
- await new Promise(resolve=>setImmediate(resolve));
- assert.deepEqual(calls,['/api/scan-cards/okay/auto-save'],'first pass yields after one card');
- scope.cards=rows;
  new Function(...Object.keys(scope),body)(...Object.values(scope));
  await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(calls,['/api/scan-cards/okay/auto-save','/api/scan-cards/also-okay/auto-save']);
