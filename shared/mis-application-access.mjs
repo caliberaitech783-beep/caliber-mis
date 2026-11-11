@@ -7,7 +7,7 @@ export function misPageAllowed(session,page,view){
  if(page==='Capacity master')return isMisAdministrator(session)&&misPageAllowed(session,'Equipment master',view);
  if(page==='Batch reopening approvals')return session.role==='super'&&session.permissions.adminLevel==='Manager'&&managerRoleSelection(session.permissions.managerRoles?.length?session.permissions.managerRoles:session.permissions.managerRole).includes('Project Manager');
  if(['Tickets','Telegram Integration'].includes(page))return true;
- if(MIS_ADMIN_PAGES.includes(page))return isMisAdministrator(session);
+ if(MIS_ADMIN_PAGES.includes(page)||page==='Automation Centre')return isMisAdministrator(session);
  if(page==='Create VLB Batch')return ['Vehicle Log Book','Equipment Log Book'].some(name=>misPageAllowed(session,name,view));
  if(['LMV Log Book','LMV Manual','LMV Scan'].includes(page))return misPageAllowed(session,page==='LMV Scan'?'Trip Card Bulk Scan':'Vehicle Log Book',view);
  page=page==='VLB Reports'?'Trip Card Bulk Scan':page==='ELB Reports'?'Job Card Bulk Scan':page==='Saved VLB'?'Vehicle Log Book':page==='Saved ELB'?'Equipment Log Book':page;
@@ -28,6 +28,8 @@ export function misRequestAllowed(session,req){
  if(route==='/api/mis-admin/status')return isMisAdministrator(session)&&read;
  if(route==='/api/mis-telegram/me'||route==='/api/mis-telegram/link')return read&&route.endsWith('/me')||req.method==='POST'&&route.endsWith('/link');
  if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test'));
+ if(route==='/api/automation-centre')return read&&isMisAdministrator(session);
+ if(route==='/api/automation-centre/equipment-mismatch')return req.method==='PUT'&&isMisAdministrator(session);
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');

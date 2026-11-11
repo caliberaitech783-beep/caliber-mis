@@ -7,6 +7,8 @@ import SmartSelect from './smart-select.jsx';
 import {isMisAdministrator,MIS_ADMIN_PAGES} from '../shared/mis-admin-access.mjs';
 import MisAdministration from './mis-admin.jsx';
 import MisTelegram from './mis-telegram.jsx';
+import {EquipmentMismatchNotice} from './equipment-pulse-mismatch.jsx';
+const AutomationCentre=React.lazy(()=>import('./automation-centre.jsx'));
 import LogBookDeletion from './log-book-deletion.jsx';
 import ScanCardBackup from './scan-card-backup.jsx';
 import SiteUpdateNotice from './site-update-notice.jsx';
@@ -11425,6 +11427,7 @@ const AppBackgroundServices = React.memo(function AppBackgroundServices({ sessio
     {!session?.permissions?.separateMisCredentials&&<TelegramGate token={token} logout={logout} />}
     <ReturnedCorrectionGate key={token} token={token} />
     <TicketResolutionNotices key={token} token={token} />
+    <EquipmentMismatchNotice key={'equipment-mismatch-'+token} session={session} onOpen={()=>window.location.assign('/?page=equipment-deployment')} />
     <RemoteAssistanceAgent session={session} />
   </>;
 }, (previous, next) => previous.session === next.session);
@@ -11558,7 +11561,7 @@ function App() {
     if(name==='Fleet reconciliation')return canOpenAdminPage('Dashboard');
     if(name==='Capacity master')return isMisAdministrator(session)&&canOpenAdminPage('Equipment master');
     if(name==='Batch reopening approvals')return correctionApprovalAccess;
-    if(['Full Backup','Database'].includes(name))return isMisAdministrator(session);
+    if(['Full Backup','Database','Automation Centre'].includes(name))return isMisAdministrator(session);
     if(name==='Scan Backup'||name==='Deletion')return isAdministrator&&(!session?.permissions?.separateMisCredentials||misPageAllowed(session,name,responsiveMobile?'mobile':'desktop'));
     if(session?.permissions?.separateMisCredentials)return misPageAllowed(session,name,responsiveMobile?"mobile":"desktop");
     if(['Trip Card Bulk Scan','Job Card Bulk Scan','LMV Scan','VLB Reports','ELB Reports'].includes(name))return isAdministrator;
@@ -11926,6 +11929,7 @@ function App() {
     <CaliberDirectoryPage token={session?.token || authToken} />
   ) : renderedActive === "Manager Profile" ? (
     <MisDashboard session={session} canCreateRequest={activeNavigationPermissions.desktopManagerCreateRequest === true} onCreateRequest={addRequest} managerRole={adminPermissions.managerRole} managerRoles={adminPermissions.managerRoles} managerLocation={profileLocation} managerDesignationKey={profileDesignationKey} requests={requests} ReportSection={ReportSection} printDashboard={printDashboardReport} requestsLoaded={requestsLoaded} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} gotoEquipment={gotoEquipment} onApproveIdeal={(row)=>updateRequest(row.ref,{},"ideal-onroad")} onCancelIdeal={(row)=>updateRequest(row.ref,{},"idle-cancel")} onUpdateRequest={updateRequest} onAddDailyRemark={addDailyRemark} TimelineButton={RequestTimelineButton} />
+  ) : renderedActive === 'Automation Centre' ? (<React.Suspense fallback={<p role="status">Loading Automation Centre…</p>}><AutomationCentre session={session} onOpenPage={selectMenu}/></React.Suspense>
   ) : renderedActive === 'Telegram Integration' ? (<MisTelegram session={session}/>
   ) : ['Full Backup','Database'].includes(renderedActive) ? (<MisAdministration canScanBackup={canOpenAdminPage('Scan Backup')} page={renderedActive} session={session} ReportSection={ReportSection} onScanBackup={()=>selectMenu('Scan Backup')}/>
   ) : renderedActive === "Tickets" ? (
@@ -12038,7 +12042,7 @@ function App() {
           {name:'Deletion',direct:true,pages:canOpenAdminPage('Deletion')?['Deletion']:[]},
           {name:'Backup',direct:true,pages:canOpenAdminPage('Scan Backup')?[{label:'Backup',page:'Scan Backup'}]:[]},
           {name:'Tickets',direct:true,pages:canOpenAdminPage('Tickets')?['Tickets']:[]},
-          {name:'Telegram Integration',direct:true,pages:canOpenAdminPage('Telegram Integration')?['Telegram Integration']:[]},
+          {name:'Telegram & WhatsApp',pages:[{label:'Telegram Integration',page:'Telegram Integration'},{label:'Telegram/WhatsApp Automation Centre',page:'Automation Centre'}].filter(entry=>canOpenAdminPage(entry.page))},
           {name:'Admin',pages:MIS_ADMIN_PAGES.filter(canOpenAdminPage)},
         ].filter(group=>group.pages.length||group.keepEmpty)}
         active={active}

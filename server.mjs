@@ -11,7 +11,9 @@ import {registerVehicleTransferExpress} from './server/routes/vehicle-transfer-e
 import {registerEquipmentCreateExpress} from './server/routes/equipment-create-express.mjs';
 import {registerEquipmentAliases,reconcileEquipmentAliases,readAliasApprover,misManagerLogins,sendAliasWeeklySummary,demoteUnapprovedAliases,aliasOtpEnabled} from './shared/equipment-aliases.mjs';
 import {createOtpDelivery,telegramOutboxSender} from './server/services/otp-delivery.mjs';
-import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings} from './server/routes/vlb-batch-alerts.mjs';
+import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings,readAlertSettings} from './server/routes/vlb-batch-alerts.mjs';
+import {createEquipmentMismatchWorker,registerEquipmentMismatch} from './server/routes/equipment-pulse-mismatch.mjs';
+import {createAutomationCentre,registerAutomationCentre} from './server/routes/automation-centre.mjs';
 import {createPulseWriter} from './server/rules/pulse-writer.mjs';
 import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pending.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp} from './server/services/deletion-whatsapp.mjs';
@@ -142,7 +144,7 @@ import {scheduledReportWindowsDue} from './shared/report-delivery-window.mjs';
 import {siteReportMessageContext,recipientReportMessage} from './server/rules/whatsapp-message-format.mjs';
 import {META_WORKFLOW_TEMPLATES,metaWhatsAppConfiguration,metaWhatsAppStatus,registerMetaWhatsAppPhone,sendMetaWhatsAppDocument,sendMetaWhatsAppTemplate,sendMetaWhatsAppText,submitMetaWhatsAppTemplates,metaWhatsAppTemplateStatuses,setWhatsAppDeliveryPolicyReader} from './server/rules/meta-whatsapp.mjs';
 import {normalizeWhatsAppReportSettings,whatsappPurposeEnabled,PURPOSE_OPTIONS} from './shared/whatsapp-report-settings.mjs';
-import {telegramConfiguration,telegramStatus,sendTelegramText,sendTelegramDocument,telegramWebhookSecret,newTelegramLinkToken,parseTelegramUpdate,telegramBotUsername,ensureTelegramWebhook,normalizeTelegramRequirement,telegramRequiredFor,createTelegramJoinRequestLink,answerTelegramJoinRequest,telegramChatMemberStatus,telegramSiteGroupDetails} from './server/services/telegram.mjs';
+import {telegramConfiguration,telegramPurposeEnabled,telegramStatus,sendTelegramText,sendTelegramDocument,telegramWebhookSecret,newTelegramLinkToken,parseTelegramUpdate,telegramBotUsername,ensureTelegramWebhook,normalizeTelegramRequirement,telegramRequiredFor,createTelegramJoinRequestLink,answerTelegramJoinRequest,telegramChatMemberStatus,telegramSiteGroupDetails} from './server/services/telegram.mjs';
 import {TELEGRAM_SITES,telegramSiteName,telegramUserHasSite,normalizeTelegramSiteGroups} from './server/rules/telegram-site-groups.mjs';
 import {telegramInvitationBatch,telegramInvitationSummary} from './server/rules/telegram-site-invitations.mjs';
 import {telegramSiteCampaignId,telegramSiteExport,telegramCampaignRecipients,telegramCampaignMessage,telegramCampaignBatch} from './server/rules/telegram-site-campaign.mjs';
@@ -7949,6 +7951,29 @@ registerVlbBatchAlertSettings(app,{pool,requireSession,requireAdministrator:requ
 // Express changes approved by OTP that still have to be applied in Pulse by hand (Pulse Master Sync page).
 registerPulsePending(app,{pool,requireSession,requireAdministrator,writer:pulseMasterWriter});
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>vlbBatchAlerts.start(),90000);
+// Equipment list check: Equipment Deployment (Pulse-II) against the Pulse equipment list every six
+// hours; a difference raises a pop-up notice and a Telegram message until the lists agree.
+const equipmentMismatchWhatsApp={async send(login,message){
+ const user=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=$1 ORDER BY id DESC LIMIT 1",[login])).rows[0]?.record_data||{};
+ const phone=String(user.whatsapp||user.mobile||user.phone||user.contact||'').trim();
+ if(!phone)return false;
+ await sendMetaWhatsAppText({to:phone,message,purpose:'equipmentMismatch'},{env:await metaWhatsAppRuntimeEnv()});
+ return true;
+}};
+const equipmentMismatch=createEquipmentMismatchWorker({pool,pulse:pulseMasterSync,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:equipmentMismatchWhatsApp,defaultLogins:()=>misManagerLogins(pool),ensureSchema:()=>logBooks.initialize()});
+registerEquipmentMismatch(app,{pool,worker:equipmentMismatch,protect:[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await logBookScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}]});
+// Like the VLB batch alerts, this runs on the live server whatever the scheduled-jobs switch says; the slot key stops a second server repeating a check.
+if(process.env.EQUIPMENT_MISMATCH_CHECK!=='0')scheduleBackgroundStart(()=>equipmentMismatch.start(),150000);
+// Telegram/WhatsApp Automation Centre: every automatic message rule, its channels and its count to date.
+const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.initialize(),context:async()=>{
+ const [whatsappSettings,whatsappEnv,misBot,vlbAlerts,deletion]=await Promise.all([storedWhatsAppReportSettings(),metaWhatsAppRuntimeEnv(),integrationSecrets.read('mis-telegram').catch(()=>null),readAlertSettings(pool),
+  pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',['mis_deletion_whatsapp']).then(result=>result.rows[0]?.setting_value,()=>null)]);
+ return {whatsappSettings,whatsappConfigured:metaWhatsAppConfiguration(whatsappEnv).configured,misTelegram:{enabled:Boolean(misBot?.enabled&&misBot?.webhookReady)},
+  pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',
+  scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
+}});
+registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch});
+scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
