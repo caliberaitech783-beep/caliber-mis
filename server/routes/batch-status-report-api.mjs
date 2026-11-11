@@ -64,8 +64,9 @@ export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>
    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
    const allowed=row=>siteAllowed(req.logBookScope,row.site);
    const current=now(),since=new Date(current-LAST_ACTION_HOURS*3600000).toISOString();
-   // Batches are dated by shift; a save in the last day can belong to a shift up to two days earlier.
-   const fromDate=new Date(current+19800000-3*86400000).toISOString().slice(0,10),earliest=fromDate<OPERATIONAL_START?OPERATIONAL_START:fromDate;
+   // The time of the save decides, not the date of the batch: sites enter shifts a week or more late
+   // (11 Nov: saves going into 2-4 Nov batches), so every operational batch date is included.
+   const earliest=OPERATIONAL_START;
    const audit=(await client.query(`SELECT a.actor,a.action,a.occurred_at AS at,b.id AS "batchId",b.name AS "batchName",b.site,b.book_date::text AS date,b.shift
     FROM mis_vlb_batch_audit a JOIN mis_vlb_batches b ON b.id=a.batch_id
     WHERE a.occurred_at>=$1 AND b.deleted_at IS NULL AND b.archived_at IS NULL AND b.book_date>=$2
