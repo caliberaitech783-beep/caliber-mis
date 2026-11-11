@@ -1,5 +1,6 @@
 import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useState,useRef} from 'react';
+import {StepBackButton} from './step-back.jsx';
 import './log-book-deletion.css';
 import {inspectDeletionBackup,removeDeletionBackups,sameDeletionFiles} from './log-book-deletion-backups.mjs';
 import {DeletionManifest,DeletionCleanup} from './log-book-deletion-manifest.jsx';
@@ -61,7 +62,7 @@ export default function LogBookDeletion({session,context,onDeleted}){
     <button disabled={busy||!chosen.length||chosen.length>500||!reason.trim()} onClick={review}>Preview deletion ({chosen.length})</button><small>Up to 500 records per approved request.</small>
    </>:<><p>Latest 100 completed deletions. Permanent deletions have no application restore. Older deletions may have retained records.</p>{history.map(h=><details key={h.id}><summary>{new Date(h.completed_at||h.database_deleted_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} · {h.snapshot.length} entries · {h.actor} · {h.completed_at?"Complete":"Cleanup pending"}</summary><p>Request: {h.id}</p><p>Reason: {h.reason}</p><p>Approved: {h.approved_at} · WhatsApp accepted: {h.delivered_at} · WhatsApp OTP verified before database cleanup.</p><ul>{h.snapshot.map(r=><li key={r.id}>{label(r)}</li>)}</ul></details>)}</>}
   </>}
-  {preview&&<section className="deletion-review" aria-label="Exact deletion approval">
+  {preview&&<section className="deletion-review" aria-label="Exact deletion approval"><StepBackButton onBack={busy?null:reset} disabled={busy} label="Back to selection"/>
    <h2>Review {preview.records.length} exact records</h2><p>Request: {preview.id}</p><p><strong>Reason:</strong> {preview.reason}</p><p><strong>Impact and recovery:</strong> {preview.impact}</p>
    <DeletionManifest preview={preview} checks={fileChecks} busy={busy} sent={sent} onChoose={chooseFolder} onFinalize={finalizeFiles} onDownload={download}/>
    <ul>{preview.records.map(row=><li key={row.id}>{label(row)} · Revision {row.revision}</li>)}</ul>
