@@ -13,7 +13,7 @@ import {nextTripEntry} from '../shared/trip-entry.mjs';
 
 const unload={rowNumber:1,equipmentName:'',loadingTime:'',unloadingTime:'08:10',tripCount:1};
 const load={rowNumber:2,equipmentName:'V12',loadingTime:'08:30',unloadingTime:'',tripCount:1};
-const options={assets:[{id:'1',door:'Vpc12',site:'Jayant OC',kind:'equipment'}],employees:[{id:'2'}],shifts:[{id:'3'}]};
+const options={assets:[{id:'1',door:'S14',site:'Jayant OC',kind:'vehicle'},{id:'4',door:'Vpc12',site:'Jayant OC',kind:'equipment'}],employees:[{id:'2'}],shifts:[{id:'3'}]};
 const valid={machineNotationRuleVersion:1,tripBodyRuleVersion:2,doorText:'S/14',bookDate:'2026-10-19',location:'Jayant OC',assetId:'1',employeeId:'2',shiftId:'3',shiftHours:8,openingHmr:0,closingHmr:6,openingKmr:0,closingKmr:50,aFormNo:'75',timeMode:'with',trips:[unload,load],scanMachineSummary:[{equipmentName:'V12',tripCount:1}],extractionReviewFields:['trips']};
 
 test('unloading-only rows need no machine, including missing numbers and estimated loading times',()=>{
