@@ -69,8 +69,8 @@ test("every Actions table offers Report, Save report and Saved reports and print
   assert.match(shared, /<SavedReports title=\{reportTitle\} tableKey=\{reportTitle\} columns=\{columns\} open=\{savedReportDialog\} onOpenChange=\{setSavedReportDialog\} currentView=\{currentView\} onApply=\{applySavedView\} canPrint=\{canPrintReport\} onPrint=\{printCurrentView\} \/>/);
   assert.doesNotMatch(shared, /savedReportKey|serializeTableView|sanitizeTableView/, "the shared table stays free of saved-report helpers so source-evaluating tests keep working");
   // The Reports page table gets the same flow on its own state.
-  // The whole ReportTable function, however long it grows.
-  const reportTable = main.slice(main.indexOf("function ReportTable("), main.indexOf("function parseCsv("));
+  const reportTableStart = main.indexOf("function ReportTable(");
+  const reportTable = main.slice(reportTableStart, main.indexOf("\nfunction ", reportTableStart + 1));
   assert.match(reportTable, /const currentSavedView = \(\) => \(\{ visible: displayedColumns\.map\(\(column\) => column\.key\), filters: columnFilters, sort, pageSize, dateRange:/);
   assert.match(reportTable, /openSmartPrint\(\{ title: reportTitle, columns, rows: \[\.\.\.sortedRows, \.\.\.totalRows\], onPrint: printTableReport, formatCell: exportCellText \}\)/);
   assert.match(reportTable, /<SavedReportsPanel title=\{reportTitle\} tableKey=\{layoutKey\} columns=\{columns\} open=\{savedReportDialog\}/);
