@@ -42,14 +42,14 @@ test('every report table heading fits, can be dragged, and Reset table clears th
 test('drill-down reports show a Back button one step up, and the top-bar arrow takes the same step',()=>{
   const main=read('main.jsx');
   assert.match(main,/onClick=\{stepBack \|\| goBack\}/);
+  assert.match(main,/label="Back to reports" className="reports-step-back" onlyWhenInnermost \/>/,'Back to reports hides while the report shows its own Back');
   assert.match(main,/\{onBack && <StepBackButton onBack=\{onBack\} label=\{backLabel\} \/>\}/);
   for(const file of ['trip-timing-report.jsx','batch-status-report.jsx']){
     const src=read(file);
     assert.match(src,/const back=level>1\?crumbs\[level-2\]\[1\]:null/,file);
-    assert.match(src,/\{back&&<StepBackButton onBack=\{back\}\/>\}/,file);
+    assert.match(src,/\{back&&<StepBackButton onBack=\{back\} label=\{backTo\}\/>\}/,file);
+    assert.doesNotMatch(src,/onBack=\{back\} backLabel=/,'one Back per step: the step line only, not again beside Search');
   }
-  assert.equal((read('trip-timing-report.jsx').match(/onBack=\{back\} backLabel=\{backTo\}/g)||[]).length,4,'steps 2 to 5');
-  assert.equal((read('batch-status-report.jsx').match(/onBack=\{back\} backLabel=\{backTo\}/g)||[]).length,3,'steps 2 to 4');
   assert.equal((read('manpower-reports.jsx').match(/<StepBackButton onBack=/g)||[]).length,3,'OT, manpower and reconciliation trails');
   assert.match(read('vlb-batch-card-details.jsx'),/<StepBackButton onBack=\{onClose\} label="Back to batch report"\/>/);
 });

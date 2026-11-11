@@ -71,7 +71,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  // One step back: the step before the one on screen, as in the line of steps above the table.
  const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
  return <div className="tt-report">{tabs}
-  <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
+  <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
   {level===1&&<>
    <p className="tt-insight">{summaryLine(sites.total)}</p>
    <ReportSection key={'tt-sites-'+mode} reportKey={'Trip timing sites '+mode} dataReady={dataReady} title={'Step 1 · '+m.label+' · All sites · '+period} category="operations-timing-sites" description={'One line per site. Press a site to see it date by date and shift by shift. Press a coloured number to see only the shifts behind it.'}
@@ -80,22 +80,22 @@ export default function TripTimingReport({records=[],loading='',period='',Report
   {level===2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total.over,key=>shifts.total[key])}
-   <ReportSection key={'tt-shifts-'+mode+site+band} onBack={back} backLabel={backTo} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date-wise and shift-wise · '+period+(band?' · '+BAND_LABELS[band]:'')} category="operations-timing-shifts" description={'One line per date and shift, newest first. Press a line to see the drivers of that shift. Press the last line to see the drivers for all the dates together.'}
+   <ReportSection key={'tt-shifts-'+mode+site+band} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date-wise and shift-wise · '+period+(band?' · '+BAND_LABELS[band]:'')} category="operations-timing-shifts" description={'One line per date and shift, newest first. Press a line to see the drivers of that shift. Press the last line to see the drivers for all the dates together.'}
     rows={withTotal(shiftsListed,band?{...shifts.total,id:'shown-total'}:shifts.total)} columns={summaryColumns('shift',mode,openSlot)} rowKey={r=>r.id} rowClassName={rowClass} onRowClick={r=>openSlot(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
   </>}
   {level===3&&<>
    <nav className="tt-subtabs" aria-label="Count by">{Object.entries(GROUPS).map(([key,label])=><button key={key} type="button" aria-current={group===key?'page':undefined} onClick={()=>setGroup(key)}>{label}</button>)}</nav>
    <p className="tt-insight">{summaryLine(lines.total)}</p>
    {chips(lines.total.over,key=>lines.total[key])}
-   <ReportSection key={'tt-lines-'+mode+group+site+slot.key+band} onBack={back} backLabel={backTo} reportKey={'Trip timing '+group+' '+mode} dataReady={dataReady} title={'Step 3 · '+m.label+' · '+where+' · '+GROUPS[group]+(band?' · '+BAND_LABELS[band]:'')} category={'operations-timing-'+group} description={'One line per '+(group==='driver'?'driver':group==='door'?'door number':'loading machine')+', worst first, with every band against the name. Press a line to see its delayed '+m.noun+'s.'}
+   <ReportSection key={'tt-lines-'+mode+group+site+slot.key+band} reportKey={'Trip timing '+group+' '+mode} dataReady={dataReady} title={'Step 3 · '+m.label+' · '+where+' · '+GROUPS[group]+(band?' · '+BAND_LABELS[band]:'')} category={'operations-timing-'+group} description={'One line per '+(group==='driver'?'driver':group==='door'?'door number':'loading machine')+', worst first, with every band against the name. Press a line to see its delayed '+m.noun+'s.'}
     rows={withTotal(listed,band?{...lines.total,id:'shown-total'}:lines.total)} columns={summaryColumns(group,mode,openItem)} rowKey={r=>r.id} rowClassName={rowClass} onRowClick={r=>openItem(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
   </>}
   {level===4&&<>
    {chips(allDelayed.length,key=>allDelayed.filter(e=>e[mode].band===key).length)}
-   <ReportSection key={'tt-delayed-'+mode+item.group+item.key+slot.key+band} onBack={back} backLabel={backTo} reportKey={'Trip timing delayed '+mode+(item.group==='driver'&&item.key!==EVERY?'':' with driver')} dataReady={dataReady} title={'Step 4 · '+m.label+' · '+item.label+' · '+where+(band?' · '+BAND_LABELS[band]:'')} category="operations-timing-delayed" description={'Every '+m.noun+' over '+DELAY_LIMIT+' minutes, newest first. Press a line to see the full trip card.'}
+   <ReportSection key={'tt-delayed-'+mode+item.group+item.key+slot.key+band} reportKey={'Trip timing delayed '+mode+(item.group==='driver'&&item.key!==EVERY?'':' with driver')} dataReady={dataReady} title={'Step 4 · '+m.label+' · '+item.label+' · '+where+(band?' · '+BAND_LABELS[band]:'')} category="operations-timing-delayed" description={'Every '+m.noun+' over '+DELAY_LIMIT+' minutes, newest first. Press a line to see the full trip card.'}
     rows={delayed} columns={delayedColumns(mode,item.group!=='driver'||item.key===EVERY)} rowKey={e=>e.id} onRowClick={e=>setCard(e.recordId)} emptyMessage={'No '+m.noun+' in this band.'}/>
   </>}
-  {level===5&&cardHead&&<ReportSection key={'tt-card-'+card} onBack={back} backLabel={backTo} reportKey="Trip timing card" dataReady={dataReady} showSearch={false} title={'Step 5 · Trip card '+cardHead.book} category="operations-timing-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card with both timings`}
+  {level===5&&cardHead&&<ReportSection key={'tt-card-'+card} reportKey="Trip timing card" dataReady={dataReady} showSearch={false} title={'Step 5 · Trip card '+cardHead.book} category="operations-timing-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card with both timings`}
    rows={cardEntries} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Loading → Unloading is the unloading time minus the loading time of the same trip row.</li>

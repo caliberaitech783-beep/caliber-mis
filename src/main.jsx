@@ -7415,7 +7415,7 @@ function withTimelineLinks(columns, token) {
   });
 }
 function ReportsPage(props) {
-  if (String(props.activeReportCategory).startsWith('operations-')) return <><StepBackButton onBack={()=>props.setActiveReportCategory?.('general')} label="Back to reports" className="reports-step-back" /><ReportGuide id={String(props.activeReportCategory).replace(/^operations-/, '')} /><OperationsReports ReportSection={ReportSection} session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} /></>;
+  if (String(props.activeReportCategory).startsWith('operations-')) return <><StepBackButton onBack={()=>props.setActiveReportCategory?.('general')} label="Back to reports" className="reports-step-back" onlyWhenInnermost /><ReportGuide id={String(props.activeReportCategory).replace(/^operations-/, '')} /><OperationsReports ReportSection={ReportSection} session={props.session} reportId={String(props.activeReportCategory).replace(/^operations-/, '')} onSelect={id=>props.setActiveReportCategory?.('operations-'+id)} /></>;
   if (props.activeReportCategory === 'bd-ageing') return <BdAgeingReport key={props.session?.token} session={props.session} ReportSection={ReportSection} onBack={()=>props.setActiveReportCategory?.('general')} />;
   return <StandardReportsPage {...props} />;
 }
