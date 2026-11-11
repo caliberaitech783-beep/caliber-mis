@@ -64,3 +64,5 @@
 @media (max-width: 650px) {
   .batch-status-report > header h1 { font-size: 24px; }
 }
+
+.batch-status-report .bs-crumbs .bs-summary-toggle { margin-left: auto; font-size: 14px; }

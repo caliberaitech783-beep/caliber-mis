@@ -88,7 +88,6 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
    {!data.kinds.length&&<p>No logbook types are assigned to your login.</p>}
    <RecentActivityPanel recent={live.recent} error={live.error} Dialog={Dialog}/>
    {data.totals.vehicle+data.totals.equipment===0&&<p className="lb-empty">No saved cards for this period. Start a new logbook entry.</p>}
-   <div className="lb-footer"><span><ShieldCheck size={16}/> Recovery copies protect unfinished work until the batch is saved and locked.</span></div>
   </>}
   {selection?.kind&&<RecordDetails selection={selection} filters={applied} session={session} fetcher={fetcher} close={()=>setSelection(null)}/>}
   {selection?.sites&&<Dialog title="Sites with saved entries" close={()=>setSelection(null)}><p className="lb-muted">Sites with zero entries are included for comparison.</p><div className="lb-table-wrap"><table><thead><tr><th>Site</th><th>VLB</th><th>ELB</th></tr></thead><tbody>{sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k))).map(r=><tr key={r.site}><td>{r.site}</td>{['vehicle','equipment'].map(k=><td key={k}><button disabled={!r[k]} onClick={()=>choose(k,{location:r.site})}>{number(r[k])}</button></td>)}</tr>)}</tbody></table></div></Dialog>}
@@ -104,7 +103,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
      :<div className="lb-bars">{rankedSites.map(r=><div className="lb-site-row" key={r.site}><span title={r.site}>{r.site}</span><div>{['vehicle','equipment'].filter(k=>data.kinds.includes(k)).map(kind=><button key={kind} className={'lb-bar lb-'+(kind==='vehicle'?'purple':'coral')} disabled={!r[kind]} onClick={()=>choose(kind,{location:r.site,...(siteHours?{hours:siteHours}:{})})} aria-label={`${r.site}, ${kind==='vehicle'?'VLB':'ELB'}, ${r[kind]} saved cards`} title={`${kind==='vehicle'?'VLB':'ELB'}: ${number(r[kind])}`}><i style={{width:r[kind]/max*85+'%'}}/><b>{number(r[kind])}</b></button>)}</div></div>)}</div>}
      <div className="lb-panel-foot">Lowest total (VLB + ELB) on top, highest at the bottom. A shared scale compares VLB and ELB fairly. Zero-entry sites stay visible.{siteHours?' The hours are counted by the time each card was saved, whatever the date on the card.':''}</div></article>
    </section>}
-   {ReportSection&&<BatchStatusReport session={session} ReportSection={ReportSection}/>}
+   {ReportSection&&<BatchStatusReport session={session} ReportSection={ReportSection} embedded/>}
    {ReportSection&&<ManpowerReports session={session} reportId="ot" ReportSection={ReportSection} embedded initialFrom={monthToDate().from}/>}
   </div></div>
 }
