@@ -31,6 +31,12 @@ test('VLB opening meters follow the preceding saved vehicle card in operational 
  assert.equal(draft.closingKmr,'50');
  assert.deepEqual(draft.meterReviewFields,['closingKmr']);
  assert.deepEqual(await fill(draft),draft);
+ // A saved draft comes back from jsonb with its keys reordered. Reading it again
+ // must return identical JSON; otherwise each batch read rewrites the card,
+ // raises its revision and automatic saving is refused as "Card changed".
+ const {rows:[{stored}]}=await db.query('SELECT $1::jsonb AS stored',[JSON.stringify(draft)]);
+ assert.notEqual(JSON.stringify(stored),JSON.stringify(draft));
+ assert.equal(JSON.stringify(await fill(stored)),JSON.stringify(stored));
  assert.equal((await fill({...draft,openingKmr:'45'})).openingKmr,'45');
  const relinked=await fill({...draft,assetId:'2'});
  assert.equal(relinked.openingKmr,5);

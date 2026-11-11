@@ -63,6 +63,14 @@ export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}
    if(filled.length&&Array.isArray(next[key]))next[key]=next[key].filter(field=>!filled.includes(field));
   }
  }
- if(source||Object.keys(values).length)next.openingMeterCarryover={identity,values};
+ if(source||Object.keys(values).length){
+  // Keep the stored object when nothing changed. A rebuilt copy has its keys in
+  // a different order from the one PostgreSQL jsonb returns, which made every
+  // batch read look like a draft change and raise the card revision.
+  const fields=Object.keys(values);
+  const unchanged=source?.identity===identity&&Object.keys(source.values||{}).length===fields.length&&
+   fields.every(field=>String(source.values[field])===String(values[field]));
+  if(!unchanged)next.openingMeterCarryover={identity,values};
+ }
  return next;
 }
