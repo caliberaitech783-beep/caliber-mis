@@ -49,7 +49,7 @@
   }
 }
 
-.batch-status-report { font-size: calc(var(--workspace-copy, 14px) + 2px); }
+.batch-status-report { font-size: calc(var(--workspace-copy, 16px) + 2px); }
 .batch-status-report > header h1 { font-size: 28px; }
 .batch-status-report .production-filters label { font-size: 15px; }
 .batch-status-report :is(.production-filters, .production-tabs) :is(button, input) { font-size: inherit; }
