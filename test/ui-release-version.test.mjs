@@ -17,7 +17,7 @@ test('the boot script retries an empty stylesheet once without reloading the pag
     sheet:{cssRules:[]},
     matches:selector=>selector==='link[data-pulse-stylesheet]',
     cloneNode:()=>({}),
-    replaceWith:replacement=>retries.push(replacement.href),
+    after:replacement=>retries.push(replacement.href),
   };
   const retries=[];
   runInNewContext(script,{
@@ -44,7 +44,9 @@ test('actual Vite output embeds the release version while the source stays uncha
   await writeFile(path.join(cwd,'src/main.css'),'body{color:purple}');
   await buildSite({cwd,env:{GITHUB_SHA:current},verifyOutput:true,buildClient:options=>build({...options,configFile:false,logLevel:'silent'})});
   assert.equal((await verifyBuiltUiRelease({root:path.join(cwd,'dist'),expected:current})).embeddedVersion,current);
-  assert.match(await readFile(path.join(cwd,'dist/index.html'),'utf8'),new RegExp('\\.css\\?release='+current+'" data-pulse-stylesheet'));
+  const html=await readFile(path.join(cwd,'dist/index.html'),'utf8');
+  assert.match(html,/\/app-assets\/index-v2-[\w-]+\.css" data-pulse-stylesheet/);
+  assert.match(html,/\/app-assets\/index-v2-[\w-]+\.js"/);
   assert.equal(await readFile(path.join(cwd,'src/app-version.js'),'utf8'),source);
   await writeFile(path.join(cwd,'dist/app-version.txt'),stale);
   await assert.rejects(()=>verifyBuiltUiRelease({root:path.join(cwd,'dist')}),/Compiled JavaScript version mismatch/);
