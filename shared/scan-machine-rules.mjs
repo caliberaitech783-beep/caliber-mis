@@ -8,7 +8,7 @@ export const VEHICLE_MACHINE_RULES=[
  {code:'V',label:'Volvo',aliases:['V','VOLVO','VOLVO TIPPER','VOLVO TIPPERS']},
  {code:'E',label:'Eicher',aliases:['E','EICHER']},
  {code:'S',label:'Scania',aliases:['S','SCANIA']},
- {code:'HP',label:'Haulpak Dumper',aliases:['HP','H','HAULPAK','HAULPAK DUMPER']},
+ {code:'H',label:'Haulpak Dumper',aliases:['HP','H','HAULPAK','HAULPAK DUMPER']},
 ];
 export const EQUIPMENT_MACHINE_RULES=[
  {code:'VPC',label:'VPC',aliases:['V','VPC','VOLVO']},
@@ -192,7 +192,11 @@ export function scanEquipmentMatchIssues(input={},assets=[]){
  return issues;
 }
 export function cardMachineHint(value,kind){
- const result=identifyCardMachine(value,kind,{allowSuffix:true});return result?`Identified: ${result.label}${result.number?' · '+(kind==='vehicle'&&['V','HP'].includes(result.code)?result.canonical:'No. '+result.number):' · enter the machine number'}`:'';
+ const result=identifyCardMachine(value,kind,{allowSuffix:true});
+ if(!result)return '';
+ if(!result.number)return `Identified: ${result.label} · enter the machine number`;
+ const displayCode=kind==='vehicle'?{V:'V',H:'HP'}[result.code]:null;
+ return `Identified: ${result.label} · ${displayCode?displayCode+result.number:'No. '+result.number}`;
 }
 // Review line for a loading row that resolved through an approved alias instead of a real door.
 export function aliasMachineHint(row={}){

@@ -12,7 +12,7 @@ const machine=(id,door,kind='equipment',location=site)=>({id,door,kind,site:loca
 const master=row=>({id:Number(row.id),master_name:'Equipment master',record_data:{door:row.door,category:row.kind,site:row.site}});
 
 test('Trip Card headers accept single letters and full vehicle names and preserve written numbers',()=>{
- for(const [inputs,code,label]of [[['v','Volvo','Volvo Tipper','Volvo Tippers'],'V','Volvo'],[['E','eicher'],'E','Eicher'],[['s','Scania'],'S','Scania'],[['hp','H','Haulpak','Haulpak Dumper'],'HP','Haulpak Dumper']])for(const input of inputs){
+ for(const [inputs,code,label]of [[['v','Volvo','Volvo Tipper','Volvo Tippers'],'V','Volvo'],[['E','eicher'],'E','Eicher'],[['s','Scania'],'S','Scania'],[['hp','H','Haulpak','Haulpak Dumper'],'H','Haulpak Dumper']])for(const input of inputs){
   const result=identifyCardMachine(input+' / 025','vehicle');assert.equal(result.code,code);assert.equal(result.label,label);assert.equal(result.number,'025');assert.equal(result.original,input+' / 025');
  }
  assert.equal(identifyCardMachine('Hydra 25','vehicle'),null);
@@ -28,6 +28,7 @@ test('trip cards identify numbered Volvo tippers and Haulpak dumpers from master
   assert.equal(scanFleetAssignment(rows,draft,raw,'','vehicle'),null);
  }
  assert.equal(cardMachineHint('Volvo 110','vehicle'),'Identified: Volvo · V110');
+ assert.equal(cardMachineHint('Haulpak Dumper 07','vehicle'),'Identified: Haulpak Dumper · HP07');
  assert.equal(identifyCardMachine('hp','vehicle').label,'Haulpak Dumper');
  assert.equal(matchCardMachine(rows,'hp',site,'vehicle').status,'missing-number');
  assert.equal(resolveTripEquipment({equipmentName:'HP07'},rows,site).equipmentId,'3');
