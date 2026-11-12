@@ -32,10 +32,39 @@ export function batchCompletionTimes(batch){
  return {vlb:ms(batch.vlb_locked_at)??closed,lmv:ms(batch.lmv_locked_at)??closed,elb:closed};
 }
 
+// The three stages of a batch in the order they are worked, with the kind of card each one holds.
+export const LOCK_STAGES=[['vlb','VLB','vehicle','batch start to VLB lock'],['lmv','LMV','lmv','VLB lock to LMV lock'],['elb','ELB','equipment','LMV lock to batch lock']];
+
+// A length of time in plain words: 45 min, 5 h 23 min, 2 days 3 h 12 min.
+export function durationLabel(minutes){
+ if(minutes===null||minutes===undefined||minutes===''||Number.isNaN(Number(minutes)))return '—';
+ const total=Math.max(0,Math.round(Number(minutes))),days=Math.floor(total/1440),hours=Math.floor(total%1440/60),rest=total%60;
+ return days?`${days} day${days===1?'':'s'} ${hours} h ${rest} min`:hours?`${hours} h ${rest} min`:`${rest} min`;
+}
+
+// Batch start to close: from the moment the batch was created to the moment it was saved and locked.
+// VLB runs from the batch start to the VLB lock, LMV from the VLB lock to the LMV lock and ELB from the LMV lock
+// to the batch lock, so the three always add up to the batch start to close time. Every time is cut to its
+// whole minute first, so each figure is exactly the difference of the two clock times shown beside it.
+export function batchStageTimes(batch){
+ const minute=value=>{const at=ms(value);return at===null||Number.isNaN(at)?null:Math.floor(at/60000);};
+ const iso=value=>new Date(value*60000).toISOString();
+ const start=minute(batch.created_at),close=minute(batch.closed_at);
+ if(start===null||close===null||close<start)return {startedAt:'',closedAt:'',totalMinutes:null,stages:[]};
+ const whole={startedAt:iso(start),closedAt:iso(close),totalMinutes:close-start};
+ const vlbLock=minute(batch.vlb_locked_at),lmvLock=minute(batch.lmv_locked_at);
+ // Closed under the older one-step rule: no separate VLB and LMV lock times, so the time cannot be divided.
+ if(vlbLock===null||lmvLock===null)return {...whole,stages:[]};
+ // A lock time outside its place (a clock corrected in between) is held inside the batch, so the sum still holds.
+ const vlbEnd=Math.min(close,Math.max(start,vlbLock)),lmvEnd=Math.min(close,Math.max(vlbEnd,lmvLock));
+ const ends={vlb:[start,vlbEnd],lmv:[vlbEnd,lmvEnd],elb:[lmvEnd,close]};
+ return {...whole,stages:LOCK_STAGES.map(([key])=>({key,from:iso(ends[key][0]),to:iso(ends[key][1]),minutes:ends[key][1]-ends[key][0]}))};
+}
+
 // cards: [{site, book_type: vehicle|lmv|equipment, date, shift, h6, h12, h24}] counted by save time.
-// batches: [{id, name, site, date, shift, vlb_locked_at, lmv_locked_at, closed_at, cards, machines_saved, locked_by}];
+// batches: [{id, name, site, date, shift, created_at, vlb_locked_at, lmv_locked_at, closed_at, cards, machines_saved, started_by, locked_by}];
 //  cards = trip cards saved in the batch, machines_saved = ELB cards saved in the batch,
-//  locked_by = who saved and locked the batch.
+//  started_by = who created the batch, locked_by = who saved and locked the batch.
 // lmvBooks: [{site, date, shift, count}] LMV log books, which are kept by site, date and shift, not by batch.
 // kinds: the log book types this login may see (vehicle covers VLB and LMV, equipment covers ELB).
 export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks=[],kinds=['vehicle','equipment']}){
@@ -80,7 +109,9 @@ export function buildRecentActivity({now=Date.now(),cards=[],batches=[],lmvBooks
   for(const hours of RECENT_WINDOWS)if(lockedHoursAgo<=hours)batchLocks[hours]++;
   locked.push({batchId:batch.id||'',batchName:batch.name||'',site:displaySiteName(batch.site),date:batch.date,dateLabel:displayDate(batch.date),shift:code,shiftLabel:SHIFT_LABELS[code]||code,
    vehicle:seen('vehicle')?inside.vlb:0,lmv:seen('lmv')?inside.lmv:0,equipment:seen('equipment')?inside.elb:0,lockedBy:batch.locked_by||'',
-   at:new Date(lockedAt).toISOString(),hoursAgo:lockedHoursAgo,minutesAgo:Math.floor((now-lockedAt)/60000)});
+   at:new Date(lockedAt).toISOString(),hoursAgo:lockedHoursAgo,minutesAgo:Math.floor((now-lockedAt)/60000),
+   // Batch start to close, and the same time divided into VLB, LMV and ELB.
+   startedBy:batch.started_by||'',...batchStageTimes(batch)});
  }
  completed.sort((a,b)=>a.minutesAgo-b.minutesAgo||a.site.localeCompare(b.site));
  locked.sort((a,b)=>a.hoursAgo-b.hoursAgo||a.site.localeCompare(b.site)||a.batchName.localeCompare(b.batchName));
@@ -123,6 +154,12 @@ export function lockCards(rows){
   total.lmv+=Number(row.lmv||0);
  }
  return total;
+}
+
+// The average batch start to close time of a list of locked batches, in whole minutes; null when none has a start time.
+export function averageLockMinutes(rows){
+ const timed=rows.map(row=>row.totalMinutes).filter(value=>value!==null&&value!==undefined);
+ return timed.length?Math.round(timed.reduce((sum,value)=>sum+value,0)/timed.length):null;
 }
 
 // One window's locked batches, site by site: the site with the most batches on top.
