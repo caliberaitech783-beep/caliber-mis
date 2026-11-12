@@ -27,13 +27,14 @@ const {code}=await transformWithOxc(source
  .replace('const fleetCards=cards.filter','testCapture.setReader=setReader; testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setBatch=setBatch; testCapture.setDraft=setDraft; const fleetCards=cards.filter')
  .replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
-function harness(search='',kind='vehicle'){
+function harness(search='',kind='vehicle',overrides={}){
  const testCapture={},slots=[],refs=[],effects=[],listeners=new Map();let cursor=0,refCursor=0;
  const location={href:'https://example.com/?page=vlb-scan'+search,get search(){return new URL(this.href).search}};
  const window={location,history:{pushState(_state,_unused,path){location.href=new URL(path,location.href).href},replaceState(_state,_unused,path){location.href=new URL(path,location.href).href}},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:()=>{}};
  const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],value=>slots[i]=typeof value==='function'?value(slots[i]):value]};
  const useRef=initial=>{const i=refCursor++;return refs[i]||(refs[i]={current:initial})};
- const Component=new Function(...Object.keys({...scope,testCapture,window,useState,useRef,useEffect:()=>{}}),code+';return BulkCardScanning')(...Object.values({...scope,testCapture,window,useState,useRef,useEffect:fn=>effects.push(fn)}));
+ const bindings={...scope,testCapture,window,useState,useRef,useEffect:fn=>effects.push(fn),...overrides};
+ const Component=new Function(...Object.keys(bindings),code+';return BulkCardScanning')(...Object.values(bindings));
  const render=(props={})=>{cursor=0;refCursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
  return {render,window,listeners,effects,slots,testCapture};
 }
@@ -57,6 +58,31 @@ test('the review page renders the card form for a selected VLB card',()=>{
  const totals=meterTotals(tree);
  assert.equal(totals.length,2,'Total KMR and Total HMR labels render');
  assert.ok(totals.every(label=>label.props.className===''),'readings within the 8-hour limit are not highlighted');
+});
+test('the original scan appears before cropping and switching cards cancels the old preview',async()=>{
+ const original=new Blob(['original'],{type:'image/webp'});
+ let finishCrop,request;
+ const crop=new Promise(resolve=>{finishCrop=resolve});
+ const app=harness('&batch=b1&scanView=review&scanGroup=all','vehicle',{
+  fetch:async (path,{signal})=>{request={path,signal};return new Response(original)},
+  trimScanPreview:()=>crop
+ });
+ const initial=loaded(app,[card(1),card(2)]);
+ const image=tree=>nodes(tree,n=>n.type==='img'&&n.props.alt.startsWith('Scanned '))[0];
+ assert.ok(nodes(initial,n=>n.props.children==='Loading scan preview…').length);
+ const cleanup=app.effects.find(effect=>effect.toString().includes('loadPreview'))();
+ try{
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(request.path,'/api/scan-cards/card-1/image');
+  assert.match(image(app.render()).props.src,/^blob:/);
+  app.testCapture.setSelected('card-2');
+  assert.equal(image(app.render()),undefined);
+  cleanup();
+  assert.equal(request.signal.aborted,true);
+  finishCrop(new Blob(['cropped'],{type:'image/png'}));
+  await crop;
+  assert.equal(image(app.render()),undefined);
+ }finally{cleanup();}
 });
 test('meter totals over the shift limit are highlighted without blocking the form',()=>{
  const over=card(1,{draft:draftFor(1,{closingHmr:'120',closingKmr:'1400'})});
