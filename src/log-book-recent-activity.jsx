@@ -6,6 +6,7 @@ import {RECENT_WINDOWS,SHIFT_KINDS,completedIn} from '../shared/recent-activity.
 // One line for the log books saved, then the shifts completed for VLB, LMV and ELB. Every figure opens its list.
 const number=n=>Number(n||0).toLocaleString('en-IN');
 const RECENT_REFRESH_MS=120000;
+const BATCH_NAMES_SHOWN=12;
 const timeLabel=at=>new Date(at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'});
 export const agoLabel=minutes=>minutes<1?'just now':minutes<60?`${minutes} min ago`:`${Math.floor(minutes/60)} h ${minutes%60} min ago`;
 export const windowLabel=hours=>`Last ${hours} hours`;
@@ -31,7 +32,10 @@ export default function RecentActivityPanel({recent,error,Dialog}){
  const [open,setOpen]=useState(null);
  if(!recent)return <article className="lb-panel lb-recent"><div className="lb-panel-heading"><div><h3>Completed in the last 6, 12 and 24 hours</h3><p role={error?'alert':'status'}>{error||'Reading the last 24 hours…'}</p></div></div></article>;
  const shiftKinds=SHIFT_KINDS.filter(([key])=>recent.shiftKinds.includes(key));
- const cell=(value,target,label)=><td key={target.hours}><button type="button" className="lb-recent-figure" disabled={!value} onClick={()=>setOpen(target)} aria-label={`${label}, ${windowLabel(target.hours).toLowerCase()}: ${value}`}>{number(value)}</button></td>;
+ // Under each shift figure: the batch numbers counted in it, newest first.
+ const batchNames=target=>target.row==='logs'?[]:completedIn(recent,target.row,target.hours).map(row=>row.batchName).filter(Boolean);
+ const cell=(value,target,label)=>{const names=batchNames(target),shown=names.slice(0,BATCH_NAMES_SHOWN);return <td key={target.hours}><button type="button" className="lb-recent-figure" disabled={!value} onClick={()=>setOpen(target)} aria-label={`${label}, ${windowLabel(target.hours).toLowerCase()}: ${value}`}>{number(value)}</button>
+  {shown.length>0&&<small className="lb-recent-batches" aria-label="Batch numbers">{shown.map((name,i)=><span key={i}>{name}</span>)}{names.length>shown.length&&<span>+{names.length-shown.length} more</span>}</small>}</td>;};
  const sites=open?.row==='logs'?recent.bySite[open.hours]:[],list=open&&open.row!=='logs'?completedIn(recent,open.row,open.hours):[];
  const openLabel=open&&(open.row==='logs'?'Log books saved':SHIFT_KINDS.find(([key])=>key===open.row)[1]+' shifts completed')+' · '+windowLabel(open.hours).toLowerCase();
  return <article className="lb-panel lb-recent">
