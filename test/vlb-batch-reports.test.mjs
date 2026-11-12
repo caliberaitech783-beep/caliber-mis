@@ -64,7 +64,8 @@ test('scan / upload batches stay one click away and are the fallback for scan-on
 
 test('the Reports menu opens the shift batch page for VLB Reports',()=>{
  const main=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
- assert.match(main,/renderedActive==='VLB Reports' \? \(<><ReportGuide id="vlb-reports"\/><VlbBatchReports /);
+ assert.match(main,/renderedActive==='VLB Reports' \? \(<VlbBatchReports /);
+ assert.doesNotMatch(main,/ReportGuide|report-guide/,'report operating manuals were switched off on 13 November 2026; no tab shows a manual bar');
  assert.match(main,/const VlbBatchReports=createLazyFeature\(\(\)=>import\("\.\/vlb-batch-reports\.jsx"\)/);
 });
 
