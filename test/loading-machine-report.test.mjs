@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bandOf,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,clockAt,BANDS,IDLE_LIMIT,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
+import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,clockAt,BANDS,IDLE_LIMIT,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
 import {normalise} from '../src/operations-report-model.mjs';
 import fs from 'node:fs';
 import {transformWithOxc} from 'vite';
@@ -49,6 +49,7 @@ test('the bands follow the owner\'s limits and the share worked is hours against
  assert.deepEqual(BANDS.map(b=>b.label),['5 to 10 min','10 to 15 min','15 to 20 min','20+ min']);
  assert.equal(percentWorked(8,8),100);assert.equal(percentWorked(6,8),75);assert.equal(percentWorked(0,8),0);assert.equal(percentWorked(6,12),50);
  assert.equal(percentWorked(null,8),null);assert.equal(percentWorked(6,null),null);
+ assert.equal(bandShare(269,4560),5.9);assert.equal(bandShare(0,40),0);assert.equal(bandShare(0,0),null,'no timed gap, so no share');
  assert.equal(idleText(0),'0 h 00 min');assert.equal(idleText(45),'0 h 45 min');assert.equal(idleText(185),'3 h 05 min');assert.equal(idleText(null),'—');
 });
 
@@ -63,6 +64,7 @@ test('idle stops are the gaps between one loading and the next by the same machi
  assert.equal(ex1.trips,6,'the unloading-only row is not a loading of this shift');
  assert.deepEqual(ex1.tippers.sort(),['V9001','V9002']);
  assert.deepEqual([ex1.b1,ex1.b2,ex1.b3,ex1.b4],[1,1,1,1]);
+ assert.equal(ex1.gaps,5,'six timed loadings make five gaps, the 4-minute one included');
  assert.equal(ex1.stops,4);assert.equal(ex1.idleMinutes,66,'8 + 12 + 18 + 28; the 4-minute gap is normal working');
  assert.equal(ex1.longest,28);assert.equal(ex1.firstLoading,'05:10');assert.equal(ex1.lastLoading,'06:20');
  assert.deepEqual(ex1.stopList.map(s=>[s.from.clock,s.from.door,s.to.clock,s.to.door,s.minutes,s.band]),[['05:14','V9002','05:22','V9001',8,'b1'],['05:22','V9001','05:34','V9002',12,'b2'],['05:34','V9002','05:52','V9001',18,'b3'],['05:52','V9001','06:20','V9002',28,'b4']]);
@@ -160,6 +162,10 @@ test('site, shift and machine lines add up, with running machines first, then re
  assert.deepEqual(sites.rows.map(r=>[r.site,r.machineShifts,r.running,r.breakdown,r.nohours,r.trips]),[['Site A',6,3,1,2,10],['Site B',1,1,0,0,2]]);
  const a=sites.rows[0];
  assert.deepEqual([a.b1,a.b2,a.b3,a.b4,a.stops,a.idleMinutes,a.longest],[2,2,1,1,6,86,28]);
+ // Each band has its own share of the 7 timed gaps of the site (5 in Shift I and 2 in Shift III): 2, 2, 1 and 1 stops.
+ assert.equal(a.gaps,7);assert.deepEqual([a.b1Share,a.b2Share,a.b3Share,a.b4Share],[28.6,28.6,14.3,14.3]);
+ const b=sites.rows[1];assert.equal(b.gaps,0);assert.deepEqual([b.b1Share,b.b4Share],[null,null],'cards saved without times give no share');
+ assert.equal(sites.total.gaps,7);assert.equal(sites.total.b3Share,14.3);
  // 6 + 4 + 0 + 0 hours worked out of four 8-hour shifts with an ELB; EX5 and the night shift have no ELB and are left out.
  assert.equal(a.hours,10);assert.equal(a.shiftHours,32);assert.equal(a.percent,31.3);
  assert.equal(sites.total.machineShifts,7);assert.equal(sites.total.trips,12);assert.equal(sites.total.notJudged,4);
@@ -193,7 +199,11 @@ test('the screen shows working and idle time first, keeps the old list as a seco
  assert.match(screen,/const work=\[column\('trips','Trips loaded'\),column\('percent','% of shift worked'[^\n]*column\('hoursWorked','Hours worked'/,'% of shift worked sits between Trips loaded and Hours worked');
  assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,3,'site, shift and machine tables keep their total line at the foot');
  assert.match(screen,/r\.state==='breakdown'\?'lm-row-breakdown':r\.state==='nohours'\?'lm-row-nohours'/);
+ assert.match(screen,/const idle=onPick=>\[\.\.\.BANDS\.map\(b=>banded\(b,onPick\)\)/,'every idle band carries its own percentage');
+ assert.match(screen,/r\[key\]\+' \('\+share\(r\)\+'\)'/,'the printed and downloaded report carries the percentage beside the count');
+ assert.match(screen,/<span className="lm-share"[^>]*>\{share\(r\)\}<\/span>/,'the percentage sits just beside the coloured count');
  const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
+ assert.match(css,/\.lm-banded\{[^}]*white-space:nowrap/,'count and percentage stay on one line');
  assert.match(css,/tr\.lm-row-breakdown>td[^{]*\{background:#fde4e4/,'a machine in BD is a red line');
  assert.match(css,/tr\.lm-row-nohours>td[^{]*\{background:#f0e2d2/,'a machine with no hours and not in BD is a brown line');
  // The table sorts itself by a column it takes for a duration; none of these columns may be one, or the lines lose their order.

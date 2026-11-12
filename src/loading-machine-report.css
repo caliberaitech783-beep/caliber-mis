@@ -14,6 +14,9 @@
 .lm-report .tt-chips button.lm-b4{background:#ffc9c2;color:#8f1a12;border-color:#d6362f}
 .lm-report .tt-chips button.lm-breakdown{background:#fbd5d5;color:#9b1c1c;border-color:#b42323}
 .lm-report .tt-chips button.lm-nohours{background:#e7d3bd;color:#5c3310;border-color:#6e3f14}
+/* The count of an idle band with its own percentage just beside it, always on one line. */
+.lm-report .lm-banded{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.lm-report .lm-share{font-size:14px;font-weight:700;white-space:nowrap}
 .lm-report .lm-count{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
 .lm-report button.lm-count{cursor:pointer}
 .lm-report .lm-breakdown{background:#fbd5d5;color:#9b1c1c}
