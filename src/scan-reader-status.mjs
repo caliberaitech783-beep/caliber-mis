@@ -23,6 +23,36 @@ export function scanProgressChanged(rows=[],previousRows=[]){
   return prior.revision!==row.revision||prior.raw_fields?.fleetReview?.checkedAt!==row.raw_fields?.fleetReview?.checkedAt;
  });
 }
+// The cards a progress poll shows as new or changed since the cards on screen:
+// these alone are read in full (`?cards=`). A reading card is left out, as its
+// stage is merged from the poll itself. Removed cards are not listed here; a
+// shorter list with no changed card is handled by reading the whole entry.
+export function scanProgressChangedIds(rows=[],previousRows=[]){
+ const previousById=new Map((previousRows||[]).map(card=>[card.id,card]));
+ return (Array.isArray(rows)?rows:[]).filter(row=>{
+  const prior=previousById.get(row.id);
+  if(!prior||prior.status!==row.status)return true;
+  if(row.status==='reading')return false;
+  return prior.revision!==row.revision||prior.raw_fields?.fleetReview?.checkedAt!==row.raw_fields?.fleetReview?.checkedAt;
+ }).map(row=>row.id);
+}
+// Builds the card list after a partial read: the poll gives the cards and their
+// order, the partial read gives the changed cards in full, and every other card
+// stays exactly as shown. Returns null when the pieces do not fit (a requested
+// card did not come back, or an unchanged card is not on screen); the caller
+// then reads the whole entry.
+export function mergeScanCardRefresh(current,progressRows,fetched,requested=[]){
+ const fresh=new Map((fetched||[]).map(card=>[card.id,card])),shown=new Map((current||[]).map(card=>[card.id,card]));
+ if((requested||[]).some(id=>!fresh.has(id)))return null;
+ const next=[];
+ for(const row of progressRows||[]){
+  const card=fresh.get(row.id),previous=shown.get(row.id);
+  if(card)next.push(previous&&(previous.revision>card.revision||(previous.revision===card.revision&&previous.status==='posted'&&card.status!=='posted'))?previous:card);
+  else if(previous)next.push(previous);
+  else return null;
+ }
+ return mergeScanProgressStages(next,progressRows);
+}
 // Reading cards report their extraction stage without a revision change; the
 // label on screen follows it without reloading the whole entry.
 export function mergeScanProgressStages(cards,rows=[]){

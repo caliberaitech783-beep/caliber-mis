@@ -106,3 +106,46 @@ at about 5 s a card are never held back by it); `MIS_GEMINI_MIN_INTERVAL_MS` ove
 349 production cards read on 8 November 2026 the model took 4.8 s a card at the
 median, so the earlier 2000 ms gate, not the model, held the whole company to 30
 cards a minute.
+
+## Partial entry reads (12 November 2026)
+
+While cards were being read, the scan screen read the whole entry again each time
+one card changed (finished reading, fleet check answered, saved). The whole read
+re-validates every unsaved card, so an entry of N cards cost about N whole reads
+of up to N cards each. On 12 November 2026 `/api/health` showed the Pulse-II
+pool at 10 of 10 connections with up to 8 requests waiting while no card was
+being read by Pulse-II itself.
+
+`GET /api/scan-batches/:id?cards=<id>,<id>` now runs the same read for the listed
+cards only (at most 40, `SCAN_PARTIAL_REFRESH_MAX`) and answers `partial:true`.
+The save gate in that answer is still worked out from every card of the entry.
+The screen names the cards its 4 s progress poll shows as new or changed, merges
+the answer into the cards on screen and leaves every other card untouched.
+
+A card's checks can depend on other cards (duplicates, carried-over meters), so
+the whole entry is still read: when the screen is empty, when more than 40 cards
+changed in one poll, when a partial answer does not fit, once after reading
+settles, and at least every 60 s (`SCAN_FULL_REFRESH_MAX_MS`) while partial reads
+continue. Saving a card validates it on the server as before. No production
+timing has been measured for this change yet.
+
+## Entry reads reuse unchanged cards (13 November 2026)
+
+The whole reads that remain (opening an entry, the read after reading settles, the
+60 s read, every read after a save) still ran about seven queries per unsaved card.
+They now load the duplicate candidates and the earlier meter readings of all cards
+in three or four queries, and keep each card's draft fill and checks in memory
+(`server/rules/scan-check-memo.mjs`). A kept result is reused only while the card,
+the entry selection, the master-data revision and the equipment aliases are
+unchanged and every lookup it was built from (duplicates, earlier meters) still
+gives the same answer; those lookups are asked again from the loaded data on each
+read. Saving a card never uses a kept result. `MIS_SCAN_CHECK_MEMO=false` switches
+the reuse off.
+
+On the PGlite test database a whole read of a 40-card entry took 291 queries
+before; it now takes 57 the first time and 13 while nothing has changed. No
+production timing has been measured yet.
+
+Admin > Diagnostics (Speed and freezes) now names the request or job holding each
+database connection, and which have held connections longest since the start, so
+a full pool can be traced to its cause.

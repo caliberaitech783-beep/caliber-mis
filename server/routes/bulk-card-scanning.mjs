@@ -55,6 +55,7 @@ import {responseReviewNeeded,recoveredTripNumberIssues} from '../../shared/scan-
 import {extractCard,extractScanResult,scanEquipmentMasters,matchScanDraft} from '../rules/scan-extraction.mjs';
 import {tripCardLocation} from '../../shared/scan-site-match.mjs';
 import {localCardOcr} from '../services/local-card-ocr.mjs';
+import {SCAN_PARTIAL_REFRESH_MAX} from '../../shared/scan-progress-poll.mjs';
 const encodeScanJson=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanJson(value):value;
 const encodeScanText=value=>process.env.MIS_LOCAL_SCANNER_DATABASE==='true'?encodeLocalScanText(value):value;
 export const SCAN_SCHEMA=`${SCAN_DELETION_OTP_SCHEMA}
@@ -370,11 +371,21 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   }
   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(pool,batch,req)},cards,duplicates:[],progress:true,storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(pool,batch)});
  };
+ // ?cards=id,id limits the full read to the cards the screen saw change, so a
+ // card that finishes reading no longer re-validates every other card in the
+ // entry. The answer carries partial:true; its batch.deletedCards covers the
+ // selected cards only, so the screen keeps the list from its progress poll.
+ const selectedScanCards=value=>{
+  if(value===undefined)return null;
+  const ids=[...new Set(String(value).split(',').filter(Boolean))];
+  if(!ids.length||ids.length>SCAN_PARTIAL_REFRESH_MAX||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id)))fail('Invalid card selection.',400);
+  return ids;
+ };
  // A full read takes one connection for the whole read: one wait in the pool queue instead of one per
  // query. It no longer works through every card on every read. The duplicate and meter lookups of all
  // cards are read together, and a card's draft fill and checks are reused while nothing they were
- // worked out from has changed (scan-check-memo.mjs). While cards are being read the browser reloads
- // the entry after each one; such a read now works only on the cards that changed.
+ // worked out from has changed (scan-check-memo.mjs). This covers the whole reads the screen still
+ // makes while cards are being read; the ?cards= reads above cover the cards it saw change.
  const fillMemo=createScanCheckMemo(),checkMemo=createScanCheckMemo();
  const scanCheckWorld=async client=>{
   if(process.env.MIS_SCAN_CHECK_MEMO==='false')return null;
@@ -389,9 +400,10 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   const batch=await getBatch(pool,req.params.id);if(req.query.progress==='1')return sendScanProgress(req,res,batch);
   const db=await pool.connect();
   try{
+   const only=selectedScanCards(req.query.cards);
    {const earlierSameHash=`FROM mis_scan_cards earlier LEFT JOIN mis_log_books l ON l.id=earlier.logbook_id WHERE ${operationalScanSql('earlier')} AND earlier.image_hash=current.image_hash AND earlier.id<>current.id AND earlier.duplicate_of IS NULL AND earlier.status NOT IN('rejected') AND (earlier.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (earlier.created_at<current.created_at OR (earlier.created_at=current.created_at AND earlier.id<current.id))`;await db.query(`UPDATE mis_scan_cards current SET status='rejected',review_note='${EXACT_DUPLICATE_NOTE}',duplicate_of=COALESCE(current.duplicate_of,(SELECT earlier.id ${earlierSameHash} ORDER BY earlier.created_at,earlier.id LIMIT 1)),checked_by=COALESCE(checked_by,'system'),checked_at=COALESCE(checked_at,NOW()),revision=revision+1,error='' WHERE ${operationalScanSql('current')} AND current.batch_id=$1 AND current.status IN('queued','reading','review','approved','error') AND EXISTS(SELECT 1 ${earlierSameHash})`,[batch.id]);}
    const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();
-   const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.image_hash,c.ocr_text,c.confidence,c.raw_fields,c.draft,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,l.book_no,l.data AS saved_data,l.revision AS saved_revision,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') ORDER BY ordinal`,[batch.id])).rows;
+   const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.image_hash,c.ocr_text,c.confidence,c.raw_fields,c.draft,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,l.book_no,l.data AS saved_data,l.revision AS saved_revision,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND ($2::text[] IS NULL OR c.id::text=ANY($2::text[])) ORDER BY ordinal`,[batch.id,only])).rows;
    const duplicates=await listDuplicateCards(db,batch.id);
    const cards=[],deletedCards=[],validationClient=scanValidationClient(db);
    for(const row of rows)decodeScanRow(row);
@@ -438,7 +450,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     if(readPulseFleet&&checked(row)){if(row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}
     cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});
    }
-   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,cards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)});
+   const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
+   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)});
   }finally{db.release();}
  }));
  const contextGate=async(client,batch)=>scanContextGate(batch.expected_context,(await client.query('SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal FOR UPDATE',[batch.id])).rows.map(decodeScanRow));
