@@ -7977,7 +7977,7 @@ scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
-const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:process.env.MIS_LOCAL_SCANNER_DATABASE!=='true'});
+const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:false});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
 const scanArchiveSettings=scanArchiveConfig();
@@ -8765,7 +8765,6 @@ async function initializeDatabase(){
     await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});
     await bulkScanning.start();
     await scanBackup.start();
-    pulseTripVerification.start();
     await localScanner.start();
     await erpMasters.start();
     await seedCdirMasters()
