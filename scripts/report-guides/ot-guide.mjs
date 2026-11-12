@@ -141,7 +141,7 @@ ${next('books')}
 
 <section>
 <h2>4. Step 1: the site table</h2>
-<p>The page opens in five steps, each one under the last: all sites, one site date by shift, one date and shift by equipment category, the drivers, and one driver’s history. Step 1 has one line for every site assigned to your login, and an <b>All sites</b> line at the bottom.</p>
+<p>The page opens in five steps, each one under the last: all sites, one site date by shift, one date and shift by equipment category, the drivers, and one driver’s history. Step 1 has one line for every site assigned to your login, and an <b>All sites</b> line at the bottom. The sites run from the highest <b>Red OT %</b> to the lowest, so the site that needs attention first is on top; a site with no duty comes last.</p>
 ${next('sites')}
 <table class="plain">
  <tr><th>Column</th><th>What it shows</th></tr>
