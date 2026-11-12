@@ -92,11 +92,12 @@ export function advanceEquipmentLogBookField(event) {
 
 
 const isEnter=event=>event.key==='Enter'&&!event.isComposing&&!event.nativeEvent?.isComposing&&!event.shiftKey&&!event.ctrlKey&&!event.altKey&&!event.metaKey;
-export function continueManualRemark(event,rows,index,blank,onChange,selector){
+export function continueManualRemark(event,rows,index,blank,onChange,selector,focusNext){
  if(!isEnter(event))return;
  event.preventDefault();event.stopPropagation();if(event.repeat)return;
  if(index===rows.length-1){if(rows.length>=MANUAL_ROW_LIMIT)return;onChange([...rows,blank()]);}
  const root=event.currentTarget.closest('.logbook-section');
+ if(focusNext){focusNext(index+1,root);return;}
  requestAnimationFrame(()=>{const input=root?.querySelector(`[${selector}="${index+1}"]`);input?.focus();input?.scrollIntoView({block:'nearest'});});
 }
 

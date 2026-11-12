@@ -5,16 +5,17 @@ import {equipmentDoorNumber} from './equipment-door.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
 
 export const VEHICLE_MACHINE_RULES=[
- {code:'V',label:'Volvo',aliases:['V','VOLVO']},
+ {code:'V',label:'Volvo',aliases:['V','VOLVO','VOLVO TIPPER','VOLVO TIPPERS']},
  {code:'E',label:'Eicher',aliases:['E','EICHER']},
  {code:'S',label:'Scania',aliases:['S','SCANIA']},
- {code:'H',label:'Haulpak Dumper',aliases:['H','HAULPAK','HAULPAK DUMPER']},
+ {code:'H',label:'Haulpak Dumper',aliases:['HP','H','HAULPAK','HAULPAK DUMPER']},
 ];
 export const EQUIPMENT_MACHINE_RULES=[
  {code:'VPC',label:'VPC',aliases:['V','VPC','VOLVO']},
  {code:'TPC',label:'TPC',aliases:['T','TA','TATA','TPC','EICHER']},
  {code:'SPC',label:'SPC',aliases:['S','SPC','SCANIA']},
- {code:'LPC',label:'LPC',aliases:['L','LPC','HAULPAK','HAULPAK DUMPER']},
+ {code:'LPC',label:'LPC',aliases:['L','LPC']},
+ {code:'LPC',label:'Haulpak Dumper',aliases:['HP','HAULPAK','HAULPAK DUMPER']},
  {code:'DEMO',label:'DEMO',aliases:['DE','DEMO']},
  {code:'D',label:'Dozer',aliases:['D','DOZER']},
  {code:'G',label:'Grader',aliases:['G','GRADER']},
@@ -191,7 +192,11 @@ export function scanEquipmentMatchIssues(input={},assets=[]){
  return issues;
 }
 export function cardMachineHint(value,kind){
- const result=identifyCardMachine(value,kind,{allowSuffix:true});return result?`Identified: ${result.label}${result.number?' · No. '+result.number:' · enter the machine number'}`:'';
+ const result=identifyCardMachine(value,kind,{allowSuffix:true});
+ if(!result)return '';
+ if(!result.number)return `Identified: ${result.label} · enter the machine number`;
+ const displayCode=kind==='vehicle'?{V:'V',H:'HP'}[result.code]:null;
+ return `Identified: ${result.label} · ${displayCode?displayCode+result.number:'No. '+result.number}`;
 }
 // Review line for a loading row that resolved through an approved alias instead of a real door.
 export function aliasMachineHint(row={}){
@@ -201,5 +206,5 @@ export function aliasMachineHint(row={}){
 }
 // A derived parsing aid only. The original OCR text and field values stay intact.
 export function compactScanEquipmentReferences(line){
- return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|DEMO|DE|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|[VETSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^HYDRA$/i.test(prefix)?'Hydra'+number:/^[VETSLH]$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
+ return String(line).replace(/\b(PAY[ -]*LOADER|HAULPAK[ -]*DUMPER|HAULPAK|VOLVO|EICHER|SCANIA|DOZER|GRADER|HYDRA|DEMO|DE|V[ .]*P[ .]*C|T[ .]*P[ .]*C|S[ .]*P[ .]*C|L[ .]*P[ .]*C|PL|HP|[VETSLDGH])[ \t]*[-/]?[ \t]*(\d+)\b/gi,(original,prefix,number)=>/^HYDRA$/i.test(prefix)?'Hydra'+number:/^(?:[VETSLH]|HP)$/i.test(prefix)?prefix.toUpperCase()+number:identifyCardMachine(prefix+number,'equipment')?.canonical||original);
 }

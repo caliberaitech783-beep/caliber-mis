@@ -12,6 +12,7 @@ export function embeddedUiVersion(script){
   return new Set(values).size===1?values[0]:'';
 }
 const scriptPaths=html=>[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)].map(match=>match[1]);
+const stylesheetPaths=html=>[...html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*\bhref=["']([^"']+)["'][^>]*>/gi)].map(match=>match[1]);
 const same=(label,actual,expected)=>{if(actual!==expected)throw Error(label+' version mismatch: expected '+expected+', got '+(actual||'missing'));};
 
 export async function verifyBuiltUiRelease({root='dist',expected}={}){
@@ -42,6 +43,14 @@ export async function verifyPublishedUiRelease({base='https://pulse-ll.cmll.in',
   const html=await(await read('/')).text();let embedded='';
   for(const scriptPath of scriptPaths(html))embedded=embeddedUiVersion(await(await read(scriptPath)).text())||embedded;
   same('Served JavaScript',embedded,expected);
+  for(const stylesheetPath of stylesheetPaths(html)){
+    const target=new URL(stylesheetPath,url);
+    if(target.origin!==url.origin)throw Error('Unexpected UI stylesheet origin.');
+    const response=await fetchImpl(target,{signal:AbortSignal.timeout(20000)});
+    if(!response.ok||!/^text\/css\b/i.test(response.headers.get('content-type')||'')||!(await response.text()).trim()){
+      throw Error('Release stylesheet is missing or invalid: '+target.pathname);
+    }
+  }
   return {version:expected,embeddedVersion:embedded};
 }
 

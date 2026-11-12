@@ -13,6 +13,8 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
  source=source.replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
  scope.useStepBackTarget=()=>({current:null});
  source=source.slice(0,source.indexOf(' const originalScan='))+' return {draft,dirty,update,visibleField};\n}';
+ // This hook harness omits the continuation tab markup along with the review UI.
+ source=source.replace(/ const tripPageTabs=[\s\S]*?\n <\/div>;/,' const tripPageTabs=null;');
  const model={card:{id:'one',revision:1,status:'reading',draft:{},raw_fields:{}}};
  source=source.replace('const card=cards.find(c=>c.id===selected);','const card=model.card;');
  const hooks=[],pending=[];let cursor=0,changed=false;

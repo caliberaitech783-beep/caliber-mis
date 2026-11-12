@@ -9,7 +9,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {transformWithOxc} from 'vite';
 import {continueManualRemark,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField} from '../src/log-book-enter-navigation.mjs';
-import {blankTrip,nextTripEntry} from '../shared/trip-entry.mjs';
+import {blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow} from '../shared/trip-entry.mjs';
 import * as rules from '../shared/trip-card-rules.mjs';
 import {vlbCountedTrips} from '../shared/vlb-trip-handover.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
@@ -99,7 +99,7 @@ function harness(){
   const slots=[],effects=[];let cursor=0;
   const state=initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],value=>{slots[index]=typeof value==='function'?value(slots[index]):value}]};
   const Null=()=>null;
- const scope={MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
+ const scope={MANUAL_SHIFTS,manualShiftWindow,compactLogBookLabel,tripSerialNumber,validateTripEquipment,resolveTripEquipment,blankJob,blankBreakdown,padManualRows,continueManualRemark,employeeAtLocation,manualTimeValue,resolveShiftTime,shiftTimeInputValue,timeWithinShift,React,useEffect:(run,deps)=>effects.push({run,deps}),useRef:value=>state(()=>({current:value}))[0],useState:state,blankTrip,nextTripEntry,TRIP_CARD_ROWS,tripCardForRow,vlbCountedTrips,...rules,canonicalSiteName,missingAssetMessage,advanceLogBookField,focusNextLogBookField,isEmptyTripPlaceholder,advanceEquipmentLogBookField};
   for(const name of ['WorkOrderJobSelect','ManualLogBookDetails','BreakdownHoursField','SmartSelect','DoorCombobox','EmployeeIdLookup','ManualBookDate','Plus','Save','Trash2','RotateCcw','BookOpen','Search','ChevronsLeft','ChevronsRight','Pencil','Printer','X','LogOut','Info','ListFilter'])scope[name]=Null;
   const Component=new Function(...Object.keys(scope),code+';return LogBookForm')(...Object.values(scope));
   const render=(kind='vehicle',props={})=>{cursor=0;effects.length=0;return Component({kind,session:{token:'test'},...props})};
@@ -206,6 +206,7 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
   globalThis.fetch=async(url,config)=>{requests.push({url,body:config?.body&&JSON.parse(config.body)});return{ok:true,json:async()=>url.includes('?')||!config?{records:[],nextCursor:null}:{book_no:'TEST',revision:1}}};
   try {
     const app=harness();let tree=app.render();
+    all(tree,node=>node.type==='form')[0].props.ref.current=document.getElementById('logbook-entry-form');
     all(tree,node=>node.props['data-enter-action']==='add-trip')[0].props.onClick();
     while(frames.length)frames.shift()();assert.equal(app.slots[0].trips.length,6);assert.match(focused[0],/="5"/);
     app.slots[2].assets=[{id:'12',door:'Vpc12',site:'Jayant',kind:'equipment'}];
@@ -228,6 +229,58 @@ test('VLB JSX adds one trip, continues rows, and saves entered data while exclud
     assert.equal(payload.trips.length,1);assert.deepEqual(payload.trips[0],{...app.slots[0].trips[0],equipmentName:'Vpc 12',equipmentId:'12',originalEquipmentName:'V12'});
     assert.equal(app.slots[0].trips.length,2,'draft is not erased');
   } finally {globalThis.requestAnimationFrame=priorFrame;globalThis.document=priorDocument;globalThis.fetch=priorFetch}
+});
+
+test('VLB opens a continuation after 24 rows and saves 35 trips as one shift card',async()=>{
+  const priorFrame=globalThis.requestAnimationFrame,priorFetch=globalThis.fetch,frames=[],requests=[];
+  globalThis.requestAnimationFrame=fn=>frames.push(fn);
+  globalThis.fetch=async(url,config)=>{
+    if(config?.body)requests.push({url,body:JSON.parse(config.body)});
+    return {ok:true,json:async()=>config?.body?{book_no:'SHIFT',revision:1,data:{}}:{records:[]}};
+  };
+  try {
+    const app=harness(),row={equipmentName:'V12',tripCount:1};
+    app.slots[2].assets=[{id:'12',door:'Vpc12',site:'Jayant',kind:'equipment'}];
+    Object.assign(app.slots[0],{location:'Jayant',timeMode:'without',trips:Array.from({length:24},()=>({...row}))});
+    const button=(tree,label)=>all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes(label))[0];
+    const visibleRows=tree=>all(tree,node=>node.type==='tr'&&node.props['data-trip-card']!=null&&!node.props.hidden);
+    const row24=app.slots[0].trips.pop();
+    let tree=app.render();
+    assert.equal(button(tree,'Add 2nd trip card').props.disabled,true);
+    assert.equal(button(tree,'Add trip').props.disabled,false);
+    app.slots[0].trips.push(row24);
+    tree=app.render();
+    assert.equal(visibleRows(tree).length,24);
+    assert.equal(button(tree,'Add 2nd trip card').props.disabled,false);
+    assert.equal(button(tree,'Add trip').props.disabled,true);
+    button(tree,'Add 2nd trip card').props.onClick();
+    tree=app.render();
+    assert.equal(visibleRows(tree).length,1);
+    assert.equal(visibleRows(tree)[0].props.children[0].props.children,25);
+    app.slots[0].trips[24]={...row,remark:'Continuation'};
+    app.slots[0].trips.push(...Array.from({length:10},()=>({...row})));
+    tree=app.render();
+    assert.equal(visibleRows(tree).length,11);
+    button(tree,'Trip card 1 · Rows 1–24').props.onClick();
+    tree=app.render();
+    assert.equal(visibleRows(tree).length,24);
+    const form=all(tree,node=>node.type==='form')[0];
+    let revealed=false;
+    const invalid={closest:()=>({hidden:true,dataset:{tripCard:'1'}}),reportValidity:()=>{revealed=true}};
+    form.props.onInvalid({target:invalid,currentTarget:{querySelector:()=>invalid},preventDefault(){}});
+    tree=app.render();
+    while(frames.length)frames.shift()();
+    assert.equal(visibleRows(tree).length,11);
+    assert.equal(revealed,true);
+    await form.props.onSubmit({preventDefault(){}});
+    await button(app.render(),'Save entry').props.onClick();
+    assert.equal(requests.length,1);
+    assert.equal(requests[0].body.trips.length,35);
+    assert.equal(requests[0].body.trips[24].remark,'Continuation');
+    tree=app.render();
+    button(tree,'Trip card 1 · Rows 1–24').props.onClick();
+    assert.equal(visibleRows(app.render()).length,24);
+  } finally {globalThis.requestAnimationFrame=priorFrame;globalThis.fetch=priorFetch;}
 });
 
 test('VLB location comes from account, Shift precedes Shift Hours, and trip search lists local equipment',()=>{
