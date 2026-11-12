@@ -114,7 +114,7 @@ test('the production release keeps its identity, app, verification steps and liv
   const deploy=deployStep(productionWorkflow);
   assert.match(deploy,/app-name: 'caliber-mis-783'/);
   assert.doesNotMatch(deploy,/caliber-mis-test/);
-  assert.match(deploy,/package: \.\s*$/m);
+  assert.match(deploy,/package: \$\{\{ runner\.temp \}\}\/pulse-runtime\s*$/m);
   for(const fragment of verificationSteps)assert.ok(productionWorkflow.includes(fragment),fragment);
   assert.match(productionWorkflow,/APP_VERSION_SOURCE: \$\{\{ env\.RELEASE_COMMIT \}\}/,'the UI version is the released commit even for an annotated tag');
   assert.match(productionWorkflow,/EXPECTED_COMMIT="\$RELEASE_COMMIT" node scripts\/verify-ui-release\.mjs/);
