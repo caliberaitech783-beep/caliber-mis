@@ -23,7 +23,7 @@ for(const kind of ['vehicle','equipment'])test(kind+' manual and scan normalizat
  assert.equal(normalizeLogBook(kind,{...payload,shiftHours:9,closingHmr:108},{manualEntry:true}).shiftHours,9);
 });
 test('manual combined HMR uses the selected 12 hours while scan entries retain their shift limit',async()=>{
- const client={query:async()=>({rows:[{site:'Jayant OC',data:{cardShift:'I',totalWorkingHmr:4,shiftHours:8}}]})};
+ const client={query:async sql=>({rows:sql.includes("data->>'employeeId'")?[]:[{site:'Jayant OC',data:{cardShift:'I',totalWorkingHmr:4,shiftHours:8}}]})};
  const data={...payload,manualShiftOverride:true,totalWorkingHmr:8,door:'V1'};
  await assertCombinedShiftMeters(client,'vehicle',data);
  await assert.rejects(()=>assertCombinedShiftMeters(client,'vehicle',{...data,manualShiftOverride:false}),/limit is 8 hours/);

@@ -109,7 +109,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  const elbNoBatch=await call('/api/log-books/equipment','POST',{bookDate:'2026-12-19',location:'Sasti OC',assetId:ids.D1,employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:1,closingHmr:3,requestKey:randomUUID()});
  assert.equal(elbNoBatch.status,409,'ELB without any batch for its site, date and shift is refused');assert.match(elbNoBatch.data.error,/Standalone ELB saving is discontinued/);
  assert.equal((await db.query("SELECT count(*)::int AS n FROM mis_log_books WHERE book_type='equipment'")).rows[0].n,0,'no ELB record or book number is left behind');
- const held=await call('/api/log-books/vehicle','POST',card('V2',[{equipmentName:'VPC 77',tripCount:4}]));
+ const held=await call('/api/log-books/vehicle','POST',{...card('V2',[{equipmentName:'VPC 77',tripCount:4}]),employeeId:ids.bob});
  assert.equal(held.status,201,JSON.stringify(held.data));assert.equal(held.data.data.siteHolds.length,1);assert.equal(held.data.data.siteHolds[0].role,'vlb_loader');assert.equal(held.data.data.siteHolds[0].assetSite,'Jayant OC');
  let view=await call(batch);assert.equal(view.data.holds.length,1);assert.equal(view.data.holds[0].cardCount,1);assert.equal(view.data.holds[0].trips,4);
  const blocked=await call(batch+'/lock-vlb','POST',{});assert.equal(blocked.status,409);assert.match(blocked.data.error,/Awaiting transfer: VPC-077 from Jayant OC \(1 card, 4 trips\)/);
@@ -235,8 +235,15 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.ok(closed.data.audit.some(e=>e.action==='vlb_locked')&&closed.data.audit.some(e=>e.action==='machine_saved')&&closed.data.audit.some(e=>e.action==='elb_card_linked'));
  // Both manual and scanned inserts may append to locked batches; existing cards remain protected.
  const frozen=(await db.query('SELECT closed_at,stage,vlb_locked_at,closure_revision FROM mis_vlb_batches WHERE id=$1',[created.data.id])).rows[0];
- for(const door of ['V3','V4','V5']){const result=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[JSON.stringify({category:'Vehicle',door,currentLocation:'Sasti OC',equipmentName:'Tipper'})]);ids[door]=String(result.rows[0].id);}
- const lateInput=card('V3',[{equipmentName:'V19',tripCount:2}]);
+ const lateDrivers={};
+ for(const door of ['V3','V4','V5']){
+  const result=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[JSON.stringify({category:'Vehicle',door,currentLocation:'Sasti OC',equipmentName:'Tipper'})]);
+  ids[door]=String(result.rows[0].id);
+  const driver=await db.query("INSERT INTO master_records(master_name,record_data) VALUES('C-Dir Employee master',$1) RETURNING id",[JSON.stringify({name:'Driver '+door,empId:'EMP-'+door,site:'Sasti OC'})]);
+  lateDrivers[door]=String(driver.rows[0].id);
+ }
+ const lateCard=(door,tripCount)=>({...card(door,[{equipmentName:'V19',tripCount}]),employeeId:lateDrivers[door]});
+ const lateInput=lateCard('V3',2);
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,409,'the final lock prevents late VLB additions');
  // Batches closed before the LMV stage still accept legacy late entries.
  await db.query('UPDATE mis_vlb_batches SET lmv_locked_at=NULL WHERE id=$1',[created.data.id]);
@@ -244,7 +251,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call('/api/log-books/vehicle','POST',lateInput)).status,200,'retry remains idempotent');
  assert.equal((await call('/api/log-books/vehicle/'+late.data.id,'PUT',{...lateInput,revision:late.data.revision,remark:'changed'})).status,409,'late VLB is immediately locked');
  const {insertLogBook,resolveLogBookData}=await import('../server/routes/log-book.mjs');
- await db.exec('BEGIN');try{const data=await resolveLogBookData(pool,'vehicle',card('V4',[{equipmentName:'V19',tripCount:3}]));data.scanCardId=randomUUID();await insertLogBook(pool,'vehicle',data,randomUUID(),'alice');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}
+ await db.exec('BEGIN');try{const data=await resolveLogBookData(pool,'vehicle',lateCard('V4',3));data.scanCardId=randomUUID();await insertLogBook(pool,'vehicle',data,randomUUID(),'alice');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}
  const newMachine=(await db.query("INSERT INTO master_records(master_name,record_data) VALUES('Equipment master',$1) RETURNING id",[JSON.stringify({category:'Equipment',door:'G2',equipmentName:'Grader G2',group:'Grader',currentLocation:'Sasti OC'})])).rows[0].id;
  const lateElbInput={bookDate:'2026-12-18',location:'Sasti OC',assetId:String(newMachine),employeeId:ids.alice,shiftId:ids['Shift A'],shiftHours:8,openingHmr:20,closingHmr:22,requestKey:randomUUID()};
  const lateElb=await call('/api/log-books/equipment','POST',lateElbInput);assert.equal(lateElb.status,201,JSON.stringify(lateElb.data));
@@ -254,7 +261,7 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.deepEqual((await db.query('SELECT closed_at,stage,vlb_locked_at,closure_revision FROM mis_vlb_batches WHERE id=$1',[created.data.id])).rows[0],frozen,'adding cards leaves closure and locks untouched');
  assert.equal((await db.query('SELECT data FROM mis_log_books WHERE id=$1',[first.data.id])).rows[0].data.remark,first.data.data.remark,'existing cards remain unchanged');
  await db.query("UPDATE mis_vlb_batches SET closed_at=NULL,stage='elb_open' WHERE id=$1",[created.data.id]);
- const lateLocked=await call('/api/log-books/vehicle','POST',card('V5',[{equipmentName:'V19',tripCount:1}]));assert.equal(lateLocked.status,201,JSON.stringify(lateLocked.data));
+ const lateLocked=await call('/api/log-books/vehicle','POST',lateCard('V5',1));assert.equal(lateLocked.status,201,JSON.stringify(lateLocked.data));
  assert.equal((await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...card('V1',first.data.data.trips),revision:first.data.revision})).status,409,'VLB stage lock still protects existing cards');
  assert.equal((await call(batch)).data.stage,'elb_open');
 
