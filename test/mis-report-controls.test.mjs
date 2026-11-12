@@ -185,10 +185,10 @@ test('manpower reports export complete selected data, separate shift hours, and 
  // Step 1: one line per site; cases by colour, total duties and the share of red and orange duties.
  {const view=await ot(),overview=view();
   assert.deepEqual(categories(overview),['manpower-ot-sites'],'only the site lines before a number is pressed');
-  assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Jayant OC','Sasti OC','All sites']);
+  assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Sasti OC','Jayant OC','All sites']);
   assert.deepEqual(nodes(box(overview,'Cases by site'),'th').filter(n=>n.props.scope==='col').map(n=>[].concat(n.props.children)[0]),['Site','Total duties','Red','Orange','Brown','Red OT %','Orange OT %','Drivers']);
   assert.deepEqual(counts(overview),['284 duties · Sasti OC','137 Red · Sasti OC','137 drivers · Sasti OC','284 duties · All sites','137 Red · All sites','137 drivers · All sites'],'a site with nothing shows zeros, not buttons');
-  assert.deepEqual(section(overview,'manpower-ot-sites').rows.map(r=>[r.site,r.duties,r.red,r.redPct,r.orangePct,r.drivers]),[['Jayant OC',0,0,'—','—',0],['Sasti OC',284,137,'96.5%','0%',137],['All sites',284,137,'96.5%','0%',137]],'the export holds what the table shows; red OT % is red duties out of all duties');
+  assert.deepEqual(section(overview,'manpower-ot-sites').rows.map(r=>[r.site,r.duties,r.red,r.redPct,r.orangePct,r.drivers]),[['Sasti OC',284,137,'96.5%','0%',137],['Jayant OC',0,0,'—','—',0],['All sites',284,137,'96.5%','0%',137]],'the export holds what the table shows; red OT % is red duties out of all duties');
   assert.deepEqual(nodes(nodes(overview,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props.children),['All log books','VLB','ELB','LMV'],'log book is one selector');
   // Step 2: pressing any number of a site opens it date by shift.
   press(view,'137 Red · Sasti OC');assert.deepEqual(categories(view()),['manpower-ot-sites','manpower-ot-dates']);

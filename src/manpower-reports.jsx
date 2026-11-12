@@ -121,7 +121,10 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
  const zero=<span className="mp-zero">0</span>;
  // Step 1: one line per site. Every number opens that site.
  const siteTally=(site,name)=>{const all=worked(site);return {id:site,siteKey:site,site:name,duties:all.length,red:of(site,'red').length,orange:of(site,'orange').length,review:of(site,'review').length,redPct:percent(flagged(all,'red'),all.length),orangePct:percent(flagged(all,'orange'),all.length),drivers:driversIn(of(site,''))};};
- const siteRows=[...sites.map(s=>siteTally(s.siteKey,s.site)),...(sites.length>1?[siteTally(EVERY,'All sites')]:[])];
+ // Sites run from the highest Red OT % to the lowest; equal percentages by more red cases, then by name. A site with no duty comes last.
+ const redShare=s=>{const all=worked(s.siteKey);return all.length?flagged(all,'red')/all.length:-1;};
+ const byRedShare=sites.map(s=>({s,share:redShare(s)})).sort((a,b)=>b.share-a.share||of(b.s.siteKey,'red').length-of(a.s.siteKey,'red').length||a.s.site.localeCompare(b.s.site)).map(x=>x.s);
+ const siteRows=[...byRedShare.map(s=>siteTally(s.siteKey,s.site)),...(sites.length>1?[siteTally(EVERY,'All sites')]:[])];
  const line=s=>{const total=s.siteKey===EVERY&&sites.length>1,pressed=siteKey===s.siteKey;return <tr key={s.siteKey} className={[total&&'mp-att-total',pressed&&'mp-on'].filter(Boolean).join(' ')||undefined}>
   <th scope="row">{s.site}</th>
   <td>{s.duties?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={duties(s.duties)+' · '+s.site} onClick={()=>openSiteAt(s.siteKey)}>{s.duties}</button>:0}</td>
