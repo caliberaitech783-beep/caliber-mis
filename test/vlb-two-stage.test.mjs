@@ -85,8 +85,9 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
   ['Equipment master',{category:'Equipment',door:'G9',equipmentName:'Grader G9',group:'Grader',currentLocation:'Jayant OC'}],
  ];
  const ids={};for(const [name,data] of masters){const {rows}=await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',[name,JSON.stringify(data)]);ids[data.door||data.login||data.shiftName]=String(rows[0].id);}
- const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
- const pool={query,connect:async()=>({query,release(){}})};
+ const statements=[];let taken=0,returned=0;
+ const query=(sql,args)=>{statements.push(sql);return sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);};
+ const pool={query,connect:async()=>{taken++;return {query,release(){returned++;}};}};
  const app=express();app.use(express.json({limit:'5mb'}));
  const requireSession=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:req.headers.authorization,role:'super',site:req.headers.authorization==='bob'?'Sasti OC':undefined,permissions:{adminLevel:['alice','admin'].includes(req.headers.authorization)?'Admin':''}};next()};
  registerLogBooks(app,{pool,requireSession,requireAdministrator:(req,res,next)=>next(),pulseMasterSync:{status:()=>({connected:false}),readBreakdownRequests:async()=>[]}});
@@ -158,6 +159,22 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.deepEqual(locked.data.machines.map(m=>[m.label,m.trips,m.sourceCards]),[['VPC-019',8,1],['VPC-077',4,1]]);
  assert.deepEqual(locked.data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'manual ELB contains loaders and unused site equipment');
  assert.equal(locked.data.fleetProgress.total,3);
+ // The batch page reads the batch every 10 s. A read writes the machine list only when a machine is
+ // missing from it, in one statement, and uses one connection that it always returns.
+ const fleetWrites=()=>statements.filter(sql=>sql.includes('INSERT INTO mis_vlb_batch_fleet')).length;
+ for(const route of [batch,batch+'/fleet']){
+  statements.length=0;taken=returned=0;
+  const read=await call(route);assert.equal(read.status,200);
+  assert.equal(fleetWrites(),0,route+' writes nothing when every machine is listed');
+  assert.deepEqual([taken,returned],[1,1],route+' reads on one connection and returns it');
+ }
+ await db.query("DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND door='D1'",[created.data.id]);
+ statements.length=0;
+ assert.deepEqual((await call(batch)).data.fleet.map(r=>[r.door,r.trips]),[['VPC-019',8],['VPC-077',4],['D1',0]],'a machine missing from the list is added by the read');
+ assert.equal(fleetWrites(),1,'all missing machines are added in one statement');
+ statements.length=0;assert.equal((await call(batch)).data.fleet.length,3);assert.equal(fleetWrites(),0);
+ statements.length=0;taken=returned=0;
+ assert.equal((await call('/api/vlb-batches/not-a-batch')).status,400);assert.deepEqual([taken,returned],[1,1],'a refused read returns its connection too');
  await db.query('DELETE FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2',[created.data.id,ids.D1]);
  assert.deepEqual((await call(batch)).data.fleet.map(row=>row.door),['VPC-019','VPC-077','D1'],'an older open batch automatically gains its missing zero-trip site equipment');
  assert.equal((await call(batch+'/lock-vlb','POST',{})).status,409,'cannot lock twice');

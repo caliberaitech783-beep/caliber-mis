@@ -170,7 +170,12 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // The batch board asks every 10 s. An unchanged batch answers 304 to the board's
  // If-None-Match instead of resending its records and audit history again.
  app.get('/api/vlb-batches/:id',...protect,handle(async(req,res)=>{
-  const body=JSON.stringify(await details(pool,await visible(pool,req.params.id,req),req)),etag=jsonEntityTag('vlb-batch',body);
+  // The details are several dozen small queries. On one connection they wait in the pool queue
+  // once; sent one by one through the pool, each waited its own turn (about 44 turns a request
+  // on 12 Nov 2026).
+  const db=await pool.connect();let body;
+  try{body=JSON.stringify(await details(db,await visible(db,req.params.id,req),req));}finally{db.release();}
+  const etag=jsonEntityTag('vlb-batch',body);
   res.set('ETag',etag);res.vary('Authorization');
   if(requestEtagMatches(req.get('If-None-Match'),etag))return res.status(304).end();
   res.type('application/json').send(body);
@@ -236,7 +241,8 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   return details(client,await unlockVlb(client,batch,req.batchActor.login,{reason}),req);
  },{exclusive:true}))));
  app.get('/api/vlb-batches/:id/fleet',...protect,handle(async(req,res)=>{
-  const batch=await visible(pool,req.params.id,req);const info=await stageDetails(pool,batch);
+  const db=await pool.connect();let info;
+  try{info=await stageDetails(db,await visible(db,req.params.id,req));}finally{db.release();}
   void prefetchFleetBreakdownRows(req.batchActor.login);
   res.json({stage:info.stage,fleet:info.fleet||[],fleetProgress:info.fleetProgress||null,machines:info.machines||[],holds:info.holds||[],closeBlockers:info.closeBlockers||[],statuses:FLEET_STATUSES,machineReport:info.machineReport||null});
  }));
