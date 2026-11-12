@@ -394,3 +394,7 @@
 
 /* Reader outage banner and the reasons listed under the Error tile */
 .scan-reader-outage{font-size:13px;border:1px solid #e9a3b5}.scan-error-reasons ul{margin:4px 0 0;padding-left:18px}.scan-error-reasons li{margin:2px 0}
+
+.scan-trip-card-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.scan-trip-card-tabs button[aria-pressed="true"]{font-weight:700;border-color:currentColor}
+.scan-trip-row[hidden]{display:none!important}

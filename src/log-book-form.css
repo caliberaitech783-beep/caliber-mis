@@ -28,9 +28,9 @@
 .logbook-single-sheet .logbook-header-actions button{flex-direction:row;font-size:10px;padding:5px 7px;min-width:0;min-height:28px;border:1px solid #c7d0dc;background:#fff;gap:4px}
 .logbook-single-sheet .logbook-edit-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px 12px}
 .logbook-single-sheet .logbook-section{margin:0;padding:7px;border-color:#b8c4d1;background:white;border-radius:3px;min-width:0}
-.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child,.logbook-single-sheet .logbook-edit-fields>.logbook-section:has([data-enter-action="add-trip"]),.logbook-single-sheet .logbook-wide,.logbook-single-sheet .logbook-machine-details,.logbook-single-sheet .logbook-master-help,.logbook-single-sheet .logbook-handover-help{grid-column:1/-1}
-.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child{border:0;background:transparent;padding:2px 12px 4px 0}
-.logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child>.logbook-section-title{display:none}
+.logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child,.logbook-single-sheet .logbook-edit-fields>.logbook-section:has([data-enter-action="add-trip"]),.logbook-single-sheet .logbook-wide,.logbook-single-sheet .logbook-machine-details,.logbook-single-sheet .logbook-master-help,.logbook-single-sheet .logbook-handover-help{grid-column:1/-1}
+.logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child{border:0;background:transparent;padding:2px 12px 4px 0}
+.logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child>.logbook-section-title{display:none}
 .logbook-single-sheet .logbook-fields{gap:4px 30px}.logbook-single-sheet .logbook-field{grid-template-columns:143px minmax(0,1fr);gap:4px}
 .logbook-single-sheet .logbook-field>span{font-size:11px}.logbook-single-sheet .logbook-field>small{display:none}.logbook-single-sheet .logbook-field.logbook-meter-invalid>small{display:block}
 .logbook-single-sheet input,.logbook-single-sheet select,.logbook-single-sheet textarea{min-height:25px;height:25px;padding:3px 6px;font-size:12px;border-color:#b8c4d1;border-radius:2px}
@@ -92,11 +92,11 @@
  .logbook-single-sheet .logbook-save-bar button{padding:4px 12px}
 }
 @container (min-width:900px){
- .logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child{padding:2px 0}
- .logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child .logbook-fields{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px 10px}
- .logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child .logbook-field{grid-template-columns:100px minmax(0,1fr)}
- .logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child .logbook-field>span{font-size:10px;line-height:12px}
- .logbook-single-sheet .logbook-edit-fields>.logbook-section:first-child .logbook-sheet-spacer{display:none}
+ .logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child{padding:2px 0}
+ .logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child .logbook-fields{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px 10px}
+ .logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child .logbook-field{grid-template-columns:100px minmax(0,1fr)}
+ .logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child .logbook-field>span{font-size:10px;line-height:12px}
+ .logbook-single-sheet .logbook-edit-fields:not(.logbook-after-trips)>.logbook-section:first-child .logbook-sheet-spacer{display:none}
 }
 
 @container (min-width:900px){
@@ -142,3 +142,10 @@
  .logbook-vehicle #logbook-entry-form .logbook-field>span{font-size:16px!important}
  .logbook-vehicle #logbook-entry-form .logbook-field input{font-size:20px!important}
 }
+
+.logbook-trip-fields{border:0;margin:0;padding:0;min-width:0}
+.logbook-trip-card-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.logbook-trip-card-tabs button[aria-pressed="true"]{font-weight:700;border-color:currentColor}
+.logbook-single-sheet .logbook-vehicle-trips{margin:7px 0}
+.logbook-vehicle-trips tr[hidden]{display:none}
+@media print{.logbook-vehicle-trips tr[hidden]{display:table-row!important}.logbook-trip-card-tabs{display:none!important}}
