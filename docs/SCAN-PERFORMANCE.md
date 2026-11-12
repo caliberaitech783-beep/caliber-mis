@@ -149,3 +149,28 @@ production timing has been measured yet.
 Admin > Diagnostics (Speed and freezes) now names the request or job holding each
 database connection, and which have held connections longest since the start, so
 a full pool can be traced to its cause.
+
+## One picture preparation per card, and where a card's time went (13 November 2026)
+
+History of 12 November 2026, from 1,159 cards in 34 of the day's 100 scan
+entries (3,159 cards, seven sites): Gemini answered in 6.1 s at the median and
+9.1 s at the 90th percentile, with one request for 1,127 of the cards and almost
+no wait at the start gate, so neither the model nor the rate limit held the
+queue. Every card carried a recheck (`firstScanFieldRecovery`), always including
+the door: each trip card is read by Gemini twice. A site's queue still moved
+only about 6 to 18 cards a minute. Jayant's bursts of six or seven entries
+(167 to 230 cards within four minutes) took 25 to 40 minutes to drain.
+
+Making the pictures for a read (decode, eight crops, WebP and PNG encoding) is
+the one step that runs one card at a time in a reader process, and it ran for
+both reads of every card. The reader now keeps the pictures of the first read
+for the recheck of the same scan (at most 16 scans, five minutes, released by
+the recheck). The recheck is still a fresh Gemini request. Local measurement,
+eight cards with two reads each and Gemini replaced by an instant answer:
+5.7 s before, 2.2 s after. The engine's own preparation time was not measured
+before this change, so the gain in production is expected, not proven.
+
+Each card now records its preparation time (`gemini.prepMs`, `prepWaitMs`,
+`prepReused`) and where its reading time went (`raw_fields.scanTiming`:
+`queuedMs`, `firstReadMs`, `recheckMs`, `finishMs`, `totalMs`, `finishedAt`,
+`workers`), so the next slow day can be explained from the cards themselves.
