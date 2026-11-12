@@ -71,6 +71,12 @@ const RATE_LIMIT_IDLE_RESET_MS=60000;
 const MAX_TIMER_DELAY_MS=2_147_483_647;
 const requestGate=()=>({last:0,notBefore:0,paced:false,chain:Promise.resolve()});
 const rateLimitError=()=>Object.assign(Error(geminiHttpError(429)),{status:429,provider:'gemini'});
+// Google's error text for a refused request, e.g. "Your prepayment credits are depleted."
+async function upstreamMessage(response){
+ try{if(typeof response.json==='function'){const body=await response.json();return String(body?.error?.message||'').replace(/\s+/g,' ').trim().slice(0,300);}}catch{}
+ try{await response.body?.cancel?.();}catch{}
+ return '';
+}
 
 async function readRateLimit(response,now){
  const header=response.headers?.get('retry-after')?.trim();
@@ -165,14 +171,16 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      continue;
     }
     if(!res.ok){
-     await res.body?.cancel?.();
      if([500,502,503,504].includes(res.status)&&++attempt<2){
+      await res.body?.cancel?.();
       const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));
       await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});
       await sleep(delayMs);
       continue;
      }
-     throw Error(geminiHttpError(res.status));
+     // The status and Google's own words travel with the error: an account
+     // failure (no credit, key refused) holds the queue instead of failing the card.
+     throw Object.assign(Error(geminiHttpError(res.status)),{status:res.status,upstream:await upstreamMessage(res)});
     }
     attempt++;
     let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}

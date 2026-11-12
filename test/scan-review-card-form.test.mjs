@@ -24,7 +24,7 @@ scope.ApplicationErrorBoundary=({children})=>children;
 scope.ScanBatchMismatchDialog=({gate})=>React.createElement('section',{className:'scan-mismatch-dialog'},gate.mismatches.length);
 const {code}=await transformWithOxc(source
  .replace('const awaitingContext=Boolean(','testCapture.setContextGate=setContextGate; testCapture.setMismatchListOpen=setMismatchListOpen; const awaitingContext=Boolean(')
- .replace('const fleetCards=cards.filter','testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setBatch=setBatch; testCapture.setDraft=setDraft; const fleetCards=cards.filter')
+ .replace('const fleetCards=cards.filter','testCapture.setReader=setReader; testCapture.setCards=setCards; testCapture.setSelected=setSelected; testCapture.setOptions=setOptions; testCapture.setBatch=setBatch; testCapture.setDraft=setDraft; const fleetCards=cards.filter')
  .replace(/^import .*;\r?\n/gm,'').replace('export default function','function'),'bulk-card-scanning.jsx',{jsx:{runtime:'classic'}});
 const nodes=(tree,predicate)=>{const rows=[];const visit=n=>{if(Array.isArray(n))return n.forEach(visit);if(!React.isValidElement(n))return;if(predicate(n))rows.push(n);visit(n.props.children)};visit(tree);return rows};
 function harness(search='',kind='vehicle'){
@@ -96,4 +96,20 @@ test('cards with response recovery issues list them and offer the confirmation c
  const checked=nodes(after,n=>n.props['data-testid']==='scan-response-recovery');
  assert.equal(nodes(checked[0],n=>n.type==='input'&&n.props.type==='checkbox')[0].props.checked,true,'ticking the box sets responseRecoveryConfirmed on the draft');
  assert.equal(nodes(loaded(harness('&batch=b1&scanView=review&scanGroup=all'),[card(1),card(2)]),n=>n.props['data-testid']==='scan-response-recovery').length,0,'cards without issues show no section');
+});
+// 12 November 2026: Google refused every card (HTTP 402, no credit) and the overview
+// showed only "Error 40/40 · date/site/shift mismatch", so the site looked for its own mistake.
+test('the overview says why cards are under Error, and that a held reading account is not a scanning mistake',()=>{
+ const words=node=>Array.isArray(node)?node.map(words).join(''):React.isValidElement(node)?words(node.props.children):node==null||typeof node==='boolean'?'':String(node);
+ const marked=(tree,id)=>nodes(tree,n=>n.props['data-testid']===id);
+ const failed=Array.from({length:3},(_,k)=>card(k+1,{status:'error',error:'Gemini extraction failed (HTTP 402). Billing is not active for the Google AI project used by this server.'}));
+ const app=harness('&batch=b1');loaded(app,failed);
+ app.testCapture.setReader({provider:'gemini',model:'test',outage:{lane:'jayant ob',reason:'billing',httpStatus:402,since:'2026-11-11T18:30:00Z'}});
+ const tree=app.render();
+ assert.equal(marked(tree,'scan-reader-outage').length,1);
+ assert.match(words(marked(tree,'scan-reader-outage')[0]),/no credit.*not a scanning mistake.*do not scan them again/);
+ assert.equal(marked(tree,'scan-error-reasons').length,1);
+ assert.match(words(marked(tree,'scan-error-reasons')[0]),/Why 3 card\(s\) are under Error.*3 card\(s\): Not a scanning mistake: the Google reading account had no credit \(HTTP 402\)/);
+ const calm=loaded(harness('&batch=b1'),[card(1),card(2)]);
+ assert.equal(marked(calm,'scan-reader-outage').length+marked(calm,'scan-error-reasons').length,0,'neither line appears when reading works and no card failed');
 });

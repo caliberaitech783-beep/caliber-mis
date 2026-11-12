@@ -13,7 +13,7 @@ export const CARD_GROUPS=[
  {id:'orange',label:'All okay',description:'Values complete · saved automatically'},
  {id:'brown',label:'Needs attention',description:'Correct values or fill missing fields'},
  {id:'red',label:'Blank / no data',description:'No usable data or rejected card'},
- {id:'error',label:'Error',description:'Extraction failed or date/site/shift mismatch'},
+ {id:'error',label:'Error',description:'Card could not be read · reason listed below'},
  ...ISSUE_CARD_GROUPS
 ];
 const present=value=>value!==null&&value!==undefined&&String(value).trim()!=='';

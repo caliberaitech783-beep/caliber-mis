@@ -86,6 +86,27 @@ Saving settings restarts Pulse-II once. `https://pulse-ll.cmll.in/api/health` th
 
 From then on, a release starts in the slot, is checked there, and Azure swaps it in. The previous version is stopped 60 seconds later and finishes its cards first. Releases that change only screens already go out without a restart.
 
+## When Google refuses the reading account
+
+On 12 November 2026 every site stopped reading at about 00:00 IST. Google answered every card with HTTP 402, its reply when the prepaid credit of the billing account is used up. Every site key stopped together, because the Google projects behind the keys are linked to one billing account and a billing account has one balance. 142 cards in six entries at four sites were marked "Error" before anyone knew why.
+
+What Pulse-II does since then, for no credit (402), a refused key (401, 403) and a used-up quota (429):
+
+- The card is not marked failed. It goes back to "Waiting for Gemini", that site's queue stops, one card is tried every minute, and reading carries on by itself as soon as Google answers.
+- The scan screen shows a red line: the reading account is the reason, it is not a scanning mistake, the cards must not be scanned again.
+- The administrators' Telegram group gets one message per outage, with Google's own words (only when Telegram is configured on Pulse-II).
+- `https://pulse-ll.cmll.in/api/health` lists the held queues under `scanReading.blocked`.
+- Cards that were marked failed for one of these reasons are queued again after the next card is read successfully.
+- Under the Error tile the screen lists why the cards are there.
+
+What the owner does when the line appears:
+
+1. Open Google AI Studio > Billing with the Google account that owns the keys and buy credit. Reading restarts within a few minutes of the payment being confirmed.
+2. Switch on auto-reload on the same page, with a monthly limit that covers a month of scanning, so the balance cannot reach zero during a shift.
+3. For a refused key: create a new key in the same project and put it in the site's `GEMINI_API_KEY_<SITE>` setting on both apps.
+
+Separate keys do not protect against this: only a second billing account would.
+
 ## Rules that still apply
 
 - No merges to `main` between 06:00 and 20:00 on scanning days, except an urgent fix the owner approves.
