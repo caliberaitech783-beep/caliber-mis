@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPdfUploadSession,transferScanGroups,summarizeUploadExtraction} from '../src/scan-upload-pipeline.mjs';
 import {scanValidationClient} from '../server/rules/scan-validation-cache.mjs';
-import {scanProgressChanged,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
+import {scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
+import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS} from '../shared/scan-progress-poll.mjs';
 import {readFileSync} from 'node:fs';
 
 test('upload extraction counts only successful receipts and keeps failures and skips separate',()=>{
@@ -65,7 +66,7 @@ test('overlapping background batch polls coalesce; an explicit refresh reads aft
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
  assert.ok(line);
  let requests=0,release,rows=[];const gate=new Promise(resolve=>release=resolve),noop=()=>{};
- const scope={SmartSelect: "select",kind:'equipment',lmv:false,vlbBatch:undefined,scanProgressChanged,mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
+ const scope={SmartSelect: "select",kind:'equipment',lmv:false,vlbBatch:undefined,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,partialSince:{current:0},mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};
  const load=new Function(...Object.keys(scope),line.trim()+';return load;')(...Object.values(scope));
  const first=load('batch',false),same=load('batch',false),fresh=load('batch');
  // The gated progress poll finds a card the page does not show yet, so it reads the full

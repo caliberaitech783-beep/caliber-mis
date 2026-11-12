@@ -106,3 +106,25 @@ at about 5 s a card are never held back by it); `MIS_GEMINI_MIN_INTERVAL_MS` ove
 349 production cards read on 8 November 2026 the model took 4.8 s a card at the
 median, so the earlier 2000 ms gate, not the model, held the whole company to 30
 cards a minute.
+
+## Partial entry reads (12 November 2026)
+
+While cards were being read, the scan screen read the whole entry again each time
+one card changed (finished reading, fleet check answered, saved). The whole read
+re-validates every unsaved card, so an entry of N cards cost about N whole reads
+of up to N cards each. On 12 November 2026 `/api/health` showed the Pulse-II
+pool at 10 of 10 connections with up to 8 requests waiting while no card was
+being read by Pulse-II itself.
+
+`GET /api/scan-batches/:id?cards=<id>,<id>` now runs the same read for the listed
+cards only (at most 40, `SCAN_PARTIAL_REFRESH_MAX`) and answers `partial:true`.
+The save gate in that answer is still worked out from every card of the entry.
+The screen names the cards its 4 s progress poll shows as new or changed, merges
+the answer into the cards on screen and leaves every other card untouched.
+
+A card's checks can depend on other cards (duplicates, carried-over meters), so
+the whole entry is still read: when the screen is empty, when more than 40 cards
+changed in one poll, when a partial answer does not fit, once after reading
+settles, and at least every 60 s (`SCAN_FULL_REFRESH_MAX_MS`) while partial reads
+continue. Saving a card validates it on the server as before. No production
+timing has been measured for this change yet.

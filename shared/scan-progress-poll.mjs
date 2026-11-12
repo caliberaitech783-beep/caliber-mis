@@ -13,6 +13,16 @@
 export const SCAN_PROGRESS_ACTIVE_MS = 4000;
 export const SCAN_PROGRESS_IDLE_MS = 15000;
 export const VLB_CARD_COUNT_POLL_MS = 15000;
+// When a poll shows that a few cards changed, the screen reads only those cards
+// (`?cards=`) instead of the whole entry: the full read re-validates every
+// unsaved card, so reading it once per finished card made the database work
+// grow with the square of the entry size. More changed cards than this in one
+// poll, and the whole entry is read as before.
+export const SCAN_PARTIAL_REFRESH_MAX = 40;
+// A card's checks can depend on other cards (duplicates, carried-over meters).
+// After partial reads the whole entry is read once more when the work settles,
+// and at least this often while it continues.
+export const SCAN_FULL_REFRESH_MAX_MS = 60000;
 
 export function scanProgressActive(cards = [], {uploading = false} = {}) {
   if (uploading) return true;
