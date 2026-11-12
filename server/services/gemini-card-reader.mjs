@@ -68,8 +68,9 @@ const keyGates=new Map();
 const RATE_LIMIT_BACKOFF_MS=[10000,20000,40000];
 const RATE_LIMIT_SPACING_MS=12500;
 const RATE_LIMIT_IDLE_RESET_MS=60000;
+const RATE_LIMIT_RECOVERY_SUCCESSES=3;
 const MAX_TIMER_DELAY_MS=2_147_483_647;
-const requestGate=()=>({last:0,notBefore:0,paced:false,chain:Promise.resolve()});
+const requestGate=()=>({last:0,notBefore:0,spacingMs:0,limitGeneration:0,successes:0,chain:Promise.resolve()});
 const rateLimitError=()=>Object.assign(Error(geminiHttpError(429)),{status:429,provider:'gemini'});
 // Google's error text for a refused request, e.g. "Your prepayment credits are depleted."
 async function upstreamMessage(response){
@@ -114,8 +115,8 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    let notified=false;
    while(true){
     const time=now();
-    if(time>=Math.max(gate.last,gate.notBefore)+RATE_LIMIT_IDLE_RESET_MS)gate.paced=false;
-    const spacing=gate.paced?Math.max(minIntervalMs,RATE_LIMIT_SPACING_MS):minIntervalMs;
+    if(time>=Math.max(gate.last,gate.notBefore)+RATE_LIMIT_IDLE_RESET_MS){gate.spacingMs=0;gate.successes=0;}
+    const spacing=Math.max(minIntervalMs,gate.spacingMs);
     const delay=Math.max(gate.notBefore,gate.last+spacing)-time;
     if(delay<=0){
      if(!notified){
@@ -124,14 +125,14 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
       continue;
      }
      gate.last=time;
-     return;
+     return gate.limitGeneration;
     }
     // Another in-flight response may extend the cooldown during this wait.
     await sleep(Math.min(delay,MAX_TIMER_DELAY_MS));
    }
   });
   gate.chain=turn.catch(()=>{});
-  await turn;
+  return turn;
  }
  async function run(image,kind,onProgress,forceRead=false){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
@@ -150,7 +151,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    while(attempt<2){
     const requestParts=retryInstruction?[...parts,{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
-    await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
+    const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
     const started=Date.now();let res;
     requests++;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
@@ -159,7 +160,9 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      // Pause the key as soon as the response headers arrive, then use any
      // longer delay Google gives us in Retry-After or google.rpc.RetryInfo.
      const backoff=RATE_LIMIT_BACKOFF_MS[Math.min(rateLimitRetries,RATE_LIMIT_BACKOFF_MS.length-1)];
-     gate.paced=true;
+     gate.spacingMs=RATE_LIMIT_SPACING_MS;
+     gate.limitGeneration++;
+     gate.successes=0;
      gate.notBefore=Math.max(gate.notBefore,now()+backoff);
      const {delayMs,quotaExhausted}=await readRateLimit(res,now);
      if(quotaExhausted)throw rateLimitError();
@@ -188,6 +191,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     const parsed=parseCardResponse(record.raw,kind);
+    // Count only requests started after the latest 429. Older in-flight
+    // successes do not show that the key can handle a faster request rate.
+    if(gate.spacingMs>0&&limitGeneration===gate.limitGeneration&&++gate.successes===RATE_LIMIT_RECOVERY_SUCCESSES){
+     const nextSpacing=Math.floor(gate.spacingMs/2);
+     gate.spacingMs=nextSpacing>minIntervalMs?nextSpacing:0;
+     gate.successes=0;
+    }
     const malformed=parsed.issues.filter(issue=>/invalid response|expected four cells|unreadable or invalid|printed trip number unreadable|duplicate printed numbers|gaps or out-of-order|not clearly confirmed|equipment (?:number|fleet prefix) missing or unreadable/i.test(issue));
     const noSummary=summaryMissing(parsed,kind);
     if(attempt<2&&(parsed.fields.site.status!=='clear'||malformed.length||noSummary)){

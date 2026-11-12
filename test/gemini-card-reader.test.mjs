@@ -80,6 +80,22 @@ test('a Gemini cooldown over a minute keeps same-key cards waiting while a diffe
  assert.deepEqual(calls.at(-1),{key:'cooldown-sasti',now:187500});
 });
 
+test('successful reads restore the normal start rate during a busy batch after a transient 429',async t=>{
+ const cacheDir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-rate-recovery-'));
+ t.after(()=>fs.rm(cacheDir,{recursive:true,force:true}));
+ let time=100000;
+ const starts=[];
+ const reader=createGeminiCardReader({cacheDir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:1000,
+  now:()=>time,sleep:async ms=>{time+=ms;},fetchImpl:async()=>{
+   starts.push(time);
+   if(starts.length===1)return new Response('{}',{status:429,headers:{'Retry-After':'20'}});
+   return ok(JSON.stringify(response()));
+  }});
+ for(let i=0;i<14;i++)await reader.recognize(Buffer.from('card '+i));
+ const gaps=starts.slice(1).map((start,i)=>start-starts[i]);
+ assert.deepEqual(gaps,[20000,12500,12500,6250,6250,6250,3125,3125,3125,1562,1562,1562,1000,1000]);
+});
+
 test('exhausted daily quota does not consume automatic retry attempts',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-daily-quota-'));
  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
