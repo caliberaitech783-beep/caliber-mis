@@ -7,6 +7,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
 import {enforceContentDeletionPolicy} from '../server/rules/content-deletion-policy.mjs';
 import {withVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
+import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
@@ -24,6 +25,7 @@ async function setup(t){
  CREATE TABLE mis_scan_batches(id UUID PRIMARY KEY,kind TEXT,name TEXT,expected_context JSONB);
  CREATE TABLE mis_scan_cards(id UUID PRIMARY KEY,batch_id UUID REFERENCES mis_scan_batches(id),ordinal INT,filename TEXT,status TEXT,revision INT,logbook_id BIGINT REFERENCES mis_log_books(id),image BYTEA,image_hash TEXT,image_blob_key TEXT,draft JSONB,raw_fields JSONB,UNIQUE(batch_id,ordinal));
  CREATE TABLE mis_scan_backup_items(backup_id UUID,card_id UUID,blob_key TEXT,image_hash TEXT,metadata JSONB,PRIMARY KEY(backup_id,card_id));`);
+ await db.exec(VLB_TRIP_HANDOVER_SCHEMA);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  pool??={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());app.use(enforceContentDeletionPolicy);

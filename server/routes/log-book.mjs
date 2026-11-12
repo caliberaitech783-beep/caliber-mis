@@ -31,6 +31,7 @@ import {manualBreakdownHours,applyBreakdownHours,prefetchBreakdownRows,lockedRea
 import {TRIP_VERIFICATION_SCHEMA,enqueueTripVerification} from './pulse-trip-verification.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {validTripTimes,vlbCountedTrips,withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {VLB_TRIP_HANDOVER_SCHEMA} from '../rules/vlb-trip-handover-schema.mjs';
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {scanImageMime} from '../rules/scan-image-format.mjs';
 import {employeeIdentity} from '../../shared/employee-identity.mjs';
@@ -54,7 +55,7 @@ export const LOG_BOOK_SCHEMA=`CREATE TABLE IF NOT EXISTS mis_log_books(
       ADD CONSTRAINT mis_log_books_book_type_check CHECK(book_type IN ('vehicle','equipment','lmv'));
   END IF;
  END $lmv_book_type$;
- ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA+VLB_BATCH_SCHEMA;
+ ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; CREATE TABLE IF NOT EXISTS mis_log_book_counters(book_type TEXT NOT NULL,book_date DATE NOT NULL,last_number INTEGER NOT NULL,PRIMARY KEY(book_type,book_date)); CREATE TABLE IF NOT EXISTS mis_vlb_series_counters(book_date DATE PRIMARY KEY,last_number INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS mis_log_books_type_date ON mis_log_books(book_type,book_date DESC,id DESC);`+TRIP_VERIFICATION_SCHEMA+VLB_CARD_COUNTER_SCHEMA+VLB_BATCH_SCHEMA+VLB_TRIP_HANDOVER_SCHEMA;
 
 const text=(value,max=200)=>String(value??'').trim().slice(0,max);
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};

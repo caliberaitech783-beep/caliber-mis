@@ -61,9 +61,7 @@ export async function withVlbTripHandovers(client,records,permittedSites=null){
  if(!records.length)return records;
  const partial=(await client.query(`SELECT id,book_no,book_type,data FROM mis_log_books
  WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND ($1::text[] IS NULL OR site=ANY($1::text[]))
- AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'trips') AS trip
- WHERE (COALESCE(trip->>'loadingTime','')='') <> (COALESCE(trip->>'unloadingTime','')='')
- OR trip->'timeEstimates'->'loadingTime' IS NOT NULL)`,[permittedSites])).rows;
+ AND mis_vlb_has_handover_trip(data)`,[permittedSites])).rows;
  const all=new Map(partial.map(row=>[String(row.id),row]));for(const row of records)all.set(String(row.id),row);
  const linked=new Map(linkVlbTripHandovers([...all.values()]).map(row=>[String(row.id),row]));
  return records.map(row=>linked.get(String(row.id)));

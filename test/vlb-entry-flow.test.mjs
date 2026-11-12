@@ -4,6 +4,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {syncVlbBatchRecord} from '../server/rules/vlb-batch-policy.mjs';
 import {vlbEntryContext,vlbEntryFields,sameVlbEntryContext,withLmvEntrySite} from '../src/vlb-entry-context.mjs';
 
@@ -59,6 +60,7 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
 test('empty batches accept repeated manual and scan cards; every user gets one open batch per site',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');
+ await db.exec(VLB_TRIP_HANDOVER_SCHEMA);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());

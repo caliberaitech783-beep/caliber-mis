@@ -121,7 +121,29 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  };
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=await sharedBatchRows(async()=>(await pool.query(`SELECT b.*,b.book_date::text AS report_date,(SELECT count(*)::int FROM ${ACTIVE_VLB_ENTRY_FROM} WHERE e.batch_id=b.id AND ${ACTIVE_VLB_ENTRY_FILTER}) AS entry_count,(SELECT count(*)::int FROM mis_elb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id WHERE e.batch_id=b.id AND l.deleted_at IS NULL) AS elb_entry_count FROM mis_vlb_batches b WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC,b.id DESC`)).rows);
+  const rows=await sharedBatchRows(async()=>(await pool.query(`
+   WITH visible_batches AS (
+    SELECT * FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>=$$2026-11-01$$
+   ), vlb_counts AS (
+    SELECT e.batch_id,count(*)::int AS total
+    FROM ${ACTIVE_VLB_ENTRY_FROM} JOIN visible_batches b ON b.id=e.batch_id
+    WHERE ${ACTIVE_VLB_ENTRY_FILTER}
+    GROUP BY e.batch_id
+   ), elb_counts AS (
+    SELECT e.batch_id,count(*)::int AS total
+    FROM mis_elb_batch_entries e
+    JOIN mis_log_books l ON l.id=e.logbook_id
+    JOIN visible_batches b ON b.id=e.batch_id
+    WHERE l.deleted_at IS NULL
+    GROUP BY e.batch_id
+   )
+   SELECT b.*,b.book_date::text AS report_date,
+    COALESCE(v.total,0) AS entry_count,COALESCE(e.total,0) AS elb_entry_count
+   FROM visible_batches b
+   LEFT JOIN vlb_counts v ON v.batch_id=b.id
+   LEFT JOIN elb_counts e ON e.batch_id=b.id
+   ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC,b.id DESC
+  `)).rows);
   const twoStage=twoStageEnabled();
   const waits=twoStage?batchStageWaits([...rows].reverse()):new Map();
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
