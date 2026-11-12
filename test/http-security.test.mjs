@@ -23,6 +23,20 @@ test('static protection blocks source maps and private files while preserving sc
  const response=await fetch(base+'/scanner-transfer.mjs');assert.equal(response.status,200);
  assert.equal(response.headers.get('x-content-type-options'),'nosniff');
 });
+// The owner switched report operating manuals off on 13 November 2026. A release does not delete files that
+// left the package, so an old manual PDF can still be on the server; it must not open from its old link.
+test('an old report manual left on the server is not served, while the training videos still are',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'mis-static-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await mkdir(path.join(root,'guides'));await writeFile(path.join(root,'guides','daily-en.pdf'),'%PDF-old manual');await writeFile(path.join(root,'guides','daily-hi.pdf'),'%PDF-old manual');
+ await mkdir(path.join(root,'user-guides'));await writeFile(path.join(root,'user-guides','mis-user-guide-english.mp4'),'video');
+ const app=express();app.use(securityHeaders,protectStaticFiles,express.static(root));
+ const base=await serve(t,app);
+ for(const name of ['/guides/daily-en.pdf','/guides/daily-hi.pdf','/%67uides/daily-en.pdf','/Guides/daily-en.pdf','/guides/','/guides']){
+  const response=await fetch(base+name);assert.equal(response.status,404,name);assert.equal(await response.text(),'',name);
+ }
+ assert.equal((await fetch(base+'/guides/daily-en.pdf')).headers.get('cache-control'),'no-store','a browser must not keep showing a copy it saved earlier');
+ const video=await fetch(base+'/user-guides/mis-user-guide-english.mp4');assert.equal(video.status,200);assert.equal(await video.text(),'video');
+});
 test('login throttle blocks before contacting Pulse and ignores spoofed forwarding headers',async t=>{
  const app=express();app.use(express.json());let calls=0;
  installMisCredentialClient(app,{pool:{},sessionStore:{},fetcher:async()=>{calls++;return {status:401,json:async()=>({error:'Incorrect credentials'})};}});

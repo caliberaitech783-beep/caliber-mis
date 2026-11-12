@@ -18,6 +18,9 @@ export function protectStaticFiles(req,res,next){
     /\.(?:map|log|sql|sqlite|db|pem|key|env|bak)$/i.test(name)||
     /\/(?:package(?:-lock)?\.json|server\.mjs|AGENTS\.md)$/i.test(name)||
     /^\/(?:server|src|test|scripts|node_modules|backups|outputs)(?:\/|$)/i.test(name))return res.status(404).end();
+  // Report operating manuals were switched off on 13 November 2026. A release does not delete files that
+  // left the package, so the old PDFs can still sit under /guides on the server; never serve them.
+  if(/^\/guides(?:\/|$)/i.test(name))return res.set('Cache-Control','no-store').status(404).end();
   next();
 }
 
