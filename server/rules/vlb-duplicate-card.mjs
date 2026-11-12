@@ -5,6 +5,8 @@ import {shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {auditVlbBatch} from './vlb-batch-policy.mjs';
 
 const text=value=>String(value??'').trim();
+const cardNumber=value=>text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
+const samePrintedCard=(left={},right={})=>{const a=cardNumber(left.scanCardNumber||left.aFormNo),b=cardNumber(right.scanCardNumber||right.aFormNo);return !a||!b||a===b;};
 export const DUPLICATE_REASON_MIN=10;
 export const DUPLICATE_REASON_MAX=300;
 
@@ -20,7 +22,7 @@ export async function findOtherVlbCards(client,data,recordId=null){
 export async function assertSingleVlbCardPerShift(client,data,{recordId=null,batch=null,actor=''}={}){
  if(!data)return [];
  // When editing, cards that were saved as additional ones do not count against the original.
- const existing=(await findOtherVlbCards(client,data,recordId)).filter(row=>shareCardOperator(data,row.data)&&(!recordId||!row.additional)).map(({id,bookNo})=>({id,bookNo}));
+ const existing=(await findOtherVlbCards(client,data,recordId)).filter(row=>shareCardOperator(data,row.data)&&(!data.scanCardId||samePrintedCard(data,row.data))&&(!recordId||!row.additional)).map(({id,bookNo})=>({id,bookNo}));
  if(!existing.length){delete data.duplicateOf;if(!text(data.duplicateReason))delete data.duplicateReason;return [];}
  if(data.scanCardId){
   const first=existing[0],shift=vlbRecordShift(data);

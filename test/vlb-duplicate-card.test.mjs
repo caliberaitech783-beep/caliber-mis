@@ -74,11 +74,11 @@ test('a relief driver can save a separate manual card within the shared shift li
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,shiftId:4,cardShift:'II',requestKey:randomUUID()})).status,201);
 });
 
-test('a second scanned card requires a different driver for the same tipper and shift',async t=>{
+test('a second scanned card for the same driver is allowed only with a different printed card number',async t=>{
  const {db,call}=await harness(t);
  assert.equal((await call('/api/log-books/options')).status,200);
  await prepareVlbFixture(db,input,'alice');
- const first=await call('/api/log-books/vehicle','POST',{...input,requestKey:randomUUID()});
+ const first=await call('/api/log-books/vehicle','POST',{...input,aFormNo:'129',requestKey:randomUUID()});
  assert.equal(first.status,201,JSON.stringify(first.data));
  const relief=await resolveLogBookData(db,'vehicle',{...input,employeeId:6,openingHmr:106,closingHmr:108});
  relief.scanCardId=randomUUID();
@@ -90,6 +90,8 @@ test('a second scanned card requires a different driver for the same tipper and 
   ()=>assertSingleVlbCardPerShift(db,scan),
   error=>error.status===409&&error.details?.code==='duplicate_card'&&error.details.existing[0].bookNo===first.data.book_no&&/second scanned card for the same driver cannot be saved/i.test(error.message)
  );
+ const nextCard={...scan,aFormNo:'130',scanCardNumber:'130'};
+ assert.deepEqual(await assertSingleVlbCardPerShift(db,nextCard),[]);
 });
 
 test('combined Day and Night HMR accepts exactly 12 hours and rejects the next thousandth',async()=>{
