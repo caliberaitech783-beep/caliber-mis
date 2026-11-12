@@ -9,6 +9,7 @@ function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='
  const shift={site:'Sasti OC',shiftCode:'I',startTime:'06:00',endTime:'14:00'};
  const writes=[];
  const client={async query(sql,args){
+  if(sql.includes('FROM mis_vlb_batches older'))return {rows:[]};
   if(sql.startsWith('SELECT * FROM mis_vlb_batch_fleet'))return {rows:[row]};
   if(sql.startsWith('SELECT asset_id FROM mis_vlb_batch_fleet'))return {rows:[{asset_id:'19'}]};
   if(sql.includes("master_name='Shift Master'"))return {rows:[{id:'4',record_data:shift}]};
