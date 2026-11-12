@@ -87,7 +87,7 @@ test('the test release keeps every verification step and checks the test address
   assert.match(uiReleaseScript,/verifyPublishedUiRelease\(\{base,expected:process\.env\.EXPECTED_COMMIT\}\)/);
 });
 
-test('production deploys directly from main without a release tag or approval gate',()=>{
+test('production stages releases from main without a release tag or approval gate',()=>{
   const triggers=topLevel(productionWorkflow,'on');
   assert.match(triggers,/push:\n\s+branches: \[main\]/);
   assert.match(triggers,/paths-ignore:\n\s+- 'docs\/\*\*'\n\s+- '\*\.md'/,'documentation-only changes skip production deployment');
@@ -104,8 +104,10 @@ test('production deploys directly from main without a release tag or approval ga
   assert.match(commit,/git rev-parse 'HEAD\^\{commit\}'/);
   assert.match(commit,/RELEASE_COMMIT=\$\{RELEASE_COMMIT\}" >> "\$GITHUB_ENV"/);
   const releaseJob=productionWorkflow.slice(productionWorkflow.indexOf('  release:'));
-  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to Azure Web App'].map(name=>releaseJob.indexOf(name));
-  assert.deepEqual([...stepOrder].sort((a,b)=>a-b),stepOrder,'the pushed commit is resolved before it is built and deployed');
+  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to the staging slot','Wait until the staging slot serves the release','Swap the release into production','Verify Pulse-II release health','Stop the previous release in the staging slot'].map(name=>releaseJob.indexOf(name));
+  assert.ok(stepOrder.every((position,index)=>position>=0&&(index===0||position>stepOrder[index-1])),'the built commit is verified before and after the swap, before stopping the previous release');
+  assert.doesNotMatch(releaseJob,/slot-name: ['"]?Production/i);
+  assert.match(step(productionWorkflow,'Wait until the staging slot serves the release'),/--query defaultHostName/);
 });
 
 test('the production release keeps its identity, app, verification steps and live health check',()=>{
@@ -160,7 +162,7 @@ test('the branch protection checks on main still come from the validation workfl
 test('release optimization retains every full-suite test before deployment and caches installs before failures',()=>{
  const full=step(productionWorkflow,'Run full test suite for sensitive or unknown changes');
  assert.match(full,/npm test -- --test-concurrency=4/);
- assert.ok(productionWorkflow.indexOf(full)<productionWorkflow.indexOf("- name: 'Deploy to Azure Web App'"));
+ assert.ok(productionWorkflow.indexOf(full)<productionWorkflow.indexOf('- name: Deploy to the staging slot'));
  const restore=step(productionWorkflow,'Restore installed dependencies');
  const save=step(productionWorkflow,'Save installed dependencies before validation');
  assert.match(restore,/actions\/cache\/restore@v4/);
