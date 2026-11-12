@@ -11,6 +11,9 @@ export function contentDeletionBlocked(method,path){
  if(verb==='POST'&&/^\/api\/scan-cards\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/delete$/.test(url))return false;
  // The log-book handler rechecks the open stage and record revision under lock.
  if(verb==='DELETE'&&/^\/api\/log-books\/(?:vehicle|equipment|lmv)\/\d+$/.test(url))return false;
+ // Alias revocation records a status change and audit history. The alias route
+ // still requires administrator access and enforces its OTP setting.
+ if(verb==='DELETE'&&/^\/api\/equipment-aliases\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(url))return false;
  if(verb==='DELETE')return true;
  if(!['POST','PUT','PATCH'].includes(verb))return false;
  // This existing workflow verifies request ownership, exact approval, expiry,

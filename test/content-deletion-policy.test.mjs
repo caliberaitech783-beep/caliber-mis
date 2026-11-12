@@ -23,3 +23,11 @@ test('saved LMV deletion reaches only the guarded numeric record route',()=>{
  assert.equal(contentDeletionBlocked('DELETE','/api/log-books/lmv/42'),false);
  assert.equal(contentDeletionBlocked('DELETE','/api/log-books/lmv/all'),true);
 });
+
+test('single equipment alias revocation reaches its guarded route without allowing equipment deletion',()=>{
+ const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ assert.equal(contentDeletionBlocked('DELETE','/api/equipment-aliases/'+id),false);
+ for(const path of ['/api/equipment-aliases/all','/api/equipment-aliases/'+id+'/history','/api/masters/Equipment/1']){
+  assert.equal(contentDeletionBlocked('DELETE',path),true,path);
+ }
+});
