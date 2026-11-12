@@ -1,6 +1,6 @@
 // Real components and production CSS, with synthetic records and no live API access.
 import assert from 'node:assert/strict';
-import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {readFileSync,mkdirSync,writeFileSync,existsSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
@@ -50,6 +50,19 @@ const bundle=await build({stdin:{contents:fixture,loader:'jsx',resolveDir:proces
 const entryHtml=readFileSync('dist/index.html','utf8');
 const styles=[...entryHtml.matchAll(/<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)].map(match=>new URL(match[1],'https://fixture.invalid'));
 assert.ok(styles.length,'Built entry must reference a stylesheet');
+// Feature screens load on demand, so their styles sit in separate files that the entry page does not link.
+// Follow the current entry script to every script and stylesheet it can load, in the order it names them.
+const entryScripts=[...entryHtml.matchAll(/<script\b[^>]*\bsrc=["']([^"']+\.js)["'][^>]*>/gi)].map(match=>new URL(match[1],'https://fixture.invalid').pathname);
+assert.ok(entryScripts.length,'Built entry must reference a script');
+const seenAssets=new Set([...entryScripts,...styles.map(url=>url.pathname)]),scriptQueue=[...entryScripts];
+while(scriptQueue.length){
+ const text=readFileSync('dist'+scriptQueue.shift(),'utf8');
+ for(const match of text.matchAll(/["'`](?:\.\/|\/?app-assets\/)([\w.-]+\.(?:js|css))["'`]/g)){
+  const path='/app-assets/'+match[1];if(seenAssets.has(path)||!existsSync('dist'+path))continue;
+  seenAssets.add(path);if(path.endsWith('.css'))styles.push(new URL(path,'https://fixture.invalid'));else scriptQueue.push(path);
+ }
+}
+assert.ok(styles.length>1,'The on-demand screen styles must be found from the entry script');
 const css=styles.map(url=>{assert.equal(url.origin,'https://fixture.invalid');assert.ok(url.pathname.startsWith('/app-assets/')&&url.pathname.endsWith('.css'));return readFileSync('dist'+url.pathname,'utf8');}).join('\n');
 const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><style>html,body{margin:0;padding:0}#fixture{width:100%;min-width:0}.app.erp-shell{width:100%;padding:0}.mobile-workspace{width:100%;box-sizing:border-box}</style></head><body><div id="fixture"></div><script>'+bundle.outputFiles[0].text.replaceAll('</script','<\\/script')+'</script></body></html>';
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(html)});
