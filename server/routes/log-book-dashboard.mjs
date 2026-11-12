@@ -74,20 +74,25 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
    FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$4::date AND created_at>=$3::timestamptz AND book_type=ANY($5::text[]) GROUP BY 1,2,3,4,5,6,7`,
    [...RECENT_WINDOWS.map(since),OPERATIONAL_START,['vehicle','lmv','equipment']])).rows.filter(allowed).map(row=>({site:row.site,book_type:row.book_type,date:row.date,shift:savedCardShift(row),h6:row.h6,h12:row.h12,h24:row.h24}));
   // With each batch: the trip cards and the ELB cards saved in it (the same counts as the Batch Status report).
-  const batches=(await pool.query(`SELECT b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,
+  // created_at is the batch start: with the lock times it gives the batch start to close time and its VLB, LMV and ELB parts.
+  const batches=(await pool.query(`SELECT b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.created_at,COALESCE(b.creator_login,b.created_by,'') AS created_by,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,
    (SELECT count(*)::int FROM mis_vlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id AND l.deleted_at IS NULL WHERE e.batch_id=b.id) AS cards,
    (SELECT count(*)::int FROM mis_vlb_batch_fleet f JOIN mis_log_books l ON l.id=f.logbook_id AND l.deleted_at IS NULL WHERE f.batch_id=b.id) AS machines_saved
    FROM mis_vlb_batches b WHERE b.deleted_at IS NULL AND b.archived_at IS NULL AND b.book_date>=$2::date AND (b.vlb_locked_at>=$1::timestamptz OR b.lmv_locked_at>=$1::timestamptz OR b.closed_at>=$1::timestamptz)
    ORDER BY b.book_date,b.id LIMIT 5000`,[since(Math.max(...RECENT_WINDOWS)),OPERATIONAL_START])).rows.filter(allowed);
   // Who saved and locked each batch: the lock is recorded in the batch history at the same moment (index on occurred_at).
-  if(batches.some(batch=>batch.closed_at)){
+  // Who started it is on the batch itself. Both are shown by name where Users & employees has one.
+  const closedBatches=batches.filter(batch=>batch.closed_at);
+  if(closedBatches.length){
    const lockers=new Map((await pool.query(`SELECT batch_id::text AS batch_id,actor FROM mis_vlb_batch_audit WHERE occurred_at>=$1::timestamptz AND action='saved_and_locked' ORDER BY occurred_at,id LIMIT 20000`,
     [since(Math.max(...RECENT_WINDOWS))])).rows.map(row=>[row.batch_id,String(row.actor||'').trim()]));
-   const logins=[...new Set([...lockers.values()].map(actor=>actor.toLowerCase()).filter(Boolean))];
+   const starter=batch=>String(batch.created_by||'').trim();
+   const logins=[...new Set([...lockers.values(),...closedBatches.map(starter)].map(actor=>actor.toLowerCase()).filter(Boolean))];
    const names=logins.length?new Map((await pool.query(`SELECT lower(trim(record_data->>'login')) AS login,
     COALESCE(NULLIF(trim(record_data->>'employee'),''),NULLIF(trim(record_data->>'name'),'')) AS name
     FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=ANY($1::text[])`,[logins])).rows.filter(row=>row.name).map(row=>[row.login,row.name])):new Map();
-   for(const batch of batches){const actor=lockers.get(String(batch.id))||'';batch.locked_by=names.get(actor.toLowerCase())||actor;}
+   const named=actor=>names.get(actor.toLowerCase())||actor;
+   for(const batch of closedBatches){batch.locked_by=named(lockers.get(String(batch.id))||'');batch.started_by=named(starter(batch));}
   }
   // LMV log books are kept by site, date and shift, not by batch: read for the dates of these batches only.
   const dates=[...new Set(batches.map(batch=>batch.date))];

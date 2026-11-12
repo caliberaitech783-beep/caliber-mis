@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 import {registerLogBookDashboard} from '../server/routes/log-book-dashboard.mjs';
 import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {transformWithOxc} from 'vite';
 import * as recentRules from '../shared/recent-activity.mjs';
-import {buildRecentActivity,batchCompletionTimes,completedIn,completedBySite,cardsInside,logShiftsFor,recentSiteRows,recentWindow,locksIn,locksBySite,lockCards} from '../shared/recent-activity.mjs';
+import {buildRecentActivity,batchCompletionTimes,completedIn,completedBySite,cardsInside,logShiftsFor,recentSiteRows,recentWindow,locksIn,locksBySite,lockCards,batchStageTimes,durationLabel,averageLockMinutes} from '../shared/recent-activity.mjs';
 
 const NOW=Date.parse('2026-11-11T16:00:00Z'),ago=hours=>new Date(NOW-hours*3600000).toISOString();
 
@@ -93,7 +93,7 @@ test('the site comparison for a window keeps every dashboard site, zero or not',
 test('the dashboard reads the last 24 hours within the login\'s sites and lists one window\'s cards',async()=>{
  const db=new PGlite();let server;try{
   await db.exec(`CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,data JSONB,created_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
-   CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,vlb_locked_at TIMESTAMPTZ,lmv_locked_at TIMESTAMPTZ,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ);
+   CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,vlb_locked_at TIMESTAMPTZ,lmv_locked_at TIMESTAMPTZ,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,created_at TIMESTAMPTZ,creator_login TEXT,created_by TEXT);
    CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_vlb_batch_fleet(batch_id TEXT,asset_id BIGINT,logbook_id BIGINT);
    CREATE TABLE mis_vlb_batch_audit(id BIGSERIAL PRIMARY KEY,batch_id TEXT,actor TEXT,action TEXT,occurred_at TIMESTAMPTZ,detail JSONB);
    CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);`);
@@ -110,8 +110,9 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
   await book('lmv','y',40,{data:{location:'Jayant OC',cardShift:'I'}});
   // Batch "one" holds trip cards 1 and 2 and the deleted card 5; batch "two" has one machine saved and one still open.
   await db.exec(`INSERT INTO mis_vlb_batch_entries VALUES('one',1),('one',2),('one',5);INSERT INTO mis_vlb_batch_fleet VALUES('two',11,6),('two',12,NULL);`);
-  const batch=(id,site,vlb,lmv,closed,extra={})=>db.query('INSERT INTO mis_vlb_batches VALUES($1,$1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,site,'2026-11-03','I',vlb,lmv,closed,extra.deleted||null,extra.archived||null]);
-  await batch('one','Sasti OC',ago(4),null,null);await batch('two','Jayant OC',ago(30),ago(11),ago(9));await batch('gone','Sasti OC',ago(1),ago(1),ago(1),{deleted:ago(1)});
+  const batch=(id,site,vlb,lmv,closed,extra={})=>db.query('INSERT INTO mis_vlb_batches VALUES($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,site,'2026-11-03','I',vlb,lmv,closed,extra.deleted||null,extra.archived||null,extra.created||null,extra.creator||null,extra.createdBy||null]);
+  // Batch "two" was started 33 hours ago by r.kumar (recorded the older way, in created_by): VLB locked 3 hours later, LMV 19 hours after that, the batch 2 hours after that.
+  await batch('one','Sasti OC',ago(4),null,null,{created:ago(6),creator:'a.singh'});await batch('two','Jayant OC',ago(30),ago(11),ago(9),{created:ago(33),createdBy:'R.Kumar'});await batch('gone','Sasti OC',ago(1),ago(1),ago(1),{deleted:ago(1)});
   const app=express();const protect=[(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.session={login:'admin',permissions:{}};req.logBookScope={sites:req.headers['x-scope']==='sasti'?['sasti ob']:null};next()}];
   registerLogBookDashboard(app,{pool:{query:(s,p)=>db.query(s,p)},protect,ensureBooks:async()=>{},now:()=>NOW});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
   server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const root='http://127.0.0.1:'+server.address().port;
@@ -126,6 +127,8 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
   // Batches locked: batch "two" alone, with its cards and the name of the login that locked it last. "one" has only its VLB locked.
   assert.deepEqual(result.body.batchLocks,{6:0,12:1,24:1});
   assert.deepEqual(result.body.locked.map(r=>[r.batchName,r.site,r.vehicle,r.lmv,r.equipment,r.lockedBy,r.minutesAgo]),[['two','Jayant OC',0,1,1,'Ravi Kumar',540]]);
+  // Batch start to close: 24 hours from the start to the lock, divided into VLB, LMV and ELB, with the name of who started it.
+  assert.deepEqual(result.body.locked.map(r=>[r.startedBy,r.startedAt,r.closedAt,r.totalMinutes,r.stages.map(s=>[s.key,s.minutes])]),[['Ravi Kumar',ago(33),ago(9),1440,[['vlb',180],['lmv',1140],['elb',120]]]]);
   // A site opens into its cards by card date and shift.
   assert.deepEqual(result.body.logShifts.filter(r=>r.site==='Sasti OC').map(r=>[r.dateLabel,r.shift,r.counts[24].total]),[['03-11-26','S1',1],['03-11-26','',3]]);
   result=await get('/recent',{'x-scope':'sasti'});assert.deepEqual(result.body.logs[24],{total:4,vehicle:3,lmv:1,equipment:0});assert.deepEqual(result.body.shifts[24],{vlb:1,lmv:0,elb:0});
@@ -158,7 +161,12 @@ test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of t
  assert.match(panel,/shiftSites=shiftRow\?completedBySite\(recent,open\.row,open\.hours\):\[\]/);
  // Batches locked (owner, 13 Nov 2026): its own line on the front, and a list of the batches with the cards in each, the lock time and who locked it.
  assert.match(panel,/<th scope="row">Batches locked<small>whole batch saved and locked<\/small><\/th>\{recent\.windows\.map\(hours=>cell\(recent\.batchLocks\[hours\],\{row:'batch',hours\},'Batches locked'\)\)\}/);
- assert.match(panel,/lockSites\.map\(site=><React\.Fragment key=\{site\.site\}>\{batchTotalRow\(siteButton\(site\.site\),site\.batches,site\.cards\)\}\{locksIn\(recent,open\.hours,site\.site\)\.map\(batchRow\)\}<\/React\.Fragment>\)/);
+ assert.match(panel,/lockSites\.map\(site=>\{const rows=locksIn\(recent,open\.hours,site\.site\);return <React\.Fragment key=\{site\.site\}>\{batchTotalRow\(siteButton\(site\.site\),rows,site\.cards\)\}\{rows\.map\(batchRow\)\}<\/React\.Fragment>;\}\)/);
+ // Batch start to close (owner, 13 Nov 2026): the time is a link that opens the batch's VLB, LMV and ELB time, with one Back to the batches.
+ assert.match(panel,/onClick=\{\(\)=>setOpen\(\{\.\.\.open,batch:row\.batchId\}\)\}/);
+ assert.match(panel,/<StepBackButton onBack=\{\(\)=>setOpen\(\{row:open\.row,hours:open\.hours,site:open\.site\}\)\} label="Back to batches"\/>/);
+ assert.ok(css.includes('.lb-recent-stages :is(th,td):is(:nth-child(2),:nth-child(3)){display:table-cell}'),'a phone keeps the From and To times of each stage');
+ assert.ok(css.indexOf('.lb-recent-stages :is(th,td):is(:nth-child(2),:nth-child(3)){display:table-cell}')>css.indexOf('.lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}'),'the rule for the stages comes after the rule it replaces');
  assert.ok(css.includes('.lb-recent-batchlocks :is(th,td):nth-child(6){display:table-cell}.lb-recent-batchlocks :is(th,td).lb-recent-wide{display:none}'),'a phone keeps every kind of card and the lock time of a locked batch');
  assert.ok(css.indexOf('.lb-recent-batchlocks :is(th,td):nth-child(6){display:table-cell}')>css.indexOf('.lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}'),'the rule for locked batches comes after the rule it replaces');
  assert.match(panel,/logSites=logs\?\[\.\.\.\(recent\.bySite\[open\.hours\]\|\|\[\]\)\]\.sort\(\(a,b\)=>b\.total-a\.total/);
@@ -215,11 +223,12 @@ test('the front shows the figures alone; a shift figure opens its sites with the
 });
 
 test('Batches locked has its own line on the front, and opens the batches with their cards, lock time and who locked them',async()=>{
- const batch=(id,name,site,date,shift,hours,cards,machines,by)=>({id,name,site,date,shift,vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:machines,locked_by:by});
+ // Each batch: VLB locked two hours before the batch lock, LMV one hour before it, and started "started" hours before it.
+ const batch=(id,name,site,date,shift,hours,cards,machines,by,started=5,startedBy='')=>({id,name,site,date,shift,created_at:ago(hours+started),vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:machines,locked_by:by,started_by:startedBy});
  const input={now:NOW,batches:[
   batch('j1','CMLL/JAYANT OC/3RD -NOV-26/S1/B01','Jayant OC','2026-11-03','I',1,300,65,'Asha Verma'),
-  batch('d1','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','Dudhichua OC','2026-11-04','I',2,140,32,'Ravi Kumar'),
-  batch('d2','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Dudhichua OC','2026-11-03','III',5,133,31,''),
+  batch('d1','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','Dudhichua OC','2026-11-04','I',2,140,32,'Ravi Kumar',5,'Asha Verma'),
+  batch('d2','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Dudhichua OC','2026-11-03','III',5,133,31,'',29),
   batch('s1','CMLL/SASTI OC/4TH -NOV-26/S3/B01','Sasti OC','2026-11-04','III',20,149,39,'Asha Verma'),
   // Trip cards and LMV log books locked, the batch itself still open: a completed VLB and LMV shift, not a locked batch.
   {...batch('s2','CMLL/SASTI OC/5TH -NOV-26/S1/B01','Sasti OC','2026-11-05','I',1,90,0,''),closed_at:null}],
@@ -232,7 +241,7 @@ test('Batches locked has its own line on the front, and opens the batches with t
  let html=await panelHtml(recent,{row:'batch',hours:24});
  assert.match(html,/aria-label="Batches locked · last 24 hours"/);
  assert.match(plain(html),/4 batches locked · 722 trip cards · 11 LMV log books · 167 ELB cards/);
- assert.deepEqual(listRows(html).map(row=>[...row.slice(0,6),row[7]]),[
+ assert.deepEqual(listRows(html).map(row=>[...row.slice(0,6),row[8]]),[
   ['Site and batch number','Card date','Shift','Trip cards','LMV log books','ELB cards','Locked by'],
   ['Dudhichua OC 2 batches','','','273','7','63',''],
   ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift 1','140','7','32','Ravi Kumar'],
@@ -242,7 +251,11 @@ test('Batches locked has its own line on the front, and opens the batches with t
   ['Sasti OC 1 batch','','','149','0','39',''],
   ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift 3','149','0','39','Asha Verma'],
   ['All sites 4 batches','','','722','11','167','']]);
- assert.equal(listRows(html)[0][6],'Locked at');assert.match(listRows(html)[2][6],/11 Nov, 07:30 pm 2 h 0 min ago$/,'the lock time in Indian time, and under it how long ago');
+ assert.equal(listRows(html)[0][7],'Locked at');assert.match(listRows(html)[2][7],/11 Nov, 07:30 pm 2 h 0 min ago$/,'the lock time in Indian time, and under it how long ago');
+ // Batch start to close: each batch's time with its start time under it; a site's line and the last line show the average.
+ assert.deepEqual(listRows(html).map(row=>row[6]),['Batch start to close','17 h 0 min average','5 h 0 min started 11 Nov, 02:30 pm','1 day 5 h 0 min started 10 Nov, 11:30 am','5 h 0 min average','5 h 0 min started 11 Nov, 03:30 pm','5 h 0 min average','5 h 0 min started 10 Nov, 08:30 pm','11 h 0 min average']);
+ assert.match(html,/aria-label="Batch start to close, CMLL\/DUDHICHUA OC\/3RD -NOV-26\/S3\/B01: 1 day 5 h 0 min\. Show VLB, LMV and ELB time"/);
+ assert.match(plain(html),/or a time to see how much of it was VLB, LMV and ELB\./);
  // Six hours: only the batches locked in those hours.
  html=await panelHtml(recent,{row:'batch',hours:6});
  assert.deepEqual(listRows(html).map(row=>row[0]),['Site and batch number','Dudhichua OC 2 batches','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Jayant OC 1 batch','CMLL/JAYANT OC/3RD -NOV-26/S1/B01','All sites 3 batches']);
@@ -252,9 +265,80 @@ test('Batches locked has its own line on the front, and opens the batches with t
  assert.deepEqual(listRows(html).map(row=>[row[0],row[3],row[5]]),[['Batch number','Trip cards','ELB cards'],['CMLL/SASTI OC/4TH -NOV-26/S3/B01','149','39'],['Sasti OC 1 batch','149','39']]);
  // A login with only the vehicle log book: the batches with their trip cards and LMV log books, no ELB column.
  html=await panelHtml(buildRecentActivity({...input,kinds:['vehicle']}),{row:'batch',hours:24});
- assert.deepEqual(listRows(html)[0],['Site and batch number','Card date','Shift','Trip cards','LMV log books','Locked at','Locked by']);
+ assert.deepEqual(listRows(html)[0],['Site and batch number','Card date','Shift','Trip cards','LMV log books','Batch start to close','Locked at','Locked by']);
  assert.match(plain(html),/4 batches locked · 722 trip cards · 11 LMV log books /);assert.ok(!plain(html).includes('ELB cards'));
  // Nothing locked in the hours chosen, and figures read by a browser that still has the earlier server reply.
  assert.match(plain(await panelHtml(buildRecentActivity({now:NOW}),{row:'batch',hours:6})),/Nothing was completed in this time\./);
  const earlier={...recent};delete earlier.batchLocks;delete earlier.locked;assert.ok(!(await panelHtml(earlier)).includes('Batches locked'),'no empty line while an earlier reply is on screen');
+ // A reply from the server before this change has no start time: the batch is listed with a dash, and nothing to open.
+ const before={...recent,locked:recent.locked.map(({startedAt,closedAt,totalMinutes,stages,startedBy,...row})=>row)};
+ html=await panelHtml(before,{row:'batch',hours:24});
+ assert.deepEqual(listRows(html).map(row=>row[6]),['Batch start to close','','—','—','','—','','—','']);assert.ok(!html.includes('Show VLB, LMV and ELB time'));
+});
+
+test('a batch\'s start to close time opens into the time of VLB, LMV and ELB, which add up to it',async()=>{
+ const batch=(id,name,site,hours,started,extra={})=>({id,name,site,date:'2026-11-03',shift:'III',created_at:ago(hours+started),vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards:133,machines_saved:31,locked_by:'',started_by:'',...extra});
+ const input={now:NOW,batches:[
+  batch('d1','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','Dudhichua OC',2,5,{locked_by:'Ravi Kumar',started_by:'Asha Verma'}),
+  batch('d2','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Dudhichua OC',5,29),
+  // Saved and locked in one step, the older way: no VLB and LMV lock times.
+  batch('m1','CMLL/MAJRI OC/3RD -NOV-26/S3/B01','Majri OC',3,4,{vlb_locked_at:null,lmv_locked_at:null})],
+  lmvBooks:[{site:'Dudhichua OC',date:'2026-11-03',shift:'S3',count:7}]};
+ const recent=buildRecentActivity(input);
+ let html=await panelHtml(recent,{row:'batch',hours:24,batch:'d2'});
+ assert.match(html,/aria-label="Batch start to close · CMLL\/DUDHICHUA OC\/3RD -NOV-26\/S3\/B01"/);
+ assert.match(plain(html),/Dudhichua OC · card date 03-11-26 · Shift 3\./);
+ assert.match(plain(html),/Batch start to close: 1 day 5 h 0 min · started 10 Nov, 11:30 am · locked 11 Nov, 04:30 pm/);
+ assert.deepEqual(listRows(html),[
+  ['Stage','From','To','Time taken','Cards'],
+  ['VLB batch start to VLB lock','10 Nov, 11:30 am','11 Nov, 02:30 pm','1 day 3 h 0 min','133 trip cards'],
+  ['LMV VLB lock to LMV lock','11 Nov, 02:30 pm','11 Nov, 03:30 pm','1 h 0 min','7 LMV log books'],
+  ['ELB LMV lock to batch lock','11 Nov, 03:30 pm','11 Nov, 04:30 pm','1 h 0 min','31 ELB cards'],
+  ['Batch start to close VLB + LMV + ELB','10 Nov, 11:30 am','11 Nov, 04:30 pm','1 day 5 h 0 min','']]);
+ assert.match(plain(html),/The three add up to the batch start to close time\./);
+ // One Back, to the batches; the 6, 12 and 24 hour buttons belong to the list, not to one batch.
+ const opened=plain(html.slice(html.indexOf('<section')));
+ assert.match(opened,/Back to batches/);assert.ok(!opened.includes('Back to sites')&&!opened.includes('Last 6 hours'));
+ // Who started the batch and who locked it, where known.
+ html=await panelHtml(recent,{row:'batch',hours:24,site:'Dudhichua OC',batch:'d1'});
+ assert.match(plain(html),/Batch start to close: 5 h 0 min · started 11 Nov, 02:30 pm by Asha Verma · locked 11 Nov, 07:30 pm by Ravi Kumar/);
+ assert.deepEqual(listRows(html).map(row=>row[3]),['Time taken','3 h 0 min','1 h 0 min','1 h 0 min','5 h 0 min']);
+ // Locked in one step: the whole time, and a line saying why it is not divided.
+ html=await panelHtml(recent,{row:'batch',hours:24,batch:'m1'});
+ assert.match(plain(html),/Batch start to close: 4 h 0 min · started/);assert.match(plain(html),/saved and locked in one step/);assert.deepEqual(listRows(html),[]);
+ // A login with only the vehicle log book sees the three times, without the ELB cards.
+ html=await panelHtml(buildRecentActivity({...input,kinds:['vehicle']}),{row:'batch',hours:24,batch:'d2'});
+ assert.deepEqual(listRows(html).map(row=>[row[3],row[4]]),[['Time taken','Cards'],['1 day 3 h 0 min','133 trip cards'],['1 h 0 min','7 LMV log books'],['1 h 0 min','—'],['1 day 5 h 0 min','']]);
+ // A batch that the latest read no longer holds: the list shows again.
+ html=await panelHtml(recent,{row:'batch',hours:24,batch:'gone'});
+ assert.equal(listRows(html)[0][0],'Site and batch number');assert.match(html,/aria-label="Batches locked · last 24 hours"/);
+});
+
+test('VLB, LMV and ELB time are whole minutes between the clock times shown, and always add up to batch start to close',()=>{
+ const at=clock=>'2026-11-12T'+clock+'Z';
+ const times=batchStageTimes({created_at:at('14:40:50'),vlb_locked_at:at('16:32:10'),lmv_locked_at:at('16:50:59'),closed_at:at('20:03:05')});
+ assert.equal(times.totalMinutes,323);assert.equal(durationLabel(times.totalMinutes),'5 h 23 min');
+ assert.deepEqual(times.stages.map(stage=>[stage.key,stage.minutes]),[['vlb',112],['lmv',18],['elb',193]]);
+ assert.deepEqual([times.startedAt,times.closedAt],[at('14:40:00.000'),at('20:03:00.000')],'seconds are cut, so a figure is the difference of the two times shown');
+ assert.deepEqual(times.stages.map(stage=>[stage.from,stage.to]),[[at('14:40:00.000'),at('16:32:00.000')],[at('16:32:00.000'),at('16:50:00.000')],[at('16:50:00.000'),at('20:03:00.000')]],'each stage starts where the one before it ends');
+ // Locked in one step: the whole time only. No start time: nothing to show.
+ assert.deepEqual(batchStageTimes({created_at:at('10:00:00'),vlb_locked_at:null,lmv_locked_at:null,closed_at:at('12:30:00')}),{startedAt:at('10:00:00.000'),closedAt:at('12:30:00.000'),totalMinutes:150,stages:[]});
+ assert.deepEqual(batchStageTimes({closed_at:at('12:30:00')}),{startedAt:'',closedAt:'',totalMinutes:null,stages:[]});
+ assert.equal(batchStageTimes({created_at:at('13:00:00'),closed_at:at('12:30:00')}).totalMinutes,null);
+ // A lock time out of its place is held inside the batch: the three still add up.
+ assert.deepEqual(batchStageTimes({created_at:at('10:00:00'),vlb_locked_at:at('13:00:00'),lmv_locked_at:at('12:00:00'),closed_at:at('14:00:00')}).stages.map(stage=>stage.minutes),[180,0,60]);
+ assert.deepEqual(batchStageTimes({created_at:at('10:00:00'),vlb_locked_at:at('09:00:00'),lmv_locked_at:at('15:00:00'),closed_at:at('14:00:00')}).stages.map(stage=>stage.minutes),[0,240,0]);
+ // Any four times: VLB + LMV + ELB is the batch start to close time, to the minute.
+ let seed=7;const next=()=>(seed=(seed*1103515245+12345)%2147483648)/2147483648;
+ for(let i=0;i<500;i++){
+  const start=NOW-Math.floor(next()*20*86400000),moments=[next(),next(),next()].map(part=>new Date(start+Math.floor(part*9*86400000)).toISOString());
+  if(i%2===0)moments.sort();
+  const result=batchStageTimes({created_at:new Date(start).toISOString(),vlb_locked_at:moments[0],lmv_locked_at:moments[1],closed_at:[...moments].sort()[2]});
+  assert.equal(result.stages.reduce((sum,stage)=>sum+stage.minutes,0),result.totalMinutes);assert.ok(result.stages.every(stage=>stage.minutes>=0));
+ }
+ assert.deepEqual([0,45,60,323,1440,3072,null,undefined,''].map(durationLabel),['0 min','45 min','1 h 0 min','5 h 23 min','1 day 0 h 0 min','2 days 3 h 12 min','—','—','—']);
+ assert.equal(averageLockMinutes([{totalMinutes:100},{totalMinutes:201},{totalMinutes:null},{}]),151);assert.equal(averageLockMinutes([{totalMinutes:null}]),null);assert.equal(averageLockMinutes([]),null);
+ // The list of locked batches carries the time of each batch.
+ const recent=buildRecentActivity({now:NOW,batches:[{id:'a',name:'A',site:'Sasti OC',date:'2026-11-02',shift:'I',created_at:ago(9),vlb_locked_at:ago(6),lmv_locked_at:ago(5.5),closed_at:ago(1),cards:4,machines_saved:2,started_by:'Asha',locked_by:'Ravi'}]});
+ assert.deepEqual(locksIn(recent,6).map(row=>[row.startedBy,row.lockedBy,row.totalMinutes,row.stages.map(stage=>stage.minutes)]),[['Asha','Ravi',480,[180,30,270]]]);
 });
