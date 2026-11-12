@@ -39,6 +39,12 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null,b
    throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved${sources?' in '+sources:''}). The limit is ${limit} hours. Check the opening and closing HMR on the cards.`),
     {status:409,details:{code:'shift_hmr_limit',conflicts}});
   }
+  // Each operator card carries the same equipment-shift Pulse snapshot.
+  const breakdown=kind==='equipment'&&batchId&&data.breakdownHoursSource==='pulse'?meterUnits(data.breakdownHours):0;
+  if(breakdown&&total+breakdown>Number(data.shiftHours)*1000){
+   throw Object.assign(new Error(`Combined working HMR (${total/1000} h) and Pulse breakdown (${breakdown/1000} h) exceed the ${data.shiftHours}-hour equipment shift.`),
+    {status:409,details:{code:'shift_hmr_breakdown_limit'}});
+  }
  }
  if(kind!=='vehicle'&&kind!=='lmv')return;
  const savedKmr=peers.reduce((sum,row)=>sum+kmrUnits(row.data),0);

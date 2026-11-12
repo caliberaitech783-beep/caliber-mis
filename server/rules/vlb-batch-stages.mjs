@@ -177,7 +177,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   const actualHours=num(input.openingHmr)!==null&&num(input.closingHmr)!==null?num(input.closingHmr)-num(input.openingHmr):null;
   const bd=Number(pulse.breakdownHours),zero=actualHours===0&&elbTripCount(row)===0;
   const shiftStatus=zero?(bd>=hours?'breakdown':'not_in_use'):bd>0&&bd<hours?'working_partial_breakdown':'working';
-  input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||(pulse.breakdowns||[]).map(item=>item.description).filter(Boolean).join('; ').slice(0,2000)};
+  const breakdownReason=(pulse.breakdowns||[]).map(item=>text(item.description)||text(item.reference)).filter(Boolean).join('; ').slice(0,2000);
+  input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||breakdownReason||(bd>0?'Breakdown recorded in Pulse':'')};
  }
  const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:elbTripCount(row),shiftHours:hours});
  if(Object.keys(errors).length)throw Object.assign(new Error(Object.values(errors).join(' ')),{status:400,fields:errors});
@@ -201,6 +202,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
    fail('This save reference already belongs to another card.',409);
   }
   if(!(cardWorkingHmr(data)>0)||cards.some(card=>shareCardOperator(data,card.data)))fail('Enter positive working HMR and an operator who has no card for this machine and shift.',409);
+  const previous=cards.find(card=>String(card.id)===String(row.logbook_id))?.data;
+  if(previous&&(text(previous.manualShift)!==text(data.manualShift)||Number(previous.shiftHours)!==hours))fail('Use the same shift and shift hours as the saved ELB card.',409);
  }
  let record;
  if(row.logbook_id&&!additional){
