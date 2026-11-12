@@ -3,7 +3,7 @@ export function isSurfaceMiner({equipmentGroup, equipmentName, door} = {}) {
     || /^sm[\s-]*\d+(?:$|[\s-])/i.test(String(door ?? '').trim());
 }
 
-export function splitSurfaceMinerHmr({employeeId, secondOperatorId, openingHmr, handoverHmr, closingHmr}) {
+export function splitEquipmentOperatorHmr({employeeId, secondOperatorId, openingHmr, handoverHmr, closingHmr}) {
   const primary = Number(employeeId);
   const secondary = Number(secondOperatorId);
   if (!Number.isSafeInteger(primary) || primary <= 0 || !Number.isSafeInteger(secondary) || secondary <= 0 || primary === secondary) {
