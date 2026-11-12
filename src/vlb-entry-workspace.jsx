@@ -8,9 +8,10 @@ import ShiftAttendance from './shift-attendance.jsx';
 // ELB manual and scan use the same picker: with two-stage batches the editor opens only once VLB is locked.
 export const elbEntryBlocker=(kind,batch)=>{
  if(!batch)return '';
+ if(batch.stageWait)return batch.stageWait;
  if(kind==='vehicle')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='vlb_open')?'VLB batch '+batch.name+' is locked. Unlock or reopen the batch before adding Manual, Scan or Upload entries.':'';
  if(kind==='equipment'&&batch.closed_at&&batch.lmv_locked_at)return 'Reopen this batch before entering ELB cards.';
- if(kind==='lmv')return batch.closed_at||(batch.twoStage===true&&!['vlb_open','lmv_open'].includes(batch.stage))?'Select a batch with LMV open.':'';
+ if(kind==='lmv')return batch.closed_at||(batch.twoStage===true&&batch.stage!=='lmv_open')?'Select a batch with LMV open.':'';
  return batch.twoStage!==true||['elb_open','closed'].includes(batch.stage)?'':'Lock VLB and LMV in batch '+batch.name+' before entering ELB cards.';
 };
 export default function VlbEntryWorkspace({kind,session,mode,ReportSection,ExportMenu,children,onExit,canDeleteElb}){
