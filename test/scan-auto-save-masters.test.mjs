@@ -46,7 +46,7 @@ test('automatic saving judges completeness with the same master lists as the bro
  process.env.VLB_TWO_STAGE_BATCHES='1';
  t.after(()=>{process.env.VLB_TWO_STAGE_BATCHES='0';});
  await db.query('INSERT INTO master_records VALUES($1,$2,$3)',[9,'Equipment master',JSON.stringify({category:'Vehicle',door:'V329',currentLocation:'Sasti OC'})]);
- const shortCode={...valid,aFormNo:'77',assetId:'9',doorText:'V329',
+ const shortCode={...valid,aFormNo:'77',assetId:'9',doorText:'V329',closingHmr:2,
   trips:[{rowNumber:1,equipmentName:'TPC63',loadingTime:'09:02',unloadingTime:'09:09',tripCount:1}],
   scanMachineSummary:[{equipmentName:'TPC63',tripCount:1}]};
  const matched=await call(await add(3,shortCode));
