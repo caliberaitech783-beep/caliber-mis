@@ -37,7 +37,8 @@ const unique=values=>[...new Set(values.filter(Boolean))];
 const stamp=value=>{const t=Date.parse(value);return Number.isFinite(t)?new Date(t).toLocaleString('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',',''):'';};
 
 export function bandOf(minutes){if(minutes===null||minutes===undefined)return null;if(minutes<=IDLE_LIMIT)return 'ok';return BANDS.find(b=>minutes>b.above&&minutes<=b.upTo).key;}
-export function idleText(minutes){if(minutes===null||minutes===undefined)return '—';const m=Math.round(minutes);return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min';}
+// Always hours and minutes ("0 h 45 min", "3 h 05 min"), so that the column sorts in the order of the time.
+export function idleText(minutes){if(minutes===null||minutes===undefined)return '—';const m=Math.round(minutes);return Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min';}
 // Hours worked out of the hours of the shift: 8 hours worked in an 8-hour shift is 100%.
 export function percentWorked(hours,shiftHours){return hours===null||hours===undefined||!shiftHours?null:round1(hours/shiftHours*100);}
 const shiftCodeOf=r=>vlbRecordShift(r)||text(r.shiftName)||'Not recorded';

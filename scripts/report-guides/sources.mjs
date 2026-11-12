@@ -14,7 +14,8 @@ const tabCode={'fleet-capacity':fleetPopulation,'equipment-deployment':[...fleet
  'vlb-reports':['src/vlb-batch-reports.jsx','src/vlb-batch-report.jsx','src/scan-batch-reports.jsx','src/scan-batch-report.jsx'],
  'elb-reports':['src/elb-batch-reports.jsx','src/elb-trip-cards.jsx'],
  'batch-status':['src/batch-status-report.jsx','src/batch-status-report.css','shared/batch-status-report.mjs'],
- timing:[...sharedScreen,'src/trip-timing-report.jsx','shared/trip-timing-report.mjs']};
+ timing:[...sharedScreen,'src/trip-timing-report.jsx','shared/trip-timing-report.mjs'],
+ loading:[...sharedScreen,'src/loading-machine-report.jsx','shared/loading-machine-report.mjs']};
 export const guideText=id=>id==='ot'?['scripts/report-guides/ot-guide.mjs','scripts/report-guides/ot-guide-hi.mjs']:['scripts/report-guides/content/'+id+'.json'];
 export const guideSources=id=>[...guideText(id),...(tabCode[id]||sharedScreen)];
 // Line endings are ignored, so a Windows checkout and the CI checkout agree.

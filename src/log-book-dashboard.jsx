@@ -9,7 +9,8 @@ import BatchStatusReport from './batch-status-report.jsx';
 import ManpowerReports from './manpower-reports.jsx';
 import RecentActivityPanel,{useRecentActivity,windowLabel} from './log-book-recent-activity.jsx';
 import {RECENT_WINDOWS,recentSiteRows} from '../shared/recent-activity.mjs';
-// Trip Timing & Gap is the same screen as on the Reports page; it loads after the cards so the dashboard opens quickly.
+// Trip Timing & Gap and Loading Equipment-wise are the same screens as on the Reports page; they load after the cards so the
+// dashboard opens quickly, and they share one reading of the month's log books.
 const OperationsReports=lazy(()=>import('./operations-reports.jsx'));
 export const LOGBOOK_COLOURS={vehicle:'#56309A',equipment:'#F34856'};
 const number=n=>Number(n||0).toLocaleString('en-IN');
@@ -31,12 +32,13 @@ function RecordDetails({selection,filters,session,fetcher,close}){
 }
 // The dashboard on A3 landscape sheets, one report to a sheet: the cards with the last 24 hours, Trip Timing & Gap,
 // the site comparison, Batch Status & Turnaround, then
-// OT & Multiple Duties, each drawn as large as its sheet allows. A report too long for one sheet runs on to the next.
+// OT & Multiple Duties, then the Loading Equipment-wise Report, each drawn as large as its sheet allows. A report too long
+// for one sheet runs on to the next.
 const A3_PAGE={widthMm:420,heightMm:297};
 const displayDay=value=>value.slice(8,10)+'-'+value.slice(5,7)+'-'+value.slice(2,4);
 export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilters,ReportSection,printDashboard}){
  const printRoot=useRef(null),[printing,setPrinting]=useState(''),[printError,setPrintError]=useState('');
- // Everything the user sees on the dashboard page: the banner, the cards, the last 24 hours, Trip Timing & Gap, the site comparison and the two reports.
+ // Everything the user sees on the dashboard page: the banner, the cards, the last 24 hours, Trip Timing & Gap, the site comparison and the three reports.
  const printTarget=()=>printRoot.current?.closest('.erp-mis-dashboard')||printRoot.current;
  const [applied,setApplied]=useState(()=>initialFilters||initialLogbookRange()),[range,setRange]=useState(()=>({from:applied.from,to:applied.to})),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0),[selection,setSelection]=useState(null),[siteHours,setSiteHours]=useState(0);
  const live=useRecentActivity({session,fetcher,refresh});
@@ -54,7 +56,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
  };
  const smartPrint=()=>{
   setPrintError('');
-  openSmartPrint({title:printTitle,snapshot:'The complete dashboard prints as it looks on screen: the cards, the last 6, 12 and 24 hours, Trip Timing & Gap, the site comparison, Batch Status & Turnaround and OT & Multiple Duties, over as many pages as it needs. Choose the paper (A3 suits it best) and the printer next.',
+  openSmartPrint({title:printTitle,snapshot:'The complete dashboard prints as it looks on screen: the cards, the last 6, 12 and 24 hours, Trip Timing & Gap, the site comparison, Batch Status & Turnaround, OT & Multiple Duties and the Loading Equipment-wise Report, over as many pages as it needs. Choose the paper (A3 suits it best) and the printer next.',
    onPrint:({pageSize,printOptions})=>{
     const dashboard=printTarget();
     if(printDashboard)printDashboard({dashboard,title:printTitle,pageSize,printOptions});
@@ -93,7 +95,7 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
   {selection?.sites&&<Dialog title="Sites with saved entries" close={()=>setSelection(null)}><p className="lb-muted">Sites with zero entries are included for comparison.</p><div className="lb-table-wrap"><table><thead><tr><th>Site</th><th>VLB</th><th>ELB</th></tr></thead><tbody>{sitesLowToHigh(data?.bySite,['vehicle','equipment'].filter(k=>data?.kinds?.includes(k))).map(r=><tr key={r.site}><td>{r.site}</td>{['vehicle','equipment'].map(k=><td key={k}><button disabled={!r[k]} onClick={()=>choose(k,{location:r.site})}>{number(r[k])}</button></td>)}</tr>)}</tbody></table></div></Dialog>}
   {selection?.drafts&&<Dialog title="My recovery drafts" close={()=>setSelection(null)}><p>{number(data.totals.recoveryDrafts)} active server recovery copies match these filters. Copies saved only on another laptop are not counted here.</p><p>These copies are separate from saved logbook totals. Completed recovery copies are removed after their batch is saved and locked.</p>{goto?<button className="lb-apply" onClick={()=>goto('Drafts')}>Open Draft recovery</button>:<p className="lb-muted">Open MIS → Draft recovery in the live app to resume work.</p>}</Dialog>}
  </section>
-  {/* Below the cards: Trip Timing & Gap, then the site comparison, then the two reports. Each report keeps its own dates. */}
+  {/* Below the cards: Trip Timing & Gap, then the site comparison, then the two reports, and the Loading Equipment-wise Report at the bottom. Each report keeps its own dates. */}
   <div className="lb-reports" aria-label="Reports on the dashboard">
    {ReportSection&&<Suspense fallback={<p role="status" className="lb-muted">Loading Trip Timing &amp; Gap Report…</p>}><OperationsReports session={session} reportId="timing" ReportSection={ReportSection}/></Suspense>}
    {data&&<section className="lb-dashboard lb-sites" aria-label="Site comparison" data-print-title="Site comparison" data-print-subtitle="Saved log book cards by site" data-print-note={siteHours?windowLabel(siteHours):displayDay(applied.from)+' to '+displayDay(applied.to)}>
@@ -105,5 +107,6 @@ export default function LogBookDashboard({session,goto,fetcher=fetch,initialFilt
    </section>}
    {ReportSection&&<BatchStatusReport session={session} ReportSection={ReportSection} embedded/>}
    {ReportSection&&<ManpowerReports session={session} reportId="ot" ReportSection={ReportSection} embedded initialFrom={monthToDate().from}/>}
+   {ReportSection&&<Suspense fallback={<p role="status" className="lb-muted">Loading the Loading Equipment-wise Report…</p>}><OperationsReports session={session} reportId="loading" ReportSection={ReportSection}/></Suspense>}
   </div></div>
 }

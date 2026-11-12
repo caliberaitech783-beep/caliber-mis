@@ -47,7 +47,7 @@ test('the bands follow the owner\'s limits and the share worked is hours against
  assert.deepEqual(BANDS.map(b=>b.label),['5 to 10 min','10 to 15 min','15 to 20 min','20+ min']);
  assert.equal(percentWorked(8,8),100);assert.equal(percentWorked(6,8),75);assert.equal(percentWorked(0,8),0);assert.equal(percentWorked(6,12),50);
  assert.equal(percentWorked(null,8),null);assert.equal(percentWorked(6,null),null);
- assert.equal(idleText(0),'0 min');assert.equal(idleText(45),'45 min');assert.equal(idleText(185),'3 h 05 min');assert.equal(idleText(null),'—');
+ assert.equal(idleText(0),'0 h 00 min');assert.equal(idleText(45),'0 h 45 min');assert.equal(idleText(185),'3 h 05 min');assert.equal(idleText(null),'—');
 });
 
 test('one line per loading machine and shift; machines that never load are left out',()=>{
