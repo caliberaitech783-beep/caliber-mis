@@ -74,7 +74,10 @@ export function resolveTripEquipment(row={},assets=[],location='',{anySite=false
  const matches=exactSerial?serialMatches:broadMatches;
  const selected=clean(row.equipmentId),selectedMatches=selected?matches.filter(r=>String(r.id)===selected):[];
  // Retain a valid equipment identity independently of the vehicle door number.
- const unique=[...new Map((selectedMatches.length?selectedMatches:matches).map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
+ // Prefer the card site when a short code is shared across sites.
+ const localMatches=anySite?matches.filter(record=>canonicalSiteName(record.currentLocation||record.site||record.location)===site):matches;
+ const eligible=selectedMatches.length?selectedMatches:localMatches.length?localMatches:matches;
+ const unique=[...new Map(eligible.map(r=>[String(r.id??JSON.stringify(r)),r])).values()];
  if(unique.length!==1)return {error:unique.length?'Multiple equipment records match '+original+(anySite?'':' at '+location)+'. Select the correct equipment.':original+(anySite?' is not in the Equipment master at any site.':' is not assigned to '+location+'.')+' Check the machine and number.'};
  const record=unique[0],label=labels(record).map(parse).find(p=>p&&families[p.prefix]);
  return {equipmentName:label&&label.prefix!=='DEMO'?families[label.prefix]+' '+label.number:clean(labels(record)[0]),equipmentId:String(record.id),originalEquipmentName:clean(row.originalEquipmentName||row.equipmentNotation?.original||original),...(anySite?{equipmentSite:clean(record.currentLocation||record.site||record.location)}:{})};

@@ -580,8 +580,9 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const difference=(a,b)=>a!==''&&b!==''&&a!=null&&b!=null&&Number.isFinite(Number(a))&&Number(b)>=Number(a)?(Number(b)-Number(a)).toFixed(2):'—';
  const equipmentValidation=validateTripEquipment(normalizeScanEquipmentRows(kind==='vehicle'?ignoreScanLoadingWithoutEquipment(draft):draft,options?.assets||[]),options?.assets||[]);
  const comparisonDraft=equipmentValidation.draft;
- const machineIssues=[...Object.values(equipmentValidation.issues),...machineDiscrepancies(comparisonDraft.trips,comparisonDraft.scanMachineSummary)];
+ const machineIssues=[...new Set([...Object.values(equipmentValidation.issues),...machineDiscrepancies(comparisonDraft.trips,comparisonDraft.scanMachineSummary)])];
  const tripEquipmentOptions=siteEquipmentOptions(options?.assets||[],draft.location);
+ const loadingEquipmentLabel=asset=>[...new Set([resolvedMachineName(asset),asset.name,asset.manufacturerSerialNo,asset.chassisNo].filter(Boolean))].join(' · ');
  useEffect(()=>{let live=true;setPulseHours(null);setPulseHoursError('');setPulseHoursLoading(false);if(!['vehicle','equipment'].includes(kind)||!draft.assetId||!draft.shiftId||!draft.bookDate||!draft.location)return;setPulseHoursLoading(true);const timer=setTimeout(()=>api('/api/log-books/hours?scan=1',{method:'POST',body:JSON.stringify({assetId:draft.assetId,shiftId:draft.shiftId,bookDate:draft.bookDate,location:draft.location,shiftHours:draft.shiftHours,runningHours:draft.openingHmr!==''&&draft.closingHmr!==''?Number(draft.closingHmr)-Number(draft.openingHmr):null})}).then(r=>{if(live){setPulseHours(r);if(r.breakdownHours!==null&&r.breakdownHours!==undefined)bdFetchUnavailable.current=false;}}).catch(e=>{if(live)setPulseHoursError(e.message)}).finally(()=>{if(live)setPulseHoursLoading(false)}),500);return()=>{live=false;clearTimeout(timer)}},[card?.id,kind,token,draft.assetId,draft.shiftId,draft.bookDate,draft.location,draft.shiftHours,draft.openingHmr,draft.closingHmr]);
 
  const focusScanTrip=(index,root)=>{chooseTripPage(tripCardForRow(index));requestAnimationFrame(()=>root?.querySelector('[data-trip-equipment="'+index+'"]')?.focus());};
@@ -716,7 +717,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
           <option value="">Select equipment registered at {draft.location||'this site'}</option>
           {tripEquipmentOptions.map(asset=>{
            const value=resolvedMachineName(asset);
-           return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
+           return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{loadingEquipmentLabel(asset)}</option>;
           })}
          </SmartSelect>
         :k==='jobType'?<WorkOrderJobSelect showOverflowValue row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
@@ -748,7 +749,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
      <option value="">Select equipment registered at {draft.location||'this site'}</option>
      {tripEquipmentOptions.map(asset=>{
       const value=resolvedMachineName(asset);
-      return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{value}{asset.name&&asset.name!==value?' · '+asset.name:''}</option>;
+      return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{loadingEquipmentLabel(asset)}</option>;
      })}
     </SmartSelect>
     {!selected&&row.equipmentName&&<small className="scan-field-message">Equipment on draft: {row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName}</small>}
