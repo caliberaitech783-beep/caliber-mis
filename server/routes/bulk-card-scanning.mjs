@@ -6,7 +6,7 @@ import {registerSelectedScanAbort} from './scan-card-abort.mjs';
 import {registerScanCardGroupDeletion,SCAN_CARD_GROUP_DELETION_SCHEMA} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate,operationalScanSql} from '../../shared/operational-start.mjs';
-import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
+import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,findEarlierImageDuplicate,preloadDuplicateChecks,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
 import {scanFingerprintSettings} from '../services/scan-fingerprint.mjs';
 import {isDeletableScanCard} from '../../src/scan-card-deletion-selection.mjs';
 import {lockSavedVlbBatches,lockVlbBatchWrites,matchingVlbBatch,isOpenBatchForDeletion} from '../rules/vlb-batch-policy.mjs';
@@ -30,7 +30,8 @@ import {withVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 import {SCAN_IMAGE_TYPES,scanImageDimensions,scanImageMime} from '../rules/scan-image-format.mjs';
 import {scanBlobKey} from '../services/scan-blob-storage.mjs';
 import {allowedScanBatches,requireLogBookSite,filterLogBookSites,scanDeletionAllowed} from '../../shared/log-book-access.mjs';
-import {fillVlbScanOpeningMeters} from '../rules/vlb-scan-opening-meters.mjs';
+import {fillVlbScanOpeningMeters,readVlbOpeningMeterRows,preloadVlbOpeningMeterRows} from '../rules/vlb-scan-opening-meters.mjs';
+import {createScanCheckMemo,memoKey} from '../rules/scan-check-memo.mjs';
 import {stableJson} from '../services/log-book-deletion-scope.mjs';
 import {fillScanTripEstimates} from '../../shared/scan-trip-estimates.mjs';
 import {completeScanTripDetails} from '../../shared/scan-trip-completion.mjs';
@@ -111,13 +112,15 @@ function scanMastersForBook(masters,batch){
   return assetBookKind(row.record_data)==='equipment'?[row]:[];
  });
 }
-export async function checkScanCard(client,kind,card,input=card.draft,{enforceEmployeeSite=false}={}){
+// context and duplicates let a caller that checks many cards of one entry supply what it has already
+// read (the entry's selection, and preloadDuplicateChecks) instead of one query per card for each.
+export async function checkScanCard(client,kind,card,input=card.draft,{enforceEmployeeSite=false,context:knownContext,duplicates=null}={}){
  if(kind==='vehicle')input=ignoreScanLoadingWithoutEquipment(input);
  if(kind==='vehicle'&&card.raw_fields?.tripLocationRuleVersion===1)input={...input,location:tripCardLocation(input.location),tripLocationRuleVersion:1};
  // OCR notes describe the original extraction; current values determine review issues.
  const errors=[],warnings=[];let data;
  if(card.raw_fields?.fleetBlock)errors.push(card.raw_fields.fleetBlock.message||'Review the restored card before saving.');
- const context=(await client.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
+ const context=knownContext!==undefined?knownContext:(await client.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
  // The batch date, site and shift are final: a different handwritten header is noted, never a block.
  const lmv=isLmvScan({kind,expected_context:context});
  warnings.push(...scanContextNotes(context,card,input));
@@ -129,12 +132,13 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  for(const [key,label] of [['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId',kind==='vehicle'?'Driver':'Operator'],['shiftHours','Shift hours'],...(lmv?[]:[['shiftId','Shift'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR']]),...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])])if(input[key]===undefined||input[key]===null||input[key]==='')errors.push(label+' is missing or unreadable.');
  try{data=await resolveLogBookData(client,scanBookKind({kind,expected_context:context}),input,{enforceEmployeeSite});}catch(e){errors.push(e.message)}
  const number=cardKey(kind==='vehicle'?input.aFormNo:input.jobCardNo);
- const duplicateImage=(await client.query(`SELECT c.id FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.image_hash=$1 AND c.id<>$2 AND c.status NOT IN('rejected') AND (c.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (c.created_at<$3 OR (c.created_at=$3 AND c.id<$2)) LIMIT 1`,[card.image_hash,card.id,card.created_at])).rows[0];if(duplicateImage)errors.push('Duplicate card.');
+ const duplicateImage=duplicates?await duplicates.image(card):await findEarlierImageDuplicate(client,card);if(duplicateImage)errors.push('Duplicate card.');
  if(data)requireOperationalDate(data.bookDate);
  if(data&&number){
   // The same card number, door and date on a live card in any entry for this date, site and shift, or in a saved log book, is a duplicate. A certain identity blocks with the original named; an uncertain one asks the operator to confirm first.
   const batch={id:card.batch_id,kind,expected_context:context};
-  const original=await findContentDuplicate(client,kind,card,batch,{bookDate:data.bookDate,door:input.doorTextWritten||card.raw_fields?.door||input.doorText||data.door,number});
+  const identity={bookDate:data.bookDate,door:input.doorTextWritten||card.raw_fields?.door||input.doorText||data.door,number};
+  const original=duplicates?await duplicates.content(card,identity):await findContentDuplicate(client,kind,card,batch,identity);
   if(original){const duplicateError=original.kind==='logbook'&&!original.ordinal?'Card already exists in '+original.bookNo+'.':contentDuplicateMessage(original,contentIdentityCertain({...card,draft:input},kind,context));if(duplicateError)errors.push(duplicateError);}
  }
  if(card.raw_fields?.duplicateSuspect?.ordinal&&!errors.some(e=>/duplicate/i.test(e)))warnings.push('This scan looks like card '+card.raw_fields.duplicateSuspect.ordinal+' in entry '+(card.raw_fields.duplicateSuspect.entryName||'')+'. Confirm it is a different card before saving.');
@@ -377,9 +381,79 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(!ids.length||ids.length>SCAN_PARTIAL_REFRESH_MAX||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id)))fail('Invalid card selection.',400);
   return ids;
  };
- // A full read runs many small queries (each card's checks). Taking one connection for the whole read
- // means one wait in the pool queue instead of one per query, which under load made this read take 90+ s.
- app.get('/api/scan-batches/:id',...protect,wrap(async(req,res)=>{const batch=await getBatch(pool,req.params.id);if(req.query.progress==='1')return sendScanProgress(req,res,batch);const db=await pool.connect();try{const only=selectedScanCards(req.query.cards);{const earlierSameHash=`FROM mis_scan_cards earlier LEFT JOIN mis_log_books l ON l.id=earlier.logbook_id WHERE ${operationalScanSql('earlier')} AND earlier.image_hash=current.image_hash AND earlier.id<>current.id AND earlier.duplicate_of IS NULL AND earlier.status NOT IN('rejected') AND (earlier.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (earlier.created_at<current.created_at OR (earlier.created_at=current.created_at AND earlier.id<current.id))`;await db.query(`UPDATE mis_scan_cards current SET status='rejected',review_note='${EXACT_DUPLICATE_NOTE}',duplicate_of=COALESCE(current.duplicate_of,(SELECT earlier.id ${earlierSameHash} ORDER BY earlier.created_at,earlier.id LIMIT 1)),checked_by=COALESCE(checked_by,'system'),checked_at=COALESCE(checked_at,NOW()),revision=revision+1,error='' WHERE ${operationalScanSql('current')} AND current.batch_id=$1 AND current.status IN('queued','reading','review','approved','error') AND EXISTS(SELECT 1 ${earlierSameHash})`,[batch.id]);}const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.image_hash,c.ocr_text,c.confidence,c.raw_fields,c.draft,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,l.book_no,l.data AS saved_data,l.revision AS saved_revision,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND ($2::text[] IS NULL OR c.id::text=ANY($2::text[])) ORDER BY ordinal`,[batch.id,only])).rows;const duplicates=await listDuplicateCards(db,batch.id);const cards=[],deletedCards=[],validationClient=scanValidationClient(db);let matchingMasters,meterSites;for(const row of rows){decodeScanRow(row);if(row.raw_fields?.manualDeletion||row.review_note.startsWith('Card deleted manually by user')){deletedCards.push({id:row.id,ordinal:row.ordinal,vehicle:row.raw_fields?.manualDeletion?.vehicle||''});continue;}if(batch.kind==='vehicle'&&row.status==='review'&&!row.checked_at){matchingMasters??=(await readScanMasters(db,MASTER_NAMES)).rows;const matched=matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,scanMastersForBook(matchingMasters,batch));const linked={...row.draft};for(const key of ['assetId','employeeId'])if(matched[key]&&!linked[key])linked[key]=matched[key];let draft=await fillScanTripEstimates(validationClient,linked,row.raw_fields);if(batch.expected_context&&!isLmvScan(batch)&&(draft.assetId||draft.openingMeterCarryover)){meterSites??=filterLogBookSites(db,req.logBookScope);draft=await fillVlbScanOpeningMeters(db,draft,{sites:await meterSites,extraction:row.raw_fields?.extractionDraft,context:applyScanContext(batch.expected_context,draft)});}if(stableJson(draft)!==stableJson(row.draft)){draft=completeScanTripDetails(draft,row.raw_fields);const updated=await db.query("UPDATE mis_scan_cards SET draft=$1::jsonb,revision=revision+1 WHERE id=$2 AND revision=$3 AND status='review' AND checked_at IS NULL RETURNING revision",[JSON.stringify(encodeScanJson(draft)),row.id,row.revision]);if(updated.rows.length){row.draft=draft;row.revision=updated.rows[0].revision;}}}if(row.saved_data&&!row.logbook_deleted_at)requireLogBookSite(req.logBookScope,row.saved_data.location);const check=['review','approved','error'].includes(row.status)?await checkScanCard(validationClient,batch.kind,row):{errors:[],warnings:[]};if(readPulseFleet&&['review','approved','error'].includes(row.status)){if(row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});}const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)});}finally{db.release();}}));
+ // A full read takes one connection for the whole read: one wait in the pool queue instead of one per
+ // query. It no longer works through every card on every read. The duplicate and meter lookups of all
+ // cards are read together, and a card's draft fill and checks are reused while nothing they were
+ // worked out from has changed (scan-check-memo.mjs). This covers the whole reads the screen still
+ // makes while cards are being read; the ?cards= reads above cover the cards it saw change.
+ const fillMemo=createScanCheckMemo(),checkMemo=createScanCheckMemo();
+ const scanCheckWorld=async client=>{
+  if(process.env.MIS_SCAN_CHECK_MEMO==='false')return null;
+  // Every change to master_records raises this revision (trigger). Without it (older databases,
+  // tests) there is nothing to hold a result against, so every card is worked out on every read.
+  let revision=null;try{revision=(await client.query("SELECT revision FROM data_revisions WHERE revision_key='master-data'")).rows[0]?.revision??null;}catch{revision=null;}
+  if(revision===null)return null;
+  // The half hour keeps a result from outliving the change of day (Asia/Kolkata is UTC+05:30).
+  return memoKey(String(revision),await loadEquipmentAliases(client),Math.floor(Date.now()/1800000));
+ };
+ app.get('/api/scan-batches/:id',...protect,wrap(async(req,res)=>{
+  const batch=await getBatch(pool,req.params.id);if(req.query.progress==='1')return sendScanProgress(req,res,batch);
+  const db=await pool.connect();
+  try{
+   const only=selectedScanCards(req.query.cards);
+   {const earlierSameHash=`FROM mis_scan_cards earlier LEFT JOIN mis_log_books l ON l.id=earlier.logbook_id WHERE ${operationalScanSql('earlier')} AND earlier.image_hash=current.image_hash AND earlier.id<>current.id AND earlier.duplicate_of IS NULL AND earlier.status NOT IN('rejected') AND (earlier.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (earlier.created_at<current.created_at OR (earlier.created_at=current.created_at AND earlier.id<current.id))`;await db.query(`UPDATE mis_scan_cards current SET status='rejected',review_note='${EXACT_DUPLICATE_NOTE}',duplicate_of=COALESCE(current.duplicate_of,(SELECT earlier.id ${earlierSameHash} ORDER BY earlier.created_at,earlier.id LIMIT 1)),checked_by=COALESCE(checked_by,'system'),checked_at=COALESCE(checked_at,NOW()),revision=revision+1,error='' WHERE ${operationalScanSql('current')} AND current.batch_id=$1 AND current.status IN('queued','reading','review','approved','error') AND EXISTS(SELECT 1 ${earlierSameHash})`,[batch.id]);}
+   const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();
+   const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.image_hash,c.ocr_text,c.confidence,c.raw_fields,c.draft,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,l.book_no,l.data AS saved_data,l.revision AS saved_revision,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND ($2::text[] IS NULL OR c.id::text=ANY($2::text[])) ORDER BY ordinal`,[batch.id,only])).rows;
+   const duplicates=await listDuplicateCards(db,batch.id);
+   const cards=[],deletedCards=[],validationClient=scanValidationClient(db);
+   for(const row of rows)decodeScanRow(row);
+   const removed=row=>row.raw_fields?.manualDeletion||row.review_note.startsWith('Card deleted manually by user');
+   const checked=row=>['review','approved','error'].includes(row.status);
+   const fillable=row=>batch.kind==='vehicle'&&row.status==='review'&&!row.checked_at;
+   const live=rows.filter(row=>!removed(row)&&checked(row)),toFill=rows.filter(row=>!removed(row)&&fillable(row));
+   const context=batch.expected_context??null,fillMeters=Boolean(context)&&!isLmvScan(batch);
+   const world=live.length?await scanCheckWorld(validationClient):null;
+   const duplicateChecks=live.length?await preloadDuplicateChecks(db,batch,live):null;
+   const meterSites=toFill.length&&fillMeters?await filterLogBookSites(db,req.logBookScope):null;
+   let matchingMasters,meterRows;
+   // Earlier meter readings of every vehicle in the entry come from one query, read on first use.
+   const readMeterRows=async({assetId,date})=>{
+    if(date===context?.bookDate){meterRows??=await preloadVlbOpeningMeterRows(db,toFill.map(row=>row.draft?.assetId).filter(Boolean),date,meterSites);const loaded=meterRows.get(String(assetId));if(loaded)return loaded;}
+    return readVlbOpeningMeterRows(db,assetId,date,meterSites);
+   };
+   const fillDraft=(row,rawKey)=>{
+    const questions={records:async({sql,args})=>({rows:(await validationClient.query(sql,args)).rows}),meters:readMeterRows};
+    const compute=async ask=>{
+     matchingMasters??=scanMastersForBook((await readScanMasters(db,MASTER_NAMES)).rows,batch);
+     const matched=matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);
+     const linked={...row.draft};for(const key of ['assetId','employeeId'])if(matched[key]&&!linked[key])linked[key]=matched[key];
+     let draft=await fillScanTripEstimates({query:(sql,args)=>ask.records({sql,args})},linked,row.raw_fields);
+     if(fillMeters&&(draft.assetId||draft.openingMeterCarryover))draft=await fillVlbScanOpeningMeters(db,draft,{sites:meterSites,extraction:row.raw_fields?.extractionDraft,context:applyScanContext(batch.expected_context,draft),readRows:(client,assetId,date)=>ask.meters({assetId:String(assetId),date})});
+     return stableJson(draft)===stableJson(row.draft)?{changed:false}:{changed:true,draft:completeScanTripDetails(draft,row.raw_fields)};
+    };
+    return world?fillMemo(row.id,memoKey('fill',world,batch.kind,context,meterSites,row.draft,rawKey),questions,compute):compute(questions);
+   };
+   const checkCard=(row,rawKey)=>{
+    const questions={image:()=>duplicateChecks.image(row),content:identity=>duplicateChecks.content(row,identity)};
+    const compute=async ask=>{const result=await checkScanCard(validationClient,batch.kind,row,row.draft,{context,duplicates:{image:()=>ask.image(),content:(card,identity)=>ask.content(identity)}});return {errors:result.errors,warnings:result.warnings};};
+    return world?checkMemo(row.id,memoKey('check',world,batch.kind,context,row.batch_id,row.page_count,row.expected_pages,row.image_hash,row.created_at,row.draft,rawKey),questions,compute):compute(questions);
+   };
+   for(const row of rows){
+    if(removed(row)){deletedCards.push({id:row.id,ordinal:row.ordinal,vehicle:row.raw_fields?.manualDeletion?.vehicle||''});continue;}
+    const rawKey=world&&checked(row)?memoKey(row.raw_fields):'';
+    if(fillable(row)){
+     const filled=await fillDraft(row,rawKey);
+     if(filled.changed){const updated=await db.query("UPDATE mis_scan_cards SET draft=$1::jsonb,revision=revision+1 WHERE id=$2 AND revision=$3 AND status='review' AND checked_at IS NULL RETURNING revision",[JSON.stringify(encodeScanJson(filled.draft)),row.id,row.revision]);if(updated.rows.length){row.draft=filled.draft;row.revision=updated.rows[0].revision;}}
+    }
+    if(row.saved_data&&!row.logbook_deleted_at)requireLogBookSite(req.logBookScope,row.saved_data.location);
+    const check=checked(row)?await checkCard(row,rawKey):{errors:[],warnings:[]};
+    if(readPulseFleet&&checked(row)){if(row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}
+    cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});
+   }
+   const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
+   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)});
+  }finally{db.release();}
+ }));
  const contextGate=async(client,batch)=>scanContextGate(batch.expected_context,(await client.query('SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal FOR UPDATE',[batch.id])).rows.map(decodeScanRow));
  const requireContextReady=async(client,batch,{individualCard=false}={})=>{
   if(batch.kind==='vehicle'&&!batch.expected_context)fail('Choose the card date, site and shift in Scan setup before saving or downloading.',409);
@@ -589,6 +663,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   await fleetChecks.stop();await ocr.close?.();for(const lane of lanes.values())await lane.ocr.close?.();},
  // For /api/health and diagnostics: how reading is arranged on this server.
  status:()=>({mode:role==='engine'?'engine':enginesExternal?'external':scanLanes?'lanes':'single',reading:workers,readTotal,lanes:[...lanes.values()].map(lane=>({site:lane.name||'other',workers:lane.workers,key:geminiKeySource(process.env,lane.name||'')})),liveEngines:liveEngineCount,
+  // Entry reads: how often a card's fill and checks were reused (hits) or worked out (misses).
+  entryReadReuse:{fill:fillMemo.stats(),check:checkMemo.stats()},
   // Reading held because the account failed: Pulse-II reports every reader's hold (from the database), an engine its own.
   outages:role==='app'?knownOutages.map(({detail,...outage})=>outage):[singleLane,...lanes.values()].filter(lane=>lane.outage).map(lane=>({lane:outageLaneKey(lane.name),reason:lane.outage.reason,httpStatus:lane.outage.status,since:lane.outage.since}))}),
  activeReads:()=>workers};

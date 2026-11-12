@@ -42,7 +42,9 @@ test('upload progress reads stay constant-size in database work and cannot mark 
  calls.length=0;
  const complete=await (await fetch(url)).json();
  assert.equal(complete.cards.length,40);assert.ok(complete.cards.every(card=>card.checks.errors.length>0));
- assert.ok(calls.length>=80,'normal refresh still validates every card against current data');
+ // Every card is still validated (each carries its errors above), but the duplicate lookups of all
+ // cards are read together, so the full read no longer asks the database once or more per card.
+ assert.ok(calls.length<40,`a full read of 40 cards is not database work per card (${calls.length} calls)`);
  console.log(`40-card polling: ${calls.length} database calls for full review; ${lightweightCalls} for upload progress`);
 });
 

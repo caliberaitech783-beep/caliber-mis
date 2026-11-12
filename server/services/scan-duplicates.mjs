@@ -107,6 +107,50 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
  return null;
 }
 
+// An earlier live card with the same image bytes (the check behind "Duplicate card.").
+export async function findEarlierImageDuplicate(client,card){
+ return (await client.query(`SELECT c.id FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.image_hash=$1 AND c.id<>$2 AND c.status NOT IN('rejected') AND (c.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (c.created_at<$3 OR (c.created_at=$3 AND c.id<$2)) LIMIT 1`,[card.image_hash,card.id,card.created_at])).rows[0]||null;
+}
+
+// The duplicate questions of checkScanCard for every card of one entry, answered from three
+// queries instead of three or four per card. `image` and `content` give the same answers as
+// findEarlierImageDuplicate and findContentDuplicate; a card or identity that was not loaded
+// (a date or card number outside this entry's cards) is answered by those directly.
+const NUMBER_KEY_SQL=source=>`regexp_replace(upper(COALESCE(${source},'')),'[^A-Z0-9]','','g')`;
+const UUID_SQL="'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'";
+export async function preloadDuplicateChecks(client,batch,cards){
+ const kind=batch.kind,ids=new Set(cards.map(card=>card.id));
+ const numbers=[...new Set(cards.map(card=>cardNumberKey(kind==='vehicle'?card.draft?.aFormNo:card.draft?.jobCardNo)).filter(Boolean))];
+ const dates=[...new Set([batch.expected_context?.bookDate,...cards.map(card=>card.draft?.bookDate)].filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date||'')))];
+ const imageDuplicates=new Set(ids.size?(await client.query(`SELECT current.id FROM mis_scan_cards current WHERE current.id=ANY($1::uuid[]) AND EXISTS(SELECT 1 FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.image_hash=current.image_hash AND c.id<>current.id AND c.status NOT IN('rejected') AND (c.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (c.created_at<current.created_at OR (c.created_at=current.created_at AND c.id<current.id)))`,[[...ids]])).rows.map(row=>row.id):[]);
+ let siblings=[],savedRows=[];
+ if(numbers.length){
+  const batches=await sameContextBatches(client,batch);
+  // Only the identity of each candidate is read (date, card number, door), not its whole draft.
+  const number=NUMBER_KEY_SQL("NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo'");
+  siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.created_at,c.draft->>'bookDate' AS book_date,${number} AS number,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('door',c.raw_fields->'door') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('doorTextWritten',c.draft->'doorTextWritten','doorText',c.draft->'doorText','door',c.draft->'door') END AS draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND ${number}=ANY($2::text[]) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),numbers])).rows.map(row=>decodeScanRow(row));
+  if(dates.length){
+   const savedNumber=NUMBER_KEY_SQL("l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo'");
+   savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText') AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;
+  }
+ }
+ const time=value=>new Date(value).getTime();
+ return {
+  async image(card){return ids.has(card.id)?imageDuplicates.has(card.id):Boolean(await findEarlierImageDuplicate(client,card));},
+  async content(card,{bookDate,door,number}){
+   const doorKey=cardMachineKey(door||scanDoorValue(card),kind);
+   if(!bookDate||!doorKey||!number)return null;
+   if(!numbers.includes(number)||!dates.includes(bookDate))return findContentDuplicate(client,kind,card,batch,{bookDate,door,number});
+   const created=time(card.created_at);
+   const sibling=siblings.find(row=>row.id!==card.id&&row.number===number&&row.book_date===bookDate&&(time(row.created_at)<created||(time(row.created_at)===created&&row.id<card.id))&&scanDoorKey(row,kind)===doorKey);
+   if(sibling)return {kind:'card',...originalSummary(sibling)};
+   const saved=savedRows.find(row=>row.number===number&&row.book_date===bookDate&&(row.scan_card_id||'')!==card.id&&cardMachineKey(row.data?.door||row.data?.doorText,kind)===doorKey);
+   if(saved)return {kind:'logbook',cardId:saved.origin_id||null,batchId:saved.origin_batch_id||null,entryName:saved.origin_batch_name||null,ordinal:saved.origin_ordinal||null,bookNo:saved.book_no};
+   return null;
+  }
+ };
+}
+
 export function contentDuplicateMessage(original,certain){
  if(!certain)return '';
  const where=original.ordinal?'card '+original.ordinal+' in entry '+(original.entryName||original.batchId):'saved record '+(original.bookNo||'');

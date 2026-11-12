@@ -13,7 +13,46 @@ function tripTimes(trips){
   .map(key=>seconds(row[key])));
 }
 
-export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={},context=draft}){
+const METER_COLUMNS=`to_char(book_date,'YYYY-MM-DD') AS date, data->>'bookShiftCode' AS "bookShiftCode",
+    data->>'cardShift' AS "cardShift", data->>'shiftName' AS "shiftName",
+    data->'closingKmr' AS "openingKmr", data->'closingHmr' AS "openingHmr",
+    CASE WHEN book_date=$2::date THEN data->'trips' END AS trips,
+    data->>'masterShiftStart' AS "masterShiftStart"`;
+// Saved Trip Cards of one vehicle on the card date and on its latest earlier date.
+export async function readVlbOpeningMeterRows(client,assetId,date,sites){
+ return (await client.query(`
+   SELECT ${METER_COLUMNS}
+   FROM mis_log_books
+   WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1
+    AND ($3::text[] IS NULL OR site=ANY($3))
+    AND book_date IN ($2::date, (
+     SELECT max(book_date) FROM mis_log_books
+     WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1 AND book_date<$2::date
+      AND ($3::text[] IS NULL OR site=ANY($3))
+    ))
+   ORDER BY book_date DESC,id DESC`,[assetId,date,sites])).rows;
+}
+// The same rows for many vehicles in one query: a scan entry asks for every card's vehicle at once.
+export async function preloadVlbOpeningMeterRows(client,assetIds,date,sites){
+ const ids=[...new Set(assetIds.map(String))].filter(id=>/^[1-9]\d{0,17}$/.test(id));
+ const byAsset=new Map(ids.map(id=>[id,[]]));
+ if(!ids.length||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return new Map();
+ const {rows}=await client.query(`
+   SELECT l.asset_id::text AS asset_id, ${METER_COLUMNS}
+   FROM mis_log_books l
+   WHERE l.book_type='vehicle' AND l.deleted_at IS NULL AND l.asset_id=ANY($1::bigint[])
+    AND ($3::text[] IS NULL OR l.site=ANY($3))
+    AND (l.book_date=$2::date OR l.book_date=(
+     SELECT max(p.book_date) FROM mis_log_books p
+     WHERE p.book_type='vehicle' AND p.deleted_at IS NULL AND p.asset_id=l.asset_id AND p.book_date<$2::date
+      AND ($3::text[] IS NULL OR p.site=ANY($3))
+    ))
+   ORDER BY l.book_date DESC,l.id DESC`,[ids,date,sites]);
+ for(const {asset_id,...row} of rows)byAsset.get(asset_id)?.push(row);
+ return byAsset;
+}
+
+export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={},context=draft,readRows=readVlbOpeningMeterRows}){
  const assetId=String(draft.assetId??'');
  const date=context.bookDate;
  const shift=vlbRecordShift({cardShift:context.cardShift});
@@ -30,21 +69,7 @@ export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}
  const candidates=openingFields.filter(field=>values[field]===undefined&&
   (!reading(next[field])||(!source&&reading(extraction[field])&&String(extraction[field])===String(next[field]))));
  if(candidates.length&&/^[1-9]\d{0,17}$/.test(assetId)&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&shift){
-  const {rows}=await client.query(`
-   SELECT to_char(book_date,'YYYY-MM-DD') AS date, data->>'bookShiftCode' AS "bookShiftCode",
-    data->>'cardShift' AS "cardShift", data->>'shiftName' AS "shiftName",
-    data->'closingKmr' AS "openingKmr", data->'closingHmr' AS "openingHmr",
-    CASE WHEN book_date=$2::date THEN data->'trips' END AS trips,
-    data->>'masterShiftStart' AS "masterShiftStart"
-   FROM mis_log_books
-   WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1
-    AND ($3::text[] IS NULL OR site=ANY($3))
-    AND book_date IN ($2::date, (
-     SELECT max(book_date) FROM mis_log_books
-     WHERE book_type='vehicle' AND deleted_at IS NULL AND asset_id=$1 AND book_date<$2::date
-      AND ($3::text[] IS NULL OR site=ANY($3))
-    ))
-   ORDER BY book_date DESC,id DESC`,[assetId,date,sites]);
+  const rows=await readRows(client,assetId,date,sites);
   const previous=rows.map(row=>{
    const rank=shiftOrder[vlbRecordShift(row)]||0;
    let lastTrip=-Infinity;
