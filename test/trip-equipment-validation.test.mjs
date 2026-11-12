@@ -106,3 +106,20 @@ test('selected equipment cannot bypass a changed label, location or missing mast
  assert.ok(resolveTripEquipment({equipmentId:'999',equipmentName:'Vpc150'},master,'Jayant').error);
  assert.ok(resolveTripEquipment({equipmentId:'1',equipmentName:'Vpc150'},master.map(r=>({...r,sourceMissing:true})),'Jayant').error);
 });
+
+test('VLB save prefers the card site for a shared short code and preserves explicit identity',()=>{
+ const local={id:'dch-124',kind:'equipment',door:'VPC124 - 10001',site:'DCH East'};
+ const remote={id:'other-124',kind:'equipment',door:'VPC124 - 20002',site:'Jayant OC'};
+ const roster=[remote,local];
+ const site='DCH East',options={anySite:true};
+ const row={equipmentName:'VPC-124',tripCount:1};
+ const result=validateTripEquipment({location:site,trips:[row,row],scanMachineSummary:[{...row,tripCount:2}]},roster,options);
+ assert.deepEqual(result.issues,{});
+ assert.deepEqual(result.draft.trips.map(trip=>trip.equipmentId),[local.id,local.id]);
+ assert.equal(result.draft.scanMachineSummary[0].equipmentId,local.id);
+ assert.equal(resolveTripEquipment({...row,equipmentId:remote.id},roster,site,options).equipmentId,remote.id);
+ assert.equal(resolveTripEquipment({equipmentName:remote.door},roster,site,options).equipmentId,remote.id);
+ assert.equal(resolveTripEquipment(row,[remote],site,options).equipmentId,remote.id);
+ const duplicate={...local,id:'duplicate',door:'VPC124 - 30003'};
+ assert.match(resolveTripEquipment(row,[...roster,duplicate],site,options).error,/Multiple equipment/);
+});

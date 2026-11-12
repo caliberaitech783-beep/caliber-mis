@@ -111,7 +111,10 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
  if(kind==='vehicle'||kind==='lmv'){
  const assets=await withEquipmentAliases(client,(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})));
- const validation=validateTripEquipment(input,assets,{anySite:kind==='vehicle'&&twoStageEnabled()});if(Object.keys(validation.issues).length)fail(Object.values(validation.issues).join(' '));input=validation.draft;
+ const validation=validateTripEquipment(input,assets,{anySite:kind==='vehicle'&&twoStageEnabled()});
+ const equipmentErrors=[...new Set(Object.values(validation.issues))];
+ if(equipmentErrors.length)fail(equipmentErrors.join(' '));
+ input=validation.draft;
  const differences=machineDiscrepancies(input.trips,input.scanMachineSummary);if(differences.length)fail(differences.join(' '));
  }
  const data=normalizeLogBook(kind,input,{manualEntry});

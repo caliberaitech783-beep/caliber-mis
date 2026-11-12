@@ -5,6 +5,7 @@ import {completePreviousShiftMachines} from '../shared/scan-trip-estimates.mjs';
 import {machineDiscrepancies} from '../shared/trip-card-rules.mjs';
 import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 import {validateTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {scanFieldIssues} from '../src/scan-field-review.mjs';
 const assets=[
  {id:'vpc3',door:'VPC3 - 76167',kind:'equipment',site:'Sasti OC'},
  {id:'vpc4',door:'VPC4 - 76168',kind:'equipment',site:'Sasti OC'},
@@ -111,4 +112,33 @@ test('reopened Majri OB summary rows resolve handwritten and saved equipment lab
   assert.deepEqual(summary.map(row=>row.tripCount),[1,5,1,2,2]);
  }
  assert.equal(tripEquipmentSelectionValue(rows[0],roster.slice(1),site),'');
+});
+
+test('VPC-124 ambiguity stays flagged per row and clears after selecting the master record',()=>{
+ const site='Sasti OC';
+ const duplicates=[
+  {id:'124-a',door:'VPC-124 - 10001',kind:'equipment',site},
+  {id:'124-b',door:'VPC-124 - 10002',kind:'equipment',site},
+ ];
+ const trip={equipmentName:'VPC-124',tripCount:1};
+ const summary={equipmentName:'VPC-124',tripCount:2};
+ const input={location:site,timeMode:'without',machineNotationRuleVersion:1,trips:[trip,trip],scanMachineSummary:[summary]};
+ const issues=scanFieldIssues({...input,scanMachineSummary:[trip,trip]},'vehicle',{}, {assets:duplicates});
+ assert.match(issues['trips.0.equipmentName'],/Multiple equipment records match/);
+ assert.match(issues['trips.1.equipmentName'],/Multiple equipment records match/);
+ assert.equal(issues.scanMachineSummary,issues['scanMachineSummary.0.equipmentName']);
+ assert.equal(tripEquipmentSelectionValue(summary,duplicates,site),'');
+ const chosenTrips=input.trips.map(row=>selectTripEquipment(row,'124-b',duplicates,site));
+ const manual={...input,trips:chosenTrips,scanMachineSummary:[selectTripEquipment(summary,'124-b',duplicates,site)],scanMachineSummarySource:'manual'};
+ const calculated=completeScanTripDetails({...input,trips:chosenTrips,scanMachineSummarySource:'calculated-from-trips'});
+ assert.equal(calculated.scanMachineSummary[0].equipmentId,'124-b');
+ assert.equal(calculated.scanMachineSummary[0].equipmentSource,'master-selection');
+ for(const corrected of [manual,calculated]){
+  const reopened=normalizeScanEquipmentRows(JSON.parse(JSON.stringify(corrected)),duplicates);
+  assert.equal(tripEquipmentSelectionValue(reopened.scanMachineSummary[0],duplicates,site),'124-b');
+  assert.deepEqual(scanEquipmentMatchIssues(reopened,duplicates),{});
+  const validated=validateTripEquipment(reopened,duplicates);
+  assert.deepEqual(validated.issues,{});
+  assert.deepEqual(machineDiscrepancies(validated.draft.trips,validated.draft.scanMachineSummary),[]);
+ }
 });
