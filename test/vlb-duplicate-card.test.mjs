@@ -64,11 +64,18 @@ test('a relief driver can save a separate manual card within the shared shift li
  const rejectedEdit=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingHmr:109,revision:extra.data.revision});
  assert.equal(rejectedEdit.status,409);assert.equal(rejectedEdit.data.code,'shift_hmr_limit');
  const edited=await call('/api/log-books/vehicle/'+extra.data.id,'PUT',{...relief,closingKmr:1014,revision:extra.data.revision});assert.equal(edited.status,200,JSON.stringify(edited.data));assert.equal(edited.data.data.duplicateReason,relief.duplicateReason);
- // the first card without a reason cannot be edited into a different tipper that already has a card
- const other=await call('/api/log-books/vehicle','POST',{...input,assetId:5,requestKey:randomUUID()});assert.equal(other.status,201);
+ const otherVehicle={...input,assetId:5,openingHmr:500,closingHmr:502};
+ const driverOver=await call('/api/log-books/vehicle','POST',{...otherVehicle,closingHmr:502.001,requestKey:randomUUID()});
+ assert.equal(driverOver.status,409);assert.equal(driverOver.data.code,'driver_shift_hmr_limit');
+ assert.match(driverOver.data.error,/8\.001 hours.*shift limit is 8 hours/);
+ const other=await call('/api/log-books/vehicle','POST',{...otherVehicle,requestKey:randomUUID()});assert.equal(other.status,201,JSON.stringify(other.data));
  assert.equal(other.data.data.employeeId,first.data.data.employeeId);
  assert.notEqual(other.data.book_no,first.data.book_no);
- assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,assetId:1,revision:other.data.revision})).status,409);
+ const driverOverEdit=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,closingHmr:503,revision:other.data.revision});
+ assert.equal(driverOverEdit.status,409);assert.equal(driverOverEdit.data.code,'driver_shift_hmr_limit');
+ const duplicateEdit=await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...input,revision:other.data.revision});
+ assert.equal(duplicateEdit.status,409);assert.equal(duplicateEdit.data.code,'duplicate_card');
+ assert.equal((await call('/api/log-books/vehicle/'+other.data.id,'PUT',{...otherVehicle,revision:other.data.revision})).status,200);
  // a different shift or site is a different card
  await prepareVlbFixture(db,{...input,cardShift:'II'},'alice');
  assert.equal((await call('/api/log-books/vehicle','POST',{...input,shiftId:4,cardShift:'II',requestKey:randomUUID()})).status,201);

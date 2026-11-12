@@ -8,8 +8,33 @@ const meterUnits=value=>Math.max(0,Math.round(Number(value)*1000)||0);
 const hmrUnits=data=>meterUnits(cardWorkingHmr(data));
 const kmrUnits=data=>meterUnits(data.totalRunningKmr??data.replacementKmr??(data.closingKmr-data.openingKmr));
 
+async function assertVlbDriverShiftHmr(client,data,recordId){
+ const shift=vlbRecordShift(data);
+ const limit=isJayantSecondShift({...data,bookShiftCode:shift})?9:CARD_SHIFTS[normalizeCardShift(shift)]?.hours;
+ const employeeId=String(data.employeeId??'').trim();
+ const caliberId=String(data.caliberId??'').trim().toUpperCase();
+ if(!limit||(!employeeId&&!caliberId))return;
+ const {rows}=await client.query(`SELECT id,book_no,site,asset_id,data FROM mis_log_books
+  WHERE book_type='vehicle' AND book_date=$1 AND deleted_at IS NULL
+    AND ($2::bigint IS NULL OR id<>$2::bigint)
+    AND (($3<>'' AND data->>'employeeId'=$3)
+      OR ($4<>'' AND UPPER(TRIM(data->>'caliberId'))=$4))
+  ORDER BY id`,[data.bookDate,recordId,employeeId,caliberId]);
+ const site=canonicalSiteName(data.location);
+ const peers=rows.filter(row=>canonicalSiteName(row.site)===site&&vlbRecordShift(row.data)===shift);
+ if(!peers.some(row=>String(row.asset_id)!==String(data.assetId)))return;
+ const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);
+ const total=saved+hmrUnits(data);
+ if(total<=limit*1000)return;
+ const conflicts=peers.map(row=>({id:String(row.id),bookNo:row.book_no}));
+ throw Object.assign(new Error(`Combined working HMR for driver ${data.employeeName||data.caliberId||employeeId} across vehicles on ${data.bookDate}, shift ${shift}, would be ${total/1000} hours (${saved/1000} already saved on ${conflicts.map(row=>row.bookNo).join(', ')}). The shift limit is ${limit} hours. Check the driver and HMR on the cards.`),
+  {status:409,details:{code:'driver_shift_hmr_limit',conflicts}});
+}
+
 // Writers must hold the log-book transaction locks through validation and save.
 export async function assertCombinedShiftMeters(client,kind,data,recordId=null,batch=null){
+ // VLB writes hold the same site/date/shift lock across all vehicles.
+ if(kind==='vehicle')await assertVlbDriverShiftHmr(client,data,recordId);
  const batchId=kind==='equipment'?batch?.id||data.batchId||null:null;
  const {rows}=batchId
   ?await client.query(`SELECT l.id,l.book_no,l.site,l.data,b.name AS batch_name FROM mis_elb_batch_entries e

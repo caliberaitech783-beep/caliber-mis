@@ -24,7 +24,7 @@ export async function assertSingleVlbCardPerShift(client,data,{recordId=null,bat
  if(!existing.length){delete data.duplicateOf;if(!text(data.duplicateReason))delete data.duplicateReason;return [];}
  if(data.scanCardId){
   const first=existing[0],shift=vlbRecordShift(data);
-  throw Object.assign(new Error(`Tipper ${text(data.door)||'(selected)'} already has saved card ${first.bookNo} for ${displaySiteName(data.location)}, ${data.bookDate}, shift ${shift}. A second scanned card for the same driver cannot be saved.`),{status:409,details:{code:'duplicate_card',existing}});
+  throw Object.assign(new Error(`Tipper ${text(data.door)||'(selected)'} already has saved card ${first.bookNo} for ${displaySiteName(data.location)}, ${data.bookDate}, shift ${shift}. A second scanned card for the same driver cannot be saved against this tipper. If the driver changed vehicles, select the other vehicle on this card.`),{status:409,details:{code:'duplicate_card',existing}});
  }
  const reason=text(data.duplicateReason);
  if(reason.length<DUPLICATE_REASON_MIN){
