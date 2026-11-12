@@ -88,7 +88,7 @@ From then on, a release starts in the slot, is checked there, and Azure swaps it
 
 ## When Google refuses the reading account
 
-On 12 November 2026 every site stopped reading at about 00:00 IST. Google answered every card with HTTP 402, its reply when the prepaid credit of the billing account is used up. Every site key stopped together, because the Google projects behind the keys are linked to one billing account and a billing account has one balance. 142 cards in six entries at four sites were marked "Error" before anyone knew why.
+On 12 November 2026 every site stopped reading at about 00:00 IST. Google answered every card with HTTP 402, its reply when the prepaid credit of the billing account is used up. Every site key stopped together, because the Google projects behind the keys are linked to one billing account and a billing account has one balance. More than 140 cards at four sites were marked "Error" before anyone knew why, and one site deleted its entry and scanned the cards again.
 
 What Pulse-II does since then, for no credit (402), a refused key (401, 403) and a used-up quota (429):
 
