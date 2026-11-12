@@ -38,6 +38,11 @@ test('manual DC to DEMO correction updates every matching trip and summary throu
  assert.equal(nodes(corrected,n=>n.props['aria-label']==='Machine-wise summary equipment row 1')[0].props.value,'demo25');
 });
 
+test('equipment correction commits trip details and machine summary in one atomic draft update',()=>{
+ assert.match(source,/const correctEquipment=.*setDraft\(current=>\{const corrected=correctMatchingTripEquipment\(current,collection,index,id,assets\)/);
+ assert.doesNotMatch(source,/const correctEquipment=.*update\('trips'.*update\('scanMachineSummary'/);
+});
+
 test('Wrong door review isolates door checks without changing full-card validation',()=>{
  const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
  const draft={doorText:'',assetId:'',bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[],openingHmr:'',closingHmr:''};
