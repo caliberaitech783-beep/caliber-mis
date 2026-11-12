@@ -36,7 +36,11 @@ test('setup changes cannot silently reuse a different entry selection',()=>{
 });
 test('server blocks saving before batch check, checks exact removal revisions and retains original wrong scans',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec('CREATE TABLE master_records(id BIGINT PRIMARY KEY,master_name TEXT,record_data JSONB);'+LOG_BOOK_SCHEMA);
- let tail=Promise.resolve();const query=(q,a)=>q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
+ let tail=Promise.resolve(),batchCardLocks=0;
+ const query=(q,a)=>{
+  if(q.includes('FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal FOR UPDATE'))batchCardLocks++;
+  return q.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!a&&q.includes(';')?db.exec(q):db.query(q,a);
+ };
  const pool={query,connect:async()=>{const old=tail;let release;tail=new Promise(r=>release=r);await old;return {query,release}}};
  const app=express();app.use(express.json());const auth=(req,res,next)=>{req.session={login:'test-admin'};next()};
  const service=registerBulkCardScanning(app,{pool,requireSession:auth,requireAdministrator:auth,ocr:{recognize:async()=>({text:''}),close(){}}});await service.start();await service.stop();
@@ -60,7 +64,9 @@ test('server blocks saving before batch check, checks exact removal revisions an
  const saved=await fetch(root+'/api/scan-cards/'+bad,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:1,action:'save',draft:{...context,bookDate:'2026-12-29',cardShift:'II',location:'Other site'}})});assert.equal(saved.status,200,await saved.text());
  const savedDraft=(await db.query('SELECT draft FROM mis_scan_cards WHERE id=$1',[bad])).rows[0].draft;assert.equal(savedDraft.bookDate,context.bookDate);assert.equal(savedDraft.cardShift,'I');assert.equal(savedDraft.location,'Sasti OC');assert.equal(savedDraft.shiftHours,8);
  let stored=(await db.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batch])).rows[0].expected_context;assert.equal(scanContextGate(stored,[{id:good,status:'review',draft:context,raw_fields:{extractionDraft:context}}]).blocked,false);
+ const locksBeforeAutosave=batchCardLocks;
  for(const [key,value] of [['bookDate','2026-12-29'],['location','Other site'],['cardShift','Night']]){await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify({...context,[key]:value})]);const attempt=await call('/api/scan-cards/'+good+'/auto-save',{revision:1});assert.equal(attempt.status,409);assert.doesNotMatch(attempt.data.error,/Date:|Site:|Shift:/,'a wrong '+key+' is corrected to the batch value, never reported as a block');}
+ assert.equal(batchCardLocks,locksBeforeAutosave,'individual VLB autosave leaves other cards unlocked');
  await db.query('UPDATE mis_scan_cards SET draft=$2::jsonb WHERE id=$1',[good,JSON.stringify(context)]);assert.equal((await call(url,{action:'proceed'})).status,200);
  assert.equal((await call(url,{action:'cancel'})).status,200);
  assert.equal((await call(url,{action:'proceed'})).status,409);
