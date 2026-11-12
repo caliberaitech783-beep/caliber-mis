@@ -20,6 +20,10 @@ test('ELB combined HMR counts only live cards linked to the same operational bat
  await add(4,'CAL/ELB/01-11-26/004',2,'current');
  const input={bookDate:'2026-11-01',location:'Dudhichua OC',assetId:'102',door:'VPC102-86286',bookShiftCode:'S2',shiftHours:8,totalWorkingHmr:5.9};
  await assert.doesNotReject(()=>assertCombinedShiftMeters(db,'equipment',input,null,{id:'current'}),'another batch, an orphan and a deleted card are excluded');
+ await db.query("UPDATE mis_log_books SET data=data || '{\"breakdownHours\":2,\"breakdownHoursSource\":\"pulse\"}'::jsonb WHERE id=4");
+ const relief={...input,totalWorkingHmr:4,breakdownHours:2,breakdownHoursSource:'pulse'};
+ await assert.doesNotReject(()=>assertCombinedShiftMeters(db,'equipment',relief,null,{id:'current'}),'both cards may carry the same two Pulse BD hours');
+ await assert.rejects(()=>assertCombinedShiftMeters(db,'equipment',{...relief,totalWorkingHmr:4.01},null,{id:'current'}),{status:409,details:{code:'shift_hmr_breakdown_limit'}});
  await add(5,'CAL/ELB/01-11-26/005',0.2,'current');
  await assert.rejects(()=>assertCombinedShiftMeters(db,'equipment',input,null,{id:'current'}),error=>{
   assert.equal(error.details.code,'shift_hmr_limit');

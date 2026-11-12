@@ -11,7 +11,13 @@ import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch,lockVlbBatchScope,vl
 import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,isLdmDrill,elbTripCount,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
+import {readBatchStageWait} from './vlb-batch-queue.mjs';
+
 const fail=batchFail;
+async function requireStageTurn(client,batch){
+ const wait=await readBatchStageWait(client,batch);
+ if(wait)fail(wait,409);
+}
 const text=value=>String(value??'').trim();
 const num=value=>{if(value===''||value===undefined||value===null)return null;const n=Number(value);return Number.isFinite(n)?n:null};
 
@@ -66,7 +72,7 @@ export async function stageDetails(client,batch,{assets,tripCardRecords}={}){
    (cards[record.id]??=[]).push(index);
   });
  }
- return {twoStage:true,stage,holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:report,statuses:FLEET_STATUSES};
+ return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:report,statuses:FLEET_STATUSES};
 }
 function duplicateElb(records){
  const byAsset=new Map(),duplicates=new Set();
@@ -110,6 +116,10 @@ export async function lockVlb(client,batch,actor,{assets}={}){
 
 export async function unlockVlb(client,batch,actor,{reason='',approvedBy=null,via='screen'}={}){
  if(!['lmv_open','elb_open'].includes(batchStage(batch)))fail(batch.closed_at?'Reopen the batch before unlocking VLB.':'VLB is not locked for this batch.',409);
+ // Unlock routes hold the exclusive batch write lock because this can make a later stage wait again.
+ const {rows}=await client.query("SELECT site,name FROM mis_vlb_batches WHERE id<>$1 AND stage='vlb_open' AND closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND book_date>=$$2026-11-01$$",[batch.id]);
+ const active=rows.find(row=>canonicalSiteName(row.site)===canonicalSiteName(batch.site));
+ if(active)fail('Lock VLB in '+active.name+' before unlocking VLB for this batch.',409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  const opened=(await client.query("UPDATE mis_vlb_batches SET stage='vlb_open',lmv_locked_at=NULL,vlb_locked_at=NULL,vlb_locked_by=NULL WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'vlb_unlocked',{reason,via,...(approvedBy?{approvedBy}:{})});
@@ -120,11 +130,13 @@ export async function assertCloseAllowed(client,batch,{assets}={}){
  if(!twoStageEnabled())return;
  if(batchStage(batch)!=='elb_open')fail('Lock VLB and LMV before closing the batch.',409);
  const details=await stageDetails(client,batch,{assets});
+ if(details.stageWait)fail(details.stageWait,409);
  if(details.closeBlockers.length)fail(details.closeBlockers.join(' '),409);
 }
 
 export async function saveFleetDraft(client,batch,assetId,draft,actor){
  if(batchStage(batch)!=='elb_open')fail('Machine entry is available only while ELB is open for this batch.',409);
+ await requireStageTurn(client,batch);
  const row=(await client.query('UPDATE mis_vlb_batch_fleet SET draft=NULL,skipped=COALESCE($3,skipped) WHERE batch_id=$1 AND asset_id=$2 RETURNING *',[batch.id,assetId,typeof draft?.skipped==='boolean'?draft.skipped:null])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
  return row;
@@ -151,6 +163,7 @@ export async function readFleetBreakdowns(client,batch,assetId,readHours,actor,i
 // Save one machine from the stepper dialog as a real equipment log book, linked to the batch.
 export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  if(batchStage(batch)!=='elb_open')fail('Machine entry is available only while ELB is open for this batch.',409);
+ await requireStageTurn(client,batch);
  const row=(await client.query('SELECT * FROM mis_vlb_batch_fleet WHERE batch_id=$1 AND asset_id=$2 FOR UPDATE',[batch.id,assetId])).rows[0];
  if(!row)fail('This machine is not in the batch fleet list.',404);
  const additional=input.additionalCard===true;
@@ -177,7 +190,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
   const actualHours=num(input.openingHmr)!==null&&num(input.closingHmr)!==null?num(input.closingHmr)-num(input.openingHmr):null;
   const bd=Number(pulse.breakdownHours),zero=actualHours===0&&elbTripCount(row)===0;
   const shiftStatus=zero?(bd>=hours?'breakdown':'not_in_use'):bd>0&&bd<hours?'working_partial_breakdown':'working';
-  input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||(pulse.breakdowns||[]).map(item=>item.description).filter(Boolean).join('; ').slice(0,2000)};
+  const breakdownReason=(pulse.breakdowns||[]).map(item=>text(item.description)||text(item.reference)).filter(Boolean).join('; ').slice(0,2000);
+  input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||breakdownReason||(bd>0?'Breakdown recorded in Pulse':'')};
  }
  const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:elbTripCount(row),shiftHours:hours});
  if(Object.keys(errors).length)throw Object.assign(new Error(Object.values(errors).join(' ')),{status:400,fields:errors});
@@ -201,6 +215,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
    fail('This save reference already belongs to another card.',409);
   }
   if(!(cardWorkingHmr(data)>0)||cards.some(card=>shareCardOperator(data,card.data)))fail('Enter positive working HMR and an operator who has no card for this machine and shift.',409);
+  const previous=cards.find(card=>String(card.id)===String(row.logbook_id))?.data;
+  if(previous&&(text(previous.manualShift)!==text(data.manualShift)||Number(previous.shiftHours)!==hours))fail('Use the same shift and shift hours as the saved ELB card.',409);
  }
  let record;
  if(row.logbook_id&&!additional){
@@ -217,6 +233,7 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
 
 export async function lockLmv(client,batch,actor){
  if(!twoStageEnabled()||batchStage(batch)!=='lmv_open')fail('LMV must be open before it can be locked.',409);
+ await requireStageTurn(client,batch);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',lmv_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'lmv_locked');
  return locked;
@@ -226,8 +243,9 @@ export async function assertLmvBatchWrite(client,data){
  if(!twoStageEnabled())return null;
  await lockVlbBatchScope(client,vlbRecordScope(data));
  const batch=await matchingVlbBatch(client,data);
- if(!batch||batch.deleted_at||batch.archived_at||!['vlb_open','lmv_open'].includes(batchStage(batch)))fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
+ if(!batch||batch.deleted_at||batch.archived_at||batchStage(batch)!=='lmv_open')fail('Select an existing Vehicle Log Book batch open for LMV entry before saving or changing LMV cards.',409);
  if(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired)fail('The batch reopening trial has expired.',409);
+ await requireStageTurn(client,batch);
  return batch;
 }
 
@@ -243,6 +261,7 @@ export async function assertElbBatchWrite(client,data,{adding=false}={}){
  if(stage==='vlb_open'||stage==='lmv_open')fail('Lock VLB and LMV for batch '+batch.name+' before saving ELB cards.',409);
  if(stage==='closed'&&batch.lmv_locked_at)fail('This batch is locked. Reopen it before saving ELB cards.',409);
  if(stage==='closed'&&!adding)fail('Batch '+batch.name+' is closed. Reopen it with site PM approval before changing existing ELB cards.',409);
+ await requireStageTurn(client,batch);
  return batch;
 }
 

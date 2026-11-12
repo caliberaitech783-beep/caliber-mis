@@ -43,9 +43,11 @@ test('manual and scan entry keep the site and batch popup on one row and auto-fe
  const lmvOpen={...vlbOpen,id:'lmv',stage:'lmv_open'};
  const elbOpen={...vlbOpen,id:'elb',stage:'elb_open'};
  const lmvBatches=openVlbEntryBatches([closed,other,vlbOpen,lmvOpen,elbOpen],'Jayant OC','lmv');
- assert.deepEqual(lmvBatches.map(batch=>batch.id),['open','lmv']);
+ assert.deepEqual(lmvBatches.map(batch=>batch.id),['lmv']);
  const preferred=new Function('React','canonicalSiteName',code+';return preferredVlbEntryBatch')(React,(await import('../shared/site-location.mjs')).canonicalSiteName);
- assert.equal(preferred(lmvBatches,vlbOpen.id),vlbOpen);
+ assert.equal(preferred(lmvBatches,vlbOpen.id),lmvOpen);
+ assert.deepEqual(openVlbEntryBatches([{...lmvOpen,stageWait:'Lock LMV in the previous batch first.'}],'Jayant OC','lmv'),[]);
+ assert.deepEqual(openVlbEntryBatches([vlbOpen,closed,{...elbOpen,stageWait:'Close ELB in the previous batch first.'}],'Jayant OC','equipment').map(batch=>batch.id),['closed']);
  assert.equal(preferred([closed,open],closed.id),open);assert.equal(preferred([closed,open],''),open);assert.equal(preferred([closed,{...closed,id:'second'}],''),null);
  assert.equal(preferred([closed],closed.id),null,'closed batches do not become the automatic working batch');
  assert.match(source,/\[entryMode,selection\.site,batchStatusReady,batches\]/,'auto-fetch reruns when the asynchronous batch list arrives');

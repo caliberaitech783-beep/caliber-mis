@@ -3,6 +3,7 @@ import {requireOperationalDate} from '../../shared/operational-start.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {VLB_TWO_STAGE_SCHEMA,twoStageEnabled} from './vlb-two-stage.mjs';
+import {readBatchStageWait} from './vlb-batch-queue.mjs';
 import {VLB_APPROVAL_OTP_SCHEMA} from '../services/vlb-approval-otp.mjs';
 
 export const VLB_BATCH_SCHEMA=`
@@ -37,21 +38,7 @@ export const VLB_BATCH_SCHEMA=`
  END $guard$;
  DROP TRIGGER IF EXISTS mis_vlb_unique_scope_guard ON mis_vlb_batches;
  CREATE TRIGGER mis_vlb_unique_scope_guard BEFORE INSERT OR UPDATE OF site,book_date,shift,deleted_at ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_duplicate_scope();
- CREATE OR REPLACE FUNCTION mis_vlb_prevent_multiple_open_site_batches() RETURNS trigger LANGUAGE plpgsql AS $open_site_guard$
- BEGIN
-  IF NEW.closed_at IS NULL AND NEW.archived_at IS NULL AND NEW.book_date>=$$2026-11-01$$ THEN
-   LOCK TABLE mis_vlb_batches IN SHARE ROW EXCLUSIVE MODE;
-   IF EXISTS(SELECT 1 FROM mis_vlb_batches b WHERE b.site=NEW.site AND b.book_date>=$$2026-11-01$$ AND b.closed_at IS NULL AND b.archived_at IS NULL AND b.id<>NEW.id) THEN
-    RAISE EXCEPTION 'Close the existing open batch before creating another batch for this site' USING ERRCODE='23505';
-   END IF;
-  END IF;
-  RETURN NEW;
- END $open_site_guard$;
- DO $install_open_site_guard$ BEGIN
-  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='mis_vlb_one_open_site_guard' AND tgrelid='mis_vlb_batches'::regclass) THEN
-   CREATE TRIGGER mis_vlb_one_open_site_guard BEFORE INSERT OR UPDATE OF site,closed_at,archived_at ON mis_vlb_batches FOR EACH ROW EXECUTE FUNCTION mis_vlb_prevent_multiple_open_site_batches();
-  END IF;
- END $install_open_site_guard$;
+ DROP TRIGGER IF EXISTS mis_vlb_one_open_site_guard ON mis_vlb_batches;
  CREATE TABLE IF NOT EXISTS mis_vlb_reopen_requests(
  id UUID PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),closure_revision INTEGER NOT NULL,
  requested_by TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','used')),
@@ -59,6 +46,14 @@ export const VLB_BATCH_SCHEMA=`
  ALTER TABLE mis_vlb_reopen_requests ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS trial_reopened_until TIMESTAMPTZ;
  CREATE TABLE IF NOT EXISTS mis_vlb_pm_trials(id TEXT PRIMARY KEY,started_at TIMESTAMPTZ NOT NULL,ends_at TIMESTAMPTZ NOT NULL,CHECK(ends_at=started_at+INTERVAL '240 hours'));
+ DO $trial_duration$
+ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='mis_vlb_pm_trials'::regclass AND conname='mis_vlb_pm_trials_duration_check') THEN
+   ALTER TABLE mis_vlb_pm_trials DROP CONSTRAINT IF EXISTS mis_vlb_pm_trials_check;
+   ALTER TABLE mis_vlb_pm_trials ADD CONSTRAINT mis_vlb_pm_trials_duration_check
+    CHECK(ends_at=started_at+CASE WHEN id='vlb-pm-trial-20261112' THEN INTERVAL '720 hours' ELSE INTERVAL '240 hours' END);
+  END IF;
+ END $trial_duration$;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_pending_reopen ON mis_vlb_reopen_requests(batch_id,requested_by,closure_revision) WHERE status='pending';
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
@@ -74,6 +69,8 @@ export const VLB_BATCH_SCHEMA=`
  ) INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail)
  SELECT id,created_by,'saved_lock_policy_enabled','{"reason":"Saved batches require PM approval and lock again after saving."}'::jsonb FROM migrated;
  ${VLB_TWO_STAGE_SCHEMA}
+ CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_one_open_vlb_per_site ON mis_vlb_batches(site)
+  WHERE closed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL AND stage='vlb_open' AND book_date>=$$2026-11-01$$;
  ${VLB_APPROVAL_OTP_SCHEMA}`;
 export const batchLogin=value=>String(value||'').trim().toLowerCase();
 export const batchFail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
@@ -93,6 +90,7 @@ export async function lockVlbBatchScope(client,scope){
  await client.query(`SELECT pg_advisory_xact_lock_shared(${BATCH_WRITE_LOCK})`);
  await client.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',['mis_vlb_saved_batches',key]);
 }
+export const lockVlbBatchSite=(client,site)=>client.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',['mis_vlb_batch_site',canonicalSiteName(site)]);
 export const auditVlbBatch=(client,batch,actor,action,detail={})=>client.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,detail) VALUES($1,$2,$3,$4::jsonb)',[batch.id,batchLogin(actor),action,JSON.stringify(detail)]);
 export async function matchingVlbBatch(client,data){
  const {rows}=await client.query('SELECT *,book_date::text AS report_date FROM mis_vlb_batches WHERE book_date=$1 AND book_date>=$$2026-11-01$$ AND shift=$2 AND archived_at IS NULL ORDER BY created_at,id',[data.bookDate,vlbRecordShift(data)]);
@@ -104,6 +102,7 @@ export async function isOpenBatchForDeletion(client,batch,kind,actor){
  if(!batch||batch.deleted_at||batch.archived_at||batch.closed_at)return false;
  if(twoStageEnabled()&&batch.stage==='lmv_open')return false;
  if(twoStageEnabled()&&(batch.stage==='elb_open')!==(kind==='equipment'))return false;
+ if(twoStageEnabled()&&await readBatchStageWait(client,batch))return false;
  if(batch.amendment_by&&batchLogin(batch.amendment_by)!==batchLogin(actor))return false;
  return !batch.trial_reopened_until||!(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired;
 }

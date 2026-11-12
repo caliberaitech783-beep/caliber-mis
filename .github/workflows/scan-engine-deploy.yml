@@ -87,12 +87,16 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
 
+      - name: Stage the scan runtime without Git history
+        if: steps.plan.outputs.deploy == 'true'
+        run: rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/scan-runtime/"
+
       - name: Deploy the scan engines
         if: steps.plan.outputs.deploy == 'true'
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.SCAN_ENGINE_APP }}
-          package: .
+          package: ${{ runner.temp }}/scan-runtime
 
       - name: Verify every engine is running the release
         if: steps.plan.outputs.deploy == 'true'
