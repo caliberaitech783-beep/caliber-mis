@@ -63,7 +63,22 @@ export async function buildSite({ cwd = process.cwd(), env = process.env, buildC
   const appVersion = await resolveAppVersion({ env, cwd });
   // /assets/* is reserved by an Azure Front Door route. Keep all release assets
   // under the established path, with a version supplied directly to the compiler.
-  await buildClient({ root: cwd, define: {__CALIBER_APP_VERSION__:JSON.stringify(appVersion)}, build: { assetsDir: "app-assets" } });
+  await buildClient({
+    root: cwd,
+    define: {__CALIBER_APP_VERSION__:JSON.stringify(appVersion)},
+    build: {assetsDir: "app-assets"},
+    plugins: [{
+      name: "pulse-release-stylesheet",
+      transformIndexHtml: {
+        order: "post",
+        handler(html, {path: pagePath}) {
+          if (pagePath !== "/index.html") return html;
+          return html.replace(/(<link\b[^>]*\brel="stylesheet"[^>]*\bhref=")(\/app-assets\/[^"]+\.css)"/g,
+            '$1$2?release=' + appVersion + '" data-pulse-stylesheet');
+        },
+      },
+    }],
+  });
   await mkdir(path.join(cwd, "dist", "server"), { recursive: true });
   await mkdir(path.join(cwd, "dist", ".openai"), { recursive: true });
   await writeFile(path.join(cwd, "dist", "app-version.txt"), appVersion);

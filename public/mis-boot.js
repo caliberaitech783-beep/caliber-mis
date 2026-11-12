@@ -1,5 +1,19 @@
 (()=>{
   const moduleError=/chunkloaderror|loading chunk|dynamically imported module|module script/i;
+  let stylesheetRetried=false;
+  const retryStylesheet=link=>{
+    if(stylesheetRetried||!link?.matches?.('link[data-pulse-stylesheet]'))return;
+    stylesheetRetried=true;
+    const url=new URL(link.href);
+    url.searchParams.set('retry',String(Date.now()));
+    const retry=link.cloneNode();
+    retry.href=url.href;
+    link.replaceWith(retry);
+  };
+  window.addEventListener('load',()=>{
+    const link=document.querySelector('link[data-pulse-stylesheet]');
+    if(link&&!link.sheet?.cssRules.length)retryStylesheet(link);
+  },{once:true});
   const showFailure=()=>{
     const root=document.getElementById('root');
     if(!root)return;
@@ -7,6 +21,7 @@
     root.querySelector('button').addEventListener('click',()=>window.location.reload());
   };
   window.addEventListener('error',event=>{
+    retryStylesheet(event.target);
     if(moduleError.test(String(event.message||''))||event.target?.tagName==='SCRIPT')showFailure();
   },true);
   window.addEventListener('unhandledrejection',event=>{
