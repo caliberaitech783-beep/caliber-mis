@@ -5,7 +5,7 @@ import WorkOrderJobSelect from './work-order-job-select.jsx';
 import {activeWorkOrders} from '../shared/trip-card-rules.mjs';
 import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
-import {isSurfaceMiner,splitSurfaceMinerHmr} from '../shared/surface-miner-hmr.mjs';
+import {splitEquipmentOperatorHmr} from '../shared/surface-miner-hmr.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
 
 // Pure helpers shared with the batch page and the UI tests.
@@ -150,8 +150,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const workingStatus=true;
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
- const surfaceMiner=isSurfaceMiner(row);
- const operatorSplit=surfaceMiner&&form.secondOperatorId?splitSurfaceMinerHmr(form):null;
+ const operatorSplit=form.secondOperatorId?splitEquipmentOperatorHmr(form):null;
  const idleHours=fleetIdleHours(lookupShiftHours,hours);
  const jobs=form.jobDetails||[];
  const contracts=activeWorkOrders(options?.workOrders||[],batch.site,batch.report_date);
@@ -171,7 +170,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
    {workingStatus&&<label className="logbook-field"><span>Caliber ID{operatorRequired?' *':''}</span><SmartSelect data-elb-entry="operator" value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select Caliber ID</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.caliberId||e.employeeCode||'')+' · '+(e.name||e.employee||'')}</option>)}</SmartSelect></label>}
    <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input data-elb-entry="opening-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
-   {surfaceMiner&&<label className="logbook-field"><span>Second operator (optional)</span>
+   <label className="logbook-field"><span>Second operator (optional)</span>
     <SmartSelect data-elb-entry="second-operator" value={form.secondOperatorId||''} disabled={busy} onChange={event=>{
      const secondOperatorId=event.target.value;
      setForm(current=>({...current,secondOperatorId,handoverHmr:secondOperatorId?current.handoverHmr:''}));
@@ -180,7 +179,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
      <option value="">Single operator</option>
      {employees.map(employee=><option key={employee.id} value={String(employee.id)}>{(employee.caliberId||employee.employeeCode||'')+' · '+(employee.name||employee.employee||'')}</option>)}
     </SmartSelect>
-   </label>}
+   </label>
    {operatorSplit&&<label className="logbook-field"><span>Handover HMR *</span>
     <input data-elb-entry="handover-hmr" type="number" inputMode="decimal" step="0.01" min="0" required value={form.handoverHmr||''} disabled={busy} onChange={event=>update('handoverHmr',event.target.value)}/>
     <small>Enter the meter reading when the second operator takes over.</small>

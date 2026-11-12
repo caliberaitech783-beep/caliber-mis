@@ -6,7 +6,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
-import {isSurfaceMiner,splitSurfaceMinerHmr} from '../../shared/surface-miner-hmr.mjs';
+import {splitEquipmentOperatorHmr} from '../../shared/surface-miner-hmr.mjs';
 import {batchFail,auditVlbBatch,batchLogin,matchingVlbBatch,lockVlbBatchScope,vlbRecordScope} from './vlb-batch-policy.mjs';
 import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnapshot,buildFleetList,isLdmDrill,elbTripCount,validateFleetEntry,closureBlockers,lockBlockers,fleetProgress,machineReportRows,FLEET_STATUSES,NON_WORKING_STATUSES} from './vlb-two-stage.mjs';
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
@@ -176,8 +176,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  }
  let operatorSplit;
  if(text(input.secondOperatorId)||text(input.handoverHmr)){
-  if(input.entryMode!=='working-only'||!isSurfaceMiner({door:row.door,equipmentGroup:row.equipment_group,equipmentName:row.equipment_name}))fail('Two operators can share an ELB shift only for a Surface Miner.',400);
-  operatorSplit=splitSurfaceMinerHmr(input);
+  if(input.entryMode!=='working-only')fail('Two operators can share a shift only in ELB Manual working entry.',400);
+  operatorSplit=splitEquipmentOperatorHmr(input);
   if(operatorSplit.error)fail(operatorSplit.error,400);
  }
  const shiftHours=input.shiftHours!==undefined&&input.shiftHours!==''?manualShiftHours({...input,location:batch.site,bookShiftCode:batch.shift}):null;

@@ -15,7 +15,7 @@ function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='
   if(sql.includes("master_name='Shift Master'"))return {rows:[{id:'4',record_data:shift}]};
   if(sql.includes('WHERE master_name=ANY'))return {rows:[]};
   if(sql.includes('FROM master_records WHERE id=ANY'))return {rows:[
-   {id:'19',master_name:'Equipment master',record_data:{door:row.door,site:'Sasti OC',group:'Surface Miner'}},
+   {id:'19',master_name:'Equipment master',record_data:{door:row.door,site:'Sasti OC',group:surfaceMiner?'Surface Miner':'Excavator'}},
    {id:'4',master_name:'Shift Master',record_data:shift},
    {id:'7',master_name:'Employee master',record_data:{name:'Operator A',site:'Sasti OC'}},
    {id:'8',master_name:'Employee master',record_data:{name:'Operator B',site:secondSite,caliberId:'CB'}},
@@ -32,8 +32,8 @@ test('Working-only saves use authoritative Pulse hours and preserve event detail
  assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,12);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
 });
 
-test('Surface Miner operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
- const f=fixture({surfaceMiner:true});
+test('Excavator operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
+ const f=fixture();
  const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
  const record=await saveFleetEntry(f.client,batch,'19',input,'mis',{...f.ops,resolve:resolveLogBookData});
  assert.equal(record.data.totalWorkingHmr,8);
@@ -42,14 +42,14 @@ test('Surface Miner operator handover saves two portions on one ELB with one equ
  assert.equal(f.writes.filter(({sql})=>sql.startsWith('INSERT INTO mis_elb_batch_entries')).length,1);
 });
 
-test('operator handover rejects excess HMR, an invalid reading, duplicate operators and ineligible equipment or operators',async()=>{
+test('operator handover rejects excess HMR, an invalid reading, duplicate operators and ineligible operators or entry modes',async()=>{
  const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};
  for(const [fixtureOptions,patch,error] of [
   [{surfaceMiner:true},{closingHmr:108.01},/cannot exceed 8 hours/],
   [{surfaceMiner:true},{handoverHmr:109},/below closing HMR/],
   [{surfaceMiner:true},{secondOperatorId:'7'},/two different operators/],
   [{surfaceMiner:true,secondSite:'Jayant OC'},{},/second operator assigned to this location/],
-  [{},{},/only for a Surface Miner/],
+  [{},{entryMode:'breakdown'},/only in ELB Manual working entry/],
  ]){
   const f=fixture(fixtureOptions);
   await assert.rejects(()=>saveFleetEntry(f.client,batch,'19',{...input,...patch},'mis',{...f.ops,resolve:resolveLogBookData}),error);
