@@ -108,8 +108,9 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
 }
 
 export function contentDuplicateMessage(original,certain){
+ if(!certain)return '';
  const where=original.ordinal?'card '+original.ordinal+' in entry '+(original.entryName||original.batchId):'saved record '+(original.bookNo||'');
- return certain?'Same card number, door and date already appear on '+where+'. Reject this card or correct the values.':'Possible duplicate of '+where+'. Confirm the card number and door before saving.';
+ return 'Same card number, door and date already appear on '+where+'. Reject this card or correct the values.';
 }
 
 // After reading: a card whose identity is certain and already exists is
