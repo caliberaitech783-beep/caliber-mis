@@ -92,7 +92,15 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // Site PMs who may approve by OTP: injected from the server (shared with Vehicle transfers), else derived from the Users master.
  const defaultPmLogins=async(client,site)=>{const {rows}=await client.query("SELECT DISTINCT lower(trim(record_data->>'login')) AS login FROM master_records WHERE master_name='Users & employees' AND COALESCE(trim(record_data->>'login'),'')<>''");const out=[];for(const {login} of rows){if(batchPmAtSite(await getActor({login},client),site))out.push(login)}return out};
  const pmLogins=approvalOtp.pmLogins||defaultPmLogins,deliver=approvalOtp.deliver;
- const ensure=async()=>{await ensureBooks();await(ready??=(async()=>{await pool.query(VLB_BATCH_SCHEMA);if(process.env.VLB_PM_APPROVAL_TRIAL===VLB_PM_TRIAL_ID)await activateVlbPmTrial(pool)})().catch(e=>{ready=null;throw e}))};
+ const ensure=async()=>{
+  await ensureBooks();
+  await(ready??=(async()=>{
+   await pool.query(VLB_BATCH_SCHEMA);
+   const production=process.env.WEBSITE_SITE_NAME==='caliber-mis-783'&&
+    (!process.env.WEBSITE_SLOT_NAME||process.env.WEBSITE_SLOT_NAME.toLowerCase()==='production');
+   if(production||process.env.VLB_PM_APPROVAL_TRIAL===VLB_PM_TRIAL_ID)await activateVlbPmTrial(pool);
+  })().catch(e=>{ready=null;throw e}));
+ };
  const handle=fn=>async(req,res,next)=>{try{
   await ensure();req.batchGetActor=getActor;req.batchActor=await getActor(req.session,pool);
   const admin=isMisAdministrator(req.session);

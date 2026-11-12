@@ -46,6 +46,14 @@ export const VLB_BATCH_SCHEMA=`
  ALTER TABLE mis_vlb_reopen_requests ADD COLUMN IF NOT EXISTS withdrawn_at TIMESTAMPTZ;
  ALTER TABLE mis_vlb_batches ADD COLUMN IF NOT EXISTS trial_reopened_until TIMESTAMPTZ;
  CREATE TABLE IF NOT EXISTS mis_vlb_pm_trials(id TEXT PRIMARY KEY,started_at TIMESTAMPTZ NOT NULL,ends_at TIMESTAMPTZ NOT NULL,CHECK(ends_at=started_at+INTERVAL '240 hours'));
+ DO $trial_duration$
+ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='mis_vlb_pm_trials'::regclass AND conname='mis_vlb_pm_trials_duration_check') THEN
+   ALTER TABLE mis_vlb_pm_trials DROP CONSTRAINT IF EXISTS mis_vlb_pm_trials_check;
+   ALTER TABLE mis_vlb_pm_trials ADD CONSTRAINT mis_vlb_pm_trials_duration_check
+    CHECK(ends_at=started_at+CASE WHEN id='vlb-pm-trial-20261112' THEN INTERVAL '720 hours' ELSE INTERVAL '240 hours' END);
+  END IF;
+ END $trial_duration$;
  CREATE UNIQUE INDEX IF NOT EXISTS mis_vlb_pending_reopen ON mis_vlb_reopen_requests(batch_id,requested_by,closure_revision) WHERE status='pending';
  CREATE TABLE IF NOT EXISTS mis_vlb_batch_audit(
  id BIGSERIAL PRIMARY KEY,batch_id UUID NOT NULL REFERENCES mis_vlb_batches(id),actor TEXT NOT NULL,action TEXT NOT NULL,
