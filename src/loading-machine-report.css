@@ -6,7 +6,7 @@
 .lm-report .lm-b4{background:#ffb38a;color:#5e1d00}
 /* The count of an idle band with its own percentage just beside it, always on one line. */
 .lm-report .lm-banded{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.lm-report .lm-share{font-size:13px;font-weight:700;white-space:nowrap}
+.lm-report .lm-share{font-size:14px;font-weight:700;white-space:nowrap}
 .lm-report .lm-count{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
 .lm-report button.lm-count{cursor:pointer}
 .lm-report .lm-breakdown{background:#fbd5d5;color:#9b1c1c}
