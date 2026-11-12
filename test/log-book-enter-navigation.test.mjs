@@ -244,8 +244,15 @@ test('VLB opens a continuation after 24 rows and saves 35 trips as one shift car
     Object.assign(app.slots[0],{location:'Jayant',timeMode:'without',trips:Array.from({length:24},()=>({...row}))});
     const button=(tree,label)=>all(tree,node=>node.type==='button'&&React.Children.toArray(node.props.children).includes(label))[0];
     const visibleRows=tree=>all(tree,node=>node.type==='tr'&&node.props['data-trip-card']!=null&&!node.props.hidden);
+    const row24=app.slots[0].trips.pop();
     let tree=app.render();
+    assert.equal(button(tree,'Add 2nd trip card').props.disabled,true);
+    assert.equal(button(tree,'Add trip').props.disabled,false);
+    app.slots[0].trips.push(row24);
+    tree=app.render();
     assert.equal(visibleRows(tree).length,24);
+    assert.equal(button(tree,'Add 2nd trip card').props.disabled,false);
+    assert.equal(button(tree,'Add trip').props.disabled,true);
     button(tree,'Add 2nd trip card').props.onClick();
     tree=app.render();
     assert.equal(visibleRows(tree).length,1);

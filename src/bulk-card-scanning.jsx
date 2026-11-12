@@ -732,7 +732,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
      <button className="scan-trip-remove" type="button" aria-label={'Remove trip '+(i+1)} onClick={()=>update('trips',draft.trips.filter((_,n)=>n!==i))}><Trash2 size={14}/></button>
     </div>
    )}
-   <button type="button" className="scan-add-trip" disabled={tripRows.length>=300} onClick={addScanTrip}><Plus size={14}/>{tripRows.length===TRIP_CARD_ROWS?'Add 2nd trip card':'Add trip row'}</button>
+   <button type="button" className="scan-add-trip" disabled={tripRows.length===TRIP_CARD_ROWS||tripRows.length>=300} onClick={addScanTrip}><Plus size={14}/>Add trip row</button>
+   <button type="button" className="scan-add-trip" disabled={tripRows.length!==TRIP_CARD_ROWS} onClick={addScanTrip}><Plus size={14}/>Add 2nd trip card</button>
    {!draft.trips?.length&&!scanTripsOptional(options?.assets?.find(asset=>String(asset.id)===String(draft.assetId))?.door||draft.doorText)&&<label className="scan-confirm"><input type="checkbox" checked={noTrips} onChange={e=>setNoTrips(e.target.checked)}/>I checked the scan: this card has no trip rows.</label>}
   </div>
  }
