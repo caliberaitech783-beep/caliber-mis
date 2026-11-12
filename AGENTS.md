@@ -13,4 +13,4 @@ Switched off by the owner on 13 November 2026, because building the English and 
 - Do not write, build or update an operating manual for any report tab or sub tab, in English or Hindi.
 - No report tab shows an "Operating manual" bar. The manual PDFs (`public/guides`), their text and build scripts (`scripts/report-guides`) and the check that stopped deployments (`test/report-guides.test.mjs`) were removed.
 - A branch that still carries manual changes must drop them before it merges.
-- The old manuals and their build scripts stay in git history (last present in commit `af906c6`) if the owner asks for them again.
+- The old manuals and their build scripts stay in git history (last present in commit `2872070`) if the owner asks for them again.

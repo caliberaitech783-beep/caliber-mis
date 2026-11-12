@@ -26,7 +26,7 @@ const clock=v=>text(v).slice(0,5);
 
 // Cards carry the site as it was typed or read ("Majri OB", "majri ob", "Dudhicua East OB"). All spellings of one site
 // are shown as one site, under the spelling used most among those that are not all in small letters.
-function siteLabels(records){
+export function siteLabels(records){
  const spellings=new Map();
  for(const r of records){const name=text(r.location);if(!name)continue;const key=canonicalSiteName(name);if(!spellings.has(key))spellings.set(key,new Map());const count=spellings.get(key);count.set(name,(count.get(name)||0)+1);}
  const label=new Map([...spellings].map(([key,count])=>[key,[...count].sort((a,b)=>(a[0]===a[0].toLowerCase())-(b[0]===b[0].toLowerCase())||b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]]));

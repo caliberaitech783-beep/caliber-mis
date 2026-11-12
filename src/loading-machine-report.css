@@ -1,0 +1,20 @@
+/* Loading Equipment-wise Report: idle band colours, and the red (in BD) and brown (no hours) machine lines.
+   The sub-tabs, step trail and chips are those of the Trip Timing & Gap Report (trip-timing-report.css). */
+.lm-report .lm-b1{background:#fff3c4;color:#6b5200}
+.lm-report .lm-b2{background:#ffe0bf;color:#8a4a00}
+.lm-report .lm-b3{background:#ffd0a8;color:#7a3300}
+.lm-report .lm-b4{background:#ffb38a;color:#5e1d00}
+.lm-report .lm-count{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
+.lm-report button.lm-count{cursor:pointer}
+.lm-report .lm-breakdown{background:#fbd5d5;color:#9b1c1c}
+.lm-report .lm-nohours{background:#e7d3bd;color:#5c3310}
+.lm-report .lm-status{display:inline-block;padding:3px 10px;border-radius:8px;font-size:13px;font-weight:750;white-space:nowrap}
+.lm-report .lm-status-running{background:#dcf2e1;color:#17602b}
+.lm-report .lm-status-breakdown{background:#b42323;color:#fff}
+.lm-report .lm-status-nohours{background:#6e3f14;color:#fff}
+/* The whole line of a machine that did not run. The hover and focus colours of a clickable line must not hide it. */
+.lm-report tr.lm-row-breakdown>td,.lm-report tr.lm-row-breakdown.report-row-clickable:hover>td,.lm-report tr.lm-row-breakdown.report-row-clickable:focus-visible>td{background:#fde4e4;color:#7d1a1a}
+.lm-report tr.lm-row-nohours>td,.lm-report tr.lm-row-nohours.report-row-clickable:hover>td,.lm-report tr.lm-row-nohours.report-row-clickable:focus-visible>td{background:#f0e2d2;color:#52300f}
+.lm-report tr.lm-row-breakdown>td:first-child{box-shadow:inset 4px 0 0 #b42323}
+.lm-report tr.lm-row-nohours>td:first-child{box-shadow:inset 4px 0 0 #6e3f14}
+@media print{.lm-report tr.lm-row-breakdown>td,.lm-report tr.lm-row-nohours>td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
