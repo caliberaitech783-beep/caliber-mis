@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,BANDS,IDLE_LIMIT} from '../shared/loading-machine-report.mjs';
+import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,clockAt,BANDS,IDLE_LIMIT,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
 import {normalise} from '../src/operations-report-model.mjs';
 import fs from 'node:fs';
 import {transformWithOxc} from 'vite';
@@ -78,6 +78,69 @@ test('a night shift is ordered through midnight and a time outside the shift is 
  assert.equal(night.statusLabel,'Working · ELB not entered');assert.equal(night.stage,'vlb_open');
 });
 
+test('every timed loading is one line in green, orange or red; the first loading of the shift has no colour',()=>{
+ assert.deepEqual(TONES,{first:'first',ok:'green',b1:'orange',b2:'orange',b3:'orange',b4:'red'});
+ const ex1=find('EX1');
+ assert.deepEqual(loadingLines([ex1]).map(l=>[l.to.clock,l.to.door,l.minutes,l.band,l.tone]),[['05:10','V9001',null,'first','first'],['05:14','V9002',4,'ok','green'],['05:22','V9001',8,'b1','orange'],['05:34','V9002',12,'b2','orange'],['05:52','V9001',18,'b3','orange'],['06:20','V9002',28,'b4','red']]);
+ assert.equal(ex1.ok,1);assert.equal(ex1.loadings,6);
+ assert.deepEqual([loadingLines([ex1],'ok').length,loadingLines([ex1],'stops').length,loadingLines([ex1],'b4').length],[1,4,1]);
+ const total=summarise(entries,'site').total;
+ assert.equal(total.loadings,9,'six in Shift I and three in the night shift; a loading without a time is on no line');assert.equal(total.ok,1);
+ // Lines of many shifts: newest shift first, then the machine, then the order of the shift.
+ assert.deepEqual(loadingLines(entries.filter(e=>e.door==='EX1')).map(l=>l.shift+' '+l.to.clock).slice(0,2),['Shift I 05:10','Shift I 05:14']);
+});
+
+// EX6 loads four tippers in turn, stands from 05:52 to 06:10 and from 06:10 to 06:40, then loads the four again.
+const waiting=normalise([
+ vlb(31,'T1',[trip('EX6','05:40','06:00'),trip('EX6','06:40','07:00')]),vlb(32,'T2',[trip('EX6','05:44','06:30'),trip('EX6','06:44','07:05')]),
+ vlb(33,'T3',[trip('EX6','05:48','06:20'),trip('EX6','06:48','07:10')]),vlb(34,'T4',[trip('EX6','05:52','06:37'),trip('EX6','06:55','07:15')]),
+ vlb(35,'T5',[trip('EX6','06:10','06:30')]),
+ // Pulse shows a breakdown of EX6 from 06:15 to 06:35 India time.
+ elb(36,106,'EX6',{pulseBreakdowns:[{reference:'BD-7',description:'Hose burst',start:'2026-12-14T00:45:00.000Z',end:'2026-12-14T01:05:00.000Z',shiftStart:'2026-12-14T00:45:00.000Z',shiftEnd:'2026-12-14T01:05:00.000Z'}]})
+]);
+const ex6=machineShifts(waiting,{assets:[...assets,{id:'106',door:'EX6',site:'Site A',kind:'equipment',group:'Excavator',name:'SAMPLE EXCAVATOR'}]}).find(e=>e.door==='EX6');
+
+test('an idle stop names the tipper trips delayed in it and the breakdown Pulse shows inside it',()=>{
+ assert.equal(WAIT_LIMIT,15,'the limit of the Trip Timing & Gap Report');
+ const stops=ex6.stopList.map(s=>[s.from.clock,s.to.clock,s.minutes,s.band,s.delayed.map(d=>[d.door,d.unloadedAt,d.loadedAt,d.waited,d.inside]),s.breakdown]);
+ assert.deepEqual(stops,[
+  // T1 unloaded at 06:00 and was loaded again only at 06:40: empty for 10 minutes of this stop.
+  ['05:52','06:10',18,'b3',[['T1','06:00','06:40',40,10]],''],
+  // T1 and T3 stood empty through the stop. T2 took 14 minutes from unloading to loading, which is no delay; T4 unloaded only 3 minutes before the stop ended.
+  ['06:10','06:40',30,'b4',[['T1','06:00','06:40',40,30],['T3','06:20','06:48',28,20]],'BD-7 · Hose burst · 06:15 to 06:35'],
+  ['06:48','06:55',7,'b1',[['T4','06:37','06:55',18,7]],'']
+ ]);
+ assert.equal(ex6.delayed,3,'T1 is one trip although it stood through two stops');
+ assert.deepEqual(ex6.bdPeriods.map(p=>[p.from,p.to]),[[75,95]]);
+ // A wait that runs backwards (the row above was unloaded after this loading) or is longer than a shift is not judged.
+ assert.equal(find('EX1').stopList.find(s=>s.band==='b4').delayed.map(d=>d.door+' '+d.waited).join(),'V9002 30');
+ assert.equal(find('EX1').delayed,1);
+ assert.equal(summarise([ex6,find('EX1')],'machine').total.delayed,4);
+});
+
+test('the shift time-line lays the gaps on the hours of the shift, through midnight and without a shift start',()=>{
+ assert.deepEqual([clockAt(300),clockAt(1260,200),clockAt(300,-30),clockAt(1430,10.5)],['05:00','00:20','04:30','00:00']);
+ const line=shiftTimeline(ex6);
+ assert.deepEqual([line.lo,line.hi,line.shiftMinutes,line.known,line.firstClock,line.lastClock],[0,480,480,true,'05:40','06:55']);
+ assert.deepEqual(line.pieces.map(p=>[p.from,p.to,p.band,p.tone,p.delayed]),[[40,44,'ok','green',0],[44,48,'ok','green',0],[48,52,'ok','green',0],[52,70,'b3','orange',1],[70,100,'b4','red',2],[100,104,'ok','green',0],[104,108,'ok','green',0],[108,115,'b1','orange',1]]);
+ assert.deepEqual(line.marks.map(m=>m.clock),['05:00','06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00']);
+ assert.deepEqual(line.marks.filter(m=>m.edge).map(m=>m.clock),['05:00','13:00']);
+ const hour=h=>[h.label,h.loadings,h.count,h.green,h.orange,h.red,h.rest,h.worst];
+ // 05:00 to 06:00: four loadings (the first has no colour); 12 minutes in green, 8 of the 18-minute stop, 40 before the first loading.
+ assert.deepEqual(hour(line.hours[0]),['05:00 to 06:00',4,{green:3,orange:0,red:0},12,8,0,40,'orange']);
+ assert.deepEqual(hour(line.hours[1]),['06:00 to 07:00',5,{green:2,orange:2,red:1},8,17,30,5,'red']);
+ assert.deepEqual(hour(line.hours[2]),['07:00 to 08:00',0,{green:0,orange:0,red:0},0,0,0,60,'rest']);
+ assert.equal(line.hours.length,8);assert.deepEqual(line.breakdowns.map(b=>b.label),['BD-7 · Hose burst · 06:15 to 06:35']);
+ const night=shiftTimeline(find('EX1','S3'));
+ assert.deepEqual(night.pieces.map(p=>[p.from,p.to,p.fromClock,p.toClock]),[[170,176,'23:50','23:56'],[176,190,'23:56','00:10']]);
+ assert.deepEqual([night.marks[0].clock,night.marks[3].clock,night.marks.at(-1).clock,night.hours[3].label],['21:00','00:00','05:00','00:00 to 01:00']);
+ // A 12-hour card shift has no start time in the master: the strip starts at the first loading.
+ const loose=machineShifts(normalise([vlb(41,'V9041',[trip('EX8','07:10','07:30'),trip('EX8','07:40','08:00')],{location:'Site C',shiftName:'Day',bookShiftCode:'D',masterShiftStart:'',shiftHours:12})]),{assets})[0];
+ const free=shiftTimeline(loose);
+ assert.deepEqual([loose.axis.known,free.lo,free.hi,free.marks.map(m=>m.clock).join(),free.pieces.map(p=>p.minutes).join()],[false,0,60,'07:10,08:10','30']);
+ assert.equal(shiftTimeline(find('EX2')),null,'no loading with a time, no strip');
+});
+
 test('a machine that did not run is in BD (red) or has no hours (brown)',()=>{
  const ex2=find('EX2'),ex3=find('EX3'),ex4=find('EX4'),ex5=find('EX5');
  assert.equal(ex2.state,'running');assert.equal(ex2.statusLabel,'Working, part breakdown');assert.equal(ex2.percent,50);assert.equal(ex2.bdHours,2);
@@ -145,6 +208,20 @@ test('the screen shows working and idle time first, keeps the old list as a seco
  assert.match(css,/tr\.lm-row-nohours>td[^{]*\{background:#f0e2d2/,'a machine with no hours and not in BD is a brown line');
  // The table sorts itself by a column it takes for a duration; none of these columns may be one, or the lines lose their order.
  assert.ok(!/column\('hours',|'BD hours'/.test(screen));
+});
+
+test('pressing a machine opens its shift time-line: the strip, then every loading in its colour with the tipper trips delayed',async()=>{
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/\{ran&&<ShiftTimelines entries=\{itemEntries\}[^\n]*onPick=\{setOnly\}\/>\}\s*\{ran&&tripChips\}\s*\{ran&&<ReportSection key=\{'lm-trips-'/,'the strip, the colour chips, then the list');
+ assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines\)\}[^\n]*rowClassName=\{lineClass\} onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
+ assert.match(screen,/column\('delayedCount','Tipper trips delayed'/);assert.match(screen,/column\('breakdown','Breakdown in Pulse'/);
+ // With a band chosen, the machines of the shift are followed by the stops of that band, so the delayed trips show without another press.
+ assert.match(screen,/\{band&&<ReportSection key=\{'lm-bandstops-'[^\n]*\n[^\n]*rows=\{bandStops\} columns=\{tripColumns\(true\)\}/);
+ const {isDurationColumn}=await import('../src/duration-sort.mjs');
+ for(const [,key,label] of screen.matchAll(/column\('([^']+)','([^']+)'/g))assert.ok(!isDurationColumn(label,key),label+' must not be taken for a duration, or the table reorders the lines');
+ const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
+ for(const [tone,colour] of [['green','#edf8f0'],['orange','#fff3e0'],['red','#fde4e2']])assert.match(css,new RegExp('tr\\.lm-line-'+tone+'>td[^{]*\\{background:'+colour),'a '+tone+' loading is a '+tone+' line');
+ assert.match(css,/\.lm-seg-ok\{background:#3aa863\}/);assert.match(css,/\.lm-seg-b4\{background:#d6362f/);
 });
 
 test('screens asking for the same dates share one reading of the log books; Refresh reads again',async()=>{
