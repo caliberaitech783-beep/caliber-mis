@@ -55,9 +55,21 @@ export async function stageDetails(client,batch,{assets,tripCardRecords}={}){
  const stage=batchStage(batch),vlb=await batchVlbRecords(client,batch),elb=await batchElbRecords(client,batch);
  const holds=[];for(const hold of holdSummary([...vlb,...elb],assets))holds.push({...hold,pendingTransfer:await pendingTransferFor(client,hold.assetId).catch(()=>null)});
  const machines=stage==='vlb_open'?buildMachineSnapshot(vlb,assets,batch.site).machines:await machineRows(client,batch);
- // Extend existing open batches too, without changing any saved ELB or closed snapshot.
- if(stage==='elb_open')for(const row of buildFleetList(assets,batch.site,machines))await client.query('INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(batch_id,asset_id) DO NOTHING',[batch.id,row.assetId,row.door,row.equipmentName,row.equipmentGroup,row.trips,row.sourceCards]);
- const fleet=stage==='vlb_open'?[]:await fleetRows(client,batch);
+ let fleet=stage==='vlb_open'?[]:await fleetRows(client,batch);
+ // Extend existing open batches too, without changing any saved ELB or closed snapshot. The batch
+ // page reads this every 10 s and each read used to send one INSERT per machine, which did nothing
+ // once the machine was listed. The list is now written only for machines the batch does not have
+ // yet, in one statement, so the usual read writes nothing.
+ if(stage==='elb_open'){
+  const listed=new Set(fleet.map(row=>String(row.assetId)));
+  const missing=buildFleetList(assets,batch.site,machines).filter(row=>!listed.has(String(row.assetId)));
+  if(missing.length){
+   await client.query(`INSERT INTO mis_vlb_batch_fleet(batch_id,asset_id,door,equipment_name,equipment_group,trips,source_cards)
+    SELECT $1,(r->>'assetId')::bigint,r->>'door',r->>'equipmentName',r->>'equipmentGroup',(r->>'trips')::integer,(r->>'sourceCards')::integer
+    FROM jsonb_array_elements($2::jsonb) r ON CONFLICT(batch_id,asset_id) DO NOTHING`,[batch.id,JSON.stringify(missing.map(row=>({assetId:row.assetId,door:row.door,equipmentName:row.equipmentName,equipmentGroup:row.equipmentGroup,trips:row.trips,sourceCards:row.sourceCards})))]);
+   fleet=await fleetRows(client,batch);
+  }
+ }
  const report=stage==='vlb_open'?null:machineReportRows(fleet,elb);
  const shiftSummaries=new Map([...(report?.loaders||[]),...(report?.others||[])].map(row=>[row.assetId,row]));
  for(const row of fleet)row.shiftSummary=shiftSummaries.get(row.assetId);
