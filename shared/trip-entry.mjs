@@ -1,5 +1,7 @@
 import {validTripTimes} from './vlb-trip-handover.mjs';
 import {tripEquipmentRequired} from './trip-card-rules.mjs';
+export const TRIP_CARD_ROWS=24;
+export const tripCardForRow=index=>index<TRIP_CARD_ROWS?0:1;
 export const blankTrip=()=>({equipmentName:'',loadingTime:'',unloadingTime:'',tripCount:1});
 export function nextTripEntry(trips,index,timeMode='with',limit=300){
  const row=trips[index];
