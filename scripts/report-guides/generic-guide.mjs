@@ -62,8 +62,13 @@ async function sharedScreen(root,id){
  const timing=await transformWithOxc(fs.readFileSync(path.join(root,'src/trip-timing-report.jsx'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replace(/^export /gm,''),'trip-timing-report.jsx',{jsx:{runtime:'classic'}});
  const timingEnv={React,useMemo:React.useMemo,useState:React.useState,StepBackButton:({label='Back'})=>React.createElement('button',{type:'button',className:'step-back-button'},'← '+label),...timingRules};
  const TripTimingReport=new Function(...Object.keys(timingEnv),timing.code+';return TripTimingReport')(...Object.values(timingEnv));
+ // The Loading Equipment-wise tab draws its working and idle time view the same way.
+ const loadingRules=await load(path.join(root,'shared/loading-machine-report.mjs'));
+ const loadingScreen=await transformWithOxc(fs.readFileSync(path.join(root,'src/loading-machine-report.jsx'),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replace(/^export /gm,''),'loading-machine-report.jsx',{jsx:{runtime:'classic'}});
+ const loadingEnv={React,useMemo:React.useMemo,useState:React.useState,StepBackButton:timingEnv.StepBackButton,tripEntries:timingRules.tripEntries,...loadingRules};
+ const LoadingMachineReport=new Function(...Object.keys(loadingEnv),loadingScreen.code+';return LoadingMachineReport')(...Object.values(loadingEnv));
  const slots=[{from,to,site:'',shift:'',asset:'',employee:'',workOrder:'',loading:''},{...payload,reportRange:from+'|'+to},'',false,0,false];let cursor=0;
- const env={SmartSelect:'select',ManpowerReports:()=>null,ProductionReports:()=>null,MeterContinuityReport:()=>null,BatchStatusReport:()=>null,TripTimingReport,React,...model,...dates,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],()=>{}];}};
+ const env={SmartSelect:'select',ManpowerReports:()=>null,ProductionReports:()=>null,MeterContinuityReport:()=>null,BatchStatusReport:()=>null,TripTimingReport,LoadingMachineReport,React,...model,...dates,useEffect:()=>{},useMemo:fn=>fn(),useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],()=>{}];}};
  const Screen=new Function(...Object.keys(env),code+';return SavedOperationReports')(...Object.values(env));
  return '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="app.css"><style>'+figureCss+'</style></head><body>'+renderToStaticMarkup(Screen({session:{token:'guide'},reportId:id,onSelect(){},ReportSection}))+'</body></html>';
 }

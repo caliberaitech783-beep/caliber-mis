@@ -5,12 +5,28 @@ import ProductionReports from './production-reports.jsx';
 import MeterContinuityReport from './meter-continuity-report.jsx';
 import BatchStatusReport from './batch-status-report.jsx';
 import TripTimingReport from './trip-timing-report.jsx';
+import LoadingMachineReport from './loading-machine-report.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {operationReports,requirements,normalise,filterRecords,buildOperationReport} from './operations-report-model.mjs';
 import './operations-reports.css';
 import {encodeDateRange,parseDateRange} from './date-range-filter.mjs';
 import {monthStartDate} from '../shared/operational-start.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+// The dashboard shows two of these reports at once (Trip Timing & Gap and Loading Equipment-wise). They ask for the same
+// dates, so the second one shares the first one's reading of the log books instead of reading the month again. A reading
+// is shared for one minute; Refresh always reads again. It is stopped only when no screen is waiting for it any more.
+const sharedReadings=new Map();
+function operationsData(from,to,token,fresh){
+ const key=from+'|'+to+'|'+token;let entry=sharedReadings.get(key);
+ if(!entry||fresh||Date.now()-entry.at>60000){
+  const controller=new AbortController();entry={at:Date.now(),users:0,done:false,controller};
+  entry.promise=fetch('/api/reports/operations?'+new URLSearchParams({from,to}),{headers:{Authorization:`Bearer ${token}`},signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'Report data unavailable');return result;}).finally(()=>{entry.done=true;});
+  const held=entry;entry.promise.catch(()=>{if(sharedReadings.get(key)===held)sharedReadings.delete(key);});
+  sharedReadings.set(key,entry);
+ }
+ const reading=entry;reading.users++;
+ return {promise:reading.promise,release(){if(--reading.users<=0&&!reading.done){reading.controller.abort();if(sharedReadings.get(key)===reading)sharedReadings.delete(key);}}};
+}
 export default function OperationsReports(props){
  if(['door-production','machine-production'].includes(props.reportId))return <ProductionReports {...props}/>;
  if(props.reportId==='meter-continuity')return <MeterContinuityReport {...props}/>;
@@ -23,7 +39,7 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),[monthly,setMonthly]=useState(false);
  const id=operationReports.some(r=>r.id===reportId)?reportId:'daily',definition=operationReports.find(r=>r.id===id);
  const valid=filters.from&&filters.to&&filters.from>='2026-11-01'&&filters.to>='2026-11-01'&&filters.from<=filters.to&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<=365;
- useEffect(()=>{const controller=new AbortController();setError('');if(!valid){setBusy(false);return;}setBusy(true);fetch('/api/reports/operations?'+new URLSearchParams({from:filters.from,to:filters.to}),{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'Report data unavailable');return result;}).then(result=>{if(!controller.signal.aborted)setData({...result,reportRange:filters.from+'|'+filters.to});}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});return()=>controller.abort();},[filters.from,filters.to,session.token,reload,valid]);
+ useEffect(()=>{let stopped=false;setError('');if(!valid){setBusy(false);return;}setBusy(true);const reading=operationsData(filters.from,filters.to,session.token,reload>0);reading.promise.then(result=>{if(!stopped)setData({...result,reportRange:filters.from+'|'+filters.to});}).catch(e=>{if(!stopped)setError(e.message);}).finally(()=>{if(!stopped)setBusy(false);});return()=>{stopped=true;reading.release();};},[filters.from,filters.to,session.token,reload,valid]);
  const all=useMemo(()=>normalise(data?.records||[]),[data]);
  const effective=id==='missing'?{...filters,employee:'',workOrder:''}:filters;
  const selected=useMemo(()=>filterRecords(all,effective),[all,filters,id]);
@@ -34,14 +50,15 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const field=(key,label,choices)=> <label>{label}<SmartSelect value={filters[key]} onChange={e=>set(key,e.target.value)} disabled={id==='missing'&&['employee','workOrder'].includes(key)}><option value="">All</option>{choices.map(([value,text])=><option key={value} value={value}>{text}</option>)}</SmartSelect></label>;
  const canExport=Boolean(data)&&!busy&&!error&&valid&&data.reportRange===filters.from+'|'+filters.to;
  const recordDateFilter={value:encodeDateRange(filters.from,filters.to),onChange:value=>{const range=parseDateRange(value);setFilters(current=>({...current,from:range?.from||monthStartDate(today()),to:range?.to||today()}));}};
- // The table of the chosen report. The Trip Timing tab shows it as its "All trip rows" view, beside the two delay views.
+ // The table of the chosen report. The Trip Timing tab shows it as its "All trip rows" view, beside the two delay views,
+ // and the Loading Equipment-wise tab as its "All machines list" view, beside the working and idle time view.
  const table=<ReportSection key={id} reportKey={definition.title} recordDateFilter={recordDateFilter} dataReady={canExport} title={definition.title+' · '+filters.from+' to '+filters.to} category={'operations-'+id} description={'Filters: '+(Object.entries(effective).filter(([key,value])=>value&&!['from','to'].includes(key)).map(([key,value])=>key+': '+value).join(' · ')||'All assigned records')} columns={report.columns.map((label,index)=>({key:id+'-'+index,label,value:row=>row[index]}))} rows={report.rows} emptyMessage="No matching records or exceptions found."/>;
  return <section className="operations-reports">
   <header><div><small>MIS / REPORTS / {definition.group}</small><h1>{definition.title}</h1><p>Saved operational records · {filters.from} to {filters.to}</p></div><div className="op-actions"><button onClick={()=>setReload(v=>v+1)} disabled={busy}>Refresh</button></div></header>
   <div className="op-report-picker"><label>Report<SmartSelect value={id} onChange={e=>onSelect(e.target.value)}>{[...new Set(operationReports.map(r=>r.group))].map(group=><optgroup label={group} key={group}>{operationReports.filter(r=>r.group===group).map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</optgroup>)}</SmartSelect></label></div>
   <div className="op-filters"><label>From<input type="date" min="2026-11-01" value={filters.from} onChange={e=>set('from',e.target.value)}/></label><label>To<input type="date" min="2026-11-01" value={filters.to} onChange={e=>set('to',e.target.value)}/></label>{field('site','Site',[...new Set([...all.map(r=>r.location),...(data?.assets||[]).map(a=>a.site)])].filter(Boolean).sort().map(v=>[v,v]))}{field('shift','Shift',options('shiftId','shiftName'))}{field('asset','Vehicle / equipment',options('assetId','door'))}{field('employee','Driver / operator',options('employeeId','employeeName'))}{field('workOrder','Work order',options('workOrderContract','workOrderContract'))}{['loading','timing'].includes(id)&&field('loading','Loading equipment',[...new Set(all.flatMap(r=>(r.trips||[]).map(t=>t.equipmentName)))].sort().map(v=>[v,v]))}{id==='trends'&&<label>Grouping<SmartSelect value={monthly?'monthly':'daily'} onChange={e=>setMonthly(e.target.value==='monthly')}><option value="daily">Daily</option><option value="monthly">Monthly</option></SmartSelect></label>}</div>
   {!valid&&<p role="alert">Choose a valid date range of at most 366 days.</p>}{error&&<p role="alert">{error}</p>}{busy&&<p role="status">Loading complete report data…</p>}
-  {data&&valid&&!error&&<><p className="op-filter-summary">Filters: {Object.entries(effective).filter(([k,v])=>v&&!['from','to'].includes(k)).map(([k,v])=>k+': '+v).join(' · ')||'All sites, assets, shifts and employees'}</p><div className="op-totals"><span><b>{selected.length}</b> logbooks</span><span><b>{new Set(selected.map(r=>r.assetId)).size}</b> assets</span><span><b>{selected.reduce((s,r)=>s+r.tripsTotal,0)}</b> trips</span><span><b>{report.rows.length}</b> report rows</span></div>{requirements[id]&&<p className="op-notice"><b>Additional data required:</b> {requirements[id]}.</p>}{report.note&&id!=='timing'&&<p className="op-notice">{report.note}</p>}{id==='scans'&&!data.scanConnected&&<p role="status">Scan data source is not available.</p>}{id==='timing'?<TripTimingReport records={selected} loading={filters.loading} period={filters.from+' to '+filters.to} ReportSection={ReportSection} dataReady={canExport} rowsView={<>{report.note&&<p className="op-notice">{report.note}</p>}{table}</>}/>:table}</>}
+  {data&&valid&&!error&&<><p className="op-filter-summary">Filters: {Object.entries(effective).filter(([k,v])=>v&&!['from','to'].includes(k)).map(([k,v])=>k+': '+v).join(' · ')||'All sites, assets, shifts and employees'}</p><div className="op-totals"><span><b>{selected.length}</b> logbooks</span><span><b>{new Set(selected.map(r=>r.assetId)).size}</b> assets</span><span><b>{selected.reduce((s,r)=>s+r.tripsTotal,0)}</b> trips</span><span><b>{report.rows.length}</b> report rows</span></div>{requirements[id]&&<p className="op-notice"><b>Additional data required:</b> {requirements[id]}.</p>}{report.note&&id!=='timing'&&<p className="op-notice">{report.note}</p>}{id==='scans'&&!data.scanConnected&&<p role="status">Scan data source is not available.</p>}{id==='timing'?<TripTimingReport records={selected} loading={filters.loading} period={filters.from+' to '+filters.to} ReportSection={ReportSection} dataReady={canExport} rowsView={<>{report.note&&<p className="op-notice">{report.note}</p>}{table}</>}/>:id==='loading'?<LoadingMachineReport records={selected} assets={data.assets} fleet={data.fleet} batches={data.batches} filters={effective} loading={filters.loading} period={filters.from+' to '+filters.to} ReportSection={ReportSection} dataReady={canExport} rowsView={table}/>:table}</>}
  </section>;
 }
 

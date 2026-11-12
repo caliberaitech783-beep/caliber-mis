@@ -1,9 +1,9 @@
 // Made-up sample data for the report manuals, shaped like the JSON of GET /api/reports/operations
-// (server/routes/log-book.mjs): {records, assets, shifts, cards, scanConnected}.
+// (server/routes/log-book.mjs): {records, assets, shifts, batches, fleet, cards, scanConnected}.
 // Nothing here is real: sites are used only as labels, people are SAMPLE DRIVER 01..08,
 // doors are V9001.., TPC901.., and every reading, time and book number is invented.
 //
-// What the sample holds (14 saved log books, 13 and 14 December 2026):
+// What the sample holds (16 saved log books, 13 and 14 December 2026):
 //   Dhoptala OC (2nd)  Shift I + Shift II   V9001 (tipper), TPC901 (loader)
 //   Jayant OC          Shift I              V9002, V9003 (tippers), VPC902 (loader)
 //   Sasti OC           Day (12 hours)       TPC903 (equipment only, so 0 trips and 0 KM)
@@ -15,6 +15,8 @@
 //   4. VPC902 on 14 Dec carries 3 breakdown hours; V9002 waited (long trip gap, low running hours).
 //   5. TPC903 on 14 Dec carries a manual breakdown entry; V9001 Shift II on 14 Dec has no breakdown figure.
 //   6. V9003 on 14 Dec was saved without trip times; one scan card failed to read.
+//   7. VPC904 (Jayant) was in breakdown for the whole of Shift I on 14 Dec and TPC905 (Dhoptala) was not in use,
+//      so the Loading Equipment-wise Report has a machine in BD and a machine with no hours.
 
 const DHOPTALA='Dhoptala OC (2nd)',JAYANT='Jayant OC',SASTI='Sasti OC';
 const WORK_ORDERS={[DHOPTALA]:'WO/SAMPLE/DHP/001',[JAYANT]:'WO/SAMPLE/JYT/002',[SASTI]:null};
@@ -34,6 +36,8 @@ const ASSETS={
  V9003:{id:9003,door:'V9003',site:JAYANT,kind:'vehicle',name:'SAMPLE TIPPER',registration:'SAMPLE-9003'},
  VPC902:{id:9102,door:'VPC902',site:JAYANT,kind:'equipment',name:'SAMPLE EXCAVATOR',registration:''},
  TPC903:{id:9103,door:'TPC903',site:SASTI,kind:'equipment',name:'SAMPLE EXCAVATOR',registration:''},
+ VPC904:{id:9104,door:'VPC904',site:JAYANT,kind:'equipment',name:'SAMPLE EXCAVATOR',registration:''},
+ TPC905:{id:9105,door:'TPC905',site:DHOPTALA,kind:'equipment',name:'SAMPLE EXCAVATOR',registration:''},
 };
 const person=n=>({id:9300+n,name:'SAMPLE DRIVER '+String(n).padStart(2,'0'),caliberId:'CMPL9'+String(n).padStart(4,'0')});
 const PEOPLE=Object.fromEntries([1,2,3,4,5,6,7,8].map(n=>['d'+n,person(n)]));
@@ -53,7 +57,7 @@ function tripRows(equipmentName,timeMode,rows){
  return out;
 }
 
-function book({id,bookNo,date,asset,shift,driver,kmr=null,hmr,loader='',timeMode='with',trips=[],remark='',breakdownHours=0,breakdownHoursSource='pulse',hoursWarning,scanCardId}){
+function book({id,bookNo,date,asset,shift,driver,kmr=null,hmr,loader='',timeMode='with',trips=[],remark='',breakdownHours=0,breakdownHoursSource='pulse',hoursWarning,scanCardId,status='',statusReason=''}){
  const vehicle=asset.kind==='vehicle',rows=vehicle?tripRows(loader,timeMode,trips):[];
  const count=test=>rows.reduce((sum,row)=>sum+(test(row)?row.tripCount:0),0);
  const totalTrips=count(()=>true),openingTrips=count(row=>row.loadingTime),endingTrips=count(row=>row.unloadingTime),workingHmr=hmr[1]-hmr[0];
@@ -66,7 +70,7 @@ function book({id,bookNo,date,asset,shift,driver,kmr=null,hmr,loader='',timeMode
   aFormNo:'',jobCardNo:'',remark,timeMode,trips:rows,
   totalRecords:rows.length,openingTrips,endingTrips,totalTrips,...(vehicle?{completedTrips:totalTrips}:{}),
   workOrderContract:WORK_ORDERS[asset.site],
-  breakdownHours,breakdownHoursSource,...(hoursWarning?{hoursWarning}:{}),
+  breakdownHours,breakdownHoursSource,...(hoursWarning?{hoursWarning}:{}),...(status?{shiftStatus:status,statusReason}:{}),
   availabilityHours:workingHmr,runningHours:workingHmr,idleHours:shift.hours-workingHmr,
   door:asset.door,assetName:asset.name,registration:asset.registration,
   employeeName:driver.name,caliberId:driver.caliberId,shiftName:shift.name,masterShiftStart:shift.start,bookShiftCode:shift.code,
@@ -75,6 +79,8 @@ function book({id,bookNo,date,asset,shift,driver,kmr=null,hmr,loader='',timeMode
 }
 
 const {d1,d2,d3,d4,d5,d6,d7,d8}=PEOPLE;
+// A machine that did not run has no operator on its book.
+const NOBODY={id:null,name:'',caliberId:''};
 const SCAN_1='c0000000-0000-4000-8000-000000009601',SCAN_2='c0000000-0000-4000-8000-000000009602',SCAN_3='c0000000-0000-4000-8000-000000009603',SCAN_4='c0000000-0000-4000-8000-000000009604';
 
 const vehicleBooks=[
@@ -110,12 +116,20 @@ const equipmentBooks=[
   breakdownHours:3,remark:'Hydraulic hose failure, machine stopped 08:30 to 11:30.'}),
  book({id:9514,bookNo:'CAL/ELB/14-12-26/003',date:'2026-12-14',asset:ASSETS.TPC903,shift:SHIFTS.sastiDay,driver:d8,hmr:[4420,4427.5],
   breakdownHours:1.5,breakdownHoursSource:'manual',hoursWarning:'Pulse breakdown hours unavailable.',remark:'Track adjustment, 1.5 hours.'}),
+ // Two machines that did not run: one in breakdown for the whole shift, one not in use.
+ book({id:9515,bookNo:'CAL/ELB/14-12-26/004',date:'2026-12-14',asset:ASSETS.VPC904,shift:SHIFTS.jayant1,driver:NOBODY,hmr:[7310,7310],
+  breakdownHours:8,status:'breakdown',statusReason:'Engine overheating, machine stopped for the whole shift.'}),
+ book({id:9516,bookNo:'CAL/ELB/14-12-26/005',date:'2026-12-14',asset:ASSETS.TPC905,shift:SHIFTS.dhoptala1,driver:NOBODY,hmr:[2640,2640],status:'not_in_use'}),
 ];
 
 // The endpoint returns the vehicle books first (with trip handover links), then the equipment books.
 const records=[...vehicleBooks,...equipmentBooks];
 
-const assets=Object.values(ASSETS).map(({id,door,site,kind})=>({id:String(id),door,site,kind}));
+const assets=Object.values(ASSETS).map(({id,door,site,kind,name})=>({id:String(id),door,site,kind,group:kind==='equipment'?'Excavator':'Tipper',name}));
+// The batch of every site, date and shift that has a book, with its stage; and the site machines of a batch with no saved ELB
+// (exception 2: TPC901 loaded tippers in Shift II on 14 Dec but its ELB was not entered).
+const batches=[...new Map(records.map(r=>[[r.data.location,r.data.bookDate,r.data.bookShiftCode].join('|'),{site:r.data.location,date:r.data.bookDate,shift:r.data.bookShiftCode,stage:r.data.bookDate==='2026-12-13'?'closed':r.data.bookShiftCode==='S2'?'vlb_open':'elb_open'}])).values()];
+const fleet=[{site:DHOPTALA,date:'2026-12-14',shift:'S2',assetId:'9101',door:'TPC901',name:'SAMPLE EXCAVATOR',group:'Excavator'}];
 const shifts=Object.values(SHIFTS).map(({id,name,site})=>({id:String(id),name,site}));
 
 // Scan cards: what the reader extracted (draft), the card status and the saved book, if any.
@@ -127,5 +141,5 @@ const cards=[
  {id:SCAN_4,filename:'dhoptala-14dec-shift2-002.jpg',status:'error',draft:null,error:'Card photo is unreadable. Scan the card again.',logbook_id:null,book_no:null,kind:'vehicle',scanned_date:'2026-12-14'},
 ];
 
-export const payload={records,assets,shifts,cards,scanConnected:true};
+export const payload={records,assets,shifts,batches,fleet,cards,scanConnected:true};
 export default payload;
