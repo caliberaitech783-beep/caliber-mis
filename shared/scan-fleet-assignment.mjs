@@ -14,12 +14,17 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehi
  const aliasKeys=row=>(Array.isArray(row.cardAliases)?row.cardAliases:[]).flatMap(alias=>[fleetDoorKey(alias,kind),cardMachineKey(alias,'equipment')]).filter(Boolean);
  const identifiers=row=>[row.door,row.doorNo,row.equipmentDoorNo,equipmentDoorNumber(row),...(Array.isArray(row.cardAliases)?row.cardAliases:[])].filter(Boolean);
  const exactKey=value=>String(value||'').trim().toUpperCase().replace(/\b(?:TATA|TA|T)\s*(?=\d)/,'TPC').replace(/\s+/g,'').replace(/[·–—(/]/g,'-').replace(/-+/g,'-');
- const broadMatches=rows.filter(row=>{
+ const eligibleRows=rows.filter(row=>{
   const category=String(row.category||row.equipmentCategory||row.kind||'').trim().toLowerCase();
   // V29 on a trip can mean VPC29, but a V29 vehicle is a separate asset.
   if(kind==='equipment'&&['vehicle','vehicles'].includes(category))return false;
-  return fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key||aliasKeys(row).includes(key);
+  return true;
  });
+ // A literal Equipment Master door always wins over a learned alias. This keeps
+ // distinct machines such as DEMO19 and DEMO25 separate even if DEMO19 carries
+ // an obsolete DE25 alias.
+ const realMatches=eligibleRows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key);
+ const broadMatches=realMatches.length?realMatches:eligibleRows.filter(row=>aliasKeys(row).includes(key));
  const requestedExact=exactKey(door),hasSuffix=/^[A-Z]+\d+-[^-]+$/.test(requestedExact);
  const exactMatches=hasSuffix?broadMatches.filter(row=>identifiers(row).some(value=>exactKey(value)===requestedExact)):[];
  const candidates=hasSuffix?exactMatches:broadMatches;

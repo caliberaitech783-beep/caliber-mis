@@ -52,6 +52,15 @@ test('Majri VPC29 trips ignore the separate V29 vehicle at the same site',()=>{
  assert.deepEqual(issue.fields,['trips.0.equipmentName','trips.1.equipmentName','scanMachineSummary.0.equipmentName']);
  assert.throws(()=>scanFleetIssues([vehicle,loader,{...loader,id:130}],draft),/duplicate.*VPC29/);
 });
+test('a real DEMO door wins over an obsolete alias on a different DEMO machine',()=>{
+ const rows=[
+  {id:352187,door:'DEMO19-15295',cardAliases:['DE25'],category:'Equipment',currentLocation:'Sasti OC'},
+  {id:364025,door:'DEMO25-49001',category:'Equipment',currentLocation:'Sasti OC'},
+ ];
+ const draft={location:'Sasti OC',trips:[{equipmentName:'DE25'}],scanMachineSummary:[{equipmentName:'DEMO25'}]};
+ assert.deepEqual(scanFleetIssues(rows,draft),[]);
+ assert.equal(scanFleetAssignment(rows,{doorText:'DE25',location:'Sasti OC'},{},'','equipment'),null);
+});
 test('changing the selected equipment serial invalidates the previous fleet check',()=>{
  const draft={location:'Majri OB',trips:[{equipmentName:'VPC29 - 111'}]};
  assert.notEqual(scanFleetSignature(draft),scanFleetSignature({...draft,trips:[{equipmentName:'VPC29 - 222'}]}));
