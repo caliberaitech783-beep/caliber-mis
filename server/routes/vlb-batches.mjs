@@ -221,9 +221,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   if(!logBookOps)fail('Machine entry is unavailable on this server.',503);
   // Pulse is read before the batch lock; inside it, the saved rows answer without a remote call.
-  const prefetched=await prefetchBreakdownRows(logBookOps.readBreakdownRows,req.batchActor.login),readHours=lockedReadHours(logBookOps.readHours,prefetched);
+  const prefetched=await prefetchBreakdownRows(logBookOps.readBreakdownRows,req.batchActor.login);
   res.json(await batchTransaction(req,async(client,batch)=>{
    if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);
+   const readHours=lockedReadHours(logBookOps.readHours&& (input=>logBookOps.readHours({...input,client})),prefetched);
    const record=await saveFleetEntry(client,batch,req.params.assetId,req.body||{},req.batchActor.login,{allowEditSaved:req.batchActor.admin,resolve:logBookOps.resolve,insert:logBookOps.insert,applyHours:data=>logBookOps.applyHours(data,req.batchActor.login,readHours),readHours});
    const info=await stageDetails(client,batch);
    return {record,fleet:info.fleet,fleetProgress:info.fleetProgress,closeBlockers:info.closeBlockers,machineReport:info.machineReport};

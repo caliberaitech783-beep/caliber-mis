@@ -22,10 +22,11 @@ export default function ScanExtractionStatus({batchId,pending,total,uploading,fa
  const current=timing.batchId===batchId?timing:{started:0,ended:0},finished=remaining===0&&!uploading;
  return <div className={'scan-extraction-status'+(finished?'':' scan-progress-active')}><strong role="status">{finished?'Extraction finished':active>0?'Extracting':'Waiting for extraction'} · {completed}/{count} cards processed{remaining>0?' · '+active+' reading · '+(remaining-active)+' waiting':''}{failed>0?' · '+failed+' failed':''}</strong>{current.started>0&&<span>Elapsed: <strong role="timer" aria-label="Extraction elapsed time" aria-live="off">{formatExtractionTime(((current.ended||now)-current.started)/1000)}</strong></span>}</div>;
 }
-export function ScanExtractionLine({batchId,pending,total}){
+export function ScanExtractionLine({batchId,pending,total,reading}){
  const [now,setNow]=useState(()=>Date.now());
- useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[]);
+ useEffect(()=>{if(pending<=0)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[pending>0]);
  const started=readTime(startKey(batchId));
- return <p>{pending}/{total} extracting… · {total-pending}/{total} extracted · Time taken: {formatExtractionTime(started?(now-started)/1000:0)}</p>;
+ const end=pending===0?readTime(endKey(batchId)):0;
+ return <p>{reading} reading · {pending-reading} waiting · {total-pending}/{total} processed · Time taken: {formatExtractionTime(started?((end||now)-started)/1000:0)}</p>;
 }
 
