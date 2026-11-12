@@ -8686,6 +8686,7 @@ app.use((req,res,next)=>{
 app.use(protectStaticFiles);
 app.use('/app-assets',express.static(path.join(staticRoot,'app-assets'),{immutable:true,maxAge:'1y'}));
 app.use(express.static(staticRoot===root?path.join(root,'public'):staticRoot));
+app.use('/app-assets',(_req,res)=>res.set('Cache-Control','no-store').status(404).type('text').send('Asset not found'));
 app.get(/^(?!\/api).*/,(_req,res)=>res.sendFile(path.join(staticRoot,'index.html')));
 app.use((error,req,res,next)=>{
   const auditedError=auditSafeError(error);
