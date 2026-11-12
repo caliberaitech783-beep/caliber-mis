@@ -5,12 +5,14 @@
  *   blocked (CPU work such as OCR, image encoding or PDF building). Each freeze
  *   records which API requests and background jobs were running at the time.
  * - API timing per route: count, average, 95th percentile, slowest, slow count.
- * - Database pool: how many queries had to wait for a free connection.
+ * - Database pool: how many queries had to wait for a free connection, and which
+ *   requests and jobs hold the connections (now, and in total since the start).
  * - Per-minute history for the last 24 hours (requests, freezes, memory, CPU).
  *
  * Nothing is written to the database; numbers reset when the server restarts.
  */
 import {monitorEventLoopDelay} from 'node:perf_hooks';
+import {AsyncLocalStorage} from 'node:async_hooks';
 
 export const FREEZE_THRESHOLD_MS = 300;
 export const SLOW_REQUEST_MS = 1000;
@@ -34,8 +36,78 @@ export function percentile(values, share) {
 
 const round = (value) => Math.round(Number(value) || 0);
 
+// The background job (trackJob) the current code runs in, so a connection it takes can be named.
+const jobContext = new AsyncLocalStorage();
+const MAX_HOLDERS = 300;
+
+/**
+ * Names who holds each database connection. "10 of 10 busy" says the pool is
+ * full; this says which request or job filled it and how long each has held on.
+ *
+ * Call on the pg Pool itself, before anything wraps it. Every checkout goes
+ * through pool.connect (pool.query uses it too), so wrapping that one method
+ * sees them all. requestLabel returns the current request's name, or ''.
+ */
+export function trackPoolClients(pool, {requestLabel = () => '', now = () => Date.now()} = {}) {
+  const held = new Map();
+  const holders = new Map();
+  let nextId = 1;
+  const connect = pool.connect.bind(pool);
+  const label = () => {
+    try { return requestLabel() || jobContext.getStore() || 'Background work'; } catch { return 'Background work'; }
+  };
+  const checkedOut = (client, who, askedAt) => {
+    const id = nextId++, since = now();
+    held.set(id, {who, since});
+    let stats = holders.get(who);
+    if (!stats && holders.size < MAX_HOLDERS) { stats = {who, checkouts: 0, heldMs: 0, maxHeldMs: 0, maxWaitMs: 0}; holders.set(who, stats); }
+    if (stats) { stats.checkouts += 1; stats.maxWaitMs = Math.max(stats.maxWaitMs, since - askedAt); }
+    // The pool gives the client a fresh release on every checkout, so this wraps one checkout only.
+    const release = client.release;
+    client.release = function (...args) {
+      if (held.delete(id) && stats) { const ms = now() - since; stats.heldMs += ms; stats.maxHeldMs = Math.max(stats.maxHeldMs, ms); }
+      client.release = release;
+      return release.apply(this, args);
+    };
+  };
+  pool.connect = function (callback) {
+    const who = label(), askedAt = now();
+    if (typeof callback === 'function') {
+      return connect((error, client, done) => {
+        if (error || !client) return callback(error, client, done);
+        checkedOut(client, who, askedAt);
+        return callback(error, client, (...args) => client.release(...args));
+      });
+    }
+    return connect().then((client) => { checkedOut(client, who, askedAt); return client; });
+  };
+  return {
+    snapshot() {
+      const current = new Map();
+      for (const {who, since} of held.values()) {
+        const row = current.get(who) || {who, connections: 0, longestMs: 0};
+        row.connections += 1;
+        row.longestMs = Math.max(row.longestMs, round(now() - since));
+        current.set(who, row);
+      }
+      return {
+        heldNow: [...current.values()].sort((a, b) => b.connections - a.connections || b.longestMs - a.longestMs),
+        heldMost: [...holders.values()].sort((a, b) => b.heldMs - a.heldMs).slice(0, 20).map((stats) => ({
+          who: stats.who,
+          checkouts: stats.checkouts,
+          totalSeconds: round(stats.heldMs / 1000),
+          averageMs: round(stats.heldMs / stats.checkouts),
+          longestMs: round(stats.maxHeldMs),
+          longestWaitMs: round(stats.maxWaitMs),
+        })),
+      };
+    },
+  };
+}
+
 export function createPerformanceMonitor({
   pool = null,
+  poolClients = null,
   now = () => Date.now(),
   freezeThresholdMs = FREEZE_THRESHOLD_MS,
   slowRequestMs = SLOW_REQUEST_MS,
@@ -178,7 +250,7 @@ export function createPerformanceMonitor({
     async trackJob(name, task) {
       const id = nextId++;
       activeJobs.set(id, {name: String(name || 'Background job'), startedAt: now()});
-      try { return await task(); } finally { activeJobs.delete(id); finished('job', String(name || 'Background job')); }
+      try { return await jobContext.run(String(name || 'Background job'), task); } finally { activeJobs.delete(id); finished('job', String(name || 'Background job')); }
     },
 
     snapshot() {
@@ -208,7 +280,7 @@ export function createPerformanceMonitor({
           peakCpuPercent: max(lastHour, 'cpuPercent'),
           peakRssMb: max(lastHour, 'rssMb'),
         },
-        database: {open: pool?.totalCount ?? 0, idle: pool?.idleCount ?? 0, waiting: pool?.waitingCount ?? 0, max: pool?.options?.max ?? null},
+        database: {open: pool?.totalCount ?? 0, idle: pool?.idleCount ?? 0, waiting: pool?.waitingCount ?? 0, max: pool?.options?.max ?? null, ...(poolClients ? poolClients.snapshot() : {heldNow: [], heldMost: []})},
         runningNow: {
           requests: [...active.values()].map((entry) => `${entry.method} ${entry.route} (${round(now() - entry.startedAt)} ms)`),
           jobs: [...activeJobs.values()].map((entry) => `${entry.name} (${round((now() - entry.startedAt) / 1000)} s)`),
@@ -233,6 +305,10 @@ export function performanceDiagnostic(snapshot) {
     ['Most waiting for database', `${hour.poolMaxWaiting} requests (pool of ${snapshot.database.max ?? '?'})`],
     ['Peak CPU / memory (last hour)', `${hour.peakCpuPercent}% / ${hour.peakRssMb} MB`],
   ];
+  const holding = snapshot.database.heldNow || [];
+  if (holding.length) facts.push(['Database connections held now', holding.slice(0, 4).map((row) => `${row.who} x${row.connections} (${(row.longestMs / 1000).toFixed(1)} s)`).join('; ')]);
+  const heaviest = (snapshot.database.heldMost || []).filter((row) => row.totalSeconds > 0).slice(0, 3);
+  if (heaviest.length) facts.push(['Most database connection time', heaviest.map((row) => `${row.who} ${row.totalSeconds} s in ${row.checkouts} uses (longest ${(row.longestMs / 1000).toFixed(1)} s)`).join('; ')]);
   if (worst) facts.push(['Slowest page (95% finish within)', `${worst.route} ${worst.p95Ms} ms`]);
   const lastFreeze = snapshot.recentFreezes[0];
   if (lastFreeze) facts.push(['Last freeze was during', [...lastFreeze.jobs, ...lastFreeze.requests].slice(0, 3).join('; ') || 'nothing recorded']);

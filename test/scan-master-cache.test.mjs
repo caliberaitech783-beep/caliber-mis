@@ -48,5 +48,5 @@ test('a failed load is not kept',async()=>{
 test('card reading and the scan-entry read use the shared master copy',()=>{
   const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
   assert.match(source,/const masters=scanMastersForBook\(\(await readScanMasters\(pool,MASTER_NAMES\)\)\.rows,batch\);/);
-  assert.match(source,/matchingMasters\?\?=\(await readScanMasters\(db,MASTER_NAMES\)\)\.rows;/);
+  assert.match(source,/matchingMasters\?\?=scanMastersForBook\(\(await readScanMasters\(db,MASTER_NAMES\)\)\.rows,batch\);/);
 });

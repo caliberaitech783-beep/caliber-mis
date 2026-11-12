@@ -60,7 +60,7 @@ import {ibossAccountsEligible,ibossAccountsAllowed,accountSectionAllowed} from '
 import {assignedUserRoles,hasAccountRole,accountPrivileges} from './shared/account-role-access.mjs';
 import {dashboardMetric} from './server/rules/iboss-dashboard.mjs';
 import express from 'express';
-import {rowSecurityContext,rowSecurityPool,initializeRowSecurity,withoutRowSecurityRequest} from './server/services/row-security.mjs';
+import {rowSecurityContext,rowSecurityPool,initializeRowSecurity,withoutRowSecurityRequest,currentRequest} from './server/services/row-security.mjs';
 import {browserSessionMiddleware} from './server/middleware/browser-session-security.mjs';
 import {registerAccountSecurity} from './server/routes/account-security.mjs';
 import {securityHeaders,protectStaticFiles,createLoginLimiter} from './server/middleware/http-security.mjs';
@@ -127,7 +127,7 @@ import {registerOemEmailAdmin} from './server/routes/oem-email-admin.mjs';
 import {requireUserSessionView,isSessionViewOnlyUser} from './shared/user-session-access.mjs';
 import {bdAgeingReportHandler} from './shared/bd-ageing-report.mjs';
 import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
-import {createPerformanceMonitor,performanceDiagnostic} from './server/services/performance-monitor.mjs';
+import {createPerformanceMonitor,performanceDiagnostic,trackPoolClients,normalizeRoutePath} from './server/services/performance-monitor.mjs';
 import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './server/rules/data-housekeeping.mjs';
 import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './server/rules/storage-management.mjs';
 import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './server/services/text-translation.mjs';
@@ -312,15 +312,18 @@ const HIERARCHY_REPORT_SCHEDULE_SETTING_KEY='hierarchy_report_schedules';
 const AUDIT_REASON_HEADER='x-audit-reason';
 const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 
-const pool=rowSecurityPool(new Pool({
+const databasePool=new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
   max:10,
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
-}),{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
+});
+// Before the row-security wrapper takes hold of connect, so every checkout is counted.
+const poolClients=trackPoolClients(databasePool,{requestLabel:()=>{const req=currentRequest();return req?`${req.method} ${normalizeRoutePath(req.originalUrl||req.path)}`:'';}});
+const pool=rowSecurityPool(databasePool,{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
 // Admin > Diagnostics shows these numbers: server freezes, slow pages and database waits.
-const performanceMonitor=createPerformanceMonitor({pool});
+const performanceMonitor=createPerformanceMonitor({pool,poolClients});
 performanceMonitor.start();
 
 async function currentDataRevisions(keys,client=pool){

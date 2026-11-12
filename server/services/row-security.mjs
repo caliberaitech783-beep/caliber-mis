@@ -4,6 +4,8 @@ const requests=new AsyncLocalStorage();
 let rlsReady=false;
 export const rowSecurityContext=(req,_res,next)=>requests.run({req},next);
 export const withoutRowSecurityRequest=task=>requests.exit(task);
+// The HTTP request the current code is serving, if any (used to name who holds a database connection).
+export const currentRequest=()=>requests.getStore()?.req||null;
 const literal=value=>"'"+String(value).replaceAll("'","''")+"'";
 export async function initializeRowSecurity(pool,{enabled=false}={}){
  if(!enabled)return;
