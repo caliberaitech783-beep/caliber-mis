@@ -58,6 +58,35 @@ test('Wrong door review isolates door checks without changing full-card validati
  assert.equal(nodes(tree,n=>n.type==='h2'&&n.props.children==='Ready for automatic saving').length,0,'hidden issues continue blocking final save');
 });
 
+test('an open card shows its remaining errors after leaving the selected issue group',()=>{
+ const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
+ const draft={bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'E1',tripCount:1}],scanMachineSummary:[{equipmentName:'E1',tripCount:1}]};
+ const card={id:'first',batch_id:'batch-1',ordinal:1,status:'review',draft,raw_fields:{},checks:{errors:['Enter door number.','Closing HMR is missing.']}};
+ const next={...card,id:'second',ordinal:2};
+ const correctedDraft={...draft,doorText:'V1',assetId:'v1'};
+ const corrected={...card,draft:correctedDraft,checks:{errors:['Closing HMR is missing.']}};
+ const sync=()=>app.effects.find(fn=>String(fn).includes('wasInReview'))();
+ app.testCapture.setOptions({assets:[{id:'v1',kind:'vehicle',door:'V1',site:'Sasti OC'}],employees:[],shifts:[],workOrders:[],sites:['Sasti OC']});
+ app.testCapture.setCards([card,next]);app.testCapture.setSelected(card.id);app.testCapture.setDraft(draft);
+ app.render();sync();
+ app.testCapture.setCards([corrected,next]);app.testCapture.setDraft(correctedDraft);
+ app.render();sync();
+ const tree=app.render();
+ const status=nodes(tree,n=>n.type===scope.ScanCorrectionStatus&&n.props.errors)[0];
+ assert.ok(status.props.errors.includes('Closing HMR is missing.'));
+ assert.ok(nodes(tree,n=>n.props['data-field']==='closingHmr'&&!n.props.hidden).length);
+ assert.equal(new URL(app.window.location.href).searchParams.get('scanView'),'review');
+
+ app.testCapture.setCards([{...corrected,status:'posted'},next]);
+ app.render();sync();
+ const nextTree=app.render();
+ assert.ok(nodes(nextTree,n=>n.type===scope.ScanCorrectionStatus&&n.props.errors?.includes('Enter door number.')).length);
+ sync();
+ app.testCapture.setCards([{...corrected,status:'posted'},{...next,status:'posted'}]);
+ app.render();sync();
+ assert.equal(new URL(app.window.location.href).searchParams.has('scanView'),false);
+});
+
 test('VLB overview keeps compact input panels separate from corrections; attention opens a separate URL and Back restores overview',()=>{
  const app=harness();let tree=app.render();
  assert.equal(nodes(tree,n=>n.props.className==='scan-card-groups').length,1);
