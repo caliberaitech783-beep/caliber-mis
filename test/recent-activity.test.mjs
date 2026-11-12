@@ -73,4 +73,8 @@ test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of t
  assert.match(panel,/headers:\{Authorization:'Bearer '\+session\.token\}/,'the read carries the sign-in');
  for(const text of ['Log books saved',' shifts completed','Completed in the last 6, 12 and 24 hours'])assert.ok(panel.includes(text),text);
  assert.ok(css.includes('.lb-reports .op-report-picker{display:none}'),'no report list on the dashboard copy');
+ // ".lb-table-wrap small{display:block}" outranks a bare ".lb-recent-batches" rule; then the batch numbers run together on one line and push the figures off the screen.
+ assert.match(panel,/<small className="lb-recent-batches"/,'batch numbers sit under each shift figure');
+ assert.ok(css.includes('.lb-recent-table .lb-recent-batches{display:flex;flex-direction:column;'),'batch numbers are listed one to a line');
+ assert.ok(!/(^|[},])\.lb-recent-batches\{/m.test(css),'the batch list is never styled without the table class');
 });
