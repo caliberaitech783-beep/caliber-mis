@@ -130,10 +130,15 @@
 .lb-recent-locks .lb-recent-site-row td{background:#f6f1fd;font-weight:650;border-top:1px solid #dccdf0}.lb-recent-locks .lb-recent-site-row td>span{margin-left:10px;font-size:11px;font-weight:600;color:var(--lb-muted);white-space:nowrap}
 .lb-recent-locks .lb-recent-site-row~tr td.lb-recent-batch{padding-left:24px}
 [data-theme=dark] .lb-recent-locks .lb-recent-site-row td{background:#30233f;border-top-color:#58456f}
+/* Batches locked: the same list with one column for each kind of card in the batch; "how long ago" sits under the lock time. */
+.lb-recent-batchlocks th{white-space:normal;vertical-align:bottom}.lb-recent-batchlocks td small{margin-top:2px;font-size:11px}
 @media(max-width:1000px){.lb-recent-table tbody :is(th,td){padding-left:8px;padding-right:8px}}
 /* A phone shows the batch number, its cards and when it was locked; the card date and shift are already written in the batch number. */
 @media(max-width:700px){.lb-recent-table thead th:not(:first-child){width:auto}.lb-recent-table :is(th,td){white-space:normal}.lb-recent-table thead th{padding:8px}
- .lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}.lb-recent-locks :is(td,th){padding:8px 6px}.lb-recent-locks td.lb-recent-batch{min-width:0}.lb-recent-locks .lb-recent-site-row~tr td.lb-recent-batch{padding-left:14px}.lb-recent-locks td:nth-child(5){white-space:normal}}
+ .lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}.lb-recent-locks :is(td,th){padding:8px 6px}.lb-recent-locks td.lb-recent-batch{min-width:0}.lb-recent-locks .lb-recent-site-row~tr td.lb-recent-batch{padding-left:14px}.lb-recent-locks td:nth-child(5){white-space:normal}
+ /* Batches locked on a phone: the batch number, each kind of card and the lock time stay; who locked it is hidden. */
+ .lb-recent-batchlocks :is(th,td):nth-child(6){display:table-cell}.lb-recent-batchlocks :is(th,td).lb-recent-wide{display:none}.lb-recent-batchlocks td:nth-child(n+4){white-space:normal}
+ .lb-recent-batchlocks .lb-recent-site-row td:first-child{white-space:normal}.lb-recent-batchlocks .lb-recent-site-row td>span{display:block;margin-left:0}.lb-recent-batchlocks td:nth-last-child(2){min-width:74px}}
 .lb-recent-switch,.lb-window-pick{display:inline-flex;flex-wrap:wrap;gap:6px}.lb-site-controls{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
 .lb-dashboard .lb-window-pick button,.lb-dialog .lb-recent-switch button{border:1px solid #d9cce8;border-radius:999px;background:var(--lb-surface);color:var(--lb-purple);font-size:12px;font-weight:650;padding:7px 14px;white-space:nowrap}
 .lb-dashboard .lb-window-pick button[aria-pressed=true],.lb-dialog .lb-recent-switch button[aria-pressed=true]{background:var(--lb-purple);border-color:var(--lb-purple);color:#fff}

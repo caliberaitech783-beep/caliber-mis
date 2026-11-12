@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 import {registerLogBookDashboard} from '../server/routes/log-book-dashboard.mjs';
 import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {transformWithOxc} from 'vite';
 import * as recentRules from '../shared/recent-activity.mjs';
-import {buildRecentActivity,batchCompletionTimes,completedIn,completedBySite,cardsInside,logShiftsFor,recentSiteRows,recentWindow} from '../shared/recent-activity.mjs';
+import {buildRecentActivity,batchCompletionTimes,completedIn,completedBySite,cardsInside,logShiftsFor,recentSiteRows,recentWindow,locksIn,locksBySite,lockCards} from '../shared/recent-activity.mjs';
 
 const NOW=Date.parse('2026-11-11T16:00:00Z'),ago=hours=>new Date(NOW-hours*3600000).toISOString();
 
@@ -35,6 +35,34 @@ test('log books are counted by save time and shifts by lock time, in 6, 12 and 2
  assert.deepEqual(logShiftsFor(recent,'Sasti OC',12).map(r=>[r.dateLabel,r.shiftLabel,r.counts[12]]),[['02-11-26','Shift 1',{total:11,vehicle:9,lmv:2,equipment:0}]]);
  assert.deepEqual(logShiftsFor(recent,'Sasti OC',6).map(r=>r.counts[6].total),[4]);
  assert.deepEqual(logShiftsFor(recent,'Jayant OC',6).map(r=>[r.dateLabel,r.shift,r.counts[6].equipment]),[['03-11-26','',1]],'a card with no shift recorded is still listed');
+ // Batches locked: the whole batch saved and locked. Batch "a" has only its VLB and LMV locked, so it is not one yet.
+ assert.deepEqual(recent.batchLocks,{6:0,12:1,24:2});
+ assert.deepEqual(locksIn(recent,24).map(r=>[r.batchName,r.site,r.dateLabel,r.shiftLabel,r.vehicle,r.lmv,r.equipment,r.minutesAgo]),
+  [['Jayant 03-11 S2','Jayant OC','03-11-26','Shift 2',55,2,9,420],['Majri 04-11 S3','Majri OC','04-11-26','Shift 3',12,0,3,1200]],'the latest lock first, with every card inside the batch');
+ assert.deepEqual(locksIn(recent,6),[]);assert.deepEqual(locksIn(recent,12).map(r=>r.batchId),['b']);
+});
+
+test('batches locked are listed site by site, the most batches on top, with who locked each one',()=>{
+ const batch=(id,site,date,shift,hours,cards,by)=>({id,name:id,site,date,shift,vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:cards/5,locked_by:by});
+ const input={now:NOW,
+  batches:[batch('m1','Majri OC','2026-11-02','I',1,10,'Asha'),batch('s1','Sasti OC','2026-11-02','I',2,30,'Ravi'),batch('s2','sasti ob','2026-11-02','II',3,20,'Ravi'),batch('s3','Sasti OC','2026-11-02','II',4,5,''),batch('j1','Jayant OC','2026-11-02','I',9,80,'Asha'),
+   // Reopened after locking: no lock time, so it is not counted until it is locked again.
+   {...batch('open','Majri OC','2026-11-03','I',1,7,''),closed_at:null},
+   // The clock of the server a little ahead is accepted; a lock a day and more old is not listed.
+   {...batch('old','Majri OC','2026-11-01','I',25,7,'')}],
+  lmvBooks:[{site:'Sasti OC',date:'2026-11-02',shift:'S2',count:6},{site:'Majri OC',date:'2026-11-02',shift:'S1',count:2}]};
+ const recent=buildRecentActivity(input);
+ assert.deepEqual(recent.batchLocks,{6:4,12:5,24:5});
+ assert.deepEqual([6,12,24].map(hours=>recent.shifts[hours].elb),[4,5,5],'the batch lock closes the ELB shift: the two figures are the same');
+ // s2 and s3 are one site, date and shift: their six LMV log books are added once.
+ assert.deepEqual(locksBySite(recent,6),[{site:'Sasti OC',batches:3,cards:{vehicle:55,lmv:6,equipment:11}},{site:'Majri OC',batches:1,cards:{vehicle:10,lmv:2,equipment:2}}]);
+ assert.deepEqual(locksBySite(recent,24).map(s=>s.site),['Sasti OC','Jayant OC','Majri OC'],'equal batches: more cards first');
+ assert.deepEqual(locksIn(recent,6,'sasti ob').map(r=>[r.batchName,r.lockedBy,r.lmv]),[['s1','Ravi',0],['s2','Ravi',6],['s3','',6]],'one site, whichever way its name is written');
+ assert.deepEqual(lockCards(locksIn(recent,24)),{vehicle:145,lmv:8,equipment:29});
+ // A login with only the vehicle log book sees the batches and their trip cards and LMV log books, not the ELB cards.
+ const vehicle=buildRecentActivity({...input,kinds:['vehicle']});
+ assert.deepEqual(vehicle.batchLocks,{6:4,12:5,24:5});assert.deepEqual(lockCards(locksIn(vehicle,24)),{vehicle:145,lmv:8,equipment:0});
+ assert.deepEqual(buildRecentActivity({...input,kinds:[]}).batchLocks,{6:0,12:0,24:0});
 });
 
 test('sites are listed from the most completed shifts to the fewest, and one shift\'s LMV log books are added once',()=>{
@@ -66,7 +94,13 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
  const db=new PGlite();let server;try{
   await db.exec(`CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,book_date DATE,site TEXT,data JSONB,created_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
    CREATE TABLE mis_vlb_batches(id TEXT PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,vlb_locked_at TIMESTAMPTZ,lmv_locked_at TIMESTAMPTZ,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ);
-   CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_vlb_batch_fleet(batch_id TEXT,asset_id BIGINT,logbook_id BIGINT);`);
+   CREATE TABLE mis_vlb_batch_entries(batch_id TEXT,logbook_id BIGINT);CREATE TABLE mis_vlb_batch_fleet(batch_id TEXT,asset_id BIGINT,logbook_id BIGINT);
+   CREATE TABLE mis_vlb_batch_audit(id BIGSERIAL PRIMARY KEY,batch_id TEXT,actor TEXT,action TEXT,occurred_at TIMESTAMPTZ,detail JSONB);
+   CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB);`);
+  // Batch "two" was locked once by another login, reopened, and locked again nine hours ago by r.kumar.
+  const history=(batch,actor,action,hours)=>db.query('INSERT INTO mis_vlb_batch_audit(batch_id,actor,action,occurred_at) VALUES($1,$2,$3,$4)',[batch,actor,action,ago(hours)]);
+  await history('two','someone','saved_and_locked',14);await history('two','R.Kumar','reopened',12);await history('two','R.Kumar','saved_and_locked',9);await history('two','r.kumar','saved_and_locked',40);await history('one','a.singh','vlb_locked',4);
+  await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Users & employees',JSON.stringify({login:' r.kumar ',employee:'Ravi Kumar'})]);
   const book=(type,site,hours,extra={})=>db.query('INSERT INTO mis_log_books(book_no,book_type,book_date,site,data,created_at,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[type+hours,type,extra.date||'2026-11-03',site,JSON.stringify(extra.data||{}),ago(hours),extra.deleted||null]);
   // Cards dated 3 Nov but saved today: the save time decides.
   await book('vehicle','Sasti OC',1);await book('vehicle','Sasti OC',8);await book('vehicle','Sasti OC',20);await book('vehicle','Sasti OC',30);
@@ -89,10 +123,14 @@ test('the dashboard reads the last 24 hours within the login\'s sites and lists 
   // Cards inside the completed shifts: a deleted card is not counted, an open machine is not counted.
   assert.deepEqual(result.body.completed.map(r=>[r.kind,r.batchName,r.cards]),[['vlb','one',2],['elb','two',1],['lmv','two',1]]);
   assert.deepEqual(result.body.shiftCards,{6:{vlb:2,lmv:0,elb:0},12:{vlb:2,lmv:1,elb:1},24:{vlb:2,lmv:1,elb:1}});
+  // Batches locked: batch "two" alone, with its cards and the name of the login that locked it last. "one" has only its VLB locked.
+  assert.deepEqual(result.body.batchLocks,{6:0,12:1,24:1});
+  assert.deepEqual(result.body.locked.map(r=>[r.batchName,r.site,r.vehicle,r.lmv,r.equipment,r.lockedBy,r.minutesAgo]),[['two','Jayant OC',0,1,1,'Ravi Kumar',540]]);
   // A site opens into its cards by card date and shift.
   assert.deepEqual(result.body.logShifts.filter(r=>r.site==='Sasti OC').map(r=>[r.dateLabel,r.shift,r.counts[24].total]),[['03-11-26','S1',1],['03-11-26','',3]]);
   result=await get('/recent',{'x-scope':'sasti'});assert.deepEqual(result.body.logs[24],{total:4,vehicle:3,lmv:1,equipment:0});assert.deepEqual(result.body.shifts[24],{vlb:1,lmv:0,elb:0});
   assert.deepEqual(result.body.completed.map(r=>[r.kind,r.batchName,r.cards]),[['vlb','one',2]]);
+  assert.deepEqual(result.body.batchLocks,{6:0,12:0,24:0},'another site\'s locked batch is not counted for this login');assert.deepEqual(result.body.locked,[]);
   assert.equal((await fetch(root+'/api/dashboard/log-books/recent')).status,401);
   result=await get('/records?kind=vehicle&location=Sasti%20OC&hours=12');assert.equal(result.status,200,JSON.stringify(result.body));assert.deepEqual(result.body.records.map(r=>r.book_no),['vehicle8','vehicle1']);
   result=await get('/records?kind=vehicle&hours=24&from=2026-11-11&to=2026-11-11');assert.equal(result.body.records.length,3,'the hours replace the dashboard dates');
@@ -117,7 +155,12 @@ test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of t
  assert.match(panel,/shiftSites\.map\(site=><React\.Fragment key=\{site\.site\}>\{totalRow\(siteButton\(site\.site\),site\.shifts,site\.cards\)\}\{completedIn\(recent,open\.row,open\.hours,site\.site\)\.map\(lockRow\)\}<\/React\.Fragment>\)/);
  assert.ok(css.includes('.lb-recent-locks .lb-recent-site-row td{'),'each site has its own tinted line above its batches');
  assert.ok(css.includes('.lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}'),'a phone keeps the batch number, its cards and the lock time');
- assert.match(panel,/shiftSites=open&&!logs\?completedBySite\(recent,open\.row,open\.hours\):\[\]/);
+ assert.match(panel,/shiftSites=shiftRow\?completedBySite\(recent,open\.row,open\.hours\):\[\]/);
+ // Batches locked (owner, 13 Nov 2026): its own line on the front, and a list of the batches with the cards in each, the lock time and who locked it.
+ assert.match(panel,/<th scope="row">Batches locked<small>whole batch saved and locked<\/small><\/th>\{recent\.windows\.map\(hours=>cell\(recent\.batchLocks\[hours\],\{row:'batch',hours\},'Batches locked'\)\)\}/);
+ assert.match(panel,/lockSites\.map\(site=><React\.Fragment key=\{site\.site\}>\{batchTotalRow\(siteButton\(site\.site\),site\.batches,site\.cards\)\}\{locksIn\(recent,open\.hours,site\.site\)\.map\(batchRow\)\}<\/React\.Fragment>\)/);
+ assert.ok(css.includes('.lb-recent-batchlocks :is(th,td):nth-child(6){display:table-cell}.lb-recent-batchlocks :is(th,td).lb-recent-wide{display:none}'),'a phone keeps every kind of card and the lock time of a locked batch');
+ assert.ok(css.indexOf('.lb-recent-batchlocks :is(th,td):nth-child(6){display:table-cell}')>css.indexOf('.lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}'),'the rule for locked batches comes after the rule it replaces');
  assert.match(panel,/logSites=logs\?\[\.\.\.\(recent\.bySite\[open\.hours\]\|\|\[\]\)\]\.sort\(\(a,b\)=>b\.total-a\.total/);
  assert.match(panel,/<StepBackButton onBack=\{\(\)=>setOpen\(\{row:open\.row,hours:open\.hours\}\)\} label="Back to sites"\/>/);
  assert.ok(css.includes('.lb-dialog button.lb-recent-site{'),'a site name in the list is a link');
@@ -169,4 +212,49 @@ test('the front shows the figures alone; a shift figure opens its sites with the
  assert.deepEqual(listRows(html).map(row=>[row[0],row[3]]),[['Batch number','ELB cards'],['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','32'],['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','31'],['Dudhichua OC 2 shifts','63']]);
  // Nothing locked in the hours chosen.
  assert.match(plain(await panelHtml(buildRecentActivity({now:NOW}),{row:'elb',hours:6})),/Nothing was completed in this time\./);
+});
+
+test('Batches locked has its own line on the front, and opens the batches with their cards, lock time and who locked them',async()=>{
+ const batch=(id,name,site,date,shift,hours,cards,machines,by)=>({id,name,site,date,shift,vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:machines,locked_by:by});
+ const input={now:NOW,batches:[
+  batch('j1','CMLL/JAYANT OC/3RD -NOV-26/S1/B01','Jayant OC','2026-11-03','I',1,300,65,'Asha Verma'),
+  batch('d1','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','Dudhichua OC','2026-11-04','I',2,140,32,'Ravi Kumar'),
+  batch('d2','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Dudhichua OC','2026-11-03','III',5,133,31,''),
+  batch('s1','CMLL/SASTI OC/4TH -NOV-26/S3/B01','Sasti OC','2026-11-04','III',20,149,39,'Asha Verma'),
+  // Trip cards and LMV log books locked, the batch itself still open: a completed VLB and LMV shift, not a locked batch.
+  {...batch('s2','CMLL/SASTI OC/5TH -NOV-26/S1/B01','Sasti OC','2026-11-05','I',1,90,0,''),closed_at:null}],
+  lmvBooks:[{site:'Dudhichua OC',date:'2026-11-04',shift:'S1',count:7},{site:'Jayant OC',date:'2026-11-03',shift:'S1',count:4}]};
+ const recent=buildRecentActivity(input);
+ const front=await panelHtml(recent);
+ assert.match(front,/aria-label="Batches locked, last 6 hours: 3"/);assert.match(front,/aria-label="Batches locked, last 12 hours: 3"/);assert.match(front,/aria-label="Batches locked, last 24 hours: 4"/);
+ assert.match(front,/aria-label="VLB shifts completed, last 24 hours: 5"/);
+ assert.match(plain(front),/Batches locked whole batch saved and locked 3 3 4$/,'the last line of the front');
+ let html=await panelHtml(recent,{row:'batch',hours:24});
+ assert.match(html,/aria-label="Batches locked · last 24 hours"/);
+ assert.match(plain(html),/4 batches locked · 722 trip cards · 11 LMV log books · 167 ELB cards/);
+ assert.deepEqual(listRows(html).map(row=>[...row.slice(0,6),row[7]]),[
+  ['Site and batch number','Card date','Shift','Trip cards','LMV log books','ELB cards','Locked by'],
+  ['Dudhichua OC 2 batches','','','273','7','63',''],
+  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift 1','140','7','32','Ravi Kumar'],
+  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift 3','133','0','31','—'],
+  ['Jayant OC 1 batch','','','300','4','65',''],
+  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift 1','300','4','65','Asha Verma'],
+  ['Sasti OC 1 batch','','','149','0','39',''],
+  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift 3','149','0','39','Asha Verma'],
+  ['All sites 4 batches','','','722','11','167','']]);
+ assert.equal(listRows(html)[0][6],'Locked at');assert.match(listRows(html)[2][6],/11 Nov, 07:30 pm 2 h 0 min ago$/,'the lock time in Indian time, and under it how long ago');
+ // Six hours: only the batches locked in those hours.
+ html=await panelHtml(recent,{row:'batch',hours:6});
+ assert.deepEqual(listRows(html).map(row=>row[0]),['Site and batch number','Dudhichua OC 2 batches','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Jayant OC 1 batch','CMLL/JAYANT OC/3RD -NOV-26/S1/B01','All sites 3 batches']);
+ // One site alone, with Back to sites.
+ html=await panelHtml(recent,{row:'batch',hours:24,site:'Sasti OC'});
+ assert.match(plain(html),/Back to sites/);assert.match(plain(html),/1 batch locked · 149 trip cards · 0 LMV log books · 39 ELB cards/);
+ assert.deepEqual(listRows(html).map(row=>[row[0],row[3],row[5]]),[['Batch number','Trip cards','ELB cards'],['CMLL/SASTI OC/4TH -NOV-26/S3/B01','149','39'],['Sasti OC 1 batch','149','39']]);
+ // A login with only the vehicle log book: the batches with their trip cards and LMV log books, no ELB column.
+ html=await panelHtml(buildRecentActivity({...input,kinds:['vehicle']}),{row:'batch',hours:24});
+ assert.deepEqual(listRows(html)[0],['Site and batch number','Card date','Shift','Trip cards','LMV log books','Locked at','Locked by']);
+ assert.match(plain(html),/4 batches locked · 722 trip cards · 11 LMV log books /);assert.ok(!plain(html).includes('ELB cards'));
+ // Nothing locked in the hours chosen, and figures read by a browser that still has the earlier server reply.
+ assert.match(plain(await panelHtml(buildRecentActivity({now:NOW}),{row:'batch',hours:6})),/Nothing was completed in this time\./);
+ const earlier={...recent};delete earlier.batchLocks;delete earlier.locked;assert.ok(!(await panelHtml(earlier)).includes('Batches locked'),'no empty line while an earlier reply is on screen');
 });
