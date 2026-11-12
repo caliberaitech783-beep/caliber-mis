@@ -1,5 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import express from 'express';import {PGlite} from '@electric-sql/pglite';
 import {registerLogBookDashboard} from '../server/routes/log-book-dashboard.mjs';
+import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {transformWithOxc} from 'vite';
+import * as recentRules from '../shared/recent-activity.mjs';
 import {buildRecentActivity,batchCompletionTimes,completedIn,completedBySite,cardsInside,logShiftsFor,recentSiteRows,recentWindow} from '../shared/recent-activity.mjs';
 
 const NOW=Date.parse('2026-11-11T16:00:00Z'),ago=hours=>new Date(NOW-hours*3600000).toISOString();
@@ -107,17 +109,62 @@ test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of t
  assert.match(screen,/RECENT_WINDOWS\.map\(hours=><button key=\{hours\} type="button" aria-pressed=\{siteHours===hours\} onClick=\{\(\)=>setSiteHours\(hours\)\}>/,'6, 12 and 24 hour buttons on the site comparison');
  assert.match(panel,/headers:\{Authorization:'Bearer '\+session\.token\}/,'the read carries the sign-in');
  for(const text of ['Log books saved',' shifts completed','Completed in the last 6, 12 and 24 hours'])assert.ok(panel.includes(text),text);
- // Under a shift figure: the cards inside those shifts, then each batch number with its cards.
- assert.match(panel,/<div className="lb-recent-cards">\{number\(inside\)\} \{SHIFT_CARD_NOUNS\[target\.row\]\}<\/div>/);
- assert.match(panel,/\{row\.batchName\}\{row\.cards!==undefined&&<> · <b>\{number\(row\.cards\)\}<\/b><\/>\}/);
- // A figure opens its sites, the highest on top; a site opens its shifts, with one Back to the sites.
+ // The front shows the figures alone: no batch numbers and no card totals under them (owner, 13 Nov 2026).
+ for(const gone of ['lb-recent-batches','lb-recent-cards'])assert.ok(!panel.includes(gone)&&!css.includes(gone),gone+' is no longer on the front of the panel');
+ // A figure opens its sites, the highest on top, each with the batches locked there; a site opens alone, with one Back to the sites.
+ assert.match(panel,/shiftSites\.map\(site=><React\.Fragment key=\{site\.site\}>\{totalRow\(siteButton\(site\.site\),site\.shifts,site\.cards\)\}\{completedIn\(recent,open\.row,open\.hours,site\.site\)\.map\(lockRow\)\}<\/React\.Fragment>\)/);
+ assert.ok(css.includes('.lb-recent-locks .lb-recent-site-row td{'),'each site has its own tinted line above its batches');
+ assert.ok(css.includes('.lb-recent-locks :is(th,td):is(:nth-child(2),:nth-child(3),:nth-child(6)){display:none}'),'a phone keeps the batch number, its cards and the lock time');
  assert.match(panel,/shiftSites=open&&!logs\?completedBySite\(recent,open\.row,open\.hours\):\[\]/);
  assert.match(panel,/logSites=logs\?\[\.\.\.\(recent\.bySite\[open\.hours\]\|\|\[\]\)\]\.sort\(\(a,b\)=>b\.total-a\.total/);
  assert.match(panel,/<StepBackButton onBack=\{\(\)=>setOpen\(\{row:open\.row,hours:open\.hours\}\)\} label="Back to sites"\/>/);
  assert.ok(css.includes('.lb-dialog button.lb-recent-site{'),'a site name in the list is a link');
  assert.ok(css.includes('.lb-reports .op-report-picker{display:none}'),'no report list on the dashboard copy');
- // ".lb-table-wrap small{display:block}" outranks a bare ".lb-recent-batches" rule; then the batch numbers run together on one line and push the figures off the screen.
- assert.match(panel,/<small className="lb-recent-batches"/,'batch numbers sit under each shift figure');
- assert.ok(css.includes('.lb-recent-table .lb-recent-batches{display:flex;flex-direction:column;'),'batch numbers are listed one to a line');
- assert.ok(!/(^|[},])\.lb-recent-batches\{/m.test(css),'the batch list is never styled without the table class');
+});
+
+// The panel as plain HTML with one figure's list open (open: {row, hours, site}); null shows the front alone.
+async function panelHtml(recent,open=null){
+ const source=fs.readFileSync(new URL('../src/log-book-recent-activity.jsx',import.meta.url),'utf8');
+ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const'),'log-book-recent-activity.jsx',{jsx:{runtime:'classic'}});
+ const environment={React,useEffect:()=>{},useState:()=>[open,()=>{}],Clock:()=>null,StepBackButton:({label})=>React.createElement('button',null,label),...recentRules};
+ const Panel=new Function(...Object.keys(environment),code+';return RecentActivityPanel')(...Object.values(environment));
+ return renderToStaticMarkup(Panel({recent,error:'',Dialog:({title,children})=>React.createElement('section',{'aria-label':title},children)}));
+}
+const plain=html=>html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+// The lines of the list a figure opens, cell by cell.
+const listRows=html=>[...html.slice(html.indexOf('<section')).matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map(row=>[...row[1].matchAll(/<t[dh][^>]*>(.*?)<\/t[dh]>/g)].map(cell=>plain(cell[1])));
+
+test('the front shows the figures alone; a shift figure opens its sites with the batches locked there',async()=>{
+ const batch=(id,name,site,date,shift,hours,cards,machines)=>({id,name,site,date,shift,vlb_locked_at:ago(hours+2),lmv_locked_at:ago(hours+1),closed_at:ago(hours),cards,machines_saved:machines});
+ const recent=buildRecentActivity({now:NOW,batches:[
+  batch('j1','CMLL/JAYANT OC/3RD -NOV-26/S1/B01','Jayant OC','2026-11-03','I',1,300,65),
+  batch('d1','CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','Dudhichua OC','2026-11-04','I',2,140,32),
+  batch('d2','CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','Dudhichua OC','2026-11-03','III',5,133,31),
+  batch('s1','CMLL/SASTI OC/4TH -NOV-26/S3/B01','Sasti OC','2026-11-04','III',20,149,39)]});
+ const front=await panelHtml(recent);
+ assert.match(front,/aria-label="ELB shifts completed, last 24 hours: 4"/);assert.match(front,/aria-label="ELB shifts completed, last 6 hours: 3"/);
+ assert.ok(!front.includes('CMLL/')&&!/\d (ELB cards|trip cards|LMV log books)/.test(plain(front)),'no batch numbers and no card totals under the figures');
+ // ELB in 24 hours: the site with the most shifts on top, its batches under it with the latest first, then the total.
+ let html=await panelHtml(recent,{row:'elb',hours:24});
+ assert.match(plain(html),/4 ELB shifts completed · 167 ELB cards/);
+ assert.deepEqual(listRows(html).map(row=>[...row.slice(0,4),row[5]]),[
+  ['Site and batch number','Card date','Shift','ELB cards','How long ago'],
+  ['Dudhichua OC 2 shifts','','','63',''],
+  ['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','04-11-26','Shift 1','32','2 h 0 min ago'],
+  ['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','03-11-26','Shift 3','31','5 h 0 min ago'],
+  ['Jayant OC 1 shift','','','65',''],
+  ['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','03-11-26','Shift 1','65','1 h 0 min ago'],
+  ['Sasti OC 1 shift','','','39',''],
+  ['CMLL/SASTI OC/4TH -NOV-26/S3/B01','04-11-26','Shift 3','39','20 h 0 min ago'],
+  ['All sites 4 shifts','','','167','']]);
+ assert.equal(listRows(html)[0][4],'Locked at');assert.ok(listRows(html)[2][4],'each batch shows when it was locked');
+ // The same list for the trip cards of VLB in 6 hours: only what was locked in those hours.
+ html=await panelHtml(recent,{row:'vlb',hours:6});
+ assert.deepEqual(listRows(html).map(row=>[row[0],row[3]]),[['Site and batch number','Trip cards'],['Jayant OC 1 shift','300'],['CMLL/JAYANT OC/3RD -NOV-26/S1/B01','300'],['Dudhichua OC 1 shift','140'],['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','140'],['All sites 2 shifts','440']]);
+ // One site alone: its batches and its own total, with Back to sites.
+ html=await panelHtml(recent,{row:'elb',hours:24,site:'Dudhichua OC'});
+ assert.match(plain(html),/Back to sites/);assert.match(plain(html),/2 ELB shifts completed · 63 ELB cards/);
+ assert.deepEqual(listRows(html).map(row=>[row[0],row[3]]),[['Batch number','ELB cards'],['CMLL/DUDHICHUA OC/4TH -NOV-26/S1/B01','32'],['CMLL/DUDHICHUA OC/3RD -NOV-26/S3/B01','31'],['Dudhichua OC 2 shifts','63']]);
+ // Nothing locked in the hours chosen.
+ assert.match(plain(await panelHtml(buildRecentActivity({now:NOW}),{row:'elb',hours:6})),/Nothing was completed in this time\./);
 });
