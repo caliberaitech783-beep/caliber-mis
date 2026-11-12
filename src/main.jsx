@@ -12083,6 +12083,7 @@ function App() {
               <ArrowLeft />
             </button>
             Operations <ChevronRight /> <b>{navigationLabel(active)}</b>
+            <span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick={logout} aria-label="Sign out" title="Sign out"><DoorExitIcon /><span>Sign out</span></button></span>
           </div>
           <HeaderClock />
           <div>
