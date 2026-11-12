@@ -8,7 +8,8 @@
     url.searchParams.set('retry',String(Date.now()));
     const retry=link.cloneNode();
     retry.href=url.href;
-    link.replaceWith(retry);
+    // Keep the original URL in the DOM for Vite's lazy-module preload lookup.
+    link.after(retry);
   };
   window.addEventListener('load',()=>{
     const link=document.querySelector('link[data-pulse-stylesheet]');

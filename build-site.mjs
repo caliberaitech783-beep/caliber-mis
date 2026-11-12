@@ -66,7 +66,18 @@ export async function buildSite({ cwd = process.cwd(), env = process.env, buildC
   await buildClient({
     root: cwd,
     define: {__CALIBER_APP_VERSION__:JSON.stringify(appVersion)},
-    build: {assetsDir: "app-assets"},
+    build: {
+      assetsDir: "app-assets",
+      rolldownOptions: {
+        output: {
+          // Rotate the cache keys for both the HTML and Vite's preload table.
+          // Keep content hashes so later builds can still reuse unchanged files.
+          entryFileNames: "app-assets/[name]-v2-[hash].js",
+          chunkFileNames: "app-assets/[name]-v2-[hash].js",
+          assetFileNames: "app-assets/[name]-v2-[hash][extname]",
+        },
+      },
+    },
     plugins: [{
       name: "pulse-release-stylesheet",
       transformIndexHtml: {
@@ -74,7 +85,7 @@ export async function buildSite({ cwd = process.cwd(), env = process.env, buildC
         handler(html, {path: pagePath}) {
           if (pagePath !== "/index.html") return html;
           return html.replace(/(<link\b[^>]*\brel="stylesheet"[^>]*\bhref=")(\/app-assets\/[^"]+\.css)"/g,
-            '$1$2?release=' + appVersion + '" data-pulse-stylesheet');
+            '$1$2" data-pulse-stylesheet');
         },
       },
     }],
