@@ -43,11 +43,7 @@ export function completeScanTripDetails(input={},raw={}){
  trips=ignoreScanLoadingWithoutEquipment({...input,trips}).trips;
  const complete=trips.length>0&&trips.every((r,i)=>(!tripEquipmentRequired(r,input.timeMode)||!blank(r.equipmentName))&&Number.isSafeInteger(Number(r.tripCount))&&Number(r.tripCount)>0&&(i===0||(r.rowNumber||i+1)===(trips[i-1].rowNumber||i)+1));
  const calculated=complete?machineSummary(trips).map(row=>{
-  const matching=trips.filter(trip=>!isUnloadingOnlyTrip(trip)&&machineLabel(trip.equipmentName)===row.equipmentName);
-  const first=matching[0],notation=first?.equipmentNotation;
-  if(first?.equipmentId&&matching.every(trip=>trip.equipmentSource==='master-selection'&&trip.equipmentId===first.equipmentId)){
-   return {...row,equipmentId:first.equipmentId,equipmentSource:'master-selection',originalEquipmentName:first.originalEquipmentName,equipmentNotation:{...notation,resolved:row.equipmentName}};
-  }
+  const notation=trips.find(trip=>machineLabel(trip.equipmentName)===row.equipmentName)?.equipmentNotation;
   return notation?{...row,equipmentNotation:{...notation,resolved:row.equipmentName}}:row;
  }):[];
  let summary=(input.scanMachineSummary||[]).map(row=>({...row})),summarySource=input.scanMachineSummarySource;
