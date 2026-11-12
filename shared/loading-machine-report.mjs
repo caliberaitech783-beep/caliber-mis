@@ -41,6 +41,9 @@ export function bandOf(minutes){if(minutes===null||minutes===undefined)return nu
 export function idleText(minutes){if(minutes===null||minutes===undefined)return '—';const m=Math.round(minutes);return Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min';}
 // Hours worked out of the hours of the shift: 8 hours worked in an 8-hour shift is 100%.
 export function percentWorked(hours,shiftHours){return hours===null||hours===undefined||!shiftHours?null:round1(hours/shiftHours*100);}
+// The share of one idle band: its stops out of all the timed gaps between one loading and the next, the gaps of
+// 5 minutes or less included. Trips without a loading time make no gap, so a site that writes fewer times is not flattered.
+export function bandShare(count,gaps){return gaps?round1(count/gaps*100):null;}
 const shiftCodeOf=r=>vlbRecordShift(r)||text(r.shiftName)||'Not recorded';
 const slotKey=(site,date,code)=>JSON.stringify([canonicalSiteName(site),date,code]);
 
@@ -125,7 +128,7 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
     state,status,statusLabel,reason:text(last?.statusReason||last?.remark),elbBooks:unique(m.cards.map(c=>text(c.book))).join(', '),
     breakdowns:m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>[text(b.reference),text(b.description),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · ')).join('; '),
     trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,
-    loadings:judged.length,firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,stopList});
+    loadings:judged.length,gaps:Math.max(judged.length-1,0),firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,stopList});
   }
  }
  return out;
@@ -134,7 +137,7 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
 const keyOf={site:e=>e.site,shift:e=>e.slotKey,machine:e=>e.machineKey};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function totals(list){
- const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,b1:0,b2:0,b3:0,b4:0,stops:0,idleMinutes:0,longest:null,notJudged:0};
+ const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,b1:0,b2:0,b3:0,b4:0,gaps:0,stops:0,idleMinutes:0,longest:null,notJudged:0};
  const tippers=new Set();let judgedHours=0;
  for(const e of list){
   t[e.state]++;t.trips+=e.trips;e.tippers.forEach(d=>tippers.add(d));
@@ -143,11 +146,12 @@ function totals(list){
   if(e.hours!==null&&e.shiftHours){judgedHours+=e.hours;t.shiftHours+=e.shiftHours;}
   if(e.bdHours!==null)t.bdHours=(t.bdHours??0)+e.bdHours;
   for(const b of BANDS)t[b.key]+=e[b.key];
-  t.stops+=e.stops;t.idleMinutes+=e.idleMinutes;t.notJudged+=e.notJudged;
+  t.gaps+=e.gaps;t.stops+=e.stops;t.idleMinutes+=e.idleMinutes;t.notJudged+=e.notJudged;
   if(e.longest!==null&&(t.longest===null||e.longest>t.longest))t.longest=e.longest;
  }
  t.tipperCount=tippers.size;t.idleMinutes=round1(t.idleMinutes);t.percent=percentWorked(t.shiftHours?judgedHours:null,t.shiftHours);
  if(t.hours!==null)t.hours=round3(t.hours);if(t.bdHours!==null)t.bdHours=round3(t.bdHours);
+ for(const b of BANDS)t[b.key+'Share']=bandShare(t[b.key],t.gaps);
  return t;
 }
 const STATE_ORDER={running:0,mixed:0,breakdown:1,nohours:2};

@@ -19,6 +19,14 @@ const share=r=>blank(r.percent)?'—':r.percent+'%';
 const FILTERS={...BAND_LABELS,breakdown:STATES.breakdown,nohours:STATES.nohours};
 // A coloured number: pressing it opens the next step with only the lines behind it.
 const counted=(key,label,className,onPick)=>column(key,label,null,r=>r[key]>0?(onPick?<button type="button" className={className} title={'Show only '+label} onClick={e=>{e.stopPropagation();onPick(r,key);}}>{r[key]}</button>:<span className={className}>{r[key]}</span>):r[key]);
+// An idle band: the coloured number of stops with, just beside it, its own share of all the timed gaps between two loadings
+// on the line. The printed and downloaded report carries both as "269 (5.9%)"; the column still sorts by the number of stops.
+const banded=(b,onPick)=>{
+ const key=b.key,className='tt-band lm-'+key,share=r=>r[key+'Share']+'%';
+ return column(key,b.label,r=>r[key]>0?r[key]+' ('+share(r)+')':r[key],r=>r[key]>0?<span className="lm-banded">
+  {onPick?<button type="button" className={className} title={'Show only '+b.label} onClick={e=>{e.stopPropagation();onPick(r,key);}}>{r[key]}</button>:<span className={className}>{r[key]}</span>}
+  <span className="lm-share" title={r[key]+' of '+r.gaps+' timed gaps between two loadings'}>{share(r)}</span></span>:r[key],r=>r[key]);
+};
 const stateBadge=r=>r.state&&r.state!=='mixed'?<span className={'lm-status lm-status-'+r.state}>{r.statusLabel}</span>:r.statusLabel||'—';
 
 const identity={
@@ -29,7 +37,7 @@ const identity={
 // here have their own order, so these keys and headings are chosen to stay clear of that rule.
 const work=[column('trips','Trips loaded'),column('percent','% of shift worked',share,null,r=>r.percent??-1),column('hoursWorked','Hours worked',r=>blank(r.hours)?'—':r.hours)];
 const more=[column('shiftHours','Shift hours',r=>r.shiftHours||'—'),column('bdHours','Hours in BD'),column('notJudged','Not judged')];
-const idle=onPick=>[...BANDS.map(b=>counted(b.key,b.label,'tt-band lm-'+b.key,onPick)),column('stops','Total idle stops'),column('idleMinutes','Total idle time',r=>r.running?idleText(r.idleMinutes):'—',null,r=>r.running?r.idleMinutes:-1),column('longest','Longest idle (min)')];
+const idle=onPick=>[...BANDS.map(b=>banded(b,onPick)),column('stops','Total idle stops'),column('idleMinutes','Total idle time',r=>r.running?idleText(r.idleMinutes):'—',null,r=>r.running?r.idleMinutes:-1),column('longest','Longest idle (min)')];
 export function summaryColumns(group,onPick){
  return [...identity[group],column('running',STATES.running),counted('breakdown',STATES.breakdown,'lm-count lm-breakdown',onPick),counted('nohours',STATES.nohours,'lm-count lm-nohours',onPick),...work,...idle(onPick),...more];
 }
@@ -73,7 +81,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const stopChips=<nav className="tt-chips" aria-label="Idle band">{[['','All stops over '+IDLE_LIMIT+' min',allStops.length,''],...BANDS.map(b=>[b.key,b.label,allStops.filter(s=>s.band===b.key).length,'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={band===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
  const summaryLine=t=>t.machineShifts?`${t.running} of ${t.machineShifts} machine shifts ran, ${t.breakdown} were in BD and ${t.nohours} had no hours without BD. `
   +(t.percent===null?'':`The machines with an ELB worked ${t.percent}% of their shift hours (${t.hours} of ${t.shiftHours} hours). `)
-  +`${t.trips} trips loaded. ${t.stops} idle stops of more than ${IDLE_LIMIT} minutes between loadings (${idleText(t.idleMinutes)} in all): ${BANDS.map(b=>t[b.key]+' in '+b.label).join(', ')}.`:'No loading machine in these dates and filters.';
+  +`${t.trips} trips loaded. `+(t.gaps?`Out of ${t.gaps} timed gaps between two loadings, ${t.stops} were idle stops of more than ${IDLE_LIMIT} minutes (${idleText(t.idleMinutes)} in all): ${BANDS.map(b=>`${t[b.key]} in ${b.label} (${t[b.key+'Share']}%)`).join(', ')}.`:'No gap between two loadings could be timed.'):'No loading machine in these dates and filters.';
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
  const where=siteLabel+(slot?' · '+slot.label:'');
  // One step back: the step before the one on screen, as in the line of steps above the table.
@@ -110,6 +118,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Trips loaded are the trips of every tipper card row that names the machine. A row with only an unloading time belongs to the shift that loaded it.</li>
    <li>An idle stop is the time from one loading to the next loading by the same machine, across all the tippers it loaded in the shift. {IDLE_LIMIT} minutes or less is normal working. The bands are more than 5 and up to 10 minutes, up to 15, up to 20, and more than 20. Total idle time adds up every stop of more than {IDLE_LIMIT} minutes in full.</li>
+   <li>The % beside each idle count is that band's own share of all the timed gaps between one loading and the next on the same line, the normal gaps of {IDLE_LIMIT} minutes or less included: 50 stops out of 1,000 timed gaps is 5%. Each band has its own %; together with normal working they add up to 100%.</li>
    <li>% of shift worked is the hours worked on the machine's ELB out of the hours of the shift: 8 hours in an 8-hour shift is 100%. On a line for many machines it is their hours together out of their shift hours together. A machine with no ELB is left out of it.</li>
    <li>Running: the machine loaded a trip or its ELB shows hours. In BD (red): it did not run and its ELB is saved as Breakdown or Maintenance, or Pulse shows breakdown for the whole shift. No hours, not in BD (brown): it did not run and was not in BD, such as No operator, Not in use, or no ELB entered.</li>
    <li>Only loading machines are listed: excavators, loaders and shovels of the site, and any machine named on a tipper card in the chosen dates.</li>
