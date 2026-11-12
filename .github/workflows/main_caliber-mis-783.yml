@@ -342,6 +342,10 @@ jobs:
           echo "The staging slot did not start the release; production was not touched."
           exit 1
 
+      - name: Preserve local backups and scan archives before the swap
+        if: steps.ui-delta.outputs.applied != 'true'
+        run: node scripts/sync-production-slot-data.mjs to-staging
+
       - name: Swap the release into production
         id: swap-slot
         if: steps.ui-delta.outputs.applied != 'true'
@@ -380,6 +384,10 @@ jobs:
         run: |
           sleep 60
           az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT"
+
+      - name: Preserve local files written during the swap
+        if: steps.swap-slot.outcome == 'success'
+        run: node scripts/sync-production-slot-data.mjs to-production
 
       - name: Stop staging if validation failed before the swap
         if: failure() && steps.start-slot.outcome == 'success' && steps.swap-slot.outcome == 'skipped'
