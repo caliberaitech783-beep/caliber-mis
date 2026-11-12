@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {registerVlbBatches} from '../server/routes/vlb-batches.mjs';
+import {VLB_TRIP_HANDOVER_SCHEMA} from '../server/rules/vlb-trip-handover-schema.mjs';
 import {vlbBatchName,vlbBatchSelection} from '../shared/vlb-batch-format.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
@@ -16,6 +17,7 @@ test('batch format uses site, ordinal date, shift and padded sequence',()=>{
 test('batch APIs include every matching saved source, remain open until closed, retain snapshots and enforce authorization',async t=>{
  const db=new PGlite();t.after(()=>db.close());
  await db.exec('CREATE TABLE mis_log_books(id BIGSERIAL PRIMARY KEY,book_no TEXT,book_type TEXT,site TEXT,book_date DATE,data JSONB,revision INTEGER DEFAULT 1,created_by TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ)');
+ await db.exec(VLB_TRIP_HANDOVER_SCHEMA);
  const query=(sql,args)=>sql.includes('pg_advisory_xact_lock')?Promise.resolve({rows:[]}):!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
  const pool={query,connect:async()=>({query,release(){}})};
  const app=express();app.use(express.json());
