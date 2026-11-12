@@ -101,8 +101,8 @@ duplicate scan. The browser reloads the full entry only when that list differs
 from the cards on screen. `GET /api/vlb-batches/:id` sends an ETag and answers 304
 to the batch board's If-None-Match when the batch has not changed.
 
-The Gemini start gate defaults to 1000 ms (60 starts a minute, which five workers
-at about 5 s a card can just use); `MIS_GEMINI_MIN_INTERVAL_MS` overrides it. On
+The Gemini start gate defaults to 500 ms (120 starts a minute, so five workers
+at about 5 s a card are never held back by it); `MIS_GEMINI_MIN_INTERVAL_MS` overrides it. On
 349 production cards read on 8 November 2026 the model took 4.8 s a card at the
 median, so the earlier 2000 ms gate, not the model, held the whole company to 30
 cards a minute.
