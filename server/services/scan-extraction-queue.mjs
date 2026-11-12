@@ -32,6 +32,17 @@ export const SCAN_LEASE_SCHEMA=`
 `;
 // Identifies this process as the holder of the cards it reads.
 export const processLeaseOwner=`${process.env.WEBSITE_INSTANCE_ID?.slice(0,12)||'local'}:${process.pid}:${randomUUID().slice(0,8)}`;
+// Where a card's time went, kept with the card (raw_fields.scanTiming) so a slow
+// day can be explained afterwards. Milliseconds:
+//   queuedMs   from upload (or the last retry's row) until a reader took the card
+//   firstReadMs  the first read: preparing the pictures and Gemini's answer
+//   recheckMs  the door and field recheck, which is a second Gemini read
+//   finishMs   matching against the masters, estimates and saving the result
+// workers is how many cards the lane was reading when this one finished.
+export function scanReadTiming(createdAt,{claimedAt,firstReadAt,recheckedAt},finishedAt,{workers=0,engine=false}={}){
+ const created=createdAt instanceof Date?createdAt.getTime():Date.parse(createdAt),span=(from,to)=>Number.isFinite(from)&&Number.isFinite(to)?Math.max(0,Math.round(to-from)):null;
+ return {queuedMs:span(created,claimedAt),firstReadMs:span(claimedAt,firstReadAt),recheckMs:span(firstReadAt,recheckedAt),finishMs:span(recheckedAt,finishedAt),totalMs:span(claimedAt,finishedAt),finishedAt:new Date(finishedAt).toISOString(),workers,engine};
+}
 export const scanQueueBackground=alias=>`(${alias}.raw_fields->>'scanQueueOrigin'='repair' OR (COALESCE(${alias}.raw_fields->>'scanQueueOrigin','')='' AND ${alias}.raw_fields->>'equipmentNumberRecoveryVersion'='1'))`;
 export async function requestScanBatch(pool,batchId){
  return pool.query(`UPDATE mis_scan_batches b SET extraction_requested_at=NOW()

@@ -76,6 +76,10 @@ const RATE_LIMIT_SPACING_MS=12500;
 const RATE_LIMIT_IDLE_RESET_MS=60000;
 const RATE_LIMIT_RECOVERY_SUCCESSES=3;
 const MAX_TIMER_DELAY_MS=2_147_483_647;
+// Prepared pictures are kept for the verification read of the same card: a
+// few cards at most, and never longer than this.
+const PREPARED_VIEWS_KEEP_MS=5*60_000;
+const PREPARED_VIEWS_MAX=16;
 const requestGate=()=>({last:0,notBefore:0,spacingMs:0,limitGeneration:0,successes:0,chain:Promise.resolve()});
 const rateLimitError=()=>Object.assign(Error(geminiHttpError(429)),{status:429,provider:'gemini'});
 // Google's error text for a refused request, e.g. "Your prepayment credits are depleted."
@@ -108,6 +112,33 @@ async function readRateLimit(response,now){
 const vehicleDoorInstruction='For the DOOR NO field, use the upright header detail and compare it with the original. Read the fleet prefix, then inspect the mark immediately after it separately from the digits. A narrow slash may be almost vertical or look like 1. Count only the digits after the separator. For example, if the handwritten strokes are S, slash, 274, return S/274. If they are S followed by the four digits 1274 with no separator, return S1274. Use the same rule for V, E and other prefixes. Scania suffixes can have two or three digits. Never infer a digit or a separator from suffix length. If the mark could be either a separator or a real digit, return door with status unclear.';
 export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now,minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=geminiRequestTimeoutMs(),uprightOnly=geminiUprightOnly(),shareGateByKey=false}={}){
  let pending=0,active=0;const ownGate=requestGate(),queue=[],inFlight=new Map();
+ // Every trip card is read twice: the first read, then a fresh read that
+ // verifies the door number. Both reads send the same pictures, and making
+ // them (decode, eight crops, WebP and PNG encoding) is the one step that runs
+ // one card at a time. The pictures of the first read are kept for the second,
+ // so a card is prepared once, not twice. A fresh read still asks Gemini again;
+ // only the unchanged pictures of the unchanged scan are reused.
+ const preparedViews=new Map();
+ const prepareParts=(image,imageHash,kind,rotated,release)=>{
+  const id=imageHash+':'+kind+':'+rotated,queuedAt=now(),kept=preparedViews.get(id);
+  if(kept&&now()-kept.at<PREPARED_VIEWS_KEEP_MS){
+   if(release)preparedViews.delete(id);
+   return kept.parts.then(parts=>({parts,prepMs:0,prepWaitMs:now()-queuedAt,prepReused:true}));
+  }
+  let started=0;
+  const preparation=imagePreparation.then(async()=>{
+   started=now();
+   const source=await prepareImage(image),views=await prepareViews(source,kind,{rotated});
+   return [{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+  });
+  imagePreparation=preparation.then(()=>{},()=>{});
+  if(!release){
+   const entry={at:queuedAt,parts:preparation};preparedViews.set(id,entry);
+   preparation.catch(()=>{if(preparedViews.get(id)===entry)preparedViews.delete(id);});
+   for(const [key,value] of preparedViews){if(preparedViews.size<=PREPARED_VIEWS_MAX&&now()-value.at<PREPARED_VIEWS_KEEP_MS)break;preparedViews.delete(key);}
+  }
+  return preparation.then(parts=>({parts,prepMs:now()-started,prepWaitMs:started-queuedAt,prepReused:false}));
+ };
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Gemini concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
  // Readers using the same key in this process share start spacing and cooldowns.
  const gateFor=key=>{
@@ -146,11 +177,12 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
-   const buildParts=rotated=>{const preparation=imagePreparation.then(async()=>{
-    const source=await prepareImage(image),views=await prepareViews(source,kind,{rotated});
-    return [{text:cardPrompt(kind,{rotated})+(kind==='vehicle'?'\n'+vehicleDoorInstruction:'')+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
-   });
-   imagePreparation=preparation.then(()=>{},()=>{});return preparation;};
+   const timing={prepMs:0,prepWaitMs:0,prepReused:true};
+   const buildParts=async rotated=>{
+    const prepared=await prepareParts(image,imageHash,kind,rotated,forceRead);
+    timing.prepMs+=prepared.prepMs;timing.prepWaitMs+=prepared.prepWaitMs;timing.prepReused&&=prepared.prepReused;
+    return [{text:cardPrompt(kind,{rotated})+(kind==='vehicle'?'\n'+vehicleDoorInstruction:'')+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},...prepared.parts];
+   };
    const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
    let retryInstruction='',attempt=0,rateLimitRetries=0,requests=0;
@@ -194,7 +226,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     }
     attempt++;
     let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}
-    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
+    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,...timing,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     const parsed=parseCardResponse(record.raw,kind);
     // Count only requests started after the latest 429. Older in-flight
@@ -224,7 +256,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
   rest.cardShift=normalizeCardShift(rest.cardShift);
   if(kind==='vehicle')rest.shiftSelectionStatus=fields.shift.status==='clear'&&rest.cardShift?'clear':fields.shift.status==='missing'?'missing':'unclear';
-  return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
+  return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,prepMs:record.prepMs??null,prepWaitMs:record.prepWaitMs??null,prepReused:record.prepReused??null,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
  function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress,job.forceRead)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
  return {recognize(image,{kind='vehicle',onProgress,forceRead=false}={}){const key=kind+':'+(forceRead?'fresh:':'cached:')+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,forceRead,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
