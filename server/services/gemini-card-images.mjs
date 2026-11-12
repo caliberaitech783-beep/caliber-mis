@@ -13,11 +13,12 @@ async function checkedImage(bytes){
  if(!width||!height||width*height>20000000)throw Error('Scan dimensions exceed the 20 megapixel limit.');
  return image;
 }
-async function encodeView(image,{label,sx=0,sy=0,width,height,degrees}){
+async function encodeView(image,{label,sx=0,sy=0,width,height,degrees,lossless=false}){
  const canvas=createCanvas(width,height),ctx=canvas.getContext('2d');
  try{
   ctx.fillStyle='white';ctx.fillRect(0,0,width,height);if(degrees===180){ctx.translate(width,height);ctx.rotate(Math.PI);}ctx.drawImage(image,sx,sy,width,height,0,0,width,height);
-  return {label:label+` (${degrees} degree view)`,mimeType:'image/webp',image:await canvas.encode('webp',DETAIL_VIEW_WEBP_QUALITY)};
+  const bytes=lossless?await canvas.encode('png'):await canvas.encode('webp',DETAIL_VIEW_WEBP_QUALITY);
+  return {label:label+` (${degrees} degree view)`,mimeType:lossless?'image/png':'image/webp',image:bytes};
  }finally{
   // Release native pixel buffers after encoding, rather than waiting for GC
   // while the provider request retains its much smaller encoded views.
@@ -42,8 +43,16 @@ function columnViews(image){
 }
 export async function summaryDetailViews(bytes){return summaryViews(await checkedImage(bytes));}
 export async function cardDetailViews(bytes){return columnViews(await checkedImage(bytes));}
-export async function allCardDetailViews(bytes){
- // The six views share one decode of the original card.
- const image=await checkedImage(bytes),[columns,summary]=await Promise.all([columnViews(image),summaryViews(image)]);
- return [...columns,...summary];
+function headerViews(image){
+ const width=image.width,height=Math.ceil(image.height*.30);
+ const label='Trip Card header detail: inspect the handwritten DOOR NO cell';
+ return Promise.all([
+  encodeView(image,{label,width,height,degrees:0,lossless:true}),
+  encodeView(image,{label,sy:image.height-height,width,height,degrees:180,lossless:true})
+ ]);
+}
+export async function allCardDetailViews(bytes,kind){
+ const image=await checkedImage(bytes);
+ const [columns,summary,headers]=await Promise.all([columnViews(image),summaryViews(image),kind==='vehicle'?headerViews(image):[]]);
+ return [...headers,...columns,...summary];
 }

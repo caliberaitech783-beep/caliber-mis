@@ -98,6 +98,7 @@ async function readRateLimit(response,now){
  return {delayMs,quotaExhausted};
 }
 
+const vehicleDoorInstruction='For the DOOR NO field, use the upright header detail and compare it with the original. Read the fleet prefix, then inspect the mark immediately after it separately from the digits. A narrow slash may be almost vertical or look like 1. Count only the digits after the separator. For example, if the handwritten strokes are S, slash, 274, return S/274. If they are S followed by the four digits 1274 with no separator, return S1274. Use the same rule for V, E and other prefixes. Scania suffixes can have two or three digits. Never infer a digit or a separator from suffix length. If the mark could be either a separator or a real digit, return door with status unclear.';
 export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now,minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000,shareGateByKey=false}={}){
  let pending=0,active=0;const ownGate=requestGate(),queue=[],inFlight=new Map();
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Gemini concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
@@ -134,13 +135,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
  }
  async function run(image,kind,onProgress,forceRead=false){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
-  const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-v16.json`);
+  const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-${kind==='vehicle'?'v17':'v16'}.json`);
   let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
    const preparation=imagePreparation.then(async()=>{
-    const source=await prepareImage(image),views=await prepareViews(source);
-    return [{text:cardPrompt(kind)+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+    const source=await prepareImage(image),views=await prepareViews(source,kind);
+    return [{text:cardPrompt(kind)+(kind==='vehicle'?'\n'+vehicleDoorInstruction:'')+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
    });
    imagePreparation=preparation.then(()=>{},()=>{});
    const parts=await preparation;

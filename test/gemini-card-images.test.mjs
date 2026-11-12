@@ -1,5 +1,19 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createCanvas,loadImage} from '@napi-rs/canvas';import {DETAIL_VIEW_WEBP_QUALITY,cardDetailViews,summaryDetailViews} from '../server/services/gemini-card-images.mjs';
+import {createCanvas,loadImage} from '@napi-rs/canvas';import {DETAIL_VIEW_WEBP_QUALITY,allCardDetailViews,cardDetailViews,summaryDetailViews} from '../server/services/gemini-card-images.mjs';
+test('VLB sends lossless door header details for both scan orientations',async()=>{
+ const source=createCanvas(100,200),ctx=source.getContext('2d');
+ ctx.fillStyle='white';ctx.fillRect(0,0,100,200);
+ ctx.fillStyle='black';ctx.fillRect(12,34,2,10);
+ const inverted=createCanvas(100,200),rotated=inverted.getContext('2d');
+ rotated.translate(100,200);rotated.rotate(Math.PI);rotated.drawImage(source,0,0);
+ const upright=(await allCardDetailViews(source.toBuffer('image/png'),'vehicle'))[0];
+ const fromInverted=(await allCardDetailViews(inverted.toBuffer('image/png'),'vehicle'))[1];
+ assert.equal(upright.mimeType,'image/png');
+ assert.match(upright.label,/DOOR NO/);
+ assert.deepEqual(fromInverted.image,upright.image);
+ assert.equal((await loadImage(upright.image)).height,60);
+});
+
 test('native-pixel detail columns retain header and footer at either card orientation',async()=>{
  const source=createCanvas(100,200),ctx=source.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,100,200);ctx.fillStyle='black';ctx.fillRect(15,5,10,10);ctx.fillRect(75,185,10,10);
  const original=source.toBuffer('image/png'),sets=[];

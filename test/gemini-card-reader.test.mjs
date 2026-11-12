@@ -179,7 +179,7 @@ test('a new-parser cached malformed name retains original evidence without anoth
  const image=Buffer.from('valid-card-with-bad-name-cell');
  const {createHash}=await import('node:crypto');const imageHash=createHash('sha256').update(image).digest('hex');
  const card=response();card.fields.employeeName={status:'clear',value:''};const raw=JSON.stringify(card);
- await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v16.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
+ await fs.writeFile(path.join(dir,imageHash+'-vehicle-single-v17.json'),JSON.stringify({imageHash,kind:'vehicle',model:MODEL,finishReason:'STOP',raw}));
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>{throw Error('Cached recovery must not request a key');},prepareViews:async()=>{throw Error('Cached recovery must not read image again');}});
  const result=await reader.recognize(image);
  assert.equal(result.handwrittenFields.employeeCode,'3943');assert.equal(result.handwrittenFields.employeeName,'');
