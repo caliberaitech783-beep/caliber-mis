@@ -54,3 +54,21 @@ test('the bell, sign out, search, avatar and theme switch are wired and styled e
   assert.match(theme,/\.theme-toggle-track::before \{[^}]*animation: theme-cloud 5s linear infinite;/,'clouds by day');
   for(const css of [motion,profile,theme])assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);
 });
+
+test('sign out sits beside the page name and gives way before the page name or the clock',()=>{
+  const erp=read('../src/erp-layout.css');
+  assert.match(main,/<b>\{navigationLabel\(active\)\}<\/b>\s*<span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick=\{logout\} aria-label="Sign out" title="Sign out"><DoorExitIcon \/><span>Sign out<\/span><\/button><\/span>\s*<\/div>\s*<HeaderClock \/>/,'in the breadcrumb, straight after the page name, in reach while the side menu is hidden');
+  assert.match(motion,/\.crumb \.top-sign-out-slot \{ container: top-sign-out \/ inline-size; display: flex; flex: 0 999999 111px; min-width: 0; margin-left: -7px; overflow: hidden; \}/,'the slot takes the whole squeeze before the page name loses a pixel, and leaves no footprint when empty');
+  assert.match(read('../src/style.css'),/\.crumb\{display:flex;align-items:center;gap:7px;/,'the -7px margin answers this gap');
+  assert.match(motion,/\.crumb \.top-sign-out \{[^}]*flex: 0 0 auto;[^}]*width: 88px;[^}]*margin: 0 8px 0 15px;[^}]*white-space: nowrap;/,'15 + 88 + 8 = the 111px slot');
+  assert.match(motion,/@container top-sign-out \(max-width: 110\.5px\) \{\s*\.crumb \.top-sign-out \{ width: 36px; padding: 0; \}\s*\.crumb \.top-sign-out > span \{ display: none; \}\s*\}/,'short of room: the door alone');
+  assert.match(motion,/@container top-sign-out \(max-width: 58\.5px\) \{\s*\.crumb \.top-sign-out \{ display: none; \}\s*\}/,'no room for the door (15 + 36 + 8): nothing, never a clipped button');
+  assert.match(motion,/:root\[data-theme="dark"\] \.top \.crumb \.top-sign-out \{[^}]*color: #ffb4bd;/,'night theme outranks the grey top bar buttons');
+  assert.match(erp,/\.app\.erp-shell\{--erp-side-width:244px\}\s*\.app\.erp-shell\.sidebar-hidden\{--erp-side-width:0px\}/);
+  assert.match(erp,/\.app\.erp-shell>aside\.erp-sidebar\{[^}]*width:244px!important/,'the variable is the menu\'s real width');
+  assert.match(erp,/@media\(min-width:1101px\)\{\.app\.erp-shell \.top>\.crumb\{max-width:calc\(\(100vw - var\(--erp-side-width\)\)\/2 - 6\.25\*clamp\(16px,1\.4vw,23px\) - 144px\)\}\}/,'the breadcrumb stops where the centred clock begins');
+  assert.match(erp,/\.app\.erp-shell \.top>\.header-clock\{position:absolute;left:50%;transform:translateX\(-50%\);[^}]*--header-clock-size:clamp\(16px,1\.4vw,23px\);/,'same clock size as the limit above, and the clock leaves its own row at 1100px');
+  assert.match(erp,/\.app\.erp-shell\.sidebar-hidden \.top \.top-sign-out-slot\{min-width:59px\}/,'menu hidden: the door always stays');
+  assert.match(erp,/@media\(max-width:760px\)\{\.app\.erp-shell \.top \.top-sign-out-slot\{display:none\}\}/,'phones use the Sign out in the menu drawer');
+  assert.match(read('../src/erp-sidebar.jsx'),/<button onClick=\{logout\}><LogOut size=\{15\}\/>Sign out<\/button><\/footer>/,'that drawer still has it');
+});
