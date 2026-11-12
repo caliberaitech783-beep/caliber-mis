@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {identifyCardMachine,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,siteEquipmentOptions,compactScanEquipmentReferences} from '../shared/scan-machine-rules.mjs';
+import {identifyCardMachine,cardMachineHint,cardMachineKey,matchCardMachine,normalizeScanEquipmentRows,scanEquipmentMatchIssues,scannedEquipmentName,siteEquipmentOptions,compactScanEquipmentReferences} from '../shared/scan-machine-rules.mjs';
+import {resolveTripEquipment} from '../shared/trip-equipment-validation.mjs';
+import {scanFleetAssignment} from '../shared/scan-fleet-assignment.mjs';
 import {linkedScanEquipment} from '../shared/scan-fleet-door.mjs';
 import {extractCard} from '../server/rules/scan-extraction.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
@@ -10,11 +12,29 @@ const machine=(id,door,kind='equipment',location=site)=>({id,door,kind,site:loca
 const master=row=>({id:Number(row.id),master_name:'Equipment master',record_data:{door:row.door,category:row.kind,site:row.site}});
 
 test('Trip Card headers accept single letters and full vehicle names and preserve written numbers',()=>{
- for(const [inputs,code,label]of [[['v','Volvo'],'V','Volvo'],[['E','eicher'],'E','Eicher'],[['s','Scania'],'S','Scania'],[['H','Haulpak','Haulpak Dumper'],'H','Haulpak Dumper']])for(const input of inputs){
+ for(const [inputs,code,label]of [[['v','Volvo','Volvo Tipper','Volvo Tippers'],'V','Volvo'],[['E','eicher'],'E','Eicher'],[['s','Scania'],'S','Scania'],[['hp','H','Haulpak','Haulpak Dumper'],'HP','Haulpak Dumper']])for(const input of inputs){
   const result=identifyCardMachine(input+' / 025','vehicle');assert.equal(result.code,code);assert.equal(result.label,label);assert.equal(result.number,'025');assert.equal(result.original,input+' / 025');
  }
  assert.equal(identifyCardMachine('Hydra 25','vehicle'),null);
  assert.equal(identifyCardMachine('VPC 25','vehicle'),null);
+});
+
+test('trip cards identify numbered Volvo tippers and Haulpak dumpers from master records',()=>{
+ const rows=[machine('1','Volvo 110','vehicle'),machine('2','Haulpak Dumper 07','vehicle'),machine('3','LPC07'),machine('4','Hydra 07')];
+ for(const [written,id]of [['V110','1'],['Volvo Tipper 110','1'],['hp / 07','2']]){
+  const {draft,raw}=extractCard(`SITE ${site}\nDOOR NO ${written}`,'vehicle',rows.map(master));
+  assert.equal(draft.assetId,id);
+  assert.equal(raw.door,written);
+  assert.equal(scanFleetAssignment(rows,draft,raw,'','vehicle'),null);
+ }
+ assert.equal(cardMachineHint('Volvo 110','vehicle'),'Identified: Volvo · V110');
+ assert.equal(identifyCardMachine('hp','vehicle').label,'Haulpak Dumper');
+ assert.equal(matchCardMachine(rows,'hp',site,'vehicle').status,'missing-number');
+ assert.equal(resolveTripEquipment({equipmentName:'HP07'},rows,site).equipmentId,'3');
+ assert.equal(resolveTripEquipment({equipmentName:'H07'},rows,site).equipmentId,undefined);
+ const {draft}=extractCard(`SITE ${site}\nDOOR NO V110\n1 hp 07 09:00 09:20\nMACHINE WISE SUMMARY\n1 HP07 1`,'vehicle',rows.map(master));
+ assert.deepEqual(draft.trips.map(row=>row.equipmentName),['LPC07']);
+ assert.deepEqual(draft.scanMachineSummary.map(row=>row.equipmentName),['LPC07']);
 });
 
 test('body and Job Card equipment accept single/multiple letters and full type names',()=>{
