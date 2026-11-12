@@ -7,7 +7,13 @@ import path from 'node:path';
 import os from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-export const MODEL='gemini-3.1-flash-lite';
+// The full Flash model reads handwritten digits (5/S, 1/7, 3/8) far more reliably
+// than Flash-Lite, which changed clearly written door numbers and employee IDs.
+// MIS_GEMINI_MODEL switches the model per deployment without a code change, for
+// example back to gemini-3.1-flash-lite if cost or quota requires it.
+export const DEFAULT_MODEL='gemini-3.8-flash';
+export const geminiModel=(env=process.env)=>/^gemini-[a-z0-9.-]{1,60}$/.test(env.MIS_GEMINI_MODEL?.trim()||'')?env.MIS_GEMINI_MODEL.trim():DEFAULT_MODEL;
+export const MODEL=geminiModel();
 const root=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'CaliberERP','gemini-hybrid');
 export async function localGeminiKey(){if(process.platform!=='win32')throw Error('Configure secure Gemini key storage on Windows.');try{const {stdout}=await promisify(execFile)(path.join(process.env.SystemRoot||'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -Force; $s=(Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'CaliberERP/gemini-hybrid/key.dpapi') -Raw).Trim() | ConvertTo-SecureString; $p=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try {[Console]::Write([Runtime.InteropServices.Marshal]::PtrToStringBSTR($p))} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p)}"],{windowsHide:true,maxBuffer:4096});if(!stdout.trim())throw Error();return stdout.trim();}catch{throw Error('Configure the Gemini key once using scripts/Setup-Gemini.ps1 on this Windows account.');}}
 export const aFields=kind=>['bookDate','site','shift','shiftHours','door','employeeCode','employeeName','cardNumber','openingHmr','closingHmr',...(kind==='vehicle'?['openingKmr','closingKmr','printedTotalTrips']:[])];
