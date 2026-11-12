@@ -8,11 +8,9 @@
 
 # Report operating manuals
 
-Owner's rule (9 November 2026): every report tab and sub tab carries its operating manual in English and Hindi, and the manual must change whenever the tab changes. An old manual must never stay beside a changed report.
+Switched off by the owner on 13 November 2026, because building the English and Hindi manual for every report change took too long. This replaces his rule of 9 November 2026.
 
-- A change to a report tab is not complete until its manual is updated in the same change: first the text (`scripts/report-guides/content/<id>.json`, or `ot-guide.mjs` and `ot-guide-hi.mjs` for the OT tab), in both languages, then the two PDFs.
-- Rebuild with `npm run build` and then `node scripts/report-guides/build.mjs --stale`. Commit the changed files in `public/guides` and `scripts/report-guides/manifest.json`.
-- `test/report-guides.test.mjs` fails, and so the deployment stops, while any tab's code or manual text differs from what its PDF was built from. Do not edit `manifest.json` by hand to get past it.
-- A new report tab needs a manual before it goes live: content file, id in `src/report-guide-list.mjs`, both PDFs.
-- Manuals are served without sign-in, so they hold sample data only: no real names, employee IDs or figures.
-- Details: `scripts/report-guides/README.md`.
+- Do not write, build or update an operating manual for any report tab or sub tab, in English or Hindi.
+- No report tab shows an "Operating manual" bar. The manual PDFs (`public/guides`), their text and build scripts (`scripts/report-guides`) and the check that stopped deployments (`test/report-guides.test.mjs`) were removed.
+- A branch that still carries manual changes must drop them before it merges.
+- The old manuals and their build scripts stay in git history (last present in commit `2872070`) if the owner asks for them again.
