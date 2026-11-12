@@ -104,7 +104,7 @@ test('production stages releases from main without a release tag or approval gat
   assert.match(commit,/git rev-parse 'HEAD\^\{commit\}'/);
   assert.match(commit,/RELEASE_COMMIT=\$\{RELEASE_COMMIT\}" >> "\$GITHUB_ENV"/);
   const releaseJob=productionWorkflow.slice(productionWorkflow.indexOf('  release:'));
-  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to the staging slot','Wait until the staging slot serves the release','Swap the release into production','Verify Pulse-II release health','Stop the previous release in the staging slot'].map(name=>releaseJob.indexOf(name));
+  const stepOrder=['Resolve the main commit','Set up Node.js and npm download cache','Deploy to the staging slot','Wait until the staging slot serves the release','Preserve local backups and scan archives before the swap','Swap the release into production','Verify Pulse-II release health','Stop the previous release in the staging slot','Preserve local files written during the swap'].map(name=>releaseJob.indexOf(name));
   assert.ok(stepOrder.every((position,index)=>position>=0&&(index===0||position>stepOrder[index-1])),'the built commit is verified before and after the swap, before stopping the previous release');
   assert.doesNotMatch(releaseJob,/slot-name: ['"]?Production/i);
   assert.match(step(productionWorkflow,'Wait until the staging slot serves the release'),/--query defaultHostName/);
