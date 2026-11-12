@@ -10,7 +10,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {requireLogBookSite,siteAllowed} from '../../shared/log-book-access.mjs';
 import {vlbBatchSelection,vlbBatchName,vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {VLB_BATCH_SCHEMA,batchLogin,batchFail,lockVlbBatchWrites,lockVlbBatchScope,lockVlbBatchSite,vlbRecordScope,auditVlbBatch,matchingVlbBatch,syncVlbBatchRecord} from '../rules/vlb-batch-policy.mjs';
-import {prefetchBreakdownRows,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
+import {createBreakdownRowsPrefetchCache,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {jsonEntityTag,requestEtagMatches} from '../services/response-etag.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
@@ -83,6 +83,7 @@ export function createSharedRead({ttlMs=3000,now=()=>Date.now()}={}){
 
 export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ensureBooks,sendOtp,imageStorage,logBookOps=null,approvalOtp={},getActor=(session,client)=>vlbBatchActor(client,session),listCacheMs=3000}){
  let ready;
+ const prefetchFleetBreakdownRows=createBreakdownRowsPrefetchCache(logBookOps?.readBreakdownRows);
  // Every open batch board asks for the batch list every 4 s, and on 11 Nov 2026 those reads
  // alone kept the 10-connection pool full. The rows are the same for every caller (site
  // access is applied afterwards), so one read is shared by callers that arrive together and
@@ -214,12 +215,15 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  },{exclusive:true}))));
  app.get('/api/vlb-batches/:id/fleet',...protect,handle(async(req,res)=>{
   const batch=await visible(pool,req.params.id,req);const info=await stageDetails(pool,batch);
+  void prefetchFleetBreakdownRows(req.batchActor.login);
   res.json({stage:info.stage,fleet:info.fleet||[],fleetProgress:info.fleetProgress||null,machines:info.machines||[],holds:info.holds||[],closeBlockers:info.closeBlockers||[],statuses:FLEET_STATUSES,machineReport:info.machineReport||null});
  }));
  app.get('/api/vlb-batches/:id/fleet/:assetId/breakdowns',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   const batch=await visible(pool,req.params.id,req);
-  res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,logBookOps?.readHours,req.batchActor.login,req.query));
+  const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
+  const readHours=lockedReadHours(logBookOps?.readHours,prefetched);
+  res.set('Cache-Control','no-store').json(await readFleetBreakdowns(pool,batch,req.params.assetId,readHours,req.batchActor.login,req.query));
  }));
  app.put('/api/vlb-batches/:id/fleet/:assetId/draft',...protect,handle(async(req,res)=>{
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
@@ -229,7 +233,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   if(!/^\d+$/.test(req.params.assetId))fail('Invalid machine.',400);
   if(!logBookOps)fail('Machine entry is unavailable on this server.',503);
   // Pulse is read before the batch lock; inside it, the saved rows answer without a remote call.
-  const prefetched=await prefetchBreakdownRows(logBookOps.readBreakdownRows,req.batchActor.login);
+  const prefetched=await prefetchFleetBreakdownRows(req.batchActor.login);
   res.json(await batchTransaction(req,async(client,batch)=>{
    if(!isOwner(batch,req.batchActor)&&!req.batchActor.admin)fail('Only the active batch owner can enter machines for this batch.',403);
    const readHours=lockedReadHours(logBookOps.readHours&& (input=>logBookOps.readHours({...input,client})),prefetched);
