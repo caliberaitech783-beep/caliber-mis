@@ -1,13 +1,24 @@
-/* Loading Equipment-wise Report: idle band colours, and the red (in BD) and brown (no hours) machine lines.
+/* Loading Equipment-wise Report: idle band colours, the shift time-line, and the red (in BD) and brown (no hours) machine lines.
    The sub-tabs, step trail and chips are those of the Trip Timing & Gap Report (trip-timing-report.css). */
-.lm-report .lm-b1{background:#fff3c4;color:#6b5200}
-.lm-report .lm-b2{background:#ffe0bf;color:#8a4a00}
-.lm-report .lm-b3{background:#ffd0a8;color:#7a3300}
-.lm-report .lm-b4{background:#ffb38a;color:#5e1d00}
+/* Green up to 5 minutes, orange in three shades up to 20, red above 20: the same on the numbers, the strip and the lines. */
+.lm-report .lm-ok{background:#d6f0dd;color:#17602b}
+.lm-report .lm-b1{background:#ffeccb;color:#7a4300}
+.lm-report .lm-b2{background:#ffd9a3;color:#703800}
+.lm-report .lm-b3{background:#ffc078;color:#5e2c00}
+.lm-report .lm-b4{background:#ffc9c2;color:#8f1a12}
+/* The chips carry the colour of what they show. */
+.lm-report .tt-chips button.lm-ok{background:#d6f0dd;color:#17602b;border-color:#3aa863}
+.lm-report .tt-chips button.lm-b1{background:#ffeccb;color:#7a4300;border-color:#f0b060}
+.lm-report .tt-chips button.lm-b2{background:#ffd9a3;color:#703800;border-color:#f0a040}
+.lm-report .tt-chips button.lm-b3{background:#ffc078;color:#5e2c00;border-color:#f28a2e}
+.lm-report .tt-chips button.lm-b4{background:#ffc9c2;color:#8f1a12;border-color:#d6362f}
+.lm-report .tt-chips button.lm-breakdown{background:#fbd5d5;color:#9b1c1c;border-color:#b42323}
+.lm-report .tt-chips button.lm-nohours{background:#e7d3bd;color:#5c3310;border-color:#6e3f14}
 .lm-report .lm-count{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
 .lm-report button.lm-count{cursor:pointer}
 .lm-report .lm-breakdown{background:#fbd5d5;color:#9b1c1c}
 .lm-report .lm-nohours{background:#e7d3bd;color:#5c3310}
+.lm-report .lm-delayed{background:#3f2a6b;color:#fff;border-color:#3f2a6b}
 .lm-report .lm-status{display:inline-block;padding:3px 10px;border-radius:8px;font-size:13px;font-weight:750;white-space:nowrap}
 .lm-report .lm-status-running{background:#dcf2e1;color:#17602b}
 .lm-report .lm-status-breakdown{background:#b42323;color:#fff}
@@ -17,4 +28,58 @@
 .lm-report tr.lm-row-nohours>td,.lm-report tr.lm-row-nohours.report-row-clickable:hover>td,.lm-report tr.lm-row-nohours.report-row-clickable:focus-visible>td{background:#f0e2d2;color:#52300f}
 .lm-report tr.lm-row-breakdown>td:first-child{box-shadow:inset 4px 0 0 #b42323}
 .lm-report tr.lm-row-nohours>td:first-child{box-shadow:inset 4px 0 0 #6e3f14}
-@media print{.lm-report tr.lm-row-breakdown>td,.lm-report tr.lm-row-nohours>td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* One loading per line, in the colour of the gap before it. */
+.lm-report tr.lm-line-green>td,.lm-report tr.lm-line-green.report-row-clickable:hover>td,.lm-report tr.lm-line-green.report-row-clickable:focus-visible>td{background:#edf8f0;color:#14522a}
+.lm-report tr.lm-line-orange>td,.lm-report tr.lm-line-orange.report-row-clickable:hover>td,.lm-report tr.lm-line-orange.report-row-clickable:focus-visible>td{background:#fff3e0;color:#5a3200}
+.lm-report tr.lm-line-red>td,.lm-report tr.lm-line-red.report-row-clickable:hover>td,.lm-report tr.lm-line-red.report-row-clickable:focus-visible>td{background:#fde4e2;color:#7d1a1a}
+.lm-report tr.lm-line-green>td:first-child{box-shadow:inset 4px 0 0 #3aa863}
+.lm-report tr.lm-line-orange>td:first-child{box-shadow:inset 4px 0 0 #f28a2e}
+.lm-report tr.lm-line-red>td:first-child{box-shadow:inset 4px 0 0 #d6362f}
+/* The shift time-line: one strip per machine shift on the hours of the shift. Its own light card, so that the colours read the same by day and by night. */
+.lm-report .lm-timeline{padding:14px 16px;border:1px solid #d9cfe8;border-radius:12px;background:#fff;color:#2a2140;min-width:0}
+.lm-report .lm-timeline h3{margin:0 0 8px;font-size:16px;font-weight:750;color:#2a2140}
+.lm-report .lm-tl-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px;font-size:13px;font-weight:600}
+.lm-report .lm-tl-legend span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.lm-report .lm-tl-legend i{display:inline-block;width:16px;height:12px;border-radius:3px}
+.lm-report .lm-tl-legend i:last-of-type{margin-right:3px}
+.lm-report .lm-tl-foot{margin:10px 0 0;font-size:13px;color:#4f4660}
+.lm-report .lm-tl-scroll{overflow-x:auto}
+.lm-report .lm-tl-inner{display:flex;flex-direction:column;gap:8px;min-width:760px}
+.lm-report .lm-tl-row{display:flex;align-items:flex-start;gap:12px}
+.lm-report .lm-tl-label{flex:0 0 200px;overflow:hidden;font-size:13px;font-weight:700;line-height:26px;white-space:nowrap;text-overflow:ellipsis}
+.lm-report .lm-tl-body{flex:1 1 auto;min-width:0}
+.lm-report .lm-tl-track,.lm-report .lm-tl-rest{background:repeating-linear-gradient(135deg,#e6e4ec 0 6px,#f3f2f7 6px 12px)}
+.lm-report .lm-tl-track{position:relative;height:26px;border-radius:6px;overflow:hidden}
+.lm-report .lm-tl-single .lm-tl-track{height:48px}
+.lm-report .lm-seg{position:absolute;top:0;bottom:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-left:1px solid rgba(20,10,40,.55);font-size:12px;font-weight:800;line-height:1;cursor:pointer}
+.lm-report .lm-tl-single .lm-seg{font-size:14px}
+.lm-report .lm-seg-end{width:0;cursor:default;pointer-events:none}
+.lm-report .lm-seg-ok{background:#3aa863}
+.lm-report .lm-seg-b1{background:#ffd98f;color:#5e3200}
+.lm-report .lm-seg-b2{background:#ffb04d;color:#4f2700}
+.lm-report .lm-seg-b3{background:#f28a2e;color:#3b1a00}
+.lm-report .lm-seg-b4{background:#d6362f;color:#fff}
+.lm-report .lm-tl-bd{position:relative;height:8px;margin-top:3px}
+.lm-report .lm-tl-bd span,.lm-report .lm-tl-bdkey{background:repeating-linear-gradient(45deg,#4a0d0d 0 4px,#b42323 4px 8px)}
+.lm-report .lm-tl-bd span{position:absolute;top:0;bottom:0;border-radius:3px}
+.lm-report .lm-tl-axis{position:relative;height:18px;font-size:11px;color:#4f4660}
+.lm-report .lm-tl-axis span{position:absolute;top:3px;transform:translateX(-50%);white-space:nowrap}
+.lm-report .lm-tl-axis span:first-child{transform:none}
+.lm-report .lm-tl-axis span:last-child{transform:translateX(-100%)}
+.lm-report .lm-tl-axis .lm-edge{font-weight:800;color:#2a2140}
+.lm-report .lm-tl-hours{position:relative;height:46px;margin-top:2px}
+.lm-report .lm-hour{position:absolute;top:0;bottom:0;box-sizing:border-box;overflow:hidden;padding:4px 6px;border-left:1px solid #cfc4e0;font-size:12px;line-height:1.4;white-space:nowrap}
+.lm-report .lm-hour b{font-size:14px}
+.lm-report .lm-hour-counts{display:flex;gap:3px;margin-top:2px}
+.lm-report .lm-hour-counts em{font-style:normal;font-weight:750}
+.lm-report .lm-pill{display:inline-block;min-width:22px;padding:1px 5px;border-radius:999px;font-style:normal;font-size:12px;font-weight:800;line-height:1.5;text-align:center}
+.lm-report .lm-pill-green{background:#3aa863;color:#fff}
+.lm-report .lm-pill-orange{background:#ffb04d;color:#4f2700}
+.lm-report .lm-pill-red{background:#d6362f;color:#fff}
+.lm-report .lm-hour-orange em{color:#8a4a00}
+.lm-report .lm-hour-red em{color:#b42323}
+.lm-report .lm-hour-rest{color:#7a7289}
+@media print{
+ .lm-report tr.lm-row-breakdown>td,.lm-report tr.lm-row-nohours>td,.lm-report tr.lm-line>td,.lm-report .lm-timeline,.lm-report .lm-timeline *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .lm-report .lm-tl-scroll{overflow:visible}
+}

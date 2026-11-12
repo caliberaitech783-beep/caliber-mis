@@ -10,13 +10,20 @@ import {isUnloadingOnlyTrip,CARD_SHIFTS,normalizeCardShift} from './trip-card-ru
 import {cardWorkingHmr} from './log-book-shared-shift.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
 import {tripSerialNumber} from './log-book-labels.mjs';
-import {siteLabels} from './trip-timing-report.mjs';
+import {siteLabels,minutesBetween,DELAY_LIMIT,DOUBTFUL_MINUTES} from './trip-timing-report.mjs';
 
 // Owner's bands (13 Nov 2026): a machine is idle when more than 5 minutes pass between two loadings.
 // He named 5 to 10, 10 to 15 and 15 to 20; 20+ is added so that a longer stop is not lost.
 export const IDLE_LIMIT=5;
 export const BANDS=[{key:'b1',label:'5 to 10 min',above:5,upTo:10},{key:'b2',label:'10 to 15 min',above:10,upTo:15},{key:'b3',label:'15 to 20 min',above:15,upTo:20},{key:'b4',label:'20+ min',above:20,upTo:Infinity}];
 export const BAND_LABELS={ok:'Up to '+IDLE_LIMIT+' min',...Object.fromEntries(BANDS.map(b=>[b.key,b.label]))};
+// The shift time-line of a machine shows every loading in one of three colours (owner, 13 Nov 2026: "trip wise where it
+// was green, orange, and red"): green up to 5 minutes after the loading before, orange up to 20, red above 20.
+export const TONES={first:'first',ok:'green',b1:'orange',b2:'orange',b3:'orange',b4:'red'};
+export const TONE_LABELS={green:'Green',orange:'Orange',red:'Red'};
+// A tipper trip counts as delayed when the tipper took more than this from its unloading to its next loading: the limit
+// of the Trip Timing & Gap Report, so that both reports call the same trips delayed.
+export const WAIT_LIMIT=DELAY_LIMIT;
 // running: loaded a trip or showed hours. breakdown (red): did not run and was down. nohours (brown): did not run, not in BD.
 export const STATES={running:'Running',breakdown:'In BD',nohours:'No hours, not in BD'};
 export const STAGE_LABELS={vlb_open:'VLB still open',lmv_open:'VLB locked',elb_open:'VLB locked',closed:'Batch closed','':'No batch'};
@@ -43,6 +50,20 @@ export function idleText(minutes){if(minutes===null||minutes===undefined)return 
 export function percentWorked(hours,shiftHours){return hours===null||hours===undefined||!shiftHours?null:round1(hours/shiftHours*100);}
 const shiftCodeOf=r=>vlbRecordShift(r)||text(r.shiftName)||'Not recorded';
 const slotKey=(site,date,code)=>JSON.stringify([canonicalSiteName(site),date,code]);
+// The clock time so many minutes after a clock time, through midnight: clockAt(1260,200) is "00:20".
+export function clockAt(start,minutes=0){const m=((Math.floor(start+minutes)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
+// The tipper trips delayed by the idle stop that ends with loading `i`: the tipper was loaded by this machine at the end of
+// the stop or later, took more than WAIT_LIMIT minutes from its unloading to that loading, and stood empty for more than
+// IDLE_LIMIT minutes of the stop itself. `judged` are the loadings of the machine in the order of the shift.
+function tippersKeptWaiting(judged,i){
+ const from=judged[i-1].off,to=judged[i].off,list=[];
+ for(let k=i;k<judged.length;k++){
+  const l=judged[k];if(l.waited===null||l.waited<=WAIT_LIMIT)continue;
+  const inside=round1(to-Math.max(from,l.off-l.waited));
+  if(inside>IDLE_LIMIT)list.push({key:l.recordId+'-'+l.row,recordId:l.recordId,book:l.book,door:l.door,driver:l.driver,unloadedAt:l.unloadedAt,loadedAt:l.clock,waited:l.waited,inside});
+ }
+ return list;
+}
 
 // One entry per loading machine, site, date and shift. `records` are rows from normalise(); `assets`, `fleet` and
 // `batches` come with them from GET /api/reports/operations. `fleet` lists the site machines of a batch with no saved ELB.
@@ -61,7 +82,8 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
   slot.names.push(text(r.shiftName));slot.hours.push(num(r.shiftHours));
   if(r.kind==='equipment'){slot.elbStarts.push(text(r.masterShiftStart).slice(0,5));machineOf(slot,'id:'+r.assetId).cards.push(r);continue;}
   slot.starts.push(text(r.masterShiftStart).slice(0,5));
-  (r.trips||[]).forEach((t,i)=>{
+  const rows=r.trips||[];
+  rows.forEach((t,i)=>{
    if(isUnloadingOnlyTrip(t))return;
    const name=text(t.equipmentName),asset=t.equipmentId?byId.get(String(t.equipmentId)):doors.get(canonicalSiteName(r.location))?.get(fleetDoorKey(name));
    const machine=machineOf(slot,asset?'id:'+asset.id:t.equipmentId?'id:'+t.equipmentId:'name:'+(fleetDoorKey(name)||name.toUpperCase()));
@@ -69,8 +91,11 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
    machine.trips+=num(t.completedTrips)??num(t.tripCount)??0;
    if(text(r.door))machine.tippers.add(text(r.door));
    const at=r.timeMode==='without'?null:clockMinutes(t.loadingTime);
-   if(at===null)machine.untimed++;
-   else machine.loadings.push({at,clock:text(t.loadingTime).slice(0,5),recordId:String(r.id),book:r.book,row:i,sr:tripSerialNumber(t,i),door:text(r.door)||'Not recorded',driver:text(r.employeeName),caliberId:text(r.caliberId)});
+   if(at===null){machine.untimed++;return;}
+   // The tipper's own wait before this loading: from its unloading on the row above. A wait longer than a shift is a wrongly written time.
+   const waited=i>0?minutesBetween(rows[i-1].unloadingTime,t.loadingTime):null;
+   machine.loadings.push({at,clock:text(t.loadingTime).slice(0,5),recordId:String(r.id),book:r.book,row:i,sr:tripSerialNumber(t,i),door:text(r.door)||'Not recorded',driver:text(r.employeeName),caliberId:text(r.caliberId),
+    waited:waited!==null&&waited<=DOUBTFUL_MINUTES?waited:null,unloadedAt:i>0?text(rows[i-1].unloadingTime).slice(0,5):''});
   });
  }
  // A machine on the site list of a batch with no ELB saved. The list follows the Site and Shift filters;
@@ -112,20 +137,32 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
     const first=sorted[cut].at;judged=sorted.map(l=>({...l,off:(l.at-first+1440)%1440}));
    }
    judged.sort((a,b)=>a.off-b.off||String(a.book).localeCompare(String(b.book))||a.row-b.row);
-   const count={b1:0,b2:0,b3:0,b4:0},stopList=[];let longest=null,idleMinutes=0;
-   for(let i=1;i<judged.length;i++){
-    const minutes=round1(judged[i].off-judged[i-1].off),band=bandOf(minutes);
-    if(longest===null||minutes>longest)longest=minutes;
-    if(band==='ok')continue;
-    count[band]++;idleMinutes+=minutes;stopList.push({id:slot.key+'|'+m.key+'|'+i,minutes,band,from:judged[i-1],to:judged[i]});
-   }
+   // Breakdowns recorded in Pulse for this shift, as minutes from the start of the shift (the ELB card carries them).
+   const axisStart=start!==null?start:judged[0]?.at??null,shiftAt=start===null?NaN:Date.parse(slot.date+'T'+clockAt(start)+':00+05:30');
+   const bdPeriods=!Number.isFinite(shiftAt)?[]:m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>{
+    const a=Date.parse(b.shiftStart||b.start),z=Date.parse(b.shiftEnd||b.end||''),from=round1(Math.max(0,(a-shiftAt)/60000)),to=round1(Math.min(shiftMinutes,Number.isFinite(z)?(z-shiftAt)/60000:shiftMinutes));
+    return {from,to,label:[text(b.reference),text(b.description),clockAt(start,from)+' to '+clockAt(start,to)].filter(Boolean).join(' · ')};
+   }).filter(p=>Number.isFinite(p.from)&&p.to>p.from).sort((a,b)=>a.from-b.from);
+   // One line per timed loading in the order of the shift, with the gap from the loading before it. The first loading has no gap.
+   const count={b1:0,b2:0,b3:0,b4:0},lines=[],stopList=[],kept=new Set();let longest=null,idleMinutes=0,ok=0;
+   judged.forEach((l,i)=>{
+    const line={id:slot.key+'|'+m.key+'|'+i,n:i+1,minutes:null,band:'first',from:null,to:l,delayed:[],breakdown:''};
+    lines.push(line);if(i===0)return;
+    line.from=judged[i-1];line.minutes=round1(l.off-line.from.off);line.band=bandOf(line.minutes);
+    if(longest===null||line.minutes>longest)longest=line.minutes;
+    if(line.band==='ok'){ok++;return;}
+    count[line.band]++;idleMinutes+=line.minutes;stopList.push(line);
+    line.delayed=tippersKeptWaiting(judged,i);line.delayed.forEach(d=>kept.add(d.key));
+    line.breakdown=bdPeriods.filter(p=>p.from<l.off&&p.to>line.from.off).map(p=>p.label).join('; ');
+   });
    const door=text(asset?.door||last?.door||m.roster?.door)||[...m.names][0]||'Not recorded';
    out.push({id:slot.key+'|'+m.key,slotKey:slot.key,machineKey:m.key,site,date:slot.date,shiftCode:slot.code,shift,stage:slot.stage||'',
     door,machineName,names:[...m.names],operator:unique(m.cards.flatMap(c=>[text(c.employeeName),text(c.operatorSplit?.secondOperatorName)])).join(', '),
     state,status,statusLabel,reason:text(last?.statusReason||last?.remark),elbBooks:unique(m.cards.map(c=>text(c.book))).join(', '),
     breakdowns:m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>[text(b.reference),text(b.description),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · ')).join('; '),
     trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,
-    loadings:judged.length,firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,stopList});
+    loadings:judged.length,firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',ok,...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,delayed:kept.size,stopList,
+    lines,bdPeriods,axis:{start:axisStart,known:start!==null,minutes:shiftMinutes}});
   }
  }
  return out;
@@ -134,10 +171,10 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
 const keyOf={site:e=>e.site,shift:e=>e.slotKey,machine:e=>e.machineKey};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function totals(list){
- const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,b1:0,b2:0,b3:0,b4:0,stops:0,idleMinutes:0,longest:null,notJudged:0};
+ const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,loadings:0,ok:0,b1:0,b2:0,b3:0,b4:0,stops:0,idleMinutes:0,longest:null,notJudged:0,delayed:0};
  const tippers=new Set();let judgedHours=0;
  for(const e of list){
-  t[e.state]++;t.trips+=e.trips;e.tippers.forEach(d=>tippers.add(d));
+  t[e.state]++;t.trips+=e.trips;t.loadings+=e.loadings;t.ok+=e.ok;t.delayed+=e.delayed;e.tippers.forEach(d=>tippers.add(d));
   if(e.hours!==null)t.hours=(t.hours??0)+e.hours;
   // The share worked counts only the machine shifts whose ELB gives both the hours worked and the hours of the shift.
   if(e.hours!==null&&e.shiftHours){judgedHours+=e.hours;t.shiftHours+=e.shiftHours;}
@@ -168,10 +205,38 @@ export function summarise(entries,group){
  else rows.sort((a,b)=>STATE_ORDER[a.state]-STATE_ORDER[b.state]||b.idleMinutes-a.idleMinutes||b.stops-a.stops||b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
  return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',stage:'',stageLabel:'',door:'TOTAL',machineName:'',operator:'',state:'',statusLabel:'',reason:'',elbBooks:'',firstLoading:'',lastLoading:'',...totals(entries)}};
 }
+const shiftOrder=(a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true});
+// Every timed loading behind a line, newest shift first and in the order of the shift, each with the gap from the loading
+// before it and its colour. `pick` keeps one group only: 'ok' (up to 5 minutes), one band, or 'stops' (every band).
+export function loadingLines(entries,pick=''){
+ const keep=pick==='stops'?l=>l.band!=='ok'&&l.band!=='first':pick?l=>l.band===pick:()=>true;
+ return entries.flatMap(e=>e.lines.filter(keep).map(l=>({...l,tone:TONES[l.band],site:e.site,date:e.date,shift:e.shift,machine:e.door,machineKey:e.machineKey,slotKey:e.slotKey})))
+  .sort((a,b)=>shiftOrder(a,b)||a.machine.localeCompare(b.machine,undefined,{numeric:true})||a.to.off-b.to.off);
+}
 // The idle stops behind a line, newest shift first and in the order of the shift. `band` keeps one band only.
-export function idleStops(entries,band=''){
- return entries.flatMap(e=>e.stopList.filter(s=>!band||s.band===band).map(s=>({...s,site:e.site,date:e.date,shift:e.shift,machine:e.door})))
-  .sort((a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true})||a.machine.localeCompare(b.machine,undefined,{numeric:true})||a.from.off-b.from.off);
+export function idleStops(entries,band=''){return loadingLines(entries,band||'stops');}
+// The picture of one machine shift for the screen: the gaps between its loadings as coloured pieces laid on the hours of
+// the shift, and for every hour the loadings and the minutes in each colour. Positions are minutes from the start of the
+// shift (from the first loading when the shift start is not known). Null when the machine has no timed loading.
+export function shiftTimeline(entry){
+ const lines=entry.lines||[];if(!lines.length)return null;
+ const first=lines[0].to.off,last=lines.at(-1).to.off,shiftMinutes=entry.axis.known?entry.axis.minutes:Math.max(60,last);
+ const lo=Math.floor(Math.min(0,first)/60)*60,hi=Math.ceil(Math.max(shiftMinutes,last)/60)*60;
+ const pieces=lines.filter(l=>l.from).map(l=>({id:l.id,from:l.from.off,to:l.to.off,minutes:l.minutes,band:l.band,tone:TONES[l.band],fromClock:l.from.clock,toClock:l.to.clock,door:l.to.door,delayed:l.delayed.length,breakdown:l.breakdown}));
+ const hours=[];
+ for(let h=lo;h<hi;h+=60){
+  // `count` is the loadings of the hour by colour; green, orange and red are the minutes of the hour in each colour.
+  const hour={id:entry.id+'|h'+h,from:h,to:h+60,label:clockAt(entry.axis.start,h)+' to '+clockAt(entry.axis.start,h+60),loadings:0,count:{green:0,orange:0,red:0},green:0,orange:0,red:0,longest:null};
+  for(const l of lines)if(l.to.off>=h&&l.to.off<h+60){hour.loadings++;if(l.from)hour.count[TONES[l.band]]++;}
+  for(const p of pieces){const share=Math.min(p.to,h+60)-Math.max(p.from,h);if(share<=0)continue;hour[p.tone]+=share;if(p.tone!=='green'&&(hour.longest===null||p.minutes>hour.longest))hour.longest=p.minutes;}
+  for(const tone of ['green','orange','red'])hour[tone]=round1(hour[tone]);
+  // What is left of the hour lies before the first loading or after the last one: the report does not judge it.
+  hour.rest=round1(Math.max(0,60-hour.green-hour.orange-hour.red));
+  hour.worst=hour.red>0?'red':hour.orange>0?'orange':hour.green>0?'green':'rest';
+  hours.push(hour);
+ }
+ const marks=[];for(let h=lo;h<=hi;h+=60)marks.push({at:h,clock:clockAt(entry.axis.start,h),edge:entry.axis.known&&(h===0||h===shiftMinutes)});
+ return {lo,hi,shiftMinutes,known:entry.axis.known,first,last,firstClock:lines[0].to.clock,lastClock:lines.at(-1).to.clock,pieces,hours,marks,breakdowns:entry.bdPeriods||[]};
 }
 // The shifts in which a machine did not run, newest first, with what its ELB and Pulse say.
 export function shiftsNotWorked(entries){
