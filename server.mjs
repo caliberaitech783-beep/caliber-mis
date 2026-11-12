@@ -315,7 +315,7 @@ const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 const pool=rowSecurityPool(new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
-  max:10,
+  max:70,
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 }),{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
