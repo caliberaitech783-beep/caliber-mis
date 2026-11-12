@@ -107,6 +107,19 @@ test('LMV uses VLB-style manual and scan entry without adding cards to a VLB bat
  const scanPath='/api/scan-batches/'+batch.data.id;
  const detail=await call(scanPath);
  assert.equal(detail.status,200,JSON.stringify(detail.data));
+ // A partial read (?cards=) returns only the selected card; its save gate still counts every card of the entry.
+ const waiting=randomUUID();
+ await db.query("INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image_hash,draft,status) VALUES($1,$2,2,'next.png',$3,'{}','reading')",[waiting,batch.data.id,randomUUID()]);
+ const partial=await call(scanPath+'?cards='+card);
+ assert.equal(partial.status,200,JSON.stringify(partial.data));
+ assert.equal(partial.data.partial,true);
+ assert.deepEqual(partial.data.cards.map(row=>row.id),[card]);
+ assert.deepEqual(partial.data.cards[0],detail.data.cards[0],'a selected card is returned exactly as the whole read returns it');
+ assert.equal(partial.data.contextGate.waiting,true,'the card still being read holds the gate although it was not selected');
+ const whole=await call(scanPath);
+ assert.deepEqual(whole.data.cards.map(row=>row.id),[card,waiting]);assert.equal(whole.data.partial,undefined);
+ assert.equal((await call(scanPath+'?cards=not-a-card')).status,400);
+ await db.query('DELETE FROM mis_scan_cards WHERE id=$1',[waiting]);
  const savedCard=detail.data.cards[0];
  const recordPath='/api/log-books/lmv/'+savedCard.logbook_id;
  const updated=await call(recordPath,'PUT',{...savedCard.saved_data,remark:'Corrected saved scan',revision:savedCard.saved_revision});
