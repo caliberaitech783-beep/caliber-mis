@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bandOf,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,BANDS,IDLE_LIMIT} from '../shared/loading-machine-report.mjs';
 import {normalise} from '../src/operations-report-model.mjs';
+import fs from 'node:fs';
+import {transformWithOxc} from 'vite';
 
 const trip=(equipmentName,loadingTime,unloadingTime,extra={})=>({equipmentName,loadingTime,unloadingTime,tripCount:1,...extra});
 const shiftI={shiftId:1,shiftName:'Shift I',shiftHours:8,masterShiftStart:'05:00',bookShiftCode:'S1'};
@@ -120,4 +122,34 @@ test('a machine is found by the door number written on the card, and by its mast
  const rows=normalise([vlb(1,'V9001',[trip('ex 01','05:10','05:30'),trip('EX-1','05:20','05:40'),trip('SOMETHING ELSE','05:30','05:50',{equipmentId:'102'})])]);
  const list=machineShifts(rows,{assets});
  assert.deepEqual(list.map(e=>[e.door,e.trips,e.names]).sort(),[['EX1',2,['ex 01','EX-1']],['EX2',1,['SOMETHING ELSE']]]);
+});
+
+test('the screen shows working and idle time first, keeps the old list as a second view and the totals at the foot',()=>{
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/\[\['idle','Machine working and idle time'\],\['rows','All machines list'\]\]/);
+ assert.match(screen,/const work=\[column\('trips','Trips loaded'\),column\('percent','% of shift worked'[^\n]*column\('hoursWorked','Hours worked'/,'% of shift worked sits between Trips loaded and Hours worked');
+ assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,3,'site, shift and machine tables keep their total line at the foot');
+ assert.match(screen,/r\.state==='breakdown'\?'lm-row-breakdown':r\.state==='nohours'\?'lm-row-nohours'/);
+ const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
+ assert.match(css,/tr\.lm-row-breakdown>td[^{]*\{background:#fde4e4/,'a machine in BD is a red line');
+ assert.match(css,/tr\.lm-row-nohours>td[^{]*\{background:#f0e2d2/,'a machine with no hours and not in BD is a brown line');
+ // The table sorts itself by a column it takes for a duration; none of these columns may be one, or the lines lose their order.
+ assert.ok(!/column\('hours',|'BD hours'/.test(screen));
+});
+
+test('screens asking for the same dates share one reading of the log books; Refresh reads again',async()=>{
+ const source=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
+ const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function'),'operations-reports.jsx',{jsx:{runtime:'classic'}});
+ let calls=0,stopped=0;
+ const fetch=(url,{signal,headers})=>{calls++;assert.equal(headers.Authorization,'Bearer token');assert.match(String(url),/^\/api\/reports\/operations\?from=2026-11-0\d&to=2026-11-13$/);signal.addEventListener('abort',()=>stopped++);const call=calls;return new Promise(resolve=>setTimeout(()=>resolve({ok:true,json:async()=>({records:[],call})}),20));};
+ const operationsData=new Function('fetch',code+';return operationsData')(fetch);
+ const first=operationsData('2026-11-01','2026-11-13','token',false),second=operationsData('2026-11-01','2026-11-13','token',false);
+ assert.equal(calls,1,'the dashboard\'s second report does not read the month again');assert.equal(first.promise,second.promise);
+ first.release();assert.equal(stopped,0,'the reading is still wanted by the other screen');
+ assert.deepEqual(await second.promise,{records:[],call:1});second.release();
+ const third=operationsData('2026-11-01','2026-11-13','token',false);assert.equal(calls,1,'shared for a minute');third.release();
+ const refreshed=operationsData('2026-11-01','2026-11-13','token',true);assert.equal(calls,2,'Refresh reads again');
+ const other=operationsData('2026-11-02','2026-11-13','token',false);assert.equal(calls,3,'other dates are another reading');
+ other.release();assert.equal(stopped,1,'a reading nobody waits for is stopped');
+ assert.deepEqual(await refreshed.promise,{records:[],call:2});refreshed.release();assert.equal(stopped,1,'a finished reading is not stopped');
 });
