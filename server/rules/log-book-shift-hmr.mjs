@@ -8,9 +8,15 @@ const meterUnits=value=>Math.max(0,Math.round(Number(value)*1000)||0);
 const hmrUnits=data=>meterUnits(cardWorkingHmr(data));
 const kmrUnits=data=>meterUnits(data.totalRunningKmr??data.replacementKmr??(data.closingKmr-data.openingKmr));
 
+function shiftHmrLimit(data,shift){
+ if(isJayantSecondShift({...data,bookShiftCode:shift}))return 9;
+ if(data.manualShiftOverride)return Number(data.shiftHours);
+ return CARD_SHIFTS[normalizeCardShift(shift)]?.hours;
+}
+
 async function assertVlbDriverShiftHmr(client,data,recordId){
  const shift=vlbRecordShift(data);
- const limit=isJayantSecondShift({...data,bookShiftCode:shift})?9:CARD_SHIFTS[normalizeCardShift(shift)]?.hours;
+ const limit=shiftHmrLimit(data,shift);
  const employeeId=String(data.employeeId??'').trim();
  const caliberId=String(data.caliberId??'').trim().toUpperCase();
  if(!limit||(!employeeId&&!caliberId))return;
@@ -53,7 +59,7 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null,b
  });
  if(!peers.length)return;
  if(kind!=='lmv'){
-  const limit=isJayantSecondShift({...data,bookShiftCode:shift})?9:data.manualShiftOverride?Number(data.shiftHours):CARD_SHIFTS[normalizeCardShift(shift)]?.hours??Math.min(
+  const limit=shiftHmrLimit(data,shift)??Math.min(
    data.shiftHours,...peers.map(row=>Number(row.data.shiftHours)).filter(hours=>hours===8||hours===12)
   );
   const saved=peers.reduce((sum,row)=>sum+hmrUnits(row.data),0);
