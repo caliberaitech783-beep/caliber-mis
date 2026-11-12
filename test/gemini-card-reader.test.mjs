@@ -284,3 +284,32 @@ test('malformed summary rows remain reviewable instead of failing the complete c
  assert.equal(parsed.fields.door.value,'V309');assert.equal(parsed.trips.r.length,2);
  assert.ok(parsed.issues.some(issue=>issue.includes('Summary row')));
 });
+
+test('Gemini pacing and timeout default to 500 ms and 45 s with bounded overrides',async()=>{
+ const {geminiMinIntervalMs,geminiRequestTimeoutMs,geminiUprightOnly}=await import('../server/services/gemini-card-reader.mjs');
+ assert.equal(geminiMinIntervalMs({}),500);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:'2000'}),2000);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:' '}),500);
+ assert.equal(geminiRequestTimeoutMs({}),45000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'90000'}),90000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'500'}),45000);
+ assert.equal(geminiUprightOnly({}),false);assert.equal(geminiUprightOnly({MIS_GEMINI_UPRIGHT_ONLY:'true'}),true);
+});
+
+test('upright-only mode sends 0 degree views first and restores rotated views on a content retry',async t=>{
+ const {createGeminiCardReader}=await import('../server/services/gemini-card-reader.mjs');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-upright-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const viewModes=[],prompts=[];let calls=0;
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',uprightOnly:true,minIntervalMs:0,sleep:async()=>{},
+  prepareViews:async(_source,_kind,{rotated})=>{viewModes.push(rotated);return [{label:'View',image:Buffer.from('v')}];},
+  fetchImpl:async(_url,options)=>{calls++;prompts.push(JSON.parse(options.body).contents[0].parts[0].text);const data=response();if(calls===1)data.fields.site=field(null);return ok(JSON.stringify(data));}});
+ await reader.recognize(Buffer.from('upright-card'));
+ assert.equal(calls,2);assert.deepEqual(viewModes,[false,true]);
+ assert.ok(!prompts[0].includes('0 and 180 degree'));assert.ok(prompts[1].includes('0 and 180 degree'));
+});
+
+test('upright-only mode does not rebuild views when the first read is clean',async t=>{
+ const {createGeminiCardReader}=await import('../server/services/gemini-card-reader.mjs');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-upright-clean-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const viewModes=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',uprightOnly:true,minIntervalMs:0,sleep:async()=>{},
+  prepareViews:async(_source,_kind,{rotated})=>{viewModes.push(rotated);return [];},fetchImpl:async()=>ok(JSON.stringify(response()))});
+ await reader.recognize(Buffer.from('clean-upright-card'));
+ assert.deepEqual(viewModes,[false]);
+});

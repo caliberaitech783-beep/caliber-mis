@@ -32,8 +32,8 @@ export async function configuredGeminiKey(env=process.env,site=''){
  if(env.MIS_LOCAL_SCANNER_DATABASE==='true')return localGeminiKey();
  throw Error('Gemini key is not configured on the MIS server. Contact your administrator; no alternate provider was used.');
 }
-export function cardPrompt(kind){
- return `${SAFETY_RULES} All images are views of ONE physical card: the first is the full original; subsequent labelled images are overlapping full-height columns of that same page supplied in both 0 and 180 degree orientations. Choose the upright views to transcribe handwriting; rotated alternatives are duplicates of the same rows. Do not count overlapping rows twice. The card may be upside down (180 degrees), with its printed header at the bottom. Determine its orientation first and mentally rotate every view to read the card upright. Read header fields from the actual printed header wherever it appears; footer signatures are not header values. Transcribe in ONE response. ${NO_INVENTION_RULE}
+export function cardPrompt(kind,{rotated=true}={}){
+ return `${SAFETY_RULES} All images are views of ONE physical card: the first is the full original; ${rotated?'subsequent labelled images are overlapping full-height columns of that same page supplied in both 0 and 180 degree orientations. Choose the upright views to transcribe handwriting; rotated alternatives are duplicates of the same rows.':'subsequent labelled images are overlapping full-height columns, bands and details of that same page, all cut from the original without rotation.'} Do not count overlapping rows twice. The card may be upside down (180 degrees), with its printed header at the bottom. Determine its orientation first and mentally rotate every view to read the card upright. Read header fields from the actual printed header wherever it appears; footer signatures are not header values. Transcribe in ONE response. ${NO_INVENTION_RULE}
 First identify documentType as "VLB", "ELB" or "unknown" from the actual printed headings and layout. A TRIP CARD with individual loading/unloading trip rows and KMR is VLB, even when submitted through the ELB page. An equipment job card is ELB. Do not let the requested page override the visible document type. Requested type: ${kind==='vehicle'?'VLB':'ELB'}. If the visible type differs, return {"documentType":actualType,"fields":null,"trips":{"p":false,"r":[]}}. Otherwise return JSON only: {"documentType":"${kind==='vehicle'?'VLB':'ELB'}","fields":{...},"trips":{"p":${kind==='vehicle'},"r":[]}}.
 fields must contain ${aFields(kind).join(', ')}. Each named field is {"value":string|null,"status":"clear"|"missing"|"unclear"}. Use null unless clear. ${HEADER_RULES}
 ${SITE_RULES}
@@ -56,10 +56,16 @@ export function parseCardResponse(raw,kind){
  return recovered;
 }
 // The shared start gate caps extraction starts a minute across every worker.
-// 1000 ms allows 60 starts a minute, which five workers at about 5 s a card can
-// just use; the earlier 2000 ms gate held the whole company to 30 cards a minute
-// however many workers were idle. MIS_GEMINI_MIN_INTERVAL_MS overrides it.
-export function geminiMinIntervalMs(env=process.env){const value=Number(env.MIS_GEMINI_MIN_INTERVAL_MS);return Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):1000;}
+// 500 ms allows 120 starts a minute so five workers are never held back by the
+// gate; HTTP 429 responses still widen the spacing adaptively per key.
+// MIS_GEMINI_MIN_INTERVAL_MS overrides it (e.g. 1000 or 2000 if quota is tight).
+export function geminiMinIntervalMs(env=process.env){const raw=env.MIS_GEMINI_MIN_INTERVAL_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):500;}
+// A healthy card read finishes well inside 45 s; a hung connection is abandoned
+// and retried sooner. MIS_GEMINI_TIMEOUT_MS overrides it (10 s to 180 s).
+export function geminiRequestTimeoutMs(env=process.env){const raw=env.MIS_GEMINI_TIMEOUT_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=10000&&value<=180000?Math.round(value):45000;}
+// MIS_GEMINI_UPRIGHT_ONLY=true skips 180 degree views on the first read, for
+// scanners that always feed cards upright. A content retry restores them.
+export const geminiUprightOnly=(env=process.env)=>env.MIS_GEMINI_UPRIGHT_ONLY==='true';
 // Limit native decoding/encoding across readers; API calls remain concurrent.
 // Five cards each preparing six canvases at once can otherwise crowd uploads.
 let imagePreparation=Promise.resolve();
@@ -100,7 +106,7 @@ async function readRateLimit(response,now){
 }
 
 const vehicleDoorInstruction='For the DOOR NO field, use the upright header detail and compare it with the original. Read the fleet prefix, then inspect the mark immediately after it separately from the digits. A narrow slash may be almost vertical or look like 1. Count only the digits after the separator. For example, if the handwritten strokes are S, slash, 274, return S/274. If they are S followed by the four digits 1274 with no separator, return S1274. Use the same rule for V, E and other prefixes. Scania suffixes can have two or three digits. Never infer a digit or a separator from suffix length. If the mark could be either a separator or a real digit, return door with status unclear.';
-export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now,minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=90000,shareGateByKey=false}={}){
+export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fetch,prepareImage=async image=>image,prepareViews=allCardDetailViews,cacheDir=path.join(process.env.LOCALAPPDATA||process.env.HOME||os.tmpdir(),'CaliberERP','gemini-cards'),sleep=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now,minIntervalMs=geminiMinIntervalMs(),maxPending=12,concurrency=5,requestTimeoutMs=geminiRequestTimeoutMs(),uprightOnly=geminiUprightOnly(),shareGateByKey=false}={}){
  let pending=0,active=0;const ownGate=requestGate(),queue=[],inFlight=new Map();
  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Gemini concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
  // Readers using the same key in this process share start spacing and cooldowns.
@@ -140,16 +146,16 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
-   const preparation=imagePreparation.then(async()=>{
-    const source=await prepareImage(image),views=await prepareViews(source,kind);
-    return [{text:cardPrompt(kind)+(kind==='vehicle'?'\n'+vehicleDoorInstruction:'')+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
+   const buildParts=rotated=>{const preparation=imagePreparation.then(async()=>{
+    const source=await prepareImage(image),views=await prepareViews(source,kind,{rotated});
+    return [{text:cardPrompt(kind,{rotated})+(kind==='vehicle'?'\n'+vehicleDoorInstruction:'')+(forceRead?' Re-inspect the Door No cell, Caliber employee ID, all opening and closing HMR/KMR cells, printed date/site, ticked shift, and every trip and machine-summary row in the full image and detail views. The previous reading contained missing, unmatched or conflicting fields. Read each value from this image; do not infer replacements from another card, a master list or arithmetic. Preserve actual disagreements between the printed summary and details. If writing is blank or unclear, mark it missing or unclear.':'')},{inlineData:{mimeType:scanImageMime(source),data:source.toString('base64')}},...views.flatMap(v=>[{text:v.label+' - detail of the same card, not another card.'},{inlineData:{mimeType:v.mimeType||'image/png',data:v.image.toString('base64')}}])];
    });
-   imagePreparation=preparation.then(()=>{},()=>{});
-   const parts=await preparation;
+   imagePreparation=preparation.then(()=>{},()=>{});return preparation;};
+   const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
    let retryInstruction='',attempt=0,rateLimitRetries=0,requests=0;
    while(attempt<2){
-    const requestParts=retryInstruction?[...parts,{text:retryInstruction}]:parts;
+    const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
     const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
     const started=Date.now();let res;

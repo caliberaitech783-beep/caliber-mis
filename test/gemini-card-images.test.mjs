@@ -39,3 +39,14 @@ test('concurrent encoding preserves every byte of the sequential WebP views',asy
  }
  assert.deepEqual(await cardDetailViews(original),expected);
 });
+
+test('upright-only detail views drop every 180 degree alternative',async()=>{
+ const {allCardDetailViews}=await import('../server/services/gemini-card-images.mjs');
+ const canvas=createCanvas(100,200),c=canvas.getContext('2d');c.fillStyle='white';c.fillRect(0,0,100,200);const bytes=canvas.toBuffer('image/png');
+ for(const kind of ['vehicle','equipment']){
+  const all=await allCardDetailViews(bytes,kind),upright=await allCardDetailViews(bytes,kind,{rotated:false});
+  assert.ok(all.some(v=>v.label.includes('180 degree')));
+  assert.equal(upright.length,all.filter(v=>!v.label.includes('180 degree')).length);
+  assert.ok(upright.every(v=>v.label.includes('(0 degree view)')),kind);
+ }
+});

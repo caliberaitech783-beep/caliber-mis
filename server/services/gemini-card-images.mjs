@@ -25,16 +25,18 @@ async function encodeView(image,{label,sx=0,sy=0,width,height,degrees,lossless=f
   canvas.width=canvas.height=1;
  }
 }
-function summaryViews(image){
+// rotated=false keeps only 0 degree views. It is for cards known to be scanned
+// upright, where every 180 degree view duplicates rows already read upright.
+function summaryViews(image,{rotated=true}={}){
  const {width,height}=image;
- return Promise.all([['Bottom band containing the machine-wise summary',.62,0],['Top band containing the machine-wise summary',0,180]].map(async([label,y,degrees])=>{
+ return Promise.all([['Bottom band containing the machine-wise summary',.62,0],['Top band containing the machine-wise summary',0,180]].filter(([,,degrees])=>rotated||degrees===0).map(async([label,y,degrees])=>{
   const sy=Math.floor(y*height),sh=Math.min(height-sy,Math.ceil(.38*height));
   return encodeView(image,{label,sy,width,height:sh,degrees});
  }));
 }
-function columnViews(image){
+function columnViews(image,{rotated=true}={}){
  const {width,height}=image;
- const views=[];for(const degrees of [0,180])for(const [label,x,w] of [['Left overlapping full-height column',0,.54],['Right overlapping full-height column',.46,.54]]){
+ const views=[];for(const degrees of rotated?[0,180]:[0])for(const [label,x,w] of [['Left overlapping full-height column',0,.54],['Right overlapping full-height column',.46,.54]]){
   const sx=Math.floor(x*width),sw=Math.min(width-sx,Math.ceil(w*width));
   views.push(encodeView(image,{label,sx,width:sw,height,degrees}));
  }
@@ -43,16 +45,16 @@ function columnViews(image){
 }
 export async function summaryDetailViews(bytes){return summaryViews(await checkedImage(bytes));}
 export async function cardDetailViews(bytes){return columnViews(await checkedImage(bytes));}
-function headerViews(image){
+function headerViews(image,{rotated=true}={}){
  const width=image.width,height=Math.ceil(image.height*.30);
  const label='Trip Card header detail: inspect the handwritten DOOR NO cell';
  return Promise.all([
   encodeView(image,{label,width,height,degrees:0,lossless:true}),
-  encodeView(image,{label,sy:image.height-height,width,height,degrees:180,lossless:true})
+  ...(rotated?[encodeView(image,{label,sy:image.height-height,width,height,degrees:180,lossless:true})]:[])
  ]);
 }
-export async function allCardDetailViews(bytes,kind){
+export async function allCardDetailViews(bytes,kind,{rotated=true}={}){
  const image=await checkedImage(bytes);
- const [columns,summary,headers]=await Promise.all([columnViews(image),summaryViews(image),kind==='vehicle'?headerViews(image):[]]);
+ const [columns,summary,headers]=await Promise.all([columnViews(image,{rotated}),summaryViews(image,{rotated}),kind==='vehicle'?headerViews(image,{rotated}):[]]);
  return [...headers,...columns,...summary];
 }
