@@ -17,6 +17,9 @@ concurrency:
   group: caliber-mis-783-release
   cancel-in-progress: false
 
+env:
+  MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -304,32 +307,33 @@ jobs:
         if: steps.ui-delta.outputs.applied != 'true'
         run: rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/pulse-runtime/"
 
-      # Without a staging slot (repository variable MIS_STAGING_SLOT unset) the
-      # release goes straight to production as before: a 4-8 minute restart.
-      # With one, the release starts in the slot, is checked there, and Azure
-      # swaps it in; users see a reconnect of seconds (docs/scan-engines-runbook.md).
+      # Full runtime releases must pass staging validation before the swap.
       - name: Start the staging slot
-        if: steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT != ''
-        env:
-          SLOT: ${{ vars.MIS_STAGING_SLOT }}
-        run: az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$SLOT"
+        id: start-slot
+        if: steps.ui-delta.outputs.applied != 'true'
+        run: az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT"
 
       - name: Deploy to the staging slot
-        if: steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT != ''
+        if: steps.ui-delta.outputs.applied != 'true'
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'caliber-mis-783'
-          slot-name: ${{ vars.MIS_STAGING_SLOT }}
+          slot-name: ${{ env.MIS_STAGING_SLOT }}
           package: ${{ runner.temp }}/pulse-runtime
 
       - name: Wait until the staging slot serves the release
-        if: steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT != ''
+        if: steps.ui-delta.outputs.applied != 'true'
         env:
-          SLOT: ${{ vars.MIS_STAGING_SLOT }}
           EXPECTED_COMMIT: ${{ env.RELEASE_COMMIT }}
         run: |
+          slot_host=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT" --query defaultHostName --output tsv)
+          if [[ ! "$slot_host" =~ ^[a-z0-9.-]+\.azurewebsites\.net$ ]]; then
+            echo "Azure did not return a valid staging hostname."
+            exit 1
+          fi
+          export RELEASE_CHECK_BASE_URL="https://${slot_host}"
           for attempt in {1..60}; do
-            if curl --fail --silent --max-time 20 "https://caliber-mis-783-${SLOT}.azurewebsites.net/api/health" -o slot-health.json && node -e "const h=require('./slot-health.json');if(h.commit!==process.env.EXPECTED_COMMIT||h.database!=='connected')process.exit(1)"; then
+            if curl --fail --silent --max-time 20 "$RELEASE_CHECK_BASE_URL/api/health" -o slot-health.json && node -e "const h=require('./slot-health.json');if(h.commit!==process.env.EXPECTED_COMMIT||h.status!=='ok'||h.database!=='connected'||h.scheduledJobsEnabled!==false||(h.hotScanStorage?.enabled&&h.hotScanStorage.ready!==true))process.exit(1)" && node scripts/verify-ui-release.mjs --live; then
               echo "Staging slot is serving ${EXPECTED_COMMIT}."
               exit 0
             fi
@@ -339,30 +343,22 @@ jobs:
           exit 1
 
       - name: Swap the release into production
-        if: steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT != ''
-        env:
-          SLOT: ${{ vars.MIS_STAGING_SLOT }}
-        run: az webapp deployment slot swap --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$SLOT" --target-slot production
-
-      - name: Stop the previous release in the staging slot
-        if: always() && steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT != ''
-        env:
-          SLOT: ${{ vars.MIS_STAGING_SLOT }}
-        # The old version now sits in the slot. Stopping it sends SIGTERM, so it
-        # finishes the scan cards it was reading and hands the rest back.
+        id: swap-slot
+        if: steps.ui-delta.outputs.applied != 'true'
         run: |
-          sleep 60
-          az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$SLOT"
-
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        if: steps.ui-delta.outputs.applied != 'true' && vars.MIS_STAGING_SLOT == ''
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'caliber-mis-783'
-          slot-name: 'Production'
-          # Preserve the complete runtime package used by the verified release path.
-          package: ${{ runner.temp }}/pulse-runtime
+          probe_production() {
+            while true; do
+              curl --silent --max-time 8 --output /dev/null \
+                --write-out "$(date -u +%FT%TZ) status=%{http_code} first_byte_s=%{time_starttransfer} total_s=%{time_total}\n" \
+                https://pulse-ll.cmll.in/api/health || true
+              sleep 2
+            done
+          }
+          probe_production &
+          probe_pid=$!
+          trap 'kill "$probe_pid" 2>/dev/null || true' EXIT
+          az webapp deployment slot swap --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT" --target-slot production
+          sleep 10
 
       - name: Verify Pulse-II release health
         env:
@@ -378,3 +374,13 @@ jobs:
           done
           echo "Pulse-II release health could not be verified."
           exit 1
+
+      - name: Stop the previous release in the staging slot
+        if: steps.swap-slot.outcome == 'success'
+        run: |
+          sleep 60
+          az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT"
+
+      - name: Stop staging if validation failed before the swap
+        if: failure() && steps.start-slot.outcome == 'success' && steps.swap-slot.outcome == 'skipped'
+        run: az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT"

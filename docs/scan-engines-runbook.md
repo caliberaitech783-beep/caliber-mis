@@ -82,9 +82,9 @@ Saving settings restarts Pulse-II once. `https://pulse-ll.cmll.in/api/health` th
 2. Deployment slots > Add slot `staging`, cloning settings from production.
 3. In production Configuration, tick "Deployment slot setting" on every setting, so the values stay with production when a release swaps in.
 4. Stop the `staging` slot (the release workflow starts it when needed).
-5. In GitHub variables, add `MIS_STAGING_SLOT` = `staging`.
+5. Give the slot its own managed identity and the production app's network integration. Grant the slot identity access to the MIS database secret and scan blob container, and verify the integration encryption key is available in both slots.
 
-From then on, a release starts in the slot, is checked there, and Azure swaps it in. The previous version is stopped 60 seconds later and finishes its cards first. Releases that change only screens already go out without a restart.
+The production workflow defaults to `staging`. Set the GitHub variable `MIS_STAGING_SLOT` only if the configured slot has a different name. The workflow checks the release, database and scan storage on the slot's Azure hostname, then records production response times during the swap. It stops the old version after production verification and a 60-second drain. Eligible screen-only releases still use the UI update path.
 
 ## When Google refuses the reading account
 

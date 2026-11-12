@@ -128,3 +128,24 @@ changed in one poll, when a partial answer does not fit, once after reading
 settles, and at least every 60 s (`SCAN_FULL_REFRESH_MAX_MS`) while partial reads
 continue. Saving a card validates it on the server as before. No production
 timing has been measured for this change yet.
+
+## Entry reads reuse unchanged cards (13 November 2026)
+
+The whole reads that remain (opening an entry, the read after reading settles, the
+60 s read, every read after a save) still ran about seven queries per unsaved card.
+They now load the duplicate candidates and the earlier meter readings of all cards
+in three or four queries, and keep each card's draft fill and checks in memory
+(`server/rules/scan-check-memo.mjs`). A kept result is reused only while the card,
+the entry selection, the master-data revision and the equipment aliases are
+unchanged and every lookup it was built from (duplicates, earlier meters) still
+gives the same answer; those lookups are asked again from the loaded data on each
+read. Saving a card never uses a kept result. `MIS_SCAN_CHECK_MEMO=false` switches
+the reuse off.
+
+On the PGlite test database a whole read of a 40-card entry took 291 queries
+before; it now takes 57 the first time and 13 while nothing has changed. No
+production timing has been measured yet.
+
+Admin > Diagnostics (Speed and freezes) now names the request or job holding each
+database connection, and which have held connections longest since the start, so
+a full pool can be traced to its cause.

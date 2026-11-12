@@ -125,7 +125,8 @@ test('the whole entry is read when the partial answer does not fit or too many c
 
 test('the server limits the full read to the selected cards and still gates on every card',()=>{
  const source=readFileSync(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
- const handler=source.split('\n').find(line=>line.startsWith(" app.get('/api/scan-batches/:id',"));
+ const lines=source.split(/\r?\n/),first=lines.findIndex(line=>line.startsWith(" app.get('/api/scan-batches/:id',"));
+ const handler=lines.slice(first,lines.indexOf(' }));',first)+1).join('\n');
  assert.match(handler,/const only=selectedScanCards\(req\.query\.cards\);/);
  assert.match(handler,/AND \(\$2::text\[\] IS NULL OR c\.id::text=ANY\(\$2::text\[\]\)\) ORDER BY ordinal`,\[batch\.id,only\]/,'the card rows, and so their checks, are limited to the selection');
  assert.match(handler,/const gateCards=only\?\(await db\.query\(`SELECT c\.status FROM mis_scan_cards c WHERE [^`]*c\.batch_id=\$1[^`]*`,\[batch\.id\]\)\)\.rows:cards;/,'the save gate still sees every card of the entry');

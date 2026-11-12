@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createPerformanceMonitor,normalizeRoutePath,percentile,performanceDiagnostic} from '../server/services/performance-monitor.mjs';
+import {createPerformanceMonitor,normalizeRoutePath,percentile,performanceDiagnostic,trackPoolClients} from '../server/services/performance-monitor.mjs';
 
 const clock=(start=Date.UTC(2026,10,4,10,0,0))=>{let time=start;return {now:()=>time,advance:ms=>{time+=ms;}};};
 const quiet={warn(){}};
@@ -58,6 +58,35 @@ test('a job that finished just before the late timer is still named in the freez
   assert.deepEqual(freeze.requests,['GET /api/requests (finished)']);
 });
 
+test('every database connection in use is named by the request or job that holds it',async()=>{
+  const time=clock();
+  // A stand-in for pg.Pool: connect gives a client whose release is set anew on each checkout, as pg does.
+  let released=0;
+  const pool={connect(callback){const client={};client.release=()=>{released++;};return callback?callback(null,client,client.release):Promise.resolve(client);}};
+  pool.query=()=>new Promise(resolve=>pool.connect((error,taken)=>{taken.release();resolve({rows:[]});}));
+  let request='GET /api/scan-batches/:id';
+  const poolClients=trackPoolClients(pool,{requestLabel:()=>request,now:time.now});
+  const monitor=createPerformanceMonitor({now:time.now,pool,poolClients,log:quiet});
+  const first=await pool.connect(),second=await pool.connect();
+  time.advance(4000);
+  request='';
+  let finishJob;const job=monitor.trackJob('Scan card reading',async()=>{const taken=await pool.connect();await new Promise(resolve=>{finishJob=resolve;});taken.release();});
+  await new Promise(resolve=>setImmediate(resolve));
+  time.advance(1000);
+  assert.deepEqual(monitor.snapshot().database.heldNow,[{who:'GET /api/scan-batches/:id',connections:2,longestMs:5000},{who:'Scan card reading',connections:1,longestMs:1000}]);
+  const facts=Object.fromEntries(performanceDiagnostic(monitor.snapshot()).facts);
+  assert.equal(facts['Database connections held now'],'GET /api/scan-batches/:id x2 (5.0 s); Scan card reading x1 (1.0 s)');
+  first.release();second.release();finishJob();await job;
+  assert.equal(released,3);
+  await pool.query('SELECT 1');
+  const {heldNow,heldMost}=monitor.snapshot().database;
+  assert.deepEqual(heldNow,[]);
+  assert.deepEqual(heldMost[0],{who:'GET /api/scan-batches/:id',checkouts:2,totalSeconds:10,averageMs:5000,longestMs:5000,longestWaitMs:0});
+  assert.deepEqual(heldMost.map(row=>[row.who,row.checkouts]),[['GET /api/scan-batches/:id',2],['Scan card reading',1],['Background work',1]]);
+  assert.match(Object.fromEntries(performanceDiagnostic(monitor.snapshot()).facts)['Most database connection time'],/^GET \/api\/scan-batches\/:id 10 s in 2 uses \(longest 5\.0 s\)/);
+  assert.deepEqual(createPerformanceMonitor({now:time.now,log:quiet}).snapshot().database.heldNow,[]);
+});
+
 test('diagnostic reports ok when quiet and fail on repeated or long freezes',()=>{
   const time=clock(),monitor=createPerformanceMonitor({now:time.now,log:quiet});
   assert.equal(performanceDiagnostic(monitor.snapshot()).status,'ok');
@@ -67,7 +96,12 @@ test('diagnostic reports ok when quiet and fail on repeated or long freezes',()=
 
 test('server measures every API request and exposes the numbers to administrators only',async()=>{
   const server=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
-  assert.ok(server.includes("const performanceMonitor=createPerformanceMonitor({pool});"));
+  assert.ok(server.includes("const performanceMonitor=createPerformanceMonitor({pool,poolClients});"));
+  // Counted on the pg Pool itself, before the row-security wrapper binds connect.
+  const tracked=server.indexOf('const poolClients=trackPoolClients(databasePool,');
+  assert.ok(tracked>0&&tracked<server.indexOf('const pool=rowSecurityPool(databasePool,'));
+  const health=server.slice(server.indexOf("app.get('/api/health'"),server.indexOf("app.get('/api/health'")+6000);
+  assert.ok(health.includes('databasePool:{total:pool.totalCount')&&!health.includes('poolClients'),'who holds the connections is not on the public health page');
   assert.ok(server.includes("performanceMonitor.beginRequest(req.method,req.path);res.on('close',()=>finish(res.statusCode));"));
   assert.ok(server.includes("app.get('/api/diagnostics/performance',requireSuper,requireAdministrator,"));
   assert.ok(server.includes("performanceMonitor.trackJob(`${module}: ${action}`,task)"));
