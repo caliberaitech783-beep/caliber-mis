@@ -20,7 +20,13 @@ export function scanFieldIssues(draft={},kind='vehicle',raw={},options=null,lmv=
  for(const meter of ['Hmr',...(kind==='vehicle'?['Kmr']:[])]){for(const prefix of ['opening','closing']){const key=prefix+meter;if(!issues[key]&&(!Number.isFinite(Number(draft[key]))||Number(draft[key])<0))issues[key]='Enter a valid non-negative reading.';}if(!issues['opening'+meter]&&!issues['closing'+meter]&&Number(draft['closing'+meter])<Number(draft['opening'+meter])&&!(meter==='Kmr'&&kmrMeterReplaced(draft)))issues['closing'+meter]='Closing reading must not be below opening reading.';}
  if(kind==='vehicle')for(const [i,row] of (draft.trips||[]).entries()){if(tripEquipmentRequired(row,draft.timeMode)&&!String(row.equipmentName||'').trim())issues[`trips.${i}.equipmentName`]='Enter the loading equipment.';if(!Number.isSafeInteger(Number(row.tripCount))||Number(row.tripCount)<1)issues[`trips.${i}.tripCount`]='Enter a positive whole trip count.';if(draft.timeMode!=='without')for(const key of ['loadingTime','unloadingTime'])if(row[key]?!validTripTime(row[key]):!row.loadingTime&&!row.unloadingTime)issues[`trips.${i}.${key}`]='Check the time against the scan.';}
  if(options){for(const [field,collection,label,read]of [['assetId','assets','Equipment Master',raw.door],['employeeId','employees','Employee Master',raw.employeeCode],['shiftId','shifts','Shift Master',draft.cardShift]])if(!draft[field]){if(!options[collection]?.length)issues[field]=label+' is empty in this MIS database. Sync/import it before matching scans.';else if(read)issues[field]='Scan reads '+String(read).slice(0,80)+'; no unique '+label+' match was found. Check the reading or master record.';}}
- if(kind==='vehicle'&&options){const v=validateTripEquipment(draft,options.assets||[]);Object.assign(issues,v.issues);const differences=machineDiscrepancies(v.draft.trips,v.draft.scanMachineSummary);if(differences.length)issues.scanMachineSummary=differences.join(' ');for(const [key,message] of Object.entries(v.issues))if(key.startsWith('scanMachineSummary.'))issues.scanMachineSummary=[issues.scanMachineSummary,message].filter(Boolean).join(' ');}
+ if(kind==='vehicle'&&options){
+  const validation=validateTripEquipment(draft,options.assets||[]);
+  Object.assign(issues,validation.issues);
+  const summaryIssues=new Set(machineDiscrepancies(validation.draft.trips,validation.draft.scanMachineSummary));
+  for(const [key,message] of Object.entries(validation.issues))if(key.startsWith('scanMachineSummary.'))summaryIssues.add(message);
+  if(summaryIssues.size)issues.scanMachineSummary=[...summaryIssues].join(' ');
+ }
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
  if(kind==='vehicle')Object.assign(issues,shiftMeterIssues(draft,lmv?'lmv':kind));
  if(lmv){
