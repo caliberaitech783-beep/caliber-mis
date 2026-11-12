@@ -3,9 +3,13 @@
   "group": "Trips & Productivity",
   "title": "Loading Equipment-wise Report",
   "menu": "Reports → Trips & Productivity → Loading Equipment-wise Report",
+  "asOf": {
+    "en": "Matches the system as of 13 November 2026",
+    "hi": "13 नवंबर 2026 तक के सिस्टम के अनुसार"
+  },
   "en": {
-    "purpose": "Shows how many trips each loading equipment loaded, and how many different vehicles it loaded, at each site in the chosen dates. The figures come from the trip rows of Vehicle Log Books.",
-    "row": "One row is one loading equipment at one site. The trips of every Vehicle Log Book trip row that names this equipment are added up in it.",
+    "purpose": "Shows what every loading machine of a site did in each shift: the trips it loaded, the share of the shift it worked, and how often and how long it stood idle between two loadings. A machine that did not run is shown in red when it was in BD and in brown when it had no hours and was not in BD. The same report is at the bottom of the Dashboard.",
+    "row": "In Step 1 one row is one site. Pressing a row opens the next step: Step 2 has one row for each date and shift, Step 3 one row for each loading machine, Step 4 one row for each idle stop, and Step 5 shows the trip card of a tipper.",
     "filters": [
       [
         "From / To",
@@ -33,7 +37,7 @@
       ],
       [
         "Loading equipment",
-        "Keeps only the trip rows loaded by the chosen loading equipment. It changes the table and the \"report rows\" count only; the logbooks, assets and trips counts above the table do not change."
+        "Keeps only the chosen loading machine in both views. The logbooks, assets and trips counts above the views do not change."
       ]
     ],
     "screen": [
@@ -67,64 +71,300 @@
       ],
       [
         "report rows",
-        "Number of rows in the table below."
+        "Number of rows in the \"All machines list\" view."
       ],
       [
-        "No matching records or exceptions found.",
-        "Shown inside the table when nothing matches the dates and filters."
+        "Machine working and idle time",
+        "The first view, open when the report opens. It goes down in five steps: all sites, one site date by date and shift by shift, the machines of one shift, the idle stops of one machine, and the trip card."
+      ],
+      [
+        "All machines list",
+        "The second view: the plain list of loading machines with their trips and vehicles, as this report was earlier."
+      ],
+      [
+        "All sites › site › date · Shift › Machine",
+        "The line of steps above the table shows where you are. Press an earlier step to go back to it. The violet Back button goes back one step."
+      ],
+      [
+        "Yellow summary line",
+        "One sentence above the table: how many machine shifts ran, how many were in BD, how many had no hours without BD, the share of shift hours worked, the trips loaded and the idle stops in each band."
+      ],
+      [
+        "All machines · In BD · No hours, not in BD · Idle 5 to 10 min …",
+        "Buttons above the table in Step 2 and Step 3, each with its count. Press one to keep only the lines that have such a machine or such a stop. Press \"All machines\" to see every line again."
+      ],
+      [
+        "Coloured numbers in the table",
+        "Yellow and orange numbers are idle stops in a band, a red number is machines in BD, a brown number is machines with no hours and not in BD. Pressing a coloured number opens the next step with only the lines behind that number."
+      ],
+      [
+        "Red line",
+        "In Step 3, a machine that did not run and was in BD: its ELB is saved as Breakdown or Maintenance, or Pulse shows breakdown for the whole shift."
+      ],
+      [
+        "Brown line",
+        "In Step 3, a machine that did not run and was not in BD: No operator, Not in use, no hours recorded, or no ELB entered for the shift."
+      ],
+      [
+        "Last line of a table (ALL SITES, ALL DATES, TOTAL)",
+        "The total of the lines above it. It stays at the foot of the table however the table is sorted. Pressing it opens the next step for all the lines together."
+      ],
+      [
+        "How this report counts",
+        "Press to open the rules of the report on the screen itself."
+      ],
+      [
+        "No loading machine in these dates and filters.",
+        "Shown when no loading machine matches the dates and filters."
+      ],
+      [
+        "Dashboard",
+        "The same report, with the same steps, is the last report at the bottom of the Dashboard. It keeps its own dates there."
       ]
     ],
     "columns": [
       [
-        "Site",
+        "Step 1 · Site",
+        "Site of the log books. All spellings of one site are shown as one site."
+      ],
+      [
+        "Step 1 · Machine shifts",
+        "Number of machine shifts in the line: one loading machine in one shift of one date counts as one."
+      ],
+      [
+        "Step 1 · Running",
+        "Machine shifts in which the machine loaded at least one trip or its ELB shows hours."
+      ],
+      [
+        "Step 1 · In BD",
+        "Machine shifts in which the machine did not run and was in BD. Shown in red."
+      ],
+      [
+        "Step 1 · No hours, not in BD",
+        "Machine shifts in which the machine did not run and was not in BD. Shown in brown."
+      ],
+      [
+        "Step 1 · Trips loaded",
+        "Trips of every tipper card row that names the machine, added up."
+      ],
+      [
+        "Step 1 · % of shift worked",
+        "Hours worked out of the hours of the shift. 8 hours worked in an 8-hour shift is 100%, 4 hours is 50%. On a line for many machines it is their hours worked together out of their shift hours together. A machine shift with no ELB is left out."
+      ],
+      [
+        "Step 1 · Hours worked",
+        "Working hours on the machine's ELB of the shift (closing HMR minus opening HMR), added up."
+      ],
+      [
+        "Step 1 · 5 to 10 min",
+        "Idle stops of more than 5 and up to 10 minutes between one loading and the next."
+      ],
+      [
+        "Step 1 · 10 to 15 min",
+        "Idle stops of more than 10 and up to 15 minutes."
+      ],
+      [
+        "Step 1 · 15 to 20 min",
+        "Idle stops of more than 15 and up to 20 minutes."
+      ],
+      [
+        "Step 1 · 20+ min",
+        "Idle stops of more than 20 minutes."
+      ],
+      [
+        "Step 1 · Total idle stops",
+        "All idle stops of more than 5 minutes: the four bands added up."
+      ],
+      [
+        "Step 1 · Total idle time",
+        "The minutes of all those stops added up, shown as hours and minutes. A dash when no machine in the line ran."
+      ],
+      [
+        "Step 1 · Longest idle (min)",
+        "The longest time between two loadings in the line, in minutes."
+      ],
+      [
+        "Step 1 · Shift hours",
+        "Hours of the shifts of the machine shifts that have an ELB, added up. This is what % of shift worked is measured against."
+      ],
+      [
+        "Step 1 · Hours in BD",
+        "Breakdown hours saved on the ELBs, taken from Pulse or entered by hand, added up."
+      ],
+      [
+        "Step 1 · Not judged",
+        "Trips that make no idle stop: the card was saved without times, the loading time is not written, or it falls far outside the shift. These trips are still counted in Trips loaded."
+      ],
+      [
+        "Step 2 · Date",
+        "Book Date of the cards, newest first. The last line reads ALL DATES."
+      ],
+      [
+        "Step 2 · Shift",
+        "Shift saved on the cards."
+      ],
+      [
+        "Step 2 · Entry stage",
+        "How far the batch of that shift has gone: \"VLB still open\" (tipper cards are still being entered), \"VLB locked\", \"Batch closed\", or \"No batch\". Idle time is complete only after the VLB is locked."
+      ],
+      [
+        "Step 2 · Machines",
+        "Number of loading machines in that shift."
+      ],
+      [
+        "Step 2 · Running to Not judged",
+        "The same columns as in Step 1, for that date and shift."
+      ],
+      [
+        "Step 3 · Door no.",
+        "Door number of the loading machine from the Equipment master. If the name on the cards matches no machine, it is shown as written."
+      ],
+      [
+        "Step 3 · Machine",
+        "Name of the machine from its ELB or the Equipment master."
+      ],
+      [
+        "Step 3 · Operator",
+        "Operator named on the machine's ELB of the shift."
+      ],
+      [
+        "Step 3 · Shifts",
+        "Shown only when the machines of all dates are opened together: the number of shifts in the line."
+      ],
+      [
+        "Step 3 · Status",
+        "Working, Working with part breakdown, \"Working · ELB not entered\" (it loaded trips but has no ELB), Breakdown or Maintenance (red line), No operator, Not in use, No hours recorded or ELB not entered (brown line)."
+      ],
+      [
+        "Step 3 · Trips loaded to Longest idle (min)",
+        "The same columns as in Step 1, for that machine. The running machines come first with the most idle time on top, then the red lines, then the brown lines."
+      ],
+      [
+        "Step 3 · First loading",
+        "Time of the machine's first loading in the shift."
+      ],
+      [
+        "Step 3 · Last loading",
+        "Time of the machine's last loading in the shift."
+      ],
+      [
+        "Step 3 · Tippers loaded",
+        "Number of different tippers the machine loaded."
+      ],
+      [
+        "Step 3 · Shift hours, Hours in BD, Not judged",
+        "As in Step 1, for that machine."
+      ],
+      [
+        "Step 3 · Remark",
+        "Status reason or remark on the machine's ELB, for example the breakdown reason."
+      ],
+      [
+        "Step 4 · Idle stops · Date, Shift, Loading machine",
+        "Date, shift and machine of the stop."
+      ],
+      [
+        "Step 4 · Idle stops · Loaded at",
+        "Loading time of the tipper loaded before the stop."
+      ],
+      [
+        "Step 4 · Idle stops · Next loading at",
+        "Loading time of the tipper loaded after the stop."
+      ],
+      [
+        "Step 4 · Idle stops · Idle minutes",
+        "Minutes from \"Loaded at\" to \"Next loading at\", in the colour of its band."
+      ],
+      [
+        "Step 4 · Idle stops · Band",
+        "5 to 10 min, 10 to 15 min, 15 to 20 min or 20+ min."
+      ],
+      [
+        "Step 4 · Idle stops · Tipper loaded, Driver",
+        "Door number and driver of the tipper loaded before the stop."
+      ],
+      [
+        "Step 4 · Idle stops · Next tipper, Driver of next tipper",
+        "Door number and driver of the tipper loaded after the stop."
+      ],
+      [
+        "Step 4 · Idle stops · Book no. of next tipper",
+        "Book number of that tipper's card. Pressing the line opens this card in Step 5."
+      ],
+      [
+        "Step 4 · Shifts not worked · Date, Shift, Door no., Machine",
+        "Shown under the idle stops, or alone for a machine that did not run: one line for each shift in which it did not run."
+      ],
+      [
+        "Step 4 · Shifts not worked · Status, Reason",
+        "Status and reason saved on the machine's ELB. Red for in BD, brown for no hours and not in BD."
+      ],
+      [
+        "Step 4 · Shifts not worked · Hours worked, Hours in BD, ELB book no.",
+        "Figures and book number of that ELB. Blank when no ELB was entered."
+      ],
+      [
+        "Step 4 · Shifts not worked · Breakdown in Pulse",
+        "Breakdown requests of Pulse saved with the ELB: reference, description and from when to when."
+      ],
+      [
+        "Step 5 · Trip card · Tr.Sr.No, Loading machine, Trips, Loading time, Unloading time",
+        "Every trip row of the tipper card, as saved."
+      ],
+      [
+        "All machines list · Site",
         "Site of the Vehicle Log Books that hold the trip rows."
       ],
       [
-        "Equipment",
+        "All machines list · Equipment",
         "Loading equipment written in the trip rows, for example TPC901."
       ],
       [
-        "Trips",
+        "All machines list · Trips",
         "Total trips loaded by this equipment: the counted trips of all its trip rows, added up."
       ],
       [
-        "Vehicles",
+        "All machines list · Vehicles",
         "Number of different vehicles that have a trip row with this equipment."
       ]
     ],
     "notes": [
-      "The report is built from the trip rows of Vehicle Log Books, not from the loading equipment's own Equipment Log Book. An equipment appears only if a vehicle trip row names it.",
-      "An equipment named in log books of two sites gets one row for each site.",
-      "Trip rows saved without a loading equipment name are added up in a row whose Equipment is blank.",
-      "A trip is counted on the log book that has its loading time. A trip row with only an unloading time (a load taken over from the previous driver) is not counted again.",
-      "The counts \"logbooks\", \"assets\" and \"trips\" above the table take all matching log books, VLB and ELB together. They do not change with Loading equipment.",
-      "A Vehicle Log Book that was not entered adds nothing here, so the Trips of its loading equipment come out lower."
+      "An idle stop is the time from one loading to the next loading by the same machine, across all the tippers it loaded in the shift. 5 minutes or less is normal working. Total idle time adds up every stop of more than 5 minutes in full, so it includes the time taken to load the next tipper.",
+      "Until every tipper card of a shift is entered, a machine looks more idle than it was, because the loadings on the missing cards are not there. Look at Entry stage in Step 2: figures of a shift marked \"VLB still open\" will still change.",
+      "Tea and meal breaks are not removed: each shows as one long stop. The wait before the first loading and after the last loading of the shift is not counted as a stop; First loading and Last loading show those times.",
+      "Only loading machines are listed: excavators, loaders and shovels of the site, and any machine named on a tipper card in the chosen dates. Dozers, graders and drills are not listed.",
+      "A machine with no ELB for the shift comes from the site machine list of the batch. It is listed only when Vehicle / equipment, Driver / operator and Work order are all at \"All\".",
+      "A trip row with only an unloading time belongs to the shift that loaded it and is not counted again. Night shifts are followed through 12 at night."
     ],
     "checklist": [
-      "Set From and To to the period and choose Site.",
-      "Check that every loading equipment that worked has a row, and that no row has a blank Equipment.",
-      "Compare the Trips of each equipment with the site's own loading count for the period.",
-      "With Loading equipment at All, check that the Trips column adds up to the \"trips\" count above the table.",
-      "For a doubtful equipment, open Trip Timing & Gap Report and choose it in Loading equipment there to see each trip row."
+      "Set From and To to the period. In Step 1 read the yellow line and compare the sites: Running, In BD, No hours, % of shift worked and the idle bands.",
+      "Press a site. In Step 2 check Entry stage first; judge idle time only for shifts whose VLB is locked.",
+      "Press a shift. In Step 3 read the red lines (in BD) and the brown lines (no hours, not in BD) with their Remark, and check that each matches what happened at site.",
+      "For a running machine with many stops, press its line. In Step 4 look at the long stops, which tipper was loaded before and after, and press a line to see the trip card.",
+      "Compare Hours worked and % of shift worked with the machine's ELB. A machine marked \"ELB not entered\" needs its ELB to be entered."
     ],
     "faq": [
       [
-        "Why is an equipment missing from the table?",
-        "No Vehicle Log Book trip row of the chosen dates names it. Its own Equipment Log Book does not add it here."
+        "Why does a machine show a lot of idle time although it worked the whole shift?",
+        "Either some tipper cards of that shift are not entered yet, so their loadings are missing, or the loading times on the cards are far apart. Check Entry stage in Step 2 and open the stops in Step 4 to see the cards."
       ],
       [
-        "Why does the same equipment have two rows?",
-        "It is named in Vehicle Log Books of two sites. Each site gets its own row."
+        "When is a machine red and when is it brown?",
+        "Red: it did not run and its ELB is saved as Breakdown or Maintenance, or Pulse shows breakdown for the whole shift. Brown: it did not run and was not in BD, such as No operator, Not in use, no hours recorded, or no ELB entered."
       ],
       [
-        "Does Vehicle / equipment choose the loading equipment?",
-        "No. It chooses the vehicle of the log book. Use Loading equipment to choose the loader."
+        "How is % of shift worked worked out?",
+        "Hours worked on the ELB divided by the hours of the shift. 8 hours in an 8-hour shift is 100%; a machine in BD for the whole shift is 0%. A machine with no ELB shows a dash."
+      ],
+      [
+        "Where is the old list of loading machines?",
+        "Press \"All machines list\" above the table. It shows Site, Equipment, Trips and Vehicles as before."
       ]
     ]
   },
   "hi": {
-    "purpose": "बताती है कि चुनी हुई तारीख़ों में हर साइट पर हर लोडिंग मशीन ने कितनी ट्रिप लोड कीं और कितनी अलग-अलग गाड़ियों को लोड किया। ये आँकड़े Vehicle Log Book की ट्रिप पंक्तियों से लिए जाते हैं।",
-    "row": "एक पंक्ति का मतलब है एक साइट पर एक लोडिंग मशीन। Vehicle Log Book की जिस भी ट्रिप पंक्ति में इस मशीन का नाम है, उसकी ट्रिप इसमें जोड़ी जाती हैं।",
+    "purpose": "बताती है कि साइट की हर लोडिंग मशीन ने हर Shift में क्या किया: कितनी ट्रिप लोड कीं, Shift का कितना हिस्सा काम किया, और दो लोडिंग के बीच कितनी बार और कितनी देर खाली खड़ी रही। जो मशीन नहीं चली वह BD में हो तो लाल, और बिना घंटों के पर BD में न हो तो भूरी दिखती है। यही रिपोर्ट Dashboard में सबसे नीचे भी है।",
+    "row": "Step 1 में एक पंक्ति एक साइट है। पंक्ति दबाने पर अगला स्टेप खुलता है: Step 2 में हर तारीख़ और Shift की एक पंक्ति, Step 3 में हर लोडिंग मशीन की एक पंक्ति, Step 4 में हर idle stop की एक पंक्ति, और Step 5 में टिपर का ट्रिप कार्ड।",
     "filters": [
       [
         "From / To",
@@ -152,7 +392,7 @@
       ],
       [
         "Loading equipment",
-        "सिर्फ़ उन ट्रिप पंक्तियों को रखता है जिनमें चुनी हुई लोडिंग मशीन लिखी है। इससे सिर्फ़ तालिका और \"report rows\" की गिनती बदलती है; तालिका के ऊपर की logbooks, assets और trips की गिनती नहीं बदलती।"
+        "दोनों व्यू में सिर्फ़ चुनी हुई लोडिंग मशीन रखता है। व्यू के ऊपर की logbooks, assets और trips की गिनती नहीं बदलती।"
       ]
     ],
     "screen": [
@@ -186,58 +426,294 @@
       ],
       [
         "report rows",
-        "नीचे की तालिका में पंक्तियों की गिनती।"
+        "\"All machines list\" व्यू की पंक्तियों की गिनती।"
       ],
       [
-        "No matching records or exceptions found.",
-        "जब तारीख़ों और फ़िल्टर से कुछ भी मेल नहीं खाता, तब तालिका के अंदर यह लिखा आता है।"
+        "Machine working and idle time",
+        "पहला व्यू, रिपोर्ट खुलते ही यही खुलता है। यह पाँच स्टेप में नीचे जाता है: सभी साइट, एक साइट तारीख़-वार और Shift-वार, एक Shift की मशीनें, एक मशीन के idle stop, और ट्रिप कार्ड।"
+      ],
+      [
+        "All machines list",
+        "दूसरा व्यू: लोडिंग मशीनों की सीधी सूची, उनकी ट्रिप और गाड़ियों के साथ, जैसी यह रिपोर्ट पहले थी।"
+      ],
+      [
+        "All sites › site › date · Shift › Machine",
+        "तालिका के ऊपर स्टेप की लाइन बताती है कि आप कहाँ हैं। पिछले किसी स्टेप को दबाने पर वहीं लौट जाते हैं। बैंगनी Back बटन एक स्टेप पीछे ले जाता है।"
+      ],
+      [
+        "Yellow summary line",
+        "तालिका के ऊपर एक वाक्य: कितनी machine shift चलीं, कितनी BD में रहीं, कितनी बिना BD के बिना घंटों के रहीं, Shift के घंटों का कितना हिस्सा काम हुआ, कितनी ट्रिप लोड हुईं और हर बैंड में कितने idle stop हैं।"
+      ],
+      [
+        "All machines · In BD · No hours, not in BD · Idle 5 to 10 min …",
+        "Step 2 और Step 3 में तालिका के ऊपर के बटन, हर एक के साथ उसकी गिनती। किसी को दबाने पर सिर्फ़ वही लाइनें रहती हैं जिनमें वैसी मशीन या वैसा stop है। सब लाइनें वापस देखने के लिए \"All machines\" दबाएँ।"
+      ],
+      [
+        "Coloured numbers in the table",
+        "पीले और नारंगी अंक किसी बैंड के idle stop हैं, लाल अंक BD वाली मशीनें हैं, भूरा अंक बिना घंटों की और BD में न रहने वाली मशीनें हैं। रंगीन अंक दबाने पर अगला स्टेप सिर्फ़ उसी अंक के पीछे की लाइनों के साथ खुलता है।"
+      ],
+      [
+        "Red line",
+        "Step 3 में वह मशीन जो नहीं चली और BD में थी: उसकी ELB Breakdown या Maintenance के रूप में सेव है, या Pulse में पूरी Shift का breakdown दर्ज है।"
+      ],
+      [
+        "Brown line",
+        "Step 3 में वह मशीन जो नहीं चली और BD में भी नहीं थी: No operator, Not in use, घंटे दर्ज नहीं, या उस Shift की ELB चढ़ी ही नहीं।"
+      ],
+      [
+        "Last line of a table (ALL SITES, ALL DATES, TOTAL)",
+        "ऊपर की लाइनों का जोड़। तालिका को किसी भी कॉलम से क्रम में लगाएँ, यह सबसे नीचे ही रहती है। इसे दबाने पर अगला स्टेप सभी लाइनों के लिए एक साथ खुलता है।"
+      ],
+      [
+        "How this report counts",
+        "दबाने पर रिपोर्ट के नियम स्क्रीन पर ही खुल जाते हैं।"
+      ],
+      [
+        "No loading machine in these dates and filters.",
+        "जब तारीख़ों और फ़िल्टर से कोई लोडिंग मशीन मेल नहीं खाती, तब यह लिखा आता है।"
+      ],
+      [
+        "Dashboard",
+        "यही रिपोर्ट, इन्हीं स्टेप के साथ, Dashboard में सबसे नीचे की आख़िरी रिपोर्ट है। वहाँ इसकी अपनी तारीख़ें रहती हैं।"
       ]
     ],
     "columns": [
       [
-        "Site",
+        "Step 1 · Site",
+        "लॉग बुक की साइट। एक साइट की सभी वर्तनियाँ एक ही साइट के रूप में दिखती हैं।"
+      ],
+      [
+        "Step 1 · Machine shifts",
+        "लाइन में machine shift की गिनती: एक तारीख़ की एक Shift में एक लोडिंग मशीन एक गिनी जाती है।"
+      ],
+      [
+        "Step 1 · Running",
+        "वे machine shift जिनमें मशीन ने कम से कम एक ट्रिप लोड की या उसकी ELB में घंटे हैं।"
+      ],
+      [
+        "Step 1 · In BD",
+        "वे machine shift जिनमें मशीन नहीं चली और BD में थी। लाल रंग में दिखती है।"
+      ],
+      [
+        "Step 1 · No hours, not in BD",
+        "वे machine shift जिनमें मशीन नहीं चली और BD में भी नहीं थी। भूरे रंग में दिखती है।"
+      ],
+      [
+        "Step 1 · Trips loaded",
+        "जिस भी टिपर कार्ड की ट्रिप पंक्ति में मशीन का नाम है, उन सबकी ट्रिप का जोड़।"
+      ],
+      [
+        "Step 1 · % of shift worked",
+        "Shift के घंटों में से कितने घंटे काम हुआ। 8 घंटे की Shift में 8 घंटे काम 100% है, 4 घंटे 50%। कई मशीनों की लाइन में यह सबके काम के घंटों का जोड़, सबके Shift घंटों के जोड़ में से है। जिस machine shift की ELB नहीं है, वह इसमें नहीं गिनी जाती।"
+      ],
+      [
+        "Step 1 · Hours worked",
+        "उस Shift की मशीन की ELB के काम के घंटे (closing HMR में से opening HMR घटाकर), जोड़कर।"
+      ],
+      [
+        "Step 1 · 5 to 10 min",
+        "एक लोडिंग से अगली लोडिंग के बीच 5 मिनट से ज़्यादा और 10 मिनट तक के idle stop।"
+      ],
+      [
+        "Step 1 · 10 to 15 min",
+        "10 मिनट से ज़्यादा और 15 मिनट तक के idle stop।"
+      ],
+      [
+        "Step 1 · 15 to 20 min",
+        "15 मिनट से ज़्यादा और 20 मिनट तक के idle stop।"
+      ],
+      [
+        "Step 1 · 20+ min",
+        "20 मिनट से ज़्यादा के idle stop।"
+      ],
+      [
+        "Step 1 · Total idle stops",
+        "5 मिनट से ज़्यादा के सभी idle stop: चारों बैंड का जोड़।"
+      ],
+      [
+        "Step 1 · Total idle time",
+        "उन सभी stop के मिनट का जोड़, घंटे और मिनट में। लाइन की कोई मशीन न चली हो तो डैश।"
+      ],
+      [
+        "Step 1 · Longest idle (min)",
+        "लाइन में दो लोडिंग के बीच का सबसे लंबा समय, मिनट में।"
+      ],
+      [
+        "Step 1 · Shift hours",
+        "जिन machine shift की ELB है, उनकी Shift के घंटों का जोड़। % of shift worked इसी के मुक़ाबले निकाला जाता है।"
+      ],
+      [
+        "Step 1 · Hours in BD",
+        "ELB में सेव breakdown के घंटे, Pulse से लिए गए या हाथ से भरे गए, जोड़कर।"
+      ],
+      [
+        "Step 1 · Not judged",
+        "वे ट्रिप जिनसे कोई idle stop नहीं बनता: कार्ड बिना समय के सेव हुआ, लोडिंग समय नहीं लिखा, या समय Shift से बहुत बाहर है। ये ट्रिप Trips loaded में फिर भी गिनी जाती हैं।"
+      ],
+      [
+        "Step 2 · Date",
+        "कार्ड की Book Date, सबसे नई ऊपर। आख़िरी लाइन में ALL DATES लिखा रहता है।"
+      ],
+      [
+        "Step 2 · Shift",
+        "कार्ड में सेव Shift।"
+      ],
+      [
+        "Step 2 · Entry stage",
+        "उस Shift का बैच कहाँ तक पहुँचा है: \"VLB still open\" (टिपर कार्ड अभी चढ़ रहे हैं), \"VLB locked\", \"Batch closed\", या \"No batch\"। Idle समय VLB लॉक होने के बाद ही पूरा होता है।"
+      ],
+      [
+        "Step 2 · Machines",
+        "उस Shift में लोडिंग मशीनों की गिनती।"
+      ],
+      [
+        "Step 2 · Running to Not judged",
+        "Step 1 वाले ही कॉलम, उस तारीख़ और Shift के लिए।"
+      ],
+      [
+        "Step 3 · Door no.",
+        "Equipment master से लोडिंग मशीन का डोर नंबर। कार्ड पर लिखा नाम किसी मशीन से न मिले तो जैसा लिखा है वैसा दिखता है।"
+      ],
+      [
+        "Step 3 · Machine",
+        "मशीन का नाम, उसकी ELB या Equipment master से।"
+      ],
+      [
+        "Step 3 · Operator",
+        "उस Shift की मशीन की ELB पर लिखा ऑपरेटर।"
+      ],
+      [
+        "Step 3 · Shifts",
+        "तभी दिखता है जब सभी तारीख़ों की मशीनें एक साथ खोली जाएँ: लाइन में Shift की गिनती।"
+      ],
+      [
+        "Step 3 · Status",
+        "Working, Working, part breakdown, \"Working · ELB not entered\" (ट्रिप लोड कीं पर ELB नहीं है), Breakdown या Maintenance (लाल लाइन), No operator, Not in use, No hours recorded या ELB not entered (भूरी लाइन)।"
+      ],
+      [
+        "Step 3 · Trips loaded to Longest idle (min)",
+        "Step 1 वाले ही कॉलम, उस मशीन के लिए। पहले चलने वाली मशीनें आती हैं, सबसे ज़्यादा idle समय वाली सबसे ऊपर, फिर लाल लाइनें, फिर भूरी लाइनें।"
+      ],
+      [
+        "Step 3 · First loading",
+        "Shift में मशीन की पहली लोडिंग का समय।"
+      ],
+      [
+        "Step 3 · Last loading",
+        "Shift में मशीन की आख़िरी लोडिंग का समय।"
+      ],
+      [
+        "Step 3 · Tippers loaded",
+        "मशीन ने कितने अलग-अलग टिपर लोड किए।"
+      ],
+      [
+        "Step 3 · Shift hours, Hours in BD, Not judged",
+        "Step 1 की तरह, उस मशीन के लिए।"
+      ],
+      [
+        "Step 3 · Remark",
+        "मशीन की ELB का status reason या remark, जैसे breakdown का कारण।"
+      ],
+      [
+        "Step 4 · Idle stops · Date, Shift, Loading machine",
+        "Stop की तारीख़, Shift और मशीन।"
+      ],
+      [
+        "Step 4 · Idle stops · Loaded at",
+        "Stop से पहले लोड हुए टिपर का लोडिंग समय।"
+      ],
+      [
+        "Step 4 · Idle stops · Next loading at",
+        "Stop के बाद लोड हुए टिपर का लोडिंग समय।"
+      ],
+      [
+        "Step 4 · Idle stops · Idle minutes",
+        "\"Loaded at\" से \"Next loading at\" तक के मिनट, अपने बैंड के रंग में।"
+      ],
+      [
+        "Step 4 · Idle stops · Band",
+        "5 to 10 min, 10 to 15 min, 15 to 20 min या 20+ min।"
+      ],
+      [
+        "Step 4 · Idle stops · Tipper loaded, Driver",
+        "Stop से पहले लोड हुए टिपर का डोर नंबर और ड्राइवर।"
+      ],
+      [
+        "Step 4 · Idle stops · Next tipper, Driver of next tipper",
+        "Stop के बाद लोड हुए टिपर का डोर नंबर और ड्राइवर।"
+      ],
+      [
+        "Step 4 · Idle stops · Book no. of next tipper",
+        "उस टिपर के कार्ड का बुक नंबर। लाइन दबाने पर यही कार्ड Step 5 में खुलता है।"
+      ],
+      [
+        "Step 4 · Shifts not worked · Date, Shift, Door no., Machine",
+        "Idle stop के नीचे दिखती है, या न चलने वाली मशीन के लिए अकेली: जिस भी Shift में मशीन नहीं चली, उसकी एक लाइन।"
+      ],
+      [
+        "Step 4 · Shifts not worked · Status, Reason",
+        "मशीन की ELB में सेव status और कारण। BD के लिए लाल, बिना घंटों और बिना BD के लिए भूरा।"
+      ],
+      [
+        "Step 4 · Shifts not worked · Hours worked, Hours in BD, ELB book no.",
+        "उस ELB के आँकड़े और बुक नंबर। ELB चढ़ी ही न हो तो खाली।"
+      ],
+      [
+        "Step 4 · Shifts not worked · Breakdown in Pulse",
+        "ELB के साथ सेव Pulse के breakdown request: reference, विवरण और कब से कब तक।"
+      ],
+      [
+        "Step 5 · Trip card · Tr.Sr.No, Loading machine, Trips, Loading time, Unloading time",
+        "टिपर कार्ड की हर ट्रिप पंक्ति, जैसी सेव है।"
+      ],
+      [
+        "All machines list · Site",
         "उन Vehicle Log Book की साइट जिनमें ये ट्रिप पंक्तियाँ हैं।"
       ],
       [
-        "Equipment",
+        "All machines list · Equipment",
         "ट्रिप पंक्तियों में लिखी लोडिंग मशीन, जैसे TPC901।"
       ],
       [
-        "Trips",
+        "All machines list · Trips",
         "इस मशीन की लोड की हुई कुल ट्रिप: इसकी सभी ट्रिप पंक्तियों की गिनी गई ट्रिप का जोड़।"
       ],
       [
-        "Vehicles",
+        "All machines list · Vehicles",
         "कितनी अलग-अलग गाड़ियों की ट्रिप पंक्ति में यह मशीन लिखी है।"
       ]
     ],
     "notes": [
-      "यह रिपोर्ट Vehicle Log Book की ट्रिप पंक्तियों से बनती है, लोडिंग मशीन की अपनी Equipment Log Book से नहीं। मशीन तभी दिखती है जब किसी गाड़ी की ट्रिप पंक्ति में उसका नाम हो।",
-      "जिस मशीन का नाम दो साइट की लॉग बुक में है, उसकी हर साइट के लिए अलग पंक्ति बनती है।",
-      "जो ट्रिप पंक्तियाँ बिना लोडिंग मशीन के नाम के सेव हैं, वे एक ऐसी पंक्ति में जुड़ती हैं जिसका Equipment खाली होता है।",
-      "ट्रिप उसी लॉग बुक में गिनी जाती है जिसमें उसका लोडिंग समय लिखा है। जिस ट्रिप पंक्ति में सिर्फ़ अनलोडिंग समय है (पिछले ड्राइवर से ली गई भरी गाड़ी), वह दोबारा नहीं गिनी जाती।",
-      "तालिका के ऊपर की \"logbooks\", \"assets\" और \"trips\" की गिनती सभी मेल खाती लॉग बुक की है, VLB और ELB दोनों मिलाकर। Loading equipment चुनने से ये नहीं बदलतीं।",
-      "जो Vehicle Log Book चढ़ी ही नहीं, उससे यहाँ कुछ नहीं जुड़ता, इसलिए उसकी लोडिंग मशीन की Trips कम आती हैं।"
+      "Idle stop का मतलब है उसी मशीन की एक लोडिंग से अगली लोडिंग तक का समय, उस Shift में उसके लोड किए सभी टिपर मिलाकर। 5 मिनट या कम सामान्य काम है। Total idle time में 5 मिनट से ज़्यादा का हर stop पूरा जोड़ा जाता है, इसलिए इसमें अगला टिपर लोड करने का समय भी शामिल है।",
+      "जब तक किसी Shift के सभी टिपर कार्ड नहीं चढ़ जाते, मशीन असल से ज़्यादा idle दिखती है, क्योंकि बचे हुए कार्ड की लोडिंग उसमें नहीं है। Step 2 में Entry stage देखें: \"VLB still open\" वाली Shift के आँकड़े अभी बदलेंगे।",
+      "चाय और खाने की छुट्टी नहीं घटाई जाती: हर एक एक लंबे stop के रूप में दिखती है। Shift की पहली लोडिंग से पहले और आख़िरी लोडिंग के बाद का इंतज़ार stop में नहीं गिना जाता; First loading और Last loading में ये समय दिखते हैं।",
+      "सिर्फ़ लोडिंग मशीनें दिखती हैं: साइट के excavator, loader और shovel, और चुनी हुई तारीख़ों के किसी टिपर कार्ड पर लिखी कोई भी मशीन। Dozer, grader और drill नहीं दिखते।",
+      "जिस मशीन की उस Shift की ELB नहीं है, वह बैच की साइट मशीन सूची से आती है। वह तभी दिखती है जब Vehicle / equipment, Driver / operator और Work order तीनों \"All\" पर हों।",
+      "जिस ट्रिप पंक्ति में सिर्फ़ अनलोडिंग समय है, वह उसी Shift की है जिसने उसे लोड किया और दोबारा नहीं गिनी जाती। रात की Shift रात 12 बजे के पार भी सही क्रम में गिनी जाती है।"
     ],
     "checklist": [
-      "From और To में अवधि रखें और Site चुनें।",
-      "देखें कि जो भी लोडिंग मशीन चली उसकी पंक्ति है, और किसी पंक्ति का Equipment खाली नहीं है।",
-      "हर मशीन की Trips को उस अवधि की साइट की अपनी लोडिंग गिनती से मिलाएँ।",
-      "Loading equipment को All पर रखकर देखें कि Trips कॉलम का जोड़ तालिका के ऊपर की \"trips\" गिनती के बराबर है।",
-      "जिस मशीन पर शक हो, उसके लिए Trip Timing & Gap Report खोलें और वहाँ Loading equipment में उसे चुनकर हर ट्रिप पंक्ति देखें।"
+      "From और To में अवधि रखें। Step 1 में पीली लाइन पढ़ें और साइटों की तुलना करें: Running, In BD, No hours, % of shift worked और idle बैंड।",
+      "कोई साइट दबाएँ। Step 2 में सबसे पहले Entry stage देखें; idle समय सिर्फ़ उन Shift का परखें जिनकी VLB लॉक है।",
+      "कोई Shift दबाएँ। Step 3 में लाल लाइनें (BD) और भूरी लाइनें (बिना घंटे, बिना BD) उनके Remark के साथ पढ़ें, और देखें कि हर एक साइट पर जो हुआ उससे मेल खाती है।",
+      "जिस चलती मशीन के कई stop हैं, उसकी लाइन दबाएँ। Step 4 में लंबे stop देखें, उनसे पहले और बाद में कौन सा टिपर लोड हुआ, और ट्रिप कार्ड देखने के लिए लाइन दबाएँ।",
+      "Hours worked और % of shift worked को मशीन की ELB से मिलाएँ। जिस मशीन पर \"ELB not entered\" लिखा है, उसकी ELB चढ़ानी बाक़ी है।"
     ],
     "faq": [
       [
-        "कोई मशीन तालिका में क्यों नहीं है?",
-        "चुनी हुई तारीख़ों की किसी Vehicle Log Book की ट्रिप पंक्ति में उसका नाम नहीं है। उसकी अपनी Equipment Log Book से वह यहाँ नहीं जुड़ती।"
+        "Why does a machine show a lot of idle time although it worked the whole shift?",
+        "या तो उस Shift के कुछ टिपर कार्ड अभी चढ़े नहीं हैं, इसलिए उनकी लोडिंग नहीं है, या कार्ड पर लिखे लोडिंग समय दूर-दूर हैं। Step 2 में Entry stage देखें और कार्ड देखने के लिए Step 4 में stop खोलें।"
       ],
       [
-        "एक ही मशीन की दो पंक्तियाँ क्यों हैं?",
-        "उसका नाम दो साइट की Vehicle Log Book में है। हर साइट की अलग पंक्ति बनती है।"
+        "When is a machine red and when is it brown?",
+        "लाल: मशीन नहीं चली और उसकी ELB Breakdown या Maintenance के रूप में सेव है, या Pulse में पूरी Shift का breakdown है। भूरा: मशीन नहीं चली और BD में भी नहीं थी, जैसे No operator, Not in use, घंटे दर्ज नहीं, या ELB चढ़ी ही नहीं।"
       ],
       [
-        "क्या Vehicle / equipment से लोडिंग मशीन चुनी जाती है?",
-        "नहीं। उससे लॉग बुक की गाड़ी चुनी जाती है। लोडिंग मशीन चुनने के लिए Loading equipment का इस्तेमाल करें।"
+        "How is % of shift worked worked out?",
+        "ELB के काम के घंटे को Shift के घंटों से भाग देकर। 8 घंटे की Shift में 8 घंटे 100% है; पूरी Shift BD में रही मशीन 0% है। जिस मशीन की ELB नहीं है, उसमें डैश आता है।"
+      ],
+      [
+        "Where is the old list of loading machines?",
+        "तालिका के ऊपर \"All machines list\" दबाएँ। उसमें पहले की तरह Site, Equipment, Trips और Vehicles दिखते हैं।"
       ]
     ]
   }
