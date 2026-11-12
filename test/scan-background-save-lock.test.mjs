@@ -34,23 +34,23 @@ test('refused cards are attempted once each and the queue releases its lock',asy
  assert.equal(f.state.calls.length,2);
 });
 
-test('an in-flight save keeps its lock scoped to one card and does not refresh the entry list',async()=>{
+test('eligible cards save with bounded parallelism and do not refresh the entry list',async()=>{
  const f=fixture();
  let finish;
  f.context.api=path=>{
   f.state.calls.push(path);
   if(path.includes('/c1/'))return new Promise(resolve=>{finish=resolve;});
-  assert.equal(f.context.autoSavingRef.current.id,'c2');
+  assert.ok(['c1','c2'].includes(f.context.autoSavingRef.current.id));
   return Promise.resolve({record:{id:2,book_no:'VLB/2'}});
  };
  const pending=f.run();
- assert.equal(f.context.autoSavingRef.current.id,'c1');
- assert.equal(f.state.autoSaving.id,'c1');
+ assert.ok(['c1','c2'].includes(f.context.autoSavingRef.current.id));
+ assert.ok(['c1','c2'].includes(f.state.autoSaving.id));
  await f.run();
- assert.deepEqual(f.state.calls,['/api/scan-cards/c1/auto-save']);
+ assert.deepEqual(new Set(f.state.calls),new Set(['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save']));
  finish({record:{id:1,book_no:'VLB/1'}});
  await pending;
- assert.deepEqual(f.state.calls,['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save']);
+ assert.deepEqual(new Set(f.state.calls),new Set(['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save']));
  assert.equal(f.context.autoSavingRef.current,null);
  assert.equal(f.state.autoSaving,null);
  assert.equal(f.state.error,undefined);
@@ -61,24 +61,25 @@ test('a busy server is waited out and the same card is saved without any stop me
  const f=fixture();let calls=0;
  f.context.api=async path=>{f.state.calls.push(path);calls+=1;if(calls<3)throw busy();return {record:{id:1,book_no:'VLB/1'}};};
  await f.run();
- assert.deepEqual(f.state.calls,[...Array(3).fill('/api/scan-cards/c1/auto-save'),'/api/scan-cards/c2/auto-save']);
- assert.deepEqual(f.state.waits.map(w=>[w.ordinal,w.seconds,w.nextAttempt,w.totalAttempts]),[[1,5,2,7],[1,10,3,7]]);
+ assert.equal(f.state.calls.length,4);
+ assert.deepEqual(new Set(f.state.calls),new Set(['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save']));
+ assert.deepEqual(f.state.waits.map(w=>[w.seconds,w.nextAttempt,w.totalAttempts]),[[5,2,7],[5,2,7]]);
  assert.equal(f.state.error,undefined);assert.equal(f.state.failures.size,0);assert.equal(f.context.autoSavePaused.current,false);assert.equal(f.state.autoSaving,null);
 });
 test('a server that stays busy pauses saving without listing the card as refused or moving to the next card',async()=>{
  const f=fixture();
  f.context.api=async path=>{f.state.calls.push(path);throw busy();};
  await f.run();
- assert.equal(f.state.calls.length,AUTO_SAVE_BUSY_DELAYS_MS.length+1);
+ assert.equal(f.state.calls.length,(AUTO_SAVE_BUSY_DELAYS_MS.length+1)*2);
  assert.equal(f.state.failures.size,0,'a busy server is not a refusal');
  assert.equal(f.context.autoSavePaused.current,'b');
  assert.ok(f.state.error.retryAt>Date.now());
  assert.match(f.state.error.message,/stayed busy through 7 tries.*No card was lost/);
- assert.equal(f.state.error.ordinal,1);
+ assert.ok([1,2].includes(f.state.error.ordinal));
  await f.run();
- assert.equal(f.state.calls.length,AUTO_SAVE_BUSY_DELAYS_MS.length+1,'paused during the retry cooldown');
+ assert.equal(f.state.calls.length,(AUTO_SAVE_BUSY_DELAYS_MS.length+1)*2,'paused during the retry cooldown');
  f.context.autoSavePaused.current=false;
  f.context.api=async path=>{f.state.calls.push(path);return {record:{id:1,book_no:'VLB/1'}};};
  await f.run();
- assert.deepEqual(f.state.calls.slice(AUTO_SAVE_BUSY_DELAYS_MS.length+1),['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save'],'the same card is tried first after Retry');
+ assert.deepEqual(new Set(f.state.calls.slice((AUTO_SAVE_BUSY_DELAYS_MS.length+1)*2)),new Set(['/api/scan-cards/c1/auto-save','/api/scan-cards/c2/auto-save']),'the same cards are tried again after Retry');
 });

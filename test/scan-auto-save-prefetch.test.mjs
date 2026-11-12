@@ -38,6 +38,8 @@ test('automatic saving reads Pulse once before its locks and holds the scan lock
  assert.ok(events.includes('SELECT pg_advisory_xact_lock_shared(709224102)'),'the scan lock is shared');
  assert.ok(!events.includes('SELECT pg_advisory_xact_lock(709224102)'),'no exclusive scan lock remains');
  assert.ok(events.includes('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))'),'the site, date and shift scope is locked');
+ assert.ok(events.includes('SELECT pg_advisory_xact_lock_shared(hashtext($1))'),'independent cards share the batch lock while context changes remain exclusive');
+ assert.ok(!events.includes('SELECT pg_advisory_xact_lock(hashtext($1))'),'independent cards in one scan batch are not serialized behind an exclusive batch-wide lock');
  assert.ok(!events.includes("SELECT pg_advisory_xact_lock(hashtext('mis_vlb_saved_batches'))"),'the whole batch table is not locked');
  const stored=(await db.query('SELECT data FROM mis_log_books WHERE id=$1',[saved.data.record.id])).rows[0].data;
  assert.equal(stored.breakdownHoursSource,'pulse');

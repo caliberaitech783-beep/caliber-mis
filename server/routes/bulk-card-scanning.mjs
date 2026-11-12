@@ -436,7 +436,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   // Pulse is read before any lock; inside the transaction the saved feed answers without a remote call.
   const actor=req.session.login||req.session.name,prefetched=await prefetchAutoSaveBreakdownRows(actor);const c=await pool.connect();let batch,record;
   try{
-   await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[initial.batch_id]);
+   await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock_shared(hashtext($1))',[initial.batch_id]);
    batch=await getBatch(c,initial.batch_id);const card=await getCard(c,initial.id,true);
    if(card.status==='posted'){record=(await c.query('SELECT id,book_no,data FROM mis_log_books WHERE id=$1 AND deleted_at IS NULL',[card.logbook_id])).rows[0];if(!record)fail('The saved log book is unavailable. Reload this batch.',409);}
    else{

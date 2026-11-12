@@ -531,7 +531,9 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
    (!reviewPage||(kind==='vehicle'&&!lmv))&&!(c.id===card?.id&&bdFallbackMissing)&&canAutoSaveScanCard(c,kind,options,lmv)&&!autoSaveAttempts.current.has(c.id+':'+c.revision));
   if(!queue.length)return;
   autoSavingRef.current=queue[0];
-  void (async()=>{try{for(const next of queue){
+  // Three workers keep large batches moving without flooding the database. Every card still
+  // uses the same revision, duplicate, fleet and meter validations on the server.
+  void (async()=>{try{let cursor=0;const saveNext=async()=>{while(cursor<queue.length){const next=queue[cursor++];
    if(activeRef.current!==next.batch_id)break;
    const key=next.id+':'+next.revision;
    autoSaveAttempts.current.add(key);
@@ -564,7 +566,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
     if(next.id===selectedCardRef.current){setPulseHours(null);setPulseHoursError(e.message);}
    }else setAutoSaveError({ordinal:next.ordinal,message:e.message});
    }
-  }}finally{
+  }};await Promise.all(Array.from({length:Math.min(3,queue.length)},saveNext));}finally{
    autoSavingRef.current=null;
    setAutoSaveWait(null);
    setAutoSaving(null);
