@@ -53,8 +53,12 @@ test('a missing model prevents production packaging instead of publishing an inc
  await mkdir(path.join(root,'dist'));await mkdir(path.join(root,'node_modules'));
  await assert.rejects(stageProductionRelease({root,destination,trackedFiles:[]}),/ENOENT/);
 });
-test('Azure deploys the complete validated workspace instead of the reduced staging ZIP',async()=>{
+test('Azure stages the complete validated runtime without Git history',async()=>{
  const workflow=await readFile(new URL('../.github/workflows/main_caliber-mis-783.yml',import.meta.url),'utf8');
- assert.match(workflow,/package:\s*\.\s*(?:#.*)?$/m);
- assert.doesNotMatch(workflow,/package:\s*\$\{\{\s*runner\.temp\s*\}\}\/mis-release\.zip/);
+ const scanWorkflow=await readFile(new URL('../.github/workflows/scan-engine-deploy.yml',import.meta.url),'utf8');
+ for(const [release,stagingDirectory] of [[workflow,'pulse-runtime'],[scanWorkflow,'scan-runtime']]){
+  assert.ok(release.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/${stagingDirectory}/"`));
+  assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
+  assert.doesNotMatch(release,/package:\s*\.\s*(?:#.*)?$/m);
+ }
 });
