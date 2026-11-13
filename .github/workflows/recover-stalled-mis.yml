@@ -20,51 +20,9 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
       - name: Reset the stalled staging deployment slot
         run: |
-          az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
-          for attempt in {1..24}; do
-            slot_state=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query state --output tsv)
-            if [[ "$slot_state" == "Stopped" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$slot_state" != "Stopped" ]]; then
-            echo "The staging slot did not stop; its deployment lock cannot be cleared safely."
-            exit 1
-          fi
-          lock_cleanup='rm -f /home/site/locks/status.lock /home/site/locks/info.lock /home/site/locks/deployment/status.lock /home/site/locks/deployment/info.lock'
-          az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
-          for attempt in {1..24}; do
-            slot_state=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query state --output tsv)
-            [[ "$slot_state" == "Running" ]] && break
-            sleep 5
-          done
-          if [[ "$slot_state" != "Running" ]]; then
-            echo "The staging slot did not start; its deployment lock cannot be cleared safely."
-            exit 1
-          fi
-          slot_host=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query defaultHostName --output tsv)
-          slot_ready=false
-          for attempt in {1..60}; do
-            if curl --fail --silent --max-time 10 "https://${slot_host}/api/health" -o /dev/null; then
-              slot_ready=true
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$slot_ready" != "true" ]]; then
-            echo "The staging worker did not become reachable; its deployment lock cannot be cleared safely."
-            exit 1
-          fi
-          az webapp exec --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --mode execute --shell-command "$lock_cleanup"
-          sleep 15
-          az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
-          for attempt in {1..24}; do
-            slot_state=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query state --output tsv)
-            [[ "$slot_state" == "Stopped" ]] && break
-            sleep 5
-          done
-          sleep 30
+          az webapp deployment slot delete --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
+          az webapp deployment slot create --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --configuration-source caliber-mis-783 --only-show-errors
+          az webapp config appsettings set --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --settings DISABLE_SCHEDULED_JOBS=true --only-show-errors >/dev/null
           az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
       - name: Restart the existing stalled App Service
         run: az webapp restart --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --only-show-errors
