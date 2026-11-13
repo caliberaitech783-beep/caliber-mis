@@ -43,7 +43,7 @@ test('equipment correction commits trip details and machine summary in one atomi
  assert.doesNotMatch(source,/const correctEquipment=.*update\('trips'.*update\('scanMachineSummary'/);
 });
 
-test('Wrong door review isolates door checks without changing full-card validation',()=>{
+test('Wrong door review keeps every VLB card field visible while focusing its messages',()=>{
  const app=harness('&scanView=review&scanGroup=wrong-door');app.render();
  const draft={doorText:'',assetId:'',bookDate:'2026-11-01',location:'Sasti OC',trips:[{equipmentName:'LPC01',tripCount:2}],scanMachineSummary:[],openingHmr:'',closingHmr:''};
  const card={id:'door-card',batch_id:'batch1',ordinal:1,status:'review',draft,raw_fields:{},checks:{errors:['Enter door number.','Driver / operator is required.','Closing HMR is missing.'],warnings:['Batch values applied. Card shows Date: 2026-11-02; batch 2026-11-01.']}};
@@ -53,8 +53,8 @@ test('Wrong door review isolates door checks without changing full-card validati
  assert.ok(status.props.errors.some(message=>/door/i.test(message)));
  assert.ok(!status.props.errors.some(message=>/HMR|driver|summary|date/i.test(message)));
  assert.deepEqual(status.props.warnings,[]);
- assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['doorText','assetId']);
- assert.ok(nodes(tree,n=>n.props['data-review-section']==='trips').every(n=>n.props.hidden));
+ assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['bookDate','location','doorText','assetId','employeeId','shiftId','cardShift','shiftHours','workOrderId','openingKmr','closingKmr','openingHmr','closingHmr']);
+ assert.ok(nodes(tree,n=>n.props['data-review-section']==='trips').every(n=>!n.props.hidden));
  assert.equal(nodes(tree,n=>n.type==='h2'&&n.props.children==='Ready for automatic saving').length,0,'hidden issues continue blocking final save');
 });
 
