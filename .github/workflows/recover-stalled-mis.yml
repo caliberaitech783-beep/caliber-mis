@@ -32,15 +32,9 @@ jobs:
             echo "The staging slot did not stop; its deployment lock cannot be cleared safely."
             exit 1
           fi
-          credentials=$(az webapp deployment list-publishing-credentials --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --output json)
-          publishing_user=$(jq -r '.publishingUserName' <<<"$credentials")
-          publishing_password=$(jq -r '.publishingPassword' <<<"$credentials")
-          scm_host=$(python3 -c 'import json,sys,urllib.parse; print(urllib.parse.urlparse(json.load(sys.stdin)["scmUri"]).hostname)' <<<"$credentials")
           lock_cleanup='rm -f /home/site/locks/status.lock /home/site/locks/info.lock /home/site/locks/deployment/status.lock /home/site/locks/deployment/info.lock'
-          if ! jq -nc --arg command "$lock_cleanup" '{command:$command,dir:"/home"}' |
-            curl --fail --silent --show-error --user "$publishing_user:$publishing_password" --header 'Content-Type: application/json' --data-binary @- "https://${scm_host}/api/command"; then
-            echo 'Kudu command access is disabled; continuing with the staging slot stop/start recovery.'
-          fi
+          printf '%s\n' "$lock_cleanup" exit |
+            timeout 60 az webapp exec --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --target kudu --shell /bin/sh
           az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
           sleep 30
       - name: Restart the existing stalled App Service
