@@ -61,14 +61,14 @@ test('full tests keep prerequisites, isolated PostgreSQL and all three workers',
   const steps=['Install exact locked dependencies','Verify pinned handwriting model','Build complete UI','Run full test suite'];
   const order=steps.map(step=>full.indexOf(step));
   assert.ok(order.every(index=>index>=0));assert.deepEqual(order,[...order].sort((a,b)=>a-b));
-  assert.doesNotMatch(full,/id-token: write|secrets\.|environment:|azure\/login|webapps-deploy/);
+  assert.doesNotMatch(full,/id-token: write|secrets\.|environment:|azure\/login|webapps-deploy|az webapp deployment/);
 });
 
 test('production identity, UI fast path, runtime checks and complete packaging stay in release job',()=>{
   const release=job('release');
   assert.match(release,/environment:\n\s+name: production\n\s+url: https:\/\/pulse-ll.cmll.in/);
   assert.match(release,/id-token: write/);
-  for(const text of ['Verify pinned handwriting model','Run focused tests for approved UI/report changes','Verify complete deployment runtime','Preserve UI rollback evidence','node scripts/deploy-ui-delta.mjs',"rsync -a --exclude='/.git'",'package: ${{ runner.temp }}/pulse-runtime','node scripts/verify-ui-release.mjs --live'])assert.ok(release.includes(text),text);
+  for(const text of ['Verify pinned handwriting model','Run focused tests for approved UI/report changes','Verify complete deployment runtime','Preserve UI rollback evidence','node scripts/deploy-ui-delta.mjs',"rsync -a --exclude='/.git'",'(cd "$RUNNER_TEMP/pulse-runtime" && zip -qry "$RUNNER_TEMP/pulse-runtime.zip" .)','az webapp deployment source config-zip','--src "$RUNNER_TEMP/pulse-runtime.zip"','node scripts/verify-ui-release.mjs --live'])assert.ok(release.includes(text),text);
   assert.doesNotMatch(release,/run: npm test/,'full tests must finish before entering deployment');
   assert.match(release,/PLAN_LANE: \$\{\{ needs.plan.outputs.lane \}\}/);
   for(const name of ['plan','full_tests','release'])assert.match(job(name),/ref: \$\{\{ github.sha \}\}/,'all jobs check out the same immutable commit');

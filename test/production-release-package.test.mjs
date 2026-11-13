@@ -58,7 +58,11 @@ test('Azure stages the complete validated runtime without Git history',async()=>
  const scanWorkflow=await readFile(new URL('../.github/workflows/scan-engine-deploy.yml',import.meta.url),'utf8');
  for(const [release,stagingDirectory] of [[workflow,'pulse-runtime'],[scanWorkflow,'scan-runtime']]){
   assert.ok(release.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/${stagingDirectory}/"`));
-  assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
+  // Pulse-II zips the staged folder and uploads it with ZipDeploy; the scan engine still uses the Azure deploy action.
+  if(release===workflow){
+   assert.ok(release.includes(`(cd "$RUNNER_TEMP/${stagingDirectory}" && zip -qry "$RUNNER_TEMP/${stagingDirectory}.zip" .)`));
+   assert.ok(release.includes(`--src "$RUNNER_TEMP/${stagingDirectory}.zip"`));
+  }else assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
   assert.doesNotMatch(release,/package:\s*\.\s*(?:#.*)?$/m);
  }
 });
