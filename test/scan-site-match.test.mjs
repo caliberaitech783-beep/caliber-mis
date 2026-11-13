@@ -66,7 +66,7 @@ test('ambiguous DCH and unreadable Gemini locations remain blank for review, eve
  const unreadable=extractCard('Door No. V739','vehicle',onlyEast,{handwritingCandidates:{location:{value:null,text:null}}});assert.equal(unreadable.draft.location,'');assert.equal(unreadable.draft.assetId,'');
 });
 test('Gemini keeps literal location evidence and checks direction without changing model',()=>{
- assert.equal(DEFAULT_MODEL,'gemini-4-hydrogen');
+ assert.equal(DEFAULT_MODEL,'gemini-3.8-flash');
  assert.deepEqual(geminiGenerationConfig('gemini-4-hydrogen',{}),{responseMimeType:'application/json',maxOutputTokens:65536,thinkingConfig:{thinkingLevel:'low'}});
  assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:' medium '}),'medium');assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:'minimal'}),'low');
  assert.deepEqual(geminiGenerationConfig('gemini-3.8-flash',{}),{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192});

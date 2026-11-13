@@ -8,10 +8,10 @@ import os from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 // Flash-Lite changed clearly written door numbers and employee IDs (5/S, 1/7,
-// 3/8), so cards are read by a full model. MIS_GEMINI_MODEL switches the model
-// per deployment without a code change, for example back to gemini-3.8-flash
-// or gemini-3.1-flash-lite if cost, quota or speed requires it.
-export const DEFAULT_MODEL='gemini-4-hydrogen';
+// 3/8), so cards are read by the full Flash model. MIS_GEMINI_MODEL switches
+// the model per deployment without a code change, for example to
+// gemini-4-hydrogen, or back to gemini-3.1-flash-lite if cost or quota requires it.
+export const DEFAULT_MODEL='gemini-3.8-flash';
 export const geminiModel=(env=process.env)=>/^gemini-[a-z0-9.-]{1,60}$/.test(env.MIS_GEMINI_MODEL?.trim()||'')?env.MIS_GEMINI_MODEL.trim():DEFAULT_MODEL;
 export const MODEL=geminiModel();
 // Gemini 4 ignores temperature and counts its thinking against maxOutputTokens,
