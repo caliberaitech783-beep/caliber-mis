@@ -58,7 +58,10 @@ test('Azure stages the complete validated runtime without Git history',async()=>
  const scanWorkflow=await readFile(new URL('../.github/workflows/scan-engine-deploy.yml',import.meta.url),'utf8');
  for(const [release,stagingDirectory] of [[workflow,'pulse-runtime'],[scanWorkflow,'scan-runtime']]){
   assert.ok(release.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/${stagingDirectory}/"`));
-  assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
+  if(stagingDirectory==='pulse-runtime'){
+   assert.ok(release.includes('pulse-runtime.zip'));
+   assert.ok(release.includes('az webapp deployment source config-zip'));
+  }else assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
   assert.doesNotMatch(release,/package:\s*\.\s*(?:#.*)?$/m);
  }
 });
