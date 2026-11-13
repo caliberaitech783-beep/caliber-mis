@@ -17,4 +17,27 @@
 .tt-report .tt-notes{font-size:13px;color:#4f4660}
 .tt-report .tt-notes summary{cursor:pointer;font-weight:700}
 .tt-report .tt-notes li{margin-top:4px}
-@media print{.tt-report .tt-crumbs,.tt-report .tt-subtabs,.tt-report .tt-chips,.tt-report .tt-notes{display:none}}
+/* Exception time: the user's own periods (blasting, breakfast) and the switch between the standard and the personalised view. */
+.tt-report .tt-exception{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid #c7b5dd;border-radius:10px;background:#f6f2fb;color:#2c2140}
+.tt-report .tt-exception-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 14px;margin:0}
+.tt-report .tt-exception-form>strong{align-self:center;font-size:15px;cursor:help}
+.tt-report .tt-exception-form label{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:700}
+.tt-report .tt-exception-form input{height:38px;padding:6px 10px;border:1px solid #b7a1d1;border-radius:8px;background:#fff;color:#2c2140;color-scheme:light;font:inherit;font-size:15px}
+.tt-report .tt-exception-form input[type=text]{width:190px}
+.tt-report .tt-exception-form button,.tt-report .tt-view button{height:38px;padding:0 16px;border-radius:999px;border:1px solid #59358e;background:#fff;color:#51317d;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.tt-report .tt-exception-form button{background:#59358e;color:#fff}
+.tt-report .tt-exception-scope{align-self:center;font-size:13px}
+.tt-report .tt-exception-problem{margin:0;color:#a31f20;font-size:14px;font-weight:700}
+.tt-report .tt-exception-list{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.tt-report .tt-exception-list li{display:flex;align-items:center;gap:10px;padding:5px 6px 5px 12px;border:1px solid #9cc9ad;border-radius:999px;background:#e3f4e8;color:#17502a;font-size:13px}
+.tt-report .tt-exception-list button{padding:3px 10px;border:1px solid #17502a;border-radius:999px;background:#fff;color:#17502a;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.tt-report .tt-exception-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.tt-report .tt-view{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tt-report .tt-view button[aria-pressed=true]{background:#59358e;color:#fff}
+.tt-report .tt-view button:disabled{opacity:.55;cursor:not-allowed}
+.tt-report .tt-exception-hint{font-size:13px}
+.tt-report .tt-given,.tt-report .tt-chips button.tt-given{background:#e3f4e8;color:#17502a}
+/* The bar keeps its light colours at night, as the summary line above the table does; the time and reason boxes take the
+   app's own night colours, so their clock button is drawn light as well. */
+:root[data-theme="dark"] .tt-report .tt-exception-form input{color-scheme:dark}
+@media print{.tt-report .tt-crumbs,.tt-report .tt-subtabs,.tt-report .tt-chips,.tt-report .tt-notes,.tt-report .tt-exception{display:none}}
