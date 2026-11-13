@@ -1,0 +1,52 @@
+name: Remove retired files from the servers
+
+# A release adds and replaces files on a server but never deletes one that
+# left the package. This removes the retired files named in
+# scripts/remove-retired-server-files.mjs from both Pulse-II slots and from the
+# scan engine server. It never runs by itself: someone starts it by hand
+# (Run workflow), and unless "delete" is ticked it only lists what is there.
+# It restarts nothing and does not touch a release.
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: 'Delete the files (leave off to only list what is there)'
+        type: boolean
+        default: false
+
+# Its own group, so it never cancels or waits behind a production release.
+concurrency:
+  group: caliber-mis-retired-files
+  cancel-in-progress: false
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+      SCAN_ENGINE_APP: ${{ vars.SCAN_ENGINE_APP }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+
+      - name: List or delete the retired files
+        env:
+          DELETE_RETIRED_FILES: ${{ inputs.delete }}
+        run: node scripts/remove-retired-server-files.mjs

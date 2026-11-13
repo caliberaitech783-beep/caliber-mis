@@ -13,5 +13,6 @@ Switched off by the owner on 13 November 2026, because building the English and 
 - Do not write, build or update an operating manual for any report tab or sub tab, in English or Hindi.
 - No report tab shows an "Operating manual" bar. The manual PDFs (`public/guides`), their text and build scripts (`scripts/report-guides`) and the check that stopped deployments (`test/report-guides.test.mjs`) were removed.
 - A release does not delete files that left the package, so old manual PDFs can remain on the server's disk. The server refuses every `/guides` address (`protectStaticFiles` in `server/middleware/http-security.mjs`); do not put anything else under `public/guides`.
+- To delete such leftover files from the servers' disks, start the workflow "Remove retired files from the servers" by hand (`.github/workflows/remove-retired-server-files.yml`). It lists unless "delete" is ticked, and removes only the file names listed in `scripts/remove-retired-server-files.mjs` from both Pulse-II slots and the scan engine server. It restarts nothing.
 - A branch that still carries manual changes must drop them before it merges.
 - The old manuals and their build scripts stay in git history (last present in commit `2872070`) if the owner asks for them again.
