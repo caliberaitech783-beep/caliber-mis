@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -5,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {requestedMisPage} from '../src/mis-navigation.mjs';
-async function compile(file,name,bindings){const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});return new Function(...Object.keys(bindings),code+';return '+name)(...Object.values(bindings));}
+async function compile(file,name,bindings){bindings={TableSmartPrint,...bindings};const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});return new Function(...Object.keys(bindings),code+';return '+name)(...Object.values(bindings));}
 test('Saved VLB and Saved ELB legacy links lead to site batches',async()=>{
  assert.equal(requestedMisPage('?page=vlb-saved'),'Create VLB Batch');assert.equal(requestedMisPage('?page=elb-saved'),'Create VLB Batch');
  const Choice=await compile('log-book-mode-choice.jsx','LogBookModeChoice',{React,BookOpen:()=>null,Keyboard:()=>null,ScanLine:()=>null});

@@ -78,12 +78,12 @@ test('tenure header puts the controlled search before Refresh and removes explan
   assert.match(defaultHtml,/Search this report/);
 });
 
-test('tenure uses the same Generate labels as other reports while retaining export handlers', () => {
+test('tenure uses the same Smart Print menu as other reports while retaining export handlers', () => {
   const source=readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
   assert.doesNotMatch(source,/smartLabels=\{category === "employee-tenure"\}/);
-  assert.match(source,/smartLabels && smartPrintItem && <button[^>]+onClick=\{printReport\}[^>]*><Printer \/> Smart Print/);
-  assert.match(source,/onClick=\{downloadPdf\}[^>]*><Download \/> \{smartLabels \? "Smart PDF"/);
-  assert.match(source,/onClick=\{downloadExcel\}[^>]*><FileSpreadsheet \/> \{smartLabels \? "Smart Excel"/);
+  assert.match(source,/\{smartPrintItem && <button[^>]+onClick=\{printReport\}[^>]*><Printer \/> Smart Print/);
+  assert.match(source,/onClick=\{downloadPdf\}[^>]*><Download \/> Export PDF \(A3\)/);
+  assert.match(source,/onClick=\{downloadExcel\}[^>]*><FileSpreadsheet \/> \{saveAsAvailable\(\) \? "Export Excel \(Save As\)" : "Export Excel"\}/);
   const css=readFileSync(new URL('../src/topbar.css',import.meta.url),'utf8');
   assert.match(css,/\.cdir-dropdown \.cdir-clock \{\s*position: relative;\s*top: auto;\s*left: auto;/);
 });

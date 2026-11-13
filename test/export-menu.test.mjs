@@ -8,8 +8,10 @@ test('all master and user report exports offer PDF, Excel, and print',()=>{
   const styles=readFileSync(new URL('../src/sortable-table.css',import.meta.url),'utf8');
 
   assert.match(source,/function ExportMenu\(/);
-  assert.match(source,/Download as PDF/);
-  assert.match(source,/Download as Excel/);
+  assert.match(source,/<Download \/> Export PDF \(A3\)<\/button>/);
+  assert.match(source,/"Export Excel \(Save As\)" : "Export Excel"/);
+  assert.match(source,/label = "Smart Print"/,'the menu is named Smart Print everywhere');
+  assert.doesNotMatch(source,/Download as PDF|Download as Excel|label="Generate"|exportLabel = "Generate"/);
   assert.match(source,/buildXlsxWorkbook/);
   assert.match(source,/application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
   assert.match(source,/exportFileName\(title, "xlsx"\)/);
@@ -20,9 +22,10 @@ test('all master and user report exports offer PDF, Excel, and print',()=>{
   assert.match(source,/document\.createElement\("iframe"\)/);
   assert.match(source,/frame\.contentWindow\?\.print\(\)/);
   assert.match(source,/fetchPdfExport\("\/api\/exports\/pdf"/);
-  assert.match(source,/openSmartPrint\(\{ title, columns: smartPrintColumns, rows: smartPrintRows,[^}]*exportFormat: format, exportOnly: true \}\)/);
-  assert.match(source,/if \(!excelSheets\) \{\s*smartExport\("xlsx"\);/);
-  assert.match(source,/if \(!dashboardPdf\) \{\s*smartExport\("pdf"\);/);
+  // PDF is one click to an A3 file of the columns on screen; Excel asks where to save before it is built.
+  assert.match(source,/exportSmartPrintSelection\(\{ format: "pdf", title, columns: chosen, rows: model\.rows, highlightRow, appendices \}\)/);
+  assert.match(source,/try \{ target = await chooseSaveTarget\(fileName\); \} catch \{ return; \}\s*runDownload\("Preparing Excel report\.\.\."/);
+  assert.doesNotMatch(source,/smartExport\(/,'no column window stands between the click and the file');
   assert.match(source,/<ExportMenu title=\{name==='Users & employees'\?'Login Details':name\} columns=\{exportColumns\} rows=\{records\}/);
   assert.match(source,/<ExportMenu title=\{title\} columns=\{exportView\?\.sourceRows === rows \? exportView\.columns : visibleColumns\} rows=\{exportView\?\.sourceRows === rows \? exportView\.rows : rows\}/);
   assert.match(source,/<ExportMenu title=\{exportTitle\} columns=\{filterColumns\} rows=\{sortedRows\}/);

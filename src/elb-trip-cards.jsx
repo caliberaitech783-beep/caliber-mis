@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from 'react';
+import TableSmartPrint from './table-smart-print.jsx';
 import {tripSerialNumber} from '../shared/log-book-labels.mjs';
 
 const shown=value=>value==null||value===''?'—':value;
@@ -20,6 +21,7 @@ function TripCard({card,indices,token}){
  },[card.id,data.scanCardId,token]);
  const timed=data.timeMode!=='without';
  return <div><p>{[data.aFormNo&&'Trip card '+data.aFormNo,data.door,data.employeeName].filter(Boolean).join(' · ')}</p>
+  <TableSmartPrint row title={'Related VLB trip card'+(data.aFormNo?' '+data.aFormNo:'')+(data.door?' · '+data.door:'')}/>
   <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Trip row</th><th>Equipment</th>{timed&&<><th>Loading</th><th>Unloading</th></>}<th>Trips</th></tr></thead>
   <tbody>{indices.map(index=>{
    const trip=data.trips?.[index];if(!trip)return null;

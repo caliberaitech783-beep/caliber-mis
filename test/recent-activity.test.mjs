@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import express from 'express';import {PGlite} from '@electric-sql/pglite';
 import {registerLogBookDashboard} from '../server/routes/log-book-dashboard.mjs';
 import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {transformWithOxc} from 'vite';
@@ -179,7 +180,7 @@ test('the dashboard shows the last 6, 12 and 24 hours, Trip Timing in place of t
 async function panelHtml(recent,open=null){
  const source=fs.readFileSync(new URL('../src/log-book-recent-activity.jsx',import.meta.url),'utf8');
  const {code}=await transformWithOxc(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const'),'log-book-recent-activity.jsx',{jsx:{runtime:'classic'}});
- const environment={React,useEffect:()=>{},useState:()=>[open,()=>{}],Clock:()=>null,StepBackButton:({label})=>React.createElement('button',null,label),...recentRules};
+ const environment={React,useEffect:()=>{},useState:()=>[open,()=>{}],Clock:()=>null,StepBackButton:({label})=>React.createElement('button',null,label),TableSmartPrint,...recentRules};
  const Panel=new Function(...Object.keys(environment),code+';return RecentActivityPanel')(...Object.values(environment));
  return renderToStaticMarkup(Panel({recent,error:'',Dialog:({title,children})=>React.createElement('section',{'aria-label':title},children)}));
 }

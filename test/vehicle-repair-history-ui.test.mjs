@@ -52,7 +52,7 @@ test("reports include a dedicated vehicle history category with three downloadab
   assert.match(source, /setReportVehicleHistoryTarget\(record\)/);
   assert.match(source, /backLabel="Back to reports"/);
   assert.match(source, /label=\{exportLabel\}/);
-  assert.match(source, /label="Download history"/);
+  assert.doesNotMatch(source, /label="Download history"/, "the history menu is named Smart Print like every other");
   assert.match(source, /label: "Work completed"/);
   assert.match(source, /label: "Time since previous BD"/);
   assert.match(source, /function vehicleRepairHistoryColumns\(token\)/);

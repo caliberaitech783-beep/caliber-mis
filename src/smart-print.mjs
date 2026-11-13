@@ -34,6 +34,16 @@ export function compactSmartPrintColumns(columns=[]){
   return columns.map(column=>dailyUpdatesColumn(column)?{...column,value:row=>compactDailyUpdatesForPrint(column.value?.(row))}:column);
 }
 const arrayColumns=columns=>columns.map((column,index)=>({...column,value:row=>row[index]}));
+/** The columns as they print, and the Daily Updates journal as its own section: shared by the dialog and the straight A3 PDF. */
+export function smartPrintReportParts({title,columns=[],rows=[],formatCell=value=>String(value??'')}){
+  const layout=prepareDailyUpdatesLayout({title,sheet:{name:'Report',title,columns,rows},formatCell});
+  const appendices=layout.detailRows.length?[{
+    title:`${title} · Daily Updates`,
+    columns:arrayColumns(DAILY_UPDATES_DETAIL_COLUMNS),
+    rows:layout.detailRows,
+  }]:[];
+  return {chosen:compactSmartPrintColumns(columns),appendices};
+}
 export function normalizePrintLayoutName(value) {
   const name=String(value??'').replace(/\s+/g,' ').trim();
   if(!name)throw new Error('Enter a report name.');
@@ -180,13 +190,7 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
   };
   const printableReport=()=>{
     const {reportTitle,chosen}=currentReport();
-    const layout=prepareDailyUpdatesLayout({title:reportTitle,sheet:{name:'Report',title:reportTitle,columns:chosen,rows},formatCell});
-    const appendices=layout.detailRows.length?[{
-      title:`${reportTitle} · Daily Updates`,
-      columns:arrayColumns(DAILY_UPDATES_DETAIL_COLUMNS),
-      rows:layout.detailRows,
-    }]:[];
-    return {reportTitle,chosen:compactSmartPrintColumns(chosen),appendices};
+    return {reportTitle,...smartPrintReportParts({title:reportTitle,columns:chosen,rows,formatCell})};
   };
   // Second step after the page size: which pages, single or double-sided, and how many copies.
   const askPrintOptions=(pageSize,run)=>{
@@ -260,8 +264,17 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
     exporting=true;render();notice.textContent=`Preparing ${formatName} export…`;
     notifyExport(`Preparing ${formatName}… Your download will start shortly.`,'pending');
     new Promise(resolve=>setTimeout(resolve,50)).then(()=>onExport({format,title:reportTitle,sourceTitle:title,columns:chosen,rows,highlightRow,reportGrouping,appendices}))
-      .then(()=>{notice.textContent=`${formatName} export downloaded with ${chosen.length} column${chosen.length===1?'':'s'} and ${rows.length} record${rows.length===1?'':'s'}.`;notifyExport(`${formatName} download started. Check your browser downloads.`,'success');})
-      .catch(error=>{notice.textContent=error?.message||`Could not create the ${formatName} export.`;notifyExport(notice.textContent,'error');})
+      .then(outcome=>{
+        const contents=`${chosen.length} column${chosen.length===1?'':'s'} and ${rows.length} record${rows.length===1?'':'s'}`;
+        // The exporter says when the file went through the Save As window instead of to Downloads.
+        notice.textContent=outcome?.saved?`${formatName} file saved as ${outcome.name} with ${contents}.`:`${formatName} export downloaded with ${contents}.`;
+        notifyExport(outcome?.saved?`${formatName} file saved as ${outcome.name}.`:`${formatName} download started. Check your browser downloads.`,'success');
+      })
+      .catch(error=>{
+        // Cancel in the Save As window is the user's choice, not a failure.
+        if(error?.name==='AbortError'){notice.textContent='';toast.hidden=true;clearTimeout(toastTimer);return;}
+        notice.textContent=error?.message||`Could not create the ${formatName} export.`;notifyExport(notice.textContent,'error');
+      })
       .finally(()=>{exporting=false;render();});
   };
   // One Print/Export button: choose PDF or Excel, then the file downloads straight away with the current selection.

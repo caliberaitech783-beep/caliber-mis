@@ -149,7 +149,7 @@ test('opened batch search and shared export controls use only its saved snapshot
  const records=[{id:1,book_no:'VLB_M/29TH-OCT26/S1/001',data:{door:'V07',totalTrips:2,totalWorkingHmr:0}},{id:2,book_no:'VLB_S/29TH-OCT26/S1/001',data:{door:'V12',scanCardId:'scan',scanEntrySource:'scan',totalTrips:3}},{id:3,book_no:'VLB_S/29TH-OCT26/S1/002',data:{door:'V14',scanCardId:'upload',scanEntrySource:'upload',trips:[{tripCount:4}]}}];
  const batch={id:'saved',name:'CMLL/SASTI OC/29TH -OCT-26/S1/B01',site:'Sasti OC',report_date:'2026-10-29',shift:'S1',records};
  const render=()=>{cursor=0;const tree=VlbBatchReport({batch,ReportSection});return {tree,report:nodes(tree,n=>n.type===ReportSection)[0]}};
- let rendered=render(),report=rendered.report;assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,'Generate');assert.equal(report.props.smartPrintAction,true);assert.match(renderToStaticMarkup(rendered.tree),/Total Cards: 3.*Total Trips: 9/);assert.deepEqual(records.map(vlbRecordEntryType),['manual','scan','upload']);
+ let rendered=render(),report=rendered.report;assert.equal(report.props.rows,records);assert.equal(report.props.exportLabel,undefined,'the menu keeps its one name, Smart Print');assert.equal(report.props.smartPrintAction,true);assert.match(renderToStaticMarkup(rendered.tree),/Total Cards: 3.*Total Trips: 9/);assert.deepEqual(records.map(vlbRecordEntryType),['manual','scan','upload']);
  cursor=0;const scanned=VlbBatchReport({batch,ReportSection,entryType:'scan'});const scannedReport=nodes(scanned,n=>n.type===ReportSection)[0];assert.deepEqual(scannedReport.props.rows,[records[1]]);assert.match(renderToStaticMarkup(scanned),/Total Cards: 1.*Total Trips: 3/);
  assert.equal(vlbBatchColumns.find(c=>c.key==='hours').value(records[0]),0);
  assert.equal(vlbBatchColumns.find(c=>c.key==='source').value(records[1]),'VLB Scan');
@@ -164,7 +164,7 @@ test('opened batch search and shared export controls use only its saved snapshot
  slots.length=0;cursor=0;let tree=shared(report.props);
  const table=nodes(tree,n=>n.type===ReportTable)[0];assert.equal(table.props.smartPrintAction,true);assert.equal(table.props.query,'V12');
  table.props.onExportViewChange({sourceRows:records,columns:[vlbBatchColumns[0]],rows:[records[1]]});
- cursor=0;tree=shared(report.props);const menu=nodes(tree,n=>n.type===ExportMenu)[0];assert.deepEqual(menu.props.rows,[records[1]]);assert.deepEqual(menu.props.columns,[vlbBatchColumns[0]]);assert.equal(menu.props.label,'Generate');
+ cursor=0;tree=shared(report.props);const menu=nodes(tree,n=>n.type===ExportMenu)[0];assert.deepEqual(menu.props.rows,[records[1]]);assert.deepEqual(menu.props.columns,[vlbBatchColumns[0]]);assert.equal(menu.props.label,'Smart Print');
 });
 
 test('Create Batch edits VLB and ELB from the selected row and respects their lock stages',async()=>{

@@ -37,7 +37,10 @@ import {assignedUserRoles,ACCOUNT_PRIVILEGES,accountPrivileges} from "../shared/
 import { siteReportHtml } from "./site-report.mjs";
 import { isIdleVehicleRequest } from "../shared/request-idle.mjs";
 import { requestStatusLabel, requestStatusSortRank } from "./request-status.mjs";
-import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource } from "./smart-print.mjs";
+import { openSmartPrint, printFitScale, printPageSize, setSmartPrintExporter, setSmartPrintPrinterSource, smartPrintReportParts } from "./smart-print.mjs";
+import { chooseSaveTarget, saveAsAvailable, saveToTarget } from "./save-as.mjs";
+import { registerSmartPrintMenu } from "./table-smart-print.jsx";
+import { readDomTable } from "./dom-table-model.mjs";
 import {beginDownload,runDownloadNotice} from './download-notice.mjs';
 import {pendingPdfRows,REMOVED_REPORT_TITLES} from './lib/report-pending-export.mjs';
 import {transferReportTimingColumns} from '../shared/transfer-report-timing.mjs';
@@ -1738,7 +1741,7 @@ function ManagerDashboard({ managerRole, managerRoles = [], managerLocation = ""
   return <section className="manager-dashboard" onPointerDown={preventTableAutoScroll}>
     {canCreateRequest && <div className="manager-dashboard-actions"><button type="button" className="primary" disabled={!equipmentLoaded || !requestsLoaded} onClick={() => setCreatingRequest(true)}><Plus /> Create request</button></div>}
     {canCreateRequest && creatingRequest && <ManagerCreateRequestForm assignedLocation={(restrictManagerScope ? managerAllowedSites || [] : [...new Set(siteEquipment.map(record => requestEquipmentCreationDetails(record).site).filter(Boolean))]).join(" | ")} equipmentRecords={siteEquipment} equipmentLoaded={equipmentLoaded} requests={scopedRequests} onCreate={onCreateRequest} close={() => setCreatingRequest(false)} />}
-    <header className="manager-dashboard-head"><div><span>Role dashboard</span><h1>{title}</h1><p>{description}</p></div><div className="manager-dashboard-actions"><div className="manager-dashboard-badge"><ShieldCheck /> Manager view</div>{typeof ExportMenu === "function" && <ExportMenu title={`${title} dashboard KPI report`} columns={dashboardKpiExportColumns} rows={managerDashboardExportRows} className="dashboard-export-trigger" label="Print/Export" dashboardPdf />}</div></header>
+    <header className="manager-dashboard-head"><div><span>Role dashboard</span><h1>{title}</h1><p>{description}</p></div><div className="manager-dashboard-actions"><div className="manager-dashboard-badge"><ShieldCheck /> Manager view</div>{typeof ExportMenu === "function" && <ExportMenu title={`${title} dashboard KPI report`} columns={dashboardKpiExportColumns} rows={managerDashboardExportRows} className="dashboard-export-trigger" dashboardPdf />}</div></header>
     {availableRoles.length>1&&<div className="mobile-tabs manager-role-tabs" role="tablist" aria-label="Manager dashboard role">{availableRoles.map((role)=><button type="button" key={role} data-nav="role" className={activeManagerRole===role?"active":""} onClick={()=>{setActiveManagerRole(role);setQueueTab("active");setManagerDrilldown("")}}>{role}</button>)}</div>}
     {!equipmentLoaded&&<FleetDataState error={equipmentLoadError} retry={retryEquipmentLoad} className="manager-fleet-data-state" />}
     {!requestsLoaded&&<RequestDataState error={requestsError} retry={onRefreshRequests} />}
@@ -2632,7 +2635,7 @@ function Dashboard({ goto = () => {}, gotoEquipment = () => {}, gotoBreakdownFle
     ]),
   ].filter(Boolean);
   // The whole dashboard: PDF and Smart Print capture it as it is on screen; Excel has every section.
-  const dashboardExportMenu = (className) => <ExportMenu title="Fleet control dashboard" columns={dashboardKpiExportColumns} rows={dashboardExportRows} excelSheets={dashboardExcelSheets} className={className} label="Print/Export" dashboardPdf />;
+  const dashboardExportMenu = (className) => <ExportMenu title="Fleet control dashboard" columns={dashboardKpiExportColumns} rows={dashboardExportRows} excelSheets={dashboardExcelSheets} className={className} dashboardPdf />;
   const renderDashboardHeader = (inDialog = false) => <DashboardFilterBar inDialog={inDialog} bannerRef={inDialog ? undefined : dashboardBannerRef} collapsedAction={inDialog ? null : dashboardExportMenu("dashboard-banner-export")}><label><span>Region</span><SmartSelect aria-label="Region" value={dashboardRegion} onChange={(event) => { setDashboardRegion(event.target.value); setDashboardSite("all"); }}><option value="all">{restrictToScope?"All assigned sites":"All regions"}</option>{availableRegions.map((region) => <option key={region.code} value={region.code}>{region.code}</option>)}</SmartSelect></label>{<label className="mine-site-filter"><span>Site</span><SmartSelect aria-label="Site" value={dashboardSite} onChange={(event) => setDashboardSite(event.target.value)}><option value="all">All {selectedRegion?.code || ""} sites</option>{selectedSites.map((site) => <option key={site} value={site}>{site}</option>)}</SmartSelect></label>}<label className="mine-shift-filter"><span>Shift Master</span><SmartSelect aria-label="Shift Master" value={dashboardShift} onChange={(event) => setDashboardShift(event.target.value)}><option value="all">All shifts</option>{dashboardShiftOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</SmartSelect></label><label className="mine-date-filter"><span>From</span><DateInput aria-label="Dashboard from date" value={dashboardFrom} max={dashboardTo || todayKey} onChange={(event) => updateDashboardRange("from", event.target.value)} /></label><label className="mine-date-filter"><span>To</span><DateInput aria-label="Dashboard to date" value={dashboardTo} min={dashboardFrom || undefined} max={todayKey} onChange={(event) => updateDashboardRange("to", event.target.value)} /></label>{showOemBreakdowns && <label className="mine-oem-filter"><span>OEM</span><SmartSelect aria-label="OEM" value={dashboardOem} onChange={(event) => filterOemChart(event.target.value)}><option value="all">All OEMs</option>{oemChart.oems.map((oem) => <option key={oem.key} value={oem.key}>{oem.label}</option>)}</SmartSelect></label>}<span className="mine-updated"><Activity /> {!equipmentLoaded ? (equipmentLoadError ? "Unavailable" : "Loading") : dashboardReconnecting ? "Reconnecting" : dashboardIsLive ? "Live" : "Filtered"} · {filteredDateLabel}{dashboardShift !== "all" ? ` · ${dashboardShiftLabel}` : ""}</span>{dashboardExportMenu("dashboard-export-trigger")}{inDialog && <button type="button" className="dashboard-export-trigger dashboard-filter-reset" onClick={resetOemFilters}>Reset filters</button>}</DashboardFilterBar>;
   return (
     <div className={`mine-dashboard ${theme === "dark" ? "mine-dashboard-night" : "mine-dashboard-day"}${showFleetBreakdowns ? " breakdown-dashboard-view" : ""}${showOemBreakdowns ? " mine-oem-view" : ""}`}>
@@ -3967,9 +3970,10 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
   const exportRows = rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
   const highlightedRows = new Set(rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
   if (format === "xlsx") {
+    // Excel asks where to save first (Save As window); Cancel there stops the export.
+    const fileName = exportFileName(title, "xlsx"), target = await chooseSaveTarget(fileName);
     recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:`${rows.length} records`});
-    downloadExportFile(buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), exportFileName(title, "xlsx"));
-    return;
+    return saveToTarget(target, buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), fileName, downloadExportFile);
   }
   recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
   const appendixTables = appendices.map((appendix) => ({
@@ -3995,21 +3999,29 @@ async function exportSmartPrintSelection({ format, title, sourceTitle=title, col
 setSmartPrintExporter(exportSmartPrintSelection);
 // The printer list in Smart Print comes from the print helper; without it the browser print window chooses.
 setSmartPrintPrinterSource(async () => (await printHelperAvailable({ token: () => authToken })) ? listPrinters({ token: () => authToken }) : null);
+// The old single "Smart Print" button: now the same three-item menu as everywhere else.
 function PrintButton({ title, columns = [], rows = [], className = "secondary", highlightRow }) {
-  return <button type="button" className={`${className} print-table-trigger`} onClick={() => openSmartPrint({ title, columns, rows, highlightRow, onPrint: printTableReport, formatCell: exportCellText })}><Printer /><span>Smart Print</span></button>;
+  return <ExportMenu title={title} columns={columns} rows={rows} className={`${className} print-table-trigger`} highlightRow={highlightRow} />;
 }
 // portalClassName reaches the export menu and the "preparing file" overlay, both portaled to the body: a caller inside a higher overlay (Info Pulse) uses it to raise them above itself.
 // printSection: Smart Print captures the dashboard section (.mine-panel) holding the menu, as it is on screen.
 // excelSheets: a function returning [{name, title, columns, rows}]; Excel then has one sheet per table.
-function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Generate", printOnly = false, smartPrintItem = true, smartLabels = false, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null }) {
+// source: for a table drawn by hand, a function that reads {columns, rows} from the screen when an item is clicked.
+// The same three items everywhere, in this order: Export PDF (A3), Export Excel (Save As), Smart Print.
+function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = columns, smartPrintRows = rows, className = "secondary", label = "Smart Print", printOnly = false, smartPrintItem = true, highlightRow, reportGrouping, dashboardPdf = false, portalClassName = "", printSection = false, excelSheets = null, source = null, onSmartPrint = null }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   smartPrintColumns=requestShiftColumns(smartPrintColumns,smartPrintRows,shifts);
   const [open, setOpen] = useState(false), [downloadActivity, setDownloadActivity] = useState("");
   const triggerRef = useRef(null);
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
-  const buildExportRows = () => rows.map((row) => columns.map((column) => exportCellText(column.value?.(row))));
-  const highlightedRows = new Set(rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
+  // What the three items work on: the columns and rows given, or the table read from the screen at the click.
+  const currentModel = () => {
+    if (!source) return { columns, rows, smartPrintColumns, smartPrintRows };
+    const model = source(triggerRef.current);
+    if (!model?.columns?.length) { alert("There is no table on screen here to print yet."); return null; }
+    return { columns: model.columns, rows: model.rows, smartPrintColumns: model.columns, smartPrintRows: model.rows };
+  };
   useEffect(() => {
     if (!open) return undefined;
     const closeMenu = (event) => {
@@ -4044,59 +4056,54 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
     const downloadNotice=beginDownload(message.replace(/Preparing | report\.\.\./g,''));
     window.setTimeout(async () => {
       const startedAt = Date.now();
-      try { await task(); downloadNotice.success(); }
+      // A task that saved through the Save As window says so; the notice then names the file instead of Downloads.
+      try { const outcome = await task(); downloadNotice.success(outcome?.saved ? `Saved as ${outcome.name}.` : ""); }
       catch (error) { downloadNotice.error(error); alert(error.message); }
       finally {
         window.setTimeout(() => setDownloadActivity(""), Math.max(0, 450 - (Date.now() - startedAt)));
       }
     }, 50);
   };
-  const smartExport = (format) => {
+  // Export Excel: the Save As window opens first, while the click is still fresh, then the workbook is built
+  // from the columns and rows as they are on screen and written to the chosen place.
+  const downloadExcel = async () => {
     setOpen(false);
-    openSmartPrint({ title, columns: smartPrintColumns, rows: smartPrintRows, highlightRow, reportGrouping, formatCell: exportCellText, exportFormat: format, exportOnly: true });
-  };
-  const downloadExcel = () => {
-    if (!excelSheets) {
-      smartExport("xlsx");
-      return;
-    }
+    const model = excelSheets ? null : currentModel();
+    if (!excelSheets && !model) return;
+    const fileName = exportFileName(title, "xlsx");
+    let target;
+    try { target = await chooseSaveTarget(fileName); } catch { return; }
     runDownload("Preparing Excel report...", () => {
       const sheets = excelSheets?.();
-      recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${rows.length} records`});
-      if (sheets) downloadExportFile(buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), exportFileName(title, "xlsx"));
-      else {
-        const exportRows = buildExportRows();
-        downloadExportFile(buildXlsxWorkbook(title, columns, exportRows, highlightedRows, rows), exportFileName(title, "xlsx"));
-      }
+      recordUserActivity({module:"Reports",action:"Download Excel report",targetReference:title,reason:sheets ? `${sheets.length} sheets` : `${model.rows.length} records`});
+      if (sheets) return saveToTarget(target, buildXlsxSheetsWorkbook(title, prepareXlsxExportSheets({ title, sheets, formatCell: exportCellText })), fileName, downloadExportFile);
+      const exportRows = model.rows.map((row) => model.columns.map((column) => exportCellText(column.value?.(row))));
+      const highlightedRows = new Set(model.rows.flatMap((row, index) => highlightRow?.(row) ? [index] : []));
+      return saveToTarget(target, buildXlsxWorkbook(title, model.columns, exportRows, highlightedRows, model.rows), fileName, downloadExportFile);
     });
   };
+  // Export PDF (A3): one click, an A3 landscape file of the columns and rows as they are on screen.
+  // Choosing columns stays in Smart Print.
   const downloadPdf = () => {
-    if (!dashboardPdf) {
-      smartExport("pdf");
-      return;
-    }
-    runDownload("Preparing PDF report...", async () => {
-      recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
-      if (dashboardPdf) {
+    if (dashboardPdf) {
+      runDownload("Preparing PDF report...", async () => {
+        recordUserActivity({module:"Reports",action:"Download PDF report",targetReference:title,reason:`${rows.length} records`});
         const {downloadDashboardPdf} = await import("./dashboard-pdf.mjs");
         await downloadDashboardPdf(triggerRef.current?.closest(".mine-dashboard, .manager-dashboard"), exportFileName(title, "pdf"));
-        return;
-      }
-      const exportRows = buildExportRows();
-      const response = await fetchPdfExport("/api/exports/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ title: reportPdfHeading(title, rows, columns), columns: columns.map((column) => ({ label: column.label, ...(column.tone ? {tone: column.tone} : {}) })), rows: exportRows, highlights: [...highlightedRows] }),
       });
-      if (!response.ok) {
-        const details = await response.json().catch(() => ({}));
-        throw new Error(details.error || "Could not create the PDF report.");
-      }
-      downloadExportFile(await response.blob(), exportFileName(title, "pdf"));
+      return;
+    }
+    const model = currentModel();
+    if (!model) { setOpen(false); return; }
+    runDownload("Preparing PDF report...", () => {
+      const { chosen, appendices } = smartPrintReportParts({ title, columns: model.columns, rows: model.rows, formatCell: exportCellText });
+      return exportSmartPrintSelection({ format: "pdf", title, columns: chosen, rows: model.rows, highlightRow, appendices });
     });
   };
   const printReport = () => {
     setOpen(false);
+    // A screen with its own print layout (the request lifecycle) keeps it for Smart Print.
+    if (onSmartPrint) { onSmartPrint(); return; }
     if (printSection) {
       const dashboard = triggerRef.current?.closest(".mine-dashboard, .manager-dashboard");
       const section = triggerRef.current?.closest(".mine-panel");
@@ -4108,11 +4115,15 @@ function ExportMenu({ title, columns = [], rows = [], smartPrintColumns = column
       openSmartPrint({ title, snapshot: "The dashboard prints exactly as it looks on screen, with every panel and chart. Choose the paper and printer next.", onPrint: ({ pageSize, printOptions }) => printDashboardReport({ dashboard, title, pageSize, printOptions }) });
       return;
     }
-    openSmartPrint({ title, columns: smartPrintColumns, rows: smartPrintRows, highlightRow, reportGrouping, onPrint: printTableReport, formatCell: exportCellText });
+    const model = currentModel();
+    if (!model) return;
+    openSmartPrint({ title, columns: model.smartPrintColumns, rows: model.smartPrintRows, highlightRow, reportGrouping, onPrint: printTableReport, formatCell: exportCellText });
   };
   if (printOnly) return <button type="button" className={className} onClick={printReport} aria-label={`Smart Print ${title}`}><Printer /><span>Smart Print</span></button>;
-  return <><div className="export-menu"><button ref={triggerRef} type="button" className={`${className} export-menu-trigger`} onClick={() => setOpen((current) => !current)} disabled={Boolean(downloadActivity)} aria-expanded={open} aria-haspopup="menu"><Download /><span>{label}</span><ChevronDown /></button>{open && createPortal(<div className={`export-menu-popover${portalClassName ? ` ${portalClassName}` : ""}`} style={popoverPosition} role="menu" aria-label={`${title} export options`}>{smartLabels && smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}<button type="button" role="menuitem" onClick={downloadPdf} disabled={Boolean(downloadActivity)}><Download /> {smartLabels ? "Smart PDF" : "Download as PDF"}</button><button type="button" role="menuitem" onClick={downloadExcel} disabled={Boolean(downloadActivity)}><FileSpreadsheet /> {smartLabels ? "Smart Excel" : "Download as Excel"}</button>{!smartLabels && smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}</div>, reportPortalTarget())}</div><CaliberActivityOverlay message={downloadActivity} className={portalClassName} /></>;
+  return <><div className="export-menu"><button ref={triggerRef} type="button" className={`${className} export-menu-trigger`} onClick={() => setOpen((current) => !current)} disabled={Boolean(downloadActivity)} aria-expanded={open} aria-haspopup="menu"><Printer /><span>{label}</span><ChevronDown /></button>{open && createPortal(<div className={`export-menu-popover${portalClassName ? ` ${portalClassName}` : ""}`} style={popoverPosition} role="menu" aria-label={`${title} export options`}><button type="button" role="menuitem" onClick={downloadPdf} disabled={Boolean(downloadActivity)}><Download /> Export PDF (A3)</button><button type="button" role="menuitem" onClick={downloadExcel} disabled={Boolean(downloadActivity)} title={saveAsAvailable() ? "Opens the Save As window: choose the folder and the file name" : undefined}><FileSpreadsheet /> {saveAsAvailable() ? "Export Excel (Save As)" : "Export Excel"}</button>{smartPrintItem && <button type="button" role="menuitem" onClick={printReport}><Printer /> Smart Print</button>}</div>, reportPortalTarget())}</div><CaliberActivityOverlay message={downloadActivity} className={portalClassName} /></>;
 }
+// Screens that draw their own table reach this menu through <TableSmartPrint/>.
+registerSmartPrintMenu(ExportMenu);
 function ReportColumnSelector({ columns = [], visibleColumnKeys = [], layoutStore, onApply, onClose }) {
   const [draftKeys, setDraftKeys] = useState(visibleColumnKeys);
   const [selectedHidden, setSelectedHidden] = useState("");
@@ -7319,7 +7330,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
         <div><small>Complete vehicle history</small><h1 id="vehicle-history-title">Door no. {door}</h1><p>{[equipment, vehicleDetails.reportMake || vehicleDetails.make, model].filter(Boolean).join(" · ")}</p></div>
       </div>
       <div className="vehicle-history-header-side">
-        <div className="vehicle-history-header-actions"><div ref={setTableToolbarTarget} /><ExportMenu title={`${VEHICLE_HISTORY_REPORT} - ${door}`} columns={columns} rows={historyRows} label="Download history" disabled={!historyRows.length} /></div>
+        <div className="vehicle-history-header-actions"><div ref={setTableToolbarTarget} /><ExportMenu title={`${VEHICLE_HISTORY_REPORT} - ${door}`} columns={columns} rows={historyRows} disabled={!historyRows.length} /></div>
         <div className="vehicle-history-summary">
           <article><History /><span><small>Total breakdowns</small><b>{historyRows.length}</b></span></article>
           <article><CheckCircle2 /><span><small>Completed repairs</small><b>{completedRepairs.length}</b></span></article>
@@ -7343,7 +7354,7 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, headingControl = null, controls = null, exportLabel = "Generate", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
   const recordCount = isTotalRow ? rows.filter((row) => !isTotalRow(row)).length : rows.length;
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
@@ -9675,11 +9686,12 @@ function Modal({ title, close, children, className = "", overlayClassName = "", 
         {topBar}
         <header className="mis-popup-close-header">
           <button type="button" className="modal-back-button" onClick={close} aria-label="Back" title="Back"><span aria-hidden="true">←</span></button><h3>{title}</h3>
-          {className.split(" ").includes("request-timeline-modal") && <button type="button" className="request-timeline-print" onClick={() => {
+          {/* Request lifecycle: PDF and Excel take the steps table; Smart Print keeps the pop-up's own layout. */}
+          {className.split(" ").includes("request-timeline-modal") && <ExportMenu title={typeof title === "string" ? title : "Time breakdown"} className="secondary request-timeline-print" source={() => readDomTable(dialogRef.current?.querySelector(".request-timeline-steps"))} onSmartPrint={() => {
             const content = dialogRef.current?.querySelector(".request-timeline-content");
             if (!content) return;
             printRequestTimeline(content, typeof title === "string" ? title : "Time breakdown", `${requestTimelinePrintCss}\n${dailyUpdatesPrintCss}`);
-          }}><Printer aria-hidden="true" /><span>Smart Print</span></button>}
+          }} />}
           {headerActions}
           <button type="button" onClick={close} aria-label="Close dialog" className="mis-popup-close">× Close</button>
         </header>

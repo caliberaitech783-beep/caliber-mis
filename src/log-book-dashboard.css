@@ -160,3 +160,5 @@
 [data-printing] .lb-recent{border:1px solid #d9cfe8;border-radius:16px}[data-printing] .lb-recent-table tbody th{font-size:19px}[data-printing] .lb-recent-table thead th{font-size:15px}[data-printing] .lb-recent-figure{font-size:30px!important;background:transparent!important;border:0!important;color:#3d1f78!important}
 /* On the dashboard Trip Timing & Gap stands alone: no list of the other reports to switch to. */
 .lb-reports .op-report-picker{display:none}
+/* Smart Print menu inside a pop-up heading and beside the "As of" time. */
+.lb-dialog-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}.lb-recent-print{display:inline-flex;margin-left:10px;vertical-align:middle}
