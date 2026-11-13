@@ -10,7 +10,7 @@ import {normalizeCardShift} from '../../shared/trip-card-rules.mjs';
 import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
 import {siteKeySlug} from '../rules/scan-lanes.mjs';
 import {SAFETY_RULES,NO_INVENTION_RULE,HEADER_RULES,SITE_RULES,TIME_RULES,EMPLOYEE_RULES,MACHINE_NOTATION_RULES,M_NO_READING_RULES,M_NO_COMPLETENESS_RULES,DEMO_PREFIX_RULES,METER_DIGIT_RULE,DOOR_RULES,NAME_AND_FORM_RULES,FINAL_CHECK_RULE,TRIP_ROW_RULES} from '../../shared/gemini-scan-rules.mjs';
-import {MODEL,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
+import {MODEL,geminiGenerationConfig,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
 
 export {MODEL};
 export const geminiEnabled=env=>env.MIS_GEMINI_API==='true'||(env.MIS_LOCAL_SCANNER_DATABASE==='true'&&env.MIS_GEMINI_HYBRID==='true');
@@ -189,7 +189,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    let retryInstruction='',attempt=0,rateLimitRetries=0,requests=0;
    while(attempt<2){
     const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
-    const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192}});
+    const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
     const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
     const started=Date.now();let res;
     requests++;
