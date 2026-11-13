@@ -33,12 +33,18 @@ jobs:
             exit 1
           fi
           lock_cleanup='rm -f /home/site/locks/status.lock /home/site/locks/info.lock /home/site/locks/deployment/status.lock /home/site/locks/deployment/info.lock'
-          if ! { sleep 15; printf '%s\n' "$lock_cleanup" exit; } |
-            timeout 60 script --quiet --return --command "az webapp exec --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --target kudu --shell /bin/sh" /dev/null; then
-            echo 'The non-interactive Kudu shell is unavailable; continuing with staging slot restart recovery.'
-          fi
           az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
+          sleep 20
+          az webapp exec --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --mode execute --shell-command "$lock_cleanup"
+          sleep 15
+          az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
+          for attempt in {1..24}; do
+            slot_state=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query state --output tsv)
+            [[ "$slot_state" == "Stopped" ]] && break
+            sleep 5
+          done
           sleep 30
+          az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
       - name: Restart the existing stalled App Service
         run: az webapp restart --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --only-show-errors
       - name: Check recovered HTTP service
