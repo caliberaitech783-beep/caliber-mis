@@ -13,7 +13,7 @@ jobs:
   diagnose:
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Login to Azure
