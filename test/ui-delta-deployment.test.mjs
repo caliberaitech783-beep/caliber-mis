@@ -104,7 +104,8 @@ test('delta API uses additive uploads, preserves complete fallback, and never cl
  assert.match(source,/'dist\/index.html', 'dist\/app-version.txt', 'DEPLOYMENT_SHA'/);
  assert.doesNotMatch(source,/method:\s*['"]DELETE|api\/zipdeploy|npm.*prune|rmSync|unlink/);
  assert.match(workflow,/if: steps\.ui-delta\.outputs\.applied != 'true'/);
- assert.match(workflow,/package: \$\{\{ runner\.temp \}\}\/pulse-runtime/);
+ assert.match(workflow,/pulse-runtime\.zip/);
+ assert.match(workflow,/az webapp deployment source config-zip/);
  assert.match(workflow,/node scripts\/deploy-ui-delta\.mjs/);
  assert.match(workflow,/retention-days: 14/);
 });

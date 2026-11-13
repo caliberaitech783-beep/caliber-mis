@@ -170,6 +170,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <section className="logbook-section"><div className="logbook-fields vlb-fleet-fields" onKeyDown={focusNextElbField}>
    {workingStatus&&<label className="logbook-field"><span>Caliber ID{operatorRequired?' *':''}</span><SmartSelect data-elb-entry="operator" value={form.employeeId} disabled={busy} required={operatorRequired} onChange={e=>update('employeeId',e.target.value)}><option value="">Select Caliber ID</option>{employees.map(e=><option key={e.id} value={String(e.id)}>{(e.caliberId||e.employeeCode||'')+' · '+(e.name||e.employee||'')}</option>)}</SmartSelect></label>}
    <label className="logbook-field"><span>Opening HMR{workingStatus?' *':''}</span><input data-elb-entry="opening-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.openingHmr} disabled={busy} onChange={e=>update('openingHmr',e.target.value)}/></label>
+   <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input data-elb-entry="closing-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
    <label className="logbook-field"><span>Second operator (optional)</span>
     <SmartSelect data-elb-entry="second-operator" value={form.secondOperatorId||''} disabled={busy} onChange={event=>{
      const secondOperatorId=event.target.value;
@@ -184,7 +185,6 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
     <input data-elb-entry="handover-hmr" type="number" inputMode="decimal" step="0.01" min="0" required value={form.handoverHmr||''} disabled={busy} onChange={event=>update('handoverHmr',event.target.value)}/>
     <small>Enter the meter reading when the second operator takes over.</small>
    </label>}
-   <label className="logbook-field"><span>Closing HMR{workingStatus?' *':''}</span><input data-elb-entry="closing-hmr" type="number" inputMode="decimal" step="0.01" min="0" value={form.closingHmr} disabled={busy} onChange={e=>update('closingHmr',e.target.value)}/><small>{hours===null?'Hours: closing − opening HMR':'Hours: '+hours}</small></label>
    {operatorSplit&&!operatorSplit.error&&<p className="logbook-message">First operator {operatorSplit.firstHours.toFixed(2)} h · Second operator {operatorSplit.secondHours.toFixed(2)} h · Combined HMR {operatorSplit.totalHours.toFixed(2)} h</p>}
    <label className="logbook-field"><span>HMR Difference</span><input type="text" aria-label="HMR Difference" readOnly value={hours===null?'':String(hours)}/><small>Closing HMR − Opening HMR</small></label>
    <label className="logbook-field"><span>Breakdown Hrs · from Pulse</span><output aria-label="Breakdown Hrs">{pulse?Number(pulse.breakdownHours).toFixed(3):'—'}</output><small>{pulse?(additional?'Equipment shift total, shared by both cards':'Same equipment, site, date and shift'):pulseLoading?'Fetching from Pulse…':'Pulse unavailable'}</small></label>
