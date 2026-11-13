@@ -1,8 +1,8 @@
 import {formatDisplayDate} from '../shared/date-time-format.mjs';
 
 // Export tables for the Fleet control dashboard sections. Each builder takes the figures one
-// section already shows and returns the {title, columns, rows} its Export menu (Download as PDF,
-// Download as Excel, Smart Print) prints as a table, following the section's own filters. Values
+// section already shows and returns the {title, columns, rows} its Export menu (Export PDF (A3),
+// Export Excel, Smart Print) prints as a table, following the section's own filters. Values
 // are plain numbers or text; the export builders add the serial number and print blanks as "—".
 // Place columns are called "Site name", never plain "Site": the PDF heading appends every value of
 // a column named Site or Location (reportPdfHeading), which would list every site and subtotal.

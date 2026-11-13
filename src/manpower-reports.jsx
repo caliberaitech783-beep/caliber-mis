@@ -2,6 +2,7 @@ import './log-book-readability.css';
 import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
+import TableSmartPrint from './table-smart-print.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
@@ -68,9 +69,9 @@ function driverHistory({driver,detail,reader,year,close,historyBox,ReportSection
  return <>
   <div ref={historyBox} className="mp-category mp-driver-history"><h2>{driver.employeeName} · history {year}</h2>
    <p className="mp-category-hint">{[driver.employeeId,detail,driver.site,period].filter(Boolean).join(' · ')} · Duties are saved VLB and ELB cards, one per shift. Each red, orange or brown case counts as one OT. <button type="button" onClick={close}>Close history</button></p>
-   {reader.data?<table><thead><tr><th>Month</th><th>Duties</th><th>Red</th><th>Orange</th><th>Brown</th><th>OT times</th><th>OT % of duties</th></tr></thead>
+   {reader.data?<><TableSmartPrint row title={driver.employeeName+' · history '+year+' · month by month'}/><table><thead><tr><th>Month</th><th>Duties</th><th>Red</th><th>Orange</th><th>Brown</th><th>OT times</th><th>OT % of duties</th></tr></thead>
     <tbody>{months.map(m=><tr key={m.month}><td>{monthName(m.month)}</td><td>{m.duties}</td><td>{m.red}</td><td>{m.orange}</td><td>{m.review}</td><td>{m.total}</td><td>{share(m)}</td></tr>)}
-    <tr className="mp-total"><td>Year {year}</td><td>{sum('duties')}</td><td>{sum('red')}</td><td>{sum('orange')}</td><td>{sum('review')}</td><td>{sum('total')}</td><td>{share({otDuties:sum('otDuties'),duties:sum('duties')})}</td></tr></tbody></table>
+    <tr className="mp-total"><td>Year {year}</td><td>{sum('duties')}</td><td>{sum('red')}</td><td>{sum('orange')}</td><td>{sum('review')}</td><td>{sum('total')}</td><td>{share({otDuties:sum('otDuties'),duties:sum('duties')})}</td></tr></tbody></table></>
     :<p role={reader.counted?'alert':'status'}>{reader.counted?reader.error||'The history could not be read. Press Refresh reports and try again.':'Reading this driver’s history…'}</p>}
   </div>
   {reader.data&&<ReportSection key={sectionKey} title={driver.employeeName+' · flagged duties in '+year} category="manpower-ot-driver-history" description={driver.site+' · '+period+' · Newest first'} rows={events} columns={driverHistoryColumns} rowKey={r=>r.id} rowClassName={r=>'mp-ot-'+r.severity} recordDateFilter={false} emptyMessage="No red, orange or brown duty for this driver in this year."/>}
@@ -245,6 +246,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
    <h2>All sites, shift-wise · {dateLabel} · actual duties</h2>
    {sites.length?<>
     <p className="mp-att-status">{all.none>0&&<span className="mp-flag mp-att-none">{many(all.none,'shift')} without a batch</span>}{all.open>0&&<span className="mp-flag mp-att-open">{all.open===1?'1 batch open':all.open+' batches open'}</span>}{!all.none&&!all.open&&<span>Every shift that has ended has a closed batch.</span>}<span>Red box: batch not created. Orange outline: batch not closed. Press a number to see that site and shift by equipment.</span></p>
+    <TableSmartPrint row title={'Shift Attendance · All sites, shift-wise · '+dateLabel+' · actual duties'}/>
     <table><thead><tr><th scope="col">Site</th>{shifts.map(code=><th key={code} scope="col">{shiftName(code)}</th>)}<th scope="col">All shifts</th></tr></thead>
      <tbody>{sites.map(s=><tr key={s.siteKey} className={siteKey===s.siteKey?'mp-on':undefined}><th scope="row">{s.site}</th>{shifts.map(code=><td key={code}>{box(s.siteKey,code,s.site+' · '+shiftName(code))}</td>)}<td>{box(s.siteKey,'',s.site+' · All shifts')}</td></tr>)}
      {sites.length>1&&<tr className={'mp-att-total'+(siteKey===EVERY?' mp-on':'')}><th scope="row">All sites</th>{shifts.map(code=><td key={code}>{box(EVERY,code,'All sites · '+shiftName(code))}</td>)}<td>{box(EVERY,'','All sites · All shifts')}</td></tr>}</tbody>
@@ -258,6 +260,7 @@ function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tal
     {stillOpen.length>0&&<p className="mp-att-batch mp-att-batch-open"><strong>Batch not closed:</strong> {stillOpen.slice(0,60).map(b=>[where(b),b.batch,'('+stageName(b.state)+')'].filter(Boolean).join(' ')).join(' · ')}</p>}
     {equipment.length?<>
      <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick({...noPick,siteKey,shift})}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
+     <TableSmartPrint row title={'Shift Attendance · '+heading+' · duties by equipment'}/>
      <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th><th scope="col" title="Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift">Second machine</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
       <tbody>{equipment.map(e=>line(e.equipment,e.equipment,e,false))}{line(EVERY,'All equipment',totals,true)}</tbody>
      </table>

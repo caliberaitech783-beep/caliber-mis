@@ -107,3 +107,6 @@
 .column-filter-values button.selected{position:relative;padding-right:26px;font-weight:700}
 .column-filter-values button.selected::after{content:"\2713";position:absolute;right:9px;top:50%;transform:translateY(-50%);color:#2458d3;font-size:12px}
 .column-filter-selection-note{display:block;padding:0 6px 5px;color:#63738d;font-size:10px}
+/* Smart Print menu on its own line above a table drawn by hand (pop-up lists, grids). */
+.smart-print-row{display:flex;justify-content:flex-end;margin:0 0 8px}
+@media print{.smart-print-row{display:none}}

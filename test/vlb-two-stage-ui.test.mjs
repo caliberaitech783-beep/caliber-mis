@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {isJayantSite} from '../shared/site-shift-hours.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {splitEquipmentOperatorHmr} from '../shared/surface-miner-hmr.mjs';
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  scope={isJayantSite,employeeAtLocation,matchesSmartSearch,splitEquipmentOperatorHmr,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
@@ -319,8 +320,8 @@ test('ELB machine controls share filtered and sorted rows with print and export,
  change(select(tree,0),'Not saved');tree=render();
  assert.deepEqual(rowKeys(tree),['8','19']);
  const menus=nodes(tree,node=>node.type===ExportMenu);
- assert.equal(menus.length,2);
- assert.equal(menus[0].props.printOnly,true);
+ assert.equal(menus.length,1,'one Smart Print menu with PDF, Excel and Smart Print');
+ assert.equal(menus[0].props.printOnly,undefined);
  for(const menu of menus){
   assert.deepEqual(menu.props.rows.map(item=>item.assetId),['8','19']);
   assert.match(menu.props.title,/B10/);

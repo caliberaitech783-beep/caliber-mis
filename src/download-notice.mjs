@@ -14,7 +14,7 @@ export function beginDownload(label='File',doc=globalThis.document){
   const close=()=>{clearTimeout(timer);host.remove();};dismiss.onclick=close;
   message.textContent=`Preparing ${label}…`;
   return {
-    success(){message.textContent=`${label}: download started. Check your browser downloads.`;host.style.background='#166534';timer=setTimeout(close,10000);timer?.unref?.();},
+    success(done=''){message.textContent=done||`${label}: download started. Check your browser downloads.`;host.style.background='#166534';timer=setTimeout(close,10000);timer?.unref?.();},
     error(error){message.textContent=error?.name==='AbortError'?'Download cancelled.':`${label}: ${error?.message||'Download failed. Please try again.'}`;host.style.background='#991b1b';timer=setTimeout(close,15000);timer?.unref?.();},
   };
 }

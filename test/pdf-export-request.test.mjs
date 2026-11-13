@@ -34,8 +34,8 @@ test('PDF failures preserve application errors and explain HTML gateway failures
   }
 });
 
-test('all four PDF export entry points use the same transport', () => {
+test('all three PDF export entry points use the same transport', () => {
   const source = readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
-  assert.equal((source.match(/fetchPdfExport\("\/api\/exports\/pdf"/g)||[]).length,4);
+  assert.equal((source.match(/fetchPdfExport\("\/api\/exports\/pdf"/g)||[]).length,3);
   assert.doesNotMatch(source,/await fetch\("\/api\/exports\/pdf"/);
 });

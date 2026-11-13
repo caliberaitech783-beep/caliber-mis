@@ -3,15 +3,16 @@ import fs from "node:fs";
 import test from "node:test";
 test("shared print actions customize columns before printing", () => {
   const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-  assert.ok(source.includes('onClick={() => openSmartPrint'));
+  // The old single print button is now the same three-item Smart Print menu.
+  assert.match(source,/function PrintButton\([^)]*\) \{\s*return <ExportMenu title=\{title\} columns=\{columns\} rows=\{rows\}/);
   assert.ok(source.includes('<span>Smart Print</span>'));
   const start = source.indexOf('  const printReport = () => {');
   const end = source.indexOf('  if (printOnly)', start);
   const columns = [{label:'Door'}], rows = [{door:'24'}], calls=[];
   const renderer=()=>{}, formatter=String, reportGrouping={site: row=>row.site, asset: row=>row.id};
   const dashboardElement={id:'dashboard'}, sectionElement={id:'section'}, selectors=[];
-  const build=(dashboardPdf,printDashboardReport=()=>assert.fail('a table report never prints the dashboard'),printSection=false)=>new Function('openSmartPrint','printTableReport','exportCellText','setOpen','title','smartPrintColumns','smartPrintRows','highlightRow','reportGrouping','dashboardPdf','triggerRef','printDashboardReport','printSection',
-    source.slice(start,end)+'; return printReport;')(args=>calls.push(args),renderer,formatter,value=>calls.push(value),'Report',columns,rows,undefined,reportGrouping,dashboardPdf,{current:{closest:selector=>{selectors.push(selector);return selector==='.mine-panel'?sectionElement:dashboardElement;}}},printDashboardReport,printSection);
+  const build=(dashboardPdf,printDashboardReport=()=>assert.fail('a table report never prints the dashboard'),printSection=false)=>new Function('currentModel','onSmartPrint','openSmartPrint','printTableReport','exportCellText','setOpen','title','smartPrintColumns','smartPrintRows','highlightRow','reportGrouping','dashboardPdf','triggerRef','printDashboardReport','printSection',
+    source.slice(start,end)+'; return printReport;')(()=>({smartPrintColumns:columns,smartPrintRows:rows}),null,args=>calls.push(args),renderer,formatter,value=>calls.push(value),'Report',columns,rows,undefined,reportGrouping,dashboardPdf,{current:{closest:selector=>{selectors.push(selector);return selector==='.mine-panel'?sectionElement:dashboardElement;}}},printDashboardReport,printSection);
   build(false)();
   assert.deepEqual(calls,[false,{title:'Report',columns,rows,highlightRow:undefined,reportGrouping,onPrint:renderer,formatCell:formatter}]);
   assert.deepEqual(selectors,[],'a table report does not look for a dashboard');

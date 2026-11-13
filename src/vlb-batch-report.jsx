@@ -1,6 +1,7 @@
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import './meter-correction-report.css';
 import React,{useState} from 'react';
+import TableSmartPrint from './table-smart-print.jsx';
 import {vlbRecordEntryType,vlbRecordSource,vlbRecordTrips} from '../shared/vlb-batch-format.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 
@@ -41,7 +42,7 @@ export default function VlbBatchReport({batch,bookLabel='VLB',ReportSection,onVi
   columns.splice(columns.findIndex(column=>column.key==='trips'),0,...['openingKmr','closingKmr','openingHmr','closingHmr'].map(key=>({key,label:editFields[key],value:record=>record.data[key]})));
  }
  const displayColumns=renderField?columns.map(column=>editFields[column.key]?{...column,render:record=>renderField(record,editFields[column.key],column.value(record))}:column):columns;
- const section=<><div className="vlb-batch-report-totals" aria-label={bookLabel+' batch totals'}><strong>Total Cards: {records.length}</strong><strong>Total Trips: {totalTrips}</strong></div><ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} columns={onView?[...displayColumns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View {bookLabel}</button>}]:displayColumns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction exportLabel="Generate" emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver or equipment" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/></>;
+ const section=<><div className="vlb-batch-report-totals" aria-label={bookLabel+' batch totals'}><strong>Total Cards: {records.length}</strong><strong>Total Trips: {totalTrips}</strong></div><ReportSection title={'Batch report · '+batch.name} category="vlb-saved-batch" recordDateFilter={false} description={`${batch.closed_at?'CLOSED':'OPEN'} · ${records.length} saved cards · ${displaySiteName(batch.site)} · ${batch.report_date} · ${batch.shift}`} rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} columns={onView?[...displayColumns,{key:'details',label:'Details',render:record=><button type="button" onClick={()=>onView(record)}>View {bookLabel}</button>}]:displayColumns} rows={records} rowKey={r=>r.id} showSearch={false} query={search} onResetSearch={()=>setSearch('')} smartPrintAction emptyMessage="No cards match this search in the opened batch." headingControl={<div className="generated-report-search"><label>Smart Search<input type="search" data-smart-search aria-label="Smart Search opened batch" placeholder="Card ID, vehicle, driver or equipment" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>}/></>;
  if(!batch.machineReport)return section;
  return <>{section}<MachineReport report={batch.machineReport} statuses={batch.statuses}/></>;
 }
@@ -63,6 +64,7 @@ export function MachineReport({report,statuses}){
  const loaders=sorted(report?.loaders||[]),others=sorted(report?.others||[]);
  const changeSort=key=>setSort(current=>({key,direction:current.key===key&&current.direction==='asc'?'desc':'asc'}));
  return <details className="logbook-section vlb-machine-report" aria-label="ELB -- Machine-wise shift report"><summary>ELB -- Machine-wise shift report</summary>
+  <TableSmartPrint row title="ELB -- Machine-wise shift report"/>
   <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr>{columns.map(([key,title])=><th key={key} aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" className={'sort-header'+(sort.key===key?' active':'')} onClick={()=>changeSort(key)}><span>{title}</span><span aria-hidden="true">{sort.key===key?(sort.direction==='asc'?'↑':'↓'):'↕'}</span></button></th>)}</tr></thead><tbody>
    {loaders.map(row=><tr key={row.assetId}><td>{row.door}</td><td>{cell(row.equipmentName)}</td><td>{row.trips}</td><td>{cell(row.sourceCards)}</td><td>{cell(row.operator)}</td><td>{cell(row.openingHmr)}</td><td>{cell(row.closingHmr)}</td><td>{cell(row.hours)}</td><td>{cell(row.tripsPerHour)}</td><td>{cell(row.breakdownHours)}</td><td>{label(row)}</td><td>{cell(row.bookNo)}</td></tr>)}
    {!loaders.length&&<tr><td colSpan={12}>No machine loaded trips in this batch.</td></tr>}

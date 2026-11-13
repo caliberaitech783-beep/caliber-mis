@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {Clock} from 'lucide-react';
 import {StepBackButton} from './step-back.jsx';
+import TableSmartPrint from './table-smart-print.jsx';
 import {RECENT_WINDOWS,SHIFT_KINDS,SHIFT_CARD_NOUNS,LOCK_CARD_NOUNS,LOCK_STAGES,completedIn,completedBySite,cardsInside,logShiftsFor,locksIn,locksBySite,lockCards,averageLockMinutes,durationLabel} from '../shared/recent-activity.mjs';
 
 // MIS dashboard · Completed in the last 6, 12 and 24 hours.
@@ -79,7 +80,7 @@ export default function RecentActivityPanel({recent,error,Dialog}){
  const by=name=>name?' by '+name:'';
  return <article className="lb-panel lb-recent">
   <div className="lb-panel-heading"><div><h3><Clock size={17}/> Completed in the last 6, 12 and 24 hours</h3><p>Counted by the time of saving and locking, whatever the date on the card<span data-print-hide=""> · click a figure for its sites and batch numbers</span></p></div>
-   <span className="lb-recent-asof">As of {timeLabel(recent.asOf)}{error?' · latest read failed, showing the earlier figures':''}</span></div>
+   <span className="lb-recent-asof">As of {timeLabel(recent.asOf)}{error?' · latest read failed, showing the earlier figures':''}<span className="lb-recent-print" data-print-hide=""><TableSmartPrint title={'Completed in the last 6, 12 and 24 hours · as of '+timeLabel(recent.asOf)}/></span></span></div>
   <div className="lb-table-wrap lb-recent-table"><table>
    <thead><tr><th>Completed</th>{recent.windows.map(hours=><th key={hours}>{windowLabel(hours)}</th>)}</tr></thead>
    <tbody>
@@ -88,7 +89,8 @@ export default function RecentActivityPanel({recent,error,Dialog}){
     {recent.batchLocks&&shiftKinds.length>0&&<tr><th scope="row">Batches locked<small>whole batch saved and locked</small></th>{recent.windows.map(hours=>cell(recent.batchLocks[hours],{row:'batch',hours},'Batches locked'))}</tr>}
    </tbody>
   </table></div>
-  {open&&<Dialog title={openLabel} close={()=>setOpen(null)}>
+  {/* Each list a figure opens, and a batch's VLB / LMV / ELB time, prints as it is on screen. */}
+  {open&&<Dialog title={openLabel} close={()=>setOpen(null)} actions={(timed?stages.length>0:!empty)&&<TableSmartPrint title={openLabel+' · as of '+timeLabel(recent.asOf)}/>}>
    {timed&&<>
     <div className="lb-recent-steps"><StepBackButton onBack={()=>setOpen({row:open.row,hours:open.hours,site:open.site})} label="Back to batches"/></div>
     <p className="lb-muted">{timed.site} · card date {timed.dateLabel} · {timed.shiftLabel}. The time is by the clock, from the moment the batch was started on the website to the moment it was saved and locked.</p>

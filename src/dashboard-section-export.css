@@ -1,4 +1,4 @@
-/* Export menu (Download as PDF, Download as Excel, Smart Print) in the header of each Fleet
+/* Export menu (Export PDF (A3), Export Excel, Smart Print) in the header of each Fleet
    control dashboard section: Total Fleet, Daily BD balance, Tracking Vehicle Throughput,
    Request Lifecycle and Breakdown trend. One compact trigger for all five, drawn with the
    panel colour variables so Night mode follows; the portaled popover is themed in

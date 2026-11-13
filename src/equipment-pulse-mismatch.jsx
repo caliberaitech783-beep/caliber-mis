@@ -1,4 +1,5 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
+import TableSmartPrint from './table-smart-print.jsx';
 import {createPortal} from 'react-dom';
 import {startVisiblePoll} from './visible-poll.mjs';
 import {MISMATCH_KINDS} from '../shared/equipment-pulse-mismatch.mjs';
@@ -34,11 +35,11 @@ export function EquipmentPulseMatch({session}){
   {data?.lastAttempt?.status==='failed'&&<p role="alert">The latest check ({stamp(data.lastAttempt.startedAt)}) could not read Pulse: {data.lastAttempt.error} The result below is from the check before it.</p>}
   {result&&<p className="equipment-match-totals">Pulse-II: <b>{result.pulseIITotal}</b> machines · Pulse: <b>{result.pulseTotal}</b> machines. Vehicles from Pulse's LMV Master are not part of this check.</p>}
   {result&&!run.matches&&<>
-   {result.counts.length>0&&<div className="equipment-match-table"><h3>Where the counts differ</h3><table>
+   {result.counts.length>0&&<div className="equipment-match-table"><h3>Where the counts differ</h3><TableSmartPrint row title="Equipment list check · Where the counts differ"/><table>
     <thead><tr><th>Equipment</th><th>Site</th><th>Pulse-II</th><th>Pulse</th><th>Difference</th></tr></thead>
     <tbody>{result.counts.map(row=><tr key={row.equipment+'|'+row.siteKey}><td>{row.equipment}</td><td>{row.site}</td><td>{row.pulseII}</td><td>{row.pulse}</td><td>{row.difference>0?'+'+row.difference:row.difference}</td></tr>)}</tbody>
    </table></div>}
-   {result.machines.length>0&&<div className="equipment-match-table"><h3>Machines that differ</h3><table>
+   {result.machines.length>0&&<div className="equipment-match-table"><h3>Machines that differ</h3><TableSmartPrint row title="Equipment list check · Machines that differ"/><table>
     <thead><tr><th>Sr. No.</th><th>Machine</th><th>Make / model</th><th>What differs</th><th>In Pulse-II</th><th>In Pulse</th></tr></thead>
     <tbody>{result.machines.map((machine,index)=><tr key={index}><td>{index+1}</td><td>{machineName(machine)}</td><td>{[machine.make,machine.model].filter(Boolean).join(' ')}</td>
      <td>{MISMATCH_KINDS[machine.kind]||machine.label}</td><td>{side(machine.pulseIISite,machine.pulseIIGroup)}</td><td>{side(machine.pulseSite,machine.pulseGroup)}</td></tr>)}</tbody>
