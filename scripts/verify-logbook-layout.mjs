@@ -108,7 +108,7 @@ try{
      for(const selector of ['.scan-trip-serial','[data-trip-field="equipmentName"]','[data-trip-field="tripCount"]','[data-trip-field="jobType"]',...(timed?['[data-trip-field="loadingTime"]','[data-trip-field="unloadingTime"]','.scan-trip-gap']:[])]){
       const control=row.querySelector(selector);if(!control||!visible(control))issues.push('Missing trip control '+selector);
      }
-     if(!timed&&row.querySelector('input[type=time]'))issues.push('Without time must retain its untimed behavior');
+     if(!timed&&row.querySelector('[data-trip-field="loadingTime"] input'))issues.push('Without time must retain its untimed behavior');
     }
     for(const row of document.querySelectorAll('.scan-trip-entry')){
      const fields=[...row.querySelectorAll('label')].filter(visible).map(e=>e.getBoundingClientRect());
@@ -130,7 +130,7 @@ try{
   writeFileSync('layout-checks/results.json',JSON.stringify(findings,null,2));
   if([320,390,840,900,1024,1280].includes(width)||result.issues.length)await page.screenshot({path:'layout-checks/'+mode+'-'+width+'.png',fullPage:true});
   if(mode==='untimed-correction'){
-   const times=page.locator('.scan-trip-entry input[type=time]');
+   const times=page.locator('.scan-trip-entry [data-trip-field="loadingTime"] input, .scan-trip-entry [data-trip-field="unloadingTime"] input');
    const values=await page.locator('[data-trip-field="tripCount"] input').evaluateAll(nodes=>nodes.map(node=>node.value));
    await page.locator('.scan-time-entry [role=combobox]').click();
    await page.getByRole('option',{name:'With time',exact:true}).click();
