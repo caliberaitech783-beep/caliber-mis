@@ -1,5 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
+import {SlotBusyError, busyStatus, retryTransient} from './slot-data-retry.mjs';
 
 const group = 'coalmine-fleet-maintenance-rg';
 const app = 'caliber-mis-783';
@@ -29,30 +30,46 @@ const request = (host, route, options = {}, timeout = 60000) => fetch(host + rou
   redirect: 'error',
   signal: AbortSignal.timeout(timeout),
 });
-async function command(host, code) {
+// A read that changes nothing on either slot: tried again when the slot stalls, drops the connection or says it is busy.
+const read = (host, route, options) => retryTransient(async () => {
+  const response = await request(host, route, options);
+  if (busyStatus(response.status)) throw new SlotBusyError('Slot data read failed with HTTP ' + response.status);
+  return response;
+});
+async function command(host, code, timeout) {
   const encoded = Buffer.from(code).toString('base64');
   const result = await request(host, '/api/command', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({command: `node -e "eval(Buffer.from('${encoded}','base64').toString())"`, dir: '/home'}),
-  });
+  }, timeout);
+  if (busyStatus(result.status)) throw new SlotBusyError('Slot data command failed with HTTP ' + result.status);
   if (!result.ok) throw Error('Slot data command failed with HTTP ' + result.status);
   const {Output, ExitCode} = await result.json();
   if (ExitCode !== 0) throw Error('Slot data command failed.');
   return Output;
 }
 
+// One file check may take three minutes. Azure cuts a request that has sent nothing back after 230 seconds, so a
+// longer wait could never be answered.
+const CHECK_TIMEOUT = 180000;
+let checked = 0, slowestCheck = 0;
 const homePath = parts => '/home/' + parts.join('/');
 async function checksum(host, parts) {
-  // Hash on the slot so existing archives don't have to be downloaded again.
-  const Output = await command(host, `const fs=require('node:fs'),h=require('node:crypto').createHash('sha256');const s=fs.createReadStream(${JSON.stringify(homePath(parts))});s.on('data',b=>h.update(b));s.on('end',()=>console.log(h.digest('hex')));s.on('error',()=>{process.exitCode=1});`);
+  // Hash on the slot so existing archives don't have to be downloaded again. Hashing changes nothing, so a check
+  // that stalls is tried again: on 12 Nov 2026 one check on the staging slot ran past 60 seconds in two releases
+  // and each time failed the whole release before the swap.
+  const code = `const fs=require('node:fs'),h=require('node:crypto').createHash('sha256');const s=fs.createReadStream(${JSON.stringify(homePath(parts))});s.on('data',b=>h.update(b));s.on('end',()=>console.log(h.digest('hex')));s.on('error',()=>{process.exitCode=1});`;
+  const started = Date.now();
+  const Output = await retryTransient(() => command(host, code, CHECK_TIMEOUT), {what: 'Slot file check'});
+  slowestCheck = Math.max(slowestCheck, Date.now() - started);
   const digest = Output?.trim();
   if (!/^[a-f0-9]{64}$/.test(digest)) throw Error('Slot file checksum could not be verified.');
   return digest;
 }
 
 const key = vfs(['data', 'caliber-mis', 'integration.key']);
-const [sourceKey, destinationKey] = await Promise.all([request(source, key), request(destination, key)]);
+const [sourceKey, destinationKey] = await Promise.all([read(source, key), read(destination, key)]);
 if (!sourceKey.ok || !destinationKey.ok ||
     !Buffer.from(await sourceKey.arrayBuffer()).equals(Buffer.from(await destinationKey.arrayBuffer()))) {
   throw Error('Slot integration keys must exist and match before synchronizing data.');
@@ -61,7 +78,7 @@ if (!sourceKey.ok || !destinationKey.ok ||
 let copied = 0;
 async function copyDirectory(parts) {
   const route = vfs(parts) + '/';
-  const listing = await request(source, route);
+  const listing = await read(source, route);
   if (listing.status === 404) return;
   if (!listing.ok) throw Error('Source directory read failed with HTTP ' + listing.status);
   const entries = await listing.json();
@@ -77,11 +94,12 @@ async function copyDirectory(parts) {
       continue;
     }
     const file = vfs(child);
-    const existing = await request(destination, file, {method: 'HEAD'});
+    const existing = await read(destination, file, {method: 'HEAD'});
     if (existing.ok) {
       if (Number(existing.headers.get('content-length')) !== entry.size) throw Error('Slot data file conflicts with an existing file.');
       const [original, duplicate] = await Promise.all([checksum(source, child), checksum(destination, child)]);
       if (original !== duplicate) throw Error('Slot data file conflicts with an existing file.');
+      checked++;
       continue;
     }
     if (existing.status !== 404) throw Error('Destination file check failed with HTTP ' + existing.status);
@@ -117,4 +135,6 @@ async function copyDirectory(parts) {
 
 // Backup and archive files are stored on the slot's content share.
 for (const path of [['data', 'bdms-backups'], ['data', 'caliber-mis', 'scanned-cards']]) await copyDirectory(path);
-console.log('Slot data synchronization completed. Files copied: ' + copied);
+// The slowest check is printed so a check creeping towards the three-minute wait shows up before it fails a release.
+console.log('Slot data synchronization completed. Files copied: ' + copied + '. Files already there and checked: ' + checked +
+  '. Slowest file check: ' + Math.round(slowestCheck / 1000) + ' s.');

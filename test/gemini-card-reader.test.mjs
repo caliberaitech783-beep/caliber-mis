@@ -137,6 +137,13 @@ test('retry progress records timeout or HTTP reason without leaking the server k
  assert.equal(result.extraction.attempts,2);assert.ok(result.extraction.totalElapsedMs>=result.extraction.elapsedMs);assert.ok(progress.some(p=>p.stage==='retrying'&&p.reason==='HTTP 503'));assert.equal(JSON.stringify(progress).includes('never-display-secret'),false);
 });
 
+test('a connection failure retries the retained scan after only half a second',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-fast-connection-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const waits=[],progress=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async ms=>waits.push(ms),fetchImpl:async()=>{if(++calls===1)throw Error('connection timed out');return ok(JSON.stringify(response()));}});
+ const result=await reader.recognize(Buffer.from('fast-retry'),{onProgress:(stage,details)=>progress.push({stage,...details})});
+ assert.equal(result.extraction.attempts,2);assert.deepEqual(waits,[500]);assert.ok(progress.some(item=>item.stage==='retrying'&&item.reason==='connection timeout'&&item.delayMs===500));
+});
+
 test('a missing printed site is re-read once before the result is cached',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-site-retry-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const progress=[];
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(_url,options)=>{
@@ -285,10 +292,10 @@ test('malformed summary rows remain reviewable instead of failing the complete c
  assert.ok(parsed.issues.some(issue=>issue.includes('Summary row')));
 });
 
-test('Gemini pacing and timeout default to 500 ms and 45 s with bounded overrides',async()=>{
+test('Gemini pacing and timeout default to 500 ms and 25 s with bounded overrides',async()=>{
  const {geminiMinIntervalMs,geminiRequestTimeoutMs,geminiUprightOnly}=await import('../server/services/gemini-card-reader.mjs');
  assert.equal(geminiMinIntervalMs({}),500);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:'2000'}),2000);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:' '}),500);
- assert.equal(geminiRequestTimeoutMs({}),45000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'90000'}),90000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'500'}),45000);
+ assert.equal(geminiRequestTimeoutMs({}),25000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'90000'}),90000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'500'}),25000);
  assert.equal(geminiUprightOnly({}),false);assert.equal(geminiUprightOnly({MIS_GEMINI_UPRIGHT_ONLY:'true'}),true);
 });
 
