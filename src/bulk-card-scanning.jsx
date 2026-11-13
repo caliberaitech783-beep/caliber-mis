@@ -44,7 +44,7 @@ import {readerOutageMessage,scanErrorReasons} from '../shared/scan-reader-outage
 import {scanDraftSelection} from '../shared/scan-draft-selection.mjs';
 import {manualScanIssues,retainManualFields} from './scan-manual-fields.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
-import {scanTripTimeInputs} from './scan-time-input.mjs';
+import {manualScanTimeInput,scanTripTimeInputs} from './scan-time-input.mjs';
 import {readScannerResponse} from './local-scanner-response.mjs';
 import {autoSaveWithBusyRetry,isBusyAutoSaveError,busyAutoSaveStoppedMessage} from '../shared/scan-auto-save-retry.mjs';
 import {nextScanReviewCard,scanReviewNeighbours} from './scan-next-card.mjs';
@@ -729,7 +729,7 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
           })}
          </SmartSelect>
         :k==='jobType'?<WorkOrderJobSelect showOverflowValue row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
-        :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:e.currentTarget.value}:row))}/>}
+        :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t==='time'?'text':t} inputMode={t==='time'?'numeric':undefined} placeholder={t==='time'?'HH:MM':undefined} maxLength={t==='time'?5:undefined} autoComplete={t==='time'?'off':undefined} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>{const value=t==='time'?manualScanTimeInput(e.currentTarget.value):e.currentTarget.value;update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:value}:row));}}/>}
        {tripEstimateNote(r,k)&&<small className="scan-field-message"><mark>{tripEstimateNote(r,k)}</mark></small>}
        {k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&aliasMachineHint(r)?<small className="scan-alias-note">{aliasMachineHint(r)}</small>:k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}
        {fieldIssues['trips.'+i+'.'+k]&&<small className="scan-field-message">{fieldIssues['trips.'+i+'.'+k]}</small>}
