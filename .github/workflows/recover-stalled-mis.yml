@@ -37,10 +37,12 @@ jobs:
           publishing_password=$(jq -r '.publishingPassword' <<<"$credentials")
           scm_host=$(python3 -c 'import json,sys,urllib.parse; print(urllib.parse.urlparse(json.load(sys.stdin)["scmUri"]).hostname)' <<<"$credentials")
           lock_cleanup='rm -f /home/site/locks/status.lock /home/site/locks/info.lock /home/site/locks/deployment/status.lock /home/site/locks/deployment/info.lock'
-          jq -nc --arg command "$lock_cleanup" '{command:$command,dir:"/home"}' |
-            curl --fail --silent --show-error --user "$publishing_user:$publishing_password" --header 'Content-Type: application/json' --data-binary @- "https://${scm_host}/api/command"
-          sleep 30
+          if ! jq -nc --arg command "$lock_cleanup" '{command:$command,dir:"/home"}' |
+            curl --fail --silent --show-error --user "$publishing_user:$publishing_password" --header 'Content-Type: application/json' --data-binary @- "https://${scm_host}/api/command"; then
+            echo 'Kudu command access is disabled; continuing with the staging slot stop/start recovery.'
+          fi
           az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
+          sleep 30
       - name: Restart the existing stalled App Service
         run: az webapp restart --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --only-show-errors
       - name: Check recovered HTTP service
