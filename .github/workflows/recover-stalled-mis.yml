@@ -21,6 +21,18 @@ jobs:
       - name: Reset the stalled staging deployment slot
         run: |
           az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
+          for attempt in {1..24}; do
+            slot_state=$(az webapp show --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --query state --output tsv)
+            if [[ "$slot_state" == "Stopped" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$slot_state" != "Stopped" ]]; then
+            echo "The staging slot did not stop; its deployment lock cannot be cleared safely."
+            exit 1
+          fi
+          sleep 30
           az webapp start --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot staging --only-show-errors
       - name: Restart the existing stalled App Service
         run: az webapp restart --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --only-show-errors
