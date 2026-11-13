@@ -64,6 +64,13 @@ export function geminiMinIntervalMs(env=process.env){const raw=env.MIS_GEMINI_MI
 // its retained scan can be retried without keeping the card blocked for minutes.
 // MIS_GEMINI_TIMEOUT_MS overrides it (10 s to 180 s).
 export function geminiRequestTimeoutMs(env=process.env){const raw=env.MIS_GEMINI_TIMEOUT_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=10000&&value<=180000?Math.round(value):25000;}
+// Why a request got no HTTP answer: Google was too slow, or the connection
+// broke. Only the error name or network code is kept, never its text.
+export function geminiConnectionFailure(error,timeoutMs){
+ if(['TimeoutError','AbortError'].includes(error?.name))return `no answer within ${Math.round(timeoutMs/1000)} s`;
+ const code=String(error?.cause?.code||error?.code||error?.cause?.name||'').replace(/[^A-Za-z0-9_]/g,'').slice(0,40);
+ return code?`connection failed: ${code}`:'connection failed';
+}
 // MIS_GEMINI_UPRIGHT_ONLY=true skips 180 degree views on the first read, for
 // scanners that always feed cards upright. A content retry restores them.
 export const geminiUprightOnly=(env=process.env)=>env.MIS_GEMINI_UPRIGHT_ONLY==='true';
@@ -194,7 +201,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     const started=Date.now();let res;
     requests++;
     try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
-    catch{if(++attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',delayMs:500});await sleep(500);continue;}throw Error('Gemini connection timed out or failed after 2 attempts. The scan is retained; retry extraction.');}
+    catch(error){
+     // Say what happened: Google did not answer in time, or the connection broke.
+     const cause=geminiConnectionFailure(error,requestTimeoutMs);
+     console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${MODEL}, request ${(requestBody.length/1048576).toFixed(1)} MB, try ${attempt+1} of 2.`);
+     if(++attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',cause,delayMs:500});await sleep(500);continue;}
+     throw Error(`Gemini connection timed out or failed after 2 attempts (${cause}). The scan is retained; retry extraction.`);
+    }
     if(res.status===429){
      // Pause the key as soon as the response headers arrive, then use any
      // longer delay Google gives us in Retry-After or google.rpc.RetryInfo.
