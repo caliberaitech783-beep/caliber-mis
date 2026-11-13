@@ -1,6 +1,6 @@
 # Pulse-II Gemini card scanning
 
-VLB Scan and ELB Scan use `gemini-4-hydrogen` at thinking level `low` (override with the `MIS_GEMINI_MODEL` app setting, for example `gemini-3.8-flash`, and `MIS_GEMINI_THINKING_LEVEL`: `low`, `medium`, `high` or `xhigh`) with one successful extraction request per captured card. The request contains the original image and three detail views from that same capture. Transient transport/quota failures have bounded retries; there is no provider/model substitution when Gemini is enabled.
+VLB Scan and ELB Scan use `gemini-3.8-flash` (override with the `MIS_GEMINI_MODEL` app setting, for example `gemini-4-hydrogen` or `gemini-3.1-flash-lite`; Gemini 4 models read at thinking level `low` unless `MIS_GEMINI_THINKING_LEVEL` is `medium`, `high` or `xhigh`) with one successful extraction request per captured card. The request contains the original image and three detail views from that same capture. Transient transport/quota failures have bounded retries; there is no provider/model substitution when Gemini is enabled.
 
 The Pulse-II deployment workflow configures `GEMINI_API_KEY` and `MIS_GEMINI_API=true` on **caliber-mis-783** only. The existing encrypted GitHub Actions secret is `MIS_GEMINI_API_KEY`. Key material is never included in a response, homepage, browser storage, repository, or deployment log. Users reuse the server configuration. The local Windows setup can continue using its current-user DPAPI key.
 

@@ -39,7 +39,7 @@ For each site:
 2. Link the project to a billing account (Billing > Link a billing account).
 3. Enable the "Generative Language API".
 4. Create an API key (APIs & Services > Credentials), restricted to the Generative Language API.
-5. Check the project's rate limit for the model the app uses (`gemini-4-hydrogen` by default, or the `MIS_GEMINI_MODEL` app setting) under Quotas.
+5. Check the project's rate limit for the model the app uses (`gemini-3.8-flash` by default, or the `MIS_GEMINI_MODEL` app setting) under Quotas.
 
 Keys are never shared in chat or put in the repository. They go into Azure settings only (steps 2 and 4).
 
