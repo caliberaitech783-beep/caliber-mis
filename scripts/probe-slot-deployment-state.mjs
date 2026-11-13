@@ -14,14 +14,18 @@
 import {execFileSync} from 'node:child_process';
 
 const group = 'coalmine-fleet-maintenance-rg';
-const app = 'caliber-mis-783';
+// PROBE_APP reads another web app of the same resource group instead, one without a staging slot:
+// the scan engine app, whose uploads were refused with HTTP 409 on 13 Nov 2026.
+const otherApp = /^[a-z0-9-]{3,60}$/.test(process.env.PROBE_APP || '') ? process.env.PROBE_APP : '';
+const app = otherApp || 'caliber-mis-783';
+const slots = otherApp ? ['production'] : ['production', 'staging'];
 const slot = process.env.MIS_STAGING_SLOT || 'staging';
 const az = args => execFileSync('az', args, {encoding: 'utf8', timeout: 60000}).trim();
 const token = az(['account', 'get-access-token', '--resource', 'https://management.azure.com/', '--query', 'accessToken', '-o', 'tsv']);
 const slotArgs = name => name === 'staging' ? ['--slot', slot] : [];
 function scm(name) {
   const hosts = JSON.parse(az(['webapp', 'show', '-g', group, '-n', app, ...slotArgs(name), '--query', 'enabledHostNames', '-o', 'json']));
-  const host = hosts.find(value => /^caliber-mis-783[a-z0-9-]*\.scm\.(?:[a-z0-9-]+\.)?azurewebsites\.net$/.test(value));
+  const host = hosts.find(value => value.startsWith(app) && /^[a-z0-9-]+\.scm\.(?:[a-z0-9-]+\.)?azurewebsites\.net$/.test(value));
   if (!host) throw Error('Azure did not return a recognized deployment hostname.');
   return 'https://' + host;
 }
@@ -77,9 +81,9 @@ await attempt('the App Service plan', async () => {
 });
 await attempt('plan usage against its limits', async () => usageLines(await arm(planId + '/usages')));
 await attempt('production slot usage against its limits', async () => usageLines(await arm(siteId + '/usages')));
-await attempt('staging slot usage against its limits', async () => usageLines(await arm(siteId + '/slots/' + encodeURIComponent(slot) + '/usages')));
+if (!otherApp) await attempt('staging slot usage against its limits', async () => usageLines(await arm(siteId + '/slots/' + encodeURIComponent(slot) + '/usages')));
 
-for (const name of ['production', 'staging']) {
+for (const name of slots) {
   console.log('\n===================== ' + name + ' slot, ' + new Date().toISOString());
   await attempt('state in Azure', async () => az(['webapp', 'show', '-g', group, '-n', app, ...slotArgs(name), '--query', '{state:state,availabilityState:availabilityState,usageState:usageState,lastModifiedTimeUtc:lastModifiedTimeUtc}', '-o', 'json']));
   const host = scm(name);
