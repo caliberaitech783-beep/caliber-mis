@@ -320,3 +320,13 @@ test('upright-only mode does not rebuild views when the first read is clean',asy
  await reader.recognize(Buffer.from('clean-upright-card'));
  assert.deepEqual(viewModes,[false]);
 });
+
+test('a failed Gemini connection says whether Google was slow or the connection broke, without the error text',async t=>{
+ const {geminiConnectionFailure}=await import('../server/services/gemini-card-reader.mjs');
+ assert.equal(geminiConnectionFailure(Object.assign(Error('x'),{name:'TimeoutError'}),25000),'no answer within 25 s');
+ assert.equal(geminiConnectionFailure(Object.assign(TypeError('fetch failed'),{cause:{code:'ECONNRESET'}}),25000),'connection failed: ECONNRESET');
+ assert.equal(geminiConnectionFailure(Error('key=never-display-secret'),25000),'connection failed');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-failure-cause-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,requestTimeoutMs:25000,sleep:async()=>{},fetchImpl:async()=>{throw Object.assign(Error('timed out'),{name:'TimeoutError'});}});
+ await assert.rejects(reader.recognize(Buffer.from('slow-card')),/after 2 attempts \(no answer within 25 s\)\. The scan is retained; retry extraction\./);
+});
