@@ -315,11 +315,13 @@ jobs:
 
       - name: Deploy to the staging slot
         if: steps.ui-delta.outputs.applied != 'true'
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'caliber-mis-783'
-          slot-name: ${{ env.MIS_STAGING_SLOT }}
-          package: ${{ runner.temp }}/pulse-runtime
+        run: |
+          (cd "$RUNNER_TEMP/pulse-runtime" && zip -qry "$RUNNER_TEMP/pulse-runtime.zip" .)
+          az webapp deployment source config-zip \
+            --resource-group coalmine-fleet-maintenance-rg \
+            --name caliber-mis-783 \
+            --slot "$MIS_STAGING_SLOT" \
+            --src "$RUNNER_TEMP/pulse-runtime.zip"
 
       - name: Wait until the staging slot serves the release
         if: steps.ui-delta.outputs.applied != 'true'

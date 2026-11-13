@@ -1,6 +1,12 @@
 name: Diagnose MIS deployment
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which app to read'
+        type: choice
+        options: [pulse, scan-engine]
+        default: pulse
   push:
     branches: [main]
     paths:
@@ -13,7 +19,7 @@ jobs:
   diagnose:
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Login to Azure
@@ -23,10 +29,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
       - name: Read deployment and startup health
+        if: inputs.target != 'scan-engine'
         run: node scripts/probe-ui-delta.mjs
       # Read-only: the last deployments, the deployment lock and the running processes of both slots.
       - name: Read why a slot refuses a new deployment
         if: always()
         env:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+          PROBE_APP: ${{ inputs.target == 'scan-engine' && vars.SCAN_ENGINE_APP || '' }}
         run: node scripts/probe-slot-deployment-state.mjs

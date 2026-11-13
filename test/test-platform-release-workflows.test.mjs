@@ -113,10 +113,11 @@ test('production stages releases from main without a release tag or approval gat
 test('the production release keeps its identity, app, verification steps and live health check',()=>{
   for(const secret of ['AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB','AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E','AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688','MIS_GEMINI_API_KEY'])assert.match(productionWorkflow,new RegExp(`secrets\\.${secret}`));
   assert.doesNotMatch(productionWorkflow,/secrets\.(?:AZURE_TEST_|MIS_TEST_GEMINI_API_KEY)|vars\.PULSE_TEST_/,'the test identity and test settings never reach production');
-  const deploy=deployStep(productionWorkflow);
-  assert.match(deploy,/app-name: 'caliber-mis-783'/);
+  const deploy=step(productionWorkflow,'Deploy to the staging slot');
+  assert.match(deploy,/--name caliber-mis-783/);
   assert.doesNotMatch(deploy,/caliber-mis-test/);
-  assert.match(deploy,/package: \$\{\{ runner\.temp \}\}\/pulse-runtime\s*$/m);
+  assert.match(deploy,/--src "\$RUNNER_TEMP\/pulse-runtime\.zip"/);
+  assert.match(deploy,/az webapp deployment source config-zip/);
   for(const fragment of verificationSteps)assert.ok(productionWorkflow.includes(fragment),fragment);
   assert.match(productionWorkflow,/APP_VERSION_SOURCE: \$\{\{ env\.RELEASE_COMMIT \}\}/,'the UI version is the released commit even for an annotated tag');
   assert.match(productionWorkflow,/EXPECTED_COMMIT="\$RELEASE_COMMIT" node scripts\/verify-ui-release\.mjs/);
