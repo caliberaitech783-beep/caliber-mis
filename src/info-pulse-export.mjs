@@ -4,8 +4,8 @@ import {requestStatusLabel} from './request-status.mjs';
 import {pulseDailyUpdates, pulseDelayReason} from './info-pulse-reasons.mjs';
 import {pulseElapsed} from './info-pulse-timing.mjs';
 
-// Export columns for the Info Pulse breakdown list, shared by Download as PDF,
-// Download as Excel and Smart Print: one column per figure a ranked row shows, in
+// Export columns for the Info Pulse breakdown list, shared by Export PDF (A3),
+// Export Excel and Smart Print: one column per figure a ranked row shows, in
 // reading order. Every value is plain text. A figure the list explains as missing
 // ("Not recorded", "Not set") keeps that wording; anything else without a value is
 // left blank. The serial number is added by the export builders themselves.
