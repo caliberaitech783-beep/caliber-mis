@@ -7,6 +7,7 @@ import SmartSelect from './smart-select.jsx';
 import {matchesSmartSearch} from '../shared/smart-search.mjs';
 import {splitEquipmentOperatorHmr} from '../shared/surface-miner-hmr.mjs';
 import {employeeAtLocation} from '../shared/log-book-access.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 
 // Pure helpers shared with the batch page and the UI tests.
 export const fleetHours=(opening,closing)=>{
@@ -196,7 +197,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
   <section id="elb-breakdown-panel" role="tabpanel" aria-labelledby="elb-breakdown-tab" hidden={activeTab!=='breakdowns'} className="logbook-section">
    <div className="logbook-section-title"><h3>Breakdown details · Pulse</h3><span>{pulse?'Total BD in shift: '+Number(pulse.breakdownHours).toFixed(3)+' h':''}</span></div>
    {pulse&&!(pulse.breakdowns||[]).length&&<p>No breakdown found for this equipment in the selected site, date and shift.</p>}
-   {pulse&&(pulse.breakdowns||[]).length>0&&<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Pulse reference</th><th>Breakdown description</th><th>Start · IST</th><th>End · IST</th><th>Status</th><th>Hours in shift</th></tr></thead><tbody>{pulse.breakdowns.map((event,i)=><tr key={(event.reference||'event')+':'+i}><td>{event.reference||'—'}</td><td>{event.description}</td><td>{new Date(event.start).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</td><td>{event.end?new Date(event.end).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Ongoing'}</td><td>{event.status}</td><td>{Number(event.hours).toFixed(3)}</td></tr>)}</tbody></table></div>}
+   {pulse&&(pulse.breakdowns||[]).length>0&&<><TableSmartPrint row title={['Pulse breakdowns',row.door,batch.site,batch.report_date,batch.shift].filter(Boolean).join(' · ')}/><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Pulse reference</th><th>Breakdown description</th><th>Start · IST</th><th>End · IST</th><th>Status</th><th>Hours in shift</th></tr></thead><tbody>{pulse.breakdowns.map((event,i)=><tr key={(event.reference||'event')+':'+i}><td>{event.reference||'—'}</td><td>{event.description}</td><td>{new Date(event.start).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</td><td>{event.end?new Date(event.end).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'Ongoing'}</td><td>{event.status}</td><td>{Number(event.hours).toFixed(3)}</td></tr>)}</tbody></table></div></>}
    {pulse&&<p><small>Only time within this shift is counted. Overlapping events are counted once in the total. Source: pulse.cmll.in · Updated {new Date(pulse.fetchedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</small> <button type="button" disabled={busy||pulseLoading} onClick={()=>setPulseTick(n=>n+1)}>Refresh Pulse</button></p>}
   </section>
   <section id="elb-previous-panel" role="tabpanel" aria-labelledby="elb-previous-tab" hidden={activeTab!=='previous'} className="logbook-section">

@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import './master-sync.css';
+import TableSmartPrint from './table-smart-print.jsx';
 
 // Express transfers and new assets approved by OTP that still have to be applied in Pulse by hand.
 export default function PendingInPulse({session}){
@@ -17,8 +18,8 @@ export default function PendingInPulse({session}){
  const items=data?.items||[];
  return <section className="master-sync-page pulse-pending"><header><div><h1>Pending in Pulse</h1><p>{data?.mode==='live'?'Pulse writes are live. Items here were approved before the switch and still need to be applied in Pulse.':'Pulse-II cannot write to Pulse yet. Changes approved by OTP before this release were recorded here only; apply each one in Pulse, then mark it applied. New express requests are refused until the Pulse integration is live.'}</p></div></header>
   {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
-  {items.length===0?<p>Nothing is pending in Pulse.</p>:<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Type</th><th>Reference</th><th>Asset</th><th>From</th><th>To</th><th>Approved by</th><th>Requested by</th><th>When</th><th>Details</th><th></th></tr></thead><tbody>
+  {items.length===0?<p>Nothing is pending in Pulse.</p>:<><TableSmartPrint row title="Pending in Pulse"/><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Type</th><th>Reference</th><th>Asset</th><th>From</th><th>To</th><th>Approved by</th><th>Requested by</th><th>When</th><th>Details</th><th></th></tr></thead><tbody>
    {items.map(item=><tr key={item.kind+item.id}><td>{item.kind==='transfer'?'Express transfer':'New asset'}</td><td>{item.reference}</td><td>{item.door}</td><td>{item.from||'—'}</td><td>{item.to}</td><td>{item.approvedBy||'—'}</td><td>{item.requestedBy||'—'}</td><td>{item.at?new Date(item.at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'—'}</td><td>{item.kind==='equipment'?[item.make,item.model,item.registration,item.chassis].filter(Boolean).join(' · ')||'—':item.note||'—'}</td><td><button type="button" disabled={busy===item.kind+item.id} onClick={()=>void applied(item)}>Mark applied in Pulse</button></td></tr>)}
-  </tbody></table></div>}
+  </tbody></table></div></>}
  </section>;
 }

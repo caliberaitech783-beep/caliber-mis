@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleOff, Database, Gauge, HardDrive, Mail, MessageCircle, RefreshCw, Send, Server, Stethoscope, XCircle, Cable } from "lucide-react";
+import TableSmartPrint from "./table-smart-print.jsx";
 import "./diagnostics-page.css";
 
 const CHECK_ICONS = { app: Server, database: Database, backups: HardDrive, oracle: Cable, telegram: Send, whatsapp: MessageCircle, performance: Gauge, email: Mail };
@@ -82,25 +83,25 @@ function PerformanceDetails({ performance }) {
     <h2><Gauge aria-hidden="true" /> Speed details</h2>
     <p>Measured since {istTime(performance.measuredSince)} (numbers reset when the server restarts). A freeze means the server could not answer anyone for that long.</p>
     <h3>Recent server freezes</h3>
-    {recentFreezes.length ? <div className="diagnostics-table"><table>
+    {recentFreezes.length ? <><TableSmartPrint row title="Diagnostics · Recent server freezes" /><div className="diagnostics-table"><table>
       <thead><tr><th>When</th><th>Frozen for at least</th><th>What was running</th></tr></thead>
       <tbody>{recentFreezes.map((freeze) => <tr key={freeze.at + freeze.blockedMs}>
         <td>{istTime(freeze.at)}</td><td>{freeze.blockedMs} ms</td><td>{[...freeze.jobs, ...freeze.requests].join("; ") || "Nothing recorded"}</td>
       </tr>)}</tbody>
-    </table></div> : <p>No freezes recorded.</p>}
+    </table></div></> : <p>No freezes recorded.</p>}
     <h3>Slowest pages and actions</h3>
-    <RouteTable rows={slowestRoutes} />
+    <RouteTable rows={slowestRoutes} title="Diagnostics · Slowest pages and actions" />
     <h3>Pages using the most server time</h3>
-    <RouteTable rows={busiestRoutes} />
+    <RouteTable rows={busiestRoutes} title="Diagnostics · Pages using the most server time" />
   </section>;
 }
 
-function RouteTable({ rows }) {
+function RouteTable({ rows, title }) {
   if (!rows.length) return <p>No requests recorded yet.</p>;
-  return <div className="diagnostics-table"><table>
+  return <><TableSmartPrint row title={title} /><div className="diagnostics-table"><table>
     <thead><tr><th>Request</th><th>Count</th><th>Average</th><th>95% within</th><th>Slowest</th><th>Over 1 s</th><th>Total time</th></tr></thead>
     <tbody>{rows.map((row) => <tr key={row.route}>
       <td>{row.route}</td><td>{row.count}</td><td>{row.averageMs} ms</td><td>{row.p95Ms} ms</td><td>{row.maxMs} ms</td><td>{row.slow}</td><td>{row.totalSeconds} s</td>
     </tr>)}</tbody>
-  </table></div>;
+  </table></div></>;
 }

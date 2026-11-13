@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -30,6 +31,7 @@ test('equipment search filters normalized details, clears, preserves the chosen 
 });
 
 async function compile(file,scope,names){
+ scope={TableSmartPrint,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});
  return new Function(...Object.keys(scope),code+';return {'+names.join(',')+'}')(...Object.values(scope));

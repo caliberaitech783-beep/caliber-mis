@@ -4,6 +4,7 @@ import {CheckCircle2,Eye,ImageUp,LockKeyhole,Pencil,RefreshCw,Search,Send,Shield
 import {REQUEST_CORRECTION_STATUS,REQUEST_CORRECTION_TYPES,requestCorrectionFields,requestCorrectionReviewRemarkError} from '../shared/request-correction-policy.mjs';
 import SearchableSelect from './searchable-select.jsx';
 import RequestTimelineButton from './request-timeline.jsx';
+import TableSmartPrint from './table-smart-print.jsx';
 import './request-corrections.css';
 import {TwelveHourDateTimeInput} from './twelve-hour-input.jsx';
 
@@ -30,6 +31,22 @@ const displayValue=(value,kind)=>{
   return String(value??'').trim()||'Not recorded';
 };
 const statusClass=(value)=>String(value||'').toLowerCase().replaceAll(' ','-');
+// Smart Print of the correction cards: one line per card, the same fields in the order the card shows them.
+const correctionPrintColumns=[
+  {key:'id',label:'Correction no.',value:(record)=>record.id},
+  {key:'site',label:'Site',value:(record)=>record.site||''},
+  {key:'request',label:'Request',value:(record)=>record.requestReference||''},
+  {key:'type',label:'Correction type',value:(record)=>REQUEST_CORRECTION_TYPES[record.correctionType]?.label||record.correctionType||''},
+  {key:'status',label:'Status',value:(record)=>record.status||''},
+  {key:'error',label:'Error / rejection',value:(record)=>[record.applyError,record.applyError&&record.returnedBy&&`Returned by ${record.returnedBy}`].filter(Boolean).join('\n')},
+  {key:'requestedBy',label:'Requested by',value:(record)=>record.requestedByName||''},
+  {key:'reason',label:'Reason',value:(record)=>record.reason||''},
+  {key:'changes',label:'Changes (recorded → corrected)',value:(record)=>requestCorrectionFields(record.correctionType).filter((field)=>Object.prototype.hasOwnProperty.call(record.proposedChanges||{},field.key)).map((field)=>`${field.label}: ${displayValue(record.originalValues?.[field.key],field.kind)} → ${displayValue(record.proposedChanges?.[field.key],field.kind)}`).join('\n')},
+  {key:'evidence',label:'Evidence image',value:(record)=>record.evidenceName||''},
+  {key:'reviewedBy',label:'Reviewed by',value:(record)=>record.reviewedAt?record.reviewedByName||'':''},
+  {key:'reviewRemark',label:'Review remark',value:(record)=>record.reviewedAt?record.reviewRemark||'':''},
+  {key:'appliedBy',label:'Applied by',value:(record)=>record.appliedAt?record.appliedByName||'':''},
+];
 
 function CorrectionField({field,value,onChange,options=[]}){
   // Master-driven lists (e.g. Breakdown type). The recorded value stays selectable even if it is no longer in the master.
@@ -164,6 +181,7 @@ export default function RequestCorrections({session,requests=[],Dialog}){
     <div className="correction-list-tools"><label><Search /><input type="search" data-smart-search value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Search request, user, site, reason, or status" /></label></div>
     <div className="correction-list-head"><div className="mobile-tabs" role="tablist">{['Open',REQUEST_CORRECTION_STATUS.PENDING,REQUEST_CORRECTION_STATUS.APPROVED,REQUEST_CORRECTION_STATUS.RETURNED,REQUEST_CORRECTION_STATUS.REJECTED,REQUEST_CORRECTION_STATUS.APPLIED,REQUEST_CORRECTION_STATUS.DELETED,'All'].map((value)=><button type="button" key={value} className={status===value?'active':''} onClick={()=>setStatus(value)}>{value===REQUEST_CORRECTION_STATUS.REJECTED&&state.capabilities.canApply?'Rejected corrections':value}</button>)}</div><span>{visible.length} shown</span></div>
     {state.error&&<div className="correction-notice error">{state.error}</div>}
+    {visible.length>0&&<TableSmartPrint row title={`Request corrections · ${status}${query.trim()?` · ${query.trim()}`:''}`} rows={visible} columns={correctionPrintColumns} />}
     <div className="correction-list">{state.loading&&!state.records.length?<div className="correction-empty">Loading corrections…</div>:visible.length?visible.map((record)=><CorrectionCard key={record.id} record={record} capabilities={state.capabilities} fieldOptions={state.fieldOptions||{}} token={token} Modal={Dialog} onChanged={load} />):<div className="correction-empty"><ShieldCheck /><b>No corrections in this view</b><span>Approved and rejected decisions remain available in history.</span></div>}</div>
   </section>;
 }

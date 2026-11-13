@@ -1,8 +1,25 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {batchDateTime} from './vlb-reopen-dialog.jsx';
+import TableSmartPrint from './table-smart-print.jsx';
 import './log-book-form.css';
 import './vlb-create-batch.css';
+
+const requestStatus=request=>(request.status==='pending'?'Pending PM approval':request.status==='used'?'Approval used':request.status.toUpperCase())+(request.closure_revision!==request.current_revision?' · Previous save':'');
+// The request cards as one line each for Smart Print, PDF and Excel, in the order a card shows them.
+const approvalPrintColumns=[
+ {key:'name',label:'Batch',value:r=>r.name||'—'},
+ {key:'site',label:'Site',value:r=>displaySiteName(r.site)||'—'},
+ {key:'report_date',label:'Date',value:r=>r.report_date||'—'},
+ {key:'shift',label:'Shift',value:r=>r.shift||'—'},
+ {key:'status',label:'Status',value:requestStatus},
+ {key:'requested_by',label:'Requested by',value:r=>r.requested_by||'—'},
+ {key:'requested_at',label:'Requested on · IST',value:r=>batchDateTime(r.requested_at)},
+ {key:'closed_at',label:'Last saved · IST',value:r=>batchDateTime(r.closed_at)},
+ {key:'reason',label:'Reason for reopening',value:r=>r.reason||'—'},
+ {key:'decided_by',label:'Reviewed by',value:r=>r.decided_by||(r.canDecide?'—':'Awaiting the assigned site PM')},
+ {key:'decision_note',label:'PM review remark',value:r=>r.decision_note||'—'},
+];
 
 export function ApprovalRequest({request,session,onChanged}){
  const [remark,setRemark]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState('');
@@ -14,7 +31,7 @@ export function ApprovalRequest({request,session,onChanged}){
    const data=await response.json();if(!response.ok)throw Error(data.error||'Could not save the PM decision.');await onChanged();
   }catch(e){setError(e.message)}finally{setWorking(false)}
  };
- return <article className="vlb-approval-request"><header><div><h2>{request.name}</h2><p>{displaySiteName(request.site)} · {request.report_date} · {request.shift}</p></div><span className="vlb-permission-status">{request.status==='pending'?'Pending PM approval':request.status==='used'?'Approval used':request.status.toUpperCase()}{request.closure_revision!==request.current_revision?' · Previous save':''}</span></header>
+ return <article className="vlb-approval-request"><header><div><h2>{request.name}</h2><p>{displaySiteName(request.site)} · {request.report_date} · {request.shift}</p></div><span className="vlb-permission-status">{requestStatus(request)}</span></header>
   <dl className="vlb-approval-meta"><div><dt>Requested by</dt><dd>{request.requested_by}</dd></div><div><dt>Requested on · IST</dt><dd>{batchDateTime(request.requested_at)}</dd></div><div><dt>Last saved · IST</dt><dd>{batchDateTime(request.closed_at)}</dd></div><div><dt>Access requested</dt><dd>One reopening · Selected batch</dd></div></dl>
   <div className="vlb-approval-reason"><span>Reason for reopening</span><p>{request.reason}</p></div>
   <p className="vlb-approval-help">Approval permits only this user to reopen this batch once. The next successful Manual or Scan save locks it again. Decisions and saved changes are recorded in the batch audit history.</p>
@@ -29,7 +46,8 @@ export default function VlbBatchApprovals({session,refresh=0,onChanged}){
  useEffect(()=>{const controller=new AbortController();void load(controller.signal);const timer=setInterval(()=>void load(controller.signal),10000);return()=>{controller.abort();clearInterval(timer);++generation.current}},[session.token,refresh]);
  const changed=async()=>{await load();await onChanged?.()};
  const pending=requests.filter(r=>r.canDecide).length;
+ const listed=[...requests].sort((a,b)=>Number(b.canDecide)-Number(a.canDecide));
  return <section className="logbook-page vlb-create-batch vlb-approvals-page"><header className="logbook-page-header"><div><h1>Batch reopening approvals</h1><p>Review requests for your assigned site.</p></div><div className="vlb-batch-actions"><span className="vlb-permission-status">{pending} pending request{pending===1?'':'s'}</span><button type="button" onClick={()=>load()}>Refresh</button></div></header>
-  {error&&<p role="alert" className="logbook-message error">{error}</p>}{loading?<p role="status">Loading approval requests…</p>:<div aria-live="polite">{!requests.length&&<p>No batch reopening requests for your assigned site.</p>}{[...requests].sort((a,b)=>Number(b.canDecide)-Number(a.canDecide)).map(request=><ApprovalRequest key={request.id} request={request} session={session} onChanged={changed}/>)}</div>}
+  {error&&<p role="alert" className="logbook-message error">{error}</p>}{loading?<p role="status">Loading approval requests…</p>:<div aria-live="polite">{!requests.length&&<p>No batch reopening requests for your assigned site.</p>}{listed.length>0&&<TableSmartPrint row title="Batch reopening approvals" rows={listed} columns={approvalPrintColumns}/>}{listed.map(request=><ApprovalRequest key={request.id} request={request} session={session} onChanged={changed}/>)}</div>}
  </section>;
 }

@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {displaySiteName} from '../shared/region-scope.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 
 export const holdRoleLabels={vlb_door:'VLB vehicle',vlb_loader:'VLB loading machine',elb_door:'ELB machine'};
 export const holdRoles=(roles=[])=>roles.map(role=>holdRoleLabels[role]||role).join(', ');
@@ -42,7 +43,8 @@ export default function VlbBatchHolds({session,batch,onChanged}){
  };
  return <section className="logbook-section vlb-batch-holds" aria-label="Awaiting transfer"><h2>Awaiting transfer</h2>
   <p>These assets are booked at another site in the Equipment master. Lock VLB and Close &amp; lock ELB stay blocked until each transfer completes. Express transfer sends a release OTP to the source site PM.</p>
-  <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Asset</th><th>Current site</th><th>Cards</th><th>Trips</th><th>Named as</th><th>Transfer</th></tr></thead><tbody>
+  <TableSmartPrint row title={'Awaiting transfer'+(batch.name?' · '+batch.name:'')}/>
+  <div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Asset</th><th>Current site</th><th>Cards</th><th>Trips</th><th>Named as</th><th data-smart-print-skip="">Transfer</th></tr></thead><tbody>
    {holds.map(hold=>{const row=rows[hold.assetId]||{};const expired=row.otp&&otpCountdown(row.otp.expiresAt,now)==='expired';
     return <tr key={hold.assetId}><td>{hold.label||hold.assetId}</td><td>{displaySiteName(hold.assetSite)||'No site'}</td><td>{hold.cardCount??hold.cards?.length??0}</td><td>{hold.trips??0}</td><td>{holdRoles(hold.roles)||'—'}</td>
      <td>{row.completed?<span role="status">Transfer {row.transfer?.transferNo||''} completed. The hold clears on the next batch refresh.</span>:<>

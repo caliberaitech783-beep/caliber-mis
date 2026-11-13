@@ -2,6 +2,7 @@ import SmartSelect from './smart-select.jsx';
 import React,{useEffect,useMemo,useState} from 'react';
 import {beginDownload} from './download-notice.mjs';
 import {responseTotalBytes,trackedBody,transferLabel,transferPercent} from './transfer-progress.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 import {AlertTriangle,CalendarClock,CheckCircle2,CloudCog,Copy,Database,Download,FileArchive,FolderOpen,HardDrive,History,KeyRound,Laptop,RefreshCw,RotateCcw,Save,ShieldCheck,Trash2,Upload} from 'lucide-react';
 
 const backupTabs=['Backup','Export Backup','Import Backup','Backup Schedule'];
@@ -137,7 +138,7 @@ function PcBackupCopy({session}){
       <li><b>Download the setup script</b><button type="button" className="secondary" disabled={Boolean(working)} onClick={downloadSetup}><Download />{working==='script'?'Preparing...':'Download PC setup script'}</button></li>
       <li><b>On that PC, right-click the script and choose "Run with PowerShell"</b><small>Choose the folder, the daily time (3:00 AM suits the 2:00 AM server backup), how many copies to keep, and paste the key. The first copy runs immediately.</small></li>
     </ol>
-    <div className="pc-backup-keys"><h4>PCs receiving copies</h4>{keys===null?<p>Loading...</p>:keys.length?<table><thead><tr><th>PC</th><th>Key ends</th><th>Created</th><th>Last copy</th><th /></tr></thead><tbody>{keys.map((key)=><tr key={key.id}><td><b>{key.label}</b><small>{key.createdBy}</small></td><td><code>...{key.hint}</code></td><td>{when(key.createdAt)}</td><td>{when(key.lastUsedAt)}{key.lastUsedIp&&<small>{key.lastUsedIp}</small>}</td><td><button type="button" className="danger" disabled={Boolean(working)} onClick={()=>revokeKey(key)}><Trash2 />{working===`revoke-${key.id}`?'Revoking...':'Revoke'}</button></td></tr>)}</tbody></table>:<p>No PC is set up yet.</p>}</div>
+    <div className="pc-backup-keys"><h4>PCs receiving copies</h4>{keys===null?<p>Loading...</p>:keys.length?<><TableSmartPrint row title="Backups · PCs receiving copies"/><table><thead><tr><th>PC</th><th>Key ends</th><th>Created</th><th>Last copy</th><th /></tr></thead><tbody>{keys.map((key)=><tr key={key.id}><td><b>{key.label}</b><small>{key.createdBy}</small></td><td><code>...{key.hint}</code></td><td>{when(key.createdAt)}</td><td>{when(key.lastUsedAt)}{key.lastUsedIp&&<small>{key.lastUsedIp}</small>}</td><td><button type="button" className="danger" disabled={Boolean(working)} onClick={()=>revokeKey(key)}><Trash2 />{working===`revoke-${key.id}`?'Revoking...':'Revoke'}</button></td></tr>)}</tbody></table></>:<p>No PC is set up yet.</p>}</div>
   </section>;
 }
 
@@ -158,11 +159,11 @@ function ScheduleTime({value,onChange}){
 }
 
 function BackupHistory({history,onDownload,onDelete,busy}){
-  return <div className="backup-history-wrap">
-    <table className="backup-history-table"><thead><tr><th>Sr. No.</th><th>Date & time</th><th>Backup file</th><th>Type</th><th>Status</th><th>Size</th><th>Created by</th><th>Recovery file</th><th>Delete</th></tr></thead>
+  return <>{history.length>0&&<TableSmartPrint row title="Backup history"/>}<div className="backup-history-wrap">
+    <table className="backup-history-table"><thead><tr><th>Sr. No.</th><th>Date & time</th><th>Backup file</th><th>Type</th><th>Status</th><th>Size</th><th>Created by</th><th data-smart-print-skip="">Recovery file</th><th data-smart-print-skip="">Delete</th></tr></thead>
       <tbody>{history.length?history.map((row,index)=><tr key={row.id}><td>{index+1}</td><td>{displayDateTime(row.completedAt||row.startedAt)}</td><td><b>{row.fileName}</b><small className={row.errorMessage?'backup-run-error':''}>{backupDetail(row)}</small></td><td>{row.triggerType}</td><td><span className={`backup-state ${String(row.status).toLowerCase()}`}>{row.status}</span></td><td><b className={`backup-size ${String(row.status).toLowerCase()}`}>{backupSize(row)}</b></td><td>{row.createdBy||'System'}</td><td>{row.downloadable?<button type="button" className="backup-icon-action" title="Download backup" aria-label={`Download ${row.fileName}`} disabled={busy} onClick={()=>onDownload(row)}><Download /></button>:<span className="backup-unavailable">—</span>}</td><td><button type="button" className="backup-icon-action danger" title="Delete backup history" aria-label={`Delete ${row.fileName}`} disabled={busy} onClick={()=>onDelete(row)}><Trash2 /></button></td></tr>):<tr><td colSpan="8" className="backup-empty">No backup runs have been recorded yet.</td></tr>}</tbody>
     </table>
-  </div>;
+  </div></>;
 }
 
 export default function BackupAdministration({section='Backup',session,onNavigate=()=>{}}){

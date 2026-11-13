@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {meterCorrectionReport} from '../shared/scan-meter-history.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ import {misPageAllowed,misRequestAllowed} from '../shared/mis-application-access
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
 
 async function compile(file,scope,names){
- scope={StepBackButton:()=>null,...scope};
+ scope={StepBackButton:()=>null,TableSmartPrint,...scope};
  scope={activeWorkOrders,WorkOrderJobSelect:()=>null,...scope};
  const source=readFileSync(new URL('../src/'+file,import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function').replaceAll('export const','const');
  const {code}=await transformWithOxc(source,file,{jsx:{runtime:'classic'}});

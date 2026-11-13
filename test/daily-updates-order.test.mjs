@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -65,7 +66,7 @@ test("the chosen order is remembered on the device and survives a broken storage
 const source = readFileSync(new URL("../src/daily-updates-list.jsx", import.meta.url), "utf8")
   .replace(/^import .*;\r?\n/gm, "").replace(/^export (default )?/gm, "");
 const { code } = await transformWithOxc(source, "daily-updates-list.jsx", { jsx: { runtime: "classic" } });
-const bindings = {SmartSelect: "select", React, useSyncExternalStore: React.useSyncExternalStore, ...order, formatDisplayDateTime };
+const bindings = {TableSmartPrint, SmartSelect: "select", React, useSyncExternalStore: React.useSyncExternalStore, ...order, formatDisplayDateTime };
 const { DailyUpdatesList, DailyUpdatesPanel, setDailyUpdatesOrder } = new Function(...Object.keys(bindings), `${code}; return { DailyUpdatesList, DailyUpdatesPanel, setDailyUpdatesOrder };`)(...Object.values(bindings));
 const render = (props, Component = DailyUpdatesList) => renderToStaticMarkup(React.createElement(Component, props));
 
@@ -73,6 +74,9 @@ test("the updates cell collapses to a count with the latest time and opens into 
   const html = render({ remarks: updates, category: "Breakdown" });
   assert.match(html, /^<details class="daily-remarks"><summary><b>4 updates<\/b><small>Latest 16-09-26 08:38:00 PM<\/small><\/summary><div class="daily-remarks-panel" data-order="newest">/);
   assert.match(html, /<div class="daily-remarks-order" role="group" aria-label="Order of daily updates"><span>Show<\/span><button type="button" aria-pressed="true" title="[^"]+">Newest first<\/button><button type="button" aria-pressed="false" title="[^"]+">Oldest first<\/button><\/div>/);
+  assert.doesNotMatch(html, /data-smart-print/, "no Smart Print menu inside every table cell");
+  // The pop-up that shows the journal on its own passes a title and gets the menu, with the card's fields as columns.
+  assert.match(render({ remarks: updates, category: "Breakdown", printTitle: "Previous daily updates · BD-1" }, DailyUpdatesPanel), /<button type="button" data-smart-print="Previous daily updates · BD-1" data-smart-print-columns="Update no\.\|Date and time\|Updated by\|Update\|Category\|Delayed reason" data-smart-print-rows="4">Smart Print<\/button><ol class="daily-remarks-list"/);
   assert.match(html, /<ol class="daily-remarks-list" aria-label="4 updates, newest first">/);
   const badges = [...html.matchAll(/<i aria-label="Update (\d) of 4">#(\d)<\/i><b>([^<]+)<\/b><span>([^<]+)<\/span>/g)].map((match) => match.slice(1));
   assert.deepEqual(badges, [["4", "4", "16-09-26 08:38:00 PM", "SUNIL KUMAR MAHATO"], ["3", "3", "15-09-26 09:24:00 PM", "SUNIL KUMAR MAHATO"], ["2", "2", "14-09-26 07:46:00 PM", "SUNIL KUMAR MAHATO"], ["1", "1", "13-09-26 07:27:00 PM", "SUNIL KUMAR MAHATO"]]);
@@ -124,7 +128,7 @@ test("every place that lists updates renders the shared panel and sorts its colu
   assert.match(main, /import DailyUpdatesList, \{ DailyUpdatesPanel \} from "\.\/daily-updates-list\.jsx";/);
   assert.match(main, /function MaintenanceRemarks\(\{ remarks = \[\], category = "" \}\) \{\s*\/\/[^\n]*\s*return <DailyUpdatesList remarks=\{remarks\} category=\{category\} formatDateTime=\{formatTwelveHourDateTime\} \/>;/);
   // The daily-update journal's read-only history.
-  assert.match(main, /Previous daily updates[\s\S]{0,400}<DailyUpdatesPanel remarks=\{history\} category=\{request\.category\} formatDateTime=\{formatTwelveHourDateTime\} missingLabel="Not recorded" \/>/);
+  assert.match(main, /Previous daily updates[\s\S]{0,400}<DailyUpdatesPanel remarks=\{history\} category=\{request\.category\} formatDateTime=\{formatTwelveHourDateTime\} missingLabel="Not recorded" printTitle=\{`Previous daily updates · \$\{request\.ref\}`\} \/>/);
   // Workflow tables sort the Daily remarks column by the most recent update.
   assert.equal((main.match(/key === "dailyRemarks" \? latestDailyUpdateStamp\(row\.dailyRemarks\) : row\[key\]\)/g) || []).length, 2);
   // The time breakdown prints the panel with its own stylesheet.
