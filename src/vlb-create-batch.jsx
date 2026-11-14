@@ -93,14 +93,21 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   }).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false)}});
   return()=>controller.abort();
  },[session.token,entryMode,entryKind]);
- useEffect(()=>{const controller=new AbortController();let pending=false;
-  const load=()=>{if(pending)return;pending=true;
-   return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true)}).catch(e=>{if(!controller.signal.aborted){setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false});
+ // The list read is started once and stays in flight until it answers. It used to be
+ // cancelled and restarted on every 10 s refresh, so on 14 Nov 2026 an answer slower than
+ // 10 s never reached the Scan picker and the server was left running the cancelled reads.
+ // A refresh that arrives while a read is in flight asks once more when that read ends.
+ const listLoad=useRef(null);
+ useEffect(()=>{const controller=new AbortController();let pending=false,again=false,failed=false;
+  const load=()=>{if(pending){again=true;return}pending=true;
+   return read('/api/vlb-batches',{signal:controller.signal}).then(data=>{if(controller.signal.aborted)return;setBatches(data.batches);setOpenBatch(data.openBatch);setTwoStageList(Boolean(data.twoStage));setActor(data.actor);setPmApprovalTrial(data.pmApprovalTrial);setBatchStatusReady(true);if(failed){failed=false;setError('')}}).catch(e=>{if(!controller.signal.aborted){failed=true;setBatchStatusReady(false);setError(e.message)}}).finally(()=>{pending=false;if(again&&!controller.signal.aborted){again=false;void load()}});
   };
+  listLoad.current=load;
   // A board left open in a background tab stops asking; it catches up when shown again.
   void load();const timer=setInterval(()=>{if(!entryMode&&document.visibilityState!=='hidden')void load()},15000);
-  return()=>{controller.abort();clearInterval(timer)};
- },[session.token,refresh]);
+  return()=>{controller.abort();clearInterval(timer);if(listLoad.current===load)listLoad.current=null};
+ },[session.token]);
+ useEffect(()=>{if(refresh)void listLoad.current?.()},[refresh]);
  // A report entry action already chose a batch. Restore its site only after
  // both authorized lists arrive, then let the normal picker fetch its details.
  useEffect(()=>{
@@ -117,6 +124,8 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  useEffect(()=>{const tick=()=>{if(document.visibilityState!=='hidden')setRefresh(n=>n+1)};const timer=setInterval(tick,10000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
  // The board re-reads the open batch every 10 s. It sends the last ETag it saw, and a
  // 304 keeps the batch on screen as it is instead of downloading every record again.
+ // The Manual and Scan pickers draw neither the batch details nor the unbatched preview,
+ // so they ask for neither; only the Create Batch board polls them.
  const detailCache=useRef({id:'',etag:'',data:null});
  const [deleteBatchId,setDeleteBatchId]=useState(null);
  const readDetail=async(id,signal)=>{
@@ -126,9 +135,9 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   const data=await response.json();if(!response.ok)throw Error(data.error||'Could not read VLB batches.');
   detailCache.current={id,etag:response.headers.get('etag')||'',data};return data;
  };
- useEffect(()=>{if(!viewed?.id)return;const controller=new AbortController();const generation=detailRequest.current;readDetail(viewed.id,controller.signal).then(data=>{if(!controller.signal.aborted&&generation===detailRequest.current)setViewed(data)}).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>controller.abort()},[viewed?.id,refresh,session.token]);
+ useEffect(()=>{if(!viewed?.id||entryMode)return;const controller=new AbortController();const generation=detailRequest.current;readDetail(viewed.id,controller.signal).then(data=>{if(!controller.signal.aborted&&generation===detailRequest.current)setViewed(data)}).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>controller.abort()},[viewed?.id,refresh,session.token]);
  useEffect(()=>{const controller=new AbortController();setPreview(null);
-  if(!selection.site||!selection.date||!selection.shift){setLoading(false);return()=>controller.abort()}
+  if(entryMode||!selection.site||!selection.date||!selection.shift){setLoading(false);return()=>controller.abort()}
   setLoading(!viewed);setError('');
   read('/api/vlb-batches/preview?'+new URLSearchParams(selection),{signal:controller.signal}).then(data=>setPreview(data)).catch(e=>{if(!controller.signal.aborted)setError(e.message)}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
@@ -187,7 +196,7 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
  const contracts=activeWorkOrders(options?.workOrders||[],selection.site,selection.date);
  const shifts=options?availableShifts(options,selection):[];
  const visibleBatches=batches.filter(b=>(!selection.site||canonicalSiteName(b.site)===canonicalSiteName(selection.site))&&(!batchSearch.trim()||[b.name,b.site,b.report_date,b.shift,b.closed_at?'locked':'open'].join(' ').toLowerCase().includes(batchSearch.trim().toLowerCase()))&&(batchTab==='edit'||(batchTab==='close'?Boolean(b.closed_at):!b.closed_at)));
- if(entryMode)return <section className="logbook-page vlb-create-batch vlb-entry-batch-picker">{onExit&&<StepBackButton onBack={onExit} label={entryKind==="lmv"?"Back to LMV":entryKind==="equipment"?"Back to ELB":"Back to VLB"}/>}{error&&<p className="logbook-message error" role="alert">{error}</p>}<section className="logbook-section vlb-batch-setup"><div className="vlb-batch-fields"><label>Site name<select value={selection.site} disabled={busy||!options} onChange={event=>change('site',event.target.value)}><option value="">Select site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</select></label></div>{selection.site&&entryMatching.length>0&&<div className="vlb-batch-notice" role="dialog" aria-label="Select batch"><strong>Batch{entryMatching.length===1?'':'es'} for {selection.site}</strong><div className="vlb-batch-actions">{entryMatching.map(batch=><button key={batch.id} type="button" disabled={busy||detailLoading} onClick={()=>view(batch,true)}>Add cards · {batch.name}{' · '+stageLabel(batch.stage,batch)}</button>)}</div></div>}{selection.site&&batchStatusReady&&!entryMatching.length&&<p>{entryKind==='lmv'?'No existing Vehicle Log Book batch is open for LMV entry at this site.':'No batch is available for this site. Create the batch from Create Batch first.'}</p>}</section></section>
+ if(entryMode)return <section className="logbook-page vlb-create-batch vlb-entry-batch-picker">{onExit&&<StepBackButton onBack={onExit} label={entryKind==="lmv"?"Back to LMV":entryKind==="equipment"?"Back to ELB":"Back to VLB"}/>}{error&&<p className="logbook-message error" role="alert">{error}</p>}<section className="logbook-section vlb-batch-setup"><div className="vlb-batch-fields"><label>Site name<select value={selection.site} disabled={busy||!options} onChange={event=>change('site',event.target.value)}><option value="">Select site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</select></label></div>{selection.site&&entryMatching.length>0&&<div className="vlb-batch-notice" role="dialog" aria-label="Select batch"><strong>Batch{entryMatching.length===1?'':'es'} for {selection.site}</strong><div className="vlb-batch-actions">{entryMatching.map(batch=><button key={batch.id} type="button" disabled={busy||detailLoading} onClick={()=>view(batch,true)}>Add cards · {batch.name}{' · '+stageLabel(batch.stage,batch)}</button>)}</div></div>}{selection.site&&!batchStatusReady&&!error&&<p role="status">Loading batches for {selection.site}…</p>}{selection.site&&batchStatusReady&&!entryMatching.length&&<p>{entryKind==='lmv'?'No existing Vehicle Log Book batch is open for LMV entry at this site.':'No batch is available for this site. Create the batch from Create Batch first.'}</p>}</section></section>
  return <section className="logbook-page vlb-create-batch"><header className="logbook-page-header"><div><h1>{entryMode?"Select VLB batch":"Create Batch"}</h1><p>Combine all saved VLB Manual and VLB Scan cards for one site, date and shift.</p></div>{onExit&&<StepBackButton onBack={onExit} label={entryKind==="lmv"?"Back to LMV":entryKind==="equipment"?"Back to ELB":"Back to VLB"}/>}</header>
   <section className="logbook-section vlb-batch-setup"><div className="vlb-batch-fields"><label>Site name<SmartSelect value={selection.site} disabled={busy||!options||Boolean(lockedSite)} onChange={e=>change('site',e.target.value)}><option value="">Select site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</SmartSelect></label><label>Report date<input type="date" min="2026-11-01" value={selection.date} disabled={busy} onChange={e=>change('date',e.target.value)}/></label><label>Shift<SmartSelect value={selection.shift} disabled={busy||!selection.site} onChange={e=>change('shift',e.target.value)}><option value="">Select shift</option>{shifts.map(s=><option key={s.code} value={s.code}>{s.code} · {s.name}</option>)}</SmartSelect></label><label>Work Contract<SmartSelect value={selection.workOrderId||""} disabled={busy||!contracts.length} onChange={e=>change("workOrderId",e.target.value)}><option value="">{contracts.length?"Select work contract":"No active contracts"}</option>{contracts.map(row=><option key={row.id} value={row.id}>{row.number}</option>)}</SmartSelect></label></div>
    <div className="vlb-batch-actions"><button type="button" disabled={busy||loading||detailLoading||!batchStatusReady||actor?.canCreate===false||!selection.site||!selection.date||!selection.shift||!preview||Boolean(preview?.siteOpenBatch)||Boolean(!twoStageList&&openBatch&&!actor?.admin)||Boolean(preview?.existingBatch)} onClick={create}>Create Batch</button><button type="button" disabled={busy||loading} onClick={()=>{clearView();setRefresh(n=>n+1)}}>Refresh saved entries</button></div>
