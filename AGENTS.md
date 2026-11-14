@@ -6,7 +6,10 @@ Set by the owner on 14 November 2026; scheduled releases start on 15 November 20
 - Production (`.github/workflows/main_caliber-mis-783.yml`) releases everything merged to `main` together four times a day: 12:00, 15:00, 18:00 and 00:00 IST. Changes from every person and every computer that reach `main` go out in the next window.
 - A window skips the release when `main` has nothing new since the commit Pulse-II serves, or only documentation changed (`scripts/release-window.sh`).
 - Merging to `main` is the step that queues a change for the next window, so complete and test the current group of changes before merging, and ask the user once before merging it.
-- An urgent fix outside the windows: Run workflow on "Build and deploy main to production - caliber-mis-783" releases `main` at once. Use it only when the user explicitly asks for an immediate deployment; then do not ask for a second confirmation.
+- Run workflow on "Build and deploy main to production - caliber-mis-783" asks whether the release is urgent or can wait for the next scheduled window. "Next scheduled window" deploys nothing and names the window. "Urgent" needs the owner's OTP (added 14 November 2026):
+  1. Run it with Urgent and no OTP: Pulse-II sends a six-digit OTP to the owner on Telegram (the MIS login registered to +91 9925565281; WhatsApp only if that login has not linked Telegram). The message names who asked and the GitHub run. Nothing deploys.
+  2. Run it again with Urgent and that OTP within 10 minutes: Pulse-II checks it (single use, five wrong attempts) and `main` is released at once.
+  From a Claude session: `gh workflow run main_caliber-mis-783.yml --ref main -f when='Urgent: deploy now (needs OTP from the owner)'`, ask the owner for the OTP, then run it again adding `-f otp=<OTP>`. Start an urgent release only when the user explicitly asks for an immediate deployment; never guess or reuse an OTP.
 
 # Report operating manuals
 
