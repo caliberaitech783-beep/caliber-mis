@@ -5,7 +5,7 @@ on:
       target:
         description: 'Which app to read'
         type: choice
-        options: [pulse, scan-engine]
+        options: [pulse, scan-engine, outbound]
         default: pulse
   push:
     branches: [main]
@@ -28,12 +28,16 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+      # Read-only: can the live server reach Telegram (and Google as a control)?
+      - name: Check outbound reach from the live server
+        if: inputs.target == 'outbound'
+        run: node scripts/probe-outbound-reach.mjs
       - name: Read deployment and startup health
-        if: inputs.target != 'scan-engine'
+        if: inputs.target == 'pulse'
         run: node scripts/probe-ui-delta.mjs
       # Read-only: the last deployments, the deployment lock and the running processes of both slots.
       - name: Read why a slot refuses a new deployment
-        if: always()
+        if: always() && inputs.target != 'outbound'
         env:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
           PROBE_APP: ${{ inputs.target == 'scan-engine' && vars.SCAN_ENGINE_APP || '' }}
@@ -41,7 +45,7 @@ jobs:
       # Read-only: what the staging slot lacks compared with production (names and kinds, never values), and the
       # newest start-up logs of its app.
       - name: Compare the staging slot with production
-        if: always() && inputs.target != 'scan-engine'
+        if: always() && inputs.target == 'pulse'
         env:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
         run: node scripts/probe-slot-configuration.mjs
