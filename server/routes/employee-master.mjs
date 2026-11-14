@@ -1,5 +1,10 @@
 import {employeeIdentity,employeeReferenceVariants} from '../../shared/employee-identity.mjs';
 import {EMPLOYEE_FIELDS} from '../../shared/employee-master-fields.mjs';
+import {displaySiteName} from '../../shared/region-scope.mjs';
+import {canonicalSiteName} from '../../shared/site-location.mjs';
+
+const employeeSiteKey=site=>canonicalSiteName(site)||site.trim().toLowerCase();
+
 export function normalizeEmployee(input){if(!input||typeof input!=='object'||Array.isArray(input))throw Object.assign(new Error('Invalid employee record.'),{status:400});const data=employeeIdentity(Object.fromEntries(EMPLOYEE_FIELDS.map(([k])=>[k,String(input[k]??(k==='caliberId'?input.employeeId:'')??'').trim().slice(0,4000)])));data.caliberId=data.caliberId.toUpperCase();if(!data.caliberId||!data.name)throw Object.assign(new Error('Employee ID and Employee Name are required.'),{status:400});data.employeeId=data.caliberId;data.site=data.currentLocation||data.locationName;return data;}
 export async function importEmployees(pool,records){const normalized=records.map(normalizeEmployee),ids=new Set();for(const r of normalized){if(ids.has(r.caliberId))throw new Error('Duplicate Employee ID: '+r.caliberId);ids.add(r.caliberId)}const c=await pool.connect();let added=0,updated=0;try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const existing=(await c.query("SELECT id,master_name,record_data FROM master_records WHERE master_name IN('Employee master','ERP Employee master')")).rows;const byId=new Map(existing.map(r=>[String(r.record_data.caliberId||r.record_data.employeeId||'').toUpperCase(),r]));for(const d of normalized){const prev=byId.get(d.caliberId);
   if(prev){
@@ -52,7 +57,46 @@ export function registerEmployeeMaster(app,{pool,requireSession,requireAdministr
    if(!row)return res.status(409).json({error:'Employee changed. Search again before saving.'});
    res.json(locationRecord(row));
  }));
- app.get('/api/employee-master',...protect,wrap(async(req,res)=>{const q=String(req.query.q||'').trim().slice(0,150),site=String(req.query.site||''),page=Math.max(0,Math.min(10000,parseInt(req.query.page)||0)),all=req.query.export==='1',where="master_name='Employee master' AND ($1='' OR record_data->>'caliberId' ILIKE $2 OR record_data->>'caliberCode' ILIKE $2 OR ('CMLL'||substring(record_data->>'caliberId' from '[0-9]+$')) ILIKE $2 OR record_data->>'name' ILIKE $2 OR record_data->>'employeeCode' ILIKE $2 OR record_data->>'currentDepartmentName' ILIKE $2 OR record_data->>'currentDesignationName' ILIKE $2) AND ($3='' OR record_data->>'site'=$3)",args=[q,'%'+q+'%',site];const total=Number((await pool.query('SELECT count(*) n FROM master_records WHERE '+where,args)).rows[0].n);const rows=(await pool.query('SELECT id,record_data FROM master_records WHERE '+where+` ORDER BY record_data->>'name',id LIMIT ${all?25000:50} OFFSET ${all?0:page*50}`,args)).rows;const sites=(await pool.query("SELECT DISTINCT record_data->>'site' site FROM master_records WHERE master_name='Employee master' ORDER BY site")).rows.map(r=>r.site).filter(Boolean);res.set('Cache-Control','no-store').json({records:rows.map(r=>({...employeeIdentity(r.record_data),id:String(r.id)})),total,page,sites});}));
+ app.get('/api/employee-master',...protect,wrap(async(req,res)=>{
+   const q=String(req.query.q||'').trim().slice(0,150);
+   const site=String(req.query.site||'').trim();
+   const page=Math.max(0,Math.min(10000,parseInt(req.query.page)||0));
+   const all=req.query.export==='1';
+   const {rows:siteRows}=await pool.query(`
+     SELECT DISTINCT record_data->>'site' AS site
+     FROM master_records WHERE master_name='Employee master' ORDER BY site
+   `);
+   const labels=new Map();
+   const matchingSites=[];
+   const selectedKey=employeeSiteKey(site);
+   for(const {site:storedSite} of siteRows){
+     if(!storedSite?.trim())continue;
+     const key=employeeSiteKey(storedSite);
+     if(!labels.has(key))labels.set(key,displaySiteName(storedSite));
+     if(key===selectedKey)matchingSites.push(storedSite);
+   }
+   const sites=[...labels.values()].sort((a,b)=>a.localeCompare(b,'en-IN'));
+   const where=`
+     master_name='Employee master'
+     AND ($1='' OR record_data->>'caliberId' ILIKE $2
+       OR record_data->>'caliberCode' ILIKE $2
+       OR ('CMLL'||substring(record_data->>'caliberId' from '[0-9]+$')) ILIKE $2
+       OR record_data->>'name' ILIKE $2 OR record_data->>'employeeCode' ILIKE $2
+       OR record_data->>'currentDepartmentName' ILIKE $2
+       OR record_data->>'currentDesignationName' ILIKE $2)
+     AND ($3::text[] IS NULL OR (record_data->>'site')=ANY($3::text[]))
+   `;
+   const args=[q,'%'+q+'%',site?matchingSites:null];
+   const {rows:[{n}]}=await pool.query('SELECT count(*) n FROM master_records WHERE '+where,args);
+   const {rows}=await pool.query(`
+     SELECT id,record_data FROM master_records WHERE ${where}
+     ORDER BY record_data->>'name',id LIMIT ${all?25000:50} OFFSET ${all?0:page*50}
+   `,args);
+   res.set('Cache-Control','no-store').json({
+     records:rows.map(r=>({...employeeIdentity(r.record_data),id:String(r.id)})),
+     total:Number(n),page,sites
+   });
+ }));
  const save=async(req,res)=>{const data=normalizeEmployee(req.body);const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(709224109)');const duplicate=await c.query("SELECT id FROM master_records WHERE master_name='Employee master' AND upper(record_data->>'caliberId')=$1 AND id<>COALESCE($2::bigint,0)",[data.caliberId,req.params.id||null]);if(duplicate.rowCount)throw Object.assign(new Error('Employee ID already exists.'),{status:409});let row;if(req.params.id){const prior=(await c.query("SELECT record_data FROM master_records WHERE id=$1 AND master_name='Employee master' FOR UPDATE",[req.params.id])).rows[0]?.record_data;if(!prior||prior.employeeMasterRevision!==req.body.employeeMasterRevision)throw Object.assign(new Error('Employee changed. Reload before editing.'),{status:409});row=(await c.query('UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 RETURNING id,record_data',[JSON.stringify({...prior,...data,employeeMasterRevision:prior.employeeMasterRevision+1,updatedAt:new Date().toISOString()}),req.params.id])).rows[0]}else row=(await c.query("INSERT INTO master_records(master_name,record_data) VALUES('Employee master',$1::jsonb) RETURNING id,record_data",[JSON.stringify({...data,source:'Local entry',employeeMasterRevision:1})])).rows[0];await c.query('COMMIT');res.json({...employeeIdentity(row.record_data),id:String(row.id)})}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}};
  app.post('/api/employee-master',...protect,wrap(save));app.put('/api/employee-master/:id',...protect,wrap(async(req,res)=>{if(!/^\d+$/.test(req.params.id))return res.status(400).json({error:'Invalid employee.'});await save(req,res)}));
  app.post('/api/employee-master/import',...protect,wrap(async(req,res)=>{if(!Array.isArray(req.body.records)||!req.body.records.length||req.body.records.length>25000)return res.status(400).json({error:'Import 1–25,000 employee records.'});res.json(await importEmployees(pool,req.body.records))}));
