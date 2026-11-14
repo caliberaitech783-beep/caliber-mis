@@ -1,3 +1,4 @@
+import {scanHistoryCsv} from '../services/scan-history-csv.mjs';
 import {scanTripsOptional} from '../../shared/scan-trip-requirement.mjs';
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {recoverFirstScanFields,readScanWithRecovery} from '../services/scan-first-field-recovery.mjs';
@@ -325,6 +326,28 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   }catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}
  }));
  app.get('/api/scan-batches',...protect,wrap(async(req,res)=>{const offset=Number(req.query.offset||0);if(!Number.isSafeInteger(offset)||offset<0)fail('Invalid batch history offset.');const {rows}=await pool.query(`SELECT b.*,count(c.id) FILTER(WHERE c.review_note<>'Removed from batch: wrong date, site or shift' AND c.review_note NOT LIKE 'Card deleted manually by user%' AND c.duplicate_of IS NULL)::int AS cards,count(c.id) FILTER(WHERE c.duplicate_of IS NOT NULL)::int AS duplicates,count(c.id) FILTER(WHERE c.status='approved')::int AS approved,count(c.id) FILTER(WHERE c.status='posted' AND c.review_note NOT LIKE 'Card deleted manually by user%')::int AS posted FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id AND ${operationalScanSql('c')} WHERE COALESCE(NULLIF(b.expected_context->>'bookDate',''),to_char(b.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD'))>=$$2026-11-01$$ AND NOT(COALESCE(b.expected_context,'{}'::jsonb) ?| ARRAY['deletedVlbBatch','deletedScanEntry']) AND b.kind=ANY($1::text[]) AND (COALESCE(b.expected_context->>'logBookKind','')='lmv')=$4 AND ($2::uuid[] IS NULL OR b.id=ANY($2::uuid[])) GROUP BY b.id ORDER BY b.created_at DESC,b.id DESC LIMIT 100 OFFSET $3`,[req.misAllowedScanKinds||['vehicle','equipment'],req.allowedSiteBatches,offset,req.query.logBookKind==='lmv']);const tripTotals=await scanEntryTripTotals(pool,rows.map(b=>b.id));res.set('Cache-Control','no-store').json({batches:rows.map(b=>({...b,trip_total:tripTotals.get(b.id)??0})),nextOffset:rows.length===100?offset+rows.length:null});}));
+ app.get('/api/scan-history.csv',...protect,wrap(async(req,res)=>{
+  const {from,to,bookKind}=req.query;
+  const kind={vlb:'vehicle',lmv:'vehicle',elb:'equipment'}[bookKind];
+  const validDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+  if(!['vlb','lmv','elb'].includes(bookKind)||!validDate(from)||!validDate(to)||from>to||Date.parse(to)-Date.parse(from)>=31*86400000)fail('Choose a valid date range of up to 31 days.');
+  if(req.misAllowedScanKinds&&!req.misAllowedScanKinds.includes(kind))fail('This scan history is outside your access.',403);
+  const {rows}=await pool.query(`SELECT c.id,c.batch_id,c.created_at,c.status,c.raw_fields,
+   $5::text AS book_kind,b.expected_context->>'location' AS site
+   FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id
+   WHERE b.kind=$1 AND ($2::uuid[] IS NULL OR b.id=ANY($2::uuid[]))
+   AND (COALESCE(b.expected_context->>'logBookKind','')='lmv')=($5='lmv')
+   AND NOT(COALESCE(b.expected_context,'{}'::jsonb) ?| ARRAY['deletedVlbBatch','deletedScanEntry'])
+   AND COALESCE(NULLIF(b.expected_context->>'bookDate',''),to_char(b.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD'))>='2026-11-01'
+   AND ${operationalScanSql('c')} AND c.duplicate_of IS NULL
+   AND c.review_note NOT IN ('Removed from batch: wrong date, site or shift','Exact duplicate upload skipped automatically')
+   AND c.review_note NOT LIKE 'Card deleted manually by user%'
+   AND c.created_at>=($3::date::timestamp AT TIME ZONE 'Asia/Kolkata')
+   AND c.created_at<(($4::date+1)::timestamp AT TIME ZONE 'Asia/Kolkata')
+   ORDER BY c.created_at,c.id LIMIT 25001`,[kind,req.allowedSiteBatches,from,to,bookKind]);
+  if(rows.length>25000)fail('Choose a shorter date range to export at most 25,000 cards.');
+  res.set('Cache-Control','no-store').attachment('scan-history-'+bookKind+'-'+from+'-to-'+to+'.csv').type('text/csv').send(scanHistoryCsv(rows));
+ }));
  app.post('/api/scan-batches',...protect,wrap(async(req,res)=>{if(!['vehicle','equipment'].includes(req.body.kind))fail('Choose Trip Cards or Job Cards.');let context;try{context=requireScanUploadContext(req.body.kind,req.body.expectedContext)}catch(e){fail(e.message)}if(context)requireLogBookSite(req.logBookScope,context.location);const batch=await createScanBatch(pool,{id:randomUUID(),kind:req.body.kind,name:req.body.name,user:req.session.login||req.session.name,expectedContext:context||undefined});res.status(201).json(batch);}));
  app.post('/api/scan-batches/:id/remove',...protect,wrap(async(req,res)=>{const batch=await getBatch(pool,req.params.id);const c=await pool.connect();let blobs=[];try{await c.query('BEGIN');await c.query('SELECT id FROM mis_scan_batches WHERE id=$1 FOR UPDATE',[batch.id]);const cards=(await c.query('SELECT status,image_blob_key FROM mis_scan_cards WHERE batch_id=$1 FOR UPDATE',[batch.id])).rows;if(cards.some(card=>card.status==='posted'))fail('This batch contains saved log-book records and cannot be removed here.',409);blobs=cards.map(card=>card.image_blob_key).filter(Boolean);await c.query('DELETE FROM mis_scan_cards WHERE batch_id=$1',[batch.id]);await c.query('DELETE FROM mis_scan_batches WHERE id=$1',[batch.id]);await c.query('COMMIT');}catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}if(imageStorage?.remove)for(const key of blobs)try{await imageStorage.remove(key)}catch{}res.json({removed:true});}));
  // Section 3 of the equipment alias spec: written machines no Pulse door answers, beside the Pulse
