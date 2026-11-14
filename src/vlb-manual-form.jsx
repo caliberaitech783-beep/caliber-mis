@@ -63,7 +63,16 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch}){
 
  const loadRegister=async(before)=>{const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([api('/api/log-books/options'),api(`/api/log-books/${kind}`)]);setOptions(masters);setRecords(list.records);setNextCursor(list.nextCursor);}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{
+  setLoading(true);setError('');
+  const register=async()=>{
+   try{const list=await (api(`/api/log-books/${kind}`));if(list){setRecords(list.records);setNextCursor(list.nextCursor);}}
+   catch(error){setError(error.message);}
+  };
+  const registerRequest=register();
+  try{setOptions(await api('/api/log-books/options'));}catch(error){setError(error.message);}finally{setLoading(false);}
+  await registerRequest;
+ };
 
  useEffect(()=>{void load()},[kind,session.token]);
 
