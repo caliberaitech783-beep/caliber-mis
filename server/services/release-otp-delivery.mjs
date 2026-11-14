@@ -50,23 +50,34 @@ export async function releaseApproverLogins(pool,alsoLogins=RELEASE_OTP_ALSO_LOG
  return [...new Set([...await ownerTelegramLogins(pool),...alsoLogins.map(l=>String(l).trim().toLowerCase()).filter(Boolean)])];
 }
 
-export function releaseApprovalMessage({actor,runId,commit,subject}){
+// Whom you are approving (owner's request, 15 Nov 2026): name, computer and IP as given by the person or
+// session that started the run, and the GitHub account, which GitHub vouches for. pr: merge + release.
+export function releaseApprovalMessage({actor,runId,commit,subject,requester={},pr=null}){
  return [
-  'Pulse-II urgent production release',
-  `Requested by: ${actor||'unknown'} (GitHub run ${runId||'unknown'})`,
+  pr?'Pulse-II: MERGE + RELEASE to production':'Pulse-II urgent production release',
+  ...(pr?[`PR #${pr.prNumber}: ${pr.prTitle||''}`.trim(),...(pr.changes?[`Changes: ${pr.changes}`]:[])]:[]),
   ...(commit?[`Version: ${String(commit).slice(0,7)}${subject?' - '+String(subject).slice(0,200):''}`]:[]),
-  'Approve only if main should go live now. The first tap decides.',
+  '',
+  `Requested by: ${requester.requestedBy||'(name not given)'}`,
+  `Computer: ${requester.computer||'(not given)'}`,
+  `IP address: ${requester.ip||'(not given)'}`,
+  '(name, computer and IP as given by the requester)',
+  `GitHub account: ${actor||'unknown'} (checked by GitHub), run ${runId||'unknown'}`,
+  ...(requester.runUrl?[requester.runUrl]:[]),
+  '',
+  pr?`Approve = merge PR #${pr.prNumber} into main and make it live now.`:'Approve only if main should go live now.',
+  'Mr Anoop or Mr Mohit Chadda: the first tap decides. Valid for 10 minutes.',
  ].join('\n');
 }
 
 // Sends the Approve / Reject message to every approver who has linked Telegram. Returns how many got it.
 export function createReleaseApprovalDelivery({pool,sendButtons,alsoLogins=RELEASE_OTP_ALSO_LOGINS}){
- return async({id,actor,runId,commit,subject})=>{
+ return async({id,actor,runId,commit,subject,requester={},pr=null})=>{
   const logins=await releaseApproverLogins(pool,alsoLogins);
   const {rows}=logins.length?await pool.query('SELECT DISTINCT chat_id FROM mis_telegram_links WHERE login_name=ANY($1::text[])',[logins]):{rows:[]};
-  const buttons=[[{text:'✅ Approve release',callback_data:`rel:${id}:a`},{text:'❌ Reject',callback_data:`rel:${id}:r`}]];
+  const buttons=[[{text:pr?`✅ Approve merge + release`:'✅ Approve release',callback_data:`rel:${id}:a`},{text:'❌ Reject',callback_data:`rel:${id}:r`}]];
   let sent=0;
-  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject}),buttons))sent++;}catch{}}
+  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject,requester,pr}),buttons))sent++;}catch{}}
   return {sent};
  };
 }

@@ -11,8 +11,15 @@ import {generateOtp,hashOtp,checkOtpAttempt,resendTooSoon,otpExpiresAt,OTP_TTL_M
 export const RELEASE_OTP_KEY='production_release_otp';
 const RECIPIENTS={telegram:'owners (Mr Anoop and Mr Mohit Chadda) on Telegram',whatsapp:'owner on WhatsApp +91 ******5281'};
 
-export function registerReleaseOtp(app,{pool,verifyIdentity,sendOtp,sendApproval=null,isApprover=async()=>false,now=()=>Date.now(),audit=()=>{}}){
+// Approve on a pull request (merge-and-release.yml): the merge run is told "approved" once, merges, and starts
+// the production release with the approval id; that release is then told "approved" once, within this time.
+const MERGE_RELEASE_WITHIN_MS=30*60*1000;
+const clean=(value,max)=>String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').trim().slice(0,max);
+// verifyApprovalIdentity also accepts the merge workflow; it may only ask for and follow Approve / Reject.
+export function registerReleaseOtp(app,{pool,verifyIdentity,verifyApprovalIdentity=verifyIdentity,sendOtp,sendApproval=null,isApprover=async()=>false,now=()=>Date.now(),audit=()=>{}}){
  const identity=async req=>verifyIdentity(String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim());
+ const approvalIdentity=async req=>verifyApprovalIdentity(String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim());
+ const fromMergeWorkflow=claims=>/\/merge-and-release\.yml@/.test(String(claims.workflow_ref||''));
  const withRow=async work=>{
   const client=await pool.connect();
   try{
@@ -65,34 +72,48 @@ export function registerReleaseOtp(app,{pool,verifyIdentity,sendOtp,sendApproval
  app.post('/api/release-otp/request-approval',async(req,res)=>{
   try{
    if(!sendApproval)throw Object.assign(new Error('Approval buttons are not set up on this server.'),{status:503});
-   const claims=await identity(req);
-   const id=randomUUID().replace(/-/g,'').slice(0,16),actor=String(claims.actor||''),runId=String(claims.run_id||'');
-   const commit=String(req.body?.commit||'').replace(/[^0-9a-f]/gi,'').slice(0,40),subject=String(req.body?.subject||'').slice(0,200);
+   const claims=await approvalIdentity(req),body=req.body||{};
+   const id=randomUUID().replace(/-/g,'').slice(0,16),actor=String(claims.triggering_actor||claims.actor||''),runId=String(claims.run_id||'');
+   const commit=String(body.commit||'').replace(/[^0-9a-f]/gi,'').slice(0,40),subject=String(body.subject||'').slice(0,200);
+   // Who asked and from where, as typed by the person or session that started the run (GitHub cannot tell).
+   const requester={requestedBy:clean(body.requestedBy,80),computer:clean(body.computer,80),ip:clean(body.ip,64),runUrl:clean(body.runUrl,300).startsWith('https://github.com/')?clean(body.runUrl,300):''};
+   const merge=fromMergeWorkflow(claims),prNumber=merge?Number(body.prNumber):null;
+   if(merge&&!(Number.isSafeInteger(prNumber)&&prNumber>0))throw Object.assign(new Error('A pull request number is required.'),{status:400});
+   const pr=merge?{prNumber,prTitle:clean(body.prTitle,200),changes:clean(body.changes,200)}:null;
    await withRow(async(row,save)=>{
     if(['sent','awaiting'].includes(row?.status)&&resendTooSoon(row.requested_at,{now:now()}))throw Object.assign(new Error(`An approval was asked less than ${OTP_RESEND_SECONDS} seconds ago. Wait a minute.`),{status:429});
-    const {sent}=await sendApproval({id,actor,runId,commit,subject});
+    const {sent}=await sendApproval({id,actor,runId,commit,subject,requester,pr});
     if(!sent)throw Object.assign(new Error('Nobody who can approve has linked Telegram, so no approval buttons could be sent.'),{status:503});
-    await save({id,mode:'buttons',status:'awaiting',attempts:0,requested_at:new Date(now()).toISOString(),expires_at:otpExpiresAt(now()),actor,run_id:runId,channel:'telegram'});
+    await save({id,mode:'buttons',kind:merge?'merge-release':'release',pr_number:pr?.prNumber??null,status:'awaiting',attempts:0,requested_at:new Date(now()).toISOString(),expires_at:otpExpiresAt(now()),actor,run_id:runId,channel:'telegram'});
    });
-   audit(req,{action:'Urgent release approval asked on Telegram',reference:runId,details:{actor}});
+   audit(req,{action:merge?'Merge and release approval asked on Telegram':'Urgent release approval asked on Telegram',reference:runId,details:{actor,...requester,...(pr||{})}});
    res.json({id,recipient:RECIPIENTS.telegram,expiresInMinutes:OTP_TTL_MINUTES});
   }catch(error){fail(res,error)}
  });
 
  app.post('/api/release-otp/decision',async(req,res)=>{
   try{
-   const claims=await identity(req),id=String(req.body?.id||'');
+   const claims=await approvalIdentity(req),id=String(req.body?.id||''),run=String(claims.run_id||'');
    const result=await withRow(async(row,save)=>{
     if(!row||row.mode!=='buttons'||row.id!==id)return {status:'missing'};
     if(row.status==='awaiting'&&new Date(row.expires_at).getTime()<=now()){await save({...row,status:'expired'});return {status:'expired'};}
     if(row.status==='approved'){
-     if(String(claims.run_id||'')!==row.run_id)return {status:'missing'};
+     if(run!==row.run_id)return {status:'missing'};
+     // A pull request approval goes on to the release the merge run starts.
+     if(row.kind==='merge-release'){await save({...row,status:'merge-approved',merged_by_run:run});return {status:'approved',by:row.decided_by,prNumber:row.pr_number};}
      await save({...row,status:'used',used_at:new Date(now()).toISOString(),used_by_run:row.run_id});
      return {status:'approved',by:row.decided_by};
     }
+    if(row.status==='merge-approved'){
+     if(run===row.run_id)return {status:'approved',by:row.decided_by,prNumber:row.pr_number};
+     if(fromMergeWorkflow(claims))return {status:'missing'};
+     if(now()-new Date(row.decided_at).getTime()>MERGE_RELEASE_WITHIN_MS){await save({...row,status:'expired'});return {status:'expired'};}
+     await save({...row,status:'used',used_at:new Date(now()).toISOString(),used_by_run:run});
+     return {status:'approved',by:row.decided_by,prNumber:row.pr_number};
+    }
     return {status:row.status,by:row.decided_by||''};
    });
-   if(result.status==='approved')audit(req,{action:'Urgent release approved on Telegram',reference:String(claims.run_id||''),details:{by:result.by}});
+   if(result.status==='approved')audit(req,{action:result.prNumber?'Merge and release approved on Telegram':'Urgent release approved on Telegram',reference:run,details:{by:result.by,...(result.prNumber?{prNumber:result.prNumber}:{})}});
    res.json(result);
   }catch(error){fail(res,error)}
  });

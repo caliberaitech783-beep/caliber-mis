@@ -193,7 +193,60 @@ test('approval buttons go only to approvers who linked Telegram, and nobody link
   assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'77',commit:'abcdef1234567',subject:'Fix'}),{sent:2});
   assert.deepEqual(sent.map(s=>s.chat),['11','22']);
   assert.deepEqual(sent[0].buttons[0].map(b=>b.callback_data),['rel:0123456789abcdef:a','rel:0123456789abcdef:r']);
-  assert.match(sent[0].text,/Requested by: dev1 \(GitHub run 77\)\nVersion: abcdef1 - Fix/);
+  assert.match(sent[0].text,/Version: abcdef1 - Fix\n/);
+  assert.match(sent[0].text,/GitHub account: dev1 \(checked by GitHub\), run 77/);
   links=[];
   assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'78'}),{sent:0});
+});
+
+// Merge + release (15 Nov 2026): "Merge a PR and make it live" asks with the PR and who asked; its Approve is
+// told to the merge run, then spent once by the production release that run starts.
+test('Approve on a pull request goes from the merge run to exactly one production release',async()=>{
+  const clock={now:NOW},pool=fakePool(),asked=[];
+  const app=express();app.use(express.json());
+  const mergeVerifier=createGithubOidcVerifier({audience:'pulse-ii-release',repository,workflowFile:'merge-and-release.yml',now:()=>NOW,fetchImpl:async()=>({ok:true,json:async()=>({keys:[jwk]})})});
+  const production=verifier(),either=async token=>{try{return await production(token);}catch{return mergeVerifier(token);}};
+  const audits=[];
+  const release=registerReleaseOtp(app,{pool,verifyIdentity:production,verifyApprovalIdentity:either,now:()=>clock.now,sendOtp:async()=>{throw Error('no OTP expected')},
+    sendApproval:async input=>{asked.push(input);return {sent:2}},isApprover:async login=>['anoop','mohitchadda'].includes(login),audit:(_req,entry)=>audits.push(entry)});
+  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s))});
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const post=async(path,body={},token=jwt())=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify(body)});return {status:r.status,body:await r.json()}};
+  const mergeRun=jwt({workflow_ref:`${repository}/.github/workflows/merge-and-release.yml@refs/heads/main`,run_id:'500',triggering_actor:'caliberaitech783-beep'});
+  const releaseRun=jwt({run_id:'501'}),otherRelease=jwt({run_id:'502'});
+  try{
+    // The merge workflow may ask for buttons, never for an OTP, and must name the pull request.
+    assert.equal((await post('/api/release-otp/request',{},mergeRun)).status,401);
+    assert.equal((await post('/api/release-otp/request-approval',{commit:'b'.repeat(40)},mergeRun)).status,400);
+    const ask=await post('/api/release-otp/request-approval',{commit:'b'.repeat(40),prNumber:'300',prTitle:'Join sheet 2',changes:'11 files, +176 / -20; checks passed (2)',
+      requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2\nInjected',runUrl:'https://github.com/x/runs/500'},mergeRun);
+    assert.equal(ask.status,200);
+    assert.deepEqual(asked[0].pr,{prNumber:300,prTitle:'Join sheet 2',changes:'11 files, +176 / -20; checks passed (2)'});
+    assert.deepEqual(asked[0].requester,{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2 Injected',runUrl:'https://github.com/x/runs/500'});
+    assert.equal(asked[0].actor,'caliberaitech783-beep');
+    const id=ask.body.id;
+    await release.handleTelegramCallback({data:`rel:${id}:a`,logins:['anoop']});
+    // The merge run learns it was approved (and may ask again), the release that run starts spends it once.
+    assert.deepEqual((await post('/api/release-otp/decision',{id},mergeRun)).body,{status:'approved',by:'anoop',prNumber:300});
+    assert.equal((await post('/api/release-otp/decision',{id},mergeRun)).body.status,'approved');
+    assert.deepEqual((await post('/api/release-otp/decision',{id},releaseRun)).body,{status:'approved',by:'anoop',prNumber:300});
+    assert.equal((await post('/api/release-otp/decision',{id},otherRelease)).body.status,'used');
+    assert.ok(audits.some(a=>a.action==='Merge and release approval asked on Telegram'&&a.details.ip==='49.36.1.2 Injected'&&a.details.prNumber===300));
+    assert.ok(audits.some(a=>a.action==='Merge and release approved on Telegram'&&a.reference==='501'));
+    // An approved merge left more than 30 minutes before its release starts is no longer good.
+    const late=(await post('/api/release-otp/request-approval',{commit:'c'.repeat(40),prNumber:'301'},jwt({workflow_ref:`${repository}/.github/workflows/merge-and-release.yml@refs/heads/main`,run_id:'600'}))).body.id;
+    await release.handleTelegramCallback({data:`rel:${late}:a`,logins:['mohitchadda']});
+    await post('/api/release-otp/decision',{id:late},jwt({workflow_ref:`${repository}/.github/workflows/merge-and-release.yml@refs/heads/main`,run_id:'600'}));
+    clock.now+=31*60*1000;
+    assert.equal((await post('/api/release-otp/decision',{id:late},releaseRun)).body.status,'expired');
+  }finally{server.close();}
+});
+
+test('the Telegram message names the pull request and whom you are approving',async()=>{
+  const {releaseApprovalMessage}=await import('../server/services/release-otp-delivery.mjs');
+  const text=releaseApprovalMessage({actor:'caliberaitech783-beep',runId:'500',commit:'b'.repeat(40),subject:'',
+    requester:{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2',runUrl:'https://github.com/x/runs/500'},pr:{prNumber:300,prTitle:'Join sheet 2',changes:'11 files'}});
+  for(const part of ['MERGE + RELEASE','PR #300: Join sheet 2','Changes: 11 files','Requested by: Claude Code session for Mohit','Computer: MOHIT-PC','IP address: 49.36.1.2','as given by the requester','GitHub account: caliberaitech783-beep (checked by GitHub)','https://github.com/x/runs/500','Approve = merge PR #300 into main and make it live now.'])assert.ok(text.includes(part),part);
+  const urgent=releaseApprovalMessage({actor:'dev1',runId:'77',commit:'abcdef1234'});
+  assert.ok(urgent.includes('Pulse-II urgent production release')&&urgent.includes('Requested by: (name not given)')&&urgent.includes('IP address: (not given)'));
 });

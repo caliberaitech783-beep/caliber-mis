@@ -1,0 +1,63 @@
+name: Merge a PR and make it live (Telegram approval)
+
+# Start with Run workflow (or: gh workflow run merge-and-release.yml -f pr=300 ...).
+# Pulse-II sends Mr Anoop and Mr Mohit Chadda Approve / Reject buttons on
+# Telegram with the PR, its size, who asked, from which computer and IP.
+# Approve merges the PR into main and starts the production release at once;
+# Reject or no answer in ten minutes merges nothing (scripts/merge-and-release.sh,
+# server/routes/release-otp.mjs).
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number to merge into main and make live'
+        required: true
+        type: string
+      requested_by:
+        description: 'Your name (shown in the Telegram approval)'
+        required: false
+        type: string
+      computer:
+        description: 'Computer name (shown in the Telegram approval)'
+        required: false
+        type: string
+      ip:
+        description: 'Your public IP address (shown in the Telegram approval)'
+        required: false
+        type: string
+
+# One approval at a time; a newer request replaces an unanswered one in Pulse-II.
+concurrency:
+  group: merge-and-release
+  cancel-in-progress: false
+
+jobs:
+  approve-merge-release:
+    # Only runs from main, so the Pulse-II identity check (main only) accepts it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      # Starts the production release workflow after the merge.
+      actions: write
+      # Identifies this run to Pulse-II for the approval.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Ask on Telegram, then merge and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MERGE_PR: ${{ inputs.pr }}
+          MERGE_REQUESTED_BY: ${{ inputs.requested_by }}
+          MERGE_COMPUTER: ${{ inputs.computer }}
+          MERGE_IP: ${{ inputs.ip }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/merge-and-release.sh

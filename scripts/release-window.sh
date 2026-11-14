@@ -25,30 +25,8 @@ next_window() {
 const w=[720,900,1080,1440].find(x=>x>m);process.stdout.write(w===1440?'00:00 IST tonight':String(w/60).padStart(2,'0')+':00 IST today')" "${RELEASE_WINDOW_NOW_MS:-}"
 }
 
-# This workflow run's GitHub OIDC identity, minted once in the main shell so the
-# mask command reaches the runner log.
-TOKEN=''
-mint_identity() {
-  [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]] || return 0
-  TOKEN="$(curl --fail --silent --max-time 20 -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pulse-ii-release" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).value||'')}catch{}})")"
-  [[ -z "$TOKEN" ]] || echo "::add-mask::${TOKEN}"
-}
-field() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(v==null?'':String(v))}catch{}})" "$1"; }
-# POST to Pulse-II's release OTP API as this workflow run. A failure without a
-# JSON reason (an HTML error page, no answer) is reported with its HTTP code.
-release_api() {
-  local path="$1" body="$2" response payload code
-  if [[ -z "$TOKEN" ]]; then echo '{"error":"GitHub did not issue an identity for this run (id-token: write)."}'; return 1; fi
-  response="$(curl --silent --max-time 30 -w '\n%{http_code}' -X POST -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' --data "$body" "${BASE_URL}${path}")"
-  payload="${response%$'\n'*}" code="${response##*$'\n'}"
-  if [[ "$code" == 200 ]]; then echo "$payload"; return 0; fi
-  if [[ -n "$(field error <<< "$payload")" ]]; then echo "$payload"
-  elif [[ "$code" == 000 ]]; then echo '{"error":"Pulse-II did not answer."}'
-  elif [[ "$code" == 404 ]]; then echo '{"error":"Pulse-II answered HTTP 404: the release OTP service is not live there yet (it goes live with the next scheduled release)."}'
-  else echo "{\"error\":\"Pulse-II answered HTTP ${code}.\"}"
-  fi
-  return 1
-}
+# mint_identity, field, release_api and json_body.
+source "$(dirname "${BASH_SOURCE[0]}")/release-api.sh"
 
 # A backup trigger (Run workflow with "Scheduled window") runs the same checks as
 # GitHub's own timer, because GitHub can start timed runs hours late or not at all.
@@ -65,13 +43,29 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
   OTP="$(tr -d '[:space:]' <<< "${RELEASE_OTP:-}")"
   if [[ -n "$OTP" ]]; then echo "::add-mask::${OTP}"; fi
   if [[ -n "$OTP" && ! "$OTP" =~ ^[0-9]{6}$ ]]; then summary "Urgent release: enter the six-digit OTP."; echo "::error::The OTP must be six digits."; exit 1; fi
+  MERGE_APPROVAL="$(tr -d '[:space:]' <<< "${RELEASE_APPROVAL:-}")"
+  if [[ -n "$MERGE_APPROVAL" && ! "$MERGE_APPROVAL" =~ ^[0-9a-f]{16}$ ]]; then summary "Urgent release: the approval reference is not valid."; echo "::error::Invalid approval reference."; exit 1; fi
   mint_identity
+  # Started by "Merge a PR and make it live" (scripts/merge-and-release.sh) after a tap on Approve: the PR is
+  # merged and this run spends that same approval, once.
+  if [[ -n "$MERGE_APPROVAL" ]]; then
+    if decision="$(release_api /api/release-otp/decision "{\"id\":\"${MERGE_APPROVAL}\"}")" && [[ "$(field status <<< "$decision")" == approved ]]; then
+      PR_NUMBER="$(field prNumber <<< "$decision")"
+      summary "Urgent release approved on Telegram by $(field by <<< "$decision")${PR_NUMBER:+ (PR #${PR_NUMBER} merged)}. Releasing main now."
+      decide true
+    fi
+    summary "Urgent release refused: the Telegram approval is $(field status <<< "${decision:-}")$(field error <<< "${decision:-}"). Nothing was deployed."
+    echo "::error::The merge approval was not accepted."
+    exit 1
+  fi
   # Approve / Reject on Telegram (owner's choice, 15 Nov 2026): the run sends the buttons to Mr Anoop and
   # Mr Mohit Chadda and waits for the first tap. Only when the buttons cannot be sent (the server does not
   # have them yet, or nobody has linked Telegram) does it fall back to the OTP below.
   if [[ -z "$OTP" ]]; then
-    SUBJECT="$(git log -1 --format=%s "${RELEASE_COMMIT:-HEAD}" 2>/dev/null | head -c 200 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.stringify(s.trim())))")"
-    if approval="$(release_api /api/release-otp/request-approval "{\"commit\":\"${RELEASE_COMMIT:-}\",\"subject\":${SUBJECT:-\"\"}}")" \
+    SUBJECT="$(git log -1 --format=%s "${RELEASE_COMMIT:-HEAD}" 2>/dev/null | head -c 200)"
+    # Who asked and from where, shown in the Telegram message (Run workflow fields; GitHub cannot tell).
+    BODY="$(json_body commit="${RELEASE_COMMIT:-}" subject="$SUBJECT" requestedBy="${RELEASE_REQUESTED_BY:-}" computer="${RELEASE_COMPUTER:-}" ip="${RELEASE_REQUESTER_IP:-}" runUrl="${RELEASE_RUN_URL:-}")"
+    if approval="$(release_api /api/release-otp/request-approval "$BODY")" \
         && APPROVAL_ID="$(field id <<< "$approval")" && [[ "$APPROVAL_ID" =~ ^[0-9a-f]{16}$ ]]; then
       WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-600}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
       summary "Urgent release: Approve / Reject was sent to the $(field recipient <<< "$approval"). Waiting up to $((WAIT/60)) minutes for a tap."
