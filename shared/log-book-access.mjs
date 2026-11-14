@@ -20,10 +20,27 @@ export const employeeAtLocation=(employee,location)=>Boolean(canonicalSiteName(l
 export function requireLogBookSite(scope,site){
   if(!siteAllowed(scope,site))throw Object.assign(new Error('This location is not assigned to your login.'),{status:403});
 }
+const LOG_BOOK_SITES_SQL='SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$';
 export async function filterLogBookSites(client,scope){
   if(scope.sites===null)return null;
-  const {rows}=await client.query('SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$');
+  const {rows}=await client.query(LOG_BOOK_SITES_SQL);
   return rows.map(row=>row.site).filter(site=>siteAllowed(scope,site));
+}
+// On 15 Nov 2026 the live scan entry read spent 3.2 s on average (10.4 s at most)
+// reading this site list, which it reads again on every poll. The list only grows
+// when a log book is saved at a site that had none, so one read is shared by all
+// callers for ttlMs and the user's scope is still applied to it on every call.
+export function createLogBookSiteCache({ttlMs=60_000,now=()=>Date.now()}={}){
+  let sites=null,readAt=0,reading=null;
+  const all=client=>{
+    if(sites&&now()-readAt<ttlMs)return sites;
+    reading??=client.query(LOG_BOOK_SITES_SQL).then(({rows})=>{sites=rows.map(row=>row.site);readAt=now();return sites;}).finally(()=>{reading=null;});
+    return reading;
+  };
+  return async(client,scope)=>{
+    if(scope.sites===null)return null;
+    return (await all(client)).filter(site=>siteAllowed(scope,site));
+  };
 }
 
 export async function allowedScanBatches(client,scope,login,batchId){
