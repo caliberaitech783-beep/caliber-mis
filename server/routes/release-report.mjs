@@ -13,7 +13,7 @@ const istTime=date=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day
 export function releaseTrigger(eventName,when){
  if(eventName==='schedule')return 'Scheduled window (GitHub timer)';
  if(String(when||'').startsWith('Scheduled window'))return 'Scheduled window (Pulse-II trigger)';
- if(String(when||'').startsWith('Urgent'))return 'Urgent release (owner OTP)';
+ if(String(when||'').startsWith('Urgent'))return /Telegram/.test(String(when))?'Urgent release (approved on Telegram)':'Urgent release (owner OTP)';
  return 'Run workflow';
 }
 

@@ -25,6 +25,7 @@ test('the report names how, when, the versions and every change',()=>{
   assert.equal(releaseTrigger('schedule',''),'Scheduled window (GitHub timer)');
   assert.equal(releaseTrigger('workflow_dispatch','Scheduled window now (backup trigger: ...)'),'Scheduled window (Pulse-II trigger)');
   assert.equal(releaseTrigger('workflow_dispatch','Urgent: deploy now (needs OTP from the owner)'),'Urgent release (owner OTP)');
+  assert.equal(releaseTrigger('workflow_dispatch','Urgent: deploy now (Mr Anoop or Mr Mohit Chadda approves on Telegram)'),'Urgent release (approved on Telegram)');
   const done=releaseReportMessage({status:'success',trigger:'Urgent release (owner OTP)',commit:B,previous:A,changes:[{pr:'300',title:'Continue the VLB card sheet'},{pr:'',title:'Fix a typo'}],runUrl:'https://github.com/x/y/actions/runs/1',at:AT});
   assert.equal(done,[
     '✅ Pulse-II production release DONE',
