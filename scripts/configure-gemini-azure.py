@@ -1,6 +1,8 @@
 """Configure a Pulse-II app with a CI-provided Gemini secret.
 
-Only the two named app settings are changed. Secrets/tokens and Azure response
+Only the three named app settings are changed: the key, the Gemini switch and
+MIS_GEMINI_UPRIGHT_ONLY=true (the scanners feed cards upright, so the first
+read sends no 180 degree views; see docs/GEMINI-SCANNING.md). Secrets/tokens and Azure response
 bodies never reach stdout, command arguments, temporary files or the repository.
 
 The target is the live app (caliber-mis-783) unless AZURE_WEBAPP_NAME and
@@ -53,14 +55,14 @@ def configure():
         except urllib.error.HTTPError as error:
             raise RuntimeError('%s Gemini settings update failed (HTTP %s).' % (site, error.code)) from None
 
+    wanted = {'GEMINI_API_KEY': key, 'MIS_GEMINI_API': 'true', 'MIS_GEMINI_UPRIGHT_ONLY': 'true'}
     settings = call('POST', '/list')['properties']
-    if settings.get('GEMINI_API_KEY') == key and settings.get('MIS_GEMINI_API') == 'true':
+    if all(settings.get(name) == value for name, value in wanted.items()):
         print('%s Gemini configuration already verified; no settings update or extra restart needed.' % site)
         return
-    settings['GEMINI_API_KEY'] = key
-    settings['MIS_GEMINI_API'] = 'true'
+    settings.update(wanted)
     saved = call('PUT', '', {'properties': settings})['properties']
-    if saved.get('GEMINI_API_KEY') != key or saved.get('MIS_GEMINI_API') != 'true':
+    if any(saved.get(name) != value for name, value in wanted.items()):
         raise RuntimeError('%s Gemini settings could not be verified.' % site)
     print('%s Gemini configuration verified; key remains server-side.' % site)
 
