@@ -1,4 +1,4 @@
-// Backup trigger for the production release windows (12:00, 15:00, 18:00, 00:00 IST).
+// Backup trigger for the production release windows (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST).
 // GitHub starts timed workflow runs late or not at all, so Pulse-II, which runs all
 // day, starts the release workflow itself in each window with the choice
 // "Scheduled window now". The workflow then runs the same checks as a timed run
@@ -10,7 +10,7 @@
 // instances share one claim per window in app_settings, so one start is sent.
 export const RELEASE_TRIGGER_SETTING_KEY='release_window_trigger';
 export const BACKUP_CHOICE='Scheduled window now (backup trigger: releases only in the hour after a window)';
-const WINDOWS=[0,720,900,1080]; // minutes after IST midnight
+const WINDOWS=[0,360,540,720,900,1080,1260]; // minutes after IST midnight
 const START_AFTER=1,STOP_AFTER=20; // minutes after the window start in which a start is sent
 
 // The window due at this moment, as "YYYY-MM-DD HH:MM IST", or null.

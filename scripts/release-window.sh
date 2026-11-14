@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Decides whether a production release window (12:00, 15:00, 18:00, 00:00 IST)
+# Decides whether a production release window (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST)
 # has anything to release. Writes deploy=true|false to $GITHUB_OUTPUT.
 #   - A manual run (Run workflow) asks RELEASE_WHEN:
 #       "Next scheduled window": nothing to do now; says when it goes out.
@@ -22,7 +22,7 @@ BASE_URL="${RELEASE_OTP_BASE_URL:-https://pulse-ll.cmll.in}"
 
 next_window() {
   node -e "const now=Number(process.argv[1])||Date.now(),ist=new Date(now+330*60000),m=ist.getUTCHours()*60+ist.getUTCMinutes();
-const w=[720,900,1080,1440].find(x=>x>m);process.stdout.write(w===1440?'00:00 IST tonight':String(w/60).padStart(2,'0')+':00 IST today')" "${RELEASE_WINDOW_NOW_MS:-}"
+const w=[360,540,720,900,1080,1260,1440].find(x=>x>m);process.stdout.write(w===1440?'00:00 IST tonight':String(w/60).padStart(2,'0')+':00 IST today')" "${RELEASE_WINDOW_NOW_MS:-}"
 }
 
 # mint_identity, field, release_api and json_body.
@@ -122,12 +122,12 @@ if [[ -n "${SCHEDULE_STARTS:-}" && "$TODAY_IST" < "$SCHEDULE_STARTS" ]]; then
   decide false
 fi
 
-# A window release goes out only in the hour after 12:00, 15:00, 18:00 or 00:00
+# A window release goes out only in the hour after 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 or 00:00
 # IST, so a timed run that GitHub starts hours late never deploys mid-shift.
 # The backup trigger covers the window; a late duplicate finds nothing new.
 WINDOW_GRACE_MINUTES="${WINDOW_GRACE_MINUTES:-59}"
 SINCE_WINDOW="$(node -e "const now=Number(process.argv[1])||Date.now(),ist=new Date(now+330*60000),m=ist.getUTCHours()*60+ist.getUTCMinutes();
-const last=[0,720,900,1080].filter(x=>x<=m).pop();process.stdout.write(String(m-last))" "${RELEASE_WINDOW_NOW_MS:-}")"
+const last=[0,360,540,720,900,1080,1260].filter(x=>x<=m).pop();process.stdout.write(String(m-last))" "${RELEASE_WINDOW_NOW_MS:-}")"
 if (( SINCE_WINDOW > WINDOW_GRACE_MINUTES )); then
   summary "Outside a release window (${SINCE_WINDOW} minutes after the last window start; the limit is ${WINDOW_GRACE_MINUTES}). Nothing deployed. Main goes out in the next window, $(next_window)."
   decide false

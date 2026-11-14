@@ -61,5 +61,5 @@ test('the release workflow sends the notice only for a release outside the sched
 
 test('the notice message names the schedule and the commit',()=>{
  const text=releaseNoticeMessage({commit,subject:'',actor:'',runUrl:'',liveAt:new Date('2026-11-15T03:00:00Z')});
- assert.match(text,/12:00, 15:00, 18:00 and 00:00 IST/);assert.match(text,/Started by: unknown/);
+ assert.match(text,/06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST/);assert.match(text,/Started by: unknown/);
 });

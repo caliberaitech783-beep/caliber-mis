@@ -10,7 +10,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 // scripts/release-window.sh decides whether a scheduled production window
-// (12:00, 15:00, 18:00, 00:00 IST) releases main.
+// (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST) releases main.
 const script=fileURLToPath(new URL('../scripts/release-window.sh',import.meta.url));
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim();
 
@@ -99,15 +99,17 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,act
   rmSync(scratch,{recursive:true,force:true});
   return result;
 };
-const URGENT='Urgent: deploy now (needs OTP from the owner)',LATER='Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)';
+const URGENT='Urgent: deploy now (needs OTP from the owner)',LATER='Next scheduled window (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST)';
 
 test('Run workflow without urgency deploys nothing and names the next window',async()=>{
   const at=async iso=>(await dispatch({when:LATER,now:Date.parse(iso),api:()=>[500,{}]}));
   const r=await at('2026-11-15T07:00:00Z');   // 12:30 IST
   assert.equal(r.deploy,'false');assert.equal(r.code,0);assert.equal(r.calls.length,0);
   assert.match(r.summary,/Not urgent: no deployment now\..*next scheduled window, 15:00 IST today\./);
-  assert.match((await at('2026-11-15T13:00:00Z')).summary,/00:00 IST tonight/);   // 18:30 IST
-  assert.match((await at('2026-11-15T19:00:00Z')).summary,/12:00 IST today/);     // 00:30 IST
+  assert.match((await at('2026-11-15T13:00:00Z')).summary,/21:00 IST today/);   // 18:30 IST
+  assert.match((await at('2026-11-15T16:00:00Z')).summary,/00:00 IST tonight/);   // 21:30 IST
+  assert.match((await at('2026-11-15T19:00:00Z')).summary,/06:00 IST today/);     // 00:30 IST
+  assert.match((await at('2026-11-15T01:00:00Z')).summary,/09:00 IST today/);     // 06:30 IST
 });
 
 test('Urgent without an OTP asks Pulse-II to send one and deploys nothing yet',async()=>{
@@ -192,8 +194,12 @@ test('a window release goes out only in the hour after a window, from GitHub tim
     assert.equal(decide(dir,{live,head,now:at('2026-11-20T06:30:00Z')}),'true');
     assert.equal(decide(dir,{live,head,now:at('2026-11-20T10:29:00Z')}),'true');
     assert.equal(decide(dir,{live,head,now:at('2026-11-20T18:35:00Z')}),'true');
-    // GitHub's timer six hours late (06:00 IST) or after the hour (13:01 IST): nothing deploys.
-    assert.equal(decide(dir,{live,head,now:at('2026-11-21T00:30:00Z')}),'false');
+    // The windows added on 15 Nov 2026: 06:00, 09:00 and 21:00 IST.
+    assert.equal(decide(dir,{live,head,now:at('2026-11-21T00:40:00Z')}),'true');   // 06:10 IST
+    assert.equal(decide(dir,{live,head,now:at('2026-11-21T03:35:00Z')}),'true');   // 09:05 IST
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T15:45:00Z')}),'true');   // 21:15 IST
+    // GitHub's timer hours late (03:30 IST, no window) or after the hour (13:01 IST): nothing deploys.
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T22:00:00Z')}),'false');
     assert.equal(decide(dir,{live,head,now:at('2026-11-20T07:31:00Z')}),'false');
     // The backup trigger follows the same rules.
     assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live,head,now:at('2026-11-20T12:32:00Z')}),'true');   // 18:02 IST
