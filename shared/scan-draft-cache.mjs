@@ -43,7 +43,7 @@ export async function saveScanCorrections({revision,baseline,draft,write,refresh
  try{return {saved:await write(revision,draft),draft,rebased:false};}
  catch(error){
   if(error.status!==409||error.message!=='Card changed. Reload before saving.')throw error;
-  const latest=await refresh();
+  const latest=await refresh(error);
   if(!latest||latest.revision<=revision||!['review','error'].includes(latest.status))throw error;
   const merged=mergeScanCorrections(baseline,draft,latest.draft);
   return {saved:await write(latest.revision,merged),draft:merged,rebased:true};

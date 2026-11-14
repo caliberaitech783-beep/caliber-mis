@@ -44,3 +44,20 @@ test('recovery preserves every draft field and rejects stale revisions and malfo
  map.set('user:card','broken');assert.equal(loadDraftRecovery(storage,'user:card',2),null);
  assert.equal(saveDraftRecovery({setItem:()=>{throw Error('quota')}},'user:card',2,draft),false);
 });
+test('a refused save hands its latest card to the retry so it need not read the whole entry',async()=>{
+ const latest={id:'card',revision:3,status:'review',draft:{remark:'old',employeeId:'123'}};
+ const conflict=Object.assign(new Error('Card changed. Reload before saving.'),{status:409,latest});
+ let seen;
+ const result=await saveScanCorrections({revision:2,baseline:{remark:'old'},draft:{remark:'new'},
+  write:async revision=>{if(revision===2)throw conflict;return {revision:4};},
+  refresh:async error=>{seen=error;return error.latest;}
+ });
+ assert.equal(seen,conflict);
+ assert.deepEqual(result,{saved:{revision:4},draft:{remark:'new',employeeId:'123'},rebased:true});
+});
+test('the card save answers a stale revision with the card it holds',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const route=await readFile(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
+ assert.match(route,/if\(req\.body\.revision!==card\.revision\)throw Object\.assign\(new Error\('Card changed\. Reload before saving\.'\),\{status:409,latest:\{id:card\.id,revision:card\.revision,status:card\.status,draft:card\.draft\}\}\)/);
+ assert.match(route,/json\(\{error:e\.message,\.\.\.\(e\.latest\?\{latest:e\.latest\}:\{\}\)\}\)/);
+});

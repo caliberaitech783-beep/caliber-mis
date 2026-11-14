@@ -414,8 +414,10 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
    result=await saveScanCorrections({
     revision:editRevision.current,baseline:editBaseline.current,draft:submitted,
     write:(revision,draft)=>api('/api/scan-cards/'+id,{method:'PUT',signal,body:JSON.stringify({draft,revision,action:'save'})}),
-    refresh:async()=>{
-     const latest=(await api('/api/scan-batches/'+source.batch_id+'?cards='+id,{signal})).cards?.find(row=>row.id===id);
+    // A refused save carries the card as MIS holds it now. Reading it from the entry instead
+    // would wait behind whole entry reads, which can take longer than this save may run.
+    refresh:async conflict=>{
+     const latest=conflict?.latest?.id===id?{...source,...conflict.latest}:(await api('/api/scan-batches/'+source.batch_id+'?cards='+id,{signal})).cards?.find(row=>row.id===id);
      if(latest)return {...latest,draft:editableDraft(latest)};
     }
    });
