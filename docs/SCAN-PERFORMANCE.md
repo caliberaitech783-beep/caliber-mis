@@ -396,7 +396,8 @@ The owner asked for a Telegram message for every scan entry of about 40 cards an
 for every whole batch, site by site. `server/services/scan-batch-report.mjs`
 checks every minute on Pulse-II and sends, on the MIS Telegram bot, to every MIS
 login whose registered mobile is the owner's number (the same rule as the urgent
-release OTP), under the header "Site-wise batch completion report":
+release OTP). Every message starts with the site name as its header (for example
+"📍 DIPKA"), then "Site-wise batch completion report" and the kind of report:
 
 - **Scan entry read**: when no card of an entry is queued or being read and no
   card arrived in the last two minutes. Cards read and failed, total time from

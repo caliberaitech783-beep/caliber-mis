@@ -3,6 +3,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {operationalScanSql} from '../../shared/operational-start.mjs';
 import {ownerTelegramLogins} from './release-otp-delivery.mjs';
+import {displaySiteName} from '../../shared/region-scope.mjs';
 
 // Site-wise batch completion report (owner's request, 14 Nov 2026), sent on the
 // MIS Telegram bot to the owner's linked logins (the owner's registered mobile,
@@ -22,6 +23,10 @@ export const SCAN_BATCH_REPORT_SCHEMA=`
  INSERT INTO mis_scan_batch_report_start(id) VALUES(1) ON CONFLICT DO NOTHING;`;
 
 export const REPORT_HEADER='📋 Site-wise batch completion report';
+// Template (owner, 15 Nov 2026): the site name is the header of every message,
+// so a chat full of reports reads site by site.
+export const siteHeader=site=>`📍 ${(displaySiteName(site)||'Site not set').toUpperCase()}`;
+const RULE='━━━━━━━━━━━━━━━━';
 // An entry still being uploaded is not "done": wait this long after its last card arrived.
 export const SETTLE_MS=2*60000;
 const LOOKBACK_DAYS=3;
@@ -108,16 +113,18 @@ export function entryReadMessage(entry,s){
  const ctx=entry.context||{};
  const autoClean=s.read-s.flagged;
  return [
-  REPORT_HEADER,
-  `Scan entry read - ${ctx.location||'Site not set'}`,
-  [kindLabel(entry),ctx.bookDate,vlbRecordShift(ctx)&&'Shift '+vlbRecordShift(ctx),entry.name].filter(Boolean).join(' | '),
-  line('Cards',`${s.read} read`+(s.errors?`, ${s.errors} failed`:'')),
-  line('Total time',`${duration(s.wallMs)} (upload ${clock(s.firstUpload)} to last read ${clock(s.lastRead)})`),
-  line('Queue wait',`median ${duration(s.queueMedianMs)}, max ${duration(s.queueMaxMs)}`),
-  line('Time per card',`median ${duration(s.readMedianMs)}, average ${duration(s.readAverageMs)} (Gemini ${duration(s.geminiMedianMs)})`),
-  line('Auto-check',`${autoClean} clean (${pct(autoClean,s.read)??'-'}%), ${s.flagged} flagged for review, ${s.rechecked} re-read`),
-  line('Model',`${s.models.join(', ')||'-'} | tokens ${tokens(s.tokens)}`),
-  'Accuracy after operator checking comes in the batch report when the batch is closed.',
+  siteHeader(ctx.location),
+  `${REPORT_HEADER} | Scan entry read`,
+  [kindLabel(entry),ctx.bookDate,vlbRecordShift(ctx)&&'Shift '+vlbRecordShift(ctx)].filter(Boolean).join(' | '),
+  line('Entry',entry.name||'-'),
+  RULE,
+  line('🗂 Cards',`${s.read} read`+(s.errors?`, ${s.errors} failed`:'')),
+  line('⏱ Total time',`${duration(s.wallMs)} (upload ${clock(s.firstUpload)} to last read ${clock(s.lastRead)})`),
+  line('⏳ Queue wait',`median ${duration(s.queueMedianMs)}, max ${duration(s.queueMaxMs)}`),
+  line('⚡ Time per card',`median ${duration(s.readMedianMs)}, average ${duration(s.readAverageMs)} (Gemini ${duration(s.geminiMedianMs)})`),
+  line('✅ Auto-check',`${autoClean} clean (${pct(autoClean,s.read)??'-'}%), ${s.flagged} flagged for review, ${s.rechecked} re-read`),
+  line('🤖 Model',`${s.models.join(', ')||'-'} | tokens ${tokens(s.tokens)}`),
+  line('🎯 Accuracy','comes in the batch report when the batch is closed (after operator checking)'),
  ].join('\n');
 }
 
@@ -127,17 +134,19 @@ export function batchClosedMessage(batch,entries){
  const kinds={};for(const e of entries)kinds[kindLabel(e)]=(kinds[kindLabel(e)]||0)+1;
  const closedAt=Date.parse(batch.closed_at);
  return [
-  REPORT_HEADER,
-  `Batch complete - ${batch.site}`,
-  [batch.name,batch.book_date,'Shift '+batch.shift].join(' | '),
-  line('Scan entries',`${entries.length} (${Object.entries(kinds).map(([k,n])=>k+' '+n).join(', ')})`),
-  line('Cards',`${all.cards} scanned, ${all.saved} saved, ${all.rejected} rejected`+(all.errors?`, ${all.errors} failed to read`:'')),
-  line('Scanning time',`${duration(all.wallMs)} (first upload ${clock(all.firstUpload)} to last read ${clock(all.lastRead)}), closed ${clock(closedAt)}`),
-  line('Time per card',`median ${duration(all.readMedianMs)}, queue wait median ${duration(all.queueMedianMs)}`),
-  line('Accuracy',all.saved?`${all.clean} of ${all.saved} saved cards needed no correction (${all.accuracy}%)`:'no saved scan cards'),
-  ...(fields?[line('Corrected',fields)]:[]),
-  line('Model',`${all.models.join(', ')||'-'} | tokens ${tokens(all.tokens)}`),
-  ...(entries.length>1?['Per entry:',...entries.map(e=>{const s=summarize(e.facts);return `- ${e.name}: ${s.cards} cards, ${duration(s.wallMs)}, accuracy ${s.accuracy??'-'}%`;})]:[]),
+  siteHeader(batch.site),
+  `${REPORT_HEADER} | Batch complete`,
+  [batch.book_date,'Shift '+batch.shift].join(' | '),
+  line('Batch',batch.name),
+  RULE,
+  line('📦 Scan entries',`${entries.length} (${Object.entries(kinds).map(([k,n])=>k+' '+n).join(', ')})`),
+  line('🗂 Cards',`${all.cards} scanned, ${all.saved} saved, ${all.rejected} rejected`+(all.errors?`, ${all.errors} failed to read`:'')),
+  line('⏱ Scanning time',`${duration(all.wallMs)} (first upload ${clock(all.firstUpload)} to last read ${clock(all.lastRead)}), closed ${clock(closedAt)}`),
+  line('⚡ Time per card',`median ${duration(all.readMedianMs)}, queue wait median ${duration(all.queueMedianMs)}`),
+  line('🎯 Accuracy',all.saved?`${all.accuracy}% (${all.clean} of ${all.saved} saved cards needed no correction)`:'no saved scan cards'),
+  ...(fields?[line('✏️ Corrected',fields)]:[]),
+  line('🤖 Model',`${all.models.join(', ')||'-'} | tokens ${tokens(all.tokens)}`),
+  ...(entries.length>1?[RULE,'Per scan entry:',...entries.map(e=>{const s=summarize(e.facts);return `- ${e.name}: ${s.cards} cards, ${duration(s.wallMs)}, accuracy ${s.accuracy??'-'}%`;})]:[]),
  ].join('\n');
 }
 
