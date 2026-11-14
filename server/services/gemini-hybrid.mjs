@@ -8,13 +8,25 @@ import path from 'node:path';
 import os from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-// Flash-Lite changed clearly written door numbers and employee IDs (5/S, 1/7,
-// 3/8), so cards are read by the full Flash model. MIS_GEMINI_MODEL switches
-// the model per deployment without a code change, for example to
-// gemini-4-hydrogen, or back to gemini-3.1-flash-lite if cost or quota requires it.
-export const DEFAULT_MODEL='gemini-3.8-flash';
-export const geminiModel=(env=process.env)=>/^gemini-[a-z0-9.-]{1,60}$/.test(env.MIS_GEMINI_MODEL?.trim()||'')?env.MIS_GEMINI_MODEL.trim():DEFAULT_MODEL;
+// Cards are read by Flash-Lite only (owner's decision, 14 Nov 2026, for speed):
+// on 1,061 saved cards (12 and 14 Nov 2026) it answered in 5.7 s at the median
+// against 23.6 s for gemini-3.8-flash. It confuses some handwriting (5/S doors,
+// KMR digits, times such as 07:67): 13.2% of its cards needed an operator
+// correction against 7.6% for Flash; operators correct the cards the checks flag.
+// MIS_GEMINI_MODEL changes the model without a code change. MIS_GEMINI_RECHECK_MODEL
+// (empty by default) can send the recheck of a doubtful card, one whose first read
+// failed the door, Caliber, meter or trip checks, to another model such as
+// gemini-3.8-flash; empty or "off" rereads with the first model.
+export const DEFAULT_MODEL='gemini-3.1-flash-lite';
+const modelSetting=value=>/^gemini-[a-z0-9.-]{1,60}$/.test(value?.trim()||'')?value.trim():'';
+export const geminiModel=(env=process.env)=>modelSetting(env.MIS_GEMINI_MODEL)||DEFAULT_MODEL;
 export const MODEL=geminiModel();
+// '' = reread with the first model.
+export const geminiRecheckModel=(env=process.env,first=geminiModel(env))=>{
+ const model=modelSetting(env.MIS_GEMINI_RECHECK_MODEL);
+ return model===first?'':model;
+};
+export const RECHECK_MODEL=geminiRecheckModel();
 // Gemini 4 ignores temperature and counts its thinking against maxOutputTokens,
 // so the 8192 cap that suits earlier models would cut a long trip card short.
 // It thinks at "high" unless told otherwise; "low" keeps a card read inside the

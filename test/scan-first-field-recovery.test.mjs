@@ -28,6 +28,24 @@ test('a unique linked vehicle master match allows automatic saving without an OC
   assert.equal(canAutoSaveScanCard(card,'vehicle',{assets}),false);
  }
 });
+test('a clean card is verified by the fast first model; a card with doubtful handwriting is reread by the recheck model',async()=>{
+ const seen=[];const readAgain=async options=>{seen.push(options.model);return {}};
+ await recoverFirstScanFields({kind:'vehicle',extracted:good(),context,readAgain,extract:async()=>good(),recheckModel:'gemini-3.8-flash'});
+ assert.deepEqual(seen,[undefined]);
+ for(const change of [{assetId:''},{employeeId:''},{closingKmr:150},{closingHmr:''},{scanMachineSummary:[{equipmentName:'LPC01',tripCount:9}]}]){
+  const extracted=good();Object.assign(extracted.draft,change);seen.length=0;
+  const result=await recoverFirstScanFields({kind:'vehicle',extracted,context,readAgain,extract:async()=>good(),recheckModel:'gemini-3.8-flash'});
+  assert.deepEqual(seen,['gemini-3.8-flash'],JSON.stringify(change));assert.equal(result.raw.firstScanFieldRecovery.model,'gemini-3.8-flash');
+ }
+ // A card dated for another shift is not a reading problem a stronger model fixes.
+ const otherShift=good();otherShift.draft.bookDate='2026-12-18';seen.length=0;
+ await recoverFirstScanFields({kind:'vehicle',extracted:otherShift,context,readAgain,extract:async()=>good(),recheckModel:'gemini-3.8-flash'});
+ assert.deepEqual(seen,[undefined]);
+ // Switched off: every reread stays on the first model.
+ const doubtful=good();doubtful.draft.assetId='';seen.length=0;
+ const kept=await recoverFirstScanFields({kind:'vehicle',extracted:doubtful,context,readAgain,extract:async()=>good(),recheckModel:''});
+ assert.deepEqual(seen,[undefined]);assert.equal(kept.raw.firstScanFieldRecovery.model,undefined);
+});
 test('one original-image reread recovers door, Caliber, HMR, KMR, summary and date/shift together',async()=>{
  const extracted=good();Object.assign(extracted.draft,{assetId:'',employeeId:'',openingHmr:'',closingKmr:150,bookDate:'2026-12-18',shiftId:'',cardShift:'',scanMachineSummary:[{equipmentName:'LPC01',tripCount:9}]});let calls=0;
  const result=await recoverFirstScanFields({kind:'vehicle',extracted,context,readAgain:async options=>{calls++;assert.equal(options.forceRead,true);return {}},extract:async()=>good()});

@@ -348,3 +348,44 @@ trip row, so it costs as much as the first read. A recheck that sends only the
 header detail and asks only for the door and site when the first read had no
 other problem would cut a clean card's reading time by about a third, but it
 changes what the second read confirms, so it waits for the owner's decision.
+
+## Flash-Lite only (14 November 2026, night)
+
+The owner set a target of 50 batches a day (about 7,750 trip cards) and chose
+Flash-Lite only for speed, with operators correcting the cards the checks flag.
+Measured on production before the change:
+
+- Reading time. `gemini.totalElapsedMs` of 547 Flash-Lite cards (12 November)
+  had a median of 5.7 s; 514 `gemini-3.8-flash` cards (14 November) 23.6 s,
+  with about 1,900 thinking tokens per card against none for Flash-Lite. From
+  13 November 04:00 IST, when PR 204 made Flash the default, the scan history
+  shows Gemini time per card rising from 5-7 s to 17-36 s and cards waiting
+  2-20 minutes (up to 74) before a reader took them.
+- Accuracy. Gemini's own reading (`raw_fields.extractionDraft`) compared with
+  the saved draft, two entries per site at all seven sites: 13.2% of Flash-Lite
+  cards and 7.6% of Flash cards had at least one value an operator corrected.
+  Flash-Lite's typical misses: a door's S read as 5 (12 cards), closing KMR
+  digits (27 cards against 8), trip times such as 07:67 (19 cells against 1).
+  Formatting differences (register numbers after a door or machine, the
+  V/1NNN separator) were not counted.
+- Rechecks. 112 of 264 Flash-Lite cards and 96 of 260 Flash cards failed at
+  least one first-read check (`firstScanProblems`), but a recheck by the same
+  model recovered a failed group on only 4 of the 112: most flagged cards fail
+  on master data, real meter jumps or another shift's card, not on reading.
+
+Change: `DEFAULT_MODEL` is `gemini-3.1-flash-lite` again, for the first read
+and the recheck (including the door verification of every clean trip card).
+`MIS_GEMINI_RECHECK_MODEL` (empty by default) can send the recheck of a card
+whose first read failed the door, Caliber ID, HMR, KMR or trip-table checks
+(`RECHECK_MODEL_GROUPS`) to another model such as `gemini-3.8-flash`,
+recorded in `firstScanFieldRecovery.model`; it is the lever if one site's hand
+corrections pile up.
+
+Expected, not measured: about 12 s of Gemini time per trip card (two reads)
+against about 47 s with Flash; eight workers on one queue read about 2,400
+cards an hour against about 600. At 50 batches a day about 430 more cards a day
+need a hand correction than with Flash. The next scanning day's cards show it:
+compare `gemini.totalElapsedMs`, `scanTiming.queuedMs`, the share of cards in
+review and the share corrected by hand per site. The scan engines take the
+change at their next nightly deploy (20:45 IST) or a manual run of the engine
+deploy workflow.

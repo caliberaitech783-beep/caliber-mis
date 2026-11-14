@@ -2,6 +2,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {normalizeCardShift,meterRuleIssues,machineDiscrepancies} from '../../shared/trip-card-rules.mjs';
 import {manualScanIssues} from '../../src/scan-manual-fields.mjs';
 import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
+import {RECHECK_MODEL} from './gemini-hybrid.mjs';
 const present=value=>value!==null&&value!==undefined&&String(value).trim()!=='';
 const groups={
  door:['doorText','assetId'],caliber:['employeeId'],hmr:['openingHmr','closingHmr'],kmr:['openingKmr','closingKmr'],
@@ -27,17 +28,23 @@ export function firstScanProblems(extracted,kind,context={}){
  if(!d.shiftId||!d.cardShift||issues.shiftId||context.cardShift&&normalizeCardShift(d.cardShift)!==normalizeCardShift(context.cardShift))found.push('shift');
  return found;
 }
+// Handwriting the first model can misread. When one of these fails the checks and a recheck model is
+// configured (MIS_GEMINI_RECHECK_MODEL, off by default), the recheck goes to that model; date, site and
+// shift problems usually mean a card of another shift or site, which a stronger model does not change.
+export const RECHECK_MODEL_GROUPS=['door','caliber','hmr','kmr','trips'];
 // One fresh read for all problem groups together, before the card enters review.
-export async function recoverFirstScanFields({kind,extracted,context={},allowMissingSite=false,alreadyRetried=false,readAgain,extract,onProgress}){
+// A clean card's door verification stays on the first model; recheckModel '' keeps every reread on it.
+export async function recoverFirstScanFields({kind,extracted,context={},allowMissingSite=false,alreadyRetried=false,readAgain,extract,onProgress,recheckModel=RECHECK_MODEL}){
  const detectedProblems=firstScanProblems(extracted,kind,context),problems=alreadyRetried?[]:detectedProblems,verifyDoor=kind==='vehicle'&&present(extracted.draft.doorText)&&Boolean(extracted.draft.assetId);
  if((alreadyRetried&&!verifyDoor)||(!problems.length&&!verifyDoor)||!extracted.draft.location&&!allowMissingSite)return extracted;
  const recoveryGroups=[...new Set([...problems,...(verifyDoor?['door']:[])])];
- const audit={attempted:true,groups:recoveryGroups,recovered:[]};extracted.raw.firstScanFieldRecovery=audit;
+ const model=recheckModel&&problems.some(group=>RECHECK_MODEL_GROUPS.includes(group))?recheckModel:'';
+ const audit={attempted:true,groups:recoveryGroups,recovered:[],...(model?{model}:{})};extracted.raw.firstScanFieldRecovery=audit;
  if(verifyDoor)extracted.raw.doorVerification={status:'pending',first:extracted.draft.doorText};
  if(problems.includes('door'))extracted.raw.firstScanDoorRecovery={attempted:true,originalDoor:extracted.draft.doorText||'',recovered:false};
  try{
   if(await onProgress?.('retrying',{reason:'Rechecking '+recoveryGroups.join(', ')+' against the original card',attempt:2,maxAttempts:2})===false)return extracted;
-  const result=await readAgain({forceRead:true,recoveryFields:recoveryGroups}),candidate=await extract(result);
+  const result=await readAgain({forceRead:true,recoveryFields:recoveryGroups,...(model?{model}:{})}),candidate=await extract(result);
   const remaining=firstScanProblems(candidate,kind,context),site=canonicalSiteName(context.location||extracted.draft.location);
   if(!candidate.draft.location||site&&canonicalSiteName(candidate.draft.location)!==site){if(verifyDoor)extracted.raw.doorVerification={...extracted.raw.doorVerification,status:'conflict',second:candidate.draft.doorText||''};return extracted;}
   if(verifyDoor){
