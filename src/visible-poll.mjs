@@ -1,6 +1,9 @@
 // Poll only while someone can see the page. A visible screen keeps its exact
 // cadence; a hidden tab stops asking and catches up the moment it is shown
 // again, so nobody waits for the next tick after switching back.
+//
+// intervalMs is a number, or a function read before each wait, so a screen can
+// ask often only while something is happening and rarely the rest of the time.
 export function startVisiblePoll(run, intervalMs, {
   win = globalThis.window,
   doc = globalThis.document,
@@ -23,7 +26,7 @@ export function startVisiblePoll(run, intervalMs, {
       running = false;
       if (!stopped) {
         if (queued) { queued = false; void tick(); }
-        else if (visible() || keepPolling()) timer = win.setTimeout(tick, intervalMs);
+        else if (visible() || keepPolling()) timer = win.setTimeout(tick, typeof intervalMs === "function" ? intervalMs() : intervalMs);
       }
     }
   };

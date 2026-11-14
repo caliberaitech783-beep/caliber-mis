@@ -73,7 +73,7 @@ test('pending announcements exclude withdrawn ones, ones already closed by this 
 test('the shared popup polls announcements with direct messages and stays until the user closes it', () => {
   const inbox = source.slice(source.indexOf('function SessionMessageInbox('), source.indexOf('function UserSessionsPage('));
   assert.match(inbox, /fetch\('\/api\/session-messages',\{cache:'no-store',signal:controller\.signal,headers\}\),\n\s+fetch\('\/api\/announcements\/pending',\{cache:'no-store',signal:controller\.signal,headers\}\),/);
-  assert.match(inbox, /void load\(\);\n\s+const stopPolling=startVisiblePoll\(load,3000\);/, 'checks pending announcements immediately when a user signs in or comes online');
+  assert.match(inbox, /void load\(\);\n\s+const stopPolling=startVisiblePoll\(load,15000\);/, 'checks pending announcements immediately when a user signs in or comes online, then every 15 s');
   assert.match(inbox, /\.map\(\(item\)=>\(\{\.\.\.item,kind:'message'\}\)\),\n\s+\.\.\.\(Array\.isArray\(announcementResult\.announcements\)/, 'direct messages come first');
   assert.match(inbox, /const isAnnouncement=current\.kind==='announcement';/);
   assert.match(inbox, /isAnnouncement\?`\/api\/announcements\/\$\{encodeURIComponent\(current\.id\)\}\/acknowledge`:`\/api\/session-messages\/\$\{encodeURIComponent\(current\.id\)\}\/dismiss`/);

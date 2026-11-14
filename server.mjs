@@ -2173,6 +2173,19 @@ async function expireRemoteAssistanceSessions(){
   }
   return rows.length;
 }
+// Polled routes (every signed-in screen's check, the viewer's event poll) call this one: the
+// expiry update then runs at most once every 30 s for all of them together, and the cleanup
+// timer runs it every minute anyway. Their reads skip expired rows by expires_at themselves.
+const REMOTE_ASSISTANCE_EXPIRY_THROTTLE_MS=30_000;
+let remoteAssistanceExpiryRanAt=0;
+let remoteAssistanceExpiryPending=null;
+function expireRemoteAssistanceSessionsThrottled(now=Date.now()){
+  if(remoteAssistanceExpiryPending)return remoteAssistanceExpiryPending;
+  if(now-remoteAssistanceExpiryRanAt<REMOTE_ASSISTANCE_EXPIRY_THROTTLE_MS)return Promise.resolve(0);
+  remoteAssistanceExpiryRanAt=now;
+  remoteAssistanceExpiryPending=expireRemoteAssistanceSessions().finally(()=>{remoteAssistanceExpiryPending=null;});
+  return remoteAssistanceExpiryPending;
+}
 
 function remoteAssistancePayload(row){
   if(!row)return null;
@@ -2862,12 +2875,12 @@ app.delete('/api/saved-reports/:reportId',requireSession,async(req,res,next)=>{
 
 app.get('/api/remote-assistance/current',requireSession,async(req,res,next)=>{
   try{
-    await expireRemoteAssistanceSessions();
+    await expireRemoteAssistanceSessionsThrottled();
     const {rows}=await pool.query(`SELECT id,status,access_level AS "accessLevel",reason,duration_minutes AS "durationMinutes",
       requester_login AS "requesterLogin",requester_name AS "requesterName",target_login AS "targetLogin",target_name AS "targetName",
       requested_at AS "requestedAt",responded_at AS "respondedAt",started_at AS "startedAt",expires_at AS "expiresAt"
       FROM remote_assistance_sessions
-      WHERE target_session_public_id=$1 AND status=ANY($2::text[])
+      WHERE target_session_public_id=$1 AND status=ANY($2::text[]) AND expires_at>NOW()
       ORDER BY requested_at DESC LIMIT 1`,[req.session.sessionId,REMOTE_ASSISTANCE_LIVE_STATUSES]);
     req.audit=false;
     res.set('Cache-Control','no-store');
@@ -2951,7 +2964,7 @@ app.post('/api/remote-assistance/:assistanceId/events',requireSession,async(req,
 
 app.get('/api/remote-assistance/:assistanceId/events',requireSuper,requireAdministrator,async(req,res,next)=>{
   try{
-    await expireRemoteAssistanceSessions();
+    await expireRemoteAssistanceSessionsThrottled();
     const assistanceId=String(req.params.assistanceId||'');
     const after=Math.max(0,Number(req.query.after)||0);
     if(!validRemoteAssistanceId(assistanceId))return res.status(400).json({error:'Invalid assistance session.'});
