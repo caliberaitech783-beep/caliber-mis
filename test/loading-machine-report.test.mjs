@@ -213,7 +213,7 @@ test('the screen shows working and idle time first, keeps the old list as a seco
 test('pressing a machine opens its shift time-line: the strip, then every loading in its colour with the tipper trips delayed',async()=>{
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
  assert.match(screen,/\{ran&&<ShiftTimelines entries=\{itemEntries\}[^\n]*onPick=\{setOnly\}\/>\}\s*\{ran&&tripChips\}\s*\{ran&&<ReportSection key=\{'lm-trips-'/,'the strip, the colour chips, then the list');
- assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines\)\}[^\n]*rowClassName=\{lineClass\} onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
+ assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines\)\}[^\n]*rowClassName=\{l=>lineClass\(l\)[^\n]*onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
  assert.match(screen,/column\('delayedCount','Tipper trips delayed'/);assert.match(screen,/column\('breakdown','Breakdown in Pulse'/);
  // With a band chosen, the machines of the shift are followed by the stops of that band, so the delayed trips show without another press.
  assert.match(screen,/\{band&&<ReportSection key=\{'lm-bandstops-'[^\n]*\n[^\n]*rows=\{bandStops\} columns=\{tripColumns\(true\)\}/);

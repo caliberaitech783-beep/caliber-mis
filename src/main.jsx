@@ -376,6 +376,7 @@ import "./workspace-night.css";
 import "./vehicle-history-density.css";
 import "./ticket-status-tabs.css";
 import "./linked-request-picker.css";
+import "./report-step-style.css";
 import "./workspace-readability.css";
 import DailyBdBalanceChart from "./daily-bd-balance-chart.jsx";
 import EmployeeTenureReport from "./employee-tenure-report.jsx";
@@ -3446,6 +3447,7 @@ function FilterableHeader({
   fitHeader = false,
   width = 0,
   onResize = null,
+  className = "",
 }) {
   const [valueSearch, setValueSearch] = useState("");
   const [resizing, setResizing] = useState(false);
@@ -3520,7 +3522,7 @@ function FilterableHeader({
     };
   }, [open]);
   return (
-    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""} ${fitHeader ? "report-fit-header" : ""} ${width ? "column-resized" : ""}`} style={columnWidthStyle(width)} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
+    <th className={`column-filter-header ${open ? "open" : ""} ${wrapHeader ? "report-wrap-header" : ""} ${fitHeader ? "report-fit-header" : ""} ${width ? "column-resized" : ""} ${className}`} style={columnWidthStyle(width)} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
       <button
         ref={triggerRef}
         className={`sort-header ${active ? "active" : ""} ${filterValue ? "filtered" : ""}`}
@@ -4314,7 +4316,20 @@ function ActionsTable(props) {
 }
 // A click on a control inside the row (button, link, field) or a text selection is not a row click.
 const plainRowClick = (event) => !event.target.closest?.("button,a,input,select,textarea,label") && !window.getSelection?.().toString();
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
+// The columns whose every value on the page is a number or a percentage: report steps put them on the right.
+function figureColumnKeys(columns, rows, valueOf) {
+  return new Set(columns.filter((column) => {
+    let found = false;
+    for (const row of rows) {
+      const text = String(valueOf(row, column) ?? "").trim();
+      if (!text || text === "—" || text === "-") continue;
+      if (!/^[-+]?[\d,]*\.?\d+\s*%?$/.test(text)) return false;
+      found = true;
+    }
+    return found;
+  }).map((column) => column.key));
+}
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4407,12 +4422,17 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     else groups.push({ label, count: 1 });
     return groups;
   }, []);
+  // Report steps draw like the OT report's Step tables: no Sr. No. column, figures on the right.
+  const serialFirst = serialColumn && displayedColumns[0]?.key !== 'requestShift';
+  const serialAfterShift = serialColumn && displayedColumns[0]?.key === 'requestShift';
+  const figureKeys = serialColumn ? new Set() : figureColumnKeys(displayedColumns, [...pagedRows, ...totalRows], columnValue);
+  const extraColumns = Number(serialColumn) + Number(Boolean(rowAction));
   const renderRow = (row, index, serial) => (
     <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
-      {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{displayedColumns[0]?.key!=='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}
-      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{column.key==='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}</React.Fragment>)}
+      {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{serialFirst&&<td className="table-serial-cell">{serial ?? "—"}</td>}
+      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell", figureKeys.has(column.key) && "report-figure-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{serialAfterShift&&column.key==='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}</React.Fragment>)}
     </tr>
-    {rowEditor?.(row, displayedColumns.length + 1 + Number(Boolean(rowAction)))}
+    {rowEditor?.(row, displayedColumns.length + extraColumns)}
     </React.Fragment>
   );
   const reportTableToolbar = (
@@ -4429,14 +4449,15 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const table = (
       <table className="report-filter-table">
         <thead>{headerGroups.some(group => group.label) && <tr className="fleet-site-header">
-          {rowAction && <td aria-hidden="true"/>}{displayedColumns[0]?.key !== 'requestShift' && <td aria-hidden="true"/>}
+          {rowAction && <td aria-hidden="true"/>}{serialFirst && <td aria-hidden="true"/>}
           {headerGroups.map(({ label, count }, index) => label
             ? <th key={index} scope="colgroup" colSpan={count}>{label}</th>
             : <td key={index} colSpan={count} aria-hidden="true"/>)}
-        </tr>}<tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{displayedColumns[0]?.key!=='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
+        </tr>}<tr>{rowAction&&<th className="batch-edit-action" scope="col">Action</th>}{serialFirst&&<th className="table-serial-header" scope="col">Sr. No.</th>}{displayedColumns.map((column) => (
           <React.Fragment key={column.key}>
           <FilterableHeader
             key={column.key}
+            className={figureKeys.has(column.key) ? "report-figure-header" : ""}
             durationSortOnly={isDurationColumn(column.label, column.key)}
             wrapHeader={column.wrapHeader}
             fitHeader
@@ -4451,11 +4472,11 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
             values={columnValues[column.key] || []}
             filterValue={columnFilters[column.key] || ""}
             onFilterChange={(value) => updateColumnFilter(column.key, value)}
-          />{column.key==='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}
+          />{serialAfterShift&&column.key==='requestShift'&&<th className="table-serial-header" scope="col">Sr. No.</th>}
           </React.Fragment>
         ))}</tr></thead>
         <tbody>
-          {pagedRows.length ? pagedRows.map((row, index) => renderRow(row, index, subtotalSerials ? subtotalSerials.get(row) : firstVisibleRow + index)) : <tr><td colSpan={displayedColumns.length + 1 + Number(Boolean(rowAction))} className="empty-state">{emptyMessage}</td></tr>}
+          {pagedRows.length ? pagedRows.map((row, index) => renderRow(row, index, subtotalSerials ? subtotalSerials.get(row) : firstVisibleRow + index)) : <tr><td colSpan={displayedColumns.length + extraColumns} className="empty-state">{emptyMessage}</td></tr>}
         </tbody>
         {totalRows.length > 0 && <tfoot className="report-table-totals">{totalRows.map((row, index) => renderRow(row, index))}</tfoot>}
       </table>
@@ -7361,6 +7382,12 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
+// Steps sit one below the other (Step 1, Step 2, Step 3...). A step that opens below the screen is brought into view
+// once, when it first appears: one function for every step, so React calls it only when the step mounts.
+function showOpenedStep(node) {
+  if (!node?.scrollIntoView || typeof window === "undefined") return;
+  if (node.getBoundingClientRect().top > window.innerHeight * 0.6) node.scrollIntoView({ block: "start" });
+}
 function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
   const recordCount = rows.filter((row) => !isTotalRow?.(row) && !isSubtotalRow?.(row)).length;
   const [exportView, setExportView] = useState(null);
@@ -7369,8 +7396,9 @@ function ReportSection({ title, description, category = "general", icon: ReportI
   const [searchQuery, setSearchQuery] = useState(query);
   const [tableToolbarTarget, setTableToolbarTarget] = useState(null);
   const visibleColumns = visibleColumnKeys.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
+  const laterStep = Number(/^Step (\d+)/.exec(String(title))?.[1] || 0) > 1;
   return (
-    <div className="reports-section generated-report-section" data-category={category}>
+    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category}>
       <div className="reports-section-heading">
         <div className="generated-report-title">
           <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>
@@ -7400,7 +7428,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} serialColumn={false}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}

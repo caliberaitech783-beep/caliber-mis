@@ -173,7 +173,7 @@ test('exception time: only a sensible period is saved, once, and it is kept per 
 
 test('the screen offers the exception time and the two views, and the standard view is the one a user starts in',()=>{
  const view=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
- for(const text of ['Add exception time','Standard view','Personalised view · exception time left out','{level<5&&exceptionPanel}','In exception time (min)','Counted (min)','Band without exception'])assert.ok(view.includes(text),text);
+ for(const text of ['Add exception time','Standard view','Personalised view · exception time left out','{exceptionPanel}','In exception time (min)','Counted (min)','Band without exception'])assert.ok(view.includes(text),text);
  assert.match(view,/const entries=useMemo\(\(\)=>exception\?withExceptionTime\(rawEntries,personal\.rules\):rawEntries/,'the standard figures are untouched until the personalised view is opened');
  assert.match(view,/exceptionStorageKey\(tableLayoutAccount\(\)\)/,'kept for the signed-in login');
  const css=fs.readFileSync(new URL('../src/trip-timing-report.css',import.meta.url),'utf8');

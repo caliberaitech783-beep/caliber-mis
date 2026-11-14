@@ -1,0 +1,134 @@
+/* Owner's rule, 15 Nov 2026: every report is drawn like the OT Multiple Duties Step 1 / Step 2 / Step 3 tables.
+   Only the drawing changes; each report keeps its own rows, columns, colours and tools.
+   Colour and background rules sit inside :where() so a report's own row colours (breakdown red, no hours brown,
+   totals) still win over the plain look. */
+
+.generated-report-section .reports-detail-table {
+  margin: 16px 20px 20px;
+  padding: 4px 18px 0;
+  border: 1px solid #dfd6e9;
+  border-radius: 12px;
+  background: var(--card, #fff);
+  box-shadow: none;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.generated-report-section .report-filter-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: 14px;
+}
+
+/* Headings: small capitals in grey, no lines between them, sort arrows only when pointed at or in use. */
+.generated-report-section .report-filter-table thead th {
+  position: relative;
+  box-shadow: none;
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid #e6dff0;
+  color: #8490a4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  vertical-align: bottom;
+}
+:where(.generated-report-section .report-filter-table thead) th { background: #f9fafc; }
+.generated-report-section .report-filter-table thead th .sort-header {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.generated-report-section .report-filter-table thead th .sort-header svg { position: absolute; top: 4px; right: 3px; width: 12px; height: 12px; opacity: 0; transition: opacity .15s ease; }
+.generated-report-section .report-filter-table thead th:hover .sort-header svg,
+.generated-report-section .report-filter-table thead th:focus-within .sort-header svg,
+.generated-report-section .report-filter-table thead th[aria-sort="ascending"] .sort-header svg,
+.generated-report-section .report-filter-table thead th[aria-sort="descending"] .sort-header svg { opacity: .75; }
+.generated-report-section .report-filter-table .column-resize-handle::after { background: transparent; }
+.generated-report-section .report-filter-table .column-resize-handle:hover::after,
+.generated-report-section .report-filter-table .column-resize-handle:focus-visible::after,
+.generated-report-section .report-filter-table .column-resize-handle.dragging::after { background: #7c3aed; }
+
+/* Lines: one thin rule under each, roomy cells, figures on the right as in the OT tables. */
+.generated-report-section .report-filter-table tbody td,
+.generated-report-section .report-filter-table tfoot td {
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid #e6dff0;
+  font-size: 14px;
+  vertical-align: middle;
+}
+:where(.generated-report-section .report-filter-table tbody tr) > td { color: #5e6d84; }
+:where(.generated-report-section .report-filter-table tbody tr) > td:first-child:not(.batch-edit-action) { background: #f9fafc; color: #4d5b74; font-weight: 700; }
+.generated-report-section .report-filter-table td.report-figure-cell,
+.generated-report-section .report-filter-table th.report-figure-header { text-align: right; }
+.generated-report-section .report-filter-table th.report-figure-header .sort-header { justify-content: flex-end; margin-left: auto; text-align: right; }
+
+/* A line for all of them: the purple band with a stronger rule above it, as under the OT categories. */
+:where(.generated-report-section .report-filter-table) :is(tfoot.report-table-totals td, tr.tt-total > td, tr.bs-total > td) {
+  border-top: 2px solid #c7b5dd;
+  background: color-mix(in srgb, #59338b 7%, transparent);
+  color: #2d2547;
+  font-weight: 750;
+}
+
+/* Coloured counts: soft square boxes instead of round pills. */
+.generated-report-section .reports-detail-table :is(.tt-band, .lm-count, .bs-rating, .bs-stage) {
+  min-width: 46px;
+  padding: 4px 10px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+.generated-report-section .reports-detail-table button:is(.tt-band, .lm-count, .bs-rating):hover { border-color: currentColor; }
+
+/* Long headings wrap onto more lines, as in the OT tables, so a step fits the screen instead of scrolling sideways. */
+.generated-report-section .report-filter-table thead th,
+.generated-report-section .report-filter-table thead th .sort-header,
+.generated-report-section .report-filter-table thead th .sort-header > span { white-space: normal; }
+.generated-report-section .report-filter-table thead th .sort-header > span { min-width: 6ch; overflow-wrap: normal; }
+
+.generated-report-section .report-table-pagination {
+  border-top: 0;
+  background: transparent;
+}
+
+@media (max-width: 700px) {
+  .generated-report-section .reports-detail-table { margin: 12px; padding: 2px 8px 0; }
+  .generated-report-section .report-filter-table thead th,
+  .generated-report-section .report-filter-table tbody td,
+  .generated-report-section .report-filter-table tfoot td { padding: 10px 8px; }
+}
+
+:root[data-theme="dark"] .generated-report-section .reports-detail-table { border-color: #2c415e; background: #142136; }
+:root[data-theme="dark"] .generated-report-section .report-filter-table thead th { border-color: #2c415e; color: #9fb0c8; }
+:root[data-theme="dark"] :where(.generated-report-section .report-filter-table thead) th { background: #111d30; }
+:root[data-theme="dark"] .generated-report-section .report-filter-table tbody td,
+:root[data-theme="dark"] .generated-report-section .report-filter-table tfoot td { border-color: #2c415e; }
+:root[data-theme="dark"] :where(.generated-report-section .report-filter-table tbody tr) > td { color: #c9d6ea; }
+:root[data-theme="dark"] :where(.generated-report-section .report-filter-table tbody tr) > td:first-child:not(.batch-edit-action) { background: #17253a; color: #eef3fb; }
+:root[data-theme="dark"] :where(.generated-report-section .report-filter-table) :is(tfoot.report-table-totals td, tr.tt-total > td, tr.bs-total > td) { border-top-color: #5b4a7d; background: color-mix(in srgb, #8b6cc7 18%, #142136); color: #fff; }
+
+@media print {
+  .generated-report-section .reports-detail-table { border: 0; padding: 0; margin: 0; overflow: visible; }
+}
+
+/* Steps stay one below the other; the line that opened the step below is outlined in purple (its own colour stays). */
+.generated-report-section .report-filter-table tr.report-row-picked > td { box-shadow: inset 0 2px 0 #59338b, inset 0 -2px 0 #59338b; }
+.generated-report-section .report-filter-table tr.report-row-picked > td:first-child { box-shadow: inset 4px 0 0 #59338b, inset 0 2px 0 #59338b, inset 0 -2px 0 #59338b; }
+.generated-report-section .report-filter-table tr.report-row-picked > td:last-child { box-shadow: inset -2px 0 0 #59338b, inset 0 2px 0 #59338b, inset 0 -2px 0 #59338b; }
+:root[data-theme="dark"] .generated-report-section .report-filter-table tr.report-row-picked > td { box-shadow: inset 0 2px 0 #b79cf0, inset 0 -2px 0 #b79cf0; }
+:root[data-theme="dark"] .generated-report-section .report-filter-table tr.report-row-picked > td:first-child { box-shadow: inset 4px 0 0 #b79cf0, inset 0 2px 0 #b79cf0, inset 0 -2px 0 #b79cf0; }
+:root[data-theme="dark"] .generated-report-section .report-filter-table tr.report-row-picked > td:last-child { box-shadow: inset -2px 0 0 #b79cf0, inset 0 2px 0 #b79cf0, inset 0 -2px 0 #b79cf0; }
+
+/* The step title keeps a readable width; the date boxes, Rows and Actions move under it when the line is too short.
+   Phones already put them under the title (reports-workspace.css), so this is for wider screens only. */
+@media (min-width: 701px) {
+  .generated-report-section:not([data-category="vlb-saved-batch"]) > .reports-section-heading { flex-flow: row wrap; row-gap: 10px; }
+  .generated-report-section:not([data-category="vlb-saved-batch"]) > .reports-section-heading > .generated-report-title { flex: 1 1 420px; min-width: 0; }
+  .generated-report-section:not([data-category="vlb-saved-batch"]) > .reports-section-heading > .generated-report-heading-actions { margin-left: auto; }
+}
