@@ -92,7 +92,7 @@ jobs:
         run: |
           runtime="$RUNNER_TEMP/scan-runtime"
           mkdir -p "$runtime"
-          cp -a server shared assets package.json package-lock.json DEPLOYMENT_SHA "$runtime/"
+          cp -a server shared assets public scripts src package.json package-lock.json DEPLOYMENT_SHA "$runtime/"
           npm ci --prefix "$runtime" --omit=dev --no-audit --no-fund
           cd "$runtime"
           node --input-type=module -e "await import('./server/scan-engine.mjs'); await import('./server/routes/bulk-card-scanning.mjs')"
