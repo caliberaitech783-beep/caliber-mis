@@ -7,7 +7,7 @@ Date: 11 November 2026. Code: branch `feat/six-scan-engines`.
 | | Before | After |
 |---|---|---|
 | Queue | One queue for every site inside Pulse-II | One queue per site |
-| Cards read at once | 5 for the whole company | 8 per site in the engines (setting `MIS_SCAN_LANE_CONCURRENCY`, max 10) |
+| Cards read at once | 5 for the whole company (8 since 15 November 2026) | 8 per site in the engines (setting `MIS_SCAN_LANE_CONCURRENCY`, max 10) |
 | Gemini key | One shared key | One key per site (`GEMINI_API_KEY_<SITE>`), shared key as fallback |
 | Where reading runs | Inside Pulse-II, on the same server as the screens | A separate Azure Web App, one process per site |
 | A Pulse-II restart | Every card being read went back for a second Gemini read | Cards being read finish first (up to 45 s); unfinished cards are handed back once |
