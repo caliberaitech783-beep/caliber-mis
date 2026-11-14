@@ -59,7 +59,7 @@ test('Azure stages the complete validated runtime without Git history',async()=>
  assert.ok(workflow.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/pulse-runtime/"`));
  assert.ok(workflow.includes('pulse-runtime.zip'));
  assert.ok(workflow.includes('az webapp deployment source config-zip'));
- assert.ok(scanWorkflow.includes('cp -a server shared assets package.json package-lock.json DEPLOYMENT_SHA'));
+ assert.ok(scanWorkflow.includes('cp -a server shared assets public scripts src package.json package-lock.json DEPLOYMENT_SHA'));
  assert.ok(scanWorkflow.includes('npm ci --prefix "$runtime" --omit=dev'));
  assert.ok(scanWorkflow.includes("await import('./server/scan-engine.mjs')"));
  assert.ok(scanWorkflow.includes('SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false'));
