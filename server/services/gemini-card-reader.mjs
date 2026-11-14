@@ -60,10 +60,10 @@ export function parseCardResponse(raw,kind){
 // gate; HTTP 429 responses still widen the spacing adaptively per key.
 // MIS_GEMINI_MIN_INTERVAL_MS overrides it (e.g. 1000 or 2000 if quota is tight).
 export function geminiMinIntervalMs(env=process.env){const raw=env.MIS_GEMINI_MIN_INTERVAL_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):500;}
-// A healthy card read finishes well inside 25 s; abandon a hung connection so
+// Allow slower Gemini reads to finish; abandon a hung connection so
 // its retained scan can be retried without keeping the card blocked for minutes.
 // MIS_GEMINI_TIMEOUT_MS overrides it (10 s to 180 s).
-export function geminiRequestTimeoutMs(env=process.env){const raw=env.MIS_GEMINI_TIMEOUT_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=10000&&value<=180000?Math.round(value):25000;}
+export function geminiRequestTimeoutMs(env=process.env){const raw=env.MIS_GEMINI_TIMEOUT_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=10000&&value<=180000?Math.round(value):90000;}
 // Why a request got no HTTP answer: Google was too slow, or the connection
 // broke. Only the error name or network code is kept, never its text.
 export function geminiConnectionFailure(error,timeoutMs){
@@ -193,20 +193,29 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    };
    const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
-   let retryInstruction='',attempt=0,rateLimitRetries=0,requests=0;
+   let retryInstruction='',attempt=0,connectionRetries=0,rateLimitRetries=0,requests=0;
    while(attempt<2){
     const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
     const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
-    const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+1,maxAttempts:2,startedAt:new Date().toISOString()}));
-    const started=Date.now();let res;
+    const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+connectionRetries+1,maxAttempts:4,startedAt:new Date().toISOString()}));
+    const started=Date.now(),signal=AbortSignal.timeout(requestTimeoutMs);
+    let res,body;
     requests++;
-    try{res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal:AbortSignal.timeout(requestTimeoutMs),body:requestBody});}
+    try{
+     res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal,body:requestBody});
+     if(res.ok)body=await res.json();
+    }
     catch(error){
      // Say what happened: Google did not answer in time, or the connection broke.
-     const cause=geminiConnectionFailure(error,requestTimeoutMs);
-     console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${MODEL}, request ${(requestBody.length/1048576).toFixed(1)} MB, try ${attempt+1} of 2.`);
-     if(++attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'connection timeout',cause,delayMs:500});await sleep(500);continue;}
-     throw Error(`Gemini connection timed out or failed after 2 attempts (${cause}). The scan is retained; retry extraction.`);
+     if(error instanceof SyntaxError&&!signal.aborted)throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');
+     const cause=geminiConnectionFailure(signal.aborted?signal.reason:error,requestTimeoutMs);
+     console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${MODEL}, request ${(requestBody.length/1048576).toFixed(1)} MB, request ${requests}.`);
+     if(connectionRetries===2)throw Error(`Gemini connection timed out or failed after ${requests} attempts (${cause}). The scan is retained; retry extraction.`);
+     const delayMs=2000*2**connectionRetries+Math.floor(Math.random()*1000);
+     connectionRetries++;
+     await onProgress?.('retrying',{attempt:attempt+connectionRetries+1,maxAttempts:4,reason:'connection timeout',cause,delayMs});
+     await sleep(delayMs);
+     continue;
     }
     if(res.status===429){
      // Pause the key as soon as the response headers arrive, then use any
@@ -239,7 +248,6 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      throw Object.assign(Error(geminiHttpError(res.status)),{status:res.status,upstream:await upstreamMessage(res)});
     }
     attempt++;
-    let body;try{body=await res.json();}catch{throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');}
     record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,...timing,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
     const parsed=parseCardResponse(record.raw,kind);
