@@ -88,6 +88,11 @@ export const AUTOMATIONS=[
   email:context=>state(context.scheduledJobs&&context.emailConfigured),popup:()=>null,count:{oem:true}},
  {code:'A23',key:'deletion-otp',name:'Deletion approval code',category:'Approvals',rule:'A log book, batch or scanned card is to be deleted',trigger:'At once, on request',
   people:'The fixed deletion approver',format:'One-time code',controlledIn:'Deletion page',telegram:()=>null,whatsapp:context=>state(context.deletionWhatsApp),popup:()=>null,count:{}},
+ {code:'A24',key:'scan-batch-report',name:'Site-wise batch completion report',category:'Log books',
+  rule:'A scan entry has every card read; a VLB batch (site, date, shift) is closed',trigger:'Checked every minute, once per entry and once per batch',
+  people:'Owner (logins with the owner\'s registered mobile)',format:'Site, cards, total time, queue wait, time per card, auto-check, accuracy, corrected fields, model',
+  controlledIn:'App setting MIS_SCAN_BATCH_REPORT (on unless off)',
+  telegram:context=>state(context.scanBatchReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['scan-batch-report']}},
 ];
 
 const resolve=(value,context)=>typeof value==='function'?value(context):value;

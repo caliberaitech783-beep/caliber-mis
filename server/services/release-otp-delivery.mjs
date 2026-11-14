@@ -17,13 +17,17 @@ export function releaseOtpMessage({otp,actor,runId}){
  ].join('\n');
 }
 
+// MIS logins whose registered mobile is the owner's number. Also used by the
+// site-wise batch completion report (scan-batch-report.mjs).
+export async function ownerTelegramLogins(pool){
+ const {rows}=await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees'");
+ return [...new Set(rows.map(r=>r.record_data||{})
+  .filter(u=>[u.mobile,u.phone,u.whatsapp,u.contact].some(v=>digits(v)===OWNER))
+  .map(u=>String(u.login||'').trim().toLowerCase()).filter(Boolean))];
+}
+
 export function createReleaseOtpDelivery({pool,telegram,whatsapp}){
- const ownerLogins=async()=>{
-  const {rows}=await pool.query("SELECT record_data FROM master_records WHERE master_name='Users & employees'");
-  return [...new Set(rows.map(r=>r.record_data||{})
-   .filter(u=>[u.mobile,u.phone,u.whatsapp,u.contact].some(v=>digits(v)===OWNER))
-   .map(u=>String(u.login||'').trim().toLowerCase()).filter(Boolean))];
- };
+ const ownerLogins=()=>ownerTelegramLogins(pool);
  return async({otp,actor,runId})=>{
   const message=releaseOtpMessage({otp,actor,runId});
   for(const login of await ownerLogins()){
