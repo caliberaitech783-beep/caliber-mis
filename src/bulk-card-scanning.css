@@ -408,3 +408,15 @@
 .scan-page .scan-suggestion:hover:not(:disabled),.scan-page .scan-suggestion:focus-visible{background:#d5f0e1;outline:2px solid #1f7a4d;outline-offset:1px}
 .scan-page .scan-suggestion:disabled{opacity:.55;cursor:default}
 .scan-page .scan-time-window{display:block;margin-top:3px;color:#455868;font-size:11px;line-height:1.4}
+
+/* Side-by-side review (desktop, heading shown): the original card fills the screen height.
+   Fit scales the scan to the panel height and centres it, cropping only the grey edges of a
+   wide photo; zoom steps are multiples of that height and scroll inside the panel. */
+@media(min-width:1250px){
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded)>.scan-source{align-self:start;box-sizing:border-box;height:calc(100dvh - 100px);min-height:420px;display:flex;flex-direction:column}
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-viewport{flex:1;min-height:0;height:auto;max-height:none}
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-image{width:auto!important;height:calc(var(--scan-zoom,1)*100%)}
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-source .scan-preview-image img{width:auto;height:100%;max-width:none;max-height:none}
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-viewport.scan-preview-fit{display:flex;justify-content:center;overflow:hidden;background:#eee}
+ .scan-review-page:not(.scan-review-compact) .scan-selected-card:not(.scan-source-expanded) .scan-preview-fit>.scan-preview-image{flex:none;display:block;height:100%}
+}
