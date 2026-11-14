@@ -398,3 +398,7 @@
 .scan-trip-card-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .scan-trip-card-tabs button[aria-pressed="true"]{font-weight:700;border-color:currentColor}
 .scan-trip-row[hidden]{display:none!important}
+
+.scan-status-overview>.scan-card-groups>.scan-save-summary{padding:10px 12px;border:1px solid #d8cce7;border-radius:8px;background:var(--panel,#fff);color:var(--text,#30243f);line-height:1.5}
+.scan-status-overview>.scan-card-groups>.scan-save-summary button{width:auto;height:auto;padding:4px 8px;display:inline-flex}
+.scan-status-overview>.scan-card-groups>button:disabled,.scan-entry-list button[aria-pressed="true"]:disabled{opacity:1;cursor:default}
