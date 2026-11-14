@@ -8,7 +8,7 @@ const image=id=>new Blob(['scan '+id],{type:'image/webp'});
 function setup({limit,timeoutMs,respond}={}){
  const calls=[],revoked=[];let created=0,clock=0;
  const fetch=async(path,{signal,headers})=>{calls.push({path,signal,headers});const id=path.split('/')[3];return respond?respond(id,signal):{ok:true,blob:async()=>image(id)};};
- const loader=createScanPreviewLoader({fetch,trim:async blob=>blob,createObjectURL:blob=>'blob:'+(++created),revokeObjectURL:url=>revoked.push(url),limit,timeoutMs,now:()=>++clock});
+ const loader=createScanPreviewLoader({fetch,trim:async blob=>blob,createObjectURL:blob=>'blob:'+(++created),revokeObjectURL:url=>revoked.push(url),limit,timeoutMs,retryDelayMs:0,now:()=>++clock});
  loader.setToken('t1');
  return {loader,calls,revoked};
 }
@@ -57,4 +57,18 @@ test('a failed or timed-out download is forgotten so Retry asks again, and a new
  assert.equal(loader.has('slow'),false);
  loader.setToken('t2');assert.equal(loader.size(),0);
  await loader.load('a');assert.equal(calls.at(-1).headers.Authorization,'Bearer t2');
+});
+
+// 15 November 2026: card 28 of Dhoptala OB (2nd) 6 Nov S2 showed only "Could not load scan."
+test('a refusal shows the server reason, an ended sign-in says so, and a busy server or dropped link is tried once more',async()=>{
+ const json=(status,body)=>({ok:false,status,json:async()=>body});
+ const answers={gone:[json(404,{error:'Batch not found or deleted.'})],signin:[json(401,{error:'Unauthorized'})],busy:[json(503,{error:'Busy'}),null],down:['throw',null],stuck:[json(500,{}),json(500,{})],plain:[{ok:false,status:400,json:async()=>{throw Error('not json')}}]};
+ const {loader,calls}=setup({respond:id=>{const next=answers[id].shift();if(next==='throw')throw TypeError('Failed to fetch');return next||{ok:true,blob:async()=>image(id)};}});
+ const count=id=>calls.filter(c=>c.path.includes('/'+id+'/')).length;
+ await assert.rejects(loader.load('gone'),/^Error: Could not load scan: Batch not found or deleted\.$/);assert.equal(count('gone'),1,'a refusal is not repeated');
+ await assert.rejects(loader.load('signin'),/Your sign-in has ended/);assert.equal(count('signin'),1);
+ assert.match((await loader.load('busy')).original,/^blob:/);assert.equal(count('busy'),2);
+ assert.match((await loader.load('down')).original,/^blob:/);assert.equal(count('down'),2);
+ await assert.rejects(loader.load('stuck'),/server answered 500/);assert.equal(count('stuck'),2,'only one extra try');
+ await assert.rejects(loader.load('plain'),/server answered 400/);
 });
