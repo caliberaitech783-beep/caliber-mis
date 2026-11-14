@@ -1,7 +1,8 @@
 import {scanFleetBlockingMessage} from './scan-fleet-assignment.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
 
-const OPTIONAL_WARNINGS=[/^No Work Order selected\./,/^Batch values applied\./];
+// "Sheet 2/2 of this trip card: …" says where its trips go when saved; it is information, not a problem to fix.
+const OPTIONAL_WARNINGS=[/^No Work Order selected\./,/^Batch values applied\./,/^Sheet \d+\/\d+ of this trip card: /];
 export const blockingScanWarnings=warnings=>(warnings||[]).filter(message=>!OPTIONAL_WARNINGS.some(pattern=>pattern.test(String(message))));
 
 export function canAutoSaveScanCard(card,kind,options=null,lmv=false){

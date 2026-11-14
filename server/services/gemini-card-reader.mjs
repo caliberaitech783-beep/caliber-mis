@@ -10,6 +10,7 @@ import {normalizeCardShift} from '../../shared/trip-card-rules.mjs';
 import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
 import {siteKeySlug} from '../rules/scan-lanes.mjs';
 import {SAFETY_RULES,NO_INVENTION_RULE,HEADER_RULES,SITE_RULES,TIME_RULES,EMPLOYEE_RULES,MACHINE_NOTATION_RULES,M_NO_READING_RULES,M_NO_COMPLETENESS_RULES,DEMO_PREFIX_RULES,METER_DIGIT_RULE,DOOR_RULES,NAME_AND_FORM_RULES,FINAL_CHECK_RULE,TRIP_ROW_RULES} from '../../shared/gemini-scan-rules.mjs';
+import {TRIP_CARD_SHEET_RULE,readTripCardSheet} from './trip-card-sheet-reading.mjs';
 import {MODEL,geminiGenerationConfig,geminiLengthRetryConfig,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
 
 export {MODEL};
@@ -36,7 +37,7 @@ export async function configuredGeminiKey(env=process.env,site=''){
 export function cardPrompt(kind,{rotated=true}={}){
  return `${SAFETY_RULES} All images are views of ONE physical card: the first is the full original; ${rotated?'subsequent labelled images are overlapping full-height columns of that same page supplied in both 0 and 180 degree orientations. Choose the upright views to transcribe handwriting; rotated alternatives are duplicates of the same rows.':'subsequent labelled images are overlapping full-height columns, bands and details of that same page, all cut from the original without rotation.'} Do not count overlapping rows twice. The card may be upside down (180 degrees), with its printed header at the bottom. Determine its orientation first and mentally rotate every view to read the card upright. Read header fields from the actual printed header wherever it appears; footer signatures are not header values. Transcribe in ONE response. ${NO_INVENTION_RULE}
 First identify documentType as "VLB", "ELB" or "unknown" from the actual printed headings and layout. A TRIP CARD with individual loading/unloading trip rows and KMR is VLB, even when submitted through the ELB page. An equipment job card is ELB. Do not let the requested page override the visible document type. Requested type: ${kind==='vehicle'?'VLB':'ELB'}. If the visible type differs, return {"documentType":actualType,"fields":null,"trips":{"p":false,"r":[]}}. Otherwise return JSON only: {"documentType":"${kind==='vehicle'?'VLB':'ELB'}","fields":{...},"trips":{"p":${kind==='vehicle'},"r":[]}}.
-fields must contain ${aFields(kind).join(', ')}. Each named field is {"value":string|null,"status":"clear"|"missing"|"unclear"}. Use null unless clear. ${HEADER_RULES}
+fields must contain ${aFields(kind).join(', ')}. Each named field is {"value":string|null,"status":"clear"|"missing"|"unclear"}. Use null unless clear. ${HEADER_RULES}${kind==='vehicle'?' '+TRIP_CARD_SHEET_RULE:''}
 ${SITE_RULES}
 ${TIME_RULES} ${EMPLOYEE_RULES}
 ${MACHINE_NOTATION_RULES}
@@ -298,7 +299,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
   rest.cardShift=normalizeCardShift(rest.cardShift);
   if(kind==='vehicle')rest.shiftSelectionStatus=fields.shift.status==='clear'&&rest.cardShift?'clear':fields.shift.status==='missing'?'missing':'unclear';
-  return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:record.model||model,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,prepMs:record.prepMs??null,prepWaitMs:record.prepWaitMs??null,prepReused:record.prepReused??null,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
+  return {...rest,...(kind==='vehicle'?{tripCardSheet:readTripCardSheet(record.raw)}:{}),responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:record.model||model,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,prepMs:record.prepMs??null,prepWaitMs:record.prepWaitMs??null,prepReused:record.prepReused??null,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
  function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress,job.forceRead,job.model)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
  // model: a recheck of a doubtful card can ask another Gemini model (RECHECK_MODEL) than the first read.

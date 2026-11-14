@@ -9,6 +9,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {assetBookKind} from '../routes/log-book.mjs';
 import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
 import {CARD_SHIFTS,normalizeCardShift,markedShiftEvidence,matchingWorkOrders,selectedMasterShift,tripClockForShift,latestWorkOrder} from '../../shared/trip-card-rules.mjs';
+import {formatTripCardSheet,parseTripCardSheet} from '../../shared/trip-card-sheet.mjs';
 const key=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const one=(rows,predicate)=>{const found=rows.filter(predicate);return found.length===1?found[0]:null};
 function matchScanEmployee(masters,raw,location){
@@ -108,6 +109,8 @@ export function extractCard(text,kind,masters=[],hints={}){
  if(hints.tripGrid){const grid=resolveTripGrid(hints.tripGrid,cardShift);out.draft.trips=grid.trips;out.draft.scanMachineSummary=grid.scanMachineSummary;out.draft.timeMode=grid.timeMode;out.raw.tripGrid=hints.tripGrid;out.raw.tripGridIssues=grid.issues;out.draft.extractionReviewFields.push('trips','scanMachineSummary');}
  out.draft.meterReviewMessages=Object.fromEntries(Object.entries(hints.handwritingCandidates||{}).filter(([k,c])=>c.conflict).map(([k,c])=>[k,'Handwriting passes disagree: '+(c.alternatives||[]).join(' / ')+'. Check the original scan.']));
  out.raw.locationReadings=locationReadings;
+ // The NO. OF TRIP CARDS box ("2/2" on the second sheet of one card); blank when not read.
+ if(kind==='vehicle'){const sheet=parseTripCardSheet(hints.tripCardSheet);if(sheet)out.draft.tripCardSheet=formatTripCardSheet(sheet);}
  if(locationNeedsReview){out.raw.locationMatchIssue='Location needs checking: confirm East/West and the matching Location Master entry.';out.draft.extractionReviewFields.push('location');}
  out.raw.responseRecoveryIssues=hints.responseRecoveryIssues||[];
  out.raw.machineNotation={version:1,header:identifyCardMachine(raw.door,kind),headerMatchedAssetId:asset?String(asset.id):null};
