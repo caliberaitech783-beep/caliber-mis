@@ -5,7 +5,7 @@ export default function ScanCorrectionStatus({errors=[],warnings=[],status='',di
  const required=[...new Set(errors.map(scanReviewHelp))];
  const advisory=[...new Set(warnings.map(scanReviewHelp))].filter(issue=>!required.includes(issue));
  const failed=status.startsWith('Not saved');
- if(working)return <div role="status" className="scan-correction-status scan-review-working">
+ if(working&&!failed)return <div role="status" className="scan-correction-status scan-review-working">
   <span className="scan-review-spinner" aria-hidden="true"/>
   <div><strong>System is working</strong><div>{working}</div></div>
  </div>;

@@ -63,7 +63,7 @@ test('master validation reads share one database request but remain fresh across
 
 test('overlapping background batch polls coalesce; an explicit refresh reads after the in-flight poll',async()=>{
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
- const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
+ const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true,'));
  assert.ok(line);
  let requests=0,release,rows=[];const gate=new Promise(resolve=>release=resolve),noop=()=>{};
  const scope={SmartSelect: "select",kind:'equipment',lmv:false,vlbBatch:undefined,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,partialSince:{current:0},mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},activeRef:{current:'batch'},uploadingRef:{current:false},api:async()=>{const revision=++requests;if(revision===1)await gate;return {batch:{id:'batch'},cards:[{id:'card',revision}]};},setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};

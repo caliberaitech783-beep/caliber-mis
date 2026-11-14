@@ -46,7 +46,7 @@ test('a partial read replaces the changed cards and keeps every other card as sh
 
 function harness(server){
  const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
- const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true)'));
+ const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true,'));
  assert.ok(line,'load found');
  const paths=[],noop=()=>{},state={rows:[],gate:undefined,now:1_000_000,uploading:false};
  const scope={kind:'vehicle',lmv:false,vlbBatch:null,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,chooseScanCard,
@@ -139,4 +139,16 @@ test('the server limits the full read to the selected cards and still gates on e
  assert.deepEqual(selected(`${A},${B},${A}`),[A,B]);
  for(const bad of ['',',',"x' OR 1=1",A+',not-a-card',Array.from({length:SCAN_PARTIAL_REFRESH_MAX+1},(_,i)=>`${String(i).padStart(8,'0')}-0000-4000-8000-000000000000`).join(',')])
   assert.throws(()=>selected(bad),{status:400},JSON.stringify(bad.slice(0,30)));
+});
+
+test('a stalled fleet check gets a targeted retry even without a progress change',async()=>{
+ const pending=full(A,'review',2,{validationPending:true,checks:null});
+ const unchanged=full(B,'review',3);
+ const {load,paths,state}=harness(()=>[pending,unchanged]);
+ await load('batch',true);
+ await load('batch',false);
+ assert.deepEqual(paths,['','?progress=1']);
+ await load('batch',false,true);
+ assert.deepEqual(paths.slice(2),['?progress=1',`?cards=${A}`]);
+ assert.equal(state.rows[1],unchanged);
 });

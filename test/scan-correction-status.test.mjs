@@ -13,7 +13,7 @@ test('saved corrections and remaining checks produce one truthful combined statu
  assert.equal((html.match(/role="status"/g)||[]).length,1);
  assert.match(html,/User input needed/);assert.match(html,/1 item needs checking\./);assert.match(html,/Corrections saved\./);assert.match(html,/<details open="">/);assert.match(html,/Select a shift/);assert.match(html,/scan-warning/);
  const saved=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.'}));assert.match(saved,/scan-success/);assert.match(saved,/Corrections saved/);
- const failed=renderToStaticMarkup(React.createElement(Status,{status:'Not saved to MIS: offline'}));assert.match(failed,/scan-error/);assert.doesNotMatch(failed,/Corrections saved/);
+ const failed=renderToStaticMarkup(React.createElement(Status,{status:'Not saved to MIS: offline',working:'Verifying equipment assignment in Pulse…'}));assert.match(failed,/Not saved to MIS: offline/);assert.doesNotMatch(failed,/System is working/);assert.match(failed,/scan-error/);assert.doesNotMatch(failed,/Corrections saved/);
 });
 
 test('yellow issue messages use short wording without changing validation details',()=>{

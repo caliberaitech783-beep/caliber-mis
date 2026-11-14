@@ -111,6 +111,11 @@ export async function applyBatchContext(client,context,draft){
  const shift=rows.find(s=>canonicalSiteName(s.site||s.siteName)===canonicalSiteName(next.location)&&String(s.status||'').toLowerCase()!=='inactive'&&(!s.effectiveFrom||s.effectiveFrom<=context.bookDate)&&(!s.effectiveTo||s.effectiveTo>=context.bookDate)&&[s.shiftCode,s.shiftName,s.name].some(v=>bookShiftCode(v)&&bookShiftCode(v)===bookShiftCode(next.cardShift)));
  return shift?{...next,shiftId:shift.id}:next;
 }
+// Cards read at once per queue when Gemini reads (MIS_SCAN_LANE_CONCURRENCY overrides it for
+// site lanes, scanConcurrency for the single queue; at most MAX_GEMINI_CONCURRENCY). Every trip
+// card costs two Gemini answers of about 6 s each plus its finish, so five workers moved a queue
+// at about 20 cards a minute; eight, the figure the engines already used, lifts that by three fifths.
+export const DEFAULT_GEMINI_WORKERS=8;
 const MASTER_NAMES=['Equipment master','C-Dir Employee master','ERP Employee master','Employee master','Shift Master','Work Order master'];
 const isLmvScan=batch=>batch.kind==='vehicle'&&batch.expected_context?.logBookKind==='lmv';
 const scanBookKind=batch=>isLmvScan(batch)?'lmv':batch.kind;
@@ -163,7 +168,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
 
  return {errors,warnings,data,number};
 }
-export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
+export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
  readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),
  progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
@@ -172,12 +177,13 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  // lane only and serves no pages. engineLane is a canonical site, or null for
  // the engine that reads every site not in engineExcluded.
  role='app',engineLane=null,engineExcluded=[],engineVersion='',scanLanes=scanLanesEnabled(process.env),enginesExternal=role==='app'&&scanEnginesExternal(process.env),
- lanePerSite=laneConcurrency(process.env,role==='engine'?8:5,MAX_GEMINI_CONCURRENCY),
+ lanePerSite=laneConcurrency(process.env,geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:role==='engine'?8:5,MAX_GEMINI_CONCURRENCY),
+ ocr=localCardOcr({getGroqConfig,concurrency:scanConcurrency}),
  ocrForLane=lane=>localCardOcr({getGroqConfig,site:lane||'',concurrency:lanePerSite,shareGateByKey:true})}){
  if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Scan concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
  const prefetchAutoSaveBreakdownRows=createBreakdownRowsPrefetchCache(readBreakdownRows);
  // Pulse fleet rows carry the saved card aliases of their linked local record, so an aliased written label is not held as "not registered".
- if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async (actor,site)=>withEquipmentAliases(pool,await readSourceFleet(actor,site),{by:'source'});}
+ if(readPulseFleet){const readSourceFleet=readPulseFleet;readPulseFleet=async (actor,site,options)=>withEquipmentAliases(pool,await readSourceFleet(actor,site,options),{by:'source'});}
  let workers=0,timer,leaseTimer,stopped=false,readTotal=0,liveEngineCount=0;const activeReads=new Set();const lanes=new Map(),singleLane={name:null,ocr,concurrency:scanConcurrency,workers:0,batchIds:null};const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{
  req.logBookScope=await getSiteScope(req.session);
  if(req.logBookScope.sites!==null&&!req.logBookScope.sites.length)return res.status(403).json({error:'Assign a site or region to this MIS login before scanning.'});
@@ -208,7 +214,18 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  const wrap=fn=>async(req,res,next)=>{try{await fn(req,res)}catch(e){if(e.status)return res.status(e.status).json({error:e.message});next(e)}};
  const getBatch=async(client,id)=>{if(!uuid(id))fail('Invalid scan batch.');const b=(await client.query('SELECT * FROM mis_scan_batches WHERE id=$1',[id])).rows[0];if(!b||b.expected_context?.deletedVlbBatch||b.expected_context?.deletedScanEntry)fail('Batch not found or deleted.',404);requireOperationalDate(b.expected_context?.bookDate||new Date(b.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}));return b};
- const getCard=async(client,id,lock=false)=>{if(!uuid(id))fail('Invalid scan card.');const row=(await client.query('SELECT * FROM mis_scan_cards WHERE id=$1'+(lock?' FOR UPDATE':''),[id])).rows[0];if(!row)fail('Card not found.',404);decodeScanRow(row);requireOperationalDate((await getBatch(client,row.batch_id)).expected_context?.bookDate||row.draft?.bookDate||new Date(row.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}));return row};
+ const readCard=async(client,id,lock,columns='*')=>{
+  if(!uuid(id))fail('Invalid scan card.');
+  const row=(await client.query('SELECT '+columns+' FROM mis_scan_cards WHERE id=$1'+(lock?' FOR UPDATE':''),[id])).rows[0];
+  if(!row)fail('Card not found.',404);
+  return decodeScanRow(row);
+ };
+ const requireCardDate=(card,batch)=>requireOperationalDate(batch.expected_context?.bookDate||card.draft?.bookDate||new Date(card.created_at).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}));
+ const getCard=async(client,id,lock=false)=>{
+  const row=await readCard(client,id,lock);
+  requireCardDate(row,await getBatch(client,row.batch_id));
+  return row;
+ };
  const readBatchReport=async req=>{
   const batch=await getBatch(pool,req.params.id);
   if(batch.kind==='vehicle'&&!batch.expected_context)fail('Choose the card date, site and shift in Scan setup before downloading.',409);
@@ -241,7 +258,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
       .map(row=>({...row.record_data,id:row.id,...(isLmv(row.record_data)?{category:'Vehicle'}:{})}))
     :await readFleet(actor,draft.location,{fresh});const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
   const prior=raw?.fleetReview;
-  const review={signature,issues,error,checkedAt:new Date().toISOString(),decision:issues.length&&prior?.signature===signature&&prior.decision==='transfer-pending'?'transfer-pending':'unresolved'};
+  const review={signature,issues,error,...(error==='Your Pulse account is not authorised to sync all four masters.'?{equipmentReadDenied:true}:{}),checkedAt:new Date().toISOString(),decision:issues.length&&prior?.signature===signature&&prior.decision==='transfer-pending'?'transfer-pending':'unresolved'};
   await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||jsonb_build_object('fleetReview',$2::jsonb) WHERE id=$1 AND revision=$3 AND status IN('review','approved','error')",[card.id,JSON.stringify(encodeScanJson(review)),card.revision]);
   return review;
  }
@@ -429,7 +446,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
      const fields=decodeScanJson(raw_fields)||{};
      if(fields.manualDeletion||card.review_note.startsWith('Card deleted manually by user')){deletedCards.push({id:card.id,ordinal:card.ordinal,vehicle:fields.manualDeletion?.vehicle||''});continue;}
      if(saved_site&&!logbook_deleted_at)requireLogBookSite(req.logBookScope,saved_site);
-     const fleetReview=fields.fleetReview&&fields.fleetReview.error!=='Your Pulse account is not authorised to sync all four masters.'?fields.fleetReview:null;
+     const fleetReview=fields.fleetReview&&(fields.fleetReview.equipmentReadDenied||fields.fleetReview.error!=='Your Pulse account is not authorised to sync all four masters.')?fields.fleetReview:null;
      const trips=Array.isArray(saved_trips)?saved_trips:decodeScanJson(draft)?.trips;
      cards.push({...card,raw_fields:{...(fleetReview?{fleetReview}:{}),...(fields.scanProgress?{scanProgress:fields.scanProgress}:{})},trip_total:machineTripTotal(Array.isArray(trips)?trips:[]),validationPending:false,checks:null});
     }
@@ -535,7 +552,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     }
     if(row.saved_data&&!row.logbook_deleted_at)requireLogBookSite(req.logBookScope,row.saved_data.location);
     const check=checked(row)?await checkCard(row,rawKey):{errors:[],warnings:[]};
-    if(readPulseFleet&&checked(row)){if(row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}
+    if(readPulseFleet&&checked(row)){if(!row.raw_fields?.fleetReview?.equipmentReadDenied&&row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}
     cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});
    }
    const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
@@ -595,10 +612,10 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  const suspect=visual?.match==='suspect'?{...visual.original,distance:visual.distance}:null;
  await c.query('INSERT INTO mis_scan_cards(id,batch_id,ordinal,filename,image,image_hash,page_count,expected_pages,raw_fields,image_blob_key,image_bytes,blob_uploaded_at,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb)',[uploadKey,batch.id,ordinal,String(filename||'Scan').slice(0,240),blob?null:image,imageHash,pageCount,expectedPages,JSON.stringify({...(entrySource?{entrySource}:{}),...(paddleEvidence?{paddleEvidence}:{}),...(captureTiming?{captureTiming}:{}),...(suspect?{duplicateSuspect:suspect}:{})}),blob?.key||null,blob?.bytes||null,blob?.uploadedAt||null,fingerprint?JSON.stringify(fingerprint):null]);await c.query('COMMIT');res.status(201).json({id:uploadKey,...(suspect?{duplicateSuspect:suspect}:{})});}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}void pump();}));
  app.get('/api/scan-cards/:id/image',...protect,wrap(async(req,res)=>{const row=await getCard(pool,req.params.id);if(row.raw_fields?.manualDeletion)fail('This card was deleted and its scan is no longer available.',410);if(row.raw_fields?.fleetRejection)fail(row.raw_fields.fleetRejection.message,410);const card=imageStorage?await imageStorage.hydrate(row):row;res.set('Cache-Control','no-store').type(scanImageMime(card.image)).send(card.image);}));
- app.put('/api/scan-cards/:id',...protect,wrap(async(req,res)=>{if(req.body.action==='approve')await requireFleet(await getCard(pool,req.params.id),ignoreScanLoadingWithoutEquipment(req.body.draft),req.session.login||req.session.name);const c=await pool.connect();try{await c.query('BEGIN');const card=await getCard(c,req.params.id,true),batch=await getBatch(c,card.batch_id);if(['queued','reading','posted'].includes(card.status))fail('This card cannot be changed in its current state.',409);if(req.body.revision!==card.revision)fail('Card changed. Reload before saving.',409);if(req.body.action==='reject'){
+ app.put('/api/scan-cards/:id',...protect,wrap(async(req,res)=>{if(req.body.action==='approve')await requireFleet(await getCard(pool,req.params.id),ignoreScanLoadingWithoutEquipment(req.body.draft),req.session.login||req.session.name);const c=await pool.connect();try{await c.query('BEGIN');const card=await readCard(c,req.params.id,true,'id,batch_id,created_at,status,revision,raw_fields,draft,image_hash,page_count,expected_pages'),batch=await getBatch(c,card.batch_id);requireCardDate(card,batch);const validationClient=scanValidationClient(c);if(['queued','reading','posted'].includes(card.status))fail('This card cannot be changed in its current state.',409);if(req.body.revision!==card.revision)fail('Card changed. Reload before saving.',409);if(req.body.action==='reject'){
  await c.query("UPDATE mis_scan_cards SET status='rejected',revision=revision+1,checked_by=$2,checked_at=NOW(),review_note='Rejected manually by user',error='' WHERE id=$1",[card.id,req.session.login||req.session.name]);
  await c.query('COMMIT');return res.json({status:'rejected',revision:card.revision+1,checks:{errors:[],warnings:[]}});
- }if(!req.body.draft||typeof req.body.draft!=='object'||Array.isArray(req.body.draft))fail('Invalid card form.');const action=req.body.action||'save';let draft={...(batch.kind==='vehicle'?ignoreScanLoadingWithoutEquipment(req.body.draft):req.body.draft),...(action==='approve'&&req.body.checked===true?{meterReviewFields:[],extractionReviewFields:[]}: {})};if(batch.kind==='vehicle'&&card.raw_fields?.tripLocationRuleVersion===1)draft.location=tripCardLocation(draft.location);draft=await applyBatchContext(c,batch.expected_context,draft);
+ }if(!req.body.draft||typeof req.body.draft!=='object'||Array.isArray(req.body.draft))fail('Invalid card form.');const action=req.body.action||'save';let draft={...(batch.kind==='vehicle'?ignoreScanLoadingWithoutEquipment(req.body.draft):req.body.draft),...(action==='approve'&&req.body.checked===true?{meterReviewFields:[],extractionReviewFields:[]}: {})};if(batch.kind==='vehicle'&&card.raw_fields?.tripLocationRuleVersion===1)draft.location=tripCardLocation(draft.location);draft=await applyBatchContext(validationClient,batch.expected_context,draft);
  if(batch.kind==='vehicle'&&batch.expected_context&&!isLmvScan(batch)){
   const extraction={...card.raw_fields?.extractionDraft};
   for(const field of ['openingKmr','openingHmr']){
@@ -606,17 +623,18 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   }
   draft=await fillVlbScanOpeningMeters(c,draft,{sites:await filterLogBookSites(c,req.logBookScope),extraction});
  }
- const check=await checkScanCard(c,batch.kind,card,draft);if(!['save','approve','reject'].includes(action))fail('Invalid review action.');if(action==='approve'){if(batch.kind==='vehicle'&&!batch.expected_context)fail('Choose the card date, site and shift in Scan setup before approving.',409);if(check.errors.length)fail(check.errors.join(' '));if(req.body.checked!==true)fail('Confirm that every field and trip row has been checked against the scan.');if(batch.kind==='vehicle'&&!scanTripsOptional(check.data?.door)&&!(draft.trips||[]).length&&req.body.noTripsConfirmed!==true)fail('Add trip rows or confirm that this card contains no trips.');}
- const meterCorrectionHistory=recordMeterCorrection(card.raw_fields?.meterCorrectionHistory,card.draft,draft,batch.kind,req.session.login||req.session.name);const next=action==='approve'?'approved':action==='reject'?'rejected':'review';await c.query('UPDATE mis_scan_cards SET draft=$1::jsonb,status=$2,revision=revision+1,checked_by=$3,checked_at=$4,error=\'\',raw_fields=(raw_fields||jsonb_build_object(\'meterCorrectionHistory\',$6::jsonb))-CASE WHEN $7::boolean THEN ARRAY[\'fleetBlock\'] ELSE ARRAY[]::text[] END WHERE id=$5',[JSON.stringify(encodeScanJson(draft)),next,action==='approve'?(req.session.login||req.session.name):null,action==='approve'?new Date():null,card.id,JSON.stringify(encodeScanJson(meterCorrectionHistory)),Boolean(action==='save'&&card.raw_fields?.fleetRestoration&&card.raw_fields?.fleetBlock)]);await c.query('COMMIT');res.json({status:next,revision:card.revision+1,...(batch.kind==='vehicle'&&!isLmvScan(batch)?{draft}:{}),checks:{errors:check.errors,warnings:check.warnings}});if(readPulseFleet&&action==='save')void getCard(pool,card.id).then(row=>queueFleetCheck(row,req.session.login||req.session.name)).catch(()=>{});}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}));
+ const check=await checkScanCard(validationClient,batch.kind,card,draft,{context:batch.expected_context??null});if(!['save','approve','reject'].includes(action))fail('Invalid review action.');if(action==='approve'){if(batch.kind==='vehicle'&&!batch.expected_context)fail('Choose the card date, site and shift in Scan setup before approving.',409);if(check.errors.length)fail(check.errors.join(' '));if(req.body.checked!==true)fail('Confirm that every field and trip row has been checked against the scan.');if(batch.kind==='vehicle'&&!scanTripsOptional(check.data?.door)&&!(draft.trips||[]).length&&req.body.noTripsConfirmed!==true)fail('Add trip rows or confirm that this card contains no trips.');}
+ const meterCorrectionHistory=recordMeterCorrection(card.raw_fields?.meterCorrectionHistory,card.draft,draft,batch.kind,req.session.login||req.session.name);const next=action==='approve'?'approved':action==='reject'?'rejected':'review';await c.query('UPDATE mis_scan_cards SET draft=$1::jsonb,status=$2,revision=revision+1,checked_by=$3,checked_at=$4,error=\'\',raw_fields=(raw_fields||jsonb_build_object(\'meterCorrectionHistory\',$6::jsonb))-CASE WHEN $7::boolean THEN ARRAY[\'fleetBlock\'] ELSE ARRAY[]::text[] END WHERE id=$5',[JSON.stringify(encodeScanJson(draft)),next,action==='approve'?(req.session.login||req.session.name):null,action==='approve'?new Date():null,card.id,JSON.stringify(encodeScanJson(meterCorrectionHistory)),Boolean(action==='save'&&card.raw_fields?.fleetRestoration&&card.raw_fields?.fleetBlock)]);await c.query('COMMIT');res.json({status:next,revision:card.revision+1,...(batch.kind==='vehicle'&&!isLmvScan(batch)?{draft}:{}),checks:{errors:check.errors,warnings:check.warnings}});if(readPulseFleet&&action==='save')queueFleetCheck({...card,status:next,revision:card.revision+1,draft},req.session.login||req.session.name);}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}));
  const archiveBatch=async batch=>{if(!archiveSavedBatch)return {status:'disabled',azureUploadEnabled:false};const legacy=(await pool.query(`SELECT c.*,l.book_no FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND NULLIF(c.image_blob_key,'') IS NULL ORDER BY c.ordinal`,[batch.id])).rows.map(decodeScanRow);if(!legacy.length)return {status:'saved',target:'hot-blob',azureUploadEnabled:true,folders:[]};return archiveSavedBatch(batch,legacy);};
  // A refused automatic save answers 409 to the browser; it is also written to the
  // server log so support can see why a card stayed unsaved without a screen recording.
  const logAutoSaveRefusal=fn=>async(req,res)=>{try{await fn(req,res)}catch(e){if(e?.status)console.warn('[scan] automatic save refused for card '+req.params.id+' by '+(req.session?.login||req.session?.name||'?')+': '+e.message);throw e}};
  app.post('/api/scan-cards/:id/auto-save',...protect,wrap(logAutoSaveRefusal(async(req,res)=>{
   if(!Number.isSafeInteger(req.body.revision))fail('Reload the card before automatic saving.',409);
-  const initial=await getCard(pool,req.params.id);if(initial.raw_fields?.fleetRestoration&&initial.raw_fields?.fleetBlock)fail('Review this restored card and save corrections before automatic saving.',409);await requireFleet(initial,initial.draft,req.session.login||req.session.name);
+  const initial=await getCard(pool,req.params.id);if(initial.raw_fields?.fleetRestoration&&initial.raw_fields?.fleetBlock)fail('Review this restored card and save corrections before automatic saving.',409);
   // Pulse is read before any lock; inside the transaction the saved feed answers without a remote call.
-  const actor=req.session.login||req.session.name,prefetched=await prefetchAutoSaveBreakdownRows(actor),issueMasters=await readScanIssueMasters();const c=await pool.connect();let batch,record;
+  // The fleet check, the breakdown feed and the masters do not depend on each other, so they are read together.
+  const actor=req.session.login||req.session.name,[,prefetched,issueMasters]=await Promise.all([requireFleet(initial,initial.draft,actor),prefetchAutoSaveBreakdownRows(actor),readScanIssueMasters()]);const c=await pool.connect();let batch,record;
   try{
    await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock_shared(hashtext($1))',[initial.batch_id]);
    batch=await getBatch(c,initial.batch_id);const card=await getCard(c,initial.id,true);
