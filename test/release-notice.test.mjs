@@ -55,7 +55,7 @@ test('the release workflow sends the notice only for a release outside the sched
  assert.match(step,/if: always\(\) && steps\.live-health\.outcome == 'success' && github\.event_name != 'schedule'/);
  assert.match(step,/continue-on-error: true/);
  assert.match(step,/RELEASE_ALERT_MOBILES: \$\{\{ secrets\.RELEASE_ALERT_MOBILES \}\}/);
- assert.match(workflow,/name: Verify Pulse-II release health\n\s+id: live-health/);
+ assert.match(workflow,/name: Verify Pulse-II release health\r?\n\s+id: live-health/);
  assert.ok(!/\b\d{10}\b/.test(workflow),'no phone number in the public workflow');
 });
 
