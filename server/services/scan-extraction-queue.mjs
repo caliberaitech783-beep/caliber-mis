@@ -77,9 +77,12 @@ export async function queuedScanBatches(pool){
  return (await pool.query(`SELECT b.id AS batch_id,b.expected_context->>'location' AS location
  FROM mis_scan_batches b WHERE EXISTS(SELECT 1 FROM mis_scan_cards c WHERE c.batch_id=b.id AND c.status='queued' AND ${operationalScanSql('c')})`)).rows;
 }
-// Keep the hold on every card this process is still reading.
-export async function renewReadLeases(pool,owner=processLeaseOwner){
- return pool.query(`UPDATE mis_scan_cards SET read_lease_until=clock_timestamp()+make_interval(secs=>${READ_LEASE_SECONDS}) WHERE status='reading' AND read_lease_owner=$1`,[owner]);
+// Keep the hold on every card this process is still reading. With `ids`, only
+// those cards are renewed: a card whose worker stopped without finishing it is
+// left out, so its hold runs out and another reader takes it.
+export async function renewReadLeases(pool,owner=processLeaseOwner,ids=null){
+ if(ids&&!ids.length)return {rowCount:0};
+ return pool.query(`UPDATE mis_scan_cards SET read_lease_until=clock_timestamp()+make_interval(secs=>${READ_LEASE_SECONDS}) WHERE status='reading' AND read_lease_owner=$1 AND ($2::text[] IS NULL OR id::text=ANY($2::text[]))`,[owner,ids?ids.map(String):null]);
 }
 // Put back cards whose reader stopped renewing. Cards claimed before leases
 // existed carry no lease and are treated as abandoned.

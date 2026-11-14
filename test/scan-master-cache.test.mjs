@@ -50,3 +50,14 @@ test('card reading and the scan-entry read use the shared master copy',()=>{
   assert.match(source,/const masters=scanMastersForBook\(\(await readScanMasters\(pool,MASTER_NAMES\)\)\.rows,batch\);/);
   assert.match(source,/matchingMasters\?\?=scanMastersForBook\(\(await readScanMasters\(db,MASTER_NAMES\)\)\.rows,batch\);/);
 });
+
+test('automatic saving takes the master lists from the shared copy, read before its transaction starts',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const route=await readFile(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
+ const reader=route.slice(route.indexOf('const readScanIssueMasters='),route.indexOf('const scanIssueOptions='));
+ assert.match(reader,/readScanMasters\(pool,MASTER_NAMES\)/);
+ const options=route.slice(route.indexOf('const scanIssueOptions='),route.indexOf('const liveCards='));
+ assert.doesNotMatch(options,/MASTER_SQL|readScanMasters/,'no master read while the save transaction is open');
+ const save=route.slice(route.indexOf("app.post('/api/scan-cards/:id/auto-save'"));
+ assert.ok(save.indexOf('issueMasters=await readScanIssueMasters()')>0&&save.indexOf('issueMasters=await readScanIssueMasters()')<save.indexOf('pool.connect()'),'masters are read before the connection is taken');
+});

@@ -2599,9 +2599,19 @@ function sessionActivityDetails(req){
   };
 }
 
+// The statement below changes nothing when the session was seen in the last 5 seconds, so a busy
+// screen (several polls every few seconds) need not send it at all. A failed write is tried again.
+const sessionActivityTouched=new Map();
 async function touchUserSessionActivity(req,session={}){
   const sessionId=auditClean(session.sessionId,80);
   if(!sessionId)return;
+  const touchedAt=Date.now();
+  if(touchedAt-(sessionActivityTouched.get(sessionId)||0)<5000)return;
+  if(sessionActivityTouched.size>5000)for(const [key,at] of sessionActivityTouched)if(touchedAt-at>=5000)sessionActivityTouched.delete(key);
+  sessionActivityTouched.set(sessionId,touchedAt);
+  try{await recordUserSessionActivity(req,session,sessionId);}catch(error){if(sessionActivityTouched.get(sessionId)===touchedAt)sessionActivityTouched.delete(sessionId);throw error;}
+}
+async function recordUserSessionActivity(req,session,sessionId){
   const details=sessionActivityDetails(req);
   await pool.query(`INSERT INTO user_session_activity
     (session_id,actor_login,actor_name,actor_role,started_at,last_seen_at,active_seconds,ip_address,device_id,user_agent)
@@ -7931,7 +7941,19 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 // Equipment master is two-way with Pulse: changes made here reach Pulse after one shared OTP.
 registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
-const logBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
+// One request asks for its site scope more than once (row security, then the route). Answer the
+// later asks from the first read of the user's record instead of reading it again.
+const readLogBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
+const logBookScope=session=>{
+  const req=currentRequest();
+  if(!req||!session||(req.securitySession||req.session)!==session)return readLogBookScope(session);
+  if(req.logBookScopeRead?.session!==session){
+    const scope=readLogBookScope(session);
+    req.logBookScopeRead={session,scope};
+    scope.catch(()=>{if(req.logBookScopeRead?.scope===scope)delete req.logBookScopeRead;});
+  }
+  return req.logBookScopeRead.scope;
+};
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());

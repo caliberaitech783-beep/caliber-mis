@@ -18,6 +18,7 @@ export function geminiHttpError(status){
  if(status===402)return 'Gemini extraction failed (HTTP 402). Billing is not active for the Google AI project used by this server. Ask an administrator to enable billing or replace MIS_GEMINI_API_KEY with a key from a billed project, then click Retry OCR. The original scan is retained; no alternate provider was used.';
  if(status===429)return 'Gemini extraction failed (HTTP 429). The Google AI project quota is exhausted or temporarily rate-limited. Wait for quota to reset or ask an administrator to increase it, then click Retry OCR. The original scan is retained; no alternate provider was used.';
  if([401,403].includes(status))return `Gemini extraction failed (HTTP ${status}). The server API key is invalid or does not have access to this Gemini model. Ask an administrator to verify MIS_GEMINI_API_KEY, then click Retry OCR. The original scan is retained; no alternate provider was used.`;
+ if([408,500,502,503,504].includes(status))return `Gemini extraction failed (HTTP ${status}). The Gemini service was busy or temporarily unavailable and did not recover after several tries. Click Retry OCR in a few minutes. The original scan is retained; no alternate provider was used.`;
  return `Gemini extraction failed (HTTP ${status}). The Gemini service rejected the request. Click Retry OCR after the service is available. The original scan is retained; no alternate provider was used.`;
 }
 // Each site can read with its own Gemini key (its own Google Cloud project and
@@ -79,6 +80,8 @@ export const geminiUprightOnly=(env=process.env)=>env.MIS_GEMINI_UPRIGHT_ONLY===
 let imagePreparation=Promise.resolve();
 export const MAX_GEMINI_CONCURRENCY=10;
 const keyGates=new Map();
+// Waits before asking again after HTTP 408, 500, 502, 503 or 504.
+const SERVER_RETRY_STATUSES=[408,500,502,503,504],SERVER_RETRY_BACKOFF_MS=[2000,5000,10000];
 const RATE_LIMIT_BACKOFF_MS=[10000,20000,40000];
 const RATE_LIMIT_SPACING_MS=12500;
 const RATE_LIMIT_IDLE_RESET_MS=60000;
@@ -193,8 +196,8 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    };
    const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
-   let retryInstruction='',attempt=0,connectionRetries=0,rateLimitRetries=0,requests=0;
-   let serviceRetried=false,serializedInstruction,requestBody;
+   let retryInstruction='',attempt=0,connectionRetries=0,serverRetries=0,rateLimitRetries=0,requests=0;
+   let serializedInstruction,requestBody;
    while(attempt<2){
     if(serializedInstruction!==retryInstruction){
      const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
@@ -211,10 +214,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     }
     catch(error){
      // Say what happened: Google did not answer in time, or the connection broke.
-     if(error instanceof SyntaxError&&!signal.aborted)throw Error('Gemini response was interrupted. The scan is retained; retry extraction.');
-     const cause=geminiConnectionFailure(signal.aborted?signal.reason:error,requestTimeoutMs);
+     // An answer cut off mid-way is a broken connection too: ask again instead of failing the card.
+     const interrupted=error instanceof SyntaxError&&!signal.aborted;
+     const cause=interrupted?'response interrupted':geminiConnectionFailure(signal.aborted?signal.reason:error,requestTimeoutMs);
      console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${MODEL}, request ${(requestBody.length/1048576).toFixed(1)} MB, request ${requests}.`);
-     if(connectionRetries===2)throw Error(`Gemini connection timed out or failed after ${requests} attempts (${cause}). The scan is retained; retry extraction.`);
+     if(connectionRetries===2)throw Error(interrupted?'Gemini response was interrupted. The scan is retained; retry extraction.':`Gemini connection timed out or failed after ${connectionRetries+1} attempts (${cause}). The scan is retained; retry extraction.`);
      const delayMs=2000*2**connectionRetries+Math.floor(Math.random()*1000);
      connectionRetries++;
      await onProgress?.('retrying',{attempt:attempt+connectionRetries+1,maxAttempts:4,reason:'connection timeout',cause,delayMs});
@@ -240,11 +244,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      continue;
     }
     if(!res.ok){
-     if([500,502,503,504].includes(res.status)&&!serviceRetried){
-      serviceRetried=true;
+     // A busy or briefly failing Google server has its own retry budget, so it
+     // never uses up the one content retry below.
+     if(SERVER_RETRY_STATUSES.includes(res.status)&&serverRetries<SERVER_RETRY_BACKOFF_MS.length){
       await res.body?.cancel?.();
-      const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));
-      await onProgress?.('retrying',{attempt:requests+1,maxAttempts:Math.max(requests+1,3),reason:'HTTP '+res.status,delayMs});
+      const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(SERVER_RETRY_BACKOFF_MS[serverRetries],Number.isFinite(seconds)?seconds*1000:0));
+      serverRetries++;
+      await onProgress?.('retrying',{attempt:requests+1,maxAttempts:Math.max(requests+1,SERVER_RETRY_BACKOFF_MS.length+1),reason:'HTTP '+res.status,delayMs});
       await sleep(delayMs);
       continue;
      }
@@ -254,7 +260,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     }
     attempt++;
     record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,...timing,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
-    if(record.finishReason!=='STOP')throw Error('Gemini response was incomplete. The scan is retained; retry extraction.');
+    if(record.finishReason!=='STOP'){
+     // Say why Google stopped (length limit, safety filter, no answer at all) and ask once more.
+     const why=String(record.finishReason||body.promptFeedback?.blockReason||'no answer').replace(/[^A-Za-z_ ]/g,'').slice(0,40);
+     console.error(`Gemini answer incomplete (${why}) after ${Date.now()-started} ms; model ${MODEL}, request ${requests}.`);
+     if(attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'incomplete answer: '+why,delayMs:0});continue;}
+     throw Error(`Gemini response was incomplete (${why}). The scan is retained; retry extraction.`);
+    }
     const parsed=parseCardResponse(record.raw,kind);
     // Count only requests started after the latest 429. Older in-flight
     // successes do not show that the key can handle a faster request rate.

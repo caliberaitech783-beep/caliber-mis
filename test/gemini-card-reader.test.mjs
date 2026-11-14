@@ -330,3 +330,33 @@ test('a failed Gemini connection says whether Google was slow or the connection 
  const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,requestTimeoutMs:25000,sleep:async()=>{},fetchImpl:async()=>{throw Object.assign(Error('timed out'),{name:'TimeoutError'});}});
  await assert.rejects(reader.recognize(Buffer.from('slow-card')),/after 3 attempts \(no answer within 25 s\)\. The scan is retained; retry extraction\./);
 });
+
+test('a busy Google server is asked again three times with longer waits and keeps the content retry',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-busy-server-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const waits=[];
+ const busy=status=>({ok:false,status,headers:{get:()=>null},text:async()=>''});
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async ms=>waits.push(ms),fetchImpl:async()=>{calls++;if(calls<=3)return busy([503,500,408][calls-1]);return ok(JSON.stringify(response()));}});
+ const result=await reader.recognize(Buffer.from('busy-then-fine'));
+ assert.equal(result.extraction.attempts,4);assert.deepEqual(waits,[2000,5000,10000]);
+ let failing=0;const stuck=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{failing++;return busy(503);}});
+ await assert.rejects(stuck.recognize(Buffer.from('always-busy')),error=>error.status===503&&/busy or temporarily unavailable/.test(error.message));
+ assert.equal(failing,4);assert.match(geminiHttpError(400),/rejected the request/);
+});
+
+test('an answer cut off mid-way is asked again instead of failing the card',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-interrupted-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;const progress=[];
+ const cut={ok:true,json:async()=>{throw new SyntaxError('Unexpected end of JSON input');}};
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>++calls===1?cut:ok(JSON.stringify(response()))});
+ const result=await reader.recognize(Buffer.from('cut-once'),{onProgress:(stage,details)=>progress.push({stage,...details})});
+ assert.equal(result.extraction.attempts,2);assert.ok(progress.some(item=>item.stage==='retrying'&&item.cause==='response interrupted'));
+ const always=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>cut});
+ await assert.rejects(always.recognize(Buffer.from('cut-always')),/Gemini response was interrupted/);
+});
+
+test('an incomplete answer is asked once more and the final message says why Google stopped',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-incomplete-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
+ const stopped=reason=>({ok:true,json:async()=>({candidates:[{finishReason:reason,content:{parts:[{text:'{"documentType":"VLB"'}]}}]})});
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>++calls===1?stopped('MAX_TOKENS'):ok(JSON.stringify(response()))});
+ const result=await reader.recognize(Buffer.from('short-once'));assert.equal(result.extraction.attempts,2);
+ let failing=0;const always=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{failing++;return stopped('MAX_TOKENS');}});
+ await assert.rejects(always.recognize(Buffer.from('short-always')),/Gemini response was incomplete \(MAX_TOKENS\)/);assert.equal(failing,2);
+});
