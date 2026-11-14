@@ -1,6 +1,7 @@
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {requireMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {telegramFetch} from '../services/telegram-fetch.mjs';
+import {automationOn} from '../services/automation-switches.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
@@ -97,6 +98,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   stop(){clearInterval(timer);timer=null;},drain,
   async notify(event,ticket){
    const config=await read();if(!config.enabled||!config.webhookReady)return;
+   if(!await automationOn('mis-ticket'))return;
    const targets=new Set();if(config.adminChatId)targets.add(config.adminChatId);
    if(event==='resolved'){const {rows}=await pool.query('SELECT chat_id FROM mis_telegram_links WHERE login_name=$1',[String(ticket.creatorLogin||'').toLowerCase()]);if(rows[0])targets.add(rows[0].chat_id);}
    const text=`Caliber Pulse-II MIS\nTicket ${ticket.reference} ${event==='resolved'?'resolved':'created'}\nSite: ${ticket.site}\nPriority: ${ticket.priority}\n${event==='resolved'?String(ticket.resolutionMessage||'Resolution available in MIS.'):String(ticket.message||'Audio description available in MIS.')}\nhttps://pulse-ll.cmll.in/?page=tickets`.slice(0,4000);

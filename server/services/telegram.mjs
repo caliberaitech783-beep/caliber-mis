@@ -1,5 +1,6 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {normalizeWhatsAppReportSettings,whatsappPurposeEnabled} from '../../shared/whatsapp-report-settings.mjs';
+import {automationOnForPurpose,switchedOffError} from './automation-switches.mjs';
 
 const clean=(value)=>String(value??'').trim();
 const TELEGRAM_TEXT_LIMIT=4096;
@@ -54,6 +55,7 @@ function assertReady(config,purpose,settings,privateChatId=''){
 export async function sendTelegramText({message,purpose='',settings,chatId,privateChat=false,replyMarkup},{env=process.env,fetchImpl=fetch}={}){
   const config=telegramConfiguration(privateChat||clean(chatId)?{...env,TELEGRAM_DEFAULT_CHAT_ID:clean(chatId)||clean(env.TELEGRAM_DEFAULT_CHAT_ID)}:env);
   assertReady(config,purpose,settings,privateChat?clean(chatId):'');
+  if(!await automationOnForPurpose(purpose))throw switchedOffError('TELEGRAM_POLICY_PAUSED');
   const text=telegramPlainText(message);
   if(!text)throw new Error('A Telegram message is required.');
   const target=clean(chatId)||config.chatId;
@@ -64,6 +66,7 @@ export async function sendTelegramText({message,purpose='',settings,chatId,priva
 export async function sendTelegramDocument({buffer,filename='caliber-pulse-report.pdf',caption='',purpose='',settings,chatId},{env=process.env,fetchImpl=fetch}={}){
   const config=telegramConfiguration(env);
   assertReady(config,purpose,settings);
+  if(!await automationOnForPurpose(purpose))throw switchedOffError('TELEGRAM_POLICY_PAUSED');
   const documentBuffer=Buffer.isBuffer(buffer)?buffer:Buffer.from(buffer||[]);
   if(!documentBuffer.length)throw new Error('A PDF document is required.');
   if(documentBuffer.length>50*1024*1024)throw new Error('Telegram documents cannot exceed 50 MB.');

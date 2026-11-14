@@ -31,6 +31,14 @@
 .automation-number{text-align:right!important;font-variant-numeric:tabular-nums;white-space:nowrap}
 .automation-number small{white-space:normal;text-align:right;max-width:190px;margin-left:auto}
 .automation-total-row td{background:#f3eefa}
+.automation-centre .automation-switch{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:4px 12px 4px 6px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+.automation-switch>span{position:relative;width:30px;height:18px;border-radius:999px;background:currentColor;opacity:.9}
+.automation-switch>span::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.automation-centre .automation-switch.is-on{background:#e3f4ec;border-color:#9fd6bd;color:#0b6b4c}
+.automation-switch.is-on>span::after{left:14px}
+.automation-centre .automation-switch.is-off{background:#fde8ec;border-color:#f0b4c0;color:#a32445}
+.automation-table small.automation-why{max-width:220px;color:#8a5a00}
+:root[data-theme="dark"] .automation-table small.automation-why{color:#f0c36b}
 .automation-centre .automation-link{display:block;min-height:0;margin-top:6px;padding:0;border:0;background:none;text-decoration:underline;font-weight:600}
 .automation-note{max-width:900px;margin:10px 0;font-size:13px;line-height:1.5;color:#5b4a7a}
 .automation-form{display:grid;gap:14px;max-width:760px;padding:18px;border:1px solid #d9c9ef;border-radius:10px}

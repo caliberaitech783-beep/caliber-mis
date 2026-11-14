@@ -15,6 +15,7 @@ import {createOtpDelivery,telegramOutboxSender} from './server/services/otp-deli
 import {createVlbBatchAlertWorker,registerVlbBatchAlertSettings,readAlertSettings} from './server/routes/vlb-batch-alerts.mjs';
 import {createEquipmentMismatchWorker,registerEquipmentMismatch} from './server/routes/equipment-pulse-mismatch.mjs';
 import {createAutomationCentre,registerAutomationCentre} from './server/routes/automation-centre.mjs';
+import {automationOn,configureAutomationSwitches} from './server/services/automation-switches.mjs';
 import {createPulseWriter} from './server/rules/pulse-writer.mjs';
 import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pending.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/services/deletion-whatsapp.mjs';
@@ -400,6 +401,7 @@ async function storedWhatsAppReportSettings(){
   return normalizeWhatsAppReportSettings(rows[0]?.setting_value);
 }
 setWhatsAppDeliveryPolicyReader(storedWhatsAppReportSettings);
+configureAutomationSwitches({pool});
 
 async function storedWhatsAppTemplateApprovals(){
   const {rows}=await pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',[WHATSAPP_APPROVAL_SETTING_KEY]);
@@ -6349,6 +6351,8 @@ async function requestWorkflowWhatsAppLogins(client,{eventType,site,ignoreSwitch
 let workflowReminderRunning=false;
 async function sendScheduledWorkflowWhatsAppReminders(now=new Date()){
   if(!databaseReady||workflowReminderRunning)return {skipped:true};
+  // Switched off on the Automation Centre: no reminder slots are used up, so reminders resume when it is ON again.
+  if(!await automationOn('request-reminders'))return {skipped:true,reason:'switched off in the Automation Centre'};
   const reportSettings=await storedWhatsAppReportSettings();
   const telegramReminders=Boolean(telegramConfiguration().botToken);
   if(!telegramReminders&&!whatsappPurposeEnabled(reportSettings,'offRoadEscalation',now)&&!whatsappPurposeEnabled(reportSettings,'idleReminder',now))return {skipped:true};
@@ -8586,6 +8590,7 @@ async function publishAuditWorkbook({shortCode,filename,workbook}){
 let auditLogExportRunning=false;
 async function sendScheduledAuditLogExports(now=new Date()){
   if(!databaseReady||auditLogExportRunning)return {skipped:true};
+  if(!await automationOn('audit-export'))return {skipped:true,reason:'switched off in the Automation Centre'};
   const slotKey=auditLogExportSlot(now);
   const {rows:currentRows}=await pool.query(`SELECT status,attempts,updated_at FROM audit_log_export_runs WHERE slot_key=$1`,[slotKey]);
   const current=currentRows[0];
@@ -8892,7 +8897,7 @@ void initializeDatabase();
 if(scheduledJobsEnabled){
   setStaggeredInterval(()=>{
     if(!databaseReady)return;
-    void runAuditedBackendProcess({module:'Scheduled reports',action:'Send OEM breakdown emails'},()=>sendScheduledOemEmails({pool,loadData:loadOemEmailData})).catch(error=>console.error('Scheduled OEM email report failed.',error.message));
+    void automationOn('oem-email').then(on=>on&&runAuditedBackendProcess({module:'Scheduled reports',action:'Send OEM breakdown emails'},()=>sendScheduledOemEmails({pool,loadData:loadOemEmailData}))).catch(error=>console.error('Scheduled OEM email report failed.',error.message));
   },60*1000,29_000);
   const whatsappTemplateStatusTimer=setStaggeredInterval(()=>{
     if(databaseReady)void syncStandardWhatsAppTemplates().catch(error=>console.error('WhatsApp template status refresh failed.',error.message));

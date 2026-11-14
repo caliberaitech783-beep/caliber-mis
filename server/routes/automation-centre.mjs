@@ -1,4 +1,5 @@
-import {AUTOMATIONS,automationRows} from '../rules/automation-catalogue.mjs';
+import {AUTOMATIONS,AUTOMATION_KEYS,automationRows} from '../rules/automation-catalogue.mjs';
+import {readAutomationSwitches,writeAutomationSwitch} from '../services/automation-switches.mjs';
 import {readMismatchSettings,writeMismatchSettings} from './equipment-pulse-mismatch.mjs';
 
 // Telegram/WhatsApp Automation Centre: one list of every automatic message rule with its channels,
@@ -61,7 +62,8 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  }
  async function overview(){
   await rollUp();
-  const rows=automationRows({...await context(),mismatch:await readMismatchSettings(pool)},await counts());
+  const switches=await readAutomationSwitches(pool).catch(()=>({}));
+  const rows=automationRows({...await context(),mismatch:await readMismatchSettings(pool),switches},await counts());
   return {rows,generatedAt:new Date().toISOString(),totals:{automations:rows.length,active:rows.filter(row=>row.active).length,
    telegramOn:rows.filter(row=>row.channels.telegram==='on').length,whatsappOn:rows.filter(row=>row.channels.whatsapp==='on').length,
    sentToDate:rows.reduce((sum,row)=>sum+(row.sent||0),0),sentTelegram:rows.reduce((sum,row)=>sum+(row.sentTelegram||0),0),
@@ -83,5 +85,18 @@ export function registerAutomationCentre(app,{pool,requireSession,requireAdminis
   const saved=await writeMismatchSettings(pool,{...await readMismatchSettings(pool),...input});
   req.audit={eventType:'Administration',module:'Automation Centre',action:'Change equipment list mismatch automation',targetReference:'equipment-mismatch',details:saved};
   res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:saved,recipientCheck:await people(saved)});
+ }catch(e){next(e);}});
+ // The ON/OFF switch of one automation. A01 keeps its switch in its own settings.
+ app.put('/api/automation-centre/switch',...guard,async(req,res,next)=>{try{
+  const {key,enabled}=req.body||{};
+  if(!AUTOMATION_KEYS.has(key))return res.status(400).json({error:'Choose an automation from the list.'});
+  if(typeof enabled!=='boolean')return res.status(400).json({error:'Choose ON or OFF.'});
+  const item=AUTOMATIONS.find(entry=>entry.key===key);
+  const changedBy=String(req.session?.name||req.session?.login||'');
+  if(key==='equipment-mismatch')await writeMismatchSettings(pool,{...await readMismatchSettings(pool),enabled});
+  else await writeAutomationSwitch(pool,{key,enabled,changedBy});
+  req.audit={eventType:'Administration',module:'Automation Centre',action:(enabled?'Switch on ':'Switch off ')+item.code+' '+item.name,targetReference:key,details:{code:item.code,enabled}};
+  const settings=await readMismatchSettings(pool);
+  res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:settings,recipientCheck:await people(settings)});
  }catch(e){next(e);}});
 }
