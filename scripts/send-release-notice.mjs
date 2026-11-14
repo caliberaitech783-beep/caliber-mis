@@ -1,5 +1,5 @@
 // Tells the release-alert people on Telegram that production went live outside the release
-// schedule (12:00, 15:00, 18:00 and 00:00 IST). Runs at the end of a Run workflow release, after
+// schedule (06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST). Runs at the end of a Run workflow release, after
 // Pulse-II is serving the new commit. A scheduled release never sends.
 //
 // The numbers come from the RELEASE_ALERT_MOBILES secret and are never printed: this repository

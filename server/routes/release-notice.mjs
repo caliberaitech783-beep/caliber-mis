@@ -1,4 +1,4 @@
-// Off-schedule release notice. Production releases at 12:00, 15:00, 18:00 and 00:00 IST.
+// Off-schedule release notice. Production releases at 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST.
 // When a release goes live at any other time (Run workflow), the release workflow posts here
 // once the new commit is live, and the named people get a Telegram message through the MIS
 // Telegram outbox. The workflow signs the request with a key derived from this server's
@@ -23,7 +23,7 @@ const istTime=date=>new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day
 export function releaseNoticeMessage({commit,subject,actor,runUrl,liveAt}){
  return [
   'Pulse-II MIS: released OUTSIDE the release schedule',
-  'Schedule: 12:00, 15:00, 18:00 and 00:00 IST',
+  'Schedule: 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST',
   `Live at: ${istTime(liveAt)}`,
   `Version: ${text(commit).slice(0,7)}${subject?` - ${text(subject).slice(0,200)}`:''}`,
   `Started by: ${text(actor)||'unknown'} (Run workflow)`,

@@ -90,7 +90,7 @@ test('the test release keeps every verification step and checks the test address
 test('production releases main at four scheduled windows without a release tag or approval gate',()=>{
   const triggers=topLevel(productionWorkflow,'on');
   assert.doesNotMatch(triggers,/push:/,'a merge to main never deploys by itself');
-  assert.match(triggers,/schedule:\n\s+- cron: '30 6,9,12,18 \* \* \*'/,'12:00, 15:00, 18:00 and 00:00 IST');
+  assert.match(triggers,/schedule:\n\s+- cron: '30 0,3,6,9,12,15,18 \* \* \*'/,'06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST');
   assert.match(step(productionWorkflow,'Decide whether this window has changes to release'),/bash scripts\/release-window\.sh/,'a window with nothing new or only documentation skips the release');
   assert.match(triggers,/when:\n\s+description: 'Is this urgent, or can it go in the next scheduled window\?'\n\s+type: choice/,'Run workflow asks urgent or next window');
   assert.match(triggers,/default: 'Next scheduled window/,'a manual run defaults to waiting for the window');

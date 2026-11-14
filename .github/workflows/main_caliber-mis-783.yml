@@ -1,8 +1,8 @@
 name: Build and deploy main to production - caliber-mis-783
 
 # A merge to main no longer deploys by itself. Everything merged to main is
-# collected and released together four times a day: 12:00, 15:00, 18:00 and
-# 00:00 IST (06:30, 09:30, 12:30 and 18:30 UTC). A window skips the release when
+# collected and released together seven times a day: 06:00, 09:00, 12:00, 15:00,
+# 18:00, 21:00 and 00:00 IST (00:30, 03:30, 06:30, 09:30, 12:30, 15:30 and 18:30 UTC). A window skips the release when
 # main has nothing new since the commit Pulse-II serves, or only documentation.
 # Run workflow asks "Urgent or next scheduled window?". The next window needs
 # nothing more: the change is already queued. Urgent sends an OTP to the owner's
@@ -11,17 +11,17 @@ name: Build and deploy main to production - caliber-mis-783
 # GitHub may start a scheduled run some minutes after its time.
 on:
   schedule:
-    - cron: '30 6,9,12,18 * * *'
+    - cron: '30 0,3,6,9,12,15,18 * * *'
   workflow_dispatch:
     inputs:
       when:
         description: 'Is this urgent, or can it go in the next scheduled window?'
         type: choice
         options:
-          - 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
+          - 'Next scheduled window (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST)'
           - 'Urgent: deploy now (needs OTP from the owner)'
           - 'Scheduled window now (backup trigger: releases only in the hour after a window)'
-        default: 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
+        default: 'Next scheduled window (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST)'
       otp:
         description: 'Urgent only, usually empty: Approve / Reject buttons go to Mr Anoop and Mr Mohit Chadda on Telegram and the run waits up to 10 minutes for a tap. Only if the buttons cannot be sent is a 6-digit OTP sent; then run again with it here.'
         type: string
@@ -469,7 +469,7 @@ jobs:
         if: steps.swap-slot.outcome == 'success'
         run: node scripts/sync-production-slot-data.mjs to-production
 
-      # A release outside 12:00, 15:00, 18:00 and 00:00 IST (Run workflow) tells the
+      # A release outside 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST (Run workflow) tells the
       # release-alert people on Telegram once Pulse-II serves it. The numbers live in the
       # RELEASE_ALERT_MOBILES secret. A failed notice never fails the release.
       - name: Refresh Azure sign-in for the off-schedule notice

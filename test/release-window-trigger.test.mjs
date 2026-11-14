@@ -12,6 +12,10 @@ test('a start is due from 1 to 20 minutes after each IST window',()=>{
   assert.equal(dueWindow(ist('2026-11-15','18:21')),null);
   assert.equal(dueWindow(ist('2026-11-16','00:05')),'2026-11-16 00:00 IST');
   assert.equal(dueWindow(ist('2026-11-15','06:00')),null);
+  assert.equal(dueWindow(ist('2026-11-15','06:01')),'2026-11-15 06:00 IST');
+  assert.equal(dueWindow(ist('2026-11-15','09:20')),'2026-11-15 09:00 IST');
+  assert.equal(dueWindow(ist('2026-11-15','21:05')),'2026-11-15 21:00 IST');
+  assert.equal(dueWindow(ist('2026-11-15','03:05')),null,'no window at 03:00');
   assert.equal(dueWindow(ist('2026-11-15','23:59')),null);
 });
 
