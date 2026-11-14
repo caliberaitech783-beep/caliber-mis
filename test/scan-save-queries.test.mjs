@@ -45,6 +45,10 @@ test('saving one card reads the equipment lists from the shared master copy and 
  assert.equal(equipmentReads(secondSave).length,0,'a later save reuses the shared copy of the Equipment master');
  assert.deepEqual(cardReads(secondSave).map(e=>e.sql),[]);
  assert.ok(secondSave.length<=40,'a card save ran '+secondSave.length+' queries');
+ // The checks run before the transaction; the row lock covers only the revision check and the write.
+ const begin=secondSave.findIndex(e=>/^\s*BEGIN\b/i.test(e.sql)),commit=secondSave.findIndex(e=>/^\s*COMMIT\b/i.test(e.sql));
+ assert.ok(begin>=0&&commit>begin,'the save writes in one transaction');
+ assert.deepEqual(secondSave.slice(begin+1,commit).map(e=>e.sql.trim().split(/\s+/).slice(0,2).join(' ')),['SELECT status,revision,draft','UPDATE mis_scan_cards']);
  assert.equal((await db.query('SELECT draft->>\'remark\' AS remark,revision FROM mis_scan_cards WHERE id=$1',[id])).rows[0].remark,'second');
 });
 
