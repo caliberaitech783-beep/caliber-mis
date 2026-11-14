@@ -1,3 +1,4 @@
+import {transferPeriodLabel} from '../shared/log-book-transfers.mjs';
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {idleShiftHours} from '../shared/breakdown-hours-source.mjs';
 import {MANUAL_SHIFTS,manualShiftWindow} from '../shared/manual-shift.mjs';
