@@ -140,7 +140,6 @@ export function sitesInsights(sites,total){
  lines.push(total.balance?`${total.balance} of ${total.due} shifts are not yet locked. Most of them: ${parts[0][0]} (${parts[0][1]}).`:`All ${total.due} shifts are locked.`);
  const names=list=>list.map(s=>s.site).join(', '),ranked=sites.filter(s=>s.rank),first=ranked.filter(s=>s.rank===1),lastRank=Math.max(0,...ranked.map(s=>s.rank)),last=ranked.filter(s=>s.rank===lastRank);
  if(lastRank>1)lines.push(`Rank 1: ${names(first)}, ${first[0].percentDone}% of due shifts locked. Last (rank ${lastRank}): ${names(last)}, ${last[0].percentDone}%.`);
- if(total.todayShifts!==null&&total.todayShifts!==undefined)lines.push(`Today's shifts are counted as soon as they end: ${total.todayCounted} of today's ${total.todayShifts} site shifts are already in Shifts due.`);
  const timed=sites.filter(s=>s.averageLockHours!==null).sort((a,b)=>b.averageLockHours-a.averageLockHours);
  if(timed.length>1)lines.push(`Slowest to lock: ${timed[0].site}, ${timed[0].averageLockHours} hours after shift end on average. Fastest: ${timed.at(-1).site}, ${timed.at(-1).averageLockHours} hours.`);
  else if(timed.length)lines.push(`Locked shifts took ${timed[0].averageLockHours} hours on average after shift end.`);
