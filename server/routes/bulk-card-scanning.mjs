@@ -1,5 +1,7 @@
 import {scanHistoryCsv} from '../services/scan-history-csv.mjs';
 import {scanTripsOptional} from '../../shared/scan-trip-requirement.mjs';
+import {attachTransferHistory,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
+import {fleetDoorKey} from '../../shared/scan-fleet-door.mjs';
 import {readScanMasters} from '../services/scan-master-cache.mjs';
 import {recoverFirstScanFields,readScanWithRecovery} from '../services/scan-first-field-recovery.mjs';
 import {SCAN_DELETION_OTP_SCHEMA,issueScanDeletionOtp,consumeScanDeletionOtp} from '../services/scan-deletion-otp-store.mjs';
@@ -138,7 +140,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  errors.push(...Object.values(recoveredTripNumberIssues(card.raw_fields,input)));
  if(responseReviewNeeded(card.raw_fields,input))errors.push('Check the flagged extraction response issues against the original scan and confirm the corrections.');
  if(kind==='vehicle'&&card.raw_fields?.shiftRuleVersion===1){const hours=CARD_SHIFTS[input.cardShift]?.hours;if(!hours)errors.push('Select one clearly marked Trip Card shift: I, II, III, Day or Night.');}
- if(kind==='vehicle'&&(input.machineNotationRuleVersion===1||card.raw_fields?.machineNotation?.version===1)){const equipment=await withEquipmentAliases(client,scanEquipmentMasters((await client.query(MASTER_SQL,[['Equipment master']])).rows));input=normalizeScanEquipmentRows({...input,machineNotationRuleVersion:1,tripBodyRuleVersion:card.raw_fields?.tripBodyRuleVersion||input.tripBodyRuleVersion||1},equipment);errors.push(...new Set(Object.values(scanEquipmentMatchIssues(input,equipment))));}if(card.page_count<card.expected_pages)errors.push('The back page is missing. Reject this card and rescan both sides.');
+ if(kind==='vehicle'&&(input.machineNotationRuleVersion===1||card.raw_fields?.machineNotation?.version===1)){const rows=(await client.query(MASTER_SQL,[['Equipment master','Vehicle transfers']])).rows;const equipment=(await withEquipmentAliases(client,attachTransferHistory(scanEquipmentMasters(rows),rows.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data)))).map(asset=>assetForSiteOnDate(asset,input.location,input.bookDate));input=normalizeScanEquipmentRows({...input,machineNotationRuleVersion:1,tripBodyRuleVersion:card.raw_fields?.tripBodyRuleVersion||input.tripBodyRuleVersion||1},equipment);errors.push(...new Set(Object.values(scanEquipmentMatchIssues(input,equipment))));}if(card.page_count<card.expected_pages)errors.push('The back page is missing. Reject this card and rescan both sides.');
  for(const [key,label] of [['bookDate','Book date'],['location','Location'],['assetId','Door number'],['employeeId',kind==='vehicle'?'Driver':'Operator'],['shiftHours','Shift hours'],...(lmv?[]:[['shiftId','Shift'],['openingHmr','Opening HMR'],['closingHmr','Closing HMR']]),...(kind==='vehicle'?[['openingKmr','Opening KMR'],['closingKmr','Closing KMR']]:[])])if(input[key]===undefined||input[key]===null||input[key]==='')errors.push(label+' is missing or unreadable.');
  try{data=await resolveLogBookData(client,scanBookKind({kind,expected_context:context}),input,{enforceEmployeeSite});}catch(e){errors.push(e.message)}
  const number=cardKey(kind==='vehicle'?input.aFormNo:input.jobCardNo);
@@ -233,13 +235,13 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(!readPulseFleet||['posted','rejected','queued','reading'].includes(card.status)||card.raw_fields?.fleetRejection)return null;
   const expected=(await pool.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[card.batch_id])).rows[0]?.expected_context;
   // The batch site is the card's site: the fleet check always runs against it.
-  draft={...draft,location:expected?.location||draft.location};
+  draft={...draft,location:expected?.location||draft.location,bookDate:expected?.bookDate||draft.bookDate};
   const signature=scanFleetSignature(draft);let issues=[],error='';
   try{const fleet=expected?.logBookKind==='lmv'
     ?(await pool.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows
       .filter(row=>isLmv(row.record_data)||assetBookKind(row.record_data)==='equipment')
       .map(row=>({...row.record_data,id:row.id,...(isLmv(row.record_data)?{category:'Vehicle'}:{})}))
-    :await readFleet(actor,draft.location,{fresh});const equipment=(await pool.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[Number(draft.assetId)||0])).rows[0]?.record_data;issues=scanFleetIssues(fleet,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
+    :await readFleet(actor,draft.location,{fresh});const rows=(await pool.query(MASTER_SQL,[['Equipment master','Vehicle transfers']])).rows;const assets=attachTransferHistory(rows.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id)})),rows.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data));const equipment=assets.find(r=>r.id===String(draft.assetId));const byDoor=new Map();for(const asset of assets){const key=fleetDoorKey(asset.door||asset.doorNo||'','vehicle');if(key)byDoor.set(key,[...(byDoor.get(key)||[]),asset]);}const projected=fleet.map(row=>{const key=fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||'', 'vehicle');const matches=byDoor.get(key)||[];if(matches.length!==1)return row;const dated=assetForSiteOnDate(matches[0],draft.location,draft.bookDate);return dated.currentLocation===draft.location?{...row,currentLocation:draft.location,location:draft.location,site:draft.location}:row;});issues=scanFleetIssues(projected,draft,raw,equipment?.door||equipment?.doorNo||'');}catch(e){error=e.message;}
   const prior=raw?.fleetReview;
   const review={signature,issues,error,checkedAt:new Date().toISOString(),decision:issues.length&&prior?.signature===signature&&prior.decision==='transfer-pending'?'transfer-pending':'unresolved'};
   await pool.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||jsonb_build_object('fleetReview',$2::jsonb) WHERE id=$1 AND revision=$3 AND status IN('review','approved','error')",[card.id,JSON.stringify(encodeScanJson(review)),card.revision]);
