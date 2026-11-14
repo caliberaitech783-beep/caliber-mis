@@ -21,6 +21,7 @@ import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pen
 import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/services/deletion-whatsapp.mjs';
 import {registerReleaseOtp} from './server/routes/release-otp.mjs';
 import {createReleaseOtpDelivery} from './server/services/release-otp-delivery.mjs';
+import {createReleaseWindowTrigger} from './server/services/release-window-trigger.mjs';
 import {createScanBatchReporter,scanBatchReportEnabled} from './server/services/scan-batch-report.mjs';
 import {createGithubOidcVerifier} from './server/services/github-oidc.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './server/services/scan-blob-storage.mjs';
@@ -3626,6 +3627,10 @@ app.post('/api/whatsapp-alert-history',requireSuper,async(req,res,next)=>{
   }catch(error){next(error)}
 });
 
+// Starts the production release workflow in each release window (GitHub's own timer runs late).
+// Runs on every slot, even with scheduled jobs off; only with MIS_RELEASE_DISPATCH_TOKEN set.
+const releaseWindowTrigger=createReleaseWindowTrigger({pool,token:String(process.env.MIS_RELEASE_DISPATCH_TOKEN||'').trim()});
+
 app.get('/api/health',async(_req,res)=>{
   try{
     const result=await pool.query('SELECT NOW() AS database_time');
@@ -3633,6 +3638,7 @@ app.get('/api/health',async(_req,res)=>{
     databaseError='';
     res.json({
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,
+      releaseWindowTrigger:releaseWindowTrigger.state,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
       scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane,entryReadSteps:s.entryReadSteps,progressReads:s.progressReadLane};}catch{return null;}})(),
@@ -8894,6 +8900,11 @@ async function loadOemEmailData(){
   return {requests:await attachDailyRemarks(requestsVisibleGlobally(requests)),equipment:records('Equipment master'),contacts:records('OEM master'),shifts:records('Shift master')};
 }
 void initializeDatabase();
+if(releaseWindowTrigger.state.configured){
+  setStaggeredInterval(()=>{
+    if(databaseReady)void releaseWindowTrigger.tick().catch(error=>console.error('Release window trigger failed.',error.message));
+  },60*1000,7_000);
+}
 if(scheduledJobsEnabled){
   setStaggeredInterval(()=>{
     if(!databaseReady)return;
