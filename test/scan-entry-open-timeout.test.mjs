@@ -22,3 +22,25 @@ test('a timed-out open explains itself instead of "signal timed out"',()=>{
  assert.match(scanEntryOpenError(new DOMException('This operation was aborted','AbortError')),/server is busy/);
  assert.equal(scanEntryOpenError(Error('This scan entry belongs to a different log book.')),'This scan entry belongs to a different log book.');
 });
+
+test('a single slow progress poll stays quiet; a second one explains itself',async()=>{
+ const {scanProgressPollError,SCAN_PROGRESS_FAILURES_BEFORE_NOTICE}=await import('../shared/scan-progress-poll.mjs');
+ const timeout=new DOMException('signal timed out','TimeoutError');
+ assert.equal(SCAN_PROGRESS_FAILURES_BEFORE_NOTICE,2);
+ assert.equal(scanProgressPollError(timeout,1),null);
+ assert.match(scanProgressPollError(timeout,2),/server is busy.*Nothing was lost/);
+ assert.doesNotMatch(scanProgressPollError(timeout,3),/signal timed out/);
+ assert.equal(scanProgressPollError(Error('This scan entry belongs to another site, date or shift.'),1),'This scan entry belongs to another site, date or shift.');
+ const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
+ assert.match(page,/progressFailures\+\+;const message=scanProgressPollError\(e,progressFailures\)/);
+ assert.doesNotMatch(page,/load\(activeRef\.current,false,retryPending\)\.catch\(e=>setConnectionError\(e\.message\)\)/);
+});
+
+test('red banners never show the browser\'s bare "signal timed out"',async()=>{
+ const {scanScreenErrorText,SCAN_BUSY_MESSAGE}=await import('../shared/scan-progress-poll.mjs');
+ for(const raw of ['signal timed out','The operation was aborted due to timeout','The operation timed out.','This operation was aborted'])assert.equal(scanScreenErrorText(raw),SCAN_BUSY_MESSAGE);
+ assert.equal(scanScreenErrorText('Saving is blocked. Check Scan setup and remove mismatch cards first.'),'Saving is blocked. Check Scan setup and remove mismatch cards first.');
+ const page=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
+ assert.match(page,/className="scan-error">\{scanScreenErrorText\(connectionError\)\}/);
+ assert.match(page,/className="scan-error">\{scanScreenErrorText\(error\)\}/);
+});
