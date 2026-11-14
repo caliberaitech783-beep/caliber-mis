@@ -232,6 +232,15 @@ Now:
   holding a connection; the progress poll stays outside the lane. The lane's
   numbers are under `scanReading.entryReads` in `/api/health` (running,
   waiting, served).
+- The progress poll (`?progress=1`) takes one held connection for its five
+  queries instead of five separate checkouts, each of which waited its turn
+  behind every other request. Polls run through their own lane of
+  `MIS_SCAN_PROGRESS_SLOTS` connections (default 4), and tabs asking for the
+  same entry with the same site access share one read for two seconds. Its
+  numbers are `scanReading.progressReads` in `/api/health`. After the first
+  release of this note (15:35 IST) the entry read lane held at 0 to 4 while the
+  pool stayed at 10 of 10 with 60 to 138 waiting, so the polls were the next
+  holder to bound.
 - The pool size setting from the change above (`MIS_DATABASE_POOL_MAX`) is the
   other lever. The scan engines hold 4 connections each (eight engines, 32) on
   the same PostgreSQL server, so compare the server's `max_connections` with

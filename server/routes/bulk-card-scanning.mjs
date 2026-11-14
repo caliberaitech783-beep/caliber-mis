@@ -81,6 +81,10 @@ const uuid=v=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.
 // Each holds one of the pool's connections while it runs; the rest of the pool stays free for
 // saves, approvals and every other screen.
 export const scanReadSlots=(env=process.env)=>{const n=Number(String(env.MIS_SCAN_READ_SLOTS??'').trim());return Number.isInteger(n)&&n>=1&&n<=50?n:4;};
+// The same for the scan screen's progress poll (MIS_SCAN_PROGRESS_SLOTS): every open scan tab asks
+// every 4 s while cards are being read, and tabs showing the same entry share one read.
+export const scanProgressSlots=(env=process.env)=>{const n=Number(String(env.MIS_SCAN_PROGRESS_SLOTS??'').trim());return Number.isInteger(n)&&n>=1&&n<=50?n:4;};
+export const SCAN_PROGRESS_SHARE_MS=2000;
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 const cardKey=v=>String(v||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
 function decodeScanRow(row){
@@ -160,6 +164,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
  readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),
+ progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
  alertAdministrators=null,outageProbeMs=OUTAGE_PROBE_MS,
  // role 'engine' = the separate scan engine process: reads cards for its own
@@ -383,19 +388,32 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  // The 4 s poll reads identity, status, revision and the fleet check of each card: a few KB
  // instead of every draft, with no re-validation, draft rewrite or duplicate scan. The browser
  // reloads the full entry only when this differs from the cards it shows.
- const sendScanProgress=async(req,res,batch)=>{
-  const requested=await requestScanBatch(pool,batch.id);if(requested.rowCount!==0)void pump();
-  const rows=(await pool.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('fleetReview',c.raw_fields->'fleetReview','scanProgress',c.raw_fields->'scanProgress','manualDeletion',c.raw_fields->'manualDeletion') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('trips',c.draft->'trips') END AS draft,l.book_no,l.site AS saved_site,l.data->'trips' AS saved_trips,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') ORDER BY ordinal`,[batch.id])).rows;
-  const cards=[],deletedCards=[];
-  for(const {raw_fields,draft,saved_site,saved_trips,logbook_deleted_at,...card} of rows){
-   const fields=decodeScanJson(raw_fields)||{};
-   if(fields.manualDeletion||card.review_note.startsWith('Card deleted manually by user')){deletedCards.push({id:card.id,ordinal:card.ordinal,vehicle:fields.manualDeletion?.vehicle||''});continue;}
-   if(saved_site&&!logbook_deleted_at)requireLogBookSite(req.logBookScope,saved_site);
-   const fleetReview=fields.fleetReview&&fields.fleetReview.error!=='Your Pulse account is not authorised to sync all four masters.'?fields.fleetReview:null;
-   const trips=Array.isArray(saved_trips)?saved_trips:decodeScanJson(draft)?.trips;
-   cards.push({...card,raw_fields:{...(fleetReview?{fleetReview}:{}),...(fields.scanProgress?{scanProgress:fields.scanProgress}:{})},trip_total:machineTripTotal(Array.isArray(trips)?trips:[]),validationPending:false,checks:null});
-  }
-  res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(pool,batch,req)},cards,duplicates:[],progress:true,storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(pool,batch)});
+ // Until 14 November 2026 each poll took five or six pool connections one after another (the
+ // batch, the request mark, the cards, the open deletion, the reader), each waiting its turn
+ // behind every other request, and every tab showing the same entry asked separately. Now one
+ // held connection serves a poll, polls run through their own lane, and tabs asking for the same
+ // entry with the same site access share one read for SCAN_PROGRESS_SHARE_MS.
+ const sendScanProgress=async(req,res)=>{
+  const key=JSON.stringify(['scan-progress',req.params.id,deletionActor(req),req.logBookScope?.sites??null]);
+  const payload=await progressLane.run(key,async()=>{
+   const db=await pool.connect();
+   try{
+    const batch=await getBatch(db,req.params.id);
+    const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();
+    const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('fleetReview',c.raw_fields->'fleetReview','scanProgress',c.raw_fields->'scanProgress','manualDeletion',c.raw_fields->'manualDeletion') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('trips',c.draft->'trips') END AS draft,l.book_no,l.site AS saved_site,l.data->'trips' AS saved_trips,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') ORDER BY ordinal`,[batch.id])).rows;
+    const cards=[],deletedCards=[];
+    for(const {raw_fields,draft,saved_site,saved_trips,logbook_deleted_at,...card} of rows){
+     const fields=decodeScanJson(raw_fields)||{};
+     if(fields.manualDeletion||card.review_note.startsWith('Card deleted manually by user')){deletedCards.push({id:card.id,ordinal:card.ordinal,vehicle:fields.manualDeletion?.vehicle||''});continue;}
+     if(saved_site&&!logbook_deleted_at)requireLogBookSite(req.logBookScope,saved_site);
+     const fleetReview=fields.fleetReview&&fields.fleetReview.error!=='Your Pulse account is not authorised to sync all four masters.'?fields.fleetReview:null;
+     const trips=Array.isArray(saved_trips)?saved_trips:decodeScanJson(draft)?.trips;
+     cards.push({...card,raw_fields:{...(fleetReview?{fleetReview}:{}),...(fields.scanProgress?{scanProgress:fields.scanProgress}:{})},trip_total:machineTripTotal(Array.isArray(trips)?trips:[]),validationPending:false,checks:null});
+    }
+    return {batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},cards,duplicates:[],progress:true,storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)};
+   }finally{db.release();}
+  });
+  res.set('Cache-Control','no-store').json(payload);
  };
  // The entry list carries every listed entry's trip total from this one query. Until 14 November
  // 2026 the screen asked for each entry's progress separately to add the totals up: with the
@@ -439,7 +457,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   return memoKey(String(revision),await loadEquipmentAliases(client),Math.floor(Date.now()/1800000));
  };
  app.get('/api/scan-batches/:id',...protect,wrap(async(req,res)=>{
-  const batch=await getBatch(pool,req.params.id);if(req.query.progress==='1')return sendScanProgress(req,res,batch);
+  if(req.query.progress==='1')return sendScanProgress(req,res);
+  const batch=await getBatch(pool,req.params.id);
   // A whole or partial entry read holds one connection for as long as it runs (every card's fill
   // and checks). The lane keeps these reads to a few connections at a time, so saves, approvals
   // and other screens still find a free one when several entries are opened together.
@@ -715,6 +734,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   entryReadReuse:{fill:fillMemo.stats(),check:checkMemo.stats()},
   // Whole and partial entry reads running now, waiting for a slot, and served since start.
   entryReadLane:readLane.stats(),
+  // The scan screen's progress polls: running, waiting, served, and how many shared another tab's read.
+  progressReadLane:progressLane.stats(),
   // Reading held because the account failed: Pulse-II reports every reader's hold (from the database), an engine its own.
   outages:role==='app'?knownOutages.map(({detail,...outage})=>outage):[singleLane,...lanes.values()].filter(lane=>lane.outage).map(lane=>({lane:outageLaneKey(lane.name),reason:lane.outage.reason,httpStatus:lane.outage.status,since:lane.outage.since}))}),
  activeReads:()=>workers};
