@@ -1,0 +1,52 @@
+name: Repair MIS staging slot
+
+# On 13 Nov 2026 the staging slot was deleted and created again. It came back without its app settings, its identity
+# and its integration key file, so its app cannot start and no release can pass. This puts them back on the staging
+# slot only; production is only read (scripts/repair-mis-staging-slot.mjs).
+# It never runs by itself: someone starts it by hand (Run workflow), and unless "apply" is ticked it only lists what
+# is missing.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Repair the staging slot (leave off to only list what is missing)'
+        type: boolean
+        default: false
+
+# The release group, so a repair and a release never work on the staging slot at the same moment: each waits for the
+# other. Start it while no release is waiting, because only one run can wait in this group.
+concurrency:
+  group: caliber-mis-783-release
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+
+      - name: Repair the staging slot
+        env:
+          MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+          REPAIR_APPLY: ${{ inputs.apply }}
+        run: |
+          if [ "$REPAIR_APPLY" = "true" ]; then node scripts/repair-mis-staging-slot.mjs --apply; else node scripts/repair-mis-staging-slot.mjs; fi
