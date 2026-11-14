@@ -593,7 +593,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   else if(card&&!options&&!connectionError)reviewWorking='Loading matching information…';
   else if(dirty&&savingRef.current&&autosaveStatus.startsWith('Saving'))reviewWorking=autosaveStatus;
  }
- const transferNote=transferPeriodLabel(rawOptions?.assets?.find(asset=>String(asset.id)===String(draft.assetId)),draft,rawOptions?.shifts?.find(shift=>String(shift.id)===String(draft.shiftId)));
+ const transferAsset=rawOptions?.assets?.find(asset=>String(asset.id)===String(draft.assetId));
+ const transferNote=transferAsset?.transferHistory?.length?transferPeriodLabel(transferAsset,draft,rawOptions?.shifts?.find(shift=>String(shift.id)===String(draft.shiftId))):'';
  const reviewRequired=reviewActionable?[...focusedScanMessages(reviewErrors,issueFocus),...focusedScanMessages(blockingReviewWarnings,issueFocus),...Object.entries(manualIssues).filter(([key])=>scanIssueFieldVisible(issueFocus,key)).map(([,message])=>message),...(!focusedIssue&&bdFallbackMissing?['Enter breakdown hours manually because Pulse could not provide them.']:[]),...(!focusedIssue&&contextBlocked?['Resolve the scan setup or mismatch cards before saving.']:[])]:[];
  useEffect(()=>{
   if(!autoSaveError?.retryAt)return;
