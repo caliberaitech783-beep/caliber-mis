@@ -58,6 +58,17 @@ test('the batch list uses the shared read, cleared by every batch action, and hi
  assert.match(scan,/'\/card-counts'[\s\S]{0,500}startVisiblePoll\(refresh,VLB_CARD_COUNT_POLL_MS\)/);
 });
 
+test('a 10 s refresh never cancels a batch list read in flight, and entry pickers skip the details and preview',()=>{
+ const board=readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
+ // The list effect restarts only with the session; a refresh asks through listLoad instead.
+ assert.match(board,/clearInterval\(timer\);if\(listLoad\.current===load\)listLoad\.current=null\};\r?\n \},\[session\.token\]\);/);
+ assert.match(board,/useEffect\(\(\)=>\{if\(refresh\)void listLoad\.current\?\.\(\)\},\[refresh\]\)/);
+ assert.match(board,/if\(pending\)\{again=true;return\}pending=true;/);
+ assert.match(board,/if\(!viewed\?\.id\|\|entryMode\)return;const controller/);
+ assert.match(board,/if\(entryMode\|\|!selection\.site\|\|!selection\.date\|\|!selection\.shift\)\{setLoading\(false\)/);
+ assert.match(board,/!batchStatusReady&&!error&&<p role="status">Loading batches for/);
+});
+
 test('a batch write also drops the cached batch actors',()=>{
  const routes=readFileSync(new URL('../server/routes/vlb-batches.mjs',import.meta.url),'utf8');
  assert.match(routes,/app\.use\('\/api\/vlb-batches'.*res\.on\('finish',\(\)=>actorCache\.clear\(\)\)/);
