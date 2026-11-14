@@ -111,13 +111,29 @@
     grid-template-areas: "serial equipment job trips remove";
   }
   /* Correction rows retain the complete timed grid, including the derived gap. */
+  /* Machine-wise summary: equipment, trips and delete on one line. The row has no
+     named "remove" area, so the trip-entry grid-area would push delete onto a new row. */
   #scan-entry-fields .scan-machine-summary .scan-trip-row {
     display: grid;
-    grid-template-columns: minmax(0,1fr) 90px 44px;
+    grid-template-columns: minmax(0,1fr) 96px 44px;
+    grid-template-areas: none;
     gap: 10px;
     align-items: end;
+    margin: 0 0 10px;
   }
-  #scan-entry-fields .scan-machine-summary .scan-trip-remove { margin: 0; align-self: end; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row > label { gap: 4px; margin: 0; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-remove {
+    grid-area: auto;
+    align-self: stretch;
+    justify-self: stretch;
+    width: 44px;
+    height: auto;
+    min-height: 40px;
+    margin: 22px 0 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   #scan-entry-fields .scan-machine-summary .scan-add-machine { margin: 8px 0 4px; }
   #scan-entry-fields .scan-machine-summary .scan-fields {
     display: grid;
