@@ -23,7 +23,7 @@ on:
           - 'Scheduled window now (backup trigger: releases only in the hour after a window)'
         default: 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
       otp:
-        description: 'Urgent only: the 6-digit OTP sent to the owner on Telegram. Leave empty to send one.'
+        description: 'Urgent only: the 6-digit OTP sent to Mr Anoop and Mr Mohit Chadda on Telegram (either one). Leave empty to send one.'
         type: string
         required: false
 

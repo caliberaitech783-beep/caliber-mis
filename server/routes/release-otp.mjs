@@ -9,7 +9,7 @@ import {generateOtp,hashOtp,checkOtpAttempt,resendTooSoon,otpExpiresAt,OTP_TTL_M
 //   POST /api/release-otp/verify   {otp} checks it once; the run then deploys.
 // One pending OTP at a time, ten minutes, five wrong attempts, one request a minute.
 export const RELEASE_OTP_KEY='production_release_otp';
-const RECIPIENTS={telegram:'owner on Telegram',whatsapp:'owner on WhatsApp +91 ******5281'};
+const RECIPIENTS={telegram:'owners (Mr Anoop and Mr Mohit Chadda) on Telegram',whatsapp:'owner on WhatsApp +91 ******5281'};
 
 export function registerReleaseOtp(app,{pool,verifyIdentity,sendOtp,now=()=>Date.now(),audit=()=>{}}){
  const identity=async req=>verifyIdentity(String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim());
