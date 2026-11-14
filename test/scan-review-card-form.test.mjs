@@ -64,7 +64,7 @@ test('the original scan appears before cropping and switching cards cancels the 
  let finishCrop,request;
  const crop=new Promise(resolve=>{finishCrop=resolve});
  const app=harness('&batch=b1&scanView=review&scanGroup=all','vehicle',{
-  fetch:async (path,{signal})=>{request={path,signal};return new Response(original)},
+  fetch:async (path,{signal})=>{request={path,signal};return {ok:true,blob:async()=>original};},
   trimScanPreview:()=>crop
  });
  const initial=loaded(app,[card(1),card(2)]);

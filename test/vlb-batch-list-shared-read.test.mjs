@@ -47,8 +47,9 @@ test('a failed read is not kept, and ttlMs 0 reads every time',async()=>{
 
 test('the batch list uses the shared read, cleared by every batch action, and hidden tabs stop polling',()=>{
  const routes=readFileSync(new URL('../server/routes/vlb-batches.mjs',import.meta.url),'utf8');
- assert.match(routes,/const rows=await sharedBatchRows\(/);
- assert.match(routes,/app\.use\('\/api\/vlb-batches',\(req,res,next\)=>\{if\(req\.method!=='GET'&&req\.method!=='HEAD'\)\{sharedBatchRows\.clear\(\);res\.on\('finish',sharedBatchRows\.clear\);\}next\(\);\}\)/);
+ assert.match(routes,/sharedBatchRows\.get\(scopeKey\)/);
+ assert.match(routes,/const rows=await read\(/);
+ assert.match(routes,/app\.use\('\/api\/vlb-batches'.*res\.on\('finish',\(\)=>sharedBatchRows\.clear\(\)\)/);
  const board=readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
  assert.match(board,/setInterval\(\(\)=>\{if\(document\.visibilityState!=='hidden'\)void load\(\)\},4000\)/);
  assert.match(board,/const tick=\(\)=>\{if\(document\.visibilityState!=='hidden'\)setRefresh\(n=>n\+1\)\};const timer=setInterval\(tick,10000\);document\.addEventListener\('visibilitychange',tick\)/);

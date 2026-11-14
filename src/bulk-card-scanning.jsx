@@ -404,12 +404,15 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
   setScanPreview(null);setRotation(0);setZoom(1);
   if(!selected||!showDetails)return;
   const controller=new AbortController(),{signal}=controller;
+  let timedOut=false;
+  const timeout=setTimeout(()=>{timedOut=true;controller.abort();},20000);
   let originalUrl,croppedUrl;
   const loadPreview=async()=>{
    try{
     const response=await fetch('/api/scan-cards/'+selected+'/image',{signal,headers:{Authorization:`Bearer ${token}`}});
     if(!response.ok)throw new Error('Could not load scan.');
     const blob=await response.blob();
+    clearTimeout(timeout);
     if(signal.aborted)return;
     originalUrl=URL.createObjectURL(blob);
     setScanPreview({cardId:selected,token,originalPreview:originalUrl,preview:originalUrl});
@@ -417,10 +420,12 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
     if(signal.aborted||cropped===blob)return;
     croppedUrl=URL.createObjectURL(cropped);
     setScanPreview({cardId:selected,token,originalPreview:originalUrl,preview:croppedUrl});
-   }catch(error){if(!signal.aborted)setScanPreview({cardId:selected,token,error:error.message});}
+   }catch(error){if(!signal.aborted||timedOut)setScanPreview({cardId:selected,token,error:timedOut?'The scan preview took too long to load.':error.message});}
+   finally{clearTimeout(timeout);}
   };
   void loadPreview();
   return()=>{
+   clearTimeout(timeout);timedOut=false;
    controller.abort();
    if(croppedUrl)URL.revokeObjectURL(croppedUrl);
    if(originalUrl)URL.revokeObjectURL(originalUrl);

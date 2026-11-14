@@ -85,11 +85,10 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  let ready;
  const prefetchFleetBreakdownRows=createBreakdownRowsPrefetchCache(logBookOps?.readBreakdownRows);
  // Every open batch board asks for the batch list every 4 s, and on 11 Nov 2026 those reads
- // alone kept the 10-connection pool full. The rows are the same for every caller (site
- // access is applied afterwards), so one read is shared by callers that arrive together and
- // reused for a few seconds. Any batch action through these routes clears it at once.
- const sharedBatchRows=createSharedRead({ttlMs:listCacheMs});
- app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD'){sharedBatchRows.clear();res.on('finish',sharedBatchRows.clear);}next();});
+ // alone kept the 10-connection pool full. Row security also applies to the log-book
+ // counts, so only share reads between callers with the same effective site scope.
+ const sharedBatchRows=new Map();
+ app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>sharedBatchRows.clear());next();});
  // Site PMs who may approve by OTP: injected from the server (shared with Vehicle transfers), else derived from the Users master.
  const defaultPmLogins=async(client,site)=>{const {rows}=await client.query("SELECT DISTINCT lower(trim(record_data->>'login')) AS login FROM master_records WHERE master_name='Users & employees' AND COALESCE(trim(record_data->>'login'),'')<>''");const out=[];for(const {login} of rows){if(batchPmAtSite(await getActor({login},client),site))out.push(login)}return out};
  const pmLogins=approvalOtp.pmLogins||defaultPmLogins,deliver=approvalOtp.deliver;
@@ -121,7 +120,14 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  };
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const rows=await sharedBatchRows(async()=>(await pool.query(`
+  const scopeKey=JSON.stringify(req.logBookScope.sites===null?null:[...req.logBookScope.sites].map(canonicalSiteName).sort());
+  let read=sharedBatchRows.get(scopeKey);
+  if(!read){
+   if(sharedBatchRows.size>=128)sharedBatchRows.delete(sharedBatchRows.keys().next().value);
+   read=createSharedRead({ttlMs:listCacheMs});
+   sharedBatchRows.set(scopeKey,read);
+  }
+  const rows=await read(async()=>(await pool.query(`
    WITH visible_batches AS (
     SELECT * FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>=$$2026-11-01$$
    ), vlb_counts AS (
