@@ -56,11 +56,14 @@ export function parseCardResponse(raw,kind){
  validateA(recovered.fields,kind);validateB(recovered.trips,kind);
  return recovered;
 }
-// The shared start gate caps extraction starts a minute across every worker.
-// 500 ms allows 120 starts a minute so five workers are never held back by the
-// gate; HTTP 429 responses still widen the spacing adaptively per key.
+// The shared start gate caps extraction starts a minute across every worker on
+// one key. Every trip card is read twice (first read, then the door recheck) at
+// about 6 s an answer, so eight workers start about 160 requests a minute and
+// the earlier 500 ms gate (120 a minute) would have held them back. 250 ms
+// allows 240 starts a minute, still well inside a billed Flash project's rate
+// limit; HTTP 429 responses still widen the spacing adaptively per key.
 // MIS_GEMINI_MIN_INTERVAL_MS overrides it (e.g. 1000 or 2000 if quota is tight).
-export function geminiMinIntervalMs(env=process.env){const raw=env.MIS_GEMINI_MIN_INTERVAL_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):500;}
+export function geminiMinIntervalMs(env=process.env){const raw=env.MIS_GEMINI_MIN_INTERVAL_MS,value=Number(raw);return raw?.trim()&&Number.isFinite(value)&&value>=0&&value<=60000?Math.round(value):250;}
 // Allow slower Gemini reads to finish; abandon a hung connection so
 // its retained scan can be retried without keeping the card blocked for minutes.
 // MIS_GEMINI_TIMEOUT_MS overrides it (10 s to 180 s).

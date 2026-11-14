@@ -111,6 +111,11 @@ export async function applyBatchContext(client,context,draft){
  const shift=rows.find(s=>canonicalSiteName(s.site||s.siteName)===canonicalSiteName(next.location)&&String(s.status||'').toLowerCase()!=='inactive'&&(!s.effectiveFrom||s.effectiveFrom<=context.bookDate)&&(!s.effectiveTo||s.effectiveTo>=context.bookDate)&&[s.shiftCode,s.shiftName,s.name].some(v=>bookShiftCode(v)&&bookShiftCode(v)===bookShiftCode(next.cardShift)));
  return shift?{...next,shiftId:shift.id}:next;
 }
+// Cards read at once per queue when Gemini reads (MIS_SCAN_LANE_CONCURRENCY overrides it for
+// site lanes, scanConcurrency for the single queue; at most MAX_GEMINI_CONCURRENCY). Every trip
+// card costs two Gemini answers of about 6 s each plus its finish, so five workers moved a queue
+// at about 20 cards a minute; eight, the figure the engines already used, lifts that by three fifths.
+export const DEFAULT_GEMINI_WORKERS=8;
 const MASTER_NAMES=['Equipment master','C-Dir Employee master','ERP Employee master','Employee master','Shift Master','Work Order master'];
 const isLmvScan=batch=>batch.kind==='vehicle'&&batch.expected_context?.logBookKind==='lmv';
 const scanBookKind=batch=>isLmvScan(batch)?'lmv':batch.kind;
@@ -163,7 +168,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
 
  return {errors,warnings,data,number};
 }
-export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
+export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
  readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),
  progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
@@ -172,7 +177,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  // lane only and serves no pages. engineLane is a canonical site, or null for
  // the engine that reads every site not in engineExcluded.
  role='app',engineLane=null,engineExcluded=[],engineVersion='',scanLanes=scanLanesEnabled(process.env),enginesExternal=role==='app'&&scanEnginesExternal(process.env),
- lanePerSite=laneConcurrency(process.env,role==='engine'?8:5,MAX_GEMINI_CONCURRENCY),
+ lanePerSite=laneConcurrency(process.env,geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:role==='engine'?8:5,MAX_GEMINI_CONCURRENCY),
+ ocr=localCardOcr({getGroqConfig,concurrency:scanConcurrency}),
  ocrForLane=lane=>localCardOcr({getGroqConfig,site:lane||'',concurrency:lanePerSite,shareGateByKey:true})}){
  if(!Number.isInteger(scanConcurrency)||scanConcurrency<1||scanConcurrency>MAX_GEMINI_CONCURRENCY)throw Error(`Scan concurrency must be between 1 and ${MAX_GEMINI_CONCURRENCY}.`);
  const prefetchAutoSaveBreakdownRows=createBreakdownRowsPrefetchCache(readBreakdownRows);
