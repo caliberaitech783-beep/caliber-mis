@@ -97,6 +97,10 @@ export function alertMessage(alert,{nowMs=Date.now(),sequence=1}={}){
  return `Pulse-II: ${site}, ${alert.date}, shift ${label}. ${body}${sequence>1?` Reminder ${sequence}.`:''}`;
 }
 
+// Outbox event key of one alert message to one recipient. The Automation Centre counts and the
+// automation switches read the `vlb-alert:` prefix and the `|not_created:` / `|not_closed:` part.
+export const alertEventKey=(alert,sequence,to)=>`vlb-alert:${alert.key}:${sequence}:${login(to)}`;
+
 const readShiftRows=async pool=>(await pool.query("SELECT record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(r=>r.record_data||{});
 const readBatches=async(pool,dates)=>(await pool.query(`SELECT b.id,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.archived_at,b.deleted_at,b.stage,b.creator_login,b.created_by,b.amendment_by,
  (SELECT count(*) FROM mis_vlb_batch_entries e WHERE e.batch_id=b.id) AS card_count FROM mis_vlb_batches b WHERE b.book_date=ANY($1::date[])`,[dates])).rows;
@@ -127,7 +131,8 @@ export function createVlbBatchAlertWorker({pool,telegram,pmLogins,ensureSchema=a
  async function deliver(alert,settings,sequence,nowMs){
   const recipients=await recipientsFor(alert,settings),message=alertMessage(alert,{nowMs,sequence}),delivered=[],failures=[];
   for(const to of recipients){
-   try{if(await telegram.send(to,message,`vlb-alert:${alert.key}:${sequence}`))delivered.push(to);}
+   // One outbox row per recipient: the outbox event key is unique, so a shared key would let only the first recipient through.
+   try{if(await telegram.send(to,message,alertEventKey(alert,sequence,to)))delivered.push(to);}
    catch(error){failures.push(`${to}: ${error.message}`);}
   }
   const error=!recipients.length?'No site Project Manager, production head or MIS user is configured for this site.':!delivered.length?'No recipient has linked Telegram yet.':failures.join('; ');
