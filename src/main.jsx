@@ -3839,6 +3839,13 @@ function buildXlsxWorkbook(title, columns, exportRows, highlightedRows = new Set
     : [{ name: "Report", title, columns, rows: exportRows, highlightedRows }];
   return buildXlsxSheetsWorkbook(title, sheets);
 }
+function downloadEmployeeExcel(columns, records) {
+  return runDownloadNotice("Employee Master Excel", () => {
+    const title = "Employee Master";
+    const rows = records.map((record) => columns.map((column) => column.value(record)));
+    downloadExportFile(buildXlsxWorkbook(title, columns, rows), exportFileName(title, "xlsx"));
+  });
+}
 // Smart Print goes straight to the printer through the print helper (QZ Tray) when it is installed on this PC:
 // the helper, unlike a web page, can set the paper to the chosen A3 / A4. Without the helper, or if the job
 // cannot be sent, the normal browser print window is used.
@@ -11899,7 +11906,7 @@ function App() {
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
     requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
-  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
+  ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv} downloadEmployeeExcel={downloadEmployeeExcel}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
     <><PulseMasterSync session={session}/><PendingInPulse session={session}/></>
