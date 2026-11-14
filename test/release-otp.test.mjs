@@ -67,7 +67,7 @@ test('an urgent release OTP is sent to the owner and approves exactly one releas
     assert.equal(s.sent.length,0,'no OTP without a valid workflow identity');
     const requested=await s.post('/api/release-otp/request');
     assert.equal(requested.status,200);
-    assert.deepEqual(requested.body,{recipient:'owner on Telegram',expiresInMinutes:10});
+    assert.deepEqual(requested.body,{recipient:'owners (Mr Anoop and Mr Mohit Chadda) on Telegram',expiresInMinutes:10});
     assert.equal(s.sent.length,1);
     assert.equal((await s.post('/api/release-otp/request')).status,429,'one request a minute');
     const stored=s.pool.settings.get(RELEASE_OTP_KEY);
@@ -106,7 +106,8 @@ test('the release OTP goes to the owner on Telegram, and to WhatsApp only when T
   const pool={query:async sql=>{assert.match(sql,/Users & employees/);return {rows:users.map(record_data=>({record_data}))}}};
   const linked=new Set(['anoop.admin']),telegrams=[],whatsapps=[];
   const telegram={send:async(login,message,key)=>{telegrams.push({login,message,key});return linked.has(login)}};
-  const deliver=createReleaseOtpDelivery({pool,telegram,whatsapp:async({otp})=>{whatsapps.push(otp)}});
+  const deliver=createReleaseOtpDelivery({pool,telegram,whatsapp:async({otp})=>{whatsapps.push(otp)},alsoLogins:[]});
+  const both=createReleaseOtpDelivery({pool,telegram,whatsapp:async({otp})=>{whatsapps.push(otp)},alsoLogins:['MohitChadda']});
   assert.deepEqual(await deliver({otp:'123456',actor:'dev1',runId:'77'}),{channel:'telegram'});
   assert.deepEqual(telegrams.map(t=>t.login),['anoop','anoop.admin'],'only logins registered to the owner number');
   assert.match(telegrams[1].message,/OTP: 123456\nRequested by: dev1 \(GitHub run 77\)\nValid for 10 minutes/);
@@ -115,7 +116,16 @@ test('the release OTP goes to the owner on Telegram, and to WhatsApp only when T
   linked.clear();
   assert.deepEqual(await deliver({otp:'654321',actor:'dev1',runId:'78'}),{channel:'whatsapp'});
   assert.deepEqual(whatsapps,['654321']);
-  await assert.rejects(createReleaseOtpDelivery({pool,telegram})({otp:'1',actor:'',runId:''}),/no linked Telegram/);
+  await assert.rejects(createReleaseOtpDelivery({pool,telegram,alsoLogins:[]})({otp:'1',actor:'',runId:''}),/no linked Telegram/);
+  // Mr Mohit Chadda gets every release OTP too, together with the owner; by default as well.
+  telegrams.length=0;whatsapps.length=0;linked.add('anoop').add('mohitchadda');
+  assert.deepEqual(await both({otp:'111222',actor:'dev1',runId:'79'}),{channel:'telegram'});
+  assert.deepEqual(telegrams.map(t=>t.login),['anoop','anoop.admin','mohitchadda']);
+  assert.ok(telegrams.every(t=>/OTP: 111222/.test(t.message)));
+  telegrams.length=0;
+  await createReleaseOtpDelivery({pool,telegram})({otp:'333444',actor:'dev1',runId:'80'});
+  assert.ok(telegrams.some(t=>t.login==='mohitchadda'),'Mr Mohit Chadda is included by default');
+  assert.equal(whatsapps.length,0);
 });
 
 test('the WhatsApp fallback goes only to the owner number through the owner-only connection',async()=>{
