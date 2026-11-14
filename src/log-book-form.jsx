@@ -85,7 +85,16 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
 
  const loadRegister=async(before)=>{if(vlbBatch){const batch=await api('/api/vlb-batches/'+vlbBatch.id);setRecords((kind==='lmv'?batch.lmvRecords:batch.records)||[]);setNextCursor(null);return;}const data=await api(`/api/log-books/${kind}${before?'?before='+encodeURIComponent(before):''}`);setRecords(current=>before?[...current,...data.records]:data.records);setNextCursor(data.nextCursor);};
 
- const load=async()=>{setLoading(true);setError('');try{const [masters,list]=await Promise.all([loadOptions(),initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`)]);setOptions(masters);if(list){setRecords((vlbBatch&&kind==='lmv'?list.lmvRecords:list.records)||[]);setNextCursor(list.nextCursor);}}catch(e){setError(e.message)}finally{setLoading(false)}};
+ const load=async()=>{
+  setLoading(true);setError('');
+  const register=async()=>{
+   try{const list=await (initialRecord?null:api(vlbBatch?'/api/vlb-batches/'+vlbBatch.id:`/api/log-books/${kind}`));if(list){setRecords((vlbBatch&&kind==='lmv'?list.lmvRecords:list.records)||[]);setNextCursor(list.nextCursor);}}
+   catch(error){setError(error.message);}
+  };
+  const registerRequest=register();
+  try{setOptions(await loadOptions());}catch(error){setError(error.message);}finally{setLoading(false);}
+  await registerRequest;
+ };
 
  useEffect(()=>{void load()},[kind,session.token]);
 

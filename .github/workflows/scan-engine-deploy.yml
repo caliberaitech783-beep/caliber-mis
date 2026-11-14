@@ -102,7 +102,7 @@ jobs:
         if: steps.plan.outputs.deploy == 'true'
         run: |
           az webapp config appsettings set --resource-group coalmine-fleet-maintenance-rg --name "$ENGINE_APP" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false --only-show-errors --output none
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false MIS_GEMINI_UPRIGHT_ONLY=true --only-show-errors --output none
           az webapp deploy --resource-group coalmine-fleet-maintenance-rg --name "$ENGINE_APP" \
             --src-path "$RUNNER_TEMP/scan-runtime.zip" --type zip --clean true --restart true \
             --track-status false --only-show-errors --output none

@@ -27,7 +27,7 @@ import {registerScannerConnectorAuth} from './server/routes/scanner-connector-au
 import {installMisCredentialClient} from './server/routes/mis-credential-client.mjs';
 import {installMisLoginHandoff} from './server/routes/mis-login-handoff.mjs';
 import {authorizeMisRequest} from './shared/mis-application-access.mjs';
-import {misDatabaseConfig} from './server/rules/mis-database-config.mjs';
+import {misDatabaseConfig,databasePoolMax} from './server/rules/mis-database-config.mjs';
 import {registerMisDomainRedirect} from './server/routes/mis-domain.mjs';
 import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
@@ -315,7 +315,7 @@ const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 const databasePool=new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
-  max:10,
+  max:databasePoolMax(),
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 });
@@ -3615,7 +3615,7 @@ app.get('/api/health',async(_req,res)=>{
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
-      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages};}catch{return null;}})(),
+      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane};}catch{return null;}})(),
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},

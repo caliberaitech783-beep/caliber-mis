@@ -274,7 +274,31 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
   const stopCounts=startVisiblePoll(refresh,VLB_CARD_COUNT_POLL_MS);
   return()=>{controller.abort();stopCounts()};
  },[kind,token,vlbBatch?.id]);
- const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=0;try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
+ // The entry list carries each entry's trip total, so the screen no longer asks for every entry's
+ // progress separately. The read below is only for an older server during a release swap.
+ const [historyFrom,setHistoryFrom]=useState('');
+ const [historyTo,setHistoryTo]=useState('');
+ const [historyDownloading,setHistoryDownloading]=useState(false);
+ const [historyError,setHistoryError]=useState('');
+ const exportScanHistory=async event=>{
+  event.preventDefault();
+  setHistoryDownloading(true);
+  setHistoryError('');
+  const bookKind=lmv?'lmv':kind==='vehicle'?'vlb':'elb';
+  const params=new URLSearchParams({from:historyFrom,to:historyTo,bookKind});
+  try{
+   const response=await fetch('/api/scan-history.csv?'+params,{headers:{Authorization:'Bearer '+token}});
+   if(!response.ok)await readScannerResponse(response,{mis:true});
+   const url=URL.createObjectURL(await response.blob());
+   const link=document.createElement('a');
+   link.href=url;
+   link.download='scan-history-'+bookKind+'-'+historyFrom+'-to-'+historyTo+'.csv';
+   link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){setHistoryError(error.message)}
+  finally{setHistoryDownloading(false)}
+ };
+ const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=Number.isFinite(b.trip_total)?b.trip_total:0;if(!Number.isFinite(b.trip_total))try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
  const trackUploadExtraction=uploadTotal>0&&(uploading||uploadExtraction.extracted+uploadExtraction.failed+uploadExtraction.skipped<uploadSent);
  useEffect(()=>{
   const attempt=uploadAttempt.current;
@@ -662,6 +686,15 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const readerGuide=card?.status==='review'&&!card.draft?.assetId&&!card.draft?.bookDate&&<p className="scan-warning">The image was scanned successfully, but the reader could not identify the handwritten fields reliably. This is an unfilled review draft. Enter the values from the scan; no log book has been saved.</p>;
  if(savedLmvEdit)return <LogBookForm key={savedLmvEdit.record.id} kind="lmv" session={session} vlbBatch={vlbBatch} initialRecord={savedLmvEdit.record} inlineEdit onExit={()=>setSavedLmvEdit(null)} onSaved={()=>{setSavedLmvEdit(null);void refreshSavedLmv(savedLmvEdit.batchId)}}/>;
  return <section ref={reviewPanel} className={`scan-page${reviewPage?' scan-review-page':''}${reviewPage&&reviewCompact?' scan-review-compact':''}`}>{reviewPage&&<div className="scan-review-controls"><button type="button" disabled={busy} onClick={backFromReview}>{new URLSearchParams(window.location.search).has('scanReviewReturn')?'Back to equipment review':'Back to card status'}</button><button type="button" aria-expanded={!reviewCompact} aria-controls="scan-review-heading" onClick={toggleReviewCompact}>{reviewCompact?'Show heading and summary':'Hide heading and summary'}</button><><button type="button" aria-expanded={fleetListOpen} aria-controls="scan-fleet-review-list" onClick={()=>setFleetListOpen(open=>!open)}>Review ({fleetCards.length+fleetErrorCards.length})</button><button type="button" aria-expanded={mismatchListOpen} aria-controls="scan-mismatch-list" onClick={()=>setMismatchListOpen(open=>!open)}>Mismatch cards ({contextGate?.mismatches.length||0})</button></></div>}{(!reviewPage||!reviewCompact)&&<header id="scan-review-heading" className="scan-hero"><h1><ScanLine/>{reviewPage?(lmv?'LMV · ':'VLB · ')+(CARD_GROUPS.find(g=>g.id===groupFilter)?.label||'Card review'):title+' · Scan & Review'}</h1></header>}
+ {!reviewPage&&<details>
+  <summary>Scan History CSV</summary>
+  <form onSubmit={exportScanHistory}>
+   <label>From (IST)<input type="date" required value={historyFrom} onChange={event=>setHistoryFrom(event.target.value)}/></label>
+   <label>Through (IST)<input type="date" required min={historyFrom||undefined} value={historyTo} onChange={event=>setHistoryTo(event.target.value)}/></label>
+   <button type="submit" disabled={historyDownloading}>{historyDownloading?'Exporting…':'Export Scan History CSV'}</button>
+   {historyError&&<p role="alert">{historyError}</p>}
+  </form>
+ </details>}
  {!reviewPage&&<section className="scan-context-selection" aria-label="Scan setup"><div className="scan-context-title"><ScanLine size={20}/><div><h2>Scan setup</h2><p>{vlbBatch?"Date, site and shift fixed by the selected VLB batch":canSelectSite?"Choose date, site and shift":accountSite?(lmv&&!options?.accountLocation?"Site filled automatically":"Site from your Pulse admin ID"):"Choose date and shift · Site from Pulse"}</p></div></div><fieldset disabled={Boolean(vlbBatch)||busy||uploading||scannerBusy||awaitingContext||contextSaving}><label>Card date<input aria-label="Card date" type="date" min="2026-11-01" required value={expectedContext.bookDate} onInput={e=>{setExpectedContext(v=>({...v,bookDate:e.target.value}))}}/></label><label className="scan-context-site">Site{canSelectSite?<SmartSelect showOverflowValue aria-label="Site" required value={expectedContext.location} onChange={e=>setExpectedContext(current=>({...current,location:e.target.value,cardShift:''}))}><option value="">Choose site</option>{(options?.sites||[]).map(site=><option key={site}>{site}</option>)}</SmartSelect>:<input aria-label="Site" readOnly value={accountSite} placeholder={options?"No site assigned in Pulse":"Loading Pulse site…"} title={accountSite||"Site is assigned to your admin ID in the Pulse user master"}/>}</label><label>Shift<SmartSelect showOverflowValue aria-label="Shift" required value={expectedContext.cardShift} onChange={e=>{setExpectedContext(v=>({...v,cardShift:e.target.value}))}}><option value="">Choose shift</option>{Object.entries(CARD_SHIFTS).map(([id,row])=><option key={id} value={id}>{['Day','Night'].includes(id)?row.label:cardShiftLabel(options?.shifts||[],expectedContext.location,id,expectedContext.bookDate)}</option>)}</SmartSelect></label><span className={"scan-selection-readiness "+(contextReady()?"ready":"waiting")} role="status">{awaitingContext?contextGate.mismatches.length?"Wrong cards blocked":!cards.length&&duplicates.length?"No new cards in this entry":"Checking card headers…":contextReady()?"Ready":"Complete required fields"}</span><button type="button" onClick={()=>{setExpectedContext(current=>({...current,bookDate:'',cardShift:''}));setWorkflowTab('review')}}>Cancel</button></fieldset></section>}
  {!reviewPage&&options&&!canSelectSite&&!accountSite&&<p className="scan-warning" role="status">No single site is assigned to this admin ID in Pulse. Update the Pulse user master to enable scanning and uploading.</p>}
  {contextMissing&&<p className="scan-warning" role="status">Choose the card date, site and shift in Scan setup before saving or downloading.{reviewPage&&<button type="button" onClick={()=>navigateReview(false)}>Open Scan setup</button>}</p>}{contextChanged&&!contextMissing&&<p className="scan-warning" role="status">Scan setup differs from this entry. Upload or scan a new entry for the selected date, site and shift.</p>}{contextSaving&&<p role="status">Checking cards against Scan setup…</p>}{mismatchListOpen&&<div id="scan-mismatch-list">{contextGate?.mismatches.length>0&&!contextGate.context.cancelled?<ScanBatchMismatchDialog gate={contextGate} busy={busy||dirty||contextGate.waiting||uploading||scannerBusy||!contextGate.mismatches.length} error={error} onDiscard={()=>resolveContext('discard')} onCancel={()=>resolveContext('cancel')}/>:<p role="status">No mismatch cards to review.</p>}</div>}
