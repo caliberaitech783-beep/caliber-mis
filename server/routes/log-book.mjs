@@ -199,6 +199,21 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
  await syncElbBatchRecord(client,result.rows[0],createdBy);
  return result.rows[0];
 }
+// Parts of a saved card that only the scan and entry screens use. Trip Timing & Gap and Loading Equipment-wise never read
+// them, yet on 5 Nov 2026 they were 41% of a day's reading (7.4 of 18 MB, hoursSource alone 4.5 MB). The log-books-only
+// reading (parts=logbooks) leaves them out; every other reading still sends the whole card. A field may join this list
+// only after checking that no file behind those two reports reads it (test/trip-timing-reading.test.mjs checks the list).
+export const TIMING_UNUSED_CARD_FIELDS=['hoursSource','scanMachineSummary','meterCorrectionHistory','machineSummary','meterRuleErrors','autoSavedBy','autoSavedAt','scanSaveMode','scanBatchId','siteHolds'];
+export const TIMING_UNUSED_TRIP_FIELDS=['handoverLinks'];
+export function logBooksForTiming(records){
+ const drop=(row,fields)=>{const kept={...row};for(const field of fields)delete kept[field];return kept;};
+ return records.map(record=>{
+  if(!record.data||typeof record.data!=='object')return record;
+  const data=drop(record.data,TIMING_UNUSED_CARD_FIELDS);
+  if(Array.isArray(data.trips))data.trips=data.trips.map(trip=>trip&&typeof trip==='object'?drop(trip,TIMING_UNUSED_TRIP_FIELDS):trip);
+  return {...record,data};
+ });
+}
 // lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
@@ -228,7 +243,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      if(!valid(from)||!valid(to)||to<from||(Date.parse(to)-Date.parse(from))/86400000>365)return res.status(400).json({error:'Choose a valid date range of at most 366 days.'});
      await ensure();
      // parts=logbooks: Trip Timing & Gap and Loading Equipment-wise do not use the scanned cards, which only the Scans
-     // report shows, so that reading leaves them out. Any other value, or none, reads everything as before.
+     // report shows, nor the scan and entry details of each saved card (TIMING_UNUSED_CARD_FIELDS), so that reading
+     // leaves them out. Any other value, or none, reads everything as before.
      const withScans=req.query.parts!=='logbooks';
      // A month of cards with all their details, read again by everyone who opens the report: it goes through the report
      // lane with Batch Status and Manpower, so only a few heavy readings hold database connections at once, and people
@@ -238,7 +254,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const visibleRecords=sourceRecords.filter(r=>siteAllowed(req.logBookScope,r.data.location));
      const permittedSites=await filterLogBookSites(pool,req.logBookScope);
      const linked=await withVlbTripHandovers(pool,visibleRecords.filter(r=>r.book_type==='vehicle'),permittedSites);
-     const records=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
+     const allRecords=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
+     const records=withScans?allRecords:logBooksForTiming(allRecords);
      const masters=(await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;
      const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r),group:text(r.group||r.equipmentGroup),name:text(r.equipmentName||r.equipment||r.name)}));
      // Loading Equipment-wise Report: the stage of every batch in the dates, and the site machines of those batches with no saved ELB.

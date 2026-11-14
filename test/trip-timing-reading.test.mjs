@@ -4,18 +4,22 @@ import fs from 'node:fs';
 import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {transformWithOxc} from 'vite';
-import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
+import path from 'node:path';
+import {registerLogBooks,LOG_BOOK_SCHEMA,logBooksForTiming,TIMING_UNUSED_CARD_FIELDS,TIMING_UNUSED_TRIP_FIELDS} from '../server/routes/log-book.mjs';
 import {encodeScanJson} from '../server/rules/scan-text-storage.mjs';
 import {createReportLane} from '../server/services/report-lane.mjs';
+import {normalise,buildOperationReport} from '../src/operations-report-model.mjs';
+import * as tripTiming from '../shared/trip-timing-report.mjs';
+import * as loadingReport from '../shared/loading-machine-report.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0';
 
 // Trip Timing & Gap took 59 s on average on 14 Nov 2026 (longest 113 s): it read a month of cards plus every scanned card,
 // and each person opening it read it again. It now leaves out the scanned cards it never shows, and goes through the
 // report lane, so people asking for the same dates and sites at the same time share one reading.
-async function server(t,lane){
+async function server(t,lane,extra={}){
  const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA);
  await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB); CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,kind TEXT); CREATE TABLE mis_scan_cards(id TEXT,batch_id TEXT,filename TEXT,status TEXT,draft JSONB,error TEXT,logbook_id BIGINT,created_at TIMESTAMPTZ,ordinal INTEGER)');
- const data={bookDate:'2026-11-12',location:'Sasti',door:'V1',assetId:1,shiftId:3,employeeId:2,shiftHours:8,openingHmr:0,closingHmr:6,trips:[]};
+ const data={bookDate:'2026-11-12',location:'Sasti',door:'V1',assetId:1,shiftId:3,employeeId:2,shiftHours:8,openingHmr:0,closingHmr:6,trips:[],...extra};
  await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) SELECT 'BOOK-'||n,'vehicle','2026-11-12','Sasti',1,$1,md5(n::text)::uuid,'fixture' FROM generate_series(1,3) AS n",[JSON.stringify(data)]);
  await db.exec("INSERT INTO mis_scan_batches VALUES('batch','vehicle')");
  await db.query("INSERT INTO mis_scan_cards VALUES('card','batch','scan.png','review',$1,NULL,NULL,'2026-11-12',1)",[JSON.stringify(encodeScanJson({bookDate:'2026-11-12',location:'Sasti'}))]);
@@ -105,4 +109,76 @@ test('the screens ask for the log books only for Trip Timing and Loading Equipme
  const refreshed=operationsData('2026-11-02','2026-11-14','token',true,'logbooks');
  assert.equal(urls.at(-1),'/api/reports/operations?from=2026-11-02&to=2026-11-14&parts=logbooks','Refresh reads again, without the scanned cards');
  for(const reading of [timing,loading,daily,other,reuse,refreshed])reading.release();
+});
+
+// The scan and entry details of a saved card: on 5 Nov 2026 they were 7.4 of the 18 MB of a day's reading. Each value here
+// differs from what the reports work out, so a report that started reading one of them would change its figures.
+const scanDetails={hoursSource:{source:'pulse',rows:[{hours:7.5,from:'05:00',to:'12:30'}]},scanMachineSummary:[{equipmentName:'EX9',tripCount:40}],
+ meterCorrectionHistory:[{field:'closingHmr',from:999,to:106}],machineSummary:[{equipmentName:'EX9',tripCount:40}],meterRuleErrors:['Closing HMR below opening'],
+ autoSavedBy:'automatic',autoSavedAt:'2026-12-14T06:00:00.000Z',scanSaveMode:'auto',scanBatchId:'batch-1',siteHolds:[{site:'Site B'}]};
+const handover={handoverLinks:[{card:'VLB_S9',row:24,equipmentName:'EX9'}]};
+
+test('the log-books-only reading leaves out the scan and entry details and keeps everything else',async t=>{
+ const trips=[{equipmentName:'EX1',loadingTime:'05:10',unloadingTime:'05:30',tripCount:1,...handover}];
+ const app=await server(t,createReportLane({cacheMs:0}),{...scanDetails,scanCardId:'card',statusReason:'Kept for Loading',pulseBreakdowns:[{reference:'BD-1'}],trips});
+ const full=(await app.get()).body.records[0],slim=(await app.get('&parts=logbooks')).body.records[0];
+ for(const field of TIMING_UNUSED_CARD_FIELDS){assert.ok(field in full.data,field+' is still in the full reading');assert.ok(!(field in slim.data),field+' is left out');}
+ assert.ok('handoverLinks' in full.data.trips[0]);assert.ok(!('handoverLinks' in slim.data.trips[0]));
+ const without=(row,fields)=>Object.fromEntries(Object.entries(row).filter(([key])=>!fields.includes(key)));
+ assert.deepEqual({...slim,data:{...slim.data,trips:null}},{...full,data:{...without(full.data,TIMING_UNUSED_CARD_FIELDS),trips:null}},'every other field, including scanCardId, statusReason and pulseBreakdowns, is unchanged');
+ assert.deepEqual(slim.data.trips,full.data.trips.map(trip=>without(trip,TIMING_UNUSED_TRIP_FIELDS)));
+});
+
+test('Trip Timing & Gap and Loading Equipment-wise show the same figures from the trimmed reading',()=>{
+ const trip=(equipmentName,loadingTime,unloadingTime,extra={})=>({equipmentName,loadingTime,unloadingTime,tripCount:1,...handover,...extra});
+ const shift={shiftId:1,shiftName:'Shift I',shiftHours:8,masterShiftStart:'05:00',bookShiftCode:'S1'};
+ const vlb=(id,door,trips,extra={})=>({id,book_no:'VLB_S'+id,book_type:'vehicle',data:{bookDate:'2026-12-14',location:'Site A',assetId:id,door,employeeName:'SAMPLE DRIVER 0'+id,caliberId:'CMPL9000'+id,timeMode:'with',trips,...shift,...scanDetails,...extra}});
+ const elb=(id,assetId,door,extra={})=>({id,book_no:'ELB'+id,book_type:'equipment',data:{bookDate:'2026-12-14',location:'Site A',assetId,door,assetName:'SAMPLE EXCAVATOR',employeeName:'SAMPLE OPERATOR '+id,openingHmr:100,closingHmr:106,breakdownHours:0,trips:[],...shift,...scanDetails,...extra}});
+ const raw=[
+  vlb(1,'V9001',[trip('EX1','05:10','05:30'),trip('EX1','05:22','05:40'),trip('EX2','05:52','06:40')]),
+  vlb(2,'V9002',[trip('EX1','05:14','05:31'),trip('EX1','05:34','06:20'),trip('EX1','06:40','07:10'),trip('EX1','','07:25')]),
+  vlb(3,'V9003',[trip('EX2','05:20','05:50',{completedTrips:2}),trip('EX2','06:30','07:00')],{shiftId:3,shiftName:'Shift III',masterShiftStart:'21:00',bookShiftCode:'S3'}),
+  elb(11,101,'EX1'),elb(12,102,'EX2',{closingHmr:104,breakdownHours:2,shiftStatus:'working_partial_breakdown',statusReason:'Hose',pulseBreakdowns:[{reference:'BD-1',description:'Hose',start:'2026-12-14T00:30:00.000Z',end:'2026-12-14T02:30:00.000Z'}]})];
+ const assets=[{id:'101',door:'EX1',site:'Site A',kind:'equipment',group:'Excavator',name:'SAMPLE EXCAVATOR'},{id:'102',door:'EX2',site:'Site A',kind:'equipment',group:'Excavator',name:'SAMPLE EXCAVATOR'}];
+ const figures=records=>{
+  const rows=normalise(records),entries=tripTiming.tripEntries(rows),machines=loadingReport.machineShifts(rows,{assets});
+  return {
+   entries,timing:Object.keys(tripTiming.MODES).flatMap(mode=>['site','shift',...Object.keys(tripTiming.GROUPS)].map(group=>tripTiming.summarise(entries,mode,group))),
+   delayed:Object.keys(tripTiming.MODES).map(mode=>tripTiming.delayedEntries(entries,mode)),
+   loading:['site','shift','machine'].map(group=>loadingReport.summarise(machines,group)),
+   lines:loadingReport.loadingLines(machines),timelines:machines.map(entry=>loadingReport.shiftTimeline(entry)),notWorked:loadingReport.shiftsNotWorked(machines),
+   tables:['timing','loading'].map(id=>buildOperationReport(id,rows,{assets}).rows)};
+ };
+ const before=figures(raw),after=figures(logBooksForTiming(raw));
+ assert.ok(before.timing[0].rows.length>0&&before.loading[0].rows.length>0&&before.tables[0].length>0,'the fixture produces figures to compare');
+ assert.deepEqual(after,before);
+ assert.ok(JSON.stringify(logBooksForTiming(raw)).length<JSON.stringify(raw).length*0.75,'the trimmed reading is much smaller');
+ assert.equal(raw[0].data.hoursSource.source,'pulse','the cards it was given are not changed');
+});
+
+test('no file behind Trip Timing & Gap or Loading Equipment-wise reads a field the trimmed reading leaves out',()=>{
+ // Every module the two report screens and the report model load, followed through their imports, plus the screen that
+ // hands them the reading. A new import is followed automatically; a field read anywhere in them fails this test.
+ const root=new URL('..',import.meta.url),files=new Set(),queue=['src/trip-timing-report.jsx','src/loading-machine-report.jsx','src/operations-report-model.mjs'];
+ while(queue.length){
+  const file=queue.shift();if(files.has(file))continue;files.add(file);
+  const source=fs.readFileSync(new URL(file,root),'utf8');
+  for(const [,spec] of source.matchAll(/^import\s[^'"]*['"](\.{1,2}\/[^'"]+\.(?:mjs|jsx|js))['"]/gm))queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(file),spec)));
+ }
+ files.add('src/operations-reports.jsx');
+ assert.ok(files.has('shared/trip-card-rules.mjs')&&files.has('shared/scan-machine-rules.mjs'),'imports are followed');
+ // Scan review functions that rewrite or check a scan draft's machine rows. Their files are loaded for door matching
+ // (Loading Equipment-wise: fleetDoorKey -> identifyCardMachine), but nothing behind the reports calls these functions.
+ const scanDraftOnly=new Set(['correctMatchingTripEquipment','normalizeScanEquipmentRows','scanEquipmentMatchIssues','validateTripEquipment']);
+ const lines=Object.fromEntries([...files].map(file=>[file,fs.readFileSync(new URL(file,root),'utf8').split(/\r?\n/)]));
+ const enclosing=(file,index)=>{for(let i=index;i>=0;i--){const found=lines[file][i].match(/^(?:export\s+)?function\s+(\w+)/);if(found)return found[1];}return '';};
+ for(const name of scanDraftOnly)for(const file of files)lines[file].forEach((line,index)=>{
+  if(new RegExp('(?<!function\\s)\\b'+name+'\\(').test(line))assert.ok(scanDraftOnly.has(enclosing(file,index)),`${file}:${index+1} calls ${name}, which reads scan details the trimmed reading leaves out`);
+ });
+ for(const field of [...TIMING_UNUSED_CARD_FIELDS,...TIMING_UNUSED_TRIP_FIELDS]){
+  // A function of the same name (trip-card-rules has machineSummary(trips)) is not a field.
+  const read=new RegExp('(?<!function\\s)\\b'+field+'\\b(?!\\s*\\()');
+  const readers=[...files].flatMap(file=>lines[file].map((line,index)=>read.test(line)&&!scanDraftOnly.has(enclosing(file,index))?file+':'+(index+1):'').filter(Boolean));
+  assert.deepEqual(readers,[],field+' is read by the reports, so it must stay in the log-books-only reading');
+ }
 });
