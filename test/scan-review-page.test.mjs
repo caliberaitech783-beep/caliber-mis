@@ -173,8 +173,13 @@ test('fleet reconciliation is collapsed below Card status on the VLB overview',(
 test('fleet upload details start collapsed and the automatic-save alert names the refused card and the server reason',()=>{
  assert.match(source,/fleetRejection\)&&<details className="scan-fleet-rejection-details"><summary>Show fresh-upload details/);
  assert.match(source,/role=\{autoSaveError.retryAt\?"status":"alert"\}/);
- assert.match(source,/autoSaveError.retryAt\?"Automatic saving is waiting at card ":"Automatic saving stopped at card "/);
+ assert.match(source,/autoSaveError.retryAt\?"Automatic saving is waiting at card ":"Not saved automatically: card "/);
  assert.match(source,/\{autoSaveError.ordinal\}\.<\/strong> \{autoSaveError.message\}/);
+ assert.match(source,/The other cards keep saving; correct this card under Needs attention\./);
+ assert.match(source,/onClick=\{\(\)=>moveReview\(autoSaveError\.id\)\}>Open card \{autoSaveError\.ordinal\}/);
+ // A manual save moves on from the saved log book; the full entry is re-read behind the scenes.
+ assert.match(source,/if\(local\.find\(c=>c\.id===card\.id\)\?\.status==='posted'\)refreshed=local/);
+ assert.match(source,/const behind=Boolean\(refreshed\);if\(!behind\)refreshed=await load\(batch\.id\)/);
  assert.match(source,/autoSaveFailures\.current\.set\(key,e\.message\)/);
  assert.match(source,/autoSaveFailures\.current\.clear\(\);setFailureTick/);
 });
