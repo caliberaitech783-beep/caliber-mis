@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { RefreshCw, AlertTriangle, X } from "lucide-react";
 import { ORGANISATION_PAGES, ROLE_LABELS, organisationDetail } from "./organisation-chart.mjs";
+import TableSmartPrint from "./table-smart-print.jsx";
 import "./organisation-chart.css";
 
 const Person = ({ person }) => <span className="org-person"><b>{person.name}</b><small>{[person.login, person.site || person.region || person.sites.join(", ")].filter(Boolean).join(" · ")}</small></span>;
@@ -11,6 +12,28 @@ const People = ({ people, empty = "No one assigned" }) => people.length
 const Node = ({ tag, tagClass = "", title, subtitle, children }) => <span className="org-node">{tag && <i className={`org-tag ${tagClass}`}>{tag}</i>}<b>{title}</b>{subtitle && <small>{subtitle}</small>}{children}</span>;
 const countLabel = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 const ROLE_LABEL = ROLE_LABELS;
+
+// Each tree as plain lines for Smart Print, PDF and Excel: one line per person, under the same headings the tree shows.
+const printColumns = (pairs) => pairs.map(([key, label]) => ({ key, label, value: (row) => row[key] ?? "" }));
+const holderLines = (heading, people, empty = "No one assigned") => people.length
+  ? people.map((person) => ({ ...heading, name: person.name, login: person.login || "", site: person.site || person.region || person.sites.join(", ") }))
+  : [{ ...heading, name: empty, login: "", site: "" }];
+const ACCESS_PRINT_COLUMNS = printColumns([["access", "Access"], ["group", "Role / User Group"], ["name", "Name"], ["login", "Login"], ["site", "Site"]]);
+const accessPrintRows = (access) => [
+  ...access.managerRoles.flatMap(({ role, people }) => holderLines({ access: "Managers", group: role }, people)),
+  ...access.mobileGroups.flatMap(({ group, people }) => holderLines({ access: "Mobile users", group }, people)),
+  ...(access.otherMobile.length ? holderLines({ access: "Mobile users", group: "Other / no User Group" }, access.otherMobile) : []),
+];
+const DESIGNATION_PRINT_COLUMNS = printColumns([["section", "Section"], ["level", "Level"], ["designation", "Designation"], ["schedule", "Schedule"], ["name", "Name"], ["login", "Login"], ["site", "Site"]]);
+const NOBODY_HERE = "Nobody at this site holds this designation";
+const levelsPrintRows = (levels) => levels.flatMap(({ section, rows }) => rows.flatMap((row) => holderLines({ section, level: row.level ? `L${row.level}` : "L?", designation: row.designation, schedule: row.schedule || "" }, row.people, NOBODY_HERE)));
+const peoplePrintRows = (designations) => designations.flatMap(({ section, designations: list }) => list.flatMap((designation) => holderLines({ section, level: `L${designation.configured?.level || designation.level}`, designation: designation.label, schedule: designation.configured ? designation.configured.schedule || "" : "not in Hierarchy master" }, designation.people, NOBODY_HERE)));
+const REPORTING_PRINT_COLUMNS = printColumns([["level", "Level"], ["designation", "Designation"], ["name", "Name"], ["login", "Login"], ["site", "Site"], ["reportsTo", "Reports to"], ["note", "Note"]]);
+const reportingNote = ({ explicit, superiorText }) => explicit ? "" : superiorText ? `Superior "${superiorText}" not found · placed by designation and site` : "no Superior set · placed by designation and site";
+const reportingPrintRows = (trees, level = 1, reportsTo = "") => trees.flatMap((tree) => [
+  { level, designation: ROLE_LABEL[tree.person.designationKey] || "Staff", name: tree.person.name, login: tree.person.login || "", site: tree.person.site || tree.person.sites.join(", "), reportsTo, note: reportingNote(tree) },
+  ...reportingPrintRows(tree.children, level + 1, tree.person.name),
+]);
 
 /** A number on the page opens the records behind it. */
 function DetailDialog({ detail, onClose, onPickSite }) {
@@ -25,8 +48,8 @@ function DetailDialog({ detail, onClose, onPickSite }) {
     <section className="org-dialog" role="dialog" aria-modal="true" aria-labelledby="org-detail-title" onPointerDown={(event) => event.stopPropagation()}>
       <header className="mis-popup-close-header"><div><h2 id="org-detail-title">{detail.title}</h2><small>{countLabel(detail.rows.length, "record", "records")}{pickable ? " · click a site to open it" : ""}</small></div><button type="button" className="org-dialog-close mis-popup-close" onClick={onClose} aria-label="Close">× Close</button></header>
       <div className="org-dialog-body">
-        {detail.rows.length ? <table className="org-detail-table"><thead><tr>{detail.columns.map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
-          <tbody>{detail.rows.map((row, index) => <tr key={index} className={pickable ? "clickable" : ""} onClick={pickable ? () => onPickSite(row.site) : undefined}>{detail.columns.map(([key]) => <td key={key}>{String(row[key] ?? "")}</td>)}</tr>)}</tbody></table>
+        {detail.rows.length ? <><TableSmartPrint row title={detail.title} /><table className="org-detail-table"><thead><tr>{detail.columns.map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
+          <tbody>{detail.rows.map((row, index) => <tr key={index} className={pickable ? "clickable" : ""} onClick={pickable ? () => onPickSite(row.site) : undefined}>{detail.columns.map(([key]) => <td key={key}>{String(row[key] ?? "")}</td>)}</tr>)}</tbody></table></>
           : <p className="org-empty">Nothing to show.</p>}
       </div>
     </section>
@@ -43,8 +66,8 @@ const PAGE_TEXT = {
 };
 
 function ReportingNode({ tree }) {
-  const { person, explicit, superiorText, children } = tree;
-  const note = explicit ? "" : superiorText ? `Superior "${superiorText}" not found · placed by designation and site` : "no Superior set · placed by designation and site";
+  const { person, explicit, children } = tree;
+  const note = reportingNote(tree);
   return <li className={explicit ? "" : "org-inferred"}>
     <Node tag={ROLE_LABEL[person.designationKey] || "Staff"} tagClass={roleClass(person.designationKey)} title={person.name} subtitle={[person.login, person.site || person.sites.join(", ")].filter(Boolean).join(" · ")} />
     {note && <small className="org-note" title={note}>{note}</small>}
@@ -60,6 +83,7 @@ function AccessSite({ entry, onDetail }) {
   const { site, access, people } = entry;
   return <section className="org-site">
     <SiteHeading site={site} detail={countLabel(people.length, "person", "people")} onDetail={() => onDetail("people", site)} />
+    <TableSmartPrint row title={`${ORGANISATION_PAGES.access} · ${site}`} rows={accessPrintRows(access)} columns={ACCESS_PRINT_COLUMNS} />
     <div className="org-tree"><ul>
       <li className="org-root"><Node title="Managers" subtitle="Super User · access level Manager" />
         <ul>{access.managerRoles.map(({ role, people: holders }) => <li key={role}><Node tag="ROLE" tagClass="t-mgr" title={role} /><People people={holders} /></li>)}</ul></li>
@@ -74,8 +98,8 @@ function LevelsSite({ entry, onDetail }) {
   const { site, levels } = entry;
   return <section className="org-site">
     <SiteHeading site={site} detail={countLabel(levels.reduce((sum, section) => sum + section.rows.length, 0), "designation", "designations")} onDetail={() => onDetail("hierarchyRows", site)} />
-    {levels.length ? <div className="org-tree"><ul>{levels.map(({ section, rows }) => <li key={section} className="org-root"><Node title={section} subtitle={countLabel(rows.length, "designation", "designations")} />
-      <ul>{rows.map((row) => <li key={`${section}|${row.designation}`}><Node tag={row.level ? `L${row.level}` : "L?"} tagClass={section === "OEM" ? "t-oem" : "t-level"} title={row.people.length ? `${row.designation} (${row.people.map((person) => person.name).join(", ")})` : row.designation} subtitle={row.schedule || undefined} /><People people={row.people} empty="Nobody at this site holds this designation" /></li>)}</ul></li>)}</ul></div>
+    {levels.length ? <><TableSmartPrint row title={`${ORGANISATION_PAGES.levels} · ${site}`} rows={levelsPrintRows(levels)} columns={DESIGNATION_PRINT_COLUMNS} /><div className="org-tree"><ul>{levels.map(({ section, rows }) => <li key={section} className="org-root"><Node title={section} subtitle={countLabel(rows.length, "designation", "designations")} />
+      <ul>{rows.map((row) => <li key={`${section}|${row.designation}`}><Node tag={row.level ? `L${row.level}` : "L?"} tagClass={section === "OEM" ? "t-oem" : "t-level"} title={row.people.length ? `${row.designation} (${row.people.map((person) => person.name).join(", ")})` : row.designation} subtitle={row.schedule || undefined} /><People people={row.people} empty={NOBODY_HERE} /></li>)}</ul></li>)}</ul></div></>
       : <p className="org-empty">No Hierarchy master row applies to this site.</p>}
   </section>;
 }
@@ -84,7 +108,7 @@ function ReportingSite({ entry, onDetail }) {
   const { site, reporting } = entry;
   return <section className="org-site">
     <SiteHeading site={site} detail={reporting.pms.length ? countLabel(reporting.pms.length, "Project Manager", "Project Managers") : "no Project Manager"} onDetail={() => onDetail("managers", site)} />
-    {reporting.trees.length ? <div className="org-tree"><ul>{reporting.trees.map((tree) => <ReportingNode key={`${tree.person.login}|${tree.person.name}`} tree={tree} />)}</ul></div> : <p className="org-empty">Nobody is placed at this site yet.</p>}
+    {reporting.trees.length ? <><TableSmartPrint row title={`${ORGANISATION_PAGES.reporting} · ${site}`} rows={reportingPrintRows(reporting.trees)} columns={REPORTING_PRINT_COLUMNS} /><div className="org-tree"><ul>{reporting.trees.map((tree) => <ReportingNode key={`${tree.person.login}|${tree.person.name}`} tree={tree} />)}</ul></div></> : <p className="org-empty">Nobody is placed at this site yet.</p>}
   </section>;
 }
 
@@ -93,9 +117,10 @@ function PeopleSite({ entry, onDetail }) {
   const held = designations.reduce((sum, section) => sum + section.designations.filter((designation) => designation.people.length).length, 0);
   return <section className="org-site">
     <SiteHeading site={site} detail={countLabel(held, "designation held", "designations held")} onDetail={() => onDetail("designations", site)} />
+    <TableSmartPrint row title={`${ORGANISATION_PAGES.people} · ${site}`} rows={peoplePrintRows(designations)} columns={DESIGNATION_PRINT_COLUMNS} />
     <div className="org-tree"><ul>{designations.map(({ section, designations: list, people }) => <li key={section} className="org-root">
       <Node title={section}><CountLink onClick={() => onDetail("sectionPeople", site, section)}>{countLabel(people.length, "person", "people")}</CountLink></Node>
-      <ul>{list.map((designation) => <li key={designation.key}><Node tag={`L${designation.configured?.level || designation.level}`} tagClass={section === "OEM" ? "t-oem" : "t-level"} title={designation.people.length ? `${designation.label} (${designation.people.map((person) => person.name).join(", ")})` : designation.label} subtitle={designation.configured ? designation.configured.schedule || undefined : "not in Hierarchy master"} /><People people={designation.people} empty="Nobody at this site holds this designation" /></li>)}</ul>
+      <ul>{list.map((designation) => <li key={designation.key}><Node tag={`L${designation.configured?.level || designation.level}`} tagClass={section === "OEM" ? "t-oem" : "t-level"} title={designation.people.length ? `${designation.label} (${designation.people.map((person) => person.name).join(", ")})` : designation.label} subtitle={designation.configured ? designation.configured.schedule || undefined : "not in Hierarchy master"} /><People people={designation.people} empty={NOBODY_HERE} /></li>)}</ul>
     </li>)}</ul></div>
   </section>;
 }

@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -9,7 +10,7 @@ test('restoring over a replacement requires preview, explicit replacement consen
  const slots=[];let cursor=0;const useState=initial=>{const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=v]};
  const source=readFileSync(new URL('../src/vlb-batch-deletion.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export default function','function').replaceAll('export function','function');
  const {code}=await transformWithOxc(source,'vlb-batch-deletion.jsx',{jsx:{runtime:'classic'}});
- const Component=new Function('React','useState','useEffect',code+';return VlbBatchDeletion')(React,useState,()=>{});
+ const Component=new Function('TableSmartPrint','React','useState','useEffect',code+';return VlbBatchDeletion')(TableSmartPrint,React,useState,()=>{});
  let changed=0,dismissed=0;const calls=[],preview={id:'request',operation:'restore',approval:'Approve restore request hash',requiresReplacementDeletion:true,recipient:'OTP recipient',expiresAt:'2026-11-01T10:00:00Z',manifest:{original:{name:'B01',counts:{cards:1},restoreUntil:'2026-11-10T10:00:00Z'},target:{batch:{id:'new',name:'B02'},records:[{id:1,bookNo:'VLB1'}],scans:[],backups:[]}}};
  const read=async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/preview')?preview:{sent:true,complete:true}};
  const render=()=>{cursor=0;return Component({batch:{id:'old',name:'B01'},operation:'restore',read,onChanged:()=>changed++,onDismiss:()=>dismissed++})};

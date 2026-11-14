@@ -1,6 +1,7 @@
 import SmartSelect from './smart-select.jsx';
 import React from 'react';
 import {reconciliationBanks} from './iboss-reconciliation-banks.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 const amount=value=>Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const balance=value=>`${amount(Math.abs(value))} ${value<0?'Dr':'Cr'}`;
 export default function ReconciliationControls({rows,bank,status,onBank,onStatus,ReportSection}){
@@ -24,12 +25,12 @@ export default function ReconciliationControls({rows,bank,status,onBank,onStatus
    {key:'code',label:'Account code',value:row=>row.code},{key:'state',label:'Bank status',value:row=>row.state},
    ...[['UNRECONCILED_COUNT','Not reconciled entries'],['RECONCILED_COUNT','Reconciled entries'],['UNCLEAR_DR','Pending Dr'],['UNCLEAR_CR','Pending Cr']].map(([key,label])=>({key,label,value:row=>Number(row[key]||0),render:row=>key.endsWith('COUNT')?Number(row[key]||0).toLocaleString('en-IN'):amount(row[key])}))
   ]} rowKey={row=>row.code} emptyMessage="No banks have matching entries for this selection."/>
-  {selected.length?<table className="iboss-dash-party-table"><thead><tr><th>Balance / totals</th><th>Dr</th><th>Cr</th></tr></thead><tbody>
+  {selected.length?<><TableSmartPrint row title={'Bank reconciliation totals · '+(bank?selected[0].ACCOUNT_NAME+' ('+bank+')':'All banks')+' · '+(status==='unreconciled'?'Not reconciled':status==='reconciled'?'Reconciled':'All entries')}/><table className="iboss-dash-party-table"><thead><tr><th>Balance / totals</th><th>Dr</th><th>Cr</th></tr></thead><tbody>
    <tr><th>Selected entries — full filtered total</th><td>{amount(dr)}</td><td>{amount(cr)}</td></tr>
    <tr><th>Unclear / not reconciled in period</th><td>{amount(sum('UNCLEAR_DR'))}</td><td>{amount(sum('UNCLEAR_CR'))}</td></tr>
    <tr><th>Book balance through To date</th><td colSpan="2">{balance(sum('BALANCEAMOUNT'))}</td></tr>
    <tr><th>Calculated pass-book balance</th><td colSpan="2">{balance(sum('PASSBOOK_BALANCE'))}</td></tr>
-  </tbody></table>:<p>No bank ledger balances match this selection.</p>}
+  </tbody></table></>:<p>No bank ledger balances match this selection.</p>}
   <p className="iboss-dash-note">ERP calculation: book balance + unclear debits − unclear credits. This does not confirm a bank-statement match or mark vouchers reconciled.</p>
  </section>;
 }

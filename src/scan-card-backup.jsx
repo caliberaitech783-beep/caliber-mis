@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import {copyBackup} from './scan-backup-files.mjs';
 import './scan-card-backup.css';
+import TableSmartPrint from './table-smart-print.jsx';
 const headers=session=>({Authorization:`Bearer ${session.token}`});
 const date=value=>value?new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}).format(new Date(value)):'—';
 const size=bytes=>(Number(bytes||0)/1024**3).toFixed(2)+' GiB';
@@ -34,6 +35,6 @@ export default function ScanCardBackup({session}){
   </div>}
   {busy&&progress&&<p role="status">Verified {progress.count.toLocaleString()} cards · {size(progress.bytes)}. Keep this page open.</p>}
   {result&&<p role="status">Backup verified: {result.count.toLocaleString()} cards · {size(result.bytes)} · {result.folder}</p>}
-  <h2>Backup history</h2><div className="scan-backup-history"><table><thead><tr><th>Scan dates</th><th>Cards verified</th><th>Image size</th><th>Status</th><th>SSD folder</th></tr></thead><tbody>{state?.jobs?.map(job=><tr key={job.id}><td>{date(job.window_start)} – {date(new Date(new Date(job.window_end).getTime()-1))}</td><td>{job.verified} / {job.cards}</td><td>{size(job.bytes)}</td><td>{job.status==='complete'?'Verified · '+date(job.completed_at):'Incomplete · retry available'}</td><td>{job.destination||'Choose folder when backing up'}</td></tr>)}</tbody></table></div>
+  <h2>Backup history</h2>{state?.jobs?.length>0&&<TableSmartPrint row title="Scanned Card Backup · Backup history"/>}<div className="scan-backup-history"><table><thead><tr><th>Scan dates</th><th>Cards verified</th><th>Image size</th><th>Status</th><th>SSD folder</th></tr></thead><tbody>{state?.jobs?.map(job=><tr key={job.id}><td>{date(job.window_start)} – {date(new Date(new Date(job.window_end).getTime()-1))}</td><td>{job.verified} / {job.cards}</td><td>{size(job.bytes)}</td><td>{job.status==='complete'?'Verified · '+date(job.completed_at):'Incomplete · retry available'}</td><td>{job.destination||'Choose folder when backing up'}</td></tr>)}</tbody></table></div>
  </section>;
 }

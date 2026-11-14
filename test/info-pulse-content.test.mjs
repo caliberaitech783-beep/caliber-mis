@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -20,7 +21,7 @@ const {code} = await transformWithOxc(source, 'pulse-content.jsx', {jsx: {runtim
 // Info Pulse lists updates through the shared panel, compiled here the same way.
 const panelSource = readFileSync(new URL('../src/daily-updates-list.jsx', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '').replace(/^export (default )?/gm, '');
 const panelCode = (await transformWithOxc(panelSource, 'daily-updates-list.jsx', {jsx: {runtime: 'classic'}})).code;
-const panelBindings = {React, useSyncExternalStore: React.useSyncExternalStore, ...dailyUpdatesOrder, formatDisplayDateTime: dates.formatDisplayDateTime};
+const panelBindings = {TableSmartPrint, React, useSyncExternalStore: React.useSyncExternalStore, ...dailyUpdatesOrder, formatDisplayDateTime: dates.formatDisplayDateTime};
 const {DailyUpdatesPanel} = new Function("DateInput", ...Object.keys(panelBindings), panelCode + '; return {DailyUpdatesPanel};')(DateInput, ...Object.values(panelBindings));
 const NOW = Date.parse('2026-09-16T11:00:00+05:30');
 const ROLLOUT_NOW = Date.parse('2026-09-22T11:00:00+05:30');

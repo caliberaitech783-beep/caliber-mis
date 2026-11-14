@@ -5,6 +5,7 @@ import {formatDisplayDate, formatDisplayDateTime} from '../shared/date-time-form
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {VEHICLE_TRANSFER_STATUS, VEHICLE_TRANSFER_VIEW, vehicleTransferProgress, vehicleTransferStatus, vehicleTransferViewRecords} from '../shared/vehicle-transfer-workflow.mjs';
 import SearchableSelect from './searchable-select.jsx';
+import TableSmartPrint from './table-smart-print.jsx';
 import './vehicle-transfer-workflow.css';
 import DateInput from "./date-input.mjs";
 
@@ -17,6 +18,22 @@ const indiaDateInput = () => {
 
 const equipmentLabel = (record = {}) => [record.door || record.reg || record.equipmentName, record.equipmentName, record.make, record.modelNo || record.model]
   .filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(' · ') || 'Unnamed vehicle';
+
+// The transfer cards as one line each for Smart Print, PDF and Excel: the same fields, in the order the card shows them.
+const transferPrintColumns = [
+  {key: 'transferNo', label: 'Transfer no.', value: (record) => record.transferNo || `Transfer ${record.id}`},
+  {key: 'vehicle', label: 'Vehicle', value: (record) => record.equipment || record.door || 'Vehicle'},
+  {key: 'modelNo', label: 'Model', value: (record) => record.modelNo || 'Model not recorded'},
+  {key: 'source', label: 'From', value: (record) => record.source || 'Not recorded'},
+  {key: 'destination', label: 'To', value: (record) => record.destination || 'Not recorded'},
+  {key: 'status', label: 'Status', value: (record) => vehicleTransferStatus(record)},
+  {key: 'transferDate', label: 'Transfer date', value: (record) => formatDisplayDate(record.transferDate)},
+  ...vehicleTransferProgress().map((stage, index) => ({key: stage.key, label: stage.label, value: (record) => { const current = vehicleTransferProgress(record)[index]; return current.detail || (current.complete ? 'Completed' : 'Pending'); }})),
+  {key: 'submittedBy', label: 'Submitted by', value: (record) => record.submittedBy || 'Imported record'},
+  {key: 'submittedAt', label: 'Submitted on', value: (record) => record.submittedAt ? formatDisplayDateTime(record.submittedAt) : '—'},
+  {key: 'chassisNo', label: 'Chassis', value: (record) => record.chassisNo || 'Not recorded'},
+  {key: 'vehicleMasterUpdatedAt', label: 'Vehicle Master updated', value: (record) => record.vehicleMasterUpdatedAt ? formatDisplayDateTime(record.vehicleMasterUpdatedAt) : '—'},
+];
 
 function TransferStatus({record}) {
   const status = vehicleTransferStatus(record);
@@ -156,6 +173,7 @@ export default function VehicleTransferWorkflow({session, Dialog, embedded = fal
   }, {total: 0, source: 0, mis: 0, destination: 0, completed: 0});
   const releaseCount = vehicleTransferViewRecords(state.records, VEHICLE_TRANSFER_VIEW.RELEASE).length;
   const acceptCount = vehicleTransferViewRecords(state.records, VEHICLE_TRANSFER_VIEW.ACCEPT).length;
+  const printTitle = ['Vehicle transfers', activeView === VEHICLE_TRANSFER_VIEW.RELEASE ? 'Release Vehicle' : activeView === VEHICLE_TRANSFER_VIEW.ACCEPT ? 'Accept Vehicle' : 'All Transfers', query.trim() ? `search "${query.trim().slice(0, 30)}"` : ''].filter(Boolean).join(' · ');
   return <section className={`vehicle-transfer-workflow${embedded ? ' embedded' : ''}`}>
     <header className="vehicle-transfer-heading"><div><span>CONTROLLED VEHICLE MOVEMENT</span><h1>Vehicle transfers</h1><p>MIS submission, source PM approval, destination MIS verification, PM acceptance, and Vehicle Master update in one register.</p></div><div><button type="button" className="secondary" onClick={load} disabled={state.loading}><RefreshCw /> Refresh</button>{state.capabilities.canSubmit && <button type="button" className="primary" onClick={() => setShowForm(true)}><Plus /> New transfer</button>}</div></header>
     <div className="vehicle-transfer-kpis">
@@ -173,14 +191,14 @@ export default function VehicleTransferWorkflow({session, Dialog, embedded = fal
       <button type="button" role="tab" aria-selected={activeView === VEHICLE_TRANSFER_VIEW.ACCEPT} className={activeView === VEHICLE_TRANSFER_VIEW.ACCEPT ? 'active' : ''} onClick={() => setActiveView(VEHICLE_TRANSFER_VIEW.ACCEPT)}><CheckCircle2 /> Accept Vehicle <b>{acceptCount}</b></button>
     </div>}
     <div className="vehicle-transfer-toolbar"><label><Search /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search transfer, vehicle, site, or approver" /></label><span>{records.length} visible</span></div>
-    {state.error ? <div className="vehicle-transfer-empty"><X /><b>{state.error}</b><button type="button" onClick={load}>Try again</button></div> : state.loading && !state.records.length ? <div className="vehicle-transfer-empty"><RefreshCw className="spin" /><b>Loading vehicle transfers…</b></div> : <div className="vehicle-transfer-list">
+    {state.error ? <div className="vehicle-transfer-empty"><X /><b>{state.error}</b><button type="button" onClick={load}>Try again</button></div> : state.loading && !state.records.length ? <div className="vehicle-transfer-empty"><RefreshCw className="spin" /><b>Loading vehicle transfers…</b></div> : <>{records.length > 0 && <TableSmartPrint row title={printTitle} rows={records} columns={transferPrintColumns} />}<div className="vehicle-transfer-list">
       {records.length ? records.map((record) => <article className="vehicle-transfer-row" key={record.id}>
         <div className="vehicle-transfer-summary"><div className="vehicle-transfer-id"><Truck /><span><b>{record.transferNo || `Transfer ${record.id}`}</b><small>{record.equipment || record.door || 'Vehicle'} · {record.modelNo || 'Model not recorded'}</small></span></div><div className="vehicle-transfer-route"><span><small>FROM</small><b>{record.source || 'Not recorded'}</b></span><ArrowRightLeft /><span><small>TO</small><b>{record.destination || 'Not recorded'}</b></span></div><div><TransferStatus record={record} /><small className="vehicle-transfer-date">Transfer date: {formatDisplayDate(record.transferDate)}</small></div></div>
         <TransferProgress record={record} />
         <div className="vehicle-transfer-meta"><span>Submitted: <b>{record.submittedBy || 'Imported record'}</b>{record.submittedAt ? ` · ${formatDisplayDateTime(record.submittedAt)}` : ''}</span><span>Chassis: <b>{record.chassisNo || 'Not recorded'}</b></span>{record.vehicleMasterUpdatedAt && <span className="master-updated"><CheckCircle2 /> Vehicle Master updated {formatDisplayDateTime(record.vehicleMasterUpdatedAt)}</span>}</div>
         {(record.canApproveSource || record.canVerifyDestination || record.canAcceptDestination) && <div className="vehicle-transfer-actions">{record.canApproveSource && <button type="button" className="primary" disabled={workingId === String(record.id)} onClick={() => act(record, 'source-approval')}><Send /> {workingId === String(record.id) ? 'Releasing…' : 'Release vehicle'}</button>}{record.canVerifyDestination && <button type="button" className="primary verify" disabled={workingId === String(record.id)} onClick={() => act(record, 'destination-verification')}><ShieldCheck /> {workingId === String(record.id) ? 'Verifying…' : 'Verify at destination'}</button>}{record.canAcceptDestination && <button type="button" className="primary accept" disabled={workingId === String(record.id)} onClick={() => act(record, 'destination-acceptance')}><CheckCircle2 /> {workingId === String(record.id) ? 'Accepting…' : 'Accept vehicle'}</button>}</div>}
       </article>) : <div className="vehicle-transfer-empty"><Search /><b>{activeView === VEHICLE_TRANSFER_VIEW.RELEASE ? 'No vehicles are waiting for release at your sites.' : activeView === VEHICLE_TRANSFER_VIEW.ACCEPT ? 'No vehicles are waiting for acceptance at your sites.' : 'No transfers match this view.'}</b></div>}
-    </div>}
+    </div></>}
     {showForm && Dialog && <TransferForm Dialog={Dialog} equipment={state.equipment || []} sites={state.sites || []} token={token} onClose={() => setShowForm(false)} onSaved={() => { setNotice('Transfer submitted. The source-site PM has been notified.'); void load(); }} />}
   </section>;
 }

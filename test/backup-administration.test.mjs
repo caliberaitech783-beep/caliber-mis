@@ -54,7 +54,7 @@ test('manual, scheduled, export, import and restore backup actions are written t
 });
 
 test('backup history provides a protected delete action after the recovery column',()=>{
-  assert.match(client,/<th>Recovery file<\/th><th>Delete<\/th>/);
+  assert.match(client,/<th data-smart-print-skip="">Recovery file<\/th><th data-smart-print-skip="">Delete<\/th>/);
   assert.match(client,/aria-label=\{`Delete \$\{row\.fileName\}`\}/);
   assert.match(client,/method:'DELETE'/);
   assert.match(server,/app\.delete\('\/api\/backups\/:backupId',requireSuper,requireAdministrator/);

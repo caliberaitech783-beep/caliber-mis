@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import EquipmentAliasOtpPanel,{aliasApi} from './equipment-alias-otp-panel.jsx';
 import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 
 // Equipment master overlay: the ALIAS column, the revoke dialog (same two OTP routes as
 // approval) and the administrator list per site with full history and the approver setting.
@@ -43,6 +44,7 @@ export function EquipmentAliasRevokeDialog({session,alias,otpEnabled,approver,ap
 export function EquipmentLetterRules({rules=[]}){
  return <div className="equipment-letter-rules"><h3>All-site letter rules</h3>
   <p className="scan-alias-note">An approved mapping such as written L21 → DEMO21 also teaches that written L## means DEMO## at every site. A machine that already carries the written label at a site always wins, and a label that matches two machines is held for review.</p>
+  {rules.length>0&&<TableSmartPrint row title="Equipment aliases · All-site letter rules"/>}
   <table className="equipment-alias-table"><thead><tr><th>Written letter</th><th>Pulse letter</th><th>Learnt from</th><th>Note</th></tr></thead>
    <tbody>{rules.length?rules.map(rule=><tr key={rule.id}><td>{rule.writtenCode}##</td><td>{rule.targetPrefix}##</td><td>{rule.sources.map(s=><span key={s.aliasId} className="equipment-letter-rule-source">{s.writtenText} → {s.door||'equipment '+s.equipmentId}{s.site?' ('+s.site+')':''}</span>)}</td><td>{rule.kind==='vehicle'?'Tipper header':'Equipment'}{rule.conflicts?.length?' · also '+rule.writtenCode+' → '+rule.conflicts.join(', ')+': both are checked, a double match goes to review':''}</td></tr>):<tr><td colSpan="4" className="empty-state">No all-site letter rules yet. They appear when an approved mapping keeps the number and changes only the letter.</td></tr>}</tbody></table>
  </div>;
@@ -64,6 +66,7 @@ export default function EquipmentAliasAdminPanel({session,isAdmin}){
   <EquipmentLetterRules rules={letterRules}/>
   {ruleError&&<p role="alert" className="logbook-message error">{ruleError}</p>}
   <div className="equipment-alias-filters"><label>Site<select value={site} onChange={e=>setSite(e.target.value)}><option value="">All sites</option>{sites.map(s=><option key={s}>{s}</option>)}</select></label><label>Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All</option>{Object.entries(aliasStatusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><button type="button" onClick={refresh}>Refresh</button></div>
+  {rows.length>0&&<TableSmartPrint row title={'Equipment aliases · '+(site||'All sites')+(status?' · '+aliasStatusLabel[status]:'')}/>}
   <table className="equipment-alias-table"><thead><tr><th>Written</th><th>Pulse record</th><th>Site</th><th>Status</th><th>Route</th><th>Requested by</th><th>When</th><th>History</th><th></th></tr></thead>
    <tbody>{rows.length?rows.map(a=><React.Fragment key={a.id}><tr><td>{a.writtenText}<br/><small>{a.writtenKey}</small></td><td>{a.equipmentDoor||a.equipmentId}{a.equipmentName&&a.equipmentName!==a.equipmentDoor?<><br/><small>{a.equipmentName}</small></>:null}</td><td>{a.equipmentSite||a.site}</td><td title={aliasHover(a)}>{aliasStatusLabel[a.status]||a.status}{a.suspendedReason?<><br/><small>{a.suspendedReason}</small></>:null}</td><td>{aliasRouteLabel(a)}{a.approvedBy?<><br/><small>{a.approvedBy}</small></>:null}</td><td>{a.requestedBy}</td><td>{formatDisplayDateTime(a.approvedAt||a.createdAt)}</td><td><button type="button" aria-expanded={open===a.id} onClick={()=>setOpen(open===a.id?null:a.id)}>{(a.history||[]).length} event(s)</button></td><td>{isAdmin&&['pending','active','suspended'].includes(a.status)&&<><button type="button" onClick={()=>setRevoke(a)}>Revoke…</button>{a.allSites===false?<button type="button" onClick={()=>setAllSites(a,true)} title="Let this mapping teach its letter rule to every site again">Use at all sites</button>:<button type="button" onClick={()=>setAllSites(a,false)} title="Keep this machine's alias but stop its letter rule at the other sites">This machine only</button>}</>}</td></tr>
     {open===a.id&&<tr className="equipment-alias-history"><td colSpan="9"><ul>{(a.history||[]).map(h=><li key={h.id}>{formatDisplayDateTime(h.at)} · {h.action} · {h.actor}{h.detail&&Object.keys(h.detail).length?' · '+Object.entries(h.detail).filter(([k,v])=>v!==null&&v!==''&&k!=='otpId').map(([k,v])=>k+': '+(Array.isArray(v)?v.join(', '):typeof v==='object'?JSON.stringify(v):v)).join(' · '):''}</li>)}</ul></td></tr>}</React.Fragment>):<tr><td colSpan="9" className="empty-state">No aliases{site||status?' match these filters':' yet'}.</td></tr>}</tbody></table>

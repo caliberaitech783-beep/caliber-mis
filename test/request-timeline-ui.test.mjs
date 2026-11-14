@@ -1,3 +1,4 @@
+import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
 import {requestStatusLabel} from '../src/request-status.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +19,7 @@ const code = (await transformWithOxc(source, "request-timeline.jsx", {jsx: {runt
 // The time breakdown lists updates through the shared panel, compiled here the same way.
 const panelSource = readFileSync(new URL("../src/daily-updates-list.jsx", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export (default )?/gm, "");
 const panelCode = (await transformWithOxc(panelSource, "daily-updates-list.jsx", {jsx: {runtime: "classic"}})).code;
-const panelBindings = {React, useSyncExternalStore: React.useSyncExternalStore, ...dailyUpdatesOrder, formatDisplayDateTime};
+const panelBindings = {TableSmartPrint, React, useSyncExternalStore: React.useSyncExternalStore, ...dailyUpdatesOrder, formatDisplayDateTime};
 const {DailyUpdatesPanel} = new Function("DateInput", ...Object.keys(panelBindings), panelCode + "; return {DailyUpdatesPanel};")(DateInput, ...Object.values(panelBindings));
 const panelText = node => renderToStaticMarkup(node).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const main = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");

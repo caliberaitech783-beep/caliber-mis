@@ -27,3 +27,5 @@
 :root[data-theme="dark"] :is(.equipment-match-table,.equipment-mismatch-notice) th{color:#c9bde6}
 :root[data-theme="dark"] :is(.equipment-match-table,.equipment-mismatch-notice) :is(th,td){border-color:#3a3550}
 :root[data-theme="dark"] .equipment-mismatch-notice h2{color:#ff9db0}
+/* The notice sits above every other layer (z-index 11900), so its Smart Print menu has to open above it too. */
+.export-menu-popover.equipment-mismatch-print-layer,.caliber-activity-overlay.equipment-mismatch-print-layer{z-index:11910}

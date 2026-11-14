@@ -1,10 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { Archive, CalendarClock, Database, Eraser, HardDrive, Image, RefreshCw, XCircle } from "lucide-react";
+import TableSmartPrint from "./table-smart-print.jsx";
 import "./data-housekeeping-page.css";
 
 const showDateTime = (value) => (value ? new Date(value).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: true }) : "Never");
 const DISK_LABELS = { ok: "Plenty of space", warn: "Getting full", fail: "Nearly full", off: "Size not available" };
 const TABLE_LIMIT = 12;
+// The "Largest tables" list is drawn with divs, so Smart Print gets the same fields as columns.
+const TABLE_PRINT_COLUMNS = [
+  { key: "label", label: "Data", value: (table) => table.label },
+  { key: "purgeable", label: "Can be purged", value: (table) => (table.purgeable ? "Yes" : "") },
+  { key: "name", label: "Table", value: (table) => table.name },
+  { key: "dataSize", label: "Data size", value: (table) => table.dataSize },
+  { key: "indexSize", label: "Index size", value: (table) => table.indexSize },
+  { key: "deadPercent", label: "Freed space waiting to be reused", value: (table) => (table.deadPercent >= 20 ? `${table.deadPercent}%` : "") },
+  { key: "rows", label: "Rows", value: (table) => table.rows.toLocaleString("en-IN") },
+  { key: "size", label: "Size", value: (table) => table.size },
+  { key: "share", label: "Share", value: (table) => `${table.share}%` },
+];
 
 // Admin > Database > Storage management: where the database and backup space
 // goes, with links to Purge data and Retention rules to free it. Read-only.
@@ -73,6 +86,7 @@ export default function StorageManagementPage({ token, onNavigate }) {
         </article>
       </div>
       <h2 className="storage-heading">Largest tables</h2>
+      {tables.length > 0 && <TableSmartPrint row title={`Storage management · ${showAll ? "All tables" : "Largest tables"}`} rows={tables} columns={TABLE_PRINT_COLUMNS} />}
       <div className="housekeeping-table storage-table" role="table" aria-label="Largest tables">
         <div role="row" className="head"><span role="columnheader">Data</span><span role="columnheader">Rows</span><span role="columnheader">Size</span><span role="columnheader">Share</span></div>
         {tables.map((table) => <div role="row" key={table.name}>

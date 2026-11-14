@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import TableSmartPrint from './table-smart-print.jsx';
 
 // Upload summary: how many cards were scanned, how many were the same paper as
 // a card already in another entry (skipped before reading), how many are new.
@@ -24,6 +25,14 @@ function ScanThumb({cardId,token,label}){
  return <figure className="scan-duplicate-thumb"><figcaption>{label}</figcaption>{url?<img src={url} alt={label}/>:<div className="scan-duplicate-thumb-empty">Image not available</div>}</figure>;
 }
 
+// The parts of the line above, one per column, for the Smart Print menu.
+const duplicatePrintColumns=[
+ {key:'card',label:'Card',value:row=>row.ordinal??'—'},
+ {key:'original',label:'Duplicate of',value:row=>{const o=row.original||{};return o.missing?'a card that was since removed':'card '+(o.ordinal??'?')+' in entry '+(o.entryName||'—')+(o.bookNo?' (saved as '+o.bookNo+')':'');}},
+ {key:'match',label:'How it matches',value:row=>row.reason==='exact'?'identical file':row.reason==='content'?'same card number, door and date':'same paper, rescanned'},
+ {key:'difference',label:'Difference',value:row=>row.distance?.max!==undefined&&row.distance.max!==null?row.distance.max+'%':'—'},
+];
+
 // Duplicates tile detail: every skipped card beside its original, with the one
 // way to overrule the system: read this card after all.
 export default function ScanDuplicateList({duplicates,token,disabled,onRestore,onOpenOriginal}){
@@ -31,6 +40,7 @@ export default function ScanDuplicateList({duplicates,token,disabled,onRestore,o
  if(!duplicates.length)return <p className="scan-duplicate-empty">No duplicate cards were skipped in this entry.</p>;
  return <section className="scan-duplicate-list" aria-label="Duplicate cards skipped">
   <p>These scans match a card that already exists for this date, site and shift. They were not read and do not count in this entry. Open one to compare both scans; use <strong>Not a duplicate</strong> only when the two cards are genuinely different.</p>
+  <TableSmartPrint row title="Duplicate cards skipped in this entry" rows={duplicates} columns={duplicatePrintColumns}/>
   {duplicates.map(row=><article key={row.id} className="scan-duplicate-row">
    <button type="button" className="scan-duplicate-summary" aria-expanded={open===row.id} onClick={()=>setOpen(open===row.id?'':row.id)}>{scanDuplicateLine(row)}</button>
    {open===row.id&&<div className="scan-duplicate-compare">

@@ -73,8 +73,8 @@ export function EquipmentMismatchNotice({session,onOpen}){
   <h2 id="equipment-mismatch-title">Equipment list does not match Pulse</h2>
   <p>Checked {stamp(notice.checkedAt)}. Pulse-II has <b>{notice.pulseIITotal}</b> machines, Pulse has <b>{notice.pulseTotal}</b>. <b>{notice.machineCount}</b> machine{notice.machineCount===1?'':'s'} differ.</p>
   <ul>{Object.entries(MISMATCH_KINDS).filter(([kind])=>notice.byKind?.[kind]).map(([kind,label])=><li key={kind}>{label}: <b>{notice.byKind[kind]}</b></li>)}</ul>
-  {notice.machines.length>0&&<table><thead><tr><th>Machine</th><th>What differs</th><th>Pulse-II</th><th>Pulse</th></tr></thead>
-   <tbody>{notice.machines.map((machine,index)=><tr key={index}><td>{machineName(machine)}</td><td>{MISMATCH_KINDS[machine.kind]}</td><td>{side(machine.pulseIISite,machine.pulseIIGroup)}</td><td>{side(machine.pulseSite,machine.pulseGroup)}</td></tr>)}</tbody></table>}
+  {notice.machines.length>0&&<><TableSmartPrint row portalClassName="equipment-mismatch-print-layer" title={'Equipment list does not match Pulse · checked '+stamp(notice.checkedAt)}/><table><thead><tr><th>Machine</th><th>What differs</th><th>Pulse-II</th><th>Pulse</th></tr></thead>
+   <tbody>{notice.machines.map((machine,index)=><tr key={index}><td>{machineName(machine)}</td><td>{MISMATCH_KINDS[machine.kind]}</td><td>{side(machine.pulseIISite,machine.pulseIIGroup)}</td><td>{side(machine.pulseSite,machine.pulseGroup)}</td></tr>)}</tbody></table></>}
   {notice.machineCount>notice.machines.length&&<p>…and {notice.machineCount-notice.machines.length} more in the full list.</p>}
   <p className="equipment-mismatch-repeat">This notice returns every {notice.intervalHours} hours until the two lists match.</p>
   <div className="equipment-mismatch-actions"><button type="button" disabled={saving} onClick={()=>close(true)}>Open full list</button><button type="button" disabled={saving} onClick={()=>close(false)}>OK</button></div>

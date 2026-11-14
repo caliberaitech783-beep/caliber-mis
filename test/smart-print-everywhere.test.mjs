@@ -73,3 +73,46 @@ test('Reports: the tables that had no print option now have the menu',()=>{
   assert.match(main,/includes\("request-timeline-modal"\) && <ExportMenu [^>]*source=\{\(\) => readDomTable\(dialogRef\.current\?\.querySelector\("\.request-timeline-steps"\)\)\} onSmartPrint=\{\(\) => \{/);
   assert.match(menu,/if \(onSmartPrint\) \{ onSmartPrint\(\); return; \}/);
 });
+
+// Part 2: the lists on the other pages. Each file keeps at least the menus counted here; a list that is removed
+// takes its line out of this table, and a new hand-drawn list should add one.
+const OTHER_PAGES={
+  // Masters
+  'equipment-alias-admin.jsx':2,'pulse-master-sync.jsx':1,'pulse-pending.jsx':1,'vehicle-transfer-workflow.jsx':1,'organisation-chart.jsx':5,
+  // MIS: batches, log books, scanning, ELB
+  'vlb-batch-approvals.jsx':1,'vlb-create-batch.jsx':3,'vlb-batch-holds.jsx':1,'vlb-batch-deletion.jsx':1,'vlb-batch-governance.jsx':2,
+  'pulse-trip-verification.jsx':1,'log-book-form.jsx':3,'fleet-reconciliation.jsx':1,'scan-batch-report.jsx':2,'bulk-card-scanning.jsx':1,
+  'scan-duplicate-list.jsx':1,'vlb-fleet-stepper.jsx':1,'previous-elb-entries.jsx':1,
+  // Deletion and backup
+  'log-book-deletion.jsx':2,'log-book-deletion-manifest.jsx':5,'scan-card-backup.jsx':1,'backup-administration.jsx':2,
+  // Telegram, automation, admin
+  'mis-telegram.jsx':1,'automation-centre.jsx':4,'telegram-site-groups.jsx':2,'oem-email-delivery-status.jsx':1,'diagnostics-page.jsx':2,
+  'storage-management-page.jsx':1,'request-corrections.jsx':1,'daily-updates-list.jsx':1,'equipment-pulse-mismatch.jsx':3,
+  // Accounts and directory
+  'iboss-bank-reconciliation.jsx':1,'iboss-account-ledger.jsx':1,'iboss-drill-panel.jsx':1,'caliber-directory-page.jsx':4,
+};
+
+test('other pages: every list of records drawn by hand has the Smart Print menu',()=>{
+  for(const [file,least] of Object.entries(OTHER_PAGES)){
+    const source=read(file);
+    assert.match(source,/import TableSmartPrint from ['"]\.\/table-smart-print\.jsx['"];/,file+' imports the menu');
+    assert.ok((source.match(/<TableSmartPrint /g)||[]).length>=least,file+' keeps its '+least+' Smart Print menu(s)');
+  }
+  // Shared tables in the main file get the menu by having a title.
+  for(const title of ['exportTitle={type}','exportTitle="WhatsApp alert history"','exportTitle={`User Sessions · ${status}`}','exportTitle="Admin locks · Triggering CRM tickets"','exportTitle={`${name} · request ageing`}'])
+    assert.ok(main.includes('<ActionsTable ')&&main.includes(title),title);
+});
+
+test('menus stay out of places where they would only be clutter or a risk',()=>{
+  // The daily updates journal sits in every row of the maintenance tables: only a pop-up that passes a title gets a menu.
+  const updates=read('daily-updates-list.jsx');
+  assert.match(updates,/\{printTitle && <TableSmartPrint row title=\{printTitle\} rows=\{updates\} columns=\{printColumns\} \/>\}/);
+  assert.doesNotMatch(updates.slice(updates.indexOf('export default function DailyUpdatesList')),/printTitle/,'the table cell passes no title');
+  assert.match(main,/<DailyUpdatesPanel remarks=\{history\}[^>]*printTitle=\{/);
+  // A typed OTP, a recovery file link and delete buttons never go to paper.
+  assert.match(read('vlb-batch-holds.jsx'),/data-smart-print-skip/);
+  assert.match(read('backup-administration.jsx'),/<th data-smart-print-skip="">Recovery file<\/th><th data-smart-print-skip="">Delete<\/th>/);
+  // The mismatch notice is the top layer of the app; its menu opens above it from the stylesheet, not an inline style.
+  assert.doesNotMatch(read('equipment-pulse-mismatch.jsx'),/<style>/);
+  assert.match(readFileSync(new URL('../src/equipment-pulse-mismatch.css',import.meta.url),'utf8'),/\.export-menu-popover\.equipment-mismatch-print-layer[^{]*\{z-index:11910\}/);
+});

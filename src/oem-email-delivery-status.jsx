@@ -1,4 +1,5 @@
 import React,{useEffect,useState} from 'react';
+import TableSmartPrint from './table-smart-print.jsx';
 
 export default function OemEmailDeliveryStatus({session}) {
   const [data,setData]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
@@ -26,13 +27,14 @@ export default function OemEmailDeliveryStatus({session}) {
     {data&&<p>Sender: {data.sender} · Scheduler: {data.schedulerEnabled?'Enabled':'Disabled'} · Credentials: {data.configured?'Configured (not verified)':'Missing'}<br/>{data.schedule}<br/>{data.note}</p>}
     {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
     <input type="search" aria-label="Search OEM email deliveries" placeholder="Search OEM, recipient, date or status" value={query} onChange={event=>setQuery(event.target.value)}/>
+    {rows.length>0&&<TableSmartPrint row title={'OEM Email Delivery Status'+(query.trim()?' · '+query.trim():'')}/>}
     <div style={{overflowX:'auto',marginTop:16}}><table><thead><tr>{['Scheduled (IST)','OEM / Level','Recipient','BD cases','Status','PDF / Excel','Last attempt (IST)','Accepted (IST)','Message ID','Acknowledgement','Error / Retry'].map(label=><th key={label}>{label}</th>)}</tr></thead>
       <tbody>{rows.map(row=><tr key={`${row.day}:${row.recipient_key}`}>
         <td>{row.day} {row.recipient_key.includes(':test-1300')?'1:00 PM':row.recipient_key.includes(':test-1100')?'11:00 AM':row.recipient_key.includes(':extra-1900')?'7:00 PM':'5:00 PM'}</td>
         <td>{row.oem} / {row.level}</td><td>{row.email}</td><td>{row.case_count}</td><td>{row.status}</td>
         <td>{row.attachments?.length?row.attachments.map(file=><div key={file.filename}>{file.filename} ({file.bytes} bytes)</div>):'Not recorded for this attempt'}</td>
         <td>{time(row.last_attempt_at)}</td><td>{time(row.sent_at)}</td><td>{row.message_id||'Not recorded'}</td><td>{row.acknowledgement_status||'Not recorded / not requested'}</td>
-        <td>{row.error||'—'}{row.retry_safe&&row.status==='Failed / review required'&&!row.message_id?<button disabled={busy} onClick={()=>retry(row)}>Retry failed email</button>:row.status==='Failed / review required'?<p>Manual review required; retry blocked to prevent duplicates.</p>:null}
+        <td>{row.error||'—'}{row.retry_safe&&row.status==='Failed / review required'&&!row.message_id?<button data-print-hide="" disabled={busy} onClick={()=>retry(row)}>Retry failed email</button>:row.status==='Failed / review required'?<p>Manual review required; retry blocked to prevent duplicates.</p>:null}
           {!!row.attempts?.length&&<details><summary>Retry history</summary>{row.attempts.map((attempt,index)=><p key={index}>{time(attempt.at)} · {attempt.actor} · {attempt.reason} · Previous: {attempt.previousError}</p>)}</details>}
         </td></tr>)}{!rows.length&&<tr><td colSpan={11}>{data?'No recorded attempts match this view.':'Loading…'}</td></tr>}</tbody></table></div>
   </section>;

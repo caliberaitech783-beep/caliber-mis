@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 import './mis-admin.css';
 export default function MisTelegram({session}){
  const admin=isMisAdministrator(session);
@@ -54,8 +55,8 @@ export function VlbBatchAlertSettings({session}){
    <div className="mis-admin-actions"><button type="submit" disabled={busy}>Save alert settings</button><button type="button" disabled={busy} onClick={()=>void runNow()}>Check now</button></div>
   </form>
   <h3>Open alerts ({open.length})</h3>
-  {open.length?<div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Site</th><th>Date</th><th>Shift</th><th>Alert</th><th>Sent</th><th>Last sent</th><th>Recipients</th><th>Note</th></tr></thead><tbody>
+  {open.length?<><TableSmartPrint row title="VLB batch alerts · Open alerts"/><div className="logbook-table-wrap"><table className="logbook-table"><thead><tr><th>Site</th><th>Date</th><th>Shift</th><th>Alert</th><th>Sent</th><th>Last sent</th><th>Recipients</th><th>Note</th></tr></thead><tbody>
    {open.map(row=><tr key={row.alert_key}><td>{row.site}</td><td>{row.date}</td><td>{row.shift}</td><td>{row.type==='not_created'?'Batch not created':'Batch still open'}</td><td>{row.sent_count}</td><td>{row.last_sent_at?new Date(row.last_sent_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'—'}</td><td>{(row.recipients||[]).join(', ')||'—'}</td><td>{row.last_error||''}</td></tr>)}
-  </tbody></table></div>:<p>No shift is late right now.</p>}
+  </tbody></table></div></>:<p>No shift is late right now.</p>}
  </section>;
 }

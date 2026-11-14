@@ -5,11 +5,15 @@ import {MERGE_CHAINS} from '../shared/iboss-report-merge.mjs';
 import {purchaseOrderRange} from '../shared/purchase-order-report.mjs';
 import {formatDisplayDate} from '../shared/date-time-format.mjs';
 import DateInput from './date-input.mjs';
+import TableSmartPrint from './table-smart-print.jsx';
 import './iboss-report-merge.css';
 
 const money=value=>value===''||value===null||value===undefined||!Number.isFinite(Number(value))?'':Number(value).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 export const showValue=(type,value)=>type==='date'?(value?formatDisplayDate(value):''):type==='amount'?money(value):Array.isArray(value)?value.join(', '):value??'';
 const targetLabel=chain=>({'party-position':'party','bank-position':'bank','vehicle-cost':'vehicle',voucher:'voucher','bank-guarantee':'bank guarantee','fixed-deposit':'fixed deposit','loan-emi':'loan'}[chain]||'record');
+// Smart Print of the trail: one line per document under its linked report; a report with nothing recorded keeps its line.
+const trailPrintColumns=[{key:'step',label:'Linked report',value:row=>row.step},{key:'docNo',label:'Document no.',value:row=>row.docNo},{key:'docDate',label:'Date',value:row=>row.docDate},{key:'details',label:'Details',value:row=>row.details}];
+const trailPrintRows=steps=>steps.flatMap(step=>step.documents.length?step.documents.map(document=>({step:step.title,docNo:document.docNo||'—',docDate:document.docDate?formatDisplayDate(document.docDate):'',details:document.details.map(item=>item.label+': '+(showValue(item.type,item.value)||'—')).join('\n')})):[{step:step.title,docNo:'Not recorded',docDate:'',details:''}]);
 
 // One drill-down target: {chain,key,focus:{step,docNo}}. Links inside open further targets with Back.
 export default function DrillPanel({target,range:initialRange,token,close}){
@@ -60,6 +64,7 @@ export default function DrillPanel({target,range:initialRange,token,close}){
    </div>}
    {data.loading?<p role="status">Tracing documents in Oracle…</p>:data.error?<div role="alert"><p>{data.error}</p><button type="button" onClick={()=>setAttempt(value=>value+1)}>Retry document</button></div>:<>
     <p role="status">Total: {data.steps.reduce((sum,step)=>sum+step.documents.length,0).toLocaleString('en-IN')} records across {data.steps.length} linked reports.</p>
+    {shown.length>0&&<TableSmartPrint row title={chain.title+' · '+(chain.keyed?current.key+' · '+formatDisplayDate(range.from)+' to '+formatDisplayDate(range.to):(focusDoc||current.key)+' · '+(direction==='backward'?'back to origin':'forward to completion'))} rows={trailPrintRows(shown)} columns={trailPrintColumns}/>}
     <ol className="merge-trail-steps">
      {shown.map(step=><li key={step.key} className={`${step.documents.length?'done':'pending'}${step.key===current.focus?.step?' focus':''}`}>
       <span className="merge-trail-dot" aria-hidden="true"/>
