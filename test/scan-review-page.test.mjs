@@ -504,3 +504,8 @@ test('a refused card can navigate Next in review without restarting background p
  app.testCapture.autoSaveFailures.current.set(cards[0].id+':1','Vehicle already has a saved card');app.testCapture.setFailureTick(n=>n+1);
  const tree=app.render();const next=nodes(tree,n=>n.type==='button'&&n.props.children==='Next')[0];assert.equal(next.props.disabled,false);next.props.onClick();assert.equal(new URL(app.window.location.href).searchParams.get('card'),cards[1].id);
 });
+
+test('scan card review shows all values by default and narrows only on the user\'s click',()=>{
+ assert.match(source,/const \[showAll,setShowAll\]=useState\(true\);/);
+ assert.equal((source.match(/setShowAll\(/g)||[]).length,1,'only the toggle button changes the all-values view');
+});
