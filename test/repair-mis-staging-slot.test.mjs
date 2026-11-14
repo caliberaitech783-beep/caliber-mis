@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {
-  APP, GROUP, KEY_FILE, ROLES, STAGING_ALWAYS, SUBSCRIPTION, maskLine, parseKeyVaultReference, repairStagingSlot, settingsToAdd,
+  APP, GROUP, KEY_FILE, ROLES, STAGING_ALWAYS, SUBSCRIPTION, driveSpace, maskLine, parseKeyVaultReference, repairStagingSlot, settingsToAdd,
 } from '../scripts/repair-mis-staging-slot.mjs';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -31,12 +31,14 @@ const LIVE_SETTINGS = {
 };
 // Nothing in this list may ever be printed.
 const MARKERS = [TOKEN, 'marker-gemini-key-value', 'marker-vault-77', 'marker-db-secret', 'markerscanacct9', 'marker-cards', 'marker-public.example',
-  NEW_PRINCIPAL, LIVE_KEY.toString('hex'), LIVE_KEY.toString('base64'), 'marker-azure-error-text', LIVE_HOST, STAGE_SCM];
+  NEW_PRINCIPAL, LIVE_KEY.toString('hex'), LIVE_KEY.toString('base64'), 'marker-azure-error-text', LIVE_HOST, STAGE_SCM, 'marker-path-in-refusal'];
+const DF = {command: 'df -Pk /home', dir: '/home'};
 
 // A stand-in for Azure: the management API, the two deployment sites and the staging app's health address.
-function standIn({canGrant = true, seeResources = true, stagingKey = null, stagingSettings = {DISABLE_SCHEDULED_JOBS: 'true'}, scanReadyAfterRestarts = 0} = {}) {
+function standIn({canGrant = true, seeResources = true, stagingKey = null, stagingSettings = {DISABLE_SCHEDULED_JOBS: 'true'}, scanReadyAfterRestarts = 0, driveFull = false, folders = []} = {}) {
   const calls = [], unexpected = [];
-  const state = {identity: null, settings: {...stagingSettings}, key: stagingKey, files: new Map(), assignments: [], running: false, restarts: 0};
+  const state = {identity: null, settings: {...stagingSettings}, key: stagingKey, files: new Map(), assignments: [], running: false, restarts: 0, folders: new Set(folders)};
+  const noSpace = () => new Response(JSON.stringify({Message: "Could not write to local resource '/home/marker-path-in-refusal' due to error 'No space left on device'."}), {status: 409});
   const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
   const slotBody = (identity, host, scm, running) => ({identity, properties: {state: running ? 'Running' : 'Stopped', serverFarmId: PLAN, enabledHostNames: [host, scm], defaultHostName: host}});
   const granted = scope => state.assignments.some(item => item.scope === scope);
@@ -77,8 +79,20 @@ function standIn({canGrant = true, seeResources = true, stagingKey = null, stagi
     if (address.host === LIVE_SCM && method === 'GET' && path === keyPath) return new Response(LIVE_KEY);
     if (address.host === STAGE_SCM) {
       assert.equal(call.headers.Authorization, 'Bearer ' + TOKEN);
+      if (method === 'POST' && path === '/api/command') {
+        assert.deepEqual(JSON.parse(options.body), DF);
+        const used = driveFull ? 524288000 : 73400320;
+        return json({Output: `Filesystem     1024-blocks      Used Available Capacity Mounted on\ntuxfusedrive     524288000 ${used} ${524288000 - used}     ${driveFull ? 100 : 14}% /home\n`, Error: '', ExitCode: 0});
+      }
       if (method === 'GET' && path === keyPath) return state.key ? new Response(state.key) : new Response('', {status: 404});
-      if (method === 'PUT' && path.endsWith('/')) return new Response('', {status: 201});
+      if (method === 'GET' && path.endsWith('/') && path !== '/api/vfs/LogFiles/') return state.folders.has(path) ? json([]) : new Response('', {status: 404});
+      if (method === 'PUT' && path.endsWith('/')) {
+        if (state.folders.has(path)) return new Response('', {status: 409});
+        if (driveFull) return noSpace();
+        state.folders.add(path);
+        return new Response('', {status: 201});
+      }
+      if (method === 'PUT' && driveFull) return noSpace();
       if (method === 'PUT' && path === keyPath) {
         if (state.key && call.headers['If-Match'] !== '*') return new Response('', {status: 412});
         state.key = Buffer.from(options.body);
@@ -108,8 +122,10 @@ async function run(azure, apply) {
   assert.deepEqual(azure.unexpected, []);
   return {result, printed};
 }
-// Everything that is not a read. Listing app settings is a POST in Azure's API, and it changes nothing.
-const writes = azure => azure.calls.filter(call => call.method !== 'GET' && !(call.method === 'POST' && call.path.endsWith('/config/appsettings/list')));
+// Everything that is not a read. Listing app settings is a POST in Azure's API, and so is asking the staging drive for
+// its free space; neither changes anything.
+const writes = azure => azure.calls.filter(call => call.method !== 'GET' && !(call.method === 'POST' && call.path.endsWith('/config/appsettings/list')) &&
+  !(call.method === 'POST' && call.host === STAGE_SCM && call.path === '/api/command'));
 
 test('a Key Vault reference is read in both of its forms, and anything else is not one', () => {
   assert.deepEqual(parseKeyVaultReference('@Microsoft.KeyVault(VaultName=Coalmine-KV-1;SecretName=database-url-production)'), {vault: 'coalmine-kv-1', secret: 'database-url-production'});
@@ -228,6 +244,33 @@ test('a different key file on the staging drive is kept beside the one copied fr
   const keyWrite = azure.calls.find(call => call.host === STAGE_SCM && call.method === 'PUT' && call.path.endsWith('/integration.key'));
   assert.equal(keyWrite.headers['If-Match'], '*');
   assert.match(printed, /replaced with the one from the live drive \(the old file is kept beside it\)/);
+});
+
+test('free space is read from the drive listing, whatever the drive is called', () => {
+  assert.deepEqual(driveSpace('Filesystem 1024-blocks Used Available Capacity Mounted on\ntuxfusedrive 524288000 524288000 0 100% /home\n'), {totalGb: 500, usedGb: 500, freeGb: 0});
+  assert.deepEqual(driveSpace('Filesystem 1024-blocks Used Available Capacity Mounted on\n//a share/with space 104857600 26214400 78643200 25% /home'), {totalGb: 100, usedGb: 25, freeGb: 75});
+  for (const output of ['', null, 'df: not found', 'tuxfusedrive 1 2 3 4% /tmp', 'overlay x y z 4% /home']) assert.equal(driveSpace(output), null);
+});
+
+test('a full drive is named as the reason, with its figures, and the rest of the repair still runs', async () => {
+  const azure = standIn({driveFull: true});
+  const {result, printed} = await run(azure, true);
+  assert.equal(result.repaired, false);
+  assert.match(printed, /free space on the staging drive\n500 GB in all, 500 GB used, 0 GB free: THE DRIVE IS FULL/);
+  assert.match(printed, /2\. integration key file on the staging drive\nNOT copied: its folder could not be made \(the drive is full\)/);
+  assert.match(printed, /  - The drive is full \(500 of 500 GB used\)\. Nothing new can be written to it/);
+  assert.match(printed, /granted: Key Vault Secrets User for reading the database secret/);
+  assert.equal(azure.state.key, null);
+  assert.equal(azure.state.settings.GEMINI_API_KEY, LIVE_SETTINGS.GEMINI_API_KEY);
+  assert.match(printed, /6\. start-up check of the staging app\nnot run: the repair is not complete/);
+});
+
+test('folders that are already on the staging drive are used as they are', async () => {
+  const azure = standIn({folders: ['/api/vfs/data/', '/api/vfs/data/caliber-mis/']});
+  const {result, printed} = await run(azure, true);
+  assert.equal(result.repaired, true, printed);
+  assert.ok(azure.state.key.equals(LIVE_KEY));
+  assert.match(printed, /free space on the staging drive\n500 GB in all, 70 GB used, 430 GB free\n/);
 });
 
 test('scan storage that is not ready at the first start is given a restart, not reported as a failure', async () => {
