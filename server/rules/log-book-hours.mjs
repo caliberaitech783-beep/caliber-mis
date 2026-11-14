@@ -1,3 +1,4 @@
+import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
 import {validShiftHours} from '../../shared/site-shift-hours.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 const round=n=>Math.round(n*1000)/1000;
@@ -15,6 +16,6 @@ export function summarizePulseHours({rows,date,site,asset,shift,shiftHours,runni
  if(r.closedAt&&!Number.isFinite(rawEnd)&&r.closedAt!=='—')throw new Error('A matching Pulse request has an invalid close time.');
  const b=Number.isFinite(rawEnd)?rawEnd:now;if(b<a)throw new Error('Pulse request closes before it starts.');const lo=Math.max(a,start),hi=Math.min(b,end,now);if(hi>lo){ranges.push([lo,hi]);references.push(r.ref);breakdowns.push({reference:String(r.ref||''),description:String(r.complaint||r.description||r.reason||'Breakdown recorded in Pulse'),start:new Date(a).toISOString(),end:Number.isFinite(rawEnd)?new Date(rawEnd).toISOString():null,ongoing:!Number.isFinite(rawEnd),status:String(r.status||(!Number.isFinite(rawEnd)?'Ongoing':'Restored')),shiftStart:new Date(lo).toISOString(),shiftEnd:new Date(hi).toISOString(),hours:round((hi-lo)/3600000)})}}
  ranges.sort((a,b)=>a[0]-b[0]);const merged=[];for(const r of ranges){const prev=merged.at(-1);if(prev&&r[0]<=prev[1])prev[1]=Math.max(prev[1],r[1]);else merged.push([...r])}
- const breakdownHours=round(merged.reduce((s,[a,b])=>s+b-a,0)/3600000),availabilityHours=runningHours==null?null:round(Number(runningHours)),idleHours=runningHours==null?null:round(Number(shiftHours)-Number(runningHours));
- return {breakdownHours,availabilityHours,runningHours,idleHours,source:'https://pulse.cmll.in',fetchedAt:new Date(now).toISOString(),references,breakdowns,shiftStart:new Date(start).toISOString(),shiftEnd:new Date(end).toISOString(),warnings:idleHours<0?['Working hours exceed the selected shift; check meter readings and shift.']:[]};
+ const breakdownHours=round(merged.reduce((s,[a,b])=>s+b-a,0)/3600000),availabilityHours=runningHours==null?null:round(Number(runningHours)),idleHours=idleShiftHours(shiftHours,runningHours,breakdownHours);
+ return {breakdownHours,availabilityHours,runningHours,idleHours,source:'https://pulse.cmll.in',fetchedAt:new Date(now).toISOString(),references,breakdowns,shiftStart:new Date(start).toISOString(),shiftEnd:new Date(end).toISOString(),warnings:Number(runningHours)>Number(shiftHours)?['Working hours exceed the selected shift; check meter readings and shift.']:[]};
 }
