@@ -162,7 +162,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  useEffect(()=>setMismatchListOpen(false),[batch?.id]);
  const [fleetDismissed,setFleetDismissed]=useState(()=>new Set()),[fleetBusy,setFleetBusy]=useState(false),[fleetOpenId,setFleetOpenId]=useState(()=>new URLSearchParams(window.location.search).get('scanEquipment')||'');
  const fleetCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.issues?.length>0);
- const fleetErrorCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.error);
+ const fleetErrorCards=cards.filter(card=>['review','approved','error'].includes(card.status)&&card.raw_fields?.fleetReview?.error&&!card.raw_fields.fleetReview.issues?.length);
  const fleetDialogCard=fleetCards.find(card=>card.id===fleetOpenId);
  // A dropdown choice for a written machine that no Pulse door matches (L21 → DEMO21-00179) is saved once as an alias on that asset and applied to every later card and batch.
  const learnEquipmentAlias=async(row,assets)=>{const asset=assets.find(item=>String(item.id)===String(row.equipmentId));if(/^DC[ ._/-]*\d+$/i.test(row.originalEquipmentName||'')&&/^DEMO[ ._/-]*\d+/i.test(asset?resolvedMachineName(asset):''))return;const alias=aliasForSelection(row.originalEquipmentName||row.equipmentNotation?.original||'',asset,'equipment');if(!alias)return;try{const result=await api('/api/equipment-aliases',{method:'POST',body:JSON.stringify({...alias,site:draft.location,book:kind==='vehicle'?'vlb':'elb',batchId:batch?.id||''})});if(!result.alias)return;if(result.otpRequired){setNotice('Pair applied to this card. Approve the alias '+result.alias.writtenText+' by OTP in Equipment mapping to make it permanent.');if(batch?.id){await refreshAliasMismatches(batch.id);setAliasOpen(true);}return;}setOptions(current=>current?{...current,assets:attachEquipmentAliases(current.assets||[],[{equipment_id:result.alias.equipmentId,written_text:result.alias.writtenText,status:'active'}])}:current);if(result.created){setNotice('Saved alias: written '+result.alias.writtenText+' now maps to '+(asset?resolvedMachineName(asset):'the selected equipment')+' on every card and batch.');if(batch?.id)void load(batch.id).catch(()=>{});}}catch(error){setError(error.message)}};
@@ -204,7 +204,35 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
    await list();setNotice('Card '+target.ordinal+' deleted.');
    }catch(e){setError('Card deleted, but the card list could not refresh: '+e.message)}finally{setBusy(false)}
  };
- const resolveFleet=async(card,action)=>{if(fleetBusy)return;if(action==='delete'){await deleteReviewCard(card);return;}setFleetBusy(true);setError('');try{const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',body:JSON.stringify({action,revision:card.revision})});for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);if(action==='recheck'&&result.ready)setOptions(await readOptions());await load(card.batch_id);setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setNotice(result.deleted?'Selected card deleted manually. Other cards are unchanged.':result.rejected?'Card '+card.ordinal+' rejected. Other cards are unchanged.':action==='transfer-pending'?'Card held: complete the existing transfer in Pulse, then recheck.':result.ready?'Pulse confirms the equipment site. This card can continue.':'Transfer is still incomplete or equipment is not registered. Card remains blocked.');}catch(error){setError(error.message)}finally{setFleetBusy(false)}};
+ const resolveFleet=async(card,action)=>{
+  if(fleetBusy)return;
+  if(action==='delete'){await deleteReviewCard(card);return;}
+  setFleetBusy(true);setError('');setNotice('');
+  try{
+   const result=await api('/api/scan-cards/'+card.id+'/fleet-review',{method:'POST',signal:AbortSignal.timeout(60000),body:JSON.stringify({action,revision:card.revision})});
+   for(const key of autoSaveAttempts.current)if(key.startsWith(card.id+':'))autoSaveAttempts.current.delete(key);
+   if(action==='recheck'&&!result.ready){
+    // The recheck already persisted the result. Keep the hold visible without waiting for a full batch read.
+    setCards(rows=>rows.map(row=>row.id===card.id&&row.revision===card.revision
+     ?{...row,raw_fields:{...row.raw_fields,fleetReview:result.review}}:row));
+    setNotice(result.review.issues.map(issue=>issue.door+' · Pulse location: '+issue.pulseSite).join('; ')+'. Card remains on hold.');
+    return;
+   }
+   setFleetOpenId('');
+   setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));
+   setNotice(result.rejected?'Card '+card.ordinal+' rejected.':action==='transfer-pending'
+    ?'Card held: complete the existing transfer in Pulse, then recheck.'
+    :'Pulse confirms the equipment site. This card can continue.');
+   const refresh=async()=>{
+    if(action==='recheck')setOptions(await readOptions());
+    await load(card.batch_id);
+   };
+   if(action==='recheck')void refresh().catch(()=>setConnectionError('The equipment review was recorded. The card list could not refresh yet.'));
+   else await refresh();
+  }catch(error){
+   setError(error.name==='TimeoutError'?'Pulse assignment could not be confirmed in time. Try Recheck Pulse assignment again.':error.message);
+  }finally{setFleetBusy(false)}
+ };
  const closeFleetDialog=card=>{setFleetOpenId('');setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));};
  const reviewFleetCard=card=>{setFleetDismissed(keys=>new Set([...keys,fleetReviewKey(card)]));setFleetOpenId('');setSelected(card.id);if(kind==='vehicle'){const origin=new URL(window.location.href);origin.searchParams.delete('scanEquipment');window.history.replaceState(null,'',origin.pathname+origin.search+origin.hash);navigateReview(true,'all');const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.set('scanReviewReturn',card.id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);}};
  const backFromReview=()=>{navigateReview(false);const url=new URL(window.location.href);url.searchParams.delete('scanReviewReturn');url.searchParams.delete('scanEquipment');setFleetOpenId('');window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
