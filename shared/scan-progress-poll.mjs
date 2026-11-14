@@ -32,3 +32,18 @@ export function scanProgressActive(cards = [], {uploading = false} = {}) {
 export function shouldReadScanProgress({active, lastReadAt = 0, now = Date.now(), idleMs = SCAN_PROGRESS_IDLE_MS}) {
   return Boolean(active) || now - lastReadAt >= idleMs;
 }
+
+// Opening a scan entry is a whole read: every card's fill and checks. On 14 Nov
+// 2026 a 40-card entry took longer than the 20 s the screen used to wait while
+// the server was busy, so clicking an entry showed "signal timed out" and no
+// cards. The server drops a read the browser gave up on, so waiting longer is
+// what gets the entry opened; the slim progress polls keep the short wait.
+export const SCAN_ENTRY_OPEN_TIMEOUT_MS = 90000;
+export const SCAN_PROGRESS_READ_TIMEOUT_MS = 20000;
+
+export function scanEntryOpenError(error) {
+  const name = error?.name;
+  if (name === 'TimeoutError' || name === 'AbortError' || /signal timed out|aborted/i.test(String(error?.message || '')))
+    return 'The scan entry is taking longer than usual to open because the server is busy. Nothing was lost. Click the entry again to retry.';
+  return error?.message || 'The scan entry could not be opened.';
+}
