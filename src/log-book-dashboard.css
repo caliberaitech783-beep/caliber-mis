@@ -135,6 +135,9 @@
 .lb-dialog .lb-recent-idle{margin:4px 0 10px;padding:8px 12px;border-radius:9px;background:#ffe6e5;color:#a31f20;font-size:13.5px;line-height:1.45}
 [data-theme=dark] .lb-dialog .lb-recent-idle{background:#4a2326;color:#ffb4b0}
 @media print{.lb-dialog .lb-recent-idle{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+/* The two orders of the batches locked stand apart from the hour buttons. */
+.lb-recent-order{padding-left:12px;border-left:1px solid var(--lb-line)}
+@media(max-width:540px){.lb-recent-order{padding-left:0;border-left:0}}
 .lb-recent-longest td.lb-recent-batch small{display:block;margin-top:2px;font-size:11px;font-weight:600;color:var(--lb-muted)}
 /* In the list that opens from a figure: the Back button with the period buttons, and a site name that opens the site. */
 .lb-recent-steps{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 4px}

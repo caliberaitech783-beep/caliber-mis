@@ -107,7 +107,7 @@ export default function RecentActivityPanel({recent,error,Dialog,customHours=0,o
      <button type="submit">Show</button>
      {customHours>0&&<button type="button" className="lb-recent-custom-remove" onClick={()=>onCustomHours(0)} aria-label={'Remove the '+windowLabel(customHours).toLowerCase()+' column'}>Remove</button>}
     </form>}
-    <span className="lb-recent-asof">As of {timeLabel(recent.asOf)}{error?' · latest read failed, showing the earlier figures':''}<span className="lb-recent-print" data-print-hide=""><TableSmartPrint title={'Completed in the last '+recent.windows.join(', ').replace(/, (\d+)$/,' and $1')+' hours · as of '+timeLabel(recent.asOf)}/></span></span>
+    <span className="lb-recent-asof">As of {timeLabel(recent.asOf)}{error?' · latest read failed, showing the earlier figures':''}<span className="lb-recent-print" data-print-hide=""><TableSmartPrint title={'Completed in the last 6, 12 and 24 hours · as of '+timeLabel(recent.asOf)}/></span></span>
    </div></div>
   <div className="lb-table-wrap lb-recent-table"><table>
    <thead><tr><th>Completed</th>{recent.windows.map(hours=><th key={hours}>{windowLabel(hours)}</th>)}</tr></thead>

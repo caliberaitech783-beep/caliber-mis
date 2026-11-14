@@ -4372,6 +4372,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   });
   // A subtotal line (Equipment Deployment) takes no Sr. No.: it shows a dash and the lines after it keep counting on.
   const subtotalSerials = isSubtotalRow ? (() => { let serial = 0; return new Map(sortedRows.map((row) => [row, isSubtotalRow(row) ? null : ++serial])); })() : null;
+  const recordsIn = (list) => isSubtotalRow ? list.filter((row) => !isSubtotalRow(row)).length : list.length;
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
   const pagedRows = sortedRows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -4417,7 +4418,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const reportTableToolbar = (
       <div className="report-table-filter-toolbar">
         {dateControl && !recordDateFilter && <RecordDateRange {...dateControl} />}
-        <span className="report-filtered-count" role="status">{sortedRows.length.toLocaleString("en-IN")} of {detailRows.length.toLocaleString("en-IN")} records</span>
+        <span className="report-filtered-count" role="status">{recordsIn(sortedRows).toLocaleString("en-IN")} of {recordsIn(detailRows).toLocaleString("en-IN")} records</span>
         <label className="report-row-limit"><span>Rows</span><SmartSelect aria-label="Rows per page" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value="25">25</option><option value="50">50</option><option value="100">100</option></SmartSelect></label>
         <TableLayoutSelect store={layoutStore} visibleKeys={displayedColumns.map(column => column.key)} onSelect={keys => onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns))} />
         <ReportActionsMenu onPrint={smartPrintAction ? printSavedView : undefined} activeFilterCount={activeFilterCount} onColumns={() => setColumnDialogOpen(true)} onFilter={() => setFilterDialogOpen(true)} onSort={() => setSortDialogOpen(true)} onClearSort={() => changeSort("", "asc")} resetLabel="Reset table" onReset={() => { resetColumnWidths(); onResetSearch?.(); recordDateFilter?.onChange?.(""); setColumnFilters({}); const initialSort = defaultDurationSort(columns); changeSort(initialSort.key, initialSort.direction); setPageSize(mobileTablePageSize() || 50); onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(allColumnKeys, columns)); }} onSaveReport={() => setSavedReportDialog("save")} onSavedReports={() => setSavedReportDialog("saved")} />
