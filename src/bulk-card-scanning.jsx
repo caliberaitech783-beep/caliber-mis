@@ -373,15 +373,21 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
   setAutosaveStatus(restored?'Restored local corrections. Saving to MIS…':'');
  },[card?.id,card?.revision]);
  const persistCorrections=async(source,submitted)=>{
-  const id=source.id;
-  const result=await saveScanCorrections({
-   revision:editRevision.current,baseline:editBaseline.current,draft:submitted,
-   write:(revision,draft)=>api('/api/scan-cards/'+id,{method:'PUT',body:JSON.stringify({draft,revision,action:'save'})}),
-   refresh:async()=>{
-    const latest=(await load(source.batch_id))?.find(row=>row.id===id);
-    if(latest)return {...latest,draft:editableDraft(latest)};
-   }
-  });
+  const id=source.id,signal=AbortSignal.timeout(15000);
+  let result;
+  try{
+   result=await saveScanCorrections({
+    revision:editRevision.current,baseline:editBaseline.current,draft:submitted,
+    write:(revision,draft)=>api('/api/scan-cards/'+id,{method:'PUT',signal,body:JSON.stringify({draft,revision,action:'save'})}),
+    refresh:async()=>{
+     const latest=(await api('/api/scan-batches/'+source.batch_id+'?cards='+id,{signal})).cards?.find(row=>row.id===id);
+     if(latest)return {...latest,draft:editableDraft(latest)};
+    }
+   });
+  }catch(error){
+   if(signal.aborted)throw Error('The draft save took too long.');
+   throw error;
+  }
   if(selectedCardRef.current!==id)return {...result,switched:true};
   const {saved}=result;
   const persisted=saved.draft?editableDraft({...source,draft:saved.draft}):result.draft;
