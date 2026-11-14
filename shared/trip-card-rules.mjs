@@ -53,12 +53,22 @@ export function isUnloadingOnlyTrip(row){
  const estimatedLoading=estimate&&loading===value(estimate.value)&&estimate.anchorField==='unloadingTime'&&unloading===value(estimate.anchorValue);
  return Boolean(unloading)&&(!loading||Boolean(estimatedLoading));
 }
+// Rule (14 Nov 2026): a trip loaded in the previous shift shows only its unloading
+// time, often with a word such as "Load" in the loading cell; a trip still loading
+// when the shift ends shows only its loading time. Such words and dashes mark a
+// shift handover, not a time, and that half of the trip belongs to the other card.
+export function isHandoverTimeMark(value){
+ const text=String(value??'').trim().replace(/^["'‘’“”(]+|["'‘’“”.,;:)]+$/g,'').replace(/\s+/g,' ').trim();
+ return /^(?:-+|—+|–+|_+|load(?:ed|ing)?|lod|ld|loaded in (?:previous|prev\.?|last) shift|unload(?:ed|ing)?|unld|shift (?:end|over|ended))$/i.test(text);
+}
 // A blank loader with a recorded unload is an unloading handover on scanned cards.
 export function ignoreScanLoadingWithoutEquipment(draft,{openingOnly=false}={}){
  if(draft?.timeMode==='without'||!Array.isArray(draft?.trips))return draft;
  let changed=false;
  const trips=draft.trips.map((row,index)=>{
   if(openingOnly&&(index!==0||Number(row?.rowNumber||1)!==1))return row;
+  if(row&&isHandoverTimeMark(row.loadingTime)&&validScannedTime(row.unloadingTime)){changed=true;return {...row,loadingTime:''};}
+  if(row&&isHandoverTimeMark(row.unloadingTime)&&validScannedTime(row.loadingTime)){changed=true;return {...row,unloadingTime:''};}
   const estimate=row?.timeEstimates?.unloadingTime;
   const estimatedUnload=estimate?.anchorField==='loadingTime'&&estimate.value===row.unloadingTime;
   if(!row||!validScannedTime(row.unloadingTime)||estimatedUnload)return row;

@@ -28,7 +28,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv
   if(machineDiscrepancies(draft.trips||[],summary).length){issues.scanMachineSummary='Detail trips conflict with the printed summary.';for(const [i,row]of draft.trips.entries())if(tripEquipmentRequired(row,draft.timeMode))issues[`trips.${i}.equipmentName`]='Check the machine assignment against the summary.';}
   if((draft.extractionReviewFields||[]).includes('trips'))for(const reason of raw.tripGridIssues||[]){
    const number=reason.match(/^Trip (\d+):/),i=number?draft.trips.findIndex((r,index)=>(r.rowNumber||index+1)===Number(number[1])):-1;
-   if(i>=0){if(draft.trips[i].equipmentSource==='previous-trip-row'&&/ambiguous or unreadable machine/.test(reason))continue;const key=/unloading/i.test(reason)?'unloadingTime':/loading/i.test(reason)?'loadingTime':'equipmentName';if(key==='equipmentName'&&!tripEquipmentRequired(draft.trips[i],draft.timeMode)||isBlankHandoverIssue(draft.trips[i],i,key,raw,reason))continue;issues[`trips.${i}.${key}`]=reason;}
+   if(i>=0){if(draft.trips[i].equipmentSource==='previous-trip-row'&&/ambiguous or unreadable machine/.test(reason))continue;const row=draft.trips[i],key=/loading\/unloading/i.test(reason)?(!String(row.loadingTime??'').trim()&&String(row.unloadingTime??'').trim()?'loadingTime':'unloadingTime'):/unloading/i.test(reason)?'unloadingTime':/loading/i.test(reason)?'loadingTime':'equipmentName';if(key==='equipmentName'&&!tripEquipmentRequired(draft.trips[i],draft.timeMode)||isBlankHandoverIssue(draft.trips[i],i,key,raw,reason))continue;issues[`trips.${i}.${key}`]=reason;}
   }
  }
  for(const key of Object.keys(meterRuleIssues(draft,kind)))delete issues[key];
