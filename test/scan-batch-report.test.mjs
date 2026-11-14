@@ -35,8 +35,10 @@ test('entry summary counts time, queue, flags and accuracy of saved cards',()=>{
  assert.equal(s.saved,2);assert.equal(s.clean,1);assert.equal(s.accuracy,50);assert.deepEqual(s.fieldCounts,{employee:1});
  assert.deepEqual(s.models,['gemini-3.1-flash-lite']);assert.equal(s.tokens,30000);
  const text=entryReadMessage({name:'VLB entry 1',kind:'vehicle',context:{location:'Dipka',bookDate:'2026-11-15',bookShiftCode:'A'}},s);
- assert.match(text,new RegExp('^'+REPORT_HEADER));
- assert.match(text,/Scan entry read - Dipka/);assert.match(text,/VLB \| 2026-11-15 \| Shift S1 \| VLB entry 1/);
+ assert.match(text,/^📍 DIPKA\n/,'the site name is the header');
+ assert.ok(text.includes(REPORT_HEADER+' | Scan entry read'));
+ assert.match(text,/VLB \| 2026-11-15 \| Shift S1\nEntry: VLB entry 1/);
+ assert.match(entryReadMessage({name:'x',kind:'vehicle',context:{}},s),/^📍 SITE NOT SET\n/);
  assert.match(text,/Total time: 30 min 0 s/);assert.match(text,/2 clean \(50%\), 2 flagged/);
  assert.equal(duration(5700),'5.7 s');assert.equal(duration(3*3600000+60000),'3 h 1 min');
 });
@@ -68,13 +70,14 @@ test('reports each read entry and each closed batch once, only after the feature
  await db.query(`UPDATE mis_scan_cards SET created_at=NOW()-interval '5 minutes'`);
  await reporter.tick();await reporter.tick();
  assert.equal(sent.length,1);assert.equal(sent[0].login,'owner');assert.match(sent[0].key,/^scan-batch-report:read:/);
- assert.match(sent[0].message,/Scan entry read - Dipka/);assert.match(sent[0].message,/Cards: 3 read/);
+ assert.match(sent[0].message,/^📍 DIPKA\n.*Scan entry read/);assert.match(sent[0].message,/Cards: 3 read/);
  await db.query(`UPDATE mis_scan_cards SET status='posted'`);
  await db.query(`INSERT INTO mis_vlb_batches VALUES('00000000-0000-4000-8000-000000000501','CMLL/DIPKA/15 -NOV-26/S1','DIPKA','2026-11-15','S1',NOW()+interval '2 second',NULL,NULL)`);
  await reporter.tick();await reporter.tick();
  assert.equal(sent.length,2);assert.match(sent[1].key,/^scan-batch-report:closed:/);
- assert.match(sent[1].message,/Batch complete - DIPKA/);assert.match(sent[1].message,/Cards: 3 scanned, 3 saved/);
- assert.match(sent[1].message,/Accuracy: 3 of 3 saved cards needed no correction \(100%\)/);
+ assert.ok(sent[1].message.startsWith('📍 DIPKA\n'+REPORT_HEADER+' | Batch complete\n2026-11-15 | Shift S1\nBatch: CMLL/DIPKA/15 -NOV-26/S1\n'),sent[1].message);
+ assert.match(sent[1].message,/Cards: 3 scanned, 3 saved/);
+ assert.match(sent[1].message,/Accuracy: 100% \(3 of 3 saved cards needed no correction\)/);
  assert.doesNotMatch(sent.map(s=>s.message).join('\n'),/old/);
 });
 
