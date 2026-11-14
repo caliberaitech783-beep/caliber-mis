@@ -47,6 +47,7 @@ import {completeScanTripDetails} from '../shared/scan-trip-completion.mjs';
 import {CARD_GROUPS,ISSUE_CARD_GROUPS,matchesCardGroup,cardReviewGroup,reviewGroupSummary,withAutoSaveFailures} from '../shared/scan-card-groups.mjs';
 import {readerOutageMessage,scanErrorReasons} from '../shared/scan-reader-outage-text.mjs';
 import {scanDraftSelection} from '../shared/scan-draft-selection.mjs';
+import {announceScanCardReview} from './scan-card-sidebar.mjs';
 import {manualScanIssues,retainManualFields} from './scan-manual-fields.mjs';
 import {withScannedDoor} from './scan-door-field.mjs';
 import {manualScanTimeInput,scanTripTimeInputs} from './scan-time-input.mjs';
@@ -676,6 +677,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const choices=(type)=>type==='door'?(options?.assets||[]).filter(r=>r.kind===kind&&(!draft.location||canonicalSiteName(r.site)===canonicalSiteName(draft.location))).map(r=>{const door=String(r.door||r.registration||r.name||'');return {id:door,label:door+(r.name&&r.name!==door?' · '+r.name:'')}}):type==='cardShift'?Object.entries(CARD_SHIFTS).map(([id,row])=>({id,label:cardShiftLabel(options?.shifts||[],draft.location,id,draft.bookDate)})):type==='site'?tripCardLocationChoices(options?.sites||[],draft.location,kind==='vehicle'&&card?.raw_fields?.tripLocationRuleVersion===1).map(s=>({id:s,label:s})):type==='asset'?(options?.assets||[]).filter(r=>r.kind===kind&&(!draft.location||canonicalSiteName(r.site)===canonicalSiteName(draft.location))).map(r=>({id:r.id,label:(r.door||r.registration||r.name)+' · '+r.name})):type==='employee'?(options?.employees||[]).filter(r=>r.name&&employeeAtLocation(r,draft.location)).map(r=>({id:r.id,label:r.name+(r.caliberId?' · '+r.caliberId:'')})):type==='shift'?(options?.shifts||[]).filter(r=>!draft.location||canonicalSiteName(r.site)===canonicalSiteName(draft.location)).map(r=>({id:r.id,label:r.name+' · '+r.startTime+'–'+r.endTime})):type==='hours'?[{id:8,label:'8 Hour'},{id:12,label:'12 Hour'}]:matchingWorkOrders(options?.workOrders||[],draft.location,draft.bookDate).map(r=>({id:r.id,label:r.number}));
  const reviewCards=correctionQueue?cards.filter(c=>c.status!=='posted'&&(c.status!=='rejected'||groupFilter==='red'||filter==='rejected')):cards;
  const filtered=reviewCards.filter(c=>(retainReviewCard&&c.id===selected)||matchesReviewFilters(c));
+ const scanCardReviewOpen=Boolean(showDetails&&card&&filtered.some(c=>c.id===card.id));
+ useEffect(()=>{if(!scanCardReviewOpen)return;announceScanCardReview(true);return()=>announceScanCardReview(false);},[scanCardReviewOpen]);
  const numberedCards=correctionQueue&&card?.status!=='rejected'?remainingCards:filtered;
  const cardPosition=scanReviewPosition(numberedCards,card?.id);
  const reviewNeighbours=scanReviewNeighbours(filtered,selected);
