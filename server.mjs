@@ -128,6 +128,7 @@ import {requireUserSessionView,isSessionViewOnlyUser} from './shared/user-sessio
 import {bdAgeingReportHandler} from './shared/bd-ageing-report.mjs';
 import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
 import {createPerformanceMonitor,performanceDiagnostic,trackPoolClients,normalizeRoutePath} from './server/services/performance-monitor.mjs';
+import {databasePoolSize} from './server/services/database-pool-size.mjs';
 import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './server/rules/data-housekeeping.mjs';
 import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './server/rules/storage-management.mjs';
 import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './server/services/text-translation.mjs';
@@ -315,7 +316,7 @@ const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 const databasePool=new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
-  max:10,
+  max:databasePoolSize(process.env),
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 });
@@ -3615,7 +3616,7 @@ app.get('/api/health',async(_req,res)=>{
       status:'ok',database:'connected',databaseTime:result.rows[0].database_time,commit:deploymentSha,scheduledJobsEnabled,environmentLabel,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
-      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages};}catch{return null;}})(),
+      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane};}catch{return null;}})(),
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},

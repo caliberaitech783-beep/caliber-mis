@@ -273,7 +273,9 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
   const stopCounts=startVisiblePoll(refresh,VLB_CARD_COUNT_POLL_MS);
   return()=>{controller.abort();stopCounts()};
  },[kind,token,vlbBatch?.id]);
- const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=0;try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
+ // The entry list carries each entry's trip total, so the screen no longer asks for every entry's
+ // progress separately. The read below is only for an older server during a release swap.
+ const list=async()=>{const d=await api(lmv?'/api/scan-batches?logBookKind=lmv':'/api/scan-batches');const matching=(Array.isArray(d.batches)?d.batches:[]).filter(b=>b.kind===kind&&(!vlbBatch||sameVlbEntryContext(vlbBatch,b.expected_context))),rows=await Promise.all(matching.map(async(b,index)=>{let trips=Number.isFinite(b.trip_total)?b.trip_total:0;if(!Number.isFinite(b.trip_total))try{const detail=await api('/api/scan-batches/'+b.id+'?progress=1');trips=(detail.cards||[]).reduce((sum,card)=>sum+(Number.isFinite(card.trip_total)?card.trip_total:machineTripTotal((card.saved_data||card.draft||{}).trips||[])),0)}catch{}const heading=scanEntryHeading(b,index,trips);return {...b,batchNumber:heading.batchNumber,tripCount:trips,name:heading.text}}));setBatches(rows);return rows};
  const trackUploadExtraction=uploadTotal>0&&(uploading||uploadExtraction.extracted+uploadExtraction.failed+uploadExtraction.skipped<uploadSent);
  useEffect(()=>{
   const attempt=uploadAttempt.current;
