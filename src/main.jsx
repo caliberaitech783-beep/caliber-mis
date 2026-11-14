@@ -1526,6 +1526,8 @@ function useDashboardEquipment() {
           }
           setLoaded(loadedFleetScope.current.loaded);
           setLoadError(error.name === "AbortError" ? "Live fleet loading timed out. Please retry." : error.message || "Could not load fleet data.");
+          // Tell the refresh watcher this load failed, so it tries again in seconds instead of at the next regular refresh.
+          throw error;
         }
       }).finally(() => window.clearTimeout(timeout));
     };

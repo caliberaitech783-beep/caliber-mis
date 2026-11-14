@@ -152,6 +152,25 @@ test("same-session refresh errors retain previously loaded records and expose fa
   assert.equal(state.updatedAt, 10);
 });
 
+test("a failed load hands its HTTP status to the refresh watcher without publishing it to the page", async () => {
+  const states = [];
+  let attempt = 0;
+  const loader = createDashboardRequestLoader({onState: (value) => states.push(value), fetchImpl: async () => ++attempt === 1
+    ? response({error: "The server is reconnecting to the database. Please retry in a moment."}, {ok: false, status: 503})
+    : response([{ref: "LOADED"}])});
+  const failed = await loader.load("demo");
+  assert.equal(failed.status, 503);
+  assert.equal(failed.loaded, false);
+  assert.match(failed.error, /reconnecting to the database/);
+  assert.equal("status" in states.at(-1), false);
+  assert.equal("status" in loader.getState(), false);
+  const loaded = await loader.load("demo");
+  assert.equal(loaded.loaded, true);
+  assert.equal("status" in loaded, false);
+  const signedOut = await createDashboardRequestLoader({fetchImpl: async () => response([])}).load("");
+  assert.equal(signedOut.status, 401, "a missing sign-in is never retried early");
+});
+
 test("same-session refresh sends an entity tag and a 304 keeps records without downloading JSON", async () => {
   const rows = [{ref: "UNCHANGED"}];
   const calls = [];
