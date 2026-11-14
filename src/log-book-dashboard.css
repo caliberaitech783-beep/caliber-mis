@@ -162,3 +162,18 @@
 .lb-reports .op-report-picker{display:none}
 /* Smart Print menu inside a pop-up heading and beside the "As of" time. */
 .lb-dialog-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}.lb-recent-print{display:inline-flex;margin-left:10px;vertical-align:middle}
+/* The Sr No strip under the cards: one tab for each panel of the dashboard, then All. Only the Sr No chosen is on screen. */
+.lb-sr-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;padding:8px;border:1px solid var(--lb-line);border-radius:16px;background:var(--lb-surface)}
+.lb-sr-tabs button{display:inline-flex;align-items:center;gap:8px;min-height:40px;border:1px solid #d9cce8;border-radius:999px;background:var(--lb-surface);color:var(--lb-ink);font-size:12.5px;font-weight:650;padding:5px 14px 5px 5px;white-space:nowrap;cursor:pointer}
+.lb-sr-tabs button b{display:inline-grid;place-items:center;min-width:46px;height:28px;padding:0 9px;border-radius:999px;background:#efe7fa;color:var(--lb-purple);font-size:12px;font-weight:750}
+.lb-sr-tabs button[aria-selected=true]{background:var(--lb-purple);border-color:var(--lb-purple);color:#fff}
+.lb-sr-tabs button[aria-selected=true] b{background:#fff;color:#56309a}
+.lb-sr-tabs button:focus-visible{outline:2px solid var(--lb-purple);outline-offset:2px}
+[data-theme=dark] .lb-sr-tabs button b,.dark .lb-sr-tabs button b{background:#3a2a4d;color:#d8c2fb}
+[data-theme=dark] .lb-sr-tabs button[aria-selected=true] b,.dark .lb-sr-tabs button[aria-selected=true] b{background:#fff;color:#56309a}
+/* A Sr No's wrapper lays its report out as the reports area does. A hidden one takes no room and is left off a print. */
+.lb-sr:not([hidden]){display:grid;gap:28px;grid-template-columns:minmax(0,1fr);min-width:0}
+.lb-sr[hidden]{display:none}
+.lb-reports>.lb-sr>section{margin:0;min-width:0;max-width:100%;overflow-x:auto}
+/* On a phone every tab stays in view: the tabs show their Sr No alone, and only the one chosen spells out its name. */
+@media(max-width:540px){.lb-sr-tabs{gap:6px;padding:6px}.lb-sr-tabs button{padding:5px}.lb-sr-tabs button span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.lb-sr-tabs button[aria-selected=true]{padding-right:12px}.lb-sr-tabs button[aria-selected=true] span{position:static;width:auto;height:auto;overflow:visible;clip-path:none}}

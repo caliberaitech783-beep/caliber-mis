@@ -109,7 +109,9 @@ test("each report is drawn at the width where it fills one sheet", async () => {
 test("the dashboard PDF gives each of its three reports its own sheet", () => {
   const read = file => readFileSync(new URL("../src/" + file, import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const screen = read("log-book-dashboard.jsx"), capture = read("dashboard-pdf.mjs"), css = read("log-book-dashboard.css");
-  assert.match(screen, /className="lb-print-root" data-print-fit="" data-print-pages="\.lb-dashboard, \.lb-reports > \*"/, "cards and graphs, Batch Status & Turnaround, OT & Multiple Duties");
+  // The cards, then each report of a Sr No that is on screen; a Sr No hidden behind another tab gets no sheet.
+  assert.match(screen, /className="lb-print-root" data-print-fit="" data-print-pages="\.lb-dashboard, \.lb-reports > \.lb-sr:not\(\[hidden\]\) > \*"/, "cards and graphs, Batch Status & Turnaround, OT & Multiple Duties");
+  assert.match(css, /\.lb-sr\[hidden\]\{display:none\}/, "a hidden Sr No takes no room, on screen or in the copy that is printed");
   assert.match(screen, /\{printing&&<p role="status" className="lb-muted" data-print-hide="">/, "the 'Preparing the PDF' line is not printed");
   assert.match(capture, /const holder = section \? null : dashboard\.matches\?\.\("\[data-print-pages\]"\) \? dashboard : dashboard\.querySelector\?\.\("\[data-print-pages\]"\);/, "one section printed alone keeps its own layout");
   assert.match(capture, /for \(let index = 0; index < reports; index\+\+\) \{\n\s+const capture = await captureDashboard\(dashboard, \{forPrint: true, reportPage: \{selector, index, aspect: printableWidth \/ printableHeight, brand, logo\}\}\);/, "each report is captured for the shape of the chosen paper");

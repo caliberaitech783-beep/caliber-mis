@@ -40,7 +40,7 @@ export const reworkColumns=[column('label','Rework in this batch'),column('count
 export const actionColumns=[column('sr','Sr'),column('at','Time',r=>when(r.at)),column('stage','Stage'),column('action','Action'),column('item','Item'),column('by','Done by'),column('gapMinutes','Gap from previous action (minutes)'),column('workMinutes','Working time (minutes)'),column('remark','Remark')];
 
 // On the dashboard (embedded) the page is kept short: one-line Live now heading, a summary that can be hidden, no search box and no notes.
-export default function BatchStatusReport({session,ReportSection,embedded=false}){
+export default function BatchStatusReport({session,ReportSection,embedded=false,paused=false}){
  const [filters,setFilters]=useState(()=>({from:monthStart(today()),to:today()})),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [run,setRun]=useState(()=>({query:new URLSearchParams({from:monthStart(today()),to:today()}).toString(),at:0}));
  const [siteKey,setSiteKey]=useState(''),[stage,setStage]=useState(''),[batchId,setBatchId]=useState(''),[detail,setDetail]=useState(null),[detailError,setDetailError]=useState(''),[actionStage,setActionStage]=useState('');
@@ -62,13 +62,15 @@ export default function BatchStatusReport({session,ReportSection,embedded=false}
  const reportShown=Boolean(result);
  const [summaryHidden,setSummaryHidden]=useState(()=>{try{return localStorage.getItem('caliberBatchSummaryHidden')==='1';}catch{return false;}});
  const toggleSummary=()=>setSummaryHidden(hidden=>{try{localStorage.setItem('caliberBatchSummaryHidden',hidden?'0':'1');}catch{}return !hidden;});
- // Working now re-reads once a minute while the page is on screen, and not at all in a hidden tab.
+ // Working now re-reads once a minute while the page is on screen, and not at all in a hidden tab. On the dashboard it
+ // also stops while another Sr No is shown (paused); the last figures stay and it reads again when its tab comes back.
  useEffect(()=>{
-  setLive(null);setLiveError('');if(!reportShown)return;
+  if(!reportShown){setLive(null);setLiveError('');return;}
+  if(paused)return;
   const c=new AbortController();
   const stop=startVisiblePoll(()=>request('/api/reports/batch-status/live',session.token,c.signal).then(data=>{if(!c.signal.aborted){setLive(data);setLiveError('');}}).catch(e=>{if(!c.signal.aborted)setLiveError(e.message);}),LIVE_REFRESH_MS);
   return()=>{c.abort();stop();};
- },[reportShown,session.token]);
+ },[reportShown,session.token,paused]);
  const set=(key,value)=>{setFilters(f=>({...f,[key]:value}));setError('');setBatchId('');setActionStage('');};
  const report=result?.query===query&&!busy?result.data:null;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<MAX_DAYS;

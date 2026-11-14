@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Clock} from 'lucide-react';
 import {StepBackButton} from './step-back.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
@@ -20,18 +20,22 @@ const capital=text=>text.charAt(0).toUpperCase()+text.slice(1);
 const shiftCount=count=>`${number(count)} shift${Number(count)===1?'':'s'}`;
 const batchCount=count=>`${number(count)} batch${Number(count)===1?'':'es'}`;
 
-// Reads the figures when the dashboard opens or reloads, then every two minutes while the page is on screen.
-export function useRecentActivity({session,fetcher=fetch,refresh=0}){
+// Reads the figures while a panel that shows them is on screen (active): at once the first time and when the dashboard
+// reloads, then every two minutes while the page is on screen. While no such panel is shown nothing is read, and coming
+// back to the panel within two minutes keeps the figures already read.
+export function useRecentActivity({session,fetcher=fetch,refresh=0,active=true}){
  const [state,setState]=useState({recent:null,error:''});
+ const lastRead=useRef({key:'',at:0});
  useEffect(()=>{
-  let stopped=false;const abort=new AbortController();
+  if(!active)return undefined;
+  let stopped=false;const abort=new AbortController(),key=session.token+'|'+refresh;
   const load=()=>fetcher('/api/dashboard/log-books/recent',{signal:abort.signal,cache:'no-store',headers:{Authorization:'Bearer '+session.token}})
-   .then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error||'The last 24 hours could not be read.');if(!stopped)setState({recent:body,error:''});})
+   .then(async response=>{const body=await response.json();if(!response.ok)throw Error(body.error||'The last 24 hours could not be read.');if(!stopped){lastRead.current={key,at:Date.now()};setState({recent:body,error:''});}})
    .catch(e=>{if(!stopped&&!abort.signal.aborted)setState(s=>({...s,error:e.message}));});
-  void load();
+  if(lastRead.current.key!==key||Date.now()-lastRead.current.at>=RECENT_REFRESH_MS)void load();
   const timer=setInterval(()=>{if(!document.hidden)void load();},RECENT_REFRESH_MS);
   return ()=>{stopped=true;abort.abort();clearInterval(timer);};
- },[session.token,fetcher,refresh]);
+ },[session.token,fetcher,refresh,active]);
  return state;
 }
 
