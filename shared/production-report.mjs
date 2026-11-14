@@ -109,7 +109,7 @@ export function buildProductionReport({filters,records=[],assets=[],shifts=[],ba
   if(!d.employeeId)warnings.push({message:'Driver / operator ID is missing.',reference:r.book_no});
   if(r.book_type==='equipment'){
    if(hours===null)issue('hmr','ELB opening and closing HMR need correction.',r.book_no);
-   const scheduled=num(d.shiftHours),bd=num(d.breakdownHours),idle=num(d.idleHours);
+   const scheduled=num(d.scheduledHours??d.shiftHours),bd=num(d.breakdownHours),idle=num(d.idleHours);
    if(hours!==null&&scheduled!==null&&(hours>scheduled||bd!==null&&idle!==null&&hours+bd+idle>scheduled+0.01))warnings.push({message:'ELB HMR / breakdown / idle hours do not reconcile to scheduled hours. HMR difference is shown; source values were not changed.',reference:r.book_no});
    continue;
   }

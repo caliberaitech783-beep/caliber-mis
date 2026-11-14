@@ -34,7 +34,7 @@ export async function completeExpressTransfer(client,{transferId,approvedBy,requ
  const at=new Date().toISOString();
  const pulse=pulseWriter?await pulseWriter.completeTransfer({transfer:before,equipment:{id:equipmentRow.id,...equipmentRow.record_data},approvedBy,requester}):{mode:'local-only'};
  const updatedEquipment=applyAcceptedVehicleTransfer(equipmentRow.record_data,before,{acceptedAt:at,acceptedBy:`Express OTP transfer (${requester})`});
- const updated={...before,status:VEHICLE_TRANSFER_STATUS.COMPLETED,expressOtp:true,
+ const updated={...before,...(!before.transferTime?{transferEffectiveAt:at}:{}),status:VEHICLE_TRANSFER_STATUS.COMPLETED,expressOtp:true,
   sourceApprovedBy:approvedBy.join(', '),sourceApprovedLogin:approvedBy[0]||'',sourceApprovedAt:at,sourceApprovedVia:'otp',
   destinationMisVerifiedBy:requester,destinationMisVerifiedLogin:requester,destinationMisVerifiedAt:at,
   destinationAcceptedBy:`Express OTP transfer (${requester})`,destinationAcceptedLogin:requester,destinationAcceptedAt:at,destinationAcceptanceImplied:true,

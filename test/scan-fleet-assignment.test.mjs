@@ -1,4 +1,6 @@
 import {scanCardContextIssues} from '../shared/scan-batch-context.mjs';
+import {attachTransferHistory,assetForSiteOnDate} from '../shared/equipment-transfer-history.mjs';
+import {fleetDoorKey} from '../shared/scan-fleet-door.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scanFleetAssignment,scanFleetIssues,scanFleetSignature} from '../shared/scan-fleet-assignment.mjs';
@@ -70,10 +72,15 @@ test('fleet detection retains the original scan and draft until the user chooses
  const fn=source.slice(source.indexOf('async function enforceFleet('),source.indexOf(' function queueFleetCheck('));
  const card={id:'selected',batch_id:'batch',status:'review',revision:3,raw_fields:{},image_blob_key:'selected-image',draft:{doorText:'V1',location:'Majri OC'}};
  const updates=[];const pool={query:async(sql,args)=>{if(sql.startsWith('UPDATE'))updates.push({sql,args});return {rows:[]}}};
- const create=reader=>new Function('readPulseFleet','pool','scanFleetIssues','scanFleetSignature','encodeScanJson','scanCardContextIssues',`return (${fn});`)(reader,pool,scanFleetIssues,scanFleetSignature,value=>value,scanCardContextIssues);
+ const create=reader=>new Function('readPulseFleet','pool','scanFleetIssues','scanFleetSignature','encodeScanJson','scanCardContextIssues','MASTER_SQL','attachTransferHistory','assetForSiteOnDate','fleetDoorKey',`return (${fn});`)(reader,pool,scanFleetIssues,scanFleetSignature,value=>value,scanCardContextIssues,'SELECT masters',attachTransferHistory,assetForSiteOnDate,fleetDoorKey);
  const review=await create(async()=>fleet)(card);assert.equal(review.issues[0].reason,'transfer-required');assert.equal(updates.length,1);assert.doesNotMatch(updates[0].sql,/image=NULL|draft=|status='rejected'/);assert.equal(JSON.parse(updates[0].args[1]).issues[0].door,'V1');
  const offline=await create(async()=>{throw Error('Pulse offline')})(card);assert.equal(offline.error,'Pulse offline');assert.equal(card.image_blob_key,'selected-image');assert.equal(card.draft.doorText,'V1');
- pool.query=async()=>({rows:[{expected_context:{bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'}}]});let fleetRead=false;const checked=await create(async()=>{fleetRead=true;return fleet})(card);assert.equal(fleetRead,true,'a card whose handwritten site differs is still checked against the batch site');assert.equal(checked.signature,scanFleetSignature({...card.draft,location:'Jayant OC'}));
+ pool.query=async()=>({rows:[{expected_context:{bookDate:'2026-10-28',location:'Jayant OC',cardShift:'III'}}]});let fleetRead=false;const checked=await create(async()=>{fleetRead=true;return fleet})(card);assert.equal(fleetRead,true,'a card whose handwritten site differs is still checked against the batch site');assert.equal(checked.signature,scanFleetSignature({...card.draft,location:'Jayant OC',bookDate:'2026-10-28'}));
+ const transferred={id:1,record_data:{door:'V1',currentLocation:'Sasti OC'}};
+ const history={record_data:{equipmentMasterId:'1',source:'Majri OC',destination:'Sasti OC',transferDate:'2026-11-12',status:'Completed'}};
+ let day='2026-11-12';pool.query=async sql=>({rows:sql.startsWith('SELECT expected_context')?[{expected_context:{bookDate:day,location:'Majri OC'}}]:sql==='SELECT masters'?[{...transferred,master_name:'Equipment master'},{...history,master_name:'Vehicle transfers'}]:[]});
+ assert.deepEqual((await create(async()=>fleet)(card)).issues,[],'scan accepts source on transfer date');
+ day='2026-11-13';assert.equal((await create(async()=>fleet)(card)).issues[0].reason,'transfer-required','scan rejects source after transfer date');
 });
 
 test('all off-site trip and printed summary occurrences are highlighted once per equipment',()=>{

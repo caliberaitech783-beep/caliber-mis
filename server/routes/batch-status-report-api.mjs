@@ -4,7 +4,8 @@ import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {batchStatusFilters,buildBatchStatusReport,buildBatchDetail} from '../../shared/batch-status-report.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
-import {buildWorkingNow,LAST_ACTION_HOURS} from '../../shared/batch-status-live.mjs';
+import {buildWorkingNow,buildRecentLocks,LAST_ACTION_HOURS} from '../../shared/batch-status-live.mjs';
+import {RECENT_WINDOWS} from '../../shared/recent-activity.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 
 const BATCH_COLUMNS=`b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.stage,b.created_at,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,COALESCE(b.creator_login,b.created_by,'') AS created_by`;
@@ -84,13 +85,20 @@ export function registerBatchStatusReport(app,{pool,protect,ensureBooks,now=()=>
     for(const book of lmv){const batch=byScope.get(scope(book.site,book.date,book.shift));if(batch){book.batchId=batch.id;book.batchName=batch.name;book.shift=batch.shift;}}
    }
    const actions=[...audit,...lmv];
+   // Batches locked at each site in the last 6, 12 and 24 hours and its last lock, by the time of the lock whatever
+   // the date on the batch: the same batches the dashboard counts as Batches locked.
+   const at=hours=>new Date(current-hours*3600000).toISOString();
+   const lockRows=(await client.query(`SELECT site,count(*) FILTER (WHERE closed_at>=$1::timestamptz)::int AS h6,
+    count(*) FILTER (WHERE closed_at>=$2::timestamptz)::int AS h12,count(*) FILTER (WHERE closed_at>=$3::timestamptz)::int AS h24,max(closed_at) AS last_at
+    FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date>=$4::date AND closed_at IS NOT NULL AND closed_at<=$5::timestamptz
+    GROUP BY site`,[...RECENT_WINDOWS.map(at),earliest,new Date(current+60000).toISOString()])).rows.filter(allowed);
    const logins=[...new Set(actions.map(a=>String(a.actor||'').trim().toLowerCase()).filter(Boolean))];
    const names=logins.length?Object.fromEntries((await client.query(`SELECT lower(trim(record_data->>'login')) AS login,
     COALESCE(NULLIF(trim(record_data->>'employee'),''),NULLIF(trim(record_data->>'name'),'')) AS name
     FROM master_records WHERE master_name='Users & employees' AND lower(trim(record_data->>'login'))=ANY($1::text[])`,[logins])).rows.filter(r=>r.name).map(r=>[r.login,r.name])):{};
    await client.query('COMMIT');
    client.release();client=null;
-   return buildWorkingNow({now:current,actions,names});
+   return {...buildWorkingNow({now:current,actions,names}),locks:buildRecentLocks({now:current,rows:lockRows})};
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
    finally{client?.release();}
    });

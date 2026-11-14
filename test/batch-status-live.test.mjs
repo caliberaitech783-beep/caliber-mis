@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import {readFileSync} from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
-import {buildWorkingNow,siteLiveCells,batchLiveCell,liveSummary,agoLabel,WORKING_NOW_MINUTES,LAST_ACTION_HOURS,LIVE_REFRESH_MS} from '../shared/batch-status-live.mjs';
+import {buildWorkingNow,buildRecentLocks,siteLiveCells,siteLockCells,lastLockLabel,batchLiveCell,liveSummary,agoLabel,WORKING_NOW_MINUTES,LAST_ACTION_HOURS,LIVE_REFRESH_MS} from '../shared/batch-status-live.mjs';
 import {registerBatchStatusReport} from '../server/routes/batch-status-report-api.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
@@ -31,6 +31,32 @@ test('working now means a save in a batch within the last 10 minutes; last actio
  assert.deepEqual([live.sites[jayant].count,live.sites[jayant].minutesAgo],[0,300]);
  assert.deepEqual(live.batches[A],{working:['Ramesh Kumar'],stage:'VLB'});
  assert.equal(live.batches[J],undefined);
+});
+
+test('Live now lists people site by site (A to Z), the latest save first inside a site',()=>{
+ const actions=[
+  {actor:'sasti.late',action:'card_added',at:ago(1),batchId:A,site:'Sasti',date:'2026-11-11',shift:'S1'},
+  {actor:'jayant.early',action:'card_added',at:ago(8),batchId:J,site:'Jayant',date:'2026-11-11',shift:'S1'},
+  {actor:'sasti.early',action:'card_added',at:ago(7),batchId:B,site:'Sasti',date:'2026-11-10',shift:'S3'},
+  {actor:'jayant.late',action:'card_added',at:ago(2),batchId:J,site:'Jayant',date:'2026-11-11',shift:'S1'}];
+ const live=buildWorkingNow({now,actions});
+ assert.equal(displaySiteName('Jayant').localeCompare(displaySiteName('Sasti'))<0,true);
+ assert.deepEqual(live.people.map(p=>p.login),['jayant.late','jayant.early','sasti.late','sasti.early']);
+});
+
+test('batches locked in the last 6, 12 and 24 hours and the last lock, site by site and for all sites',()=>{
+ const locks=buildRecentLocks({now,rows:[
+  {site:'Sasti',h6:1,h12:2,h24:3,last_at:ago(90)},{site:'SASTI OC',h6:0,h12:0,h24:1,last_at:ago(20*60)},
+  {site:'Jayant',h6:0,h12:0,h24:0,last_at:ago(31*60)},{site:'',h6:9,h12:9,h24:9,last_at:ago(1)}]});
+ assert.deepEqual(locks[sasti],{h6:1,h12:2,h24:4,lastAt:ago(90),minutesAgo:90},'two spellings of one site add up; the latest lock wins');
+ assert.deepEqual(locks[jayant],{h6:0,h12:0,h24:0,lastAt:ago(31*60),minutesAgo:31*60},'saving all day but nothing locked in 24 hours');
+ assert.equal(Object.keys(locks).length,2,'a row without a site is left out');
+ const live={...buildWorkingNow({now,actions:[]}),locks};
+ assert.deepEqual(siteLockCells(null,sasti),{locksRead:false});
+ assert.deepEqual(siteLockCells(live,jayant),{locksRead:true,locked6:0,locked12:0,locked24:0,lastLockMinutes:1860});
+ assert.deepEqual(siteLockCells(live,''),{locksRead:true,locked6:1,locked12:2,locked24:4,lastLockMinutes:90},'ALL SITES');
+ assert.deepEqual(siteLockCells(live,'nowhere'),{locksRead:true,locked6:0,locked12:0,locked24:0,lastLockMinutes:null},'never locked');
+ assert.deepEqual([lastLockLabel(null),lastLockLabel(0),lastLockLabel(90),lastLockLabel(1860),lastLockLabel(3000)],['—','just now','1 h 30 min ago','1 day 7 h 0 min ago','2 days 2 h 0 min ago']);
 });
 
 test('the cells read plainly before, with and without live figures',()=>{
@@ -63,6 +89,8 @@ test('the live route reads only permitted sites, matches LMV books to their batc
  // Sites enter shifts a week late: a save now into a 2 Nov batch is work happening now.
  await db.query(`INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,created_by,created_at) VALUES('CAL/LMV/2','lmv','2026-11-02','Sasti',1,$1,'lmv.late',NOW()-INTERVAL '5 minutes')`,[JSON.stringify({location:'Sasti',bookShiftCode:'S2'})]);
  await db.query('UPDATE mis_vlb_batches SET book_date=$1 WHERE id=ANY($2::uuid[])',[new Date(Date.now()+19800000).toISOString().slice(0,10),[A,J]]);
+ // Locks are counted by their own time: a 2 Nov batch locked 20 hours ago is inside the last 24 hours; a deleted batch never counts.
+ for(const [id,hours] of [[B,2],[W,20],[deleted,1]])await db.query(`UPDATE mis_vlb_batches SET closed_at=NOW()-($2::int*INTERVAL '1 hour') WHERE id=$1`,[id,hours]);
  const statements=[],query=(sql,args)=>{statements.push(sql);return db.query(sql,args);},pool={query,connect:async()=>({query,release(){}})};
  const app=express();const auth=(req,res,next)=>{if(!req.headers.authorization)return res.status(401).json({error:'Sign in'});req.logBookScope=req.headers.authorization==='admin'?{sites:null}:{sites:[sasti]};next();};
  registerBatchStatusReport(app,{pool,protect:[auth],ensureBooks:async()=>{}});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
@@ -73,6 +101,8 @@ test('the live route reads only permitted sites, matches LMV books to their batc
  assert.deepEqual(live.people.map(p=>[p.name,p.saves,p.stage,p.batchId]).sort(),[['LMV CLERK',1,'LMV',A],['Ramesh Kumar',2,'VLB',A],['late.entry',1,'VLB',W],['lmv.late',1,'LMV',W]],'LMV books matched to their batch, including a week-old batch; 30 minutes ago is not working now; deleted batch and other site left out');
  assert.equal(live.count,4);assert.deepEqual(Object.keys(live.sites),[sasti],'Jayant is not shown to a Sasti login');
  assert.equal(live.sites[sasti].minutesAgo,1);
+ assert.deepEqual(Object.keys(live.locks),[sasti]);
+ assert.deepEqual([live.locks[sasti].h6,live.locks[sasti].h12,live.locks[sasti].h24,live.locks[sasti].minutesAgo],[1,1,2,120]);
  assert.equal(JSON.stringify(live).includes('must-not-leak')||JSON.stringify(live).includes('secret-phone'),false);
  live=await (await call('admin')).json();assert.equal(live.count,5);assert.equal(live.sites[jayant].count,1);
  assert.equal(statements.some(sql=>/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/i.test(sql)),false,'the live route only reads');
@@ -85,7 +115,11 @@ test('the screen shows Live now, Working now and Last action, refreshing once a 
  assert.match(source,/startVisiblePoll\(\(\)=>request\('\/api\/reports\/batch-status\/live',session\.token,c\.signal\)/);
  assert.match(source,/,LIVE_REFRESH_MS\);/);
  assert.match(source,/<ReportSection key="bs-live" title=\{'Live now · '/);
- assert.match(source,/report\.sites\.map\(s=>\(\{\.\.\.s,\.\.\.siteLiveCells\(live,s\.siteKey\)\}\)\)/);
+ assert.match(source,/report\.sites\.map\(s=>\(\{\.\.\.s,\.\.\.siteLiveCells\(live,s\.siteKey\),\.\.\.siteLockCells\(live,s\.siteKey\)\}\)\)/);
+ // 13 Nov 2026: the owner removed Of which today's shifts and VLB / LMV / ELB open from Step 1 (still one click away in Step 2).
+ const step1=source.slice(source.indexOf('export const siteColumns'),source.indexOf('export const shiftColumns'));
+ for(const gone of ["Of which today's shifts","'VLB open'","'LMV open'","'ELB open'"])assert.equal(step1.includes(gone),false,gone);
+ assert.match(step1,/lastLockColumn,\.\.\.RECENT_WINDOWS\.map\(lockColumn\)/);
  assert.match(source,/listed\.map\(r=>\(\{\.\.\.r,workingNow:batchLiveCell\(live,r\.batchId\)\}\)\)/);
  assert.doesNotMatch(source,/setInterval\(/);
  const policy=readFileSync(new URL('../server/rules/vlb-batch-policy.mjs',import.meta.url),'utf8');
