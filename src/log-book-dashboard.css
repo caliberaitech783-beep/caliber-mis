@@ -121,6 +121,21 @@
 [data-theme=dark] .lb-dashboard .lb-recent-figure{background:#33254a;color:#cdb0fb}
 /* The front of the panel shows the figures alone. Three columns of the same width, so the figures line up under their headings. */
 .lb-recent-table thead th:not(:first-child){width:22%}
+/* A fourth window of the user's own hours: four columns of the same width. */
+.lb-recent-table table:has(thead th:nth-child(5)) thead th:not(:first-child){width:17%}
+/* Beside the heading: the box for the user's own number of hours above the "As of" time. */
+.lb-recent-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.lb-recent-custom{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+.lb-recent-custom label{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--lb-muted)}
+.lb-recent-custom input{width:64px;height:32px;border:1px solid #d9cce8;border-radius:8px;padding:4px 8px;background:var(--lb-surface);color:var(--lb-ink);font-size:13px}
+.lb-dashboard .lb-recent-custom button{border:1px solid var(--lb-purple);border-radius:999px;background:var(--lb-purple);color:#fff;font-size:12px;font-weight:650;padding:6px 14px;white-space:nowrap;cursor:pointer}
+.lb-dashboard .lb-recent-custom button.lb-recent-custom-remove{border-color:#d9cce8;background:var(--lb-surface);color:var(--lb-purple)}
+@media(max-width:540px){.lb-recent-side{align-items:flex-start}.lb-recent-custom{justify-content:flex-start}}
+/* Batches locked: the sites that locked no batch in the time chosen, in red above the list. */
+.lb-dialog .lb-recent-idle{margin:4px 0 10px;padding:8px 12px;border-radius:9px;background:#ffe6e5;color:#a31f20;font-size:13.5px;line-height:1.45}
+[data-theme=dark] .lb-dialog .lb-recent-idle{background:#4a2326;color:#ffb4b0}
+@media print{.lb-dialog .lb-recent-idle{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+.lb-recent-longest td.lb-recent-batch small{display:block;margin-top:2px;font-size:11px;font-weight:600;color:var(--lb-muted)}
 /* In the list that opens from a figure: the Back button with the period buttons, and a site name that opens the site. */
 .lb-recent-steps{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 4px}
 .lb-dialog button.lb-recent-site{border:0;border-radius:0;background:none;padding:0;font-size:inherit;font-weight:650;color:var(--lb-purple);text-decoration:underline;text-underline-offset:3px;white-space:normal;text-align:left;cursor:pointer}[data-theme=dark] .lb-dialog button.lb-recent-site{color:#cdb0fb}
