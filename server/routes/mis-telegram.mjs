@@ -37,6 +37,13 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  app.get('/api/mis-telegram/settings',...admin,wrap(async(req,res)=>{
   const config=await read(),{rows}=await pool.query("SELECT status,count(*)::int AS count FROM mis_telegram_outbox GROUP BY status");res.json({...view(config),delivery:rows});
  }));
+ // Administrators see who has connected Telegram: login, name from Users & employees, and when. No chat IDs.
+ app.get('/api/mis-telegram/links',...admin,wrap(async(req,res)=>{
+  let rows;
+  try{rows=(await pool.query(`SELECT l.login_name,l.linked_at,(SELECT m.record_data->>'employee' FROM master_records m WHERE m.master_name='Users & employees' AND lower(trim(m.record_data->>'login'))=l.login_name ORDER BY m.id DESC LIMIT 1) AS employee FROM mis_telegram_links l ORDER BY l.linked_at DESC`)).rows;}
+  catch{rows=(await pool.query('SELECT login_name,linked_at FROM mis_telegram_links ORDER BY linked_at DESC')).rows;}
+  res.json({people:rows.map(row=>({login:row.login_name,name:String(row.employee||'').trim(),linkedAt:row.linked_at}))});
+ }));
  app.put('/api/mis-telegram/settings',hideAudit,...admin,wrap(async(req,res)=>{
   const old=await read(),botToken=String(req.body.botToken||old.botToken||'').trim(),adminChatId=String(req.body.adminChatId??old.adminChatId??'').trim();
   if(!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(botToken)||botToken.length>200)invalid('Enter a valid dedicated MIS bot token.');

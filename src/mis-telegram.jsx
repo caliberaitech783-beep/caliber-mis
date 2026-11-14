@@ -5,10 +5,12 @@ import './mis-admin.css';
 export default function MisTelegram({session}){
  const admin=isMisAdministrator(session);
  const [me,setMe]=useState(null),[settings,setSettings]=useState(null),[botToken,setBotToken]=useState(''),[chat,setChat]=useState(''),[enabled,setEnabled]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[link,setLink]=useState('');
+ const [people,setPeople]=useState(null);
+ const loadPeople=()=>request('links').then(result=>setPeople(result.people)).catch(e=>setError(e.message));
  const request=async(path,method='GET',body)=>{const response=await fetch('/api/mis-telegram/'+path,{method,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'Telegram request failed.');return result};
  useEffect(()=>{let active=true;setMe(null);setSettings(null);setBotToken('');setLink('');setError('');
   const check=()=>request('me').then(result=>{if(active)setMe(result)}).catch(e=>{if(active)setError(e.message)});
-  void check();if(admin)request('settings').then(result=>{if(active){setSettings(result);setChat(result.adminChatId);setEnabled(result.enabled)}}).catch(e=>{if(active)setError(e.message)});
+  void check();if(admin)void loadPeople();if(admin)request('settings').then(result=>{if(active){setSettings(result);setChat(result.adminChatId);setEnabled(result.enabled)}}).catch(e=>{if(active)setError(e.message)});
   const timer=setInterval(check,5000);return()=>{active=false;clearInterval(timer)};
  },[session.token,admin]);
  const action=async task=>{setBusy(true);setError('');setNotice('');try{await task()}catch(e){setError(e.message)}finally{setBusy(false)}};
@@ -27,6 +29,10 @@ export default function MisTelegram({session}){
     <div className="mis-admin-actions"><button type="submit" disabled={busy}>Save privately</button><button type="button" disabled={busy||!settings.enabled||!settings.adminChatId} onClick={()=>void action(async()=>{await request('test','POST');setNotice('Test message sent to the configured MIS admin chat.')})}>Send test message</button></div>
    </form><p>Bot: {settings.botUsername?'@'+settings.botUsername:'Not configured'} · Webhook: {settings.webhookReady?'Ready':'Setup needed'}</p>
    {settings.delivery?.length>0&&<p>Delivery: {settings.delivery.map(row=>row.status+': '+row.count).join(' · ')}</p>}
+  </section>}
+  {admin&&people&&<section><h2>Who has connected Telegram</h2>
+   <p>{people.length?people.length+(people.length===1?' person has':' people have')+' connected Telegram to their MIS login.':'Nobody has connected Telegram yet.'} <button type="button" disabled={busy} onClick={()=>void loadPeople()}>Refresh</button></p>
+   {people.length>0&&<table className="mis-telegram-people"><thead><tr><th>Name</th><th>Login</th><th>Connected on</th></tr></thead><tbody>{people.map(person=><tr key={person.login}><td>{person.name||'—'}</td><td>{person.login}</td><td>{person.linkedAt?new Date(person.linkedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):''}</td></tr>)}</tbody></table>}
   </section>}
   {admin&&<VlbBatchAlertSettings session={session}/>}
  </section>;
