@@ -79,6 +79,8 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api})=>
       if(req.url.startsWith('/token'))return res.end(JSON.stringify({value:req.headers.authorization==='bearer request-token'&&req.url.includes('audience=pulse-ii-release')?'oidc-jwt':''}));
       calls.push({path:req.url,auth:req.headers.authorization,body:body?JSON.parse(body):null});
       const [status,payload]=api(req.url,body?JSON.parse(body):{});
+      // A string payload is an HTML error page, as Express sends for an unknown route.
+      if(typeof payload==='string')return res.writeHead(status,{'content-type':'text/html'}).end(payload);
       res.writeHead(status,{'content-type':'application/json'}).end(JSON.stringify(payload));
     });
   });
@@ -115,6 +117,13 @@ test('Urgent without an OTP asks Pulse-II to send one and deploys nothing yet',a
   assert.match(r.summary,/OTP was sent to the owner on Telegram\..*within 10 minutes\. Nothing was deployed yet\./);
   const failed=await dispatch({when:URGENT,api:()=>[429,{error:'Wait a minute.'}]});
   assert.equal(failed.code,1);assert.equal(failed.deploy,'');assert.match(failed.summary,/could not be sent\. Wait a minute\./);
+  // Before Pulse-II has the endpoint it answers an HTML 404: the reason still shows.
+  const missing=await dispatch({when:URGENT,api:()=>[404,'<!DOCTYPE html><pre>Cannot POST /api/release-otp/request</pre>']});
+  assert.equal(missing.code,1);assert.match(missing.summary,/could not be sent\. Pulse-II answered HTTP 404: the release OTP service is not live there yet/);
+  const broken=await dispatch({when:URGENT,api:()=>[502,'<html>Bad gateway</html>']});
+  assert.match(broken.summary,/could not be sent\. Pulse-II answered HTTP 502\./);
+  const refused=await dispatch({when:URGENT,otp:'123456',api:()=>[404,'<html></html>']});
+  assert.match(refused.summary,/Urgent release refused: Pulse-II answered HTTP 404/);
 });
 
 test('Urgent with the right OTP deploys; a wrong or malformed OTP fails the run',async()=>{
