@@ -28,12 +28,12 @@ export function firstScanProblems(extracted,kind,context={}){
  if(!d.shiftId||!d.cardShift||issues.shiftId||context.cardShift&&normalizeCardShift(d.cardShift)!==normalizeCardShift(context.cardShift))found.push('shift');
  return found;
 }
-// Handwriting the first model can misread. When one of these fails the checks, the recheck goes to
-// the stronger recheck model (Flash); date, site and shift problems usually mean a card of another
-// shift or site, which a stronger model does not change. 14 Nov 2026: about 40% of first reads.
+// Handwriting the first model can misread. When one of these fails the checks and a recheck model is
+// configured (MIS_GEMINI_RECHECK_MODEL, off by default), the recheck goes to that model; date, site and
+// shift problems usually mean a card of another shift or site, which a stronger model does not change.
 export const RECHECK_MODEL_GROUPS=['door','caliber','hmr','kmr','trips'];
 // One fresh read for all problem groups together, before the card enters review.
-// A clean card's door verification stays on the first (fast) model; recheckModel '' keeps every reread on it.
+// A clean card's door verification stays on the first model; recheckModel '' keeps every reread on it.
 export async function recoverFirstScanFields({kind,extracted,context={},allowMissingSite=false,alreadyRetried=false,readAgain,extract,onProgress,recheckModel=RECHECK_MODEL}){
  const detectedProblems=firstScanProblems(extracted,kind,context),problems=alreadyRetried?[]:detectedProblems,verifyDoor=kind==='vehicle'&&present(extracted.draft.doorText)&&Boolean(extracted.draft.assetId);
  if((alreadyRetried&&!verifyDoor)||(!problems.length&&!verifyDoor)||!extracted.draft.location&&!allowMissingSite)return extracted;

@@ -8,24 +8,22 @@ import path from 'node:path';
 import os from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-// Every card is read first by Flash-Lite: on 1,061 saved cards (12 and 14 Nov
-// 2026) it answered in 5.7 s at the median against 23.6 s for gemini-3.8-flash.
-// Flash-Lite confuses some handwriting (5/S doors, KMR digits, times such as
-// 07:67): 13.2% of its cards needed a correction against 7.6% for Flash. A card
-// whose first read fails the app's checks (door not in the master, meter or
-// time out of range, summary conflict) is therefore read again by the recheck
-// model, Flash, so only the doubtful cards pay Flash's time. MIS_GEMINI_MODEL
-// and MIS_GEMINI_RECHECK_MODEL change either model per deployment without a
-// code change; MIS_GEMINI_RECHECK_MODEL=off rereads with the first model.
+// Cards are read by Flash-Lite only (owner's decision, 14 Nov 2026, for speed):
+// on 1,061 saved cards (12 and 14 Nov 2026) it answered in 5.7 s at the median
+// against 23.6 s for gemini-3.8-flash. It confuses some handwriting (5/S doors,
+// KMR digits, times such as 07:67): 13.2% of its cards needed an operator
+// correction against 7.6% for Flash; operators correct the cards the checks flag.
+// MIS_GEMINI_MODEL changes the model without a code change. MIS_GEMINI_RECHECK_MODEL
+// (empty by default) can send the recheck of a doubtful card, one whose first read
+// failed the door, Caliber, meter or trip checks, to another model such as
+// gemini-3.8-flash; empty or "off" rereads with the first model.
 export const DEFAULT_MODEL='gemini-3.1-flash-lite';
-export const DEFAULT_RECHECK_MODEL='gemini-3.8-flash';
 const modelSetting=value=>/^gemini-[a-z0-9.-]{1,60}$/.test(value?.trim()||'')?value.trim():'';
 export const geminiModel=(env=process.env)=>modelSetting(env.MIS_GEMINI_MODEL)||DEFAULT_MODEL;
 export const MODEL=geminiModel();
 // '' = reread with the first model.
 export const geminiRecheckModel=(env=process.env,first=geminiModel(env))=>{
- if(env.MIS_GEMINI_RECHECK_MODEL?.trim().toLowerCase()==='off')return '';
- const model=modelSetting(env.MIS_GEMINI_RECHECK_MODEL)||DEFAULT_RECHECK_MODEL;
+ const model=modelSetting(env.MIS_GEMINI_RECHECK_MODEL);
  return model===first?'':model;
 };
 export const RECHECK_MODEL=geminiRecheckModel();

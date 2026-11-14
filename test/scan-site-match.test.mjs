@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../shared/scan-site-match.mjs';
 import {extractCard} from '../server/rules/scan-extraction.mjs';
 import {cardPrompt,MODEL} from '../server/services/gemini-card-reader.mjs';
-import {DEFAULT_MODEL,DEFAULT_RECHECK_MODEL,geminiModel,geminiRecheckModel,geminiGenerationConfig,geminiThinkingLevel} from '../server/services/gemini-hybrid.mjs';
+import {DEFAULT_MODEL,geminiModel,geminiRecheckModel,geminiGenerationConfig,geminiThinkingLevel} from '../server/services/gemini-hybrid.mjs';
 const east='Dudhichua East OC',west='Dudhichua OC',sites=[east,west,'Jayant OC'];
 test('DCH direction aliases return the actual master label across spacing, case and punctuation',()=>{
  for(const reading of ['DCH (East)','dch EAST','D.C.H. (EAST)','D C H - East','Site: DCH(East)','DCH East O.C.'])assert.equal(matchScannedSite([reading],sites),east,reading);
@@ -66,10 +66,11 @@ test('ambiguous DCH and unreadable Gemini locations remain blank for review, eve
  const unreadable=extractCard('Door No. V739','vehicle',onlyEast,{handwritingCandidates:{location:{value:null,text:null}}});assert.equal(unreadable.draft.location,'');assert.equal(unreadable.draft.assetId,'');
 });
 test('Gemini keeps literal location evidence and checks direction without changing model',()=>{
- assert.equal(DEFAULT_MODEL,'gemini-3.1-flash-lite');assert.equal(DEFAULT_RECHECK_MODEL,'gemini-3.8-flash');
- assert.equal(geminiRecheckModel({}),'gemini-3.8-flash');assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:' OFF '}),'');
- assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:'gemini-4-hydrogen'}),'gemini-4-hydrogen');assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:'not a model'}),'gemini-3.8-flash');
- assert.equal(geminiRecheckModel({MIS_GEMINI_MODEL:'gemini-3.8-flash'}),'',"a recheck by the first read's own model is no escalation");
+ assert.equal(DEFAULT_MODEL,'gemini-3.1-flash-lite');
+ // Flash-Lite only by default: no recheck by another model unless a deployment names one.
+ assert.equal(geminiRecheckModel({}),'');assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:' off '}),'');assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:'not a model'}),'');
+ assert.equal(geminiRecheckModel({MIS_GEMINI_RECHECK_MODEL:' gemini-3.8-flash '}),'gemini-3.8-flash');
+ assert.equal(geminiRecheckModel({MIS_GEMINI_MODEL:'gemini-3.8-flash',MIS_GEMINI_RECHECK_MODEL:'gemini-3.8-flash'}),'',"a recheck by the first read's own model is no escalation");
  assert.deepEqual(geminiGenerationConfig('gemini-4-hydrogen',{}),{responseMimeType:'application/json',maxOutputTokens:65536,thinkingConfig:{thinkingLevel:'low'}});
  assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:' medium '}),'medium');assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:'minimal'}),'low');
  assert.deepEqual(geminiGenerationConfig('gemini-3.8-flash',{}),{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192});
