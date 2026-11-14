@@ -1,4 +1,5 @@
 import {scanTripsOptional} from '../shared/scan-trip-requirement.mjs';
+import {assetForSiteOnDate} from '../shared/equipment-transfer-history.mjs';
 import {validVlbCardCounts} from '../shared/vlb-card-counts.mjs';
 import {isScanIssueFocus,scanIssueFieldVisible,focusedScanMessages} from './scan-issue-focus.mjs';
 import ScanCardAbortDialog from './scan-card-abort-dialog.jsx';
@@ -65,7 +66,7 @@ import LocalScannerPanel from './local-scanner-panel.jsx';
 import {startVisiblePoll} from './visible-poll.mjs';
 import {SCAN_PROGRESS_ACTIVE_MS,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,VLB_CARD_COUNT_POLL_MS,scanProgressActive,shouldReadScanProgress} from '../shared/scan-progress-poll.mjs';
 import WorkOrderJobSelect from './work-order-job-select.jsx';
-import React,{useState,useEffect,useRef} from 'react';
+import React,{useState,useEffect,useRef,useMemo} from 'react';
 import {useStepBackTarget} from './step-back-registry.mjs';
 import LogBookForm from './log-book-form.jsx';
 import {isMisAdministrator} from '../shared/mis-admin-access.mjs';
@@ -137,7 +138,8 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const [dirty,setDirty]=useState(false);const [autosaveStatus,setAutosaveStatus]=useState(''),[saveTick,setSaveTick]=useState(0);const dirtyRef=useRef(false),draftRef=useRef({}),editRevision=useRef(null),editBaseline=useRef({}),savingRef=useRef(false),recoverySaved=useRef(false);dirtyRef.current=dirty;
  const [bdLookupAttempt,retryBdLookup]=useState(0);
  const [pulseHours,setPulseHours]=useState(null),[pulseHoursError,setPulseHoursError]=useState('');
- const [batches,setBatches]=useState([]),[batch,setBatch]=useState(null),[loadedCards,setCards]=useState([]),[duplicates,setDuplicates]=useState([]),[selected,setSelected]=useState(''),[draft,setDraft]=useState({}),[options,setOptions]=useState(null),[filter,setFilter]=useState(()=>Object.hasOwn(labels,new URLSearchParams(window.location.search).get('filter'))?new URLSearchParams(window.location.search).get('filter'):'all'),[checked,setChecked]=useState(false),[noTrips,setNoTrips]=useState(false),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[uploadSent,setUploadedCount]=useState(0),[progress,setProgress]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[pagesPerCard,setPagesPerCard]=useState(1),[results,setResults]=useState([]),[rotation,setRotation]=useState(0),[zoom,setZoom]=useState(1);
+ const [batches,setBatches]=useState([]),[batch,setBatch]=useState(null),[loadedCards,setCards]=useState([]),[duplicates,setDuplicates]=useState([]),[selected,setSelected]=useState(''),[draft,setDraft]=useState({}),[rawOptions,setOptions]=useState(null),[filter,setFilter]=useState(()=>Object.hasOwn(labels,new URLSearchParams(window.location.search).get('filter'))?new URLSearchParams(window.location.search).get('filter'):'all'),[checked,setChecked]=useState(false),[noTrips,setNoTrips]=useState(false),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[uploadSent,setUploadedCount]=useState(0),[progress,setProgress]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[pagesPerCard,setPagesPerCard]=useState(1),[results,setResults]=useState([]),[rotation,setRotation]=useState(0),[zoom,setZoom]=useState(1);
+ const options=useMemo(()=>rawOptions?{...rawOptions,assets:(rawOptions.assets||[]).map(asset=>assetForSiteOnDate(asset,draft.location,draft.bookDate))}:null,[rawOptions,draft.location,draft.bookDate]);
  const [batchCardSummary,setBatchCardSummary]=useState(null);
  const visibleScanEntries=batches.filter(entry=>Number(entry.cards)>0).map((entry,index)=>{
   if(entry.id!==batch?.id||!loadedCards.length)return entry;
