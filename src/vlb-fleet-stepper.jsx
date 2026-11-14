@@ -18,7 +18,7 @@ export const fleetHours=(opening,closing)=>{
 export const fleetIdleHours=(shiftHours,workingHours,breakdownHours=0)=>{
  const shift=Number(shiftHours),working=Number(workingHours);
  if(!Number.isFinite(shift)||workingHours===null||!Number.isFinite(working))return null;
- return Math.round((shift-working-breakdownHours)*100)/100;
+ return Math.round((shift-working-breakdownHours)*1000)/1000;
 };
 export const focusNextElbField=event=>{
  if(event.key!=='Enter'||event.shiftKey||event.isComposing)return;
@@ -152,7 +152,12 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const operatorSplit=form.secondOperatorId?splitEquipmentOperatorHmr(form):null;
- const idleHours=fleetIdleHours(lookupShiftHours,hours,pulse?.breakdownHours);
+ const scheduledHours=pulse?.shiftStart&&pulse?.shiftEnd
+  ?(Date.parse(pulse.shiftEnd)-Date.parse(pulse.shiftStart))/3600000
+  :lookupShiftHours;
+ const remainingHours=pulse?fleetIdleHours(scheduledHours,hours,pulse.breakdownHours):null;
+ const hoursConflict=remainingHours!==null&&remainingHours<0;
+ const idleHours=hoursConflict?null:remainingHours;
  const jobs=form.jobDetails||[];
  const contracts=activeWorkOrders(options?.workOrders||[],batch.site,batch.report_date);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));
@@ -189,7 +194,9 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
    {operatorSplit&&!operatorSplit.error&&<p className="logbook-message">First operator {operatorSplit.firstHours.toFixed(2)} h · Second operator {operatorSplit.secondHours.toFixed(2)} h · Combined HMR {operatorSplit.totalHours.toFixed(2)} h</p>}
    <label className="logbook-field"><span>HMR Difference</span><input type="text" aria-label="HMR Difference" readOnly value={hours===null?'':String(hours)}/><small>Closing HMR − Opening HMR</small></label>
    <label className="logbook-field"><span>Breakdown Hrs · from Pulse</span><output aria-label="Breakdown Hrs">{pulse?Number(pulse.breakdownHours).toFixed(3):'—'}</output><small>{pulse?(additional?'Equipment shift total, shared by both cards':'Same equipment, site, date and shift'):pulseLoading?'Fetching from Pulse…':'Pulse unavailable'}</small></label>
-   <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" readOnly value={idleHours===null?'':String(idleHours)}/></label>
+   <label className="logbook-field"><span>Idle hours</span><input type="number" inputMode="decimal" readOnly value={idleHours===null?'':String(idleHours)} aria-describedby={hoursConflict?'elb-hours-conflict':undefined}/>
+    {hoursConflict&&<small id="elb-hours-conflict" role="alert">Working HMR and Pulse breakdown hours exceed the shift hours. Check the HMR readings and Breakdown details.</small>}
+   </label>
    <label className="logbook-field"><span>Remark{['breakdown','working_partial_breakdown'].includes(form.shiftStatus)?' *':''}</span><input data-elb-entry="remark" type="text" value={form.statusReason} disabled={busy} onChange={e=>update('statusReason',e.target.value)}/></label>
    <label className="logbook-field"><span>Job card no.</span><input data-elb-entry="job-card" type="text" value={form.jobCardNo} disabled={busy} onChange={e=>update('jobCardNo',e.target.value)}/></label>
   </div></section>
