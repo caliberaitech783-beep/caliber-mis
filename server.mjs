@@ -7978,12 +7978,16 @@ registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSig
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
 // Urgent production release: the release workflow asks for an OTP on the owner's Telegram.
 const releaseIdentity=createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile:'main_caliber-mis-783.yml'});
+const mergeReleaseIdentity=createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile:'merge-and-release.yml'});
+const releaseApprovalIdentity=async token=>{try{return await releaseIdentity(token);}catch{return mergeReleaseIdentity(token);}};
 const releaseAudit=(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};};
 const releaseOtp=registerReleaseOtp(app,{pool,
  sendApproval:createReleaseApprovalDelivery({pool,sendButtons:(chatId,text,buttons)=>misTelegram.sendButtons(chatId,text,buttons)}),
  isApprover:async login=>(await releaseApproverLogins(pool)).includes(String(login||'').toLowerCase()),
  sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:sendReleaseOtp}),
- verifyIdentity:releaseIdentity,audit:releaseAudit});
+ verifyIdentity:releaseIdentity,audit:releaseAudit,
+ // Approve / Reject may also be asked for by "Merge a PR and make it live" (merge-and-release.yml).
+ verifyApprovalIdentity:releaseApprovalIdentity});
 telegramCallbacks.handle=input=>releaseOtp.handleTelegramCallback(input);
 // After every production release the workflow reports what it deployed; the owner gets it on Telegram.
 registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),

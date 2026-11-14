@@ -201,3 +201,25 @@ test('a window release goes out only in the hour after a window, from GitHub tim
     assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live:head,head,now:at('2026-11-20T12:32:00Z')}),'false','already released: a duplicate trigger finds nothing new');
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+// Merge + release (15 Nov 2026): who asked travels to Telegram, and a run started by the merge workflow
+// spends the approval that merged the pull request.
+test('Urgent sends the requester name, computer and IP with the Approve request',async()=>{
+  const id='0123456789abcdef';let asked;
+  const api=(p,body)=>{if(p==='/api/release-otp/request-approval'){asked=body;return [200,{id,recipient:'owners',expiresInMinutes:10}];}return p==='/api/release-otp/decision'?[200,{status:'approved',by:'mohitchadda'}]:[500,{}];};
+  const r=await dispatch({when:URGENT,api,env:{RELEASE_COMMIT:'c'.repeat(40),RELEASE_REQUESTED_BY:'Claude Code session for Mohit',RELEASE_COMPUTER:'MOHIT-PC',RELEASE_REQUESTER_IP:'49.36.1.2',RELEASE_RUN_URL:'https://github.com/x/runs/1'}});
+  assert.equal(r.deploy,'true');
+  assert.equal(asked.commit,'c'.repeat(40));
+  assert.deepEqual([asked.requestedBy,asked.computer,asked.ip,asked.runUrl],['Claude Code session for Mohit','MOHIT-PC','49.36.1.2','https://github.com/x/runs/1']);
+});
+test('a release started after Approve on a pull request spends that approval once',async()=>{
+  const id='0123456789abcdef';
+  const ok=await dispatch({when:URGENT,api:(p,body)=>p==='/api/release-otp/decision'&&body.id===id?[200,{status:'approved',by:'anoop',prNumber:300}]:[500,{}],env:{RELEASE_APPROVAL:id}});
+  assert.equal(ok.deploy,'true');assert.deepEqual(ok.calls.map(c=>c.path),['/api/release-otp/decision']);
+  assert.ok(ok.summary.includes('approved on Telegram by anoop (PR #300 merged). Releasing main now.'),ok.summary);
+  const spent=await dispatch({when:URGENT,api:()=>[200,{status:'used'}],env:{RELEASE_APPROVAL:id}});
+  assert.equal(spent.code,1);assert.equal(spent.deploy,'');assert.ok(spent.summary.includes('the Telegram approval is used'),spent.summary);
+  assert.ok(!spent.calls.some(c=>c.path.includes('request')),'never asks again or falls back to the OTP');
+  const bad=await dispatch({when:URGENT,api:()=>[200,{}],env:{RELEASE_APPROVAL:'zz'}});
+  assert.equal(bad.code,1);assert.equal(bad.calls.length,0);
+});

@@ -15,6 +15,9 @@ Set by the owner on 14 November 2026; scheduled releases start on 15 November 20
   2. Run it again with Urgent and that OTP within 10 minutes: Pulse-II checks it (single use, five wrong attempts) and `main` is released at once.
   From a Claude session: `gh workflow run main_caliber-mis-783.yml --ref main -f when='Urgent: deploy now (needs OTP from the owner)'`, ask the owner for the OTP, then run it again adding `-f otp=<OTP>`. Start an urgent release only when the user explicitly asks for an immediate deployment; never guess or reuse an OTP.
 
+- Merge a pull request and make it live in one step: "Merge a PR and make it live (Telegram approval)" (`.github/workflows/merge-and-release.yml`, added 15 Nov 2026 at the owner's request). It checks the PR (open, against main, not a draft, mergeable, every check green), then sends the same Approve / Reject buttons naming the PR, its size, who asked, the computer, its IP (as given by the requester) and the GitHub account. On Approve it merges exactly the approved head commit and starts the production release with that approval, which the release spends once within 30 minutes. Reject, no tap in 10 minutes, or new commits on the PR: nothing is merged. Urgent runs of the production workflow also take `requested_by`, `computer` and `ip` and show them in the message.
+  From a Claude session, only when the user asks for a named PR to be merged and made live now: `gh workflow run merge-and-release.yml --ref main -f pr=<number> -f requested_by="Claude Code session for <user's name>" -f computer="$COMPUTERNAME" -f ip="$(curl -s https://api.ipify.org)"`, then tell the user to tap Approve on Telegram. Never type an OTP or an approval on the user's behalf.
+
 # Report operating manuals
 
 Switched off by the owner on 13 November 2026, because building the English and Hindi manual for every report change took too long. This replaces his rule of 9 November 2026.
