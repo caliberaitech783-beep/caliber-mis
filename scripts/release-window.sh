@@ -33,15 +33,22 @@ mint_identity() {
   TOKEN="$(curl --fail --silent --max-time 20 -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pulse-ii-release" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).value||'')}catch{}})")"
   [[ -z "$TOKEN" ]] || echo "::add-mask::${TOKEN}"
 }
-# POST to Pulse-II's release OTP API as this workflow run.
+field() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(v==null?'':String(v))}catch{}})" "$1"; }
+# POST to Pulse-II's release OTP API as this workflow run. A failure without a
+# JSON reason (an HTML error page, no answer) is reported with its HTTP code.
 release_api() {
-  local path="$1" body="$2" response
+  local path="$1" body="$2" response payload code
   if [[ -z "$TOKEN" ]]; then echo '{"error":"GitHub did not issue an identity for this run (id-token: write)."}'; return 1; fi
   response="$(curl --silent --max-time 30 -w '\n%{http_code}' -X POST -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' --data "$body" "${BASE_URL}${path}")"
-  echo "${response%$'\n'*}"
-  [[ "${response##*$'\n'}" == 200 ]]
+  payload="${response%$'\n'*}" code="${response##*$'\n'}"
+  if [[ "$code" == 200 ]]; then echo "$payload"; return 0; fi
+  if [[ -n "$(field error <<< "$payload")" ]]; then echo "$payload"
+  elif [[ "$code" == 000 ]]; then echo '{"error":"Pulse-II did not answer."}'
+  elif [[ "$code" == 404 ]]; then echo '{"error":"Pulse-II answered HTTP 404: the release OTP service is not live there yet (it goes live with the next scheduled release)."}'
+  else echo "{\"error\":\"Pulse-II answered HTTP ${code}.\"}"
+  fi
+  return 1
 }
-field() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(v==null?'':String(v))}catch{}})" "$1"; }
 
 if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
   if [[ "${RELEASE_WHEN:-}" != Urgent* ]]; then
