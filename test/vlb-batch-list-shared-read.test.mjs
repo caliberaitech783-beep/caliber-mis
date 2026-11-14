@@ -51,7 +51,7 @@ test('the batch list uses the shared read, cleared by every batch action, and hi
  assert.match(routes,/const rows=await read\(/);
  assert.match(routes,/app\.use\('\/api\/vlb-batches'.*res\.on\('finish',\(\)=>sharedBatchRows\.clear\(\)\)/);
  const board=readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
- assert.match(board,/setInterval\(\(\)=>\{if\(document\.visibilityState!=='hidden'\)void load\(\)\},4000\)/);
+ assert.match(board,/setInterval\(\(\)=>\{if\(!entryMode&&document\.visibilityState!=='hidden'\)void load\(\)\},15000\)/);
  assert.match(board,/const tick=\(\)=>\{if\(document\.visibilityState!=='hidden'\)setRefresh\(n=>n\+1\)\};const timer=setInterval\(tick,10000\);document\.addEventListener\('visibilitychange',tick\)/);
  const scan=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
  // The scan screen's card total uses the shared visible-tab poll (every 15 s, none while hidden).
