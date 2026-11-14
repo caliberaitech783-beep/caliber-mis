@@ -7,6 +7,7 @@ import {scanDuplicateFlags} from './server/services/scan-duplicates.mjs';
 import {environmentLabelFromEnv} from './shared/environment-label.mjs';
 import {isMisAdministrator,requireMisAdministrator} from './shared/mis-admin-access.mjs';
 import {registerMisTelegram} from './server/routes/mis-telegram.mjs';
+import {registerReleaseNotice,RELEASE_NOTICE_PURPOSE} from './server/routes/release-notice.mjs';
 import {registerVehicleTransferExpress} from './server/routes/vehicle-transfer-express.mjs';
 import {registerEquipmentCreateExpress} from './server/routes/equipment-create-express.mjs';
 import {registerEquipmentAliases,reconcileEquipmentAliases,readAliasApprover,misManagerLogins,sendAliasWeeklySummary,demoteUnapprovedAliases,aliasOtpEnabled} from './shared/equipment-aliases.mjs';
@@ -7938,6 +7939,7 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
 const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession});
+registerReleaseNotice(app,{pool,sign:data=>integrationSecrets.sign(RELEASE_NOTICE_PURPOSE,data),drain:()=>misTelegram.drain()});
 app.get('/api/mis-ticket-sites',requireSession,async(req,res,next)=>{
  try{const scope=await logBookScope(req.session);let sites=scope.sites;if(sites===null){const {rows}=await pool.query("SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$ AND deleted_at IS NULL UNION SELECT record_data->>'site' AS site FROM master_records WHERE master_name='Equipment master'");sites=[...new Set(rows.map(row=>displaySiteName(row.site)).filter(Boolean))];if(!sites.length)sites=['Not assigned'];}res.set('Cache-Control','no-store').json({sites:sites.length?sites.map(displaySiteName):['Not assigned']});}catch(error){next(error)}
 });
