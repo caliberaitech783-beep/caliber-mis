@@ -50,7 +50,14 @@ release_api() {
   return 1
 }
 
-if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+# A backup trigger (Run workflow with "Scheduled window") runs the same checks as
+# GitHub's own timer, because GitHub can start timed runs hours late or not at all.
+WINDOW_RUN=false
+if [[ "${GITHUB_EVENT_NAME:-}" == "schedule" ]] || [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "${RELEASE_WHEN:-}" == "Scheduled window"* ]]; then
+  WINDOW_RUN=true
+fi
+
+if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]]; then
   if [[ "${RELEASE_WHEN:-}" != Urgent* ]]; then
     summary "Not urgent: no deployment now. Everything merged to main goes out in the next scheduled window, $(next_window)."
     decide false
@@ -94,11 +101,22 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
   exit 1
 fi
 
-if [[ "${GITHUB_EVENT_NAME:-}" != "schedule" ]]; then decide false; fi
+if [[ "$WINDOW_RUN" != true ]]; then decide false; fi
 
 TODAY_IST="${RELEASE_WINDOW_TODAY:-$(TZ=Asia/Kolkata date +%F)}"
 if [[ -n "${SCHEDULE_STARTS:-}" && "$TODAY_IST" < "$SCHEDULE_STARTS" ]]; then
   echo "Scheduled releases start on ${SCHEDULE_STARTS} IST (today is ${TODAY_IST})."
+  decide false
+fi
+
+# A window release goes out only in the hour after 12:00, 15:00, 18:00 or 00:00
+# IST, so a timed run that GitHub starts hours late never deploys mid-shift.
+# The backup trigger covers the window; a late duplicate finds nothing new.
+WINDOW_GRACE_MINUTES="${WINDOW_GRACE_MINUTES:-59}"
+SINCE_WINDOW="$(node -e "const now=Number(process.argv[1])||Date.now(),ist=new Date(now+330*60000),m=ist.getUTCHours()*60+ist.getUTCMinutes();
+const last=[0,720,900,1080].filter(x=>x<=m).pop();process.stdout.write(String(m-last))" "${RELEASE_WINDOW_NOW_MS:-}")"
+if (( SINCE_WINDOW > WINDOW_GRACE_MINUTES )); then
+  summary "Outside a release window (${SINCE_WINDOW} minutes after the last window start; the limit is ${WINDOW_GRACE_MINUTES}). Nothing deployed. Main goes out in the next window, $(next_window)."
   decide false
 fi
 
