@@ -72,7 +72,7 @@ test('scheduled windows wait for the start date',()=>{
 });
 
 // Run workflow: a fake GitHub identity endpoint and a fake Pulse-II release OTP API.
-const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,actor='someone-else',owner='caliberaitech783-beep'})=>{
+const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,actor='someone-else',owner='caliberaitech783-beep',env={}})=>{
   const calls=[];
   const server=createServer((req,res)=>{
     let body='';req.on('data',d=>body+=d).on('end',()=>{
@@ -92,7 +92,7 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,act
   try{
     await execFileAsync('bash',[script],{encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:'workflow_dispatch',RELEASE_COMMIT:'x',GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summaryFile,
       RELEASE_WHEN:when,RELEASE_OTP:otp,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_OTP_BASE_URL:base,
-      ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token',GITHUB_ACTOR:actor,GITHUB_REPOSITORY_OWNER:owner}});
+      ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token',GITHUB_ACTOR:actor,GITHUB_REPOSITORY_OWNER:owner,RELEASE_APPROVAL_POLL_SECONDS:'0',RELEASE_APPROVAL_WAIT_SECONDS:'3',...env}});
   }catch(error){code=error.code;}
   server.close();
   const result={code,calls,deploy:/deploy=(true|false)/.exec(readFileSync(output,'utf8'))?.[1]||'',summary:readFileSync(summaryFile,'utf8')};
@@ -113,7 +113,8 @@ test('Run workflow without urgency deploys nothing and names the next window',as
 test('Urgent without an OTP asks Pulse-II to send one and deploys nothing yet',async()=>{
   const r=await dispatch({when:URGENT,api:()=>[200,{recipient:'owner on Telegram',expiresInMinutes:10}]});
   assert.equal(r.deploy,'false');assert.equal(r.code,0);
-  assert.deepEqual(r.calls.map(c=>[c.path,c.auth]),[['/api/release-otp/request','Bearer oidc-jwt']]);
+  // No approval id came back, so the run falls back to the OTP.
+  assert.deepEqual(r.calls.map(c=>[c.path,c.auth]),[['/api/release-otp/request-approval','Bearer oidc-jwt'],['/api/release-otp/request','Bearer oidc-jwt']]);
   assert.match(r.summary,/OTP was sent to the owner on Telegram\..*within 10 minutes\. Nothing was deployed yet\./);
   const failed=await dispatch({when:URGENT,api:()=>[429,{error:'Wait a minute.'}]});
   assert.equal(failed.code,1);assert.equal(failed.deploy,'');assert.match(failed.summary,/could not be sent\. Wait a minute\./);
@@ -143,6 +144,24 @@ test('before Pulse-II has the OTP service, only the repository owner can start a
   assert.equal(live.deploy,'false');assert.match(live.summary,/OTP was sent/);
   assert.equal((await dispatch({when:URGENT,otp:'123456',api:notLive,actor:'caliberaitech783-beep'})).code,1);
 });
+test('Urgent sends Approve / Reject on Telegram and waits: Approve deploys, Reject or no tap stops the run',async()=>{
+  const id='0123456789abcdef';
+  const flow=answers=>{let n=0;return (p,body)=>p==='/api/release-otp/request-approval'?[200,{id,recipient:'owners (Mr Anoop and Mr Mohit Chadda) on Telegram',expiresInMinutes:10}]
+    :p==='/api/release-otp/decision'?(assert.equal(body.id,id),[200,answers[Math.min(n++,answers.length-1)]]):[500,{}];};
+  const ok=await dispatch({when:URGENT,api:flow([{status:'awaiting'},{status:'approved',by:'mohitchadda'}])});
+  assert.equal(ok.code,0);assert.equal(ok.deploy,'true');
+  assert.ok(ok.summary.includes('Approve / Reject was sent to the owners (Mr Anoop and Mr Mohit Chadda) on Telegram'));
+  assert.match(ok.summary,/approved on Telegram by mohitchadda. Releasing main now./);
+  assert.equal(ok.calls[0].body.commit,'x');
+  assert.ok(!ok.calls.some(c=>c.path==='/api/release-otp/request'),'no OTP is sent when the buttons went out');
+  const no=await dispatch({when:URGENT,api:flow([{status:'rejected',by:'anoop'}])});
+  assert.equal(no.code,1);assert.equal(no.deploy,'');assert.match(no.summary,/rejected on Telegram by anoop. Nothing was deployed./);
+  const idle=await dispatch({when:URGENT,api:flow([{status:'awaiting'}])});
+  assert.equal(idle.code,1);assert.equal(idle.deploy,'');assert.match(idle.summary,/nobody tapped Approve/);
+  const gone=await dispatch({when:URGENT,api:flow([{status:'expired'}])});
+  assert.equal(gone.code,1);assert.match(gone.summary,/no longer active/);
+});
+
 test('Urgent with the right OTP deploys; a wrong or malformed OTP fails the run',async()=>{
   const api=(_path,body)=>body.otp==='123456'?[200,{approved:true}]:[400,{error:'Wrong OTP. 4 attempts left.'}];
   const ok=await dispatch({when:URGENT,otp:' 123456 ',api});

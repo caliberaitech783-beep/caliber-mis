@@ -11,7 +11,7 @@ export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_pending(token_hash TEXT PRIMARY KEY,login_name TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,used_at TIMESTAMPTZ);
  CREATE TABLE IF NOT EXISTS mis_telegram_outbox(id BIGSERIAL PRIMARY KEY,event_key TEXT UNIQUE NOT NULL,chat_id TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),lease_until TIMESTAMPTZ,last_error TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 `;
-export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch}){
+export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null}){
  const hideAudit=(req,res,next)=>{req.audit=false;next()};
  const read=async()=>await store.read(key)||{};
  const login=req=>String(req.session.login||'').trim().toLowerCase();
@@ -54,7 +54,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   if(info.url&&info.url!==webhook)invalid('This bot is connected to a different application. Use a dedicated MIS bot to keep that application working.');
   config.botUsername=bot.username;config.webhookSecret=old.webhookSecret||randomBytes(32).toString('base64url');config.webhookReady=false;
   await store.write(key,config);
-  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message'],drop_pending_updates:false});
+  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message','callback_query'],drop_pending_updates:false});
   config.webhookReady=true;await store.write(key,config);res.json(view(config));
  }));
  app.get('/api/mis-telegram/me',requireSession,wrap(async(req,res)=>{
@@ -73,6 +73,22 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  }));
  app.post('/api/mis-telegram/webhook',wrap(async(req,res)=>{
   const config=await read();if(!equal(req.get('X-Telegram-Bot-Api-Secret-Token'),config.webhookSecret))return res.status(403).json({error:'Invalid webhook authentication.'});
+  // A tapped button (urgent release Approve / Reject). Only a private chat linked to an MIS login counts.
+  const query=req.body?.callback_query;
+  if(query){
+   let answer='This button is no longer active.';
+   try{
+    const chatId=String(query.message?.chat?.id||''),fromId=String(query.from?.id||'');
+    if(config.enabled&&onCallback&&chatId&&chatId===fromId&&query.message?.chat?.type==='private'){
+     const {rows}=await pool.query('SELECT login_name FROM mis_telegram_links WHERE chat_id=$1',[chatId]);
+     const result=await onCallback({data:String(query.data||''),logins:rows.map(row=>row.login_name)});
+     if(result?.answer)answer=result.answer;
+     if(result?.done)await call(config,'editMessageText',{chat_id:chatId,message_id:query.message.message_id,text:String(query.message.text||'').slice(0,3500)+'\n\n'+result.answer}).catch(()=>{});
+    }
+   }catch{answer='Could not record this. Please try again.';}
+   await call(config,'answerCallbackQuery',{callback_query_id:String(query.id),text:answer.slice(0,190)}).catch(()=>{});
+   return res.json({ok:true});
+  }
   const message=req.body?.message,match=/^\/start(?:@\w+)? mis_([A-Za-z0-9_-]{32})$/.exec(message?.text||'');
   if(!config.enabled||!match||message?.chat?.type!=='private'||String(message.from?.id)!==String(message.chat.id)||!/^[1-9]\d{0,18}$/.test(String(message.chat.id)))return res.json({ok:true});
   const client=await pool.connect();let linked=false;
@@ -99,9 +115,15 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    }
   }catch{/* Notification failures do not change saved tickets. */}finally{draining=false}
  }
+ // Webhooks saved before 15 Nov 2026 only asked Telegram for messages; buttons need callback_query too.
+ async function ensureWebhook(){
+  try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken)await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message','callback_query'],drop_pending_updates:false});}catch{}
+ }
  return {
   async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);},
-  start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();}},
+  start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();void ensureWebhook();}},
+  // Sends at once (not through the outbox) a message with buttons to one private chat.
+  async sendButtons(chatId,text,buttons){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,reply_markup:{inline_keyboard:buttons}});return true;},
   stop(){clearInterval(timer);timer=null;},drain,
   async notify(event,ticket){
    const config=await read();if(!config.enabled||!config.webhookReady)return;

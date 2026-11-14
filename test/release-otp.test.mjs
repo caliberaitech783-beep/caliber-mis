@@ -139,3 +139,61 @@ test('the WhatsApp fallback goes only to the owner number through the owner-only
   await assert.rejects(sendReleaseOtp({pool,otp:'12345'},{sendTemplate:async()=>{}}),/Invalid release OTP/);
   await assert.rejects(sendReleaseOtp({pool:{query:async()=>({rows:[]})},otp:'123456'},{sendTemplate:async()=>{}}),/not configured/);
 });
+
+test('Approve / Reject on Telegram: buttons go to the approvers, the first tap decides, and only the asking run can use an approval',async()=>{
+  const clock={now:NOW},pool=fakePool(),asked=[];
+  const app=express();app.use(express.json());
+  const release=registerReleaseOtp(app,{pool,verifyIdentity:verifier(),now:()=>clock.now,sendOtp:async()=>{throw Error('no OTP expected')},
+    sendApproval:async input=>{asked.push(input);return {sent:2}},isApprover:async login=>['anoop','mohitchadda'].includes(login)});
+  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s))});
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const post=async(path,body={},token=jwt())=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify(body)});return {status:r.status,body:await r.json()}};
+  try{
+    const ask=await post('/api/release-otp/request-approval',{commit:'abcdef1234',subject:'Fix'});
+    assert.equal(ask.status,200);assert.match(ask.body.id,/^[0-9a-f]{16}$/);
+    assert.deepEqual([asked[0].actor,asked[0].runId,asked[0].commit,asked[0].id],['dev1','77','abcdef1234',ask.body.id]);
+    const id=ask.body.id;
+    assert.equal((await post('/api/release-otp/decision',{id})).body.status,'awaiting');
+    // Someone who is not an approver, a stale button and a forged button change nothing.
+    assert.match((await release.handleTelegramCallback({data:`rel:${id}:a`,logins:['someone']})).answer,/Only the owners/);
+    assert.match((await release.handleTelegramCallback({data:'rel:ffffffffffffffff:a',logins:['anoop']})).answer,/no longer active/);
+    assert.equal(await release.handleTelegramCallback({data:'other',logins:['anoop']}),null);
+    assert.equal((await post('/api/release-otp/decision',{id})).body.status,'awaiting');
+    const tap=await release.handleTelegramCallback({data:`rel:${id}:a`,logins:['mohitchadda']});
+    assert.match(tap.answer,/Approved by mohitchadda at \d\d:\d\d IST/);assert.equal(tap.done,true);
+    assert.match((await release.handleTelegramCallback({data:`rel:${id}:r`,logins:['anoop']})).answer,/Already approved by mohitchadda/);
+    // Another run cannot use this approval; the asking run gets it once.
+    assert.equal((await post('/api/release-otp/decision',{id},jwt({run_id:'99'}))).body.status,'missing');
+    assert.deepEqual((await post('/api/release-otp/decision',{id})).body,{status:'approved',by:'mohitchadda'});
+    assert.equal((await post('/api/release-otp/decision',{id})).body.status,'used');
+    // Reject, and expiry after ten minutes.
+    clock.now+=61000;
+    const second=(await post('/api/release-otp/request-approval',{})).body.id;
+    await release.handleTelegramCallback({data:`rel:${second}:r`,logins:['anoop']});
+    assert.deepEqual((await post('/api/release-otp/decision',{id:second})).body,{status:'rejected',by:'anoop'});
+    clock.now+=61000;
+    const third=(await post('/api/release-otp/request-approval',{})).body.id;
+    clock.now+=11*60000;
+    assert.equal((await post('/api/release-otp/decision',{id:third})).body.status,'expired');
+    assert.match((await release.handleTelegramCallback({data:`rel:${third}:a`,logins:['anoop']})).answer,/closed|expired/);
+  }finally{server.close();}
+});
+
+test('approval buttons go only to approvers who linked Telegram, and nobody linked means no buttons',async()=>{
+  const {createReleaseApprovalDelivery}=await import('../server/services/release-otp-delivery.mjs');
+  const users=[{login:'Anoop',mobile:'9925565281'},{login:'other',mobile:'9000000000'}];
+  let links=[{chat_id:'11'},{chat_id:'22'}];
+  const pool={query:async(sql,params)=>{
+    if(/Users & employees/.test(sql))return {rows:users.map(record_data=>({record_data}))};
+    if(/mis_telegram_links/.test(sql)){assert.deepEqual(params[0],['anoop','mohitchadda']);return {rows:links};}
+    throw Error(sql);
+  }};
+  const sent=[];
+  const deliver=createReleaseApprovalDelivery({pool,sendButtons:async(chat,text,buttons)=>{sent.push({chat,text,buttons});return true}});
+  assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'77',commit:'abcdef1234567',subject:'Fix'}),{sent:2});
+  assert.deepEqual(sent.map(s=>s.chat),['11','22']);
+  assert.deepEqual(sent[0].buttons[0].map(b=>b.callback_data),['rel:0123456789abcdef:a','rel:0123456789abcdef:r']);
+  assert.match(sent[0].text,/Requested by: dev1 \(GitHub run 77\)\nVersion: abcdef1 - Fix/);
+  links=[];
+  assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'78'}),{sent:0});
+});
