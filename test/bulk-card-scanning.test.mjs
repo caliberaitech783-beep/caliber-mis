@@ -46,7 +46,7 @@ test('batch review gates posting, saves 40 log books atomically, deduplicates re
   [nextId,nextBatch,image,JSON.stringify(nextDraft),JSON.stringify({extractionDraft:nextDraft}),nextId]);
  const nextCard=(await call('/api/scan-batches/'+nextBatch)).data.cards[0];
  assert.equal(String(nextCard.draft.assetId),'1');
- assert.equal(Number(nextCard.draft.openingKmr),1040);
+ assert.equal(Number(nextCard.draft.openingKmr),1000,'a valid scanned opening KMR is retained');
  assert.equal(Number(nextCard.draft.openingHmr),208);
  const changed=(await call('/api/scan-cards/'+nextId,'PUT',{draft:{...nextCard.draft,openingHmr:'209'},revision:nextCard.revision,action:'save'})).data;
  assert.equal(changed.draft.openingHmr,'209');
