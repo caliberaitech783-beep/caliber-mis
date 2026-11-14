@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chooseScanCard,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
-import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS} from '../shared/scan-progress-poll.mjs';
+import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS} from '../shared/scan-progress-poll.mjs';
 
 // Reading the whole entry each time one card finished re-validated every unsaved
 // card: for an entry of N cards that is N whole reads of up to N cards each. On
@@ -49,7 +49,7 @@ function harness(server){
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true,'));
  assert.ok(line,'load found');
  const paths=[],noop=()=>{},state={rows:[],gate:undefined,now:1_000_000,uploading:false};
- const scope={kind:'vehicle',lmv:false,vlbBatch:null,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,chooseScanCard,
+ const scope={kind:'vehicle',lmv:false,vlbBatch:null,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS,chooseScanCard,
   cardsView:{get current(){return {source:state.rows}}},batchLoads:{current:new Map()},partialSince:{current:0},uploadingRef:{get current(){return state.uploading}},activeRef:{current:'batch'},dirtyRef:{current:false},
   Date:{now:()=>state.now},window:{location:{search:''}},
   api:async path=>{paths.push(path.replace('/api/scan-batches/batch',''));const query=path.split('?')[1]||'',cards=server();

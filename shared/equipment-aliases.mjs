@@ -90,11 +90,15 @@ export async function loadLetterRules(pool){
  const {rows}=await pool.query("SELECT a.id,a.kind,a.written_key,a.written_text,a.site,a.equipment_id,m.record_data FROM mis_equipment_aliases a JOIN master_records m ON m.id=a.equipment_id AND m.master_name='Equipment master' WHERE a.status='active' AND COALESCE((to_jsonb(a)->>'all_sites')::boolean,TRUE) ORDER BY a.created_at");
  return deriveLetterRules(rows);
 }
-export async function withEquipmentAliases(pool,assets,options){
+// Reads the aliases and letter rules once and returns a function that attaches them to any number of
+// asset lists: a card save needs two lists (loading equipment, every asset) from the same read.
+export async function equipmentAliasAttacher(pool){
  const aliases=await loadEquipmentAliases(pool);
- const attached=attachEquipmentAliases(assets,aliases,options);
- if(!aliases.some(alias=>alias.status==='active'))return attached;
- return attachLetterRules(attached,await loadLetterRules(pool));
+ const rules=aliases.some(alias=>alias.status==='active')?await loadLetterRules(pool):null;
+ return (assets,options)=>{const attached=attachEquipmentAliases(assets,aliases,options);return rules?attachLetterRules(attached,rules):attached;};
+}
+export async function withEquipmentAliases(pool,assets,options){
+ return (await equipmentAliasAttacher(pool))(assets,options);
 }
 
 export const publicAlias=row=>row?{id:row.id,equipmentId:String(row.equipment_id),kind:row.kind,writtenKey:row.written_key,writtenText:row.written_text,status:row.status,site:row.site,book:row.book,batchId:row.batch_id,requestedBy:row.requested_by,createdAt:row.created_at,

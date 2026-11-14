@@ -34,6 +34,14 @@ test('Working-only saves use authoritative Pulse hours and preserve event detail
  assert.equal(record.data.shiftStatus,'working_partial_breakdown');assert.equal(record.data.breakdownHours,2);assert.equal(record.data.shiftHours,12);assert.equal(record.data.manualBreakdownHours,null);assert.equal(record.data.statusReason,'Engine fault');assert.equal(record.data.hoursSource.breakdownHours,2);assert.equal(record.data.pulseBreakdowns[0].reference,'BD-1');assert.equal(record.data.breakdownHoursSource,'pulse');
 });
 
+test('Conflicting Pulse and working hours leave ELB idle hours unset and preserve the source values',async()=>{
+ const f=fixture({bd:8});
+ const record=await saveFleetEntry(f.client,batch,'19',{entryMode:'working-only',employeeId:'7',openingHmr:3731.4,closingHmr:3737.5,shiftHours:8},'mis',f.ops);
+ assert.equal(record.data.totalWorkingHmr,6.1);
+ assert.equal(record.data.breakdownHours,8);
+ assert.equal(record.data.idleHours,null);
+});
+
 test('Excavator operator handover saves two portions on one ELB with one equipment HMR total',async()=>{
  const f=fixture();
  const input={entryMode:'working-only',employeeId:'7',secondOperatorId:'8',openingHmr:100,handoverHmr:104,closingHmr:108,requestKey:'test'};

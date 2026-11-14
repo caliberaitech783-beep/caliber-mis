@@ -225,7 +225,11 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const data=await ops.resolve(client,'equipment',body,{...(operatorSplit?{operatorSplit,enforceEmployeeSite:true}:{}),manualEntry:true});
  Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:elbTripCount(row),batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
- if(pulse){data.idleHours=idleShiftHours(data.scheduledHours??hours,data.totalWorkingHmr,pulse.breakdownHours);Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
+ if(pulse){
+  const remainingHours=idleShiftHours(data.scheduledHours??hours,data.totalWorkingHmr,pulse.breakdownHours);
+  data.idleHours=remainingHours!==null&&remainingHours>=0?remainingHours:null;
+  Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});
+ }else if(ops.applyHours)await ops.applyHours(data);
  if(nonWorking){data.availabilityHours=0;data.runningHours=0;data.idleHours=idleShiftHours(data.scheduledHours??hours,0,data.breakdownHours);}
  if(additional){
   const cards=(await batchElbRecords(client,batch)).filter(record=>String(record.asset_id)===String(assetId));

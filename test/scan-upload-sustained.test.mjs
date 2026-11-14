@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {scanProgressNeedsValidation,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,mergeScanProgressStages} from '../src/scan-reader-status.mjs';
-import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS} from '../shared/scan-progress-poll.mjs';
+import {scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS} from '../shared/scan-progress-poll.mjs';
 import assert from 'node:assert/strict';
 import React from 'react';
 import {readFileSync} from 'node:fs';
@@ -45,7 +45,7 @@ test('PDF buffers and documents are released on render failure, encoding failure
 test('background polls fetch validation for changed trip cards and retain unchanged checks',async()=>{
  const line=source.split('\n').find(line=>line.startsWith(' const load=async(id,fresh=true,'));
  const paths=[],noop=()=>{},uploadingRef={current:true};let rows=[];
- const scope={kind:'vehicle',lmv:false,scanProgressNeedsValidation,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,partialSince:{current:0},mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
+ const scope={kind:'vehicle',lmv:false,scanProgressNeedsValidation,scanProgressChanged,scanProgressChangedIds,mergeScanCardRefresh,scanProgressActive,SCAN_PARTIAL_REFRESH_MAX,SCAN_FULL_REFRESH_MAX_MS,SCAN_ENTRY_OPEN_TIMEOUT_MS,SCAN_PROGRESS_READ_TIMEOUT_MS,partialSince:{current:0},mergeScanProgressStages,cardsView:{get current(){return {source:rows}}},batchLoads:{current:new Map()},uploadingRef,activeRef:{current:'batch'},vlbBatch:null,
   api:async path=>{paths.push(path);return {batch:{id:'batch'},cards:[{id:'card',status:'review',revision:1,checks:path.includes('?progress=1')?null:{errors:['Needs review']},draft:{},raw_fields:{}}]};},
   setConnectionError:noop,setBatch:noop,setContextGate:noop,setStorage:noop,setReader:noop,setCards:fn=>rows=fn(rows),setSelected:noop,
   chooseScanCard:noop,window:{location:{search:''}},dirtyRef:{current:false}};

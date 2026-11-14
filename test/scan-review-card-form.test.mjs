@@ -61,29 +61,39 @@ test('the review page renders the card form for a selected VLB card',()=>{
  assert.equal(totals.length,2,'Total KMR and Total HMR labels render');
  assert.ok(totals.every(label=>label.props.className===''),'readings within the 8-hour limit are not highlighted');
 });
-test('the original scan appears before cropping and switching cards cancels the old preview',async()=>{
+test('the original scan appears before cropping, stays in memory across card changes, and the next card is downloaded ahead',async()=>{
  const original=new Blob(['original'],{type:'image/webp'});
- let finishCrop,request;
+ let finishCrop;const requests=[];
  const crop=new Promise(resolve=>{finishCrop=resolve});
  const app=harness('&batch=b1&scanView=review&scanGroup=all','vehicle',{
-  fetch:async (path,{signal})=>{request={path,signal};return {ok:true,blob:async()=>original};},
+  fetch:async (path,{signal})=>{requests.push({path,signal});return {ok:true,blob:async()=>original};},
   trimScanPreview:()=>crop
  });
- const initial=loaded(app,[card(1),card(2)]);
+ const initial=loaded(app,[card(1),card(2),card(3)]);
  const image=tree=>nodes(tree,n=>n.type==='img'&&n.props.alt.startsWith('Scanned '))[0];
  assert.ok(nodes(initial,n=>n.props.children==='Loading scan preview…').length);
- const cleanup=app.effects.find(effect=>effect.toString().includes('loadPreview'))();
+ const runEffect=name=>app.effects.find(effect=>effect.toString().includes(name))();
+ const cleanup=runEffect('loadPreview');
  try{
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(request.path,'/api/scan-cards/card-1/image');
-  assert.match(image(app.render()).props.src,/^blob:/);
+  assert.deepEqual(requests.map(r=>r.path),['/api/scan-cards/card-1/image']);
+  const shown=app.render();
+  assert.match(image(shown).props.src,/^blob:/,'the original is shown before cropping finishes');
+  runEffect('prefetch');
+  assert.deepEqual(requests.map(r=>r.path),['/api/scan-cards/card-1/image','/api/scan-cards/card-2/image','/api/scan-cards/card-3/image'],'the next cards in review order are downloaded ahead');
   app.testCapture.setSelected('card-2');
-  assert.equal(image(app.render()),undefined);
+  assert.equal(image(app.render()),undefined,'the old card image is not shown for the new card');
   cleanup();
-  assert.equal(request.signal.aborted,true);
+  assert.equal(requests[0].signal.aborted,false,'leaving a card keeps its downloaded scan');
   finishCrop(new Blob(['cropped'],{type:'image/png'}));
   await crop;
   assert.equal(image(app.render()),undefined);
+  app.testCapture.setSelected('card-1');app.render();
+  const back=runEffect('loadPreview');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.length,3,'returning to a card reuses the scan already in memory');
+  assert.match(image(app.render()).props.src,/^blob:/);
+  back();
  }finally{cleanup();}
 });
 test('meter totals over the shift limit are highlighted without blocking the form',()=>{

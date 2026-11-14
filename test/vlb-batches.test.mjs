@@ -38,6 +38,12 @@ test('batch APIs include every matching saved source, remain open until closed, 
  assert.deepEqual(scanEntries.map(id=>before.data.records.filter(r=>r.data.scanBatchId===id).length),[40,40,40,10]);
  assert.ok(before.data.records.some(r=>r.data.scanCardId));assert.ok(before.data.records.some(r=>!r.data.scanCardId));
  const body={...selection,requestKey:randomUUID()};const created=await call('','POST',body);assert.equal(created.status,201,JSON.stringify(created.data));assert.equal(created.data.entry_count,131);
+ const crossSite=await call('','GET',undefined,'restricted');
+ assert.equal(crossSite.status,200);
+ assert.deepEqual(crossSite.data.batches,[]);
+ assert.deepEqual(crossSite.data.openBatchStatuses,[{...selection,site:created.data.site,stage:'vlb_open'}]);
+ assert.equal((await call('/'+created.data.id,'GET',undefined,'restricted')).status,404);
+ assert.equal((await call('/'+created.data.id+'/close','POST',{},'restricted')).status,404);
  const countsPath='/'+created.data.id+'/card-counts';
  assert.deepEqual((await call(countsPath)).data,{batchId:created.data.id,entry_count:131,manual_count:1,scan_count:130});
  assert.equal((await call(countsPath,'GET',undefined,'restricted')).status,404,'count endpoint retains site authorization');
@@ -62,6 +68,7 @@ test('batch APIs include every matching saved source, remain open until closed, 
  await db.query("UPDATE mis_log_books SET data=data||'{\"door\":\"CHANGED\"}'::jsonb WHERE id=$1",[ids[0]]);
  assert.equal((await call('/'+created.data.id)).data.records[0].data.door,'V07');
  const closed=await call('/'+created.data.id+'/close','POST',{});assert.equal(closed.status,200);assert.ok(closed.data.closed_at);assert.equal(closed.data.entry_count,131);
+ assert.deepEqual((await call('','GET',undefined,'restricted')).data.openBatchStatuses,[]);
  assert.equal((await call('/preview?'+new URLSearchParams({...selection,date:'2026-12-29',shift:'S2'}))).data.siteOpenBatch,null);
  assert.equal((await call('/'+created.data.id+'/close','POST',{})).data.closed_at,closed.data.closed_at);
  assert.equal((await call('')).data.openBatch,null);
