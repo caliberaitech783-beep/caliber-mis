@@ -22,6 +22,7 @@ import {READER_OUTAGE_SCHEMA,OUTAGE_PROBE_MS,readerOutage,outageLaneKey,noteRead
 import {readerOutageAlert} from '../../shared/scan-reader-outage-text.mjs';
 import {recoverMissingEquipmentNumbers} from '../services/scan-machine-number-recovery.mjs';
 import {scanValidationClient} from '../rules/scan-validation-cache.mjs';
+import {createEntryReadSteps} from '../services/entry-read-steps.mjs';
 import {createScanFleetQueue} from '../rules/scan-fleet-queue.mjs';
 import {scanFleetAssignment,scanFleetIssues,scanFleetSignature,scanFleetBlockingMessage} from '../../shared/scan-fleet-assignment.mjs';
 import {parseScanContext,scanContextNotes,scanContextIssues,scanCardSaveContextBlocked,scanContextGate,requireScanUploadContext,scanContextError,applyScanContext} from '../../shared/scan-batch-context.mjs';
@@ -176,7 +177,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  return {errors,warnings,data,number};
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
- readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),
+ readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),entryReadSteps=createEntryReadSteps(),
  progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
  alertAdministrators=null,outageProbeMs=OUTAGE_PROBE_MS,
@@ -536,21 +537,25 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   const cancel=()=>controller.abort();
   res.once('close',cancel);
   if(res.destroyed)cancel();
-  const queuedAt=performance.now();
+  const queuedAt=performance.now(),lap=entryReadSteps.start();
   let startedAt,connectedAt,payload;
   try{
   payload=await readLane.run({},async()=>{
-  startedAt=performance.now();
+  startedAt=performance.now();lap('queue');
   if(controller.signal.aborted)return;
   const db=await pool.connect();
   try{
-   connectedAt=performance.now();
+   connectedAt=performance.now();lap('connection');
    if(controller.signal.aborted)return;
    const only=selectedScanCards(req.query.cards);
    {const earlierSameHash=`FROM mis_scan_cards earlier LEFT JOIN mis_log_books l ON l.id=earlier.logbook_id WHERE ${operationalScanSql('earlier')} AND earlier.image_hash=current.image_hash AND earlier.id<>current.id AND earlier.duplicate_of IS NULL AND earlier.status NOT IN('rejected') AND (earlier.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (earlier.created_at<current.created_at OR (earlier.created_at=current.created_at AND earlier.id<current.id))`;await db.query(`UPDATE mis_scan_cards current SET status='rejected',review_note='${EXACT_DUPLICATE_NOTE}',duplicate_of=COALESCE(current.duplicate_of,(SELECT earlier.id ${earlierSameHash} ORDER BY earlier.created_at,earlier.id LIMIT 1)),checked_by=COALESCE(checked_by,'system'),checked_at=COALESCE(checked_at,NOW()),revision=revision+1,error='' WHERE ${operationalScanSql('current')} AND current.batch_id=$1 AND current.status IN('queued','reading','review','approved','error') AND EXISTS(SELECT 1 ${earlierSameHash})`,[batch.id]);}
+   lap('duplicate-mark');
    const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();
+   lap('reading-request');
    const rows=(await db.query(`SELECT c.id,c.batch_id,c.ordinal,c.filename,c.image_hash,c.ocr_text,c.confidence,c.raw_fields,c.draft,c.status,c.revision,c.checked_by,c.checked_at,c.logbook_id,c.error,c.created_at,c.page_count,c.expected_pages,c.review_note,l.book_no,l.data AS saved_data,l.revision AS saved_revision,l.deleted_at AS logbook_deleted_at FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND ($2::text[] IS NULL OR c.id::text=ANY($2::text[])) ORDER BY ordinal`,[batch.id,only])).rows;
+   lap('card-rows');
    const duplicates=await listDuplicateCards(db,batch.id);
+   lap('duplicate-list');
    const cards=[],deletedCards=[],validationClient=scanValidationClient(db);
    for(const row of rows)decodeScanRow(row);
    const removed=row=>row.raw_fields?.manualDeletion||row.review_note.startsWith('Card deleted manually by user');
@@ -558,9 +563,13 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    const fillable=row=>batch.kind==='vehicle'&&row.status==='review'&&!row.checked_at;
    const live=rows.filter(row=>!removed(row)&&checked(row)),toFill=rows.filter(row=>!removed(row)&&fillable(row));
    const context=batch.expected_context??null,fillMeters=Boolean(context)&&!isLmvScan(batch);
+   lap('decode');
    const world=live.length?await scanCheckWorld(validationClient):null;
+   lap('check-world');
    const duplicateChecks=live.length?await preloadDuplicateChecks(db,batch,live):null;
+   lap('duplicate-preload');
    const meterSites=toFill.length&&fillMeters?await filterLogBookSites(db,req.logBookScope):null;
+   lap('meter-sites');
    // checkMasters: the equipment lists every card's check uses, read once per entry read on first use.
    // Without them each card's check read the whole Equipment master and transfers twice.
    let matchingMasters,meterRows,checkMasters;
@@ -590,17 +599,27 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     if(controller.signal.aborted)return;
     if(removed(row)){deletedCards.push({id:row.id,ordinal:row.ordinal,vehicle:row.raw_fields?.manualDeletion?.vehicle||''});continue;}
     const rawKey=world&&checked(row)?memoKey(row.raw_fields):'';
+    lap('card-other');
     if(fillable(row)){
      const filled=await fillDraft(row,rawKey);
-     if(filled.changed){const updated=await db.query("UPDATE mis_scan_cards SET draft=$1::jsonb,revision=revision+1 WHERE id=$2 AND revision=$3 AND status='review' AND checked_at IS NULL RETURNING revision",[JSON.stringify(encodeScanJson(filled.draft)),row.id,row.revision]);if(updated.rows.length){row.draft=filled.draft;row.revision=updated.rows[0].revision;}}
+     lap('card-fill');
+     if(filled.changed){const updated=await db.query("UPDATE mis_scan_cards SET draft=$1::jsonb,revision=revision+1 WHERE id=$2 AND revision=$3 AND status='review' AND checked_at IS NULL RETURNING revision",[JSON.stringify(encodeScanJson(filled.draft)),row.id,row.revision]);if(updated.rows.length){row.draft=filled.draft;row.revision=updated.rows[0].revision;}lap('card-fill-write');}
     }
     if(row.saved_data&&!row.logbook_deleted_at)requireLogBookSite(req.logBookScope,row.saved_data.location);
+    lap('card-other');
     const check=checked(row)?await checkCard(row,rawKey):{errors:[],warnings:[]};
+    lap('card-check');
     if(readPulseFleet&&checked(row)){if(!row.raw_fields?.fleetReview?.equipmentReadDenied&&row.raw_fields?.fleetReview?.error==='Your Pulse account is not authorised to sync all four masters.')delete row.raw_fields.fleetReview;const message=scanFleetBlockingMessage(row);if(message==='Pulse equipment site verification pending.'&&batch.kind==='vehicle')row.validationPending=row.status!=='error';else if(message)check.errors.push(message);if(!row.raw_fields?.fleetReview||row.raw_fields.fleetReview.signature!==scanFleetSignature(row.draft))queueFleetCheck(row,req.session.login||req.session.name);}
     cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});
    }
    const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
-   return {batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)};
+   lap('card-other');
+   const deletion=await openDeletion(db,batch,req);
+   lap('open-deletion');
+   const reader=await readerInfo(db,batch);
+   lap('reader-info');
+   lap.done({cards:rows.length,partial:Boolean(only)});
+   return {batch:{...batch,deletedCards,openDeletion:deletion},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader};
   }finally{db.release();}
   },{signal:controller.signal});
   }catch(error){
@@ -883,6 +902,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   entryReadReuse:{fill:fillMemo.stats(),check:checkMemo.stats()},
   // Whole and partial entry reads running now, waiting for a slot, and served since start.
   entryReadLane:readLane.stats(),
+  // Where recent entry reads spent their time, step by step (names and milliseconds only).
+  entryReadSteps:entryReadSteps.stats(),
   // The scan screen's progress polls: running, waiting, served, and how many shared another tab's read.
   progressReadLane:progressLane.stats(),
   // Reading held because the account failed: Pulse-II reports every reader's hold (from the database), an engine its own.
