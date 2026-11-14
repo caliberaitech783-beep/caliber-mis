@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 import express from 'express';
-import {registerBulkCardScanning,SCAN_SCHEMA,scanReadSlots} from '../server/routes/bulk-card-scanning.mjs';
+import {registerBulkCardScanning,SCAN_SCHEMA,scanReadSlots,scanProgressSlots} from '../server/routes/bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {createReportLane} from '../server/services/report-lane.mjs';
 
@@ -17,6 +17,9 @@ test('entry read slots come from a setting, with a safe default',()=>{
  assert.equal(scanReadSlots({}),4);
  assert.equal(scanReadSlots({MIS_SCAN_READ_SLOTS:'2'}),2);
  for(const bad of ['0','51','x',''])assert.equal(scanReadSlots({MIS_SCAN_READ_SLOTS:bad}),4,bad);
+ assert.equal(scanProgressSlots({}),4);
+ assert.equal(scanProgressSlots({MIS_SCAN_PROGRESS_SLOTS:'6'}),6);
+ assert.equal(scanProgressSlots({MIS_SCAN_PROGRESS_SLOTS:'0'}),4);
 });
 
 test('the scan screen takes trip totals from the entry list instead of reading every entry',()=>{
@@ -36,8 +39,8 @@ test('the entry list carries trip totals and whole entry reads share a few conne
  const app=express();app.use(express.json());
  const session=(req,res,next)=>{req.session={login:'alice',name:'Alice',role:'super',permissions:{adminLevel:'Admin'}};next()};
  const authorized=(req,res,next)=>next();
- const readLane=createReportLane({slots:1,cacheMs:0});
- registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:authorized,ocr:{recognize:async()=>{throw Error('Not used')}},readLane});
+ const readLane=createReportLane({slots:1,cacheMs:0}),progressLane=createReportLane({slots:1,cacheMs:2000});
+ registerBulkCardScanning(app,{pool,requireSession:session,requireAdministrator:authorized,ocr:{recognize:async()=>{throw Error('Not used')}},readLane,progressLane});
  app.use((e,req,res,next)=>res.status(e.status||500).json({error:e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));t.after(()=>{server.closeAllConnections();server.close()});
  const call=async(route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${server.address().port}`+route,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
@@ -69,10 +72,16 @@ test('the entry list carries trip totals and whole entry reads share a few conne
  assert.equal(checkouts,3);
  assert.equal(mostHeld,1,'one entry read holds a connection at a time');
  assert.deepEqual({slots:readLane.stats().slots,served:readLane.stats().served,active:readLane.stats().active,waiting:readLane.stats().waiting},{slots:1,served:3,active:0,waiting:0});
- // The light progress read answers outside the lane.
- const progress=await call('/api/scan-batches/'+first+'?progress=1');
- assert.equal(progress.status,200);
- assert.equal(progress.data.progress,true);
- assert.equal(readLane.stats().served,3);
- assert.equal(progress.data.cards.reduce((sum,row)=>sum+row.trip_total,0),12,'the list total is the one the progress read adds up');
+ // The progress poll answers outside the entry lane, on one held connection, and tabs asking for
+ // the same entry at the same time share one read.
+ held=0;mostHeld=0;checkouts=0;
+ const polls=await Promise.all([first,first,first].map(id=>call('/api/scan-batches/'+id+'?progress=1')));
+ for(const poll of polls){assert.equal(poll.status,200,JSON.stringify(poll.data));assert.equal(poll.data.progress,true);}
+ assert.equal(checkouts,1,'three polls of one entry take one connection once');
+ assert.equal(readLane.stats().served,3,'polls stay outside the entry read lane');
+ assert.deepEqual({served:progressLane.stats().served,shared:progressLane.stats().shared},{served:1,shared:2});
+ assert.equal(polls[0].data.cards.reduce((sum,row)=>sum+row.trip_total,0),12,'the list total is the one the progress read adds up');
+ // A poll within the share window reuses the finished read; another entry is its own read.
+ const again=await call('/api/scan-batches/'+first+'?progress=1');assert.equal(again.status,200);assert.equal(progressLane.stats().cached,1);
+ const other=await call('/api/scan-batches/'+second+'?progress=1');assert.equal(other.status,200);assert.equal(progressLane.stats().served,2);assert.equal(checkouts,2);
 });
