@@ -96,7 +96,8 @@ export default function SearchableSelect({
       <input {...inputProps} id={inputProps.id||id} ref={input} role="combobox" type="search" aria-label={ariaLabel||label} aria-invalid={ariaInvalid} required={required} autoComplete="off" data-smart-search
         aria-autocomplete="list" aria-expanded={expanded} aria-controls={`${id}-list`}
         aria-activedescendant={activeOption?`${id}-option-${active}`:undefined}
-        aria-describedby={[hint?`${id}-hint`:'',showOverflowValue&&valueOverflows?`${id}-value`:''].filter(Boolean).join(' ')||undefined} aria-busy={loading} disabled={disabled}
+        title={inputProps.title||(selectedValue&&selectedText)||undefined}
+        aria-describedby={[hint?`${id}-hint`:'',showOverflowValue&&valueOverflows&&selectedValue?`${id}-value`:''].filter(Boolean).join(' ')||undefined} aria-busy={loading} disabled={disabled}
         value={query??selectedText} placeholder={loading?'Loading…':placeholder}
         onFocus={(event)=>{setOpen(true);if(selected)event.currentTarget.select()}} onClick={()=>setOpen(true)} onKeyDown={keyDown}
         onChange={(event)=>{setQuery(event.target.value);setActive(-1);setOpen(true);if(selectedValue)commit('')}} />
@@ -104,7 +105,7 @@ export default function SearchableSelect({
     </div>
     {name&&<input type="hidden" form={inputProps.form} name={name} value={selectedValue} disabled={disabled} />}
     {hint&&<small id={`${id}-hint`} className="searchable-select-hint">{hint}</small>}
-    {showOverflowValue&&valueOverflows&&selectedText&&<small id={`${id}-value`} className="searchable-select-full-value">{selectedText}</small>}
+    {showOverflowValue&&valueOverflows&&selectedValue&&selectedText&&<small id={`${id}-value`} className="searchable-select-full-value">{selectedText}</small>}
     {expanded&&<div className="searchable-select-menu">
       <div className="searchable-select-count" role="status">{matching.length} {matching.length===1?'match':'matches'}{matching.length>visibleOptions.length?` · showing first ${visibleOptions.length}`:''}</div>
       <ul id={`${id}-list`} ref={list} role="listbox" aria-label={label?`Matching ${label}`:'Matching choices'}>
