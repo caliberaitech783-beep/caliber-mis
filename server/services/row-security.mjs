@@ -34,11 +34,25 @@ export async function initializeRowSecurity(pool,{enabled=false}={}){
  await client.query('COMMIT');rlsReady=true;
  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }
+// Every query from an HTTP request runs with that request's site scope set on
+// its connection (mis.request_scope), which the mis_log_books policy reads.
+//
+// Until 14 November 2026 the scope was set transaction-locally, so each pooled
+// query cost four round trips to the database server (BEGIN, set_config, the
+// query, COMMIT) while holding one of the ten pool connections; on scanning
+// days that alone kept the pool full. The scope is now set at session level and
+// remembered per connection: a query sends only itself while the connection
+// already carries the scope it needs. A query from no request (a background
+// job, a backup) sets the trusted empty scope first, so a scope never leaks from
+// one caller to the next. A ROLLBACK undoes a session-level set_config made in
+// that transaction, so after any rollback (or a failed COMMIT, or a failed
+// statement) the connection's scope is treated as unknown and set again.
+const TRUSTED_SCOPE='';
 export function rowSecurityPool(pool,{enabled=false,resolveScope}={}){
  if(!enabled)return pool;
- const nativeConnect=pool.connect.bind(pool),nativeQuery=pool.query.bind(pool);
- const settings=async()=>{
-  const context=requests.getStore();if(!context)return null;
+ const nativeConnect=pool.connect.bind(pool);
+ const scopeFor=async()=>{
+  const context=requests.getStore();if(!context)return TRUSTED_SCOPE;
   if(!rlsReady)throw Object.assign(Error('Database security is initializing. Please retry.'),{status:503,code:'57P03'});
   const session=context.req.securitySession||context.req.session;
   if(!session||context.resolving)return JSON.stringify({mode:'sites',sites:[]});
@@ -48,31 +62,36 @@ export function rowSecurityPool(pool,{enabled=false,resolveScope}={}){
   const scope=await context.scope;
   return JSON.stringify({mode:scope.sites===null?'all':'sites',sites:(scope.sites||[]).map(canonicalSiteName)});
  };
+ // The scope each native connection is known to carry; absent means unknown.
+ const known=new WeakMap();
+ const ensureScope=async(client,scope)=>{
+  if(known.get(client)===scope)return;
+  known.delete(client);
+  await client.query("SELECT set_config('mis.request_scope',$1,false)",[scope]);
+  known.set(client,scope);
+ };
  const wrap=client=>{
-  let transaction=false,configured=false;
   const query=async(...args)=>{
    const text=typeof args[0]==='string'?args[0]:args[0]?.text||'';
-   if(/^\s*(BEGIN|START TRANSACTION)\b/i.test(text)){const result=await client.query(...args);transaction=true;configured=false;return result;}
-   if(/^\s*ROLLBACK\s+TO\b/i.test(text)){const result=await client.query(...args);configured=false;return result;}
-   if(/^\s*(COMMIT|ROLLBACK|END)\b/i.test(text)){try{return await client.query(...args);}finally{transaction=false;configured=false;}}
-   if(!requests.getStore())return client.query(...args);
-   const scope=await settings();
-   if(transaction){if(!configured){await client.query("SELECT set_config('mis.request_scope',$1,true)",[scope]);configured=true;}return client.query(...args);}
-   await client.query('BEGIN');
-   try{await client.query("SELECT set_config('mis.request_scope',$1,true)",[scope]);const result=await client.query(...args);await client.query('COMMIT');return result;}
-   catch(error){await client.query('ROLLBACK');throw error;}
+   if(/^\s*(BEGIN|START TRANSACTION)\b/i.test(text))return client.query(...args);
+   if(/^\s*ROLLBACK\b/i.test(text)){try{return await client.query(...args);}finally{known.delete(client);}}
+   if(/^\s*(COMMIT|END)\b/i.test(text)){try{return await client.query(...args);}catch(error){known.delete(client);throw error;}}
+   const scope=await scopeFor();
+   try{await ensureScope(client,scope);return await client.query(...args);}
+   catch(error){known.delete(client);throw error;}
   };
   return new Proxy(client,{get(target,key){if(key==='query')return(...args)=>{const cb=typeof args.at(-1)==='function'?args.pop():null,promise=query(...args);if(cb){promise.then(value=>cb(null,value),error=>cb(error));return;}return promise;};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});
  };
- const connect=async()=>{const req=requests.getStore()?.req;if(req?.securitySession||req?.session)await settings();return wrap(await nativeConnect());};
+ // The scope is resolved before a connection is taken, so a slow master lookup
+ // never holds one of the pool's connections.
+ const connect=async()=>{if(requests.getStore())await scopeFor();return wrap(await nativeConnect());};
  const overrides=new Map();
  return new Proxy(pool,{get(target,key){
   if(overrides.has(key))return overrides.get(key);
   if(key==='connect')return callback=>{const promise=connect();if(callback){promise.then(client=>callback(null,client,client.release.bind(client)),error=>callback(error));return;}return promise;};
   if(key==='query')return(...args)=>{
-   if(!requests.getStore())return nativeQuery(...args);
    const cb=typeof args.at(-1)==='function'?args.pop():null;
-   const promise=(async()=>{await settings();const client=await nativeConnect();try{return await wrap(client).query(...args);}finally{client.release();}})();
+   const promise=(async()=>{const client=await connect();try{return await client.query(...args);}finally{client.release();}})();
    if(cb){promise.then(value=>cb(null,value),error=>cb(error));return;}return promise;
   };
   const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;

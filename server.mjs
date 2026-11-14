@@ -27,7 +27,7 @@ import {registerScannerConnectorAuth} from './server/routes/scanner-connector-au
 import {installMisCredentialClient} from './server/routes/mis-credential-client.mjs';
 import {installMisLoginHandoff} from './server/routes/mis-login-handoff.mjs';
 import {authorizeMisRequest} from './shared/mis-application-access.mjs';
-import {misDatabaseConfig} from './server/rules/mis-database-config.mjs';
+import {misDatabaseConfig,databasePoolMax} from './server/rules/mis-database-config.mjs';
 import {registerMisDomainRedirect} from './server/routes/mis-domain.mjs';
 import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
@@ -315,7 +315,7 @@ const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 const databasePool=new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
-  max:10,
+  max:databasePoolMax(),
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 });

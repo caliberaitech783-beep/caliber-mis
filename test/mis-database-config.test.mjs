@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {misDatabaseConfig} from '../server/rules/mis-database-config.mjs';
+import {misDatabaseConfig, databasePoolMax} from '../server/rules/mis-database-config.mjs';
 
 test('MIS refuses missing or shared Pulse database configuration', () => {
   for (const DATABASE_URL of ['', 'postgresql://u:p@server.postgres.database.azure.com/postgres', 'postgresql://u:p@server.postgres.database.azure.com/tender_tracker']) {
@@ -22,4 +22,12 @@ test('owner-approved shared administrator connection always targets only caliber
   assert.equal(url.pathname,'/caliber_mis');assert.equal(url.search,'');assert.deepEqual(config.ssl,{rejectUnauthorized:true});
   assert.throws(()=>misDatabaseConfig({...env,DATABASE_URL:'postgresql://synthetic:synthetic@other.postgres.database.azure.com/postgres'}));
   assert.throws(()=>misDatabaseConfig({...env,MIS_DATABASE_CONNECTION_MODE:''}));
+});
+
+test('databasePoolMax reads MIS_DATABASE_POOL_MAX within 1 to 50 and otherwise keeps 10', () => {
+  assert.equal(databasePoolMax({}), 10);
+  assert.equal(databasePoolMax({MIS_DATABASE_POOL_MAX: '20'}), 20);
+  assert.equal(databasePoolMax({MIS_DATABASE_POOL_MAX: '0'}), 10);
+  assert.equal(databasePoolMax({MIS_DATABASE_POOL_MAX: '51'}), 10);
+  assert.equal(databasePoolMax({MIS_DATABASE_POOL_MAX: 'ten'}), 10);
 });
