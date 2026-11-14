@@ -194,9 +194,13 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
    let retryInstruction='',attempt=0,connectionRetries=0,rateLimitRetries=0,requests=0;
+   let serviceRetried=false,serializedInstruction,requestBody;
    while(attempt<2){
-    const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
-    const requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
+    if(serializedInstruction!==retryInstruction){
+     const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
+     requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
+     serializedInstruction=retryInstruction;
+    }
     const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+connectionRetries+1,maxAttempts:4,startedAt:new Date().toISOString()}));
     const started=Date.now(),signal=AbortSignal.timeout(requestTimeoutMs);
     let res,body;
@@ -236,10 +240,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      continue;
     }
     if(!res.ok){
-     if([500,502,503,504].includes(res.status)&&++attempt<2){
+     if([500,502,503,504].includes(res.status)&&!serviceRetried){
+      serviceRetried=true;
       await res.body?.cancel?.();
       const seconds=Number(res.headers?.get('retry-after')),delayMs=Math.min(60000,Math.max(2000,Number.isFinite(seconds)?seconds*1000:0));
-      await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'HTTP '+res.status,delayMs});
+      await onProgress?.('retrying',{attempt:requests+1,maxAttempts:Math.max(requests+1,3),reason:'HTTP '+res.status,delayMs});
       await sleep(delayMs);
       continue;
      }
