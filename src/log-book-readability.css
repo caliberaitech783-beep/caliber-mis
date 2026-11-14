@@ -120,18 +120,22 @@
     grid-template-columns: minmax(0,1fr) 96px 44px;
     grid-template-areas: none;
     gap: 10px;
-    align-items: end;
+    /* Top-aligned so a note under the equipment box cannot push trips/delete down. */
+    align-items: start;
     margin: 0 0 10px;
   }
-  #scan-entry-fields .scan-machine-summary .scan-trip-row > label { gap: 4px; margin: 0; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row > label { gap: 4px; margin: 0; min-width: 0; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row > label > span { line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row :is(input:not([type=checkbox]):not([type=radio])) { height: 40px; min-height: 40px; }
+  #scan-entry-fields .scan-machine-summary .scan-trip-row > label > small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #scan-entry-fields .scan-machine-summary .scan-trip-remove {
     grid-area: auto;
-    align-self: stretch;
+    align-self: start;
     justify-self: stretch;
     width: 44px;
-    height: auto;
+    height: 40px;
     min-height: 40px;
-    margin: 22px 0 0;
+    margin: 26px 0 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
