@@ -399,10 +399,11 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  // asset (log book data), from the same shared master copy with the aliases read and attached once.
  // Read before the save transaction starts: the copy's revision check must not run inside it.
  // Both lists carry the vehicle transfer history; the check applies assetForSiteOnDate per card.
- const readSaveEquipment=async()=>{
-  const rows=(await readScanMasters(pool,['Equipment master','Vehicle transfers'])).rows;
+ // An entry read passes its own connection (no transaction there) so it does not take a second one.
+ const readSaveEquipment=async(client=pool)=>{
+  const rows=(await readScanMasters(client,['Equipment master','Vehicle transfers'])).rows;
   const transfers=rows.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data);
-  const attach=await equipmentAliasAttacher(pool);
+  const attach=await equipmentAliasAttacher(client);
   return {attach,equipment:attach(attachTransferHistory(scanEquipmentMasters(rows),transfers)),assets:attach(attachTransferHistory(rows.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id)})),transfers))};
  };
  const scanIssueOptions=async(client,batch,masters,attach=null)=>{
@@ -550,7 +551,9 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    const world=live.length?await scanCheckWorld(validationClient):null;
    const duplicateChecks=live.length?await preloadDuplicateChecks(db,batch,live):null;
    const meterSites=toFill.length&&fillMeters?await filterLogBookSites(db,req.logBookScope):null;
-   let matchingMasters,meterRows;
+   // checkMasters: the equipment lists every card's check uses, read once per entry read on first use.
+   // Without them each card's check read the whole Equipment master and transfers twice.
+   let matchingMasters,meterRows,checkMasters;
    // Earlier meter readings of every vehicle in the entry come from one query, read on first use.
    const readMeterRows=async({assetId,date})=>{
     if(date===context?.bookDate){meterRows??=await preloadVlbOpeningMeterRows(db,toFill.map(row=>row.draft?.assetId).filter(Boolean),date,meterSites);const loaded=meterRows.get(String(assetId));if(loaded)return loaded;}
@@ -570,7 +573,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    };
    const checkCard=(row,rawKey)=>{
     const questions={image:()=>duplicateChecks.image(row),content:identity=>duplicateChecks.content(row,identity)};
-    const compute=async ask=>{const result=await checkScanCard(validationClient,batch.kind,row,row.draft,{context,duplicates:{image:()=>ask.image(),content:(card,identity)=>ask.content(identity)}});return {errors:result.errors,warnings:result.warnings};};
+    const compute=async ask=>{checkMasters??=readSaveEquipment(db);const result=await checkScanCard(validationClient,batch.kind,row,row.draft,{context,masters:await checkMasters,duplicates:{image:()=>ask.image(),content:(card,identity)=>ask.content(identity)}});return {errors:result.errors,warnings:result.warnings};};
     return world?checkMemo(row.id,memoKey('check',world,batch.kind,context,row.batch_id,row.page_count,row.expected_pages,row.image_hash,row.created_at,row.draft,rawKey),questions,compute):compute(questions);
    };
    for(const row of rows){
