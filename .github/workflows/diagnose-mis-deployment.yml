@@ -45,3 +45,8 @@ jobs:
         env:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
         run: node scripts/probe-slot-configuration.mjs
+      - name: Read scan engine startup logs
+        if: always() && inputs.target == 'scan-engine'
+        env:
+          SCAN_ENGINE_APP: ${{ vars.SCAN_ENGINE_APP }}
+        run: node scripts/probe-scan-engine-startup.mjs
