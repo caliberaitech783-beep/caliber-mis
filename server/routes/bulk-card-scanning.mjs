@@ -38,7 +38,7 @@ import {allowedScanBatches,requireLogBookSite,createLogBookSiteCache,scanDeletio
 import {fillVlbScanOpeningMeters,readVlbOpeningMeterRows,preloadVlbOpeningMeterRows} from '../rules/vlb-scan-opening-meters.mjs';
 import {createScanCheckMemo,memoKey} from '../rules/scan-check-memo.mjs';
 import {stableJson} from '../services/log-book-deletion-scope.mjs';
-import {fillScanTripEstimates} from '../../shared/scan-trip-estimates.mjs';
+import {fillScanTripEstimates,previousShiftRecordReader} from '../../shared/scan-trip-estimates.mjs';
 import {completeScanTripDetails} from '../../shared/scan-trip-completion.mjs';
 import {canAutoSaveScanCard} from '../../shared/scan-auto-save.mjs';
 import {scanBatchReport,scanBatchExportTables} from '../../shared/scan-batch-report.mjs';
@@ -592,13 +592,14 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    // checkMasters: the equipment lists every card's check uses, read once per entry read on first use.
    // Without them each card's check read the whole Equipment master and transfers twice.
    let matchingMasters,meterRows,checkMasters;
+   const previousShiftRecords=previousShiftRecordReader((sql,args)=>validationClient.query(sql,args),toFill.map(row=>row.draft?.assetId));
    // Earlier meter readings of every vehicle in the entry come from one query, read on first use.
    const readMeterRows=async({assetId,date})=>{
     if(date===context?.bookDate){meterRows??=await preloadVlbOpeningMeterRows(db,toFill.map(row=>row.draft?.assetId).filter(Boolean),date,meterSites);const loaded=meterRows.get(String(assetId));if(loaded)return loaded;}
     return readVlbOpeningMeterRows(db,assetId,date,meterSites);
    };
    const fillDraft=(row,rawKey)=>{
-    const questions={records:async({sql,args})=>({rows:(await validationClient.query(sql,args)).rows}),meters:readMeterRows};
+    const questions={records:async({sql,args})=>({rows:await previousShiftRecords(sql,args)}),meters:readMeterRows};
     const compute=async ask=>{
      matchingMasters??=scanMastersForBook((await readScanMasters(db,MASTER_NAMES)).rows,batch);
      const matched=matchScanDraft(applyScanContext(batch.expected_context,row.draft),row.raw_fields,batch.kind,matchingMasters);

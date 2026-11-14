@@ -59,8 +59,27 @@ export async function fillScanTripEstimates(client,input={},raw={}){
  const needsMachine=(next.trips||[]).some(row=>!isUnloadingOnlyTrip(row)&&(row.loadingTime||row.unloadingTime)&&(empty(row.equipmentName)||identifyCardMachine(row.equipmentName,'equipment',{allowSuffix:true})?.hasNumber===false));
  const previous=previousScanShift(next);
  if(!needsMachine||!previous||!operationalDate(previous.bookDate)||!next.assetId||!next.location)return next;
- const records=(await client.query(`SELECT id,book_no,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND asset_id=$1 AND site=$2 AND book_date=$3 AND data->>'cardShift'=$4 ORDER BY id DESC`,[next.assetId,next.location,previous.bookDate,previous.cardShift])).rows;
+ const records=(await client.query(PREVIOUS_SHIFT_RECORDS_SQL,[next.assetId,next.location,previous.bookDate,previous.cardShift])).rows;
  return completePreviousShiftMachines(next,records);
+}
+export const PREVIOUS_SHIFT_RECORDS_SQL=`SELECT id,book_no,data FROM mis_log_books WHERE book_type='vehicle' AND deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND asset_id=$1 AND site=$2 AND book_date=$3 AND data->>'cardShift'=$4 ORDER BY id DESC`;
+
+// On 15 Nov 2026 card-fill took 0.8 s on average and up to 4.3 s for a 40-card entry read, because
+// each card asked PREVIOUS_SHIFT_RECORDS_SQL on its own (and again on every read, since the fill memo
+// re-asks it to see whether the answer changed). The cards of one entry share their site and shift,
+// so the first question loads the previous-shift log books of every vehicle in the entry at once and
+// each card's question is answered from them with the same rows, in the same order. A vehicle that
+// was not in the entry's list, or any other query, goes to the database as before.
+export function previousShiftRecordReader(query,assetIds=[]){
+ const assets=[...new Set(assetIds.map(id=>String(id??'')).filter(id=>/^\d+$/.test(id)))];
+ const loads=new Map();
+ return async(sql,args=[])=>{
+  const [assetId,site,bookDate,cardShift]=args;
+  if(sql!==PREVIOUS_SHIFT_RECORDS_SQL||!assets.includes(String(assetId)))return (await query(sql,args)).rows;
+  const key=JSON.stringify([site,bookDate,cardShift]);
+  if(!loads.has(key))loads.set(key,query(PREVIOUS_SHIFT_RECORDS_SQL.replace('AND asset_id=$1 ','AND asset_id=ANY($1::bigint[]) ').replace('SELECT id,book_no,data ','SELECT id,book_no,data,asset_id::text AS preload_asset_id '),[assets,site,bookDate,cardShift]).then(result=>result.rows).catch(error=>{loads.delete(key);throw error;}));
+  return (await loads.get(key)).filter(row=>row.preload_asset_id===String(assetId)).map(({preload_asset_id,...row})=>row);
+ };
 }
 
 export function tripEstimateNote(row,key){
