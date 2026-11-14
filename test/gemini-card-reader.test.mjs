@@ -17,6 +17,16 @@ test('door recovery bypasses same-image OCR cache and stores a fresh reading',as
  const fresh=await reader.recognize(image,{forceRead:true});assert.equal(calls,2);assert.equal(fresh.handwrittenFields.door,'V/833');
  assert.equal((await reader.recognize(image)).handwrittenFields.door,'V/833');assert.equal(calls,2);
 });
+test('a recheck can ask another Gemini model and records which model answered',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-recheck-model-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const urls=[];
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async url=>{urls.push(url);return ok(JSON.stringify(response()));}});
+ const image=Buffer.from('recheck-model-card'),modelPath=model=>new RegExp('/models/'+model.replaceAll('.','\\.')+':generateContent');
+ const first=await reader.recognize(image);assert.equal(first.extraction.model,MODEL);
+ const recheck=await reader.recognize(image,{forceRead:true,model:'gemini-3.8-flash'});assert.equal(recheck.extraction.model,'gemini-3.8-flash');
+ assert.match(urls[0],modelPath(MODEL));assert.match(urls[1],modelPath('gemini-3.8-flash'));
+ // A value that is not a Gemini model ID falls back to the first model.
+ await reader.recognize(image,{forceRead:true,model:'other/model'});assert.match(urls[2],modelPath(MODEL));
+});
 test('one Gemini call fills header, meter, summary and literal individual rows; same-image cache avoids another call',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-single-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let calls=0;
  const opts={prepareViews:async()=>[{label:'Header',image:Buffer.from('detail')}],cacheDir:dir,getKey:async()=>'test-secret',minIntervalMs:0,sleep:async()=>{},fetchImpl:async(url,options)=>{calls++;assert.ok(url.includes(MODEL));const body=JSON.parse(options.body);assert.equal(body.contents[0].parts.filter(p=>p.inlineData).length,2);assert.equal(body.contents[0].parts[1].inlineData.data,Buffer.from('card').toString('base64'));assert.ok(body.contents[0].parts[0].text.includes('ONE response'));const data=response();data.fields.shift=field('III (C)');return ok(JSON.stringify(data));}};

@@ -185,10 +185,10 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   gate.chain=turn.catch(()=>{});
   return turn;
  }
- async function run(image,kind,onProgress,forceRead=false){
+ async function run(image,kind,onProgress,forceRead=false,model=MODEL){
   if(!['vehicle','equipment'].includes(kind))throw Error('Invalid card type.');
   const imageHash=createHash('sha256').update(image).digest('hex'),file=path.join(cacheDir,`${imageHash}-${kind}-single-${kind==='vehicle'?'v17':'v16'}.json`);
-  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===MODEL&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
+  let record;try{if(forceRead)throw Error('Fresh image read requested');const saved=JSON.parse(await fs.readFile(file,'utf8'));if(saved.imageHash===imageHash&&saved.model===model&&saved.kind===kind&&saved.finishReason==='STOP'&&saved.raw) {const parsed=parseCardResponse(saved.raw,kind);if(!parsed.issues.some(issue=>/equipment (?:number|fleet prefix) missing or unreadable/.test(issue))&&!summaryMissing(parsed,kind))record=saved;}}catch{}
   if(!record){
    const key=await getKey(),gate=gateFor(key);await onProgress?.('extracting');
    const timing={prepMs:0,prepWaitMs:0,prepReused:true};
@@ -204,7 +204,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    while(attempt<2){
     if(serializedInstruction!==retryInstruction){
      const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
-     requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
+     requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig(model)});
      serializedInstruction=retryInstruction;
     }
     const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+connectionRetries+1,maxAttempts:4,startedAt:new Date().toISOString()}));
@@ -212,7 +212,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
     let res,body;
     requests++;
     try{
-     res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal,body:requestBody});
+     res=await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},signal,body:requestBody});
      if(res.ok)body=await res.json();
     }
     catch(error){
@@ -220,7 +220,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      // An answer cut off mid-way is a broken connection too: ask again instead of failing the card.
      const interrupted=error instanceof SyntaxError&&!signal.aborted;
      const cause=interrupted?'response interrupted':geminiConnectionFailure(signal.aborted?signal.reason:error,requestTimeoutMs);
-     console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${MODEL}, request ${(requestBody.length/1048576).toFixed(1)} MB, request ${requests}.`);
+     console.error(`Gemini request failed (${cause}) after ${Date.now()-started} ms; model ${model}, request ${(requestBody.length/1048576).toFixed(1)} MB, request ${requests}.`);
      if(connectionRetries===2)throw Error(interrupted?'Gemini response was interrupted. The scan is retained; retry extraction.':`Gemini connection timed out or failed after ${connectionRetries+1} attempts (${cause}). The scan is retained; retry extraction.`);
      const delayMs=2000*2**connectionRetries+Math.floor(Math.random()*1000);
      connectionRetries++;
@@ -262,11 +262,11 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      throw Object.assign(Error(geminiHttpError(res.status)),{status:res.status,upstream:await upstreamMessage(res)});
     }
     attempt++;
-    record={imageHash,kind,model:MODEL,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,...timing,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
+    record={imageHash,kind,model,modelVersion:body.modelVersion||null,usage:body.usageMetadata||null,elapsedMs:Date.now()-started,totalElapsedMs:Date.now()-totalStarted,attempts:requests,...timing,finishReason:body.candidates?.[0]?.finishReason||null,raw:body.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('')||''};
     if(record.finishReason!=='STOP'){
      // Say why Google stopped (length limit, safety filter, no answer at all) and ask once more.
      const why=String(record.finishReason||body.promptFeedback?.blockReason||'no answer').replace(/[^A-Za-z_ ]/g,'').slice(0,40);
-     console.error(`Gemini answer incomplete (${why}) after ${Date.now()-started} ms; model ${MODEL}, request ${requests}.`);
+     console.error(`Gemini answer incomplete (${why}) after ${Date.now()-started} ms; model ${model}, request ${requests}.`);
      if(attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'incomplete answer: '+why,delayMs:0});continue;}
      throw Error(`Gemini response was incomplete (${why}). The scan is retained; retry extraction.`);
     }
@@ -298,8 +298,9 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
   if(rest.handwritingCandidates.door)rest.handwritingCandidates.door={...rest.handwritingCandidates.door,value:door,text:door};
   rest.cardShift=normalizeCardShift(rest.cardShift);
   if(kind==='vehicle')rest.shiftSelectionStatus=fields.shift.status==='clear'&&rest.cardShift?'clear':fields.shift.status==='missing'?'missing':'unclear';
-  return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:MODEL,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,prepMs:record.prepMs??null,prepWaitMs:record.prepWaitMs??null,prepReused:record.prepReused??null,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
+  return {...rest,responseRecoveryIssues,provider:'gemini',extraction:{imageHash,model:record.model||model,originalResponse:record.raw,doorFormatting:{original:originalDoor,value:door,rule:kind==='vehicle'?'Literal slash after fleet prefix; legacy S/NN separator':'Literal equipment notation'},usage:record.usage,elapsedMs:record.elapsedMs,totalElapsedMs:record.totalElapsedMs??record.elapsedMs,attempts:record.attempts??1,prepMs:record.prepMs??null,prepWaitMs:record.prepWaitMs??null,prepReused:record.prepReused??null,fields,trips,issues:hybrid.issues,rows:hybrid.rows,summary:hybrid.summary},extractionWarning:['Gemini: check extracted values against the scan.',...hybrid.issues].join(' ')};
  }
- function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress,job.forceRead)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
- return {recognize(image,{kind='vehicle',onProgress,forceRead=false}={}){const key=kind+':'+(forceRead?'fresh:':'cached:')+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,forceRead,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
+ function drain(){while(active<concurrency&&queue.length){const job=queue.shift();active++;Promise.resolve().then(()=>run(job.image,job.kind,job.onProgress,job.forceRead,job.model)).then(job.resolve,job.reject).finally(()=>{active--;pending--;drain();});}}
+ // model: a recheck of a doubtful card can ask another Gemini model (RECHECK_MODEL) than the first read.
+ return {recognize(image,{kind='vehicle',onProgress,forceRead=false,model}={}){model=/^gemini-[a-z0-9.-]{1,60}$/.test(String(model||''))?model:MODEL;const key=kind+':'+model+':'+(forceRead?'fresh:':'cached:')+createHash('sha256').update(image).digest('hex');if(inFlight.has(key))return inFlight.get(key).then(result=>structuredClone(result));if(pending>=maxPending)return Promise.reject(Error('Gemini queue full; retry the retained scan.'));pending++;const task=new Promise((resolve,reject)=>{queue.push({image,kind,onProgress,forceRead,model,resolve,reject});drain();}).finally(()=>inFlight.delete(key));inFlight.set(key,task);return task;}};
 }

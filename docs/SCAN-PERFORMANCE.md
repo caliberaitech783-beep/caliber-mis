@@ -348,3 +348,41 @@ trip row, so it costs as much as the first read. A recheck that sends only the
 header detail and asks only for the door and site when the first read had no
 other problem would cut a clean card's reading time by about a third, but it
 changes what the second read confirms, so it waits for the owner's decision.
+
+## Flash-Lite first, Flash only for doubtful cards (14 November 2026, night)
+
+The owner set a target of 50 batches a day (about 7,750 trip cards) and chose
+Flash-Lite for speed. Measured on production before the change:
+
+- Reading time. `gemini.totalElapsedMs` of 547 Flash-Lite cards (12 November)
+  had a median of 5.7 s; 514 `gemini-3.8-flash` cards (14 November) 23.6 s,
+  with about 1,900 thinking tokens per card against none for Flash-Lite. From
+  13 November 04:00 IST, when PR 204 made Flash the default, the scan history
+  shows Gemini time per card rising from 5-7 s to 17-36 s and cards waiting
+  2-20 minutes (up to 74) before a reader took them.
+- Accuracy. Gemini's own reading (`raw_fields.extractionDraft`) compared with
+  the saved draft, two entries per site at all seven sites: 13.2% of Flash-Lite
+  cards and 7.6% of Flash cards had at least one value an operator corrected.
+  Flash-Lite's typical misses: a door's S read as 5 (12 cards), closing KMR
+  digits (27 cards against 8), trip times such as 07:67 (19 cells against 1).
+  Formatting differences (register numbers after a door or machine, the
+  V/1NNN separator) were not counted.
+- Rechecks. 112 of 264 Flash-Lite cards and 96 of 260 Flash cards failed at
+  least one first-read check (`firstScanProblems`).
+
+Change: the first read is Flash-Lite (`DEFAULT_MODEL`). When the first read
+fails a check for the door, Caliber ID, HMR, KMR or the trip table
+(`RECHECK_MODEL_GROUPS`), the existing single recheck read is sent to
+`gemini-3.8-flash` (`RECHECK_MODEL`, setting `MIS_GEMINI_RECHECK_MODEL`, `off`
+to keep every reread on the first model). A clean trip card's door verification
+stays on Flash-Lite. Date, site and shift problems alone do not escalate: they
+usually mean a card of another shift or site.
+
+Expected, not measured: with about 40% of cards escalated a trip card costs
+about 6 s + 0.6 x 6 s + 0.4 x 24 s, roughly 19 s of Gemini time against about
+47 s with Flash for both reads; eight workers on one queue then read about
+1,500 cards an hour, against about 600. The next scanning day's cards show it:
+compare `gemini.totalElapsedMs`, `scanTiming.queuedMs` and the share of cards
+with `firstScanFieldRecovery.model`, and repeat the accuracy comparison above.
+The scan engines take the change at their next nightly deploy (20:45 IST) or an
+approved manual run of the engine deploy workflow.

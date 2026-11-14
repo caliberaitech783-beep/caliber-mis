@@ -39,7 +39,7 @@ For each site:
 2. Link the project to a billing account (Billing > Link a billing account).
 3. Enable the "Generative Language API".
 4. Create an API key (APIs & Services > Credentials), restricted to the Generative Language API.
-5. Check the project's rate limit for the model the app uses (`gemini-3.8-flash` by default, or the `MIS_GEMINI_MODEL` app setting) under Quotas.
+5. Check the project's rate limits under Quotas for both models the app uses: `gemini-3.1-flash-lite` for every first read (or the `MIS_GEMINI_MODEL` app setting) and `gemini-3.8-flash` for the rechecks of doubtful cards (or `MIS_GEMINI_RECHECK_MODEL`).
 
 The engine health page showing `"key": "site"` for every site proves only that each site has its own key, not that the keys come from separate projects. If the bill or the quota still behaves like one shared limit, open APIs & Services > Credentials in each project and confirm that no project holds more than one of the seven site keys.
 
