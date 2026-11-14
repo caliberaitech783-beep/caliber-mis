@@ -858,8 +858,8 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
   const selected=tripEquipmentSelectionValue(row,assets,draft.location,draft.tripBodyRuleVersion||1);
   const field='scanMachineSummary.'+i+'.equipmentName';
   return <div className="scan-trip-row" key={i}>
-   <label>Equipment name
-    <SmartSelect searchable required disabled={!draft.location} showOverflowValue
+   <label><span>Equipment name</span>
+    <SmartSelect searchable required disabled={!draft.location}
      aria-label={'Machine-wise summary equipment row '+(i+1)} aria-invalid={Boolean(equipmentValidation.issues[field])}
      value={selected} onChange={e=>correctEquipment('scanMachineSummary',i,e.target.value)}>
      <option value="">Select equipment registered at {draft.location||'this site'}</option>
@@ -868,9 +868,9 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
       return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{loadingEquipmentLabel(asset)}</option>;
      })}
     </SmartSelect>
-    {!selected&&row.equipmentName&&<small className="scan-field-message">Equipment on draft: {row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName}</small>}
+    {!selected&&row.equipmentName&&<small className="scan-field-message" title={'Equipment on draft: '+(row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName)}>Equipment on draft: {row.originalEquipmentName||row.equipmentNotation?.original||row.equipmentName}</small>}
    </label>
-   <label>Trips<input aria-label={'Machine-wise summary trips row '+(i+1)} type="number" min="1" step="1" value={row.tripCount??''} onChange={e=>update('scanMachineSummary',draft.scanMachineSummary.map((item,index)=>index===i?{...item,tripCount:e.target.value}:item))}/></label>
+   <label><span>Trips</span><input aria-label={'Machine-wise summary trips row '+(i+1)} type="number" min="1" step="1" value={row.tripCount??''} onChange={e=>update('scanMachineSummary',draft.scanMachineSummary.map((item,index)=>index===i?{...item,tripCount:e.target.value}:item))}/></label>
    <button className="scan-trip-remove" type="button" disabled={readonly||busy} aria-label={'Remove machine-wise summary row '+(i+1)} onClick={()=>update('scanMachineSummary',draft.scanMachineSummary.filter((_,n)=>n!==i))}><Trash2 size={14}/></button>
   </div>;
  })}<button type="button" className="scan-add-trip scan-add-machine" disabled={readonly||busy} onClick={()=>{const listed=new Set((draft.scanMachineSummary||[]).map(row=>machineLabel(row.equipmentName)));const missing=machineSummary(draft.trips||[]).find(row=>!listed.has(row.equipmentName));update('scanMachineSummary',[...draft.scanMachineSummary||[],missing?{equipmentName:missing.equipmentName,tripCount:missing.tripCount}:{equipmentName:'',tripCount:''}]);}}><Plus size={14}/>Add machine row</button>{machineIssues.map(issue=><p key={issue} className="scan-error">{issue}</p>)}</section>}
