@@ -7,8 +7,9 @@ test('the Equipment review button opens its dialog even while the batch context 
 const dialog=readFileSync(new URL('../src/scan-equipment-review-dialog.jsx',import.meta.url),'utf8');
 test('the equipment review dialog is not frozen by the shared autosave busy flag',()=>{
  assert.match(source,/<ScanEquipmentReviewDialog [^>]*busy=\{fleetBusy\}/,'the dialog follows its own fleetBusy flag, not the batch-wide busy flag that autosave holds');
- assert.match(source,/const resolveFleet=async\(card,action\)=>\{[^\n]*setFleetBusy\(true\)/,'fleet actions set fleetBusy');
- assert.doesNotMatch(source,/const resolveFleet=async\(card,action\)=>\{[^\n]*setBusy\(true\)/,'fleet actions do not touch the batch-wide busy flag');
+ const fleetHandler=source.slice(source.indexOf(' const resolveFleet='),source.indexOf(' const closeFleetDialog='));
+ assert.match(fleetHandler,/setFleetBusy\(true\)/,'fleet actions set fleetBusy');
+ assert.doesNotMatch(fleetHandler,/\bsetBusy\(true\)/,'fleet actions do not touch the batch-wide busy flag');
  assert.match(dialog,/<button type="button" onClick=\{onReview\}>Review highlighted card</,'Review highlighted card is never disabled');
 });
 test('the equipment review dialog has a close button that keeps the card on hold',()=>{
