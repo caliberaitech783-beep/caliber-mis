@@ -44,6 +44,13 @@ export function cardMachineKey(value,kind='equipment',{allowSuffix=true}={}){
  const legacy=text(value).toUpperCase().match(/^([A-Z]{1,5})\s*[-/]?\s*(\d+)(?=$|[\s(·–—-])/);
  return legacy?legacy[1]+legacy[2].replace(/^0+(?=\d)/,''):text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
 }
+// The key a written door has when its first digit 1 is really the slash or dash
+// after the letters (V/334 read as V1334 -> V334, S/01 read as S101 -> S1).
+// Needs at least two digits after that 1.
+export function separatorCorrectedKey(value,kind='equipment'){
+ const parts=cardMachineKey(value,kind).match(/^([A-Z]+)1(\d{2,})$/);
+ return parts?parts[1]+parts[2].replace(/^0+(?=\d)/,''):'';
+}
 // Approved card aliases (for example written "L21" for door DEMO21-00179) index beside the real door.
 const identifiers=row=>{
  const doors=[row.door,row.doorNo,equipmentDoorNumber(row)].filter(value=>value&&/\d/.test(value));
@@ -78,6 +85,14 @@ export function matchCardMachine(rows=[],value,site='',kind='equipment'){
  const exactMaster=target?[...(indexes.masterDoors.get(target)||[])]:[];
  const matches=exactMaster.length?exactMaster:target?[...(index.get(target)||[])]:[];
  if(matches.length)return {machine,matches,match:matches.length===1?matches[0]:null,status:matches.length===1?'matched':'ambiguous'};
+ // The slash/dash after the letters is often read as a 1 (V/334 -> V1334). When
+ // no door answers the read number and exactly one door answers it without that
+ // leading 1, the card meant that door.
+ const corrected=separatorCorrectedKey(value,kind);
+ if(corrected){
+  const fixed=[...(indexes.masterDoors.get(corrected)||index.get(corrected)||[])];
+  if(fixed.length===1)return {machine,matches:fixed,match:fixed[0],status:'separator',correctedKey:corrected};
+ }
  // Recover one omitted or duplicated digit only inside the selected site and
  // fleet prefix. Exact matches above always win, and ambiguity never guesses.
  const parts=kind==='vehicle'&&target.match(/^([A-Z]+)(\d+)$/),near=[];

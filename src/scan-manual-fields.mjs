@@ -15,7 +15,7 @@ export function manualScanIssues(input={},kind='vehicle',raw={},options=null,lmv
  if(!String(draft.doorText||'').trim())issues.doorText='Enter the door number from the card.';
  if(kind==='vehicle'&&!lmv&&Array.isArray(options?.assets)&&draft.doorText&&draft.assetId){
   const {match,status}=matchCardMachine(options.assets,draft.doorText,draft.location,kind);
-  if(status!=='matched'||String(match.id)!==String(draft.assetId))issues.doorText||='The door number must uniquely match the linked vehicle in Equipment Master for this site.';
+  if(!['matched','separator'].includes(status)||String(match.id)!==String(draft.assetId))issues.doorText||='The door number must uniquely match the linked vehicle in Equipment Master for this site.';
  }
  for(const key of draft.meterReviewFields||[])if(draft.meterReviewMessages?.[key])issues[key]=draft.meterReviewMessages[key];
  if(options)for(const [key,collection,label]of [['assetId','assets','Linked equipment'],['employeeId','employees','Driver / operator'],['shiftId','shifts','Shift']]){
