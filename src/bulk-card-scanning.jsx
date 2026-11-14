@@ -821,7 +821,6 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
        {k==='equipmentName'
         ?<SmartSelect
           searchable
-          showOverflowValue
           required={tripEquipmentRequired(r,draft.timeMode)}
           disabled={!draft.location}
           aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])}
@@ -836,11 +835,11 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
            return <option key={asset.id} value={String(asset.id)} data-display-label={value}>{loadingEquipmentLabel(asset)}</option>;
           })}
          </SmartSelect>
-        :k==='jobType'?<WorkOrderJobSelect showOverflowValue row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
+        :k==='jobType'?<WorkOrderJobSelect row={r} contracts={tripContracts} label={l+' row '+(i+1)} disabled={readonly||busy} onChange={job=>update('trips',draft.trips.map((row,n)=>n===i?{...row,...job}:row))}/>
         :<input aria-invalid={Boolean(fieldIssues['trips.'+i+'.'+k])} aria-label={l+' row '+(i+1)} onKeyDown={k==='tripCount'?e=>continueScanTrip(e,i):undefined} type={t==='time'?'text':t} inputMode={t==='time'?'numeric':undefined} placeholder={t==='time'?'HH:MM':undefined} maxLength={t==='time'?5:undefined} autoComplete={t==='time'?'off':undefined} min={t==='number'?1:undefined} value={r[k]??''} onInput={e=>{const value=t==='time'?manualScanTimeInput(e.currentTarget.value):e.currentTarget.value;update('trips',draft.trips.map((row,n)=>n===i?{...row,[k]:value}:row));}}/>}
        {tripEstimateNote(r,k)&&<small className="scan-field-message"><mark>{tripEstimateNote(r,k)}</mark></small>}
-       {k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&aliasMachineHint(r)?<small className="scan-alias-note">{aliasMachineHint(r)}</small>:k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}
-       {fieldIssues['trips.'+i+'.'+k]&&<small className="scan-field-message">{fieldIssues['trips.'+i+'.'+k]}</small>}
+       {k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&aliasMachineHint(r)?<small className="scan-alias-note" title={aliasMachineHint(r)}>{aliasMachineHint(r)}</small>:k==='equipmentName'&&tripEquipmentRequired(r,draft.timeMode)&&cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')&&<small title={cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}>{cardMachineHint(r.equipmentName,r.equipmentNotation?.resolved===r.equipmentName?'equipment':'trip-body')}</small>}
+       {fieldIssues['trips.'+i+'.'+k]&&<small className="scan-field-message" title={fieldIssues['trips.'+i+'.'+k]}>{fieldIssues['trips.'+i+'.'+k]}</small>}
        {suggestions['trips.'+i+'.'+k]?.window&&<small className="scan-time-window">{suggestions['trips.'+i+'.'+k].window.message}</small>}
        {!fieldIssues['trips.'+i+'.'+k]&&draft.timeMode!=='without'&&handoverTimeNote(r,k)&&<small className="scan-handover-note">{handoverTimeNote(r,k)}</small>}
       </label>
