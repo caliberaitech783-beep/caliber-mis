@@ -4,6 +4,7 @@ import {assetBookKind,isLmv} from '../../shared/equipment-kind.mjs';
 import {equipmentDoorNumber} from '../../shared/equipment-door.mjs';
 import {resolveTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {isUnloadingOnlyTrip} from '../../shared/trip-card-rules.mjs';
+import {vlbLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
 
 // Two-stage VLB + ELB batches. The switch is read per request so it can be turned off without a redeploy.
 // Live for all users. Set VLB_TWO_STAGE_BATCHES=0 (or off/false/no) to fall back to single-step batches.
@@ -159,9 +160,10 @@ const hasSavedElb=row=>Boolean(row.saved_at&&row.shift_status);
 const needsElb=row=>elbTripCount(row)>0&&!hasSavedElb(row);
 
 // Closure requires saved ELBs for machines that loaded trips.
-export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
+export function closureBlockers({stage,fleet=[],holds=[],duplicates=[],waitingScans=[]}){
  const blockers=[];
  if(stage!=='elb_open')blockers.push(stage==='closed'?'This batch is already closed.':'Lock VLB and LMV before closing the batch.');
+ const waiting=closeScanBlocker(waitingScans);if(waiting)blockers.push(waiting);
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
  const missing=fleet.filter(needsElb).sort((a,b)=>b.trips-a.trips||String(a.door).localeCompare(String(b.door),undefined,{numeric:true}));
  if(missing.length)blockers.push('Machines without a saved ELB: '+missing.map(row=>`${row.door} loaded ${row.trips} trips, no ELB saved`).join('; ')+'.');
@@ -169,10 +171,11 @@ export function closureBlockers({stage,fleet=[],holds=[],duplicates=[]}){
  return blockers;
 }
 
-export function lockBlockers({stage,records=[],holds=[],unresolved=[]}){
+export function lockBlockers({stage,records=[],holds=[],unresolved=[],waitingScans=[]}){
  const blockers=[];
  if(stage!=='vlb_open')blockers.push(stage==='closed'?'This batch is already closed.':'VLB is already locked for this batch.');
  if(!records.length)blockers.push('Add at least one VLB card before locking VLB.');
+ const waiting=vlbLockScanBlocker(waitingScans);if(waiting)blockers.push(waiting);
  if(holds.length)blockers.push('Awaiting transfer: '+describeHolds(holds)+'.');
  if(unresolved.length)blockers.push('Loading machines that do not resolve to one Equipment master record: '+unresolved.map(u=>`${u.bookNo} row ${u.row} (${u.label||'blank'})`).join(', ')+'.');
  return blockers;
