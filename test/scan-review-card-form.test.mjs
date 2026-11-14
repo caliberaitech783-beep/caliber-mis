@@ -96,6 +96,26 @@ test('the original scan appears before cropping, stays in memory across card cha
   back();
  }finally{cleanup();}
 });
+test('a Flash-Lite door misread offers a one-click master door, and an impossible time shows the valid times beside it',()=>{
+ const misread=draftFor(1,{doorText:'5193',trips:[{rowNumber:1,equipmentName:'',loadingTime:'07:20',unloadingTime:'07:38',tripCount:1},{rowNumber:2,equipmentName:'',loadingTime:'07:67',unloadingTime:'07:52',tripCount:1}]});
+ const app=harness('&batch=b1&scanView=review&scanGroup=all','vehicle',{WorkOrderJobSelect:()=>null});
+ const cards=[card(1,{draft:misread,raw_fields:{extractionDraft:misread}})];
+ app.render();
+ app.testCapture.setBatch(batch);app.testCapture.setCards(cards);
+ app.testCapture.setOptions({...options,assets:[{id:'7',kind:'vehicle',site:'Jayant OB',door:'S93 - MH34BZ0974'},{id:'8',kind:'vehicle',site:'Jayant OB',door:'V201'}]});
+ app.testCapture.setContextGate(scanContextGate(batch.expected_context,cards));app.testCapture.setMismatchListOpen(false);
+ app.testCapture.setSelected('card-1');app.testCapture.setDraft(misread);
+ const tree=app.render();
+ const [button]=nodes(tree,n=>n.type==='button'&&n.props.className==='scan-suggestion');
+ assert.ok(button,'the suggestion button is shown under the door');
+ assert.equal(button.props.children[1],'S93 - MH34BZ0974');assert.equal(button.props.children[2].props.children,'S read as 5');
+ const [hint]=nodes(tree,n=>n.props?.className==='scan-time-window');
+ assert.equal(hint.props.children,'07:67 is not a clock time. Valid times beside it on this card: 07:38 before, 07:52 after.');
+ button.props.onClick();
+ const door=nodes(app.render(),n=>n.props?.['aria-label']==='Door number')[0];
+ assert.equal(door.props.value,'S93 - MH34BZ0974','one click puts the master door in the door list');
+ assert.equal(nodes(app.render(),n=>n.type==='button'&&n.props.className==='scan-suggestion').length,0,'a matching door offers nothing more');
+});
 test('meter totals over the shift limit are highlighted without blocking the form',()=>{
  const over=card(1,{draft:draftFor(1,{closingHmr:'120',closingKmr:'1400'})});
  const tree=loaded(harness('&batch=b1&scanView=review&scanGroup=all'),[over]);
