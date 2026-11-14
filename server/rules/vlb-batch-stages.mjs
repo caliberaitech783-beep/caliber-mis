@@ -1,3 +1,4 @@
+import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
 import {validShiftHours,isJayantSite} from '../../shared/site-shift-hours.mjs';
 import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
@@ -211,13 +212,13 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const opening=num(input.openingHmr),closing=num(input.closingHmr);
  const body={bookDate:batch.report_date,bookDateSource:'batch',location:displaySiteName(batch.site),assetId:String(assetId),employeeId:nonWorking&&!text(input.employeeId)?null:text(input.employeeId),shiftId:shift.id,shiftHours:hours,manualShift:input.manualShift,
   workOrderId:batch.work_order_id,jobDetails:input.jobDetails,openingHmr:opening??(nonWorking?0:''),closingHmr:closing??(nonWorking?(opening??0):''),jobCardNo:text(input.jobCardNo),remark:text(input.remark),timeMode:'without',
-  manualBreakdownHours:breakdownHours??'',shiftStatus:status,statusReason:text(input.statusReason),breakdownDetails:Array.isArray(input.breakdownDetails)?input.breakdownDetails:undefined,
+  manualBreakdownHours:(status==='breakdown'&&!pulse?input.manualBreakdownHours:breakdownHours)??'',shiftStatus:status,statusReason:text(input.statusReason),breakdownDetails:Array.isArray(input.breakdownDetails)?input.breakdownDetails:undefined,
   idleHoursEntered:num(input.idleHours),batchId:batch.id,fleetTrips:elbTripCount(row),bookShiftCode:batch.shift};
  const data=await ops.resolve(client,'equipment',body,{...(operatorSplit?{operatorSplit,enforceEmployeeSite:true}:{}),manualEntry:true});
  Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:elbTripCount(row),batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
- if(pulse){Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
- if(nonWorking){data.breakdownHours=status==='breakdown'?hours:data.breakdownHours;data.availabilityHours=0;data.runningHours=0;data.idleHours=status==='breakdown'?0:hours-(Number(data.breakdownHours)||0);}
+ if(pulse){data.idleHours=idleShiftHours(hours,data.totalWorkingHmr,pulse.breakdownHours);Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
+ if(nonWorking){data.availabilityHours=0;data.runningHours=0;data.idleHours=idleShiftHours(hours,0,data.breakdownHours);}
  if(additional){
   const cards=(await batchElbRecords(client,batch)).filter(record=>String(record.asset_id)===String(assetId));
   const retry=input.requestKey&&(await client.query('SELECT id FROM mis_log_books WHERE request_key=$1',[input.requestKey])).rows[0];

@@ -15,10 +15,10 @@ export const fleetHours=(opening,closing)=>{
  const a=Number(opening),b=Number(closing);if(!Number.isFinite(a)||!Number.isFinite(b))return null;
  return Math.round((b-a)*100)/100;
 };
-export const fleetIdleHours=(shiftHours,workingHours)=>{
+export const fleetIdleHours=(shiftHours,workingHours,breakdownHours=0)=>{
  const shift=Number(shiftHours),working=Number(workingHours);
  if(!Number.isFinite(shift)||workingHours===null||!Number.isFinite(working))return null;
- return Math.round((shift-working)*100)/100;
+ return Math.round((shift-working-breakdownHours)*100)/100;
 };
 export const focusNextElbField=event=>{
  if(event.key!=='Enter'||event.shiftKey||event.isComposing)return;
@@ -152,7 +152,7 @@ export default function VlbFleetStepper({session,batch,options,onChanged,onDismi
  const operatorRequired=Number(row.trips)>0||fleetHours(form.openingHmr,form.closingHmr)!==0;
  const hours=fleetHours(form.openingHmr,form.closingHmr);
  const operatorSplit=form.secondOperatorId?splitEquipmentOperatorHmr(form):null;
- const idleHours=fleetIdleHours(lookupShiftHours,hours);
+ const idleHours=fleetIdleHours(lookupShiftHours,hours,pulse?.breakdownHours);
  const jobs=form.jobDetails||[];
  const contracts=activeWorkOrders(options?.workOrders||[],batch.site,batch.report_date);
  const employees=(options?.employees||[]).filter(employee=>employeeAtLocation(employee,batch?.site)).sort((a,b)=>String(a.name||a.employee||'').localeCompare(String(b.name||b.employee||'')));

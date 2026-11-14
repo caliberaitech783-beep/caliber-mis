@@ -5,9 +5,9 @@ test('Pulse is always tried first and its actual zero beats a manual fallback',a
  let calls=0;const result=await applyBreakdownHours(data(),{readHours:async input=>{calls++;assert.equal(input.runningHours,4);return {breakdownHours:0,source:'Pulse'}}});
  assert.equal(calls,1);assert.equal(result.breakdownHours,0);assert.equal(result.breakdownHoursSource,'pulse');assert.equal(result.manualBreakdownHours,null);assert.equal(result.hoursWarning,undefined);
 });
-test('Pulse failure retains manual value, actor and selected context without changing running/idle formulas',async()=>{
+test('Pulse failure retains manual value, actor and selected context and subtracts the recorded hours from idle',async()=>{
  const result=await applyBreakdownHours(data(),{readHours:async()=>{throw Error('Pulse offline')},actor:'operator',now:()=> 'now'});
- assert.equal(result.breakdownHours,2.5);assert.equal(result.breakdownHoursSource,'manual');assert.equal(result.hoursSource.enteredBy,'operator');assert.equal(result.hoursSource.assetId,1);assert.equal(result.hoursSource.enteredAt,'now');assert.equal(result.idleHours,4);
+ assert.equal(result.breakdownHours,2.5);assert.equal(result.breakdownHoursSource,'manual');assert.equal(result.hoursSource.enteredBy,'operator');assert.equal(result.hoursSource.assetId,1);assert.equal(result.hoursSource.enteredAt,'now');assert.equal(result.idleHours,1.5);
  assert.equal((await applyBreakdownHours({...data(),manualBreakdownHours:0})).breakdownHours,0);
 });
 test('missing or unusable Pulse values allow fallback and absent manual values remain unknown',async()=>{

@@ -38,3 +38,15 @@ jobs:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
           PROBE_APP: ${{ inputs.target == 'scan-engine' && vars.SCAN_ENGINE_APP || '' }}
         run: node scripts/probe-slot-deployment-state.mjs
+      # Read-only: what the staging slot lacks compared with production (names and kinds, never values), and the
+      # newest start-up logs of its app.
+      - name: Compare the staging slot with production
+        if: always() && inputs.target != 'scan-engine'
+        env:
+          MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
+        run: node scripts/probe-slot-configuration.mjs
+      - name: Read scan engine startup logs
+        if: always() && inputs.target == 'scan-engine'
+        env:
+          SCAN_ENGINE_APP: ${{ vars.SCAN_ENGINE_APP }}
+        run: node scripts/probe-scan-engine-startup.mjs

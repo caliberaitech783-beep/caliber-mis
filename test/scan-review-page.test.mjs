@@ -1,11 +1,12 @@
 import {TableSmartPrint} from './helpers/smart-print-stub.mjs';
+import {idleShiftHours} from '../shared/breakdown-hours-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
-const scope={React,TableSmartPrint};
+const scope={TableSmartPrint,idleShiftHours,React};
 for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  if(!match[2].startsWith('.'))continue;
  const module=await import(new URL('../src/'+match[2],import.meta.url));
@@ -57,6 +58,15 @@ test('Wrong door review keeps every VLB card field visible while focusing its me
  assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['bookDate','location','doorText','assetId','employeeId','shiftId','cardShift','shiftHours','workOrderId','openingKmr','closingKmr','openingHmr','closingHmr']);
  assert.ok(nodes(tree,n=>n.props['data-review-section']==='trips').every(n=>!n.props.hidden));
  assert.equal(nodes(tree,n=>n.type==='h2'&&n.props.children==='Ready for automatic saving').length,0,'hidden issues continue blocking final save');
+ const expandedToggle=nodes(tree,n=>n.type==='button'&&n.props.children==='Show only fields needing input')[0];
+ assert.ok(expandedToggle);
+ expandedToggle.props.onClick();
+ const focusedTree=app.render();
+ assert.deepEqual(nodes(focusedTree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['doorText','assetId']);
+ const focusedToggle=nodes(focusedTree,n=>n.type==='button'&&n.props.children==='Show all values')[0];
+ assert.ok(focusedToggle);
+ focusedToggle.props.onClick();
+ assert.ok(nodes(app.render(),n=>n.props['data-review-section']==='trips').every(n=>!n.props.hidden));
 });
 
 test('an open card shows its remaining errors after leaving the selected issue group',()=>{

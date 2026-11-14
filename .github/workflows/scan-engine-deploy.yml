@@ -87,22 +87,31 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
 
-      - name: Stage the scan runtime without Git history
+      - name: Package and verify the prebuilt scan runtime
         if: steps.plan.outputs.deploy == 'true'
-        run: rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/scan-runtime/"
+        run: |
+          runtime="$RUNNER_TEMP/scan-runtime"
+          mkdir -p "$runtime"
+          cp -a server shared assets public scripts src package.json package-lock.json DEPLOYMENT_SHA "$runtime/"
+          npm ci --prefix "$runtime" --omit=dev --no-audit --no-fund
+          cd "$runtime"
+          node --input-type=module -e "await import('./server/scan-engine.mjs'); await import('./server/routes/bulk-card-scanning.mjs')"
+          zip -qry "$RUNNER_TEMP/scan-runtime.zip" .
 
-      - name: Deploy the scan engines
+      - name: Deploy the prebuilt scan engines
         if: steps.plan.outputs.deploy == 'true'
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ vars.SCAN_ENGINE_APP }}
-          package: ${{ runner.temp }}/scan-runtime
+        run: |
+          az webapp config appsettings set --resource-group coalmine-fleet-maintenance-rg --name "$ENGINE_APP" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false --only-show-errors --output none
+          az webapp deploy --resource-group coalmine-fleet-maintenance-rg --name "$ENGINE_APP" \
+            --src-path "$RUNNER_TEMP/scan-runtime.zip" --type zip --clean true --restart true \
+            --track-status false --only-show-errors --output none
 
       - name: Verify every engine is running the release
         if: steps.plan.outputs.deploy == 'true'
         run: |
           for attempt in {1..36}; do
-            if curl --fail --silent --max-time 20 "https://${ENGINE_APP}.azurewebsites.net/health" -o engine-health.json && node -e "const h=require('./engine-health.json');if(h.commit!==process.env.RELEASE_COMMIT||h.status!=='ok')process.exit(1);console.log(h.engines.map(e=>e.site+': '+(e.running?'running':'down')+', key '+e.key).join('\n'))"; then
+            if curl --fail --silent --max-time 20 "https://${ENGINE_APP}.azurewebsites.net/health" -o engine-health.json && node -e "const h=require('./engine-health.json');if(h.commit!==process.env.RELEASE_COMMIT||h.status!=='ok'||!h.engines?.length||h.engines.some(e=>!e.running))process.exit(1);console.log(h.engines.map(e=>e.site+': running, key '+e.key).join('\n'))"; then
               echo "All scan engines are running ${RELEASE_COMMIT}."
               exit 0
             fi

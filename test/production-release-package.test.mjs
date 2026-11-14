@@ -56,12 +56,15 @@ test('a missing model prevents production packaging instead of publishing an inc
 test('Azure stages the complete validated runtime without Git history',async()=>{
  const workflow=await readFile(new URL('../.github/workflows/main_caliber-mis-783.yml',import.meta.url),'utf8');
  const scanWorkflow=await readFile(new URL('../.github/workflows/scan-engine-deploy.yml',import.meta.url),'utf8');
- for(const [release,stagingDirectory] of [[workflow,'pulse-runtime'],[scanWorkflow,'scan-runtime']]){
-  assert.ok(release.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/${stagingDirectory}/"`));
-  if(stagingDirectory==='pulse-runtime'){
-   assert.ok(release.includes('pulse-runtime.zip'));
-   assert.ok(release.includes('az webapp deployment source config-zip'));
-  }else assert.ok(release.includes('package: ${{ runner.temp }}/'+stagingDirectory));
+ assert.ok(workflow.includes(`rsync -a --exclude='/.git' ./ "$RUNNER_TEMP/pulse-runtime/"`));
+ assert.ok(workflow.includes('pulse-runtime.zip'));
+ assert.ok(workflow.includes('az webapp deployment source config-zip'));
+ assert.ok(scanWorkflow.includes('cp -a server shared assets public scripts src package.json package-lock.json DEPLOYMENT_SHA'));
+ assert.ok(scanWorkflow.includes('npm ci --prefix "$runtime" --omit=dev'));
+ assert.ok(scanWorkflow.includes("await import('./server/scan-engine.mjs')"));
+ assert.ok(scanWorkflow.includes('SCM_DO_BUILD_DURING_DEPLOYMENT=false ENABLE_ORYX_BUILD=false'));
+ assert.ok(scanWorkflow.includes('--src-path "$RUNNER_TEMP/scan-runtime.zip" --type zip'));
+ for(const release of [workflow,scanWorkflow]){
   assert.doesNotMatch(release,/package:\s*\.\s*(?:#.*)?$/m);
  }
 });

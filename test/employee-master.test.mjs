@@ -41,3 +41,51 @@ test('signed-in users can update only employee current location',async()=>{
    await db.close();
  }
 });
+
+test('Employee Master lists one location per site and filters all aliases before paging and export',async()=>{
+ const db=new PGlite();
+ const app=express();
+ const allow=(_req,_res,next)=>next();
+ registerEmployeeMaster(app,{pool:db,requireSession:allow,requireAdministrator:allow});
+ const server=app.listen(0);
+ try{
+   await db.exec("CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB)");
+   const aliases=['SASTI II','Sasti OC',' sasti ob '];
+   const records=Array.from({length:51},(_,i)=>({
+     caliberId:'CMPL'+i,name:'Operator '+String(i).padStart(2,'0'),site:aliases[i%aliases.length]
+   }));
+   records.push(
+     {caliberId:'CMPL51',name:'Operator elsewhere',site:'Majri OC'},
+     {caliberId:'CMPL52',name:'Operator unassigned',site:' '}
+   );
+   await db.query(`
+     INSERT INTO master_records(master_name,record_data)
+     SELECT 'Employee master',value FROM jsonb_array_elements($1::jsonb)
+   `,[JSON.stringify(records)]);
+   const base='http://127.0.0.1:'+server.address().port+'/api/employee-master';
+   const list=async(query={})=>{
+     const response=await fetch(base+'?'+new URLSearchParams(query));
+     assert.equal(response.status,200);
+     return response.json();
+   };
+   const all=await list();
+   assert.deepEqual(all.sites,['Majri OC','Sasti OC']);
+   assert.equal(all.total,53);
+   const firstPage=await list({site:'Sasti OC'});
+   assert.equal(firstPage.total,51);
+   assert.equal(firstPage.records.length,50);
+   assert.deepEqual(new Set(firstPage.records.map(row=>row.site)),new Set(aliases));
+   const nextPage=await list({site:'Sasti OC',page:'1'});
+   assert.deepEqual(nextPage.records.map(row=>row.caliberId),['CMPL50']);
+   const exported=await list({site:'SASTI II',export:'1'});
+   assert.equal(exported.records.length,51);
+   const searched=await list({site:'Sasti OC',q:'Operator 50'});
+   assert.deepEqual(searched.records.map(row=>row.caliberId),['CMPL50']);
+   const unmatched=await list({site:'Unknown location'});
+   assert.equal(unmatched.total,0);
+   assert.deepEqual(unmatched.records,[]);
+ }finally{
+   await new Promise(resolve=>server.close(resolve));
+   await db.close();
+ }
+});

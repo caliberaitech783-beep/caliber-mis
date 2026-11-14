@@ -80,3 +80,15 @@ test('Pulse-II leaves a site to its running engine and covers sites with no engi
  assert.equal((await liveScanEngines(db)).some(engine=>engineCovers(engine,'sasti ob')),false,'a silent engine stops counting after a minute');
  await removeScanEngine(db,'others');assert.equal((await liveScanEngines(db)).length,0);
 });
+
+test('lease renewal can be limited to the cards a worker is still reading, so an abandoned card is handed on',async t=>{
+ const {db,add}=await setup(t);
+ await add('working','old',1,{},'reading');await add('abandoned','old',2,{},'reading');
+ await db.query(`UPDATE mis_scan_cards SET read_lease_owner='me',read_lease_until=NOW()+INTERVAL '5 seconds'`);
+ await renewReadLeases(db,'me',['working']);
+ const renewed=async id=>(await db.query(`SELECT read_lease_until>NOW()+INTERVAL '100 seconds' AS renewed FROM mis_scan_cards WHERE id=$1`,[id])).rows[0].renewed;
+ assert.equal(await renewed('working'),true);assert.equal(await renewed('abandoned'),false);
+ assert.equal((await renewReadLeases(db,'me',[])).rowCount,0);assert.equal(await renewed('abandoned'),false,'no active card renews nothing');
+ await db.query(`UPDATE mis_scan_cards SET read_lease_until=NOW()-INTERVAL '1 second' WHERE id='abandoned'`);await requeueExpiredReads(db);
+ assert.equal((await db.query(`SELECT status FROM mis_scan_cards WHERE id='abandoned'`)).rows[0].status,'queued');
+});

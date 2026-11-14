@@ -1,3 +1,4 @@
+import {idleShiftHours} from '../shared/breakdown-hours-source.mjs';
 // Regression: on 1 November 2026 the meter-limit refactor removed the
 // `meterLimitIssues` definition from the VLB scan page but left two uses in the
 // Total KMR / Total HMR labels. Every card opened in review then threw a
@@ -13,7 +14,7 @@ import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
 import {scanContextGate} from '../shared/scan-batch-context.mjs';
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
-const scope={React,TableSmartPrint};
+const scope={TableSmartPrint,idleShiftHours,React};
 for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  if(!match[2].startsWith('.'))continue;
  const module=await import(new URL('../src/'+match[2],import.meta.url));
@@ -65,7 +66,7 @@ test('the original scan appears before cropping and switching cards cancels the 
  let finishCrop,request;
  const crop=new Promise(resolve=>{finishCrop=resolve});
  const app=harness('&batch=b1&scanView=review&scanGroup=all','vehicle',{
-  fetch:async (path,{signal})=>{request={path,signal};return new Response(original)},
+  fetch:async (path,{signal})=>{request={path,signal};return {ok:true,blob:async()=>original};},
   trimScanPreview:()=>crop
  });
  const initial=loaded(app,[card(1),card(2)]);
