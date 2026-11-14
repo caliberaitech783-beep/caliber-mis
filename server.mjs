@@ -27,7 +27,7 @@ import {registerScannerConnectorAuth} from './server/routes/scanner-connector-au
 import {installMisCredentialClient} from './server/routes/mis-credential-client.mjs';
 import {installMisLoginHandoff} from './server/routes/mis-login-handoff.mjs';
 import {authorizeMisRequest} from './shared/mis-application-access.mjs';
-import {misDatabaseConfig} from './server/rules/mis-database-config.mjs';
+import {misDatabaseConfig,databasePoolMax} from './server/rules/mis-database-config.mjs';
 import {registerMisDomainRedirect} from './server/routes/mis-domain.mjs';
 import {registerMisSharedSignIn} from './server/routes/mis-shared-signin.mjs';
 import {sharedMisDashboardIdentity} from './server/rules/mis-dashboard-identity.mjs';
@@ -128,7 +128,6 @@ import {requireUserSessionView,isSessionViewOnlyUser} from './shared/user-sessio
 import {bdAgeingReportHandler} from './shared/bd-ageing-report.mjs';
 import {backupDiagnostic,deliveryDiagnostic,diagnosticState,formatBytes,runDiagnostics} from './server/services/system-diagnostics.mjs';
 import {createPerformanceMonitor,performanceDiagnostic,trackPoolClients,normalizeRoutePath} from './server/services/performance-monitor.mjs';
-import {databasePoolSize} from './server/services/database-pool-size.mjs';
 import {HOUSEKEEPING_CATEGORIES,housekeepingCategory,purgeRequestError} from './server/rules/data-housekeeping.mjs';
 import {PURGEABLE_TABLES,deadRowShare,diskState,sharePercent,tableLabel} from './server/rules/storage-management.mjs';
 import {MAX_TRANSLATION_CHARS,normalizeLanguage,translationCacheKey,translatorFromEnvironment} from './server/services/text-translation.mjs';
@@ -316,7 +315,7 @@ const AUDIT_DEVICE_ID_HEADER='x-bdms-device-id';
 const databasePool=new Pool({
   connectionString:connectionString||undefined,
   ssl:databaseSsl,
-  max:databasePoolSize(process.env),
+  max:databasePoolMax(),
   idleTimeoutMillis:30000,
   connectionTimeoutMillis:10000
 });

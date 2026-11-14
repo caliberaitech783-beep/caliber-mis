@@ -175,6 +175,29 @@ Each card now records its preparation time (`gemini.prepMs`, `prepWaitMs`,
 `queuedMs`, `firstReadMs`, `recheckMs`, `finishMs`, `totalMs`, `finishedAt`,
 `workers`), so the next slow day can be explained from the cards themselves.
 
+## Row security round trips and the pool size (14 November 2026)
+
+After the release of 14 November 2026 (`34c39c5`) Pulse-II's pool stayed at 10 of
+10 connections with 45 to 95 requests waiting for six minutes while it read no
+card itself; a database-backed request took 1.7 to 6.4 s and a static file 0.2 s,
+so the wait was for a connection, not for the server or the network.
+
+Production requires row security (`MIS_RLS_ENABLED=true`), and the row-security
+wrapper set the request's site scope transaction-locally: every pooled query cost
+four round trips (BEGIN, `set_config`, the query, COMMIT) while holding a
+connection. The scope is now set at session level once per connection and
+remembered (`server/services/row-security.mjs`): a query whose connection already
+carries its scope sends only itself. A caller outside a request (a background
+job, a backup) sets the trusted empty scope first, so a scope never leaks between
+callers; after a ROLLBACK, a failed COMMIT or a refused statement the connection's
+scope is set again. `test/row-security.test.mjs` counts the statements and checks
+the rows each scope sees on one shared connection.
+
+`MIS_DATABASE_POOL_MAX` (default 10, at most 50) sets how many connections the web
+server may hold. It is a setting, not a code change, so it can be raised without
+a release once the PostgreSQL server's connection limit has been checked against
+every app that shares it. No production timing has been measured for this change.
+
 ## Entry reads filled the pool while no card was being read (14 November 2026)
 
 At 14:15 IST `/api/health` showed the Pulse-II pool at 10 of 10 connections with
@@ -209,9 +232,9 @@ Now:
   holding a connection; the progress poll stays outside the lane. The lane's
   numbers are under `scanReading.entryReads` in `/api/health` (running,
   waiting, served).
-- The pool size is a setting, `MIS_DATABASE_POOL_MAX` (default 10, the size
-  since the start). The scan engines hold 4 connections each (eight engines, 32)
-  on the same PostgreSQL server, so compare the server's `max_connections` with
+- The pool size setting from the change above (`MIS_DATABASE_POOL_MAX`) is the
+  other lever. The scan engines hold 4 connections each (eight engines, 32) on
+  the same PostgreSQL server, so compare the server's `max_connections` with
   every app's pool before raising it.
 
 Measured on the PGlite test database only: three whole reads with one slot hold

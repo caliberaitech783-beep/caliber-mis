@@ -7,18 +7,13 @@ import express from 'express';
 import {registerBulkCardScanning,SCAN_SCHEMA,scanReadSlots} from '../server/routes/bulk-card-scanning.mjs';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {createReportLane} from '../server/services/report-lane.mjs';
-import {databasePoolSize,DEFAULT_DATABASE_POOL_MAX} from '../server/services/database-pool-size.mjs';
 
 // 14 November 2026: Admin > Diagnostics showed every one of the pool's 10 connections held by
 // GET /api/scan-batches/:id while no card was being read. Two causes, both covered here: the
 // scan entry list asked for every entry's progress separately (up to 100 requests at once), and
 // whole entry reads each held a connection for as long as they ran, with no limit on how many.
 
-test('pool size and entry read slots come from settings, with safe defaults',()=>{
- assert.equal(DEFAULT_DATABASE_POOL_MAX,10);
- assert.equal(databasePoolSize({}),10);
- assert.equal(databasePoolSize({MIS_DATABASE_POOL_MAX:' 20 '}),20);
- for(const bad of ['0','-1','abc','2.5','101',''])assert.equal(databasePoolSize({MIS_DATABASE_POOL_MAX:bad}),10,bad);
+test('entry read slots come from a setting, with a safe default',()=>{
  assert.equal(scanReadSlots({}),4);
  assert.equal(scanReadSlots({MIS_SCAN_READ_SLOTS:'2'}),2);
  for(const bad of ['0','51','x',''])assert.equal(scanReadSlots({MIS_SCAN_READ_SLOTS:bad}),4,bad);

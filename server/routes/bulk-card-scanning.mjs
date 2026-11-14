@@ -185,16 +185,18 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(!allowed.includes(batchId))return denied();
   return next();
  }
- req.allowedSiteBatches=await allowedScanBatches(pool,req.logBookScope,req.session.login||req.session.name);
- if(req.allowedSiteBatches!==null&&req.params.id){
+ // A request about one entry or card checks that entry alone. Only the list (no id) needs every entry
+ // the login may see; that read covers the whole card table, so it must not run on each poll and save.
+ if(req.logBookScope.sites!==null&&req.params.id){
   let batchId=req.params.id;
-  if(req.path.startsWith('/api/scan-cards/'))batchId=(await pool.query('SELECT batch_id FROM mis_scan_cards WHERE id=$1',[req.params.id])).rows[0]?.batch_id;
+  if(req.path.startsWith('/api/scan-cards/'))batchId=uuid(req.params.id)?(await pool.query('SELECT batch_id FROM mis_scan_cards WHERE id=$1',[req.params.id])).rows[0]?.batch_id:undefined;
+  req.allowedSiteBatches=uuid(batchId)?await allowedScanBatches(pool,req.logBookScope,req.session.login||req.session.name,batchId):[];
   if(!req.allowedSiteBatches.includes(batchId)){
    const deletionRequest=/(?:\/deletion-otp|\/delete|\/card-deletions\/(?:otp|confirm))$/.test(req.path);
    const batch=deletionRequest?(await pool.query('SELECT expected_context FROM mis_scan_batches WHERE id=$1',[batchId])).rows[0]:null;
    if(!deletionRequest||!scanDeletionAllowed(req.logBookScope,batch))return res.status(403).json({error:'This scan batch is not assigned to your site or region.'});
   }
- }
+ }else req.allowedSiteBatches=await allowedScanBatches(pool,req.logBookScope,req.session.login||req.session.name);
  if(req.body?.draft?.location&&req.body.action!=='reject')requireLogBookSite(req.logBookScope,req.body.draft.location);
  next();
  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];

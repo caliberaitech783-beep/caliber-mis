@@ -19,3 +19,40 @@ test('forced database RLS isolates sites, rejects cross-site writes and never le
  assert.equal((await pool.query('SELECT * FROM mis_log_books')).rows.length,3,'trusted background jobs keep their existing scope');
  const flags=(await db.query("SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='mis_log_books'::regclass")).rows[0];assert.equal(flags.relrowsecurity,true);assert.equal(flags.relforcerowsecurity,true);
 });
+
+test('the request scope is set once per connection, reset for trusted callers and set again after a rollback',async t=>{
+ const db=new PGlite();t.after(()=>db.close());await db.exec(`CREATE ROLE mis_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ GRANT CREATE,USAGE ON SCHEMA public TO mis_app;GRANT CREATE ON DATABASE postgres TO mis_app;
+ SET ROLE mis_app;CREATE TABLE mis_log_books(id SERIAL PRIMARY KEY,site TEXT NOT NULL);
+ INSERT INTO mis_log_books(site) VALUES('Sasti OC'),('SASTI II'),('Jayant OB 2nd');`);
+ // One pooled connection, handed out again and again, as a pg pool does.
+ const sent=[];const client={query:(...args)=>{sent.push(typeof args[0]==='string'?args[0]:args[0].text);return db.query(...args);},release(){}};
+ const native={query:(...args)=>db.query(...args),connect:async()=>client};
+ await initializeRowSecurity(native,{enabled:true});
+ const pool=rowSecurityPool(native,{enabled:true,resolveScope:async req=>req.scope});
+ const request=(scope,task)=>new Promise((resolve,reject)=>rowSecurityContext({securitySession:{login:'user'},scope},null,()=>Promise.resolve().then(task).then(resolve,reject)));
+ const statements=async task=>{sent.length=0;const result=await task();return {result,statements:[...sent]};};
+ const isScope=text=>/set_config\('mis\.request_scope'/.test(text);
+ let run=await statements(()=>request({sites:['sasti ob']},()=>pool.query('SELECT site FROM mis_log_books ORDER BY id')));
+ assert.equal(run.result.rows.length,2);assert.equal(run.statements.filter(isScope).length,1,'first query on a connection sets the scope');
+ assert.equal(run.statements.length,2,'no BEGIN or COMMIT around a single query');
+ run=await statements(()=>request({sites:['sasti ob']},()=>pool.query('SELECT site FROM mis_log_books ORDER BY id')));
+ assert.equal(run.result.rows.length,2);assert.deepEqual(run.statements,['SELECT site FROM mis_log_books ORDER BY id'],'same scope again: only the query is sent');
+ run=await statements(()=>request({sites:['jayant ob']},()=>pool.query('SELECT site FROM mis_log_books')));
+ assert.equal(run.result.rows.length,1,'another site gets its own scope on the same connection');assert.equal(run.statements.filter(isScope).length,1);
+ run=await statements(()=>pool.query('SELECT site FROM mis_log_books'));
+ assert.equal(run.result.rows.length,3,'a trusted caller sees every site, never the previous request scope');assert.equal(run.statements.filter(isScope).length,1);
+ run=await statements(()=>pool.query('SELECT site FROM mis_log_books'));
+ assert.deepEqual(run.statements,['SELECT site FROM mis_log_books'],'trusted scope is remembered too');
+ run=await statements(()=>request({sites:['sasti ob']},async()=>{const c=await pool.connect();try{await c.query('BEGIN');const inside=(await c.query('SELECT site FROM mis_log_books')).rows.length;await c.query('ROLLBACK');return inside;}finally{c.release();}}));
+ assert.equal(run.result,2);assert.equal(run.statements.filter(isScope).length,1);
+ run=await statements(()=>request({sites:['sasti ob']},()=>pool.query('SELECT site FROM mis_log_books')));
+ assert.equal(run.result.rows.length,2);assert.equal(run.statements.filter(isScope).length,1,'a rollback undid the scope set inside it, so it is set again');
+ run=await statements(()=>request({sites:['sasti ob']},async()=>{const c=await pool.connect();try{await c.query('BEGIN');await c.query('SELECT site FROM mis_log_books');await c.query('SAVEPOINT s');await c.query('SELECT 1');await c.query('ROLLBACK TO SAVEPOINT s');const rows=(await c.query('SELECT site FROM mis_log_books')).rows.length;await c.query('COMMIT');return rows;}finally{c.release();}}));
+ assert.equal(run.result,2,'rows stay scoped after a rollback to a savepoint');
+ run=await statements(()=>request({sites:['jayant ob']},()=>pool.query('SELECT site FROM mis_log_books')));
+ assert.equal(run.result.rows.length,1,'a committed scope is carried by the connection and replaced for the next site');
+ await assert.rejects(request({sites:['sasti ob']},()=>pool.query("INSERT INTO mis_log_books(site) VALUES('Jayant OC')")),error=>error.code==='42501');
+ run=await statements(()=>pool.query('SELECT site FROM mis_log_books'));
+ assert.equal(run.result.rows.length,3,'after a refused statement the trusted scope is set again');
+});

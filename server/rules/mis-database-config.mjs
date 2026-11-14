@@ -23,3 +23,12 @@ export function misDatabaseConfig(env = process.env) {
   for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) url.searchParams.delete(key);
   return {connectionString: url.toString(), ssl: local ? false : {rejectUnauthorized: true}};
 }
+
+// MIS_DATABASE_POOL_MAX: connections the web server may hold at once (default 10,
+// at most 50). Raise it in Azure settings only after checking the PostgreSQL
+// server's connection limit against every app that shares it (Pulse-II, its
+// staging slot and the scan engines, 4 connections each).
+export function databasePoolMax(env = process.env) {
+  const value = Number(env.MIS_DATABASE_POOL_MAX);
+  return Number.isInteger(value) && value >= 1 && value <= 50 ? value : 10;
+}

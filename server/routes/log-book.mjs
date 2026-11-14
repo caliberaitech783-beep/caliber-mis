@@ -230,7 +230,8 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  });
  app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
    try{await ensure();
-     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
+     const batchPicker=req.path==='/api/log-books/options'&&req.query.view==='batch-picker';
+     const {rows}=await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[batchPicker?['Shift Master','Users & employees','Region master',...woNames]:['Equipment master','Shift Master','Users & employees','Employee master','ERP Employee master','Region master','C-Dir Employee master',...woNames]]);
      const assets=[],employees=[],shifts=[],workOrders=[],regionSites=[];const hasEmployees=rows.some(r=>r.master_name==='C-Dir Employee master');
      for(const row of rows){const r=row.record_data;
        if(row.master_name==='Equipment master'){const site=text(r.currentLocation||r.site||r.location);assets.push({id:String(row.id),door:text(r.door||r.doorNo||equipmentDoorNumber(r)),registration:text(r.registration||r.reg),name:text(r.equipmentName||r.equipment||r.name||r.group),kind:assetBookKind(r),lmv:isLmv(r),...(isLmv(r)?{lmvDoor:text(r.door)||text(r.doorNo),registration:text(r.registration)||text(r.reg)||text(r.registrationNumber)}:{}),site});}
@@ -245,6 +246,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const siteLabel=site=>siteNames.get(canonicalSiteName(site))||displaySiteName(site);
      const labelSites=records=>records.map(record=>({...record,site:siteLabel(record.site)}));
      const accountLocation=siteLabel(logBookAccountLocation(req.session,req.logBookScope,rows.filter(row=>row.master_name==='Users & employees').map(row=>row.record_data)));
+     if(batchPicker)return res.set('Cache-Control','no-store').json({canSelectSite:req.logBookScope.sites===null,accountLocation,sites,shifts:labelSites(shifts.filter(r=>allowed(r.site))),workOrders:labelSites(workOrders.filter(r=>allowed(r.site))),workOrderConnected:workOrders.length>0});
      if(req.path==='/api/shift-attendance'){
        return res.set('Cache-Control','private, no-store').json({
         accountLocation,
