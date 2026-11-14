@@ -25,8 +25,12 @@ test('Jayant Shift Master duration is accepted across batch and manual log-book 
  assert.equal(manualShiftWindow({location:'Jayant OC',shiftHours:9},shift).endTime,'21:00');
 });
 test('Pulse clips breakdowns to the nine-hour window and calculates idle hours',()=>{
- const result=summarizePulseHours({rows:[{site:'Jayant OC',door:'TPC142',start:'2026-11-01 11:00:00',closedAt:'2026-11-01 22:00:00',ref:'BD1'}],date:'2026-11-01',site:'Jayant OC',asset:{door:'TPC142'},shift,shiftHours:9,runningHours:7,now:Date.parse('2026-11-02T00:00:00Z')});
- assert.equal(result.breakdownHours,9);assert.equal(result.idleHours,2);
+ // Idle hours are what is left of the shift after the worked hours and the breakdown hours.
+ const input={date:'2026-11-01',site:'Jayant OC',asset:{door:'TPC142'},shift,shiftHours:9,now:Date.parse('2026-11-02T00:00:00Z')};
+ const result=summarizePulseHours({...input,rows:[{site:'Jayant OC',door:'TPC142',start:'2026-11-01 11:00:00',closedAt:'2026-11-01 22:00:00',ref:'BD1'}],runningHours:0});
+ assert.equal(result.breakdownHours,9);assert.equal(result.idleHours,0);
+ const partial=summarizePulseHours({...input,rows:[{site:'Jayant OC',door:'TPC142',start:'2026-11-01 11:00:00',closedAt:'2026-11-01 13:00:00',ref:'BD2'}],runningHours:7});
+ assert.equal(partial.breakdownHours,1);assert.equal(partial.idleHours,1);
  assert.equal(result.shiftStart,'2026-11-01T06:30:00.000Z');assert.equal(result.shiftEnd,'2026-11-01T15:30:00.000Z');
  assert.throws(()=>summarizePulseHours({rows:[],date:'2026-11-01',site:'Sasti OC',asset:{},shift:{...shift,site:'Sasti OC'},shiftHours:9}),/valid date and shift/);
 });
