@@ -55,12 +55,6 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
     summary "Not urgent: no deployment now. Everything merged to main goes out in the next scheduled window, $(next_window)."
     decide false
   fi
-  # TEMPORARY owner exception (15 Nov 2026, 00:50 IST): the OTP service is not live yet, so the owner allowed
-  # an urgent release without it until OWNER_EXCEPTION_UNTIL. Remove this block once the release is live.
-  if [[ -n "${OWNER_EXCEPTION_UNTIL:-}" ]] && (( $(date -u +%s) < $(date -u -d "${OWNER_EXCEPTION_UNTIL}" +%s) )); then
-    summary "Urgent release under the owner's temporary exception (until ${OWNER_EXCEPTION_UNTIL}). Releasing main now."
-    decide true
-  fi
   OTP="$(tr -d '[:space:]' <<< "${RELEASE_OTP:-}")"
   if [[ -n "$OTP" ]]; then echo "::add-mask::${OTP}"; fi
   if [[ -n "$OTP" && ! "$OTP" =~ ^[0-9]{6}$ ]]; then summary "Urgent release: enter the six-digit OTP."; echo "::error::The OTP must be six digits."; exit 1; fi
