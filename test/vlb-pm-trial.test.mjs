@@ -56,3 +56,16 @@ test('30-day pause upgrades the old trial schema, preserves pending requests and
  assert.equal((await call('/'+id+'/reopen','POST')).status,403,'PM approval automatically resumes');
  assert.equal((await db.query('SELECT count(*)::int AS n FROM mis_vlb_batch_audit WHERE action=$1',['reopen_request_withdrawn'])).rows[0].n,0);
 });
+
+test('vlbPmTrial reuses its answer for cacheMs and forgets it when the trial is activated',async()=>{
+ let asked=0,now=1000;
+ const client={query:async()=>{asked++;return {rows:[{ends_at:'2026-12-12',active:true}]};}};
+ const {vlbPmTrial,clearVlbPmTrialCache}=await import('../server/rules/vlb-pm-trial.mjs');
+ clearVlbPmTrialCache();
+ assert.equal((await vlbPmTrial(client)).active,true);assert.equal(asked,1,'no cache by default');
+ await vlbPmTrial(client,{cacheMs:30000,now:()=>now});await vlbPmTrial(client,{cacheMs:30000,now:()=>now+1000});
+ assert.equal(asked,2,'a cached read asks once');
+ now+=31000;await vlbPmTrial(client,{cacheMs:30000,now:()=>now});assert.equal(asked,3,'the cache expires');
+ clearVlbPmTrialCache();await vlbPmTrial(client,{cacheMs:30000,now:()=>now});assert.equal(asked,4,'activation clears it');
+ clearVlbPmTrialCache();
+});

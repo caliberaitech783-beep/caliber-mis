@@ -1,6 +1,11 @@
 // One PostgreSQL listener per application instance. NOTIFY is delivered only
 // after commit, so a toast cannot precede the saved request or its notification.
-export function createNotificationFeed(pool, { timeoutMs = 25000 } = {}) {
+//
+// The listener keeps its connection for as long as the server runs. Taken from
+// the pool it held one of the ten pooled connections permanently (Diagnostics
+// showed it as "GET /api/notifications" held for minutes), so the server passes
+// `connect`, which opens a connection of its own outside the pool.
+export function createNotificationFeed(pool, { timeoutMs = 25000, connect = () => pool.connect() } = {}) {
   const subscribers = new Map();
   let connection = null;
   let connecting = null;
@@ -8,7 +13,7 @@ export function createNotificationFeed(pool, { timeoutMs = 25000 } = {}) {
     if (connection) return Promise.resolve();
     if (connecting) return connecting;
     connecting = (async () => {
-      const client = await pool.connect();
+      const client = await connect();
       let released = false;
       const release = () => { if (!released) { released = true; client.release(true); } };
       const failed = () => {
