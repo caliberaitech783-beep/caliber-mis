@@ -73,6 +73,6 @@ test('the probe only reads, and never prints a value', () => {
 
 test('the diagnosis workflow runs the comparison by hand or on a change to itself, never on a schedule', () => {
   const workflow = read('.github/workflows/diagnose-mis-deployment.yml');
-  assert.match(workflow, /- name: Compare the staging slot with production\n\s+if: always\(\) && inputs\.target != 'scan-engine'\n\s+env:\n\s+MIS_STAGING_SLOT: \$\{\{ vars\.MIS_STAGING_SLOT \|\| 'staging' \}\}\n\s+run: node scripts\/probe-slot-configuration\.mjs/);
+  assert.match(workflow, /- name: Compare the staging slot with production\r?\n\s+if: always\(\) && inputs\.target != 'scan-engine' && inputs\.target != 'outbound'\r?\n\s+env:\r?\n\s+MIS_STAGING_SLOT: \$\{\{ vars\.MIS_STAGING_SLOT \|\| 'staging' \}\}\n\s+run: node scripts\/probe-slot-configuration\.mjs/);
   assert.doesNotMatch(workflow, /schedule:/);
 });
