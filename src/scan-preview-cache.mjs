@@ -5,8 +5,18 @@
 // review order while the operator works on the current one, and reuses a download
 // that is already running. Nothing is written to disk; the cache is cleared when
 // the page is left or the sign-in changes.
-export const SCAN_PREVIEW_CACHE_LIMIT=8,SCAN_PREVIEW_PREFETCH=2,SCAN_PREVIEW_TIMEOUT_MS=20000;
-export function createScanPreviewLoader({fetch=(...args)=>globalThis.fetch(...args),trim,createObjectURL=blob=>URL.createObjectURL(blob),revokeObjectURL=url=>URL.revokeObjectURL(url),limit=SCAN_PREVIEW_CACHE_LIMIT,timeoutMs=SCAN_PREVIEW_TIMEOUT_MS,now=Date.now}={}){
+export const SCAN_PREVIEW_CACHE_LIMIT=8,SCAN_PREVIEW_PREFETCH=2,SCAN_PREVIEW_TIMEOUT_MS=20000,SCAN_PREVIEW_ATTEMPTS=2;
+// 15 November 2026: every refusal used to read "Could not load scan.", so nobody could
+// tell an ended sign-in from a removed card or a busy server.
+export async function scanPreviewFailure(response){
+ if(response.status===401)return 'Your sign-in has ended. Sign in again to see the scan.';
+ let reason='';
+ try{const body=await response.json();reason=typeof body?.error==='string'?body.error.trim():'';}catch{}
+ if(reason)return 'Could not load scan: '+reason;
+ return response.status?'Could not load scan (server answered '+response.status+').':'Could not load scan.';
+}
+const pause=(ms,signal)=>new Promise(resolve=>{if(!ms||signal.aborted)return resolve();const timer=setTimeout(resolve,ms);signal.addEventListener('abort',()=>{clearTimeout(timer);resolve();},{once:true});});
+export function createScanPreviewLoader({fetch=(...args)=>globalThis.fetch(...args),trim,createObjectURL=blob=>URL.createObjectURL(blob),revokeObjectURL=url=>URL.revokeObjectURL(url),limit=SCAN_PREVIEW_CACHE_LIMIT,timeoutMs=SCAN_PREVIEW_TIMEOUT_MS,retryDelayMs=1000,now=Date.now}={}){
  const entries=new Map();let token='',current='';
  const release=entry=>{entry.controller.abort();if(entry.cropped&&entry.cropped!==entry.original)revokeObjectURL(entry.cropped);if(entry.original)revokeObjectURL(entry.original);};
  const forget=id=>{const entry=entries.get(id);if(!entry)return;entries.delete(id);release(entry);};
@@ -17,8 +27,16 @@ export function createScanPreviewLoader({fetch=(...args)=>globalThis.fetch(...ar
   const timer=setTimeout(()=>{entry.timedOut=true;controller.abort();},timeoutMs);
   entry.promise=(async()=>{
    try{
-    const response=await fetch('/api/scan-cards/'+id+'/image',{signal:controller.signal,headers:{Authorization:'Bearer '+token}});
-    if(!response.ok)throw new Error('Could not load scan.');
+    // One automatic second try for a busy server or a dropped connection; a refusal
+    // (card removed, sign-in ended) is final and its reason is shown as the server gave it.
+    let response;
+    for(let attempt=1;;attempt++){
+     try{response=await fetch('/api/scan-cards/'+id+'/image',{signal:controller.signal,headers:{Authorization:'Bearer '+token}});}
+     catch(error){if(controller.signal.aborted||attempt>=SCAN_PREVIEW_ATTEMPTS)throw error;await pause(retryDelayMs,controller.signal);continue;}
+     if(response.ok||!(response.status>=500)||attempt>=SCAN_PREVIEW_ATTEMPTS)break;
+     await pause(retryDelayMs,controller.signal);
+    }
+    if(!response.ok)throw new Error(await scanPreviewFailure(response));
     const blob=await response.blob();
     if(controller.signal.aborted)throw new Error('Could not load scan.');
     entry.blob=blob;entry.original=createObjectURL(blob);
