@@ -26,12 +26,13 @@ export async function filterLogBookSites(client,scope){
   return rows.map(row=>row.site).filter(site=>siteAllowed(scope,site));
 }
 
-export async function allowedScanBatches(client,scope,login){
+export async function allowedScanBatches(client,scope,login,batchId){
   if(scope.sites===null)return null;
   if(!scope.sites.length)return [];
-  const locations=(await client.query("SELECT DISTINCT draft->>'location' AS site FROM mis_scan_cards")).rows.filter(row=>siteAllowed(scope,row.site)).map(row=>row.site);
+  const params=batchId?[batchId]:[];
+  const locations=(await client.query("SELECT DISTINCT draft->>'location' AS site FROM mis_scan_cards"+(batchId?' WHERE batch_id=$1':''),params)).rows.filter(row=>siteAllowed(scope,row.site)).map(row=>row.site);
   // Unfinished owned batches may contain unread cards, but no known out-of-scope cards.
-  const {rows}=await client.query("SELECT b.id,to_jsonb(b)->'expected_context' AS expected_context FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id GROUP BY b.id HAVING (b.created_by=$1 AND bool_and(COALESCE(c.draft->>'location','')='' OR c.draft->>'location'=ANY($2::text[])) AND bool_or(COALESCE(c.status,'queued')<>'posted')) OR (count(c.id)>0 AND bool_and(COALESCE(c.draft->>'location','')=ANY($2::text[])))",[login,locations]);
+  const {rows}=await client.query("SELECT b.id,to_jsonb(b)->'expected_context' AS expected_context FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id "+(batchId?'WHERE b.id=$3 ':'')+"GROUP BY b.id HAVING (b.created_by=$1 AND bool_and(COALESCE(c.draft->>'location','')='' OR c.draft->>'location'=ANY($2::text[])) AND bool_or(COALESCE(c.status,'queued')<>'posted')) OR (count(c.id)>0 AND bool_and(COALESCE(c.draft->>'location','')=ANY($2::text[])))",[login,locations,...params]);
   return rows.filter(row=>!row.expected_context?.location||siteAllowed(scope,row.expected_context.location)).map(row=>row.id);
 }
 

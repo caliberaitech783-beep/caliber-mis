@@ -169,6 +169,16 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  let workers=0,timer,leaseTimer,stopped=false,readTotal=0,liveEngineCount=0;const lanes=new Map(),singleLane={name:null,ocr,concurrency:scanConcurrency,workers:0,batchIds:null};const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{
  req.logBookScope=await getSiteScope(req.session);
  if(req.logBookScope.sites!==null&&!req.logBookScope.sites.length)return res.status(403).json({error:'Assign a site or region to this MIS login before scanning.'});
+ const imageRequest=req.method==='GET'&&/^\/api\/scan-cards\/[^/]+\/image\/?$/i.test(req.path);
+ if(imageRequest&&req.logBookScope.sites!==null){
+  const denied=()=>res.status(403).json({error:'This scan batch is not assigned to your site or region.'});
+  if(!uuid(req.params.id))return denied();
+  const batchId=(await pool.query('SELECT batch_id FROM mis_scan_cards WHERE id=$1',[req.params.id])).rows[0]?.batch_id;
+  if(!batchId)return denied();
+  const allowed=await allowedScanBatches(pool,req.logBookScope,req.session.login||req.session.name,batchId);
+  if(!allowed.includes(batchId))return denied();
+  return next();
+ }
  req.allowedSiteBatches=await allowedScanBatches(pool,req.logBookScope,req.session.login||req.session.name);
  if(req.allowedSiteBatches!==null&&req.params.id){
   let batchId=req.params.id;

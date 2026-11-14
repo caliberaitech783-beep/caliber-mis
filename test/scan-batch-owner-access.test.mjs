@@ -32,5 +32,12 @@ test('owner access never exposes known out-of-scope cards during partial posting
   await t.test('a different user cannot inherit owner access to incomplete mixed-site cards',async()=>{assert.equal((await allowedScanBatches(db,scope,'viewer')).includes('mixed-other'),false);assert.equal((await allowedScanBatches(db,scope,'viewer')).includes('empty'),false)});
   await t.test('card saving still rejects locations outside the assigned sites',()=>{assert.throws(()=>requireLogBookSite(scope,'Dudhichua East OC'),{status:403});assert.doesNotThrow(()=>requireLogBookSite(scope,'Majri OB'))});
   await t.test('unassigned users remain blocked and all-sites users keep their normal scope',async()=>{assert.deepEqual(await allowedScanBatches(db,{sites:[]},'owner'),[]);assert.equal(await allowedScanBatches(db,{sites:null},'owner'),null)});
+  await t.test('the preview lookup agrees with full batch authorization',async()=>{
+   const ids=['affected','completed-outside','empty','in-scope','all-in-scope','mixed-other','missing'];
+   for(const login of ['owner','viewer']){
+    const all=await allowedScanBatches(db,scope,login);
+    for(const id of ids)assert.deepEqual(await allowedScanBatches(db,scope,login,id),all.filter(allowed=>allowed===id));
+   }
+  });
  }finally{await db.close()}
 });
