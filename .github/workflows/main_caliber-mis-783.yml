@@ -395,6 +395,7 @@ jobs:
           sleep 10
 
       - name: Verify Pulse-II release health
+        id: live-health
         env:
           EXPECTED_COMMIT: ${{ env.RELEASE_COMMIT }}
           RELEASE_CHECK_BASE_URL: https://pulse-ll.cmll.in
@@ -418,6 +419,25 @@ jobs:
       - name: Preserve local files written during the swap
         if: steps.swap-slot.outcome == 'success'
         run: node scripts/sync-production-slot-data.mjs to-production
+
+      # A release outside 12:00, 15:00, 18:00 and 00:00 IST (Run workflow) tells the
+      # release-alert people on Telegram once Pulse-II serves it. The numbers live in the
+      # RELEASE_ALERT_MOBILES secret. A failed notice never fails the release.
+      - name: Refresh Azure sign-in for the off-schedule notice
+        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule'
+        continue-on-error: true
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_248B6AEDDDF04A74B67402B5BD0DC3EB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6B5963E6143745DD89CD80664168F76E }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
+
+      - name: Tell the release-alert people about an off-schedule release
+        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule'
+        continue-on-error: true
+        env:
+          RELEASE_ALERT_MOBILES: ${{ secrets.RELEASE_ALERT_MOBILES }}
+        run: node scripts/send-release-notice.mjs
 
       - name: Stop staging if validation failed before the swap
         if: failure() && steps.start-slot.outcome == 'success' && steps.swap-slot.outcome == 'skipped'
