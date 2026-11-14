@@ -2,7 +2,7 @@ import {extendOperationalScanFixture} from './operational-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
-import {SCAN_QUEUE_SCHEMA,SCAN_LEASE_SCHEMA,claimNextScanCard,requestScanBatch,queuedScanBatches,renewReadLeases,requeueExpiredReads,releaseReadLeases,beatScanEngine,liveScanEngines,removeScanEngine} from '../server/services/scan-extraction-queue.mjs';
+import {SCAN_QUEUE_SCHEMA,SCAN_LEASE_SCHEMA,claimNextScanCard,requestScanBatch,queuedScanBatches,renewReadLeases,requeueExpiredReads,releaseReadLeases,beatScanEngine,liveScanEngines,removeScanEngine,scanDatabaseUnavailable,requeueAfterDatabaseFailure,DATABASE_REQUEUE_LIMIT,DATABASE_FAILURE_TEXT} from '../server/services/scan-extraction-queue.mjs';
 import {groupBatchesByLane,engineCovers} from '../server/rules/scan-lanes.mjs';
 async function setup(t){
  const db=new PGlite();t.after(()=>db.close());
@@ -91,4 +91,31 @@ test('lease renewal can be limited to the cards a worker is still reading, so an
  assert.equal((await renewReadLeases(db,'me',[])).rowCount,0);assert.equal(await renewed('abandoned'),false,'no active card renews nothing');
  await db.query(`UPDATE mis_scan_cards SET read_lease_until=NOW()-INTERVAL '1 second' WHERE id='abandoned'`);await requeueExpiredReads(db);
  assert.equal((await db.query(`SELECT status FROM mis_scan_cards WHERE id='abandoned'`)).rows[0].status,'queued');
+});
+
+test('a busy database is told apart from a scan the reader could not read',()=>{
+ assert.equal(scanDatabaseUnavailable(Error('timeout exceeded when trying to connect')),true);
+ assert.equal(scanDatabaseUnavailable(Error('Connection terminated unexpectedly')),true);
+ assert.equal(scanDatabaseUnavailable(Object.assign(Error('Database security is initializing. Please retry.'),{code:'57P03'})),true);
+ assert.equal(scanDatabaseUnavailable(Object.assign(Error('x'),{code:'08006'})),true);
+ assert.equal(scanDatabaseUnavailable(Error('Gemini response was incomplete (MAX_TOKENS). The scan is retained; retry extraction.')),false);
+ assert.equal(scanDatabaseUnavailable(Object.assign(Error('Gemini connection timed out'),{provider:'gemini'})),false);
+ assert.equal(scanDatabaseUnavailable(Object.assign(Error('duplicate key'),{code:'23505'})),false);
+ assert.equal(scanDatabaseUnavailable(null),false);
+});
+
+test('a card whose save hit a busy database goes back to the queue, then fails with a plain reason',async t=>{
+ const {db,add,claim}=await setup(t);
+ await db.exec("ALTER TABLE mis_scan_cards ADD COLUMN error TEXT DEFAULT '';ALTER TABLE mis_scan_cards ADD COLUMN revision INTEGER DEFAULT 1;");
+ await add('busy','fresh',1);
+ for(let n=1;n<=DATABASE_REQUEUE_LIMIT;n++){
+  const card=await claim();assert.equal(card.id,'busy');
+  assert.equal((await requeueAfterDatabaseFailure(db,card)).rows[0].status,'queued');
+  const row=(await db.query("SELECT status,error,read_lease_owner,raw_fields FROM mis_scan_cards WHERE id='busy'")).rows[0];
+  assert.deepEqual([row.status,row.error,row.read_lease_owner,row.raw_fields.databaseRequeues],['queued','',null,n]);
+ }
+ const last=await claim();
+ assert.equal((await requeueAfterDatabaseFailure(db,{...last,raw_fields:{...last.raw_fields,scanReadToken:'stale'}})).rows.length,0,'another read of the card is left alone');
+ assert.equal((await requeueAfterDatabaseFailure(db,last)).rows[0].status,'error');
+ assert.equal((await db.query("SELECT error FROM mis_scan_cards WHERE id='busy'")).rows[0].error,DATABASE_FAILURE_TEXT);
 });
