@@ -91,6 +91,18 @@ export function settingsToAdd(production, staging) {
   return add;
 }
 
+// Size, use and free space of /home in GB, from the output of `df -Pk /home`; null when it cannot be read.
+export function driveSpace(output) {
+  const gb = kilobytes => Math.round(Number(kilobytes) / 1024 / 1024 * 10) / 10;
+  for (const line of String(output ?? '').split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/), last = fields.length - 1;
+    if (last < 5 || fields[last] !== '/home') continue;
+    const [total, used, free] = fields.slice(last - 4, last - 1);
+    if ([total, used, free].every(value => /^\d+$/.test(value))) return {totalGb: gb(total), usedGb: gb(used), freeGb: gb(free)};
+  }
+  return null;
+}
+
 const lower = value => String(value ?? '').toLowerCase();
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const notResolved = item => !/^resolved$/i.test(item.status);
@@ -140,6 +152,27 @@ export async function repairStagingSlot({
   const wasRunning = /^running$/i.test(stage.json.properties.state || '');
   log(`production: ${safeName(live.json.properties.state)}, identity ${identityKind(live.json)}`);
   log(`staging: ${safeName(stage.json.properties.state)}, identity ${identityKind(stage.json)}`);
+  const scmHost = item => (item.json?.properties?.enabledHostNames || []).find(value => String(value).startsWith(APP) && /^[a-z0-9-]+\.scm\.(?:[a-z0-9-]+\.)?azurewebsites\.net$/.test(value));
+  const liveScm = scmHost(live), stageScm = scmHost(stage);
+
+  // The slots keep their files on the plan's shared drive. When it is full nothing new can be written to it: no key
+  // file, and no upload of a release ("deployment in progress" is how the deployment site reports it).
+  head('free space on the staging drive');
+  if (!stageScm) log('could not be read: Azure did not return the deployment hostname');
+  else {
+    let space = null, code = 'no answer';
+    try {
+      const response = await scm(stageScm, '/api/command', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({command: 'df -Pk /home', dir: '/home'})});
+      code = 'HTTP ' + response.status;
+      space = response.ok ? driveSpace((await response.json())?.Output) : null;
+    } catch { space = null; }
+    if (!space) log(`could not be read (${code})`);
+    else if (space.freeGb >= 0.1) log(`${space.totalGb} GB in all, ${space.usedGb} GB used, ${space.freeGb} GB free`);
+    else {
+      log(`${space.totalGb} GB in all, ${space.usedGb} GB used, ${space.freeGb} GB free: THE DRIVE IS FULL`);
+      remaining.push(`The drive is full (${space.usedGb} of ${space.totalGb} GB used). Nothing new can be written to it, so a key file cannot be copied and a release cannot be uploaded until space is freed.`);
+    }
+  }
 
   head('1. identity of the staging slot');
   let principal = /SystemAssigned/i.test(stage.json.identity?.type || '') ? String(stage.json.identity.principalId || '') : '';
@@ -164,42 +197,52 @@ export async function repairStagingSlot({
   if (!GUID.test(principal)) principal = '';
 
   head('2. integration key file on the staging drive');
-  const scmHost = item => (item.json?.properties?.enabledHostNames || []).find(value => String(value).startsWith(APP) && /^[a-z0-9-]+\.scm\.(?:[a-z0-9-]+\.)?azurewebsites\.net$/.test(value));
-  const liveScm = scmHost(live), stageScm = scmHost(stage);
   const route = parts => '/api/vfs/' + parts.map(encodeURIComponent).join('/');
   const keyRoute = route(KEY_FILE);
-  if (!liveScm || !stageScm || liveScm === stageScm) remaining.push('Azure did not return the two deployment hostnames. The integration key file was not carried across.');
+  // What still has to be done is listed at the end; each step also says here that it did not go through.
+  const notDone = (line, item) => { log(line); remaining.push(item); };
+  // Why the deployment site refused a write. Its answer can quote a path, so only the reason is taken from it.
+  const refusal = async response => {
+    let text = '';
+    try { text = await response.text(); } catch { text = ''; }
+    return /no space left|ENOSPC|disk (?:is )?full|not enough space|quota/i.test(text) ? 'the drive is full' : 'HTTP ' + response.status;
+  };
+  if (!liveScm || !stageScm || liveScm === stageScm) notDone('NOT copied: Azure did not return the two deployment hostnames', 'Azure did not return the two deployment hostnames. The integration key file was not carried across.');
   else {
     const source = await scm(liveScm, keyRoute);
     const key = source.ok ? Buffer.from(await source.arrayBuffer()) : null;
     const current = key ? await scm(stageScm, keyRoute) : null;
     const present = current?.ok ? Buffer.from(await current.arrayBuffer()) : null;
-    if (!key || key.length !== 32) remaining.push(`The integration key file of the live drive could not be read (HTTP ${source.status}). The staging drive was not given one.`);
+    if (!key || key.length !== 32) notDone('NOT copied: the file on the live drive could not be read', `The integration key file of the live drive could not be read (HTTP ${source.status}). The staging drive was not given one.`);
     else if (present?.equals(key)) log('already the same as on the live drive');
-    else if (!current.ok && current.status !== 404) remaining.push(`The staging drive could not be read (HTTP ${current.status}). The integration key file was not carried across.`);
+    else if (!current.ok && current.status !== 404) notDone('NOT copied: the staging drive could not be read', `The staging drive could not be read (HTTP ${current.status}). The integration key file was not carried across.`);
     else if (!apply) log(present ? 'DIFFERS from the live drive: would be replaced (the old file is kept beside it)' : 'MISSING: would be copied from the live drive');
     else {
       const put = (path, body, headers) => scm(stageScm, path, {method: 'PUT', headers, body});
       const binary = {'Content-Type': 'application/octet-stream'};
       let problem = '';
       for (let depth = 1; depth < KEY_FILE.length && !problem; depth++) {
-        const folder = await put(route(KEY_FILE.slice(0, depth)) + '/', undefined, {'If-None-Match': '*'});
-        if (!folder.ok && ![409, 412].includes(folder.status)) problem = `its folder could not be made (HTTP ${folder.status})`;
+        const folderRoute = route(KEY_FILE.slice(0, depth)) + '/';
+        const folder = await put(folderRoute, undefined, {'If-None-Match': '*'});
+        if (folder.ok) continue;
+        // A folder that is already there answers 409 or 412, and so does one that could not be made: look.
+        const reason = await refusal(folder);
+        if (!(await scm(stageScm, folderRoute)).ok) problem = `its folder could not be made (${reason})`;
       }
       if (!problem && present) {
         const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
         const kept = await put(keyRoute + '.replaced-' + stamp, present, {...binary, 'If-None-Match': '*'});
-        if (!kept.ok) problem = `the old file could not be kept (HTTP ${kept.status})`;
+        if (!kept.ok) problem = `the old file could not be kept (${await refusal(kept)})`;
       }
       if (!problem) {
         const written = await put(keyRoute, key, {...binary, ...(present ? {'If-Match': '*'} : {'If-None-Match': '*'})});
-        if (!written.ok) problem = `the file could not be written (HTTP ${written.status})`;
+        if (!written.ok) problem = `the file could not be written (${await refusal(written)})`;
       }
       if (!problem) {
         const check = await scm(stageScm, keyRoute);
         if (!check.ok || !Buffer.from(await check.arrayBuffer()).equals(key)) problem = 'the copy did not read back the same';
       }
-      if (problem) remaining.push(`The integration key file was not carried to the staging drive: ${problem}.`);
+      if (problem) notDone('NOT copied: ' + problem, `The integration key file was not carried to the staging drive: ${problem}.`);
       else log(present ? 'replaced with the one from the live drive (the old file is kept beside it)' : 'copied from the live drive');
     }
   }
@@ -226,7 +269,11 @@ export async function repairStagingSlot({
   else {
     const vault = await findResource('Microsoft.KeyVault/vaults', reference.vault);
     if (vault) grants.push({what: 'reading the database secret', role: ROLES.secret, scope: `${vault}/secrets/${reference.secret}`});
-    else { ownerNeeded = true; remaining.push('The Key Vault that holds the database secret cannot be seen with this sign-in, so reading it was not granted.'); }
+    else {
+      ownerNeeded = true;
+      log(`NOT granted, this sign-in cannot see the Key Vault: ${ROLES.secret.name} for reading the database secret`);
+      remaining.push('The Key Vault that holds the database secret cannot be seen with this sign-in, so reading it was not granted.');
+    }
   }
   if (production.MIS_SCAN_BLOB_ENABLED !== 'true') log('scan storage is switched off: nothing to grant for it');
   else {
@@ -234,7 +281,11 @@ export async function repairStagingSlot({
     const valid = /^[a-z0-9]{3,24}$/.test(account) && /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/.test(container);
     const storage = valid ? await findResource('Microsoft.Storage/storageAccounts', account) : '';
     if (storage) grants.push({what: 'the scanned-cards storage container', role: ROLES.blobs, scope: `${storage}/blobServices/default/containers/${container}`});
-    else { ownerNeeded = true; remaining.push('The scan storage account cannot be seen with this sign-in, so the scanned-cards container was not granted.'); }
+    else {
+      ownerNeeded = true;
+      log(`NOT granted, this sign-in cannot see the storage account: ${ROLES.blobs.name} for the scanned-cards storage container`);
+      remaining.push('The scan storage account cannot be seen with this sign-in, so the scanned-cards container was not granted.');
+    }
   }
   for (const grant of grants) {
     const label = `${grant.role.name} for ${grant.what}`;
@@ -360,7 +411,7 @@ export async function repairStagingSlot({
   log('\n=====================');
   if (!apply) {
     log('Nothing was changed. Run again with --apply to repair the staging slot.');
-    for (const item of remaining) log('  could not be checked: ' + item);
+    for (const item of remaining) log('  found while listing: ' + item);
   } else if (!remaining.length) log('STAGING SLOT REPAIRED. The next release can use it.');
   else {
     log('NOT FINISHED. Still needed:');
