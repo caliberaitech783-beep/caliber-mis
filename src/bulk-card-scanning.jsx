@@ -101,7 +101,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const autoSaveFailures=useRef(new Map()),[failureTick,setFailureTick]=useState(0),cardsView=useRef({source:null,tick:-1,cards:[]});
  const [reviewPage,setReviewPage]=useState(()=>kind==='vehicle'&&new URLSearchParams(window.location.search).get('scanView')==='review');
  useEffect(()=>{const sync=()=>{const params=new URLSearchParams(window.location.search);setReviewPage(kind==='vehicle'&&params.get('scanView')==='review');setGroupFilter(params.get('scanGroup')||'all');setFleetOpenId(params.get('scanEquipment')||'');};window.addEventListener('popstate',sync);return()=>window.removeEventListener('popstate',sync);},[kind]);
- const navigateReview=(open,group='all')=>{const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.delete('scanReviewReturn');if(open){url.searchParams.set('scanView','review');url.searchParams.set('scanGroup',group);}else{url.searchParams.delete('scanView');url.searchParams.delete('scanGroup');url.searchParams.delete('card');}window.history.pushState(null,'',url.pathname+url.search+url.hash);setReviewPage(open);setShowAll(kind==='vehicle'||open);setGroupFilter(group);setFilter('all');setError('');};
+ const navigateReview=(open,group='all')=>{const url=new URL(window.location.href);url.searchParams.delete('scanEquipment');url.searchParams.delete('scanReviewReturn');if(open){url.searchParams.set('scanView','review');url.searchParams.set('scanGroup',group);}else{url.searchParams.delete('scanView');url.searchParams.delete('scanGroup');url.searchParams.delete('card');}window.history.pushState(null,'',url.pathname+url.search+url.hash);setReviewPage(open);setGroupFilter(group);setFilter('all');setError('');};
  const showDetails=kind!=='vehicle'||reviewPage;
  const [reviewCompact,setReviewCompact]=useState(()=>{try{return localStorage.getItem('caliberVlbReviewCompact')!=='false';}catch{return true;}});
  const reviewPanel=useRef(null);
@@ -136,7 +136,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const [expandedScan,setExpandedScan]=useState(false);
  const toggleReviewCompact=()=>setReviewCompact(value=>{try{localStorage.setItem('caliberVlbReviewCompact',String(!value));}catch{}return !value;});
  const [savedCardId,setSavedCardId]=useState('');
- const [showAll,setShowAll]=useState(()=>kind==='vehicle'||reviewPage);const manualVisibility=useRef(null);
+ const [showAll,setShowAll]=useState(true);const manualVisibility=useRef(null);
  const [connectionError,setConnectionError]=useState('');const [reader,setReader]=useState(null);const labels=scanStatusLabels(reader?.provider);
  const [workflowTab,setWorkflowTab]=useState(()=>{const params=new URLSearchParams(window.location.search),entry=params.get('scanEntry');return kind==='vehicle'&&['scan','upload'].includes(entry)?entry:params.has('batch')?'review':''});
  const [dirty,setDirty]=useState(false);const [autosaveStatus,setAutosaveStatus]=useState(''),[saveTick,setSaveTick]=useState(0);const dirtyRef=useRef(false),draftRef=useRef({}),editRevision=useRef(null),editBaseline=useRef({}),savingRef=useRef(false),recoverySaved=useRef(false);dirtyRef.current=dirty;
@@ -384,7 +384,7 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const errorReasons=scanErrorReasons(cards);
  const matchedUploadCount=uploadAttempt.current?.receipts.filter(receipt=>receipt.matched).length||0;
 
- useEffect(()=>{setShowAll(kind==='vehicle'||reviewPage);},[card?.id,reviewPage,groupFilter,kind]);
+ // All values stay visible by default (owner's rule, 15 Nov 2026); only the user's own click on "Show only fields needing input" narrows the view.
  const editableDraft=source=>{
   const original=source.draft;
   const fallback=original.bookDateSource==='system-fallback';

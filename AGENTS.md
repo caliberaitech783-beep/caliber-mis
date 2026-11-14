@@ -25,3 +25,11 @@ Switched off by the owner on 13 November 2026, because building the English and 
 - To delete such leftover files from the servers' disks, start the workflow "Remove retired files from the servers" by hand (`.github/workflows/remove-retired-server-files.yml`). It lists unless "delete" is ticked, and removes only the file names listed in `scripts/remove-retired-server-files.mjs` from both Pulse-II slots and the scan engine server. It restarts nothing.
 - A branch that still carries manual changes must drop them before it merges.
 - The old manuals and their build scripts stay in git history (last present in commit `2872070`) if the owner asks for them again.
+
+# Scan card review shows all values by default
+
+Set by the owner on 15 November 2026.
+
+- Every scanned card (VLB and ELB, review page or batch page) opens with all of its values visible ("Show all values" is the default).
+- The view narrows to "Show only fields needing input" only when the user clicks that button, and stays as the user left it until they click "Show all values" again. Opening a card, moving to the next card, changing the issue group or opening the review page never hides values by itself.
+- Do not change this default; `test/scan-review-page.test.mjs` checks it.
