@@ -80,7 +80,8 @@ function runSupervisor(){
  const server=http.createServer((req,res)=>{
   if(req.url!=='/health'&&req.url!=='/'){res.writeHead(404).end();return;}
   const engines=[...children.values()].map(({spec,child,startedAt,restarts,status})=>({site:label(spec.lane),key:geminiKeySource(process.env,spec.lane==='*'?'':spec.lane),keySetting:spec.lane==='*'?'GEMINI_API_KEY':'GEMINI_API_KEY_'+siteKeySlug(spec.lane),running:child.exitCode===null&&!child.killed,startedAt,restarts,reading:status?.reading??0,readTotal:status?.readTotal??0}));
-  const ok=!stopping&&engines.every(engine=>engine.running);
+  const ok=!stopping&&engines.every(engine=>engine.running)
+   &&[...children.values()].every(entry=>entry.status!==null);
   res.writeHead(ok?200:503,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({status:ok?'ok':'degraded',commit:version,engines}));
  });
  server.listen(Number(process.env.PORT)||8080,()=>console.log(`[supervisor] ${children.size} scan engines started; health on port ${Number(process.env.PORT)||8080}`));
