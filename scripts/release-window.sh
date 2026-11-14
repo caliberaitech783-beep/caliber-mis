@@ -3,8 +3,11 @@
 # has anything to release. Writes deploy=true|false to $GITHUB_OUTPUT.
 #   - A manual run (Run workflow) asks RELEASE_WHEN:
 #       "Next scheduled window": nothing to do now; says when it goes out.
-#       "Urgent" without RELEASE_OTP: Pulse-II sends an OTP to the owner's
-#         WhatsApp; run again with Urgent and that OTP.
+#       "Urgent" without RELEASE_OTP: Pulse-II sends Approve / Reject buttons on
+#         Telegram to Mr Anoop and Mr Mohit Chadda and this run waits; Approve
+#         releases now. (A Pulse-II without the buttons sends an OTP instead.)
+#       "Urgent" with RELEASE_APPROVAL: already approved on Telegram by
+#         scripts/merge-and-release.sh; spent once, releases now.
 #       "Urgent" with RELEASE_OTP: Pulse-II checks it; a match releases now.
 #   - Scheduled runs start on $SCHEDULE_STARTS (IST date, YYYY-MM-DD).
 #   - Nothing new on main since the commit Pulse-II serves: skip.
@@ -25,30 +28,8 @@ next_window() {
 const w=[720,900,1080,1440].find(x=>x>m);process.stdout.write(w===1440?'00:00 IST tonight':String(w/60).padStart(2,'0')+':00 IST today')" "${RELEASE_WINDOW_NOW_MS:-}"
 }
 
-# This workflow run's GitHub OIDC identity, minted once in the main shell so the
-# mask command reaches the runner log.
-TOKEN=''
-mint_identity() {
-  [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]] || return 0
-  TOKEN="$(curl --fail --silent --max-time 20 -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pulse-ii-release" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).value||'')}catch{}})")"
-  [[ -z "$TOKEN" ]] || echo "::add-mask::${TOKEN}"
-}
-field() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)[process.argv[1]];process.stdout.write(v==null?'':String(v))}catch{}})" "$1"; }
-# POST to Pulse-II's release OTP API as this workflow run. A failure without a
-# JSON reason (an HTML error page, no answer) is reported with its HTTP code.
-release_api() {
-  local path="$1" body="$2" response payload code
-  if [[ -z "$TOKEN" ]]; then echo '{"error":"GitHub did not issue an identity for this run (id-token: write)."}'; return 1; fi
-  response="$(curl --silent --max-time 30 -w '\n%{http_code}' -X POST -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' --data "$body" "${BASE_URL}${path}")"
-  payload="${response%$'\n'*}" code="${response##*$'\n'}"
-  if [[ "$code" == 200 ]]; then echo "$payload"; return 0; fi
-  if [[ -n "$(field error <<< "$payload")" ]]; then echo "$payload"
-  elif [[ "$code" == 000 ]]; then echo '{"error":"Pulse-II did not answer."}'
-  elif [[ "$code" == 404 ]]; then echo '{"error":"Pulse-II answered HTTP 404: the release OTP service is not live there yet (it goes live with the next scheduled release)."}'
-  else echo "{\"error\":\"Pulse-II answered HTTP ${code}.\"}"
-  fi
-  return 1
-}
+# mint_identity, field, release_api, approval_body and wait_for_approval.
+source "$(dirname "${BASH_SOURCE[0]}")/release-api.sh"
 
 # A backup trigger (Run workflow with "Scheduled window") runs the same checks as
 # GitHub's own timer, because GitHub can start timed runs hours late or not at all.
@@ -62,11 +43,49 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
     summary "Not urgent: no deployment now. Everything merged to main goes out in the next scheduled window, $(next_window)."
     decide false
   fi
-  OTP="$(tr -d '[:space:]' <<< "${RELEASE_OTP:-}")"
+  OTP="$(tr -d '[:space:]' <<< "${RELEASE_OTP:-}")" APPROVAL="$(tr -d '[:space:]' <<< "${RELEASE_APPROVAL:-}")"
   if [[ -n "$OTP" ]]; then echo "::add-mask::${OTP}"; fi
   if [[ -n "$OTP" && ! "$OTP" =~ ^[0-9]{6}$ ]]; then summary "Urgent release: enter the six-digit OTP."; echo "::error::The OTP must be six digits."; exit 1; fi
+  if [[ -n "$APPROVAL" && ! "$APPROVAL" =~ ^[0-9a-f-]{36}$ ]]; then summary "Urgent release: the approval reference is not valid."; echo "::error::Invalid approval reference."; exit 1; fi
   mint_identity
+  # Approved on Telegram before this run started: merge-and-release.yml merged the pull request
+  # after Mr Anoop or Mr Mohit Chadda tapped Approve, then started this run with the approval.
+  if [[ -n "$APPROVAL" ]]; then
+    if result="$(release_api "/api/release-approval/${APPROVAL}/use" '{}')"; then
+      pr="$(field prNumber <<< "$result")"
+      summary "Urgent release approved on Telegram by $(field decidedBy <<< "$result")${pr:+ (PR #${pr} merged)}. Releasing main now."
+      decide true
+    fi
+    summary "Urgent release refused: $(field error <<< "$result")"
+    echo "::error::The release approval was not accepted."
+    exit 1
+  fi
+  # Urgent without an OTP: Approve / Reject buttons on Telegram, and this run waits for the answer.
   if [[ -z "$OTP" ]]; then
+    body="$(approval_body kind=release mainSha="${RELEASE_COMMIT:-}" requestedBy="${RELEASE_REQUESTED_BY:-}" computer="${RELEASE_COMPUTER:-}" ip="${RELEASE_REQUESTER_IP:-}" runUrl="${RELEASE_RUN_URL:-}")"
+    if result="$(release_api /api/release-approval/request "$body")"; then
+      id="$(field id <<< "$result")"
+      if [[ "$id" =~ ^[0-9a-f-]{36}$ ]]; then
+        summary "Urgent release: Approve / Reject sent on Telegram to Mr Anoop and Mr Mohit Chadda ($(field sentTo <<< "$result") chats). Waiting up to $(field expiresInMinutes <<< "$result") minutes for an answer."
+        if final="$(wait_for_approval "$id")"; then
+          if used="$(release_api "/api/release-approval/${id}/use" '{}')"; then
+            summary "Urgent release approved on Telegram by $(field decidedBy <<< "$used"). Releasing main now."
+            decide true
+          fi
+          summary "Urgent release refused: $(field error <<< "$used")"
+          echo "::error::The release approval was not accepted."
+          exit 1
+        fi
+        summary "Urgent release not approved ($(approval_outcome "$final")). Nothing was deployed."
+        echo "::error::The urgent release was not approved on Telegram."
+        exit 1
+      fi
+    elif [[ "$(field error <<< "$result")" != *"HTTP 404"* ]]; then
+      summary "Urgent release: the Telegram approval could not be sent. $(field error <<< "$result")"
+      echo "::error::The urgent release approval could not be sent."
+      exit 1
+    fi
+    # Pulse-II without the Approve buttons yet (HTTP 404): the OTP, as before.
     if result="$(release_api /api/release-otp/request '{}')"; then
       summary "Urgent release: an OTP was sent to the $(field recipient <<< "$result"). Get it from the owner, then Run workflow again with \"Urgent\" and the OTP within $(field expiresInMinutes <<< "$result") minutes. Nothing was deployed yet."
       decide false

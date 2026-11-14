@@ -5,9 +5,12 @@ name: Build and deploy main to production - caliber-mis-783
 # 00:00 IST (06:30, 09:30, 12:30 and 18:30 UTC). A window skips the release when
 # main has nothing new since the commit Pulse-II serves, or only documentation.
 # Run workflow asks "Urgent or next scheduled window?". The next window needs
-# nothing more: the change is already queued. Urgent sends an OTP to the owner's
-# Telegram (WhatsApp if Telegram is not linked); run it again with Urgent and that OTP to deploy main at once
-# (scripts/release-window.sh, server/routes/release-otp.mjs).
+# nothing more: the change is already queued. Urgent sends Approve / Reject buttons
+# on Telegram to Mr Anoop and Mr Mohit Chadda and waits up to ten minutes; Approve
+# deploys main at once (scripts/release-window.sh, server/routes/release-approval.mjs).
+# To merge a pull request and make it live in one step, use "Merge a PR and make it
+# live (Telegram approval)" instead; it starts this workflow with its approval.
+# The OTP (server/routes/release-otp.mjs) remains for a Pulse-II without the buttons.
 # GitHub may start a scheduled run some minutes after its time.
 on:
   schedule:
@@ -19,11 +22,27 @@ on:
         type: choice
         options:
           - 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
-          - 'Urgent: deploy now (needs OTP from the owner)'
+          - 'Urgent: deploy now (Mr Anoop or Mr Mohit Chadda approves on Telegram)'
           - 'Scheduled window now (backup trigger: releases only in the hour after a window)'
         default: 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
       otp:
-        description: 'Urgent only: the 6-digit OTP sent to Mr Anoop and Mr Mohit Chadda on Telegram (either one). Leave empty to send one.'
+        description: 'Urgent only, usually empty: a 6-digit OTP, only if Pulse-II sent one instead of Approve buttons.'
+        type: string
+        required: false
+      requested_by:
+        description: 'Urgent only: your name (shown in the Telegram approval)'
+        type: string
+        required: false
+      computer:
+        description: 'Urgent only: computer name (shown in the Telegram approval)'
+        type: string
+        required: false
+      ip:
+        description: 'Urgent only: your public IP address (shown in the Telegram approval)'
+        type: string
+        required: false
+      approval:
+        description: 'Leave empty. Set by "Merge a PR and make it live" after Approve on Telegram.'
         type: string
         required: false
 
@@ -42,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Identifies this run to Pulse-II for the urgent release OTP.
+      # Identifies this run to Pulse-II for the urgent release approval.
       id-token: write
     outputs:
       deploy: ${{ steps.window.outputs.deploy }}
@@ -69,6 +88,11 @@ jobs:
           SCHEDULE_STARTS: '2026-11-15'
           RELEASE_WHEN: ${{ inputs.when }}
           RELEASE_OTP: ${{ inputs.otp }}
+          RELEASE_APPROVAL: ${{ inputs.approval }}
+          RELEASE_REQUESTED_BY: ${{ inputs.requested_by }}
+          RELEASE_COMPUTER: ${{ inputs.computer }}
+          RELEASE_REQUESTER_IP: ${{ inputs.ip }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/release-window.sh
 
       - name: Select safe release test lane

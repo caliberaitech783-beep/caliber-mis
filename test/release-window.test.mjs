@@ -72,13 +72,17 @@ test('scheduled windows wait for the start date',()=>{
 });
 
 // Run workflow: a fake GitHub identity endpoint and a fake Pulse-II release OTP API.
-const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,actor='someone-else',owner='caliberaitech783-beep'})=>{
+// approvals: the Telegram approval API; by default Pulse-II answers it with an HTML 404 (no buttons yet)
+// and those calls are left out of `calls`, so the OTP tests see only the OTP API.
+const noApprovals=()=>[404,'<!DOCTYPE html><pre>Cannot POST /api/release-approval/request</pre>'];
+const dispatch=async({when,otp='',approval='',now=Date.parse('2026-11-15T07:00:00Z'),api=()=>[500,{}],approvals,actor='someone-else',owner='caliberaitech783-beep',env={}})=>{
   const calls=[];
   const server=createServer((req,res)=>{
     let body='';req.on('data',d=>body+=d).on('end',()=>{
       if(req.url.startsWith('/token'))return res.end(JSON.stringify({value:req.headers.authorization==='bearer request-token'&&req.url.includes('audience=pulse-ii-release')?'oidc-jwt':''}));
-      calls.push({path:req.url,auth:req.headers.authorization,body:body?JSON.parse(body):null});
-      const [status,payload]=api(req.url,body?JSON.parse(body):{});
+      if(approvals||!req.url.startsWith('/api/release-approval'))calls.push({path:req.url,auth:req.headers.authorization,body:body?JSON.parse(body):null});
+      const approvalPath=req.url.startsWith('/api/release-approval');
+      const [status,payload]=(approvalPath?(approvals||noApprovals):api)(req.url,body?JSON.parse(body):{});
       // A string payload is an HTML error page, as Express sends for an unknown route.
       if(typeof payload==='string')return res.writeHead(status,{'content-type':'text/html'}).end(payload);
       res.writeHead(status,{'content-type':'application/json'}).end(JSON.stringify(payload));
@@ -91,7 +95,7 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,act
   let code=0;
   try{
     await execFileAsync('bash',[script],{encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:'workflow_dispatch',RELEASE_COMMIT:'x',GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summaryFile,
-      RELEASE_WHEN:when,RELEASE_OTP:otp,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_OTP_BASE_URL:base,
+      RELEASE_WHEN:when,RELEASE_OTP:otp,RELEASE_APPROVAL:approval,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_OTP_BASE_URL:base,RELEASE_APPROVAL_POLL_SECONDS:'0.2',RELEASE_APPROVAL_WAIT_SECONDS:'2',...env,
       ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token',GITHUB_ACTOR:actor,GITHUB_REPOSITORY_OWNER:owner}});
   }catch(error){code=error.code;}
   server.close();
@@ -99,7 +103,7 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,act
   rmSync(scratch,{recursive:true,force:true});
   return result;
 };
-const URGENT='Urgent: deploy now (needs OTP from the owner)',LATER='Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)';
+const URGENT='Urgent: deploy now (Mr Anoop or Mr Mohit Chadda approves on Telegram)',LATER='Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)';
 
 test('Run workflow without urgency deploys nothing and names the next window',async()=>{
   const at=async iso=>(await dispatch({when:LATER,now:Date.parse(iso),api:()=>[500,{}]}));
@@ -181,4 +185,42 @@ test('a window release goes out only in the hour after a window, from GitHub tim
     assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live,head,now:at('2026-11-20T14:00:00Z')}),'false');  // 19:30 IST
     assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live:head,head,now:at('2026-11-20T12:32:00Z')}),'false','already released: a duplicate trigger finds nothing new');
   }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+// Telegram Approve / Reject (15 Nov 2026): the run asks, waits, and spends the approval once.
+const ID='0b7c6f8e-1d2a-4c3b-9e8f-112233445566';
+const telegramApi=answers=>{let polls=0;return (route,body)=>{
+  if(route==='/api/release-approval/request')return [200,{id:ID,sentTo:2,expiresInMinutes:10}];
+  if(route===`/api/release-approval/${ID}/status`)return [200,answers[Math.min(polls++,answers.length-1)]];
+  if(route===`/api/release-approval/${ID}/use`)return [200,{approved:true,kind:'release',decidedBy:'Mohit Chadda'}];
+  return [404,{error:'Unknown request.'}];
+};};
+test('Urgent sends Approve / Reject on Telegram, waits, and releases on Approve',async()=>{
+  const r=await dispatch({when:URGENT,approvals:telegramApi([{status:'pending'},{status:'pending'},{status:'approved',decidedBy:'Mohit Chadda'}]),
+    env:{RELEASE_COMMIT:'c'.repeat(40),RELEASE_REQUESTED_BY:'Claude Code session for Mohit',RELEASE_COMPUTER:'MOHIT-PC',RELEASE_REQUESTER_IP:'49.36.1.2',RELEASE_RUN_URL:'https://github.com/x/runs/1'}});
+  assert.equal(r.code,0);assert.equal(r.deploy,'true');
+  assert.deepEqual(r.calls.map(c=>c.path),['/api/release-approval/request',...Array(3).fill(`/api/release-approval/${ID}/status`),`/api/release-approval/${ID}/use`]);
+  assert.deepEqual(r.calls[0].body,{kind:'release',mainSha:'c'.repeat(40),requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2',runUrl:'https://github.com/x/runs/1'});
+  assert.ok(r.calls.every(c=>c.auth==='Bearer oidc-jwt'));
+  assert.ok(r.summary.includes('Approve / Reject sent on Telegram to Mr Anoop and Mr Mohit Chadda (2 chats). Waiting up to 10 minutes'),r.summary);
+  assert.ok(r.summary.includes('approved on Telegram by Mohit Chadda. Releasing main now.'),r.summary);
+});
+test('Reject or no answer on Telegram deploys nothing',async()=>{
+  const rejected=await dispatch({when:URGENT,approvals:telegramApi([{status:'rejected',decidedBy:'Anoop'}])});
+  assert.equal(rejected.code,1);assert.equal(rejected.deploy,'');assert.ok(rejected.summary.includes('not approved (rejected by Anoop). Nothing was deployed.'),rejected.summary);
+  assert.ok(!rejected.calls.some(c=>c.path.endsWith('/use')));
+  const silent=await dispatch({when:URGENT,approvals:telegramApi([{status:'pending'}])});
+  assert.equal(silent.code,1);assert.equal(silent.deploy,'');assert.ok(silent.summary.includes('not approved (expired)'),silent.summary);
+  const unsent=await dispatch({when:URGENT,approvals:()=>[503,{error:'Neither Mr Anoop nor Mr Mohit Chadda has linked Telegram.'}]});
+  assert.equal(unsent.code,1);assert.match(unsent.summary,/Telegram approval could not be sent. Neither Mr Anoop/);
+  assert.ok(!unsent.calls.some(c=>c.path.startsWith('/api/release-otp')),'a refused approval does not fall back to the OTP');
+});
+test('a run started after Approve by merge-and-release spends that approval once',async()=>{
+  const ok=await dispatch({when:URGENT,approval:ID,approvals:(route)=>route===`/api/release-approval/${ID}/use`?[200,{approved:true,kind:'merge-release',prNumber:300,decidedBy:'Anoop'}]:[404,{}]});
+  assert.equal(ok.deploy,'true');assert.deepEqual(ok.calls.map(c=>c.path),[`/api/release-approval/${ID}/use`]);
+  assert.ok(ok.summary.includes('approved on Telegram by Anoop (PR #300 merged). Releasing main now.'),ok.summary);
+  const used=await dispatch({when:URGENT,approval:ID,approvals:()=>[409,{error:'This approval was already used for a release.'}]});
+  assert.equal(used.code,1);assert.equal(used.deploy,'');assert.match(used.summary,/refused: This approval was already used/);
+  const bad=await dispatch({when:URGENT,approval:'not-an-id',approvals:()=>[200,{}]});
+  assert.equal(bad.code,1);assert.equal(bad.calls.length,0);
 });

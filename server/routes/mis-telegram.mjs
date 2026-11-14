@@ -5,6 +5,8 @@ import {automationOn} from '../services/automation-switches.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
+// callback_query carries the taps on message buttons (release Approve / Reject).
+export const MIS_TELEGRAM_UPDATES=Object.freeze(['message','callback_query']);
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&x.length>0&&timingSafeEqual(x,y)};
 export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_links(login_name TEXT PRIMARY KEY,chat_id TEXT NOT NULL,linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -54,7 +56,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   if(info.url&&info.url!==webhook)invalid('This bot is connected to a different application. Use a dedicated MIS bot to keep that application working.');
   config.botUsername=bot.username;config.webhookSecret=old.webhookSecret||randomBytes(32).toString('base64url');config.webhookReady=false;
   await store.write(key,config);
-  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message'],drop_pending_updates:false});
+  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:[...MIS_TELEGRAM_UPDATES],drop_pending_updates:false});
   config.webhookReady=true;await store.write(key,config);res.json(view(config));
  }));
  app.get('/api/mis-telegram/me',requireSession,wrap(async(req,res)=>{
@@ -73,6 +75,15 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  }));
  app.post('/api/mis-telegram/webhook',wrap(async(req,res)=>{
   const config=await read();if(!equal(req.get('X-Telegram-Bot-Api-Secret-Token'),config.webhookSecret))return res.status(403).json({error:'Invalid webhook authentication.'});
+  // A tap on a message button: the handler registered for its prefix answers, and Telegram shows that answer.
+  const tap=req.body?.callback_query;
+  if(tap){
+   if(!config.enabled)return res.json({ok:true});
+   const data=String(tap.data||''),handler=callbacks.get(data.split(':')[0]);let answer='This button is no longer active.';
+   if(handler){try{answer=await handler({fromId:String(tap.from?.id||''),data})||answer;}catch{answer='Your answer could not be recorded. Please tap again.';}}
+   await call(config,'answerCallbackQuery',{callback_query_id:String(tap.id||''),text:String(answer).slice(0,190),show_alert:true}).catch(()=>{});
+   return res.json({ok:true});
+  }
   const message=req.body?.message,match=/^\/start(?:@\w+)? mis_([A-Za-z0-9_-]{32})$/.exec(message?.text||'');
   if(!config.enabled||!match||message?.chat?.type!=='private'||String(message.from?.id)!==String(message.chat.id)||!/^[1-9]\d{0,18}$/.test(String(message.chat.id)))return res.json({ok:true});
   const client=await pool.connect();let linked=false;
@@ -86,6 +97,16 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   if(linked)await call(config,'sendMessage',{chat_id:String(message.chat.id),text:'Your Caliber Pulse-II MIS account is connected. Ticket resolution updates will appear here.'}).catch(()=>{});
   res.json({ok:true});
  }));
+ const callbacks=new Map();
+ // A bot set up before buttons existed listens to messages only; ask Telegram once at start-up for taps too.
+ async function ensureUpdates(){
+  const config=await read();if(!config.enabled||!config.webhookReady||!config.botToken)return;
+  const info=await call(config,'getWebhookInfo');
+  if(info.url!==webhook)return;
+  const allowed=Array.isArray(info.allowed_updates)?info.allowed_updates:null;
+  if(!allowed||MIS_TELEGRAM_UPDATES.every(update=>allowed.includes(update)))return;
+  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:[...MIS_TELEGRAM_UPDATES],drop_pending_updates:false});
+ }
  let draining=false,timer;
  async function drain(){
   if(draining)return;draining=true;
@@ -101,7 +122,20 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  }
  return {
   async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);},
-  start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();}},
+  start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();void ensureUpdates().catch(()=>{});}},
+  ensureUpdates,
+  onCallback(prefix,handler){callbacks.set(String(prefix),handler);},
+  // Sent at once, not through the outbox, because the caller needs the message id to close the buttons later.
+  async sendNow(chatId,text,replyMarkup){
+   const config=await read();if(!config.enabled||!config.webhookReady)throw Object.assign(Error('MIS Telegram is not enabled.'),{status:503});
+   const sent=await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,...(replyMarkup?{reply_markup:replyMarkup}:{})});
+   return sent?.message_id??null;
+  },
+  // Replaces a message's text and removes its buttons.
+  async editText(chatId,messageId,text){
+   const config=await read();if(!config.enabled||!config.webhookReady)return;
+   await call(config,'editMessageText',{chat_id:String(chatId),message_id:Number(messageId),text:String(text).slice(0,4000),disable_web_page_preview:true});
+  },
   stop(){clearInterval(timer);timer=null;},drain,
   async notify(event,ticket){
    const config=await read();if(!config.enabled||!config.webhookReady)return;
