@@ -86,13 +86,14 @@ export function createDashboardRequestLoader({
     if (!authToken) {
       activeController = null;
       publish({...initialState(), error: "Sign in to load dashboard requests."});
-      return getState();
+      return {...getState(), status: 401};
     }
 
     const controller = new AbortController();
     activeController = controller;
     publish({...state, loading: true});
     let timedOut = false;
+    let failedStatus = 0;
     let rejectAbort;
     const aborted = new Promise((_, reject) => {
       rejectAbort = () => reject(Object.assign(new Error("Dashboard request loading was cancelled."), {name: "AbortError"}));
@@ -127,6 +128,7 @@ export function createDashboardRequestLoader({
       publish({token: authToken, records: result.records, loaded: true, loading: false, error: "", updatedAt: now()});
     } catch (error) {
       if (attempt !== sequence || (controller.signal.aborted && !timedOut)) return getState();
+      failedStatus = Number(error?.status) || 0;
       // Do not retain another account's or newly unauthorised request data.
       if ([401, 403].includes(error?.status)) currentEtag = "";
       const previous = [401, 403].includes(error?.status) ? initialState(authToken) : state;
@@ -138,7 +140,9 @@ export function createDashboardRequestLoader({
       controller.signal.removeEventListener("abort", rejectAbort);
       if (attempt === sequence) activeController = null;
     }
-    return getState();
+    // The HTTP status of a failed load travels only with the value returned here, so the refresh
+    // watcher can tell a refused sign-in (no early retry) from a server that is restarting.
+    return failedStatus ? {...getState(), status: failedStatus} : getState();
   }
 
   return {load, cancel, getState};

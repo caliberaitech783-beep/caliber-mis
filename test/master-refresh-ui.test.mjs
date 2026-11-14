@@ -219,6 +219,30 @@ for (const status of [401, 403]) test(`fleet HTTP ${status} clears cached record
   app.unmount();
 });
 
+test("a failed first fleet load is tried again within seconds, and a refused sign-in is not", async () => {
+  const app = harness("useDashboardEquipment");
+  const scope = {SmartSelect: "select",restrictToScope: true, allowedSites: ["Majri OB"], allowedRegions: []};
+  const earlyRetries = () => [...app.timeouts].filter(([, {duration}]) => duration >= 4_000 && duration <= 5_000);
+  app.render(); app.effects();
+  app.requests[0].respond({error: "The server is reconnecting to the database. Please retry in a moment."}, false, 503); await settle();
+  assert.equal(app.render().loaded, false);
+  assert.ok(app.render().loadError);
+  assert.equal(earlyRetries().length, 1, "the next try is due in about five seconds");
+  const [id, retry] = earlyRetries()[0];
+  app.timeouts.delete(id); retry.fn();
+  assert.equal(app.requests.length, 2, "it does not wait for the regular refresh");
+  app.requests[1].respond(fleetResponse(oldEquipment, scope)); await settle();
+  assert.equal(app.render().loaded, true);
+  assert.equal(app.render().loadError, "");
+  assert.equal(earlyRetries().length, 0, "a successful load ends the early retries");
+  app.tick(10_000);
+  app.requests[2].respond("not JSON", false, 401); await settle();
+  assert.equal(app.render().loaded, false);
+  assert.equal(earlyRetries().length, 0, "a refused sign-in waits for the regular refresh");
+  app.unmount();
+  assert.equal(app.timeouts.size, 0);
+});
+
 test("initial fleet failure has no snapshot and is not fabricated as a zero fleet", async () => {
   const app = harness("useDashboardEquipment");
   app.render(); app.effects();

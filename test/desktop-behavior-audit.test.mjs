@@ -94,6 +94,10 @@ test("rapid ticket filters and request refreshes cannot apply stale responses", 
   assert.match(app, /if \(loadSequence === requestLoadSequence\.current\) \{\s*setRequests\(data\)/);
   assert.match(app, /return \(\) => \{\s*requestLoadSequence\.current \+= 1;\s*stopRefresh\(\)/);
   assert.match(app, /watchRequestRefresh\(loadRequests, \{ win: window, doc: document, initial: true \}\)/);
+  // The refresh watcher retries a failed request list within seconds only if the load rejects with its HTTP status.
+  const requestLoad = app.slice(app.indexOf("const loadRequests = async"), app.indexOf("const requestsLoaded ="));
+  assert.match(requestLoad, /if \(!response\.ok\) throw Object\.assign\(new Error\([^;]+\), \{status: response\.status\}\);/);
+  assert.match(requestLoad, /setRequestState\(\(current\) => \(\{ \.\.\.current, token: session\.token, error: error\.message \|\| "Could not load requests" \}\)\);\s*\}\s*\}\s*throw error;/);
   const mutations = app.slice(app.indexOf("addRequest = async"), app.indexOf("const completeLogin"));
   assert.ok((mutations.match(/requestLoadSequence\.current \+= 1;/g) || []).length >= 6);
   assert.match(mutations, /requestLoadSequence\.current \+= 1;\s*setRequests\(\(current\) => current\.map/);
