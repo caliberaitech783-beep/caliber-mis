@@ -23,6 +23,7 @@ export function transferMasterRecord(transfer = {}) {
   return {
     transferNo: transfer.transferNo || "",
     transferDate: transfer.transferDate || "",
+    ...(transfer.transferTime?{transferTime:transfer.transferTime}:{}),
     source: displaySiteName(transfer.source),
     destination: displaySiteName(transfer.destination),
     equipment,

@@ -1,8 +1,10 @@
+import {assignmentWindows,logBookAssignment} from '../../shared/log-book-transfers.mjs';
+import {transferForAsset} from '../../shared/equipment-transfer-history.mjs';
 import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
 import {validShiftHours,isJayantSite} from '../../shared/site-shift-hours.mjs';
 import {cardWorkingHmr,shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
 import {assertCombinedShiftMeters} from './log-book-shift-hmr.mjs';
-import {manualShiftHours} from '../../shared/manual-shift.mjs';
+import {manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {withEquipmentAliases} from '../../shared/equipment-aliases.mjs';
 import {displaySiteName} from '../../shared/region-scope.mjs';
@@ -197,16 +199,22 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const shift=await shiftMasterFor(client,batch.site,batch.shift);
  if(!shift)fail('No active Shift Master entry matches this batch shift at this site. Correct the Shift Master first.',409);
  const hours=isJayantSite({site:batch.site})?fleetShiftHours(shift):input.entryMode==='working-only'?(shiftHours||fleetShiftHours(shift)):shiftHours||(()=>{const start=text(shift.startTime||shift.start),end=text(shift.endTime||shift.end);const m=v=>{const p=v.match(/^(\d{1,2}):(\d{2})/);return p?Number(p[1])*60+Number(p[2]):null};const a=m(start),b=m(end);const span=a!==null&&b!==null?((b-a+1440)%1440)/60:8;return span===12?12:8;})();
+ const asset=(await client.query("SELECT record_data FROM master_records WHERE master_name='Equipment master' AND id=$1",[assetId])).rows[0]?.record_data;
+ const transfers=asset?(await client.query("SELECT record_data FROM master_records WHERE master_name='Vehicle transfers'")).rows.map(row=>row.record_data).filter(move=>transferForAsset(move,{...asset,id:assetId})):[];
+ const shiftMasters=['day','night'].includes(input.manualShift)?(await client.query("SELECT id,record_data FROM master_records WHERE master_name='Shift Master'")).rows.map(row=>({...row.record_data,id:String(row.id)})):[];
+ const window=manualShiftWindow({...input,location:batch.site,shiftHours:hours},shift,shiftMasters)||shift;
+ const portion=logBookAssignment(assignmentWindows({...asset,id:assetId},transfers),batch.site,batch.report_date,window.startTime||window.start,hours);
+ const scheduled=portion?.partial?Math.round((portion.end-portion.start)/3600)/1000:hours;
  let pulse=null;
  if(input.entryMode==='working-only'){
   pulse=await readFleetBreakdowns(client,batch,assetId,ops.readHours,actor,{...input,shiftHours:hours});
   const actualHours=num(input.openingHmr)!==null&&num(input.closingHmr)!==null?num(input.closingHmr)-num(input.openingHmr):null;
   const bd=Number(pulse.breakdownHours),zero=actualHours===0&&elbTripCount(row)===0;
-  const shiftStatus=zero?(bd>=hours?'breakdown':'not_in_use'):bd>0&&bd<hours?'working_partial_breakdown':'working';
+  const shiftStatus=zero?(bd>=scheduled?'breakdown':'not_in_use'):bd>0&&bd<scheduled?'working_partial_breakdown':'working';
   const breakdownReason=(pulse.breakdowns||[]).map(item=>text(item.description)||text(item.reference)).filter(Boolean).join('; ').slice(0,2000);
   input={...input,shiftStatus,manualBreakdownHours:bd,statusReason:text(input.statusReason)||breakdownReason||(bd>0?'Breakdown recorded in Pulse':'')};
  }
- const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:elbTripCount(row),shiftHours:hours});
+ const {errors,status,hours:workingHours,breakdownHours}=validateFleetEntry(input,{trips:elbTripCount(row),shiftHours:scheduled});
  if(Object.keys(errors).length)throw Object.assign(new Error(Object.values(errors).join(' ')),{status:400,fields:errors});
  const nonWorking=NON_WORKING_STATUSES.includes(status);
  const opening=num(input.openingHmr),closing=num(input.closingHmr);
@@ -217,8 +225,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
  const data=await ops.resolve(client,'equipment',body,{...(operatorSplit?{operatorSplit,enforceEmployeeSite:true}:{}),manualEntry:true});
  Object.assign(data,{shiftStatus:status,statusReason:body.statusReason,fleetTrips:elbTripCount(row),batchId:batch.id,bookShiftCode:batch.shift,entrySource:'batch-fleet'});
  if(workingHours!==null)data.totalWorkingHmr=workingHours;
- if(pulse){data.idleHours=idleShiftHours(hours,data.totalWorkingHmr,pulse.breakdownHours);Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
- if(nonWorking){data.availabilityHours=0;data.runningHours=0;data.idleHours=idleShiftHours(hours,0,data.breakdownHours);}
+ if(pulse){data.idleHours=idleShiftHours(data.scheduledHours??hours,data.totalWorkingHmr,pulse.breakdownHours);Object.assign(data,{breakdownHours:Number(pulse.breakdownHours),breakdownHoursSource:'pulse',manualBreakdownHours:null,hoursSource:pulse,pulseBreakdowns:pulse.breakdowns||[],elbEntryMode:'working-only'});}else if(ops.applyHours)await ops.applyHours(data);
+ if(nonWorking){data.availabilityHours=0;data.runningHours=0;data.idleHours=idleShiftHours(data.scheduledHours??hours,0,data.breakdownHours);}
  if(additional){
   const cards=(await batchElbRecords(client,batch)).filter(record=>String(record.asset_id)===String(assetId));
   const retry=input.requestKey&&(await client.query('SELECT id FROM mis_log_books WHERE request_key=$1',[input.requestKey])).rows[0];
