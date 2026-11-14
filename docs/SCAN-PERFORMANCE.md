@@ -289,3 +289,26 @@ Expected: about 0.4 queries a second per open screen for these two checks, an
 on Admin > Diagnostics, which needs a super admin login; this change was made
 from the public health figures and the code alone. No production timing has
 been measured for it yet.
+
+## What Diagnostics showed, and the first three connection savings (14 November 2026, afternoon)
+
+Admin > Diagnostics (Speed details), 8 minutes after the 15:00 IST release:
+14 server freezes in the hour (longest 6.9 s), 4,008 of 4,775 requests slow,
+up to 134 requests waiting for the 10-connection pool. Connections held at that
+moment: `GET /api/vlb-batches` x3, `GET /api/vlb-batches/:id` x2,
+`GET /api/notifications` x1 held for 380 s, `GET /api/scan-batches/:id` x1 for
+19.7 s. Most connection time: `GET /api/vlb-batches` 1,224 s in 2,732 uses and
+`GET /api/vlb-batches/:id` 742 s in 2,058 uses, both in 8 minutes.
+
+- The notification listener (`LISTEN bdms_notifications`) took its connection
+  from the request pool and kept it for as long as the server ran: one of the ten
+  connections was never available to a request. It now opens a connection of its
+  own (`createNotificationFeed(pool,{connect})`, `server.mjs`).
+- Every batch board request looked its actor up in the Users master and read the
+  PM trial row. The actor is reused for 10 s per login and the trial answer for
+  30 s on the board's reads (`vlbPmTrial(client,{cacheMs})`); any batch write or
+  trial activation drops both. Writers still read the trial row directly.
+
+The freezes themselves are not explained by these; the "Recent server freezes"
+list on the same page names the requests running during each freeze and is the
+next thing to read. No production timing has been measured for this change.

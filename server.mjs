@@ -6113,7 +6113,10 @@ function scheduleMaintenanceReminderNotifications(now=Date.now()){
   }).finally(()=>{maintenanceReminderRun=null});
 }
 
-const waitForNotification=createNotificationFeed(pool);
+// The notification listener keeps one connection for as long as the server runs,
+// so it opens its own instead of holding one of the request pool's connections.
+const listenerConnect=async()=>{const client=new pg.Client({connectionString:connectionString||undefined,ssl:databaseSsl});await client.connect();client.release=()=>{client.end().catch(()=>{});};return client;};
+const waitForNotification=createNotificationFeed(pool,{connect:listenerConnect});
 app.get('/api/notifications',requireSession,async(req,res,next)=>{
   let subscription;
   res.set('Cache-Control','private, no-store');

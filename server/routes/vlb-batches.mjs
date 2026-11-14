@@ -52,7 +52,7 @@ async function details(client,batch,req){
  records=await withVlbTripHandovers(client,records);
  const requests=(await client.query('SELECT * FROM mis_vlb_reopen_requests WHERE batch_id=$1 AND withdrawn_at IS NULL ORDER BY requested_at DESC',[batch.id])).rows.filter(r=>r.requested_by===req.batchActor.login||batchPmAtSite(req.batchActor,batch.site));
  const audit=(await client.query('SELECT * FROM mis_vlb_batch_audit WHERE batch_id=$1 ORDER BY id DESC LIMIT 200',[batch.id])).rows;
- const pmApprovalTrial=await vlbPmTrial(client);
+ const pmApprovalTrial=await vlbPmTrial(client,{cacheMs:30000});
  const approvalOtps=(await liveApprovalOtps(client,batch.id,req.batchActor.login)).map(publicApprovalOtp);
  const trialExpired=Boolean(batch.trial_reopened_until&&(await client.query('SELECT $1::timestamptz<=clock_timestamp() AS expired',[batch.trial_reopened_until])).rows[0].expired);
  const grant=requests.find(r=>r.requested_by===req.batchActor.login&&r.status==='approved'&&r.closure_revision===batch.closure_revision);
@@ -88,7 +88,19 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // alone kept the 10-connection pool full. Row security also applies to the log-book
  // counts, so only share reads between callers with the same effective site scope.
  const sharedBatchRows=new Map();
- app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>sharedBatchRows.clear());next();});
+ app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>{sharedBatchRows.clear();actorCache.clear();});next();});
+ // Every open batch board asks every 10 to 15 s, and each ask looked the actor up in the
+ // Users master. The lookup is reused for ACTOR_CACHE_MS per login (a copy each time,
+ // because handle() adds fields to it) and dropped on any batch write.
+ const actorCache=new Map(),ACTOR_CACHE_MS=10000;
+ const readActor=async session=>{
+  const key=String(session?.login||session?.name||'').trim().toLowerCase(),hit=actorCache.get(key);
+  if(hit&&hit.until>Date.now())return structuredClone(hit.value);
+  const value=await getActor(session,pool);
+  if(actorCache.size>=500)actorCache.delete(actorCache.keys().next().value);
+  actorCache.set(key,{value:structuredClone(value),until:Date.now()+ACTOR_CACHE_MS});
+  return value;
+ };
  // Site PMs who may approve by OTP: injected from the server (shared with Vehicle transfers), else derived from the Users master.
  const defaultPmLogins=async(client,site)=>{const {rows}=await client.query("SELECT DISTINCT lower(trim(record_data->>'login')) AS login FROM master_records WHERE master_name='Users & employees' AND COALESCE(trim(record_data->>'login'),'')<>''");const out=[];for(const {login} of rows){if(batchPmAtSite(await getActor({login},client),site))out.push(login)}return out};
  const pmLogins=approvalOtp.pmLogins||defaultPmLogins,deliver=approvalOtp.deliver;
@@ -102,7 +114,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   })().catch(e=>{ready=null;throw e}));
  };
  const handle=fn=>async(req,res,next)=>{try{
-  await ensure();req.batchGetActor=getActor;req.batchActor=await getActor(req.session,pool);
+  await ensure();req.batchGetActor=getActor;req.batchActor=await readActor(req.session);
   const admin=isMisAdministrator(req.session);
   req.batchActor.admin=admin;req.batchActor.canCreate=req.batchActor.mis||admin;
   if(!req.batchActor.login||!req.batchActor.mis&&!req.batchActor.pm&&!admin)fail('Only authorized MIS users and site Project Managers can use VLB batches.',403);
@@ -155,7 +167,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
   const open=rows.find(b=>!b.closed_at&&(isOwner(b,req.batchActor)||batchLogin(creator(b))===req.batchActor.login));
   const openBatch=open?(siteAllowed(req.logBookScope,open.site)?{...open,created_by:creator(open),stageWait:waits.get(open.id)||'',canClose:!waits.has(open.id)&&canClose(open,req.batchActor,twoStage)}:{id:open.id,restricted:true}):null;
-  res.json({pmApprovalTrial:await vlbPmTrial(pool),twoStage,batches,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
+  res.json({pmApprovalTrial:await vlbPmTrial(pool,{cacheMs:30000}),twoStage,batches,openBatch:openBatch&&!openBatch.restricted?{...openBatch,stage:twoStage?batchStage(openBatch):(openBatch.closed_at?'closed':'open')}:openBatch,actor:{login:req.batchActor.login,mis:req.batchActor.mis,pm:req.batchActor.pm,canCreate:req.batchActor.canCreate,admin:req.batchActor.admin}});
  }));
  app.get('/api/vlb-batches/approvals',...protect,handle(async(req,res)=>{
   const rows=(await pool.query('SELECT r.*,b.name,b.site,b.book_date::text AS report_date,b.shift,b.closed_at,b.closure_revision AS current_revision FROM mis_vlb_reopen_requests r JOIN mis_vlb_batches b ON b.id=r.batch_id WHERE b.archived_at IS NULL AND b.book_date>=$$2026-11-01$$ AND r.withdrawn_at IS NULL ORDER BY r.requested_at DESC')).rows;
