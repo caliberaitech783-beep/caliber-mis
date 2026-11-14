@@ -292,9 +292,9 @@ test('malformed summary rows remain reviewable instead of failing the complete c
  assert.ok(parsed.issues.some(issue=>issue.includes('Summary row')));
 });
 
-test('Gemini pacing and timeout default to 500 ms and 90 s with bounded overrides',async()=>{
+test('Gemini pacing and timeout default to 250 ms and 90 s with bounded overrides',async()=>{
  const {geminiMinIntervalMs,geminiRequestTimeoutMs,geminiUprightOnly}=await import('../server/services/gemini-card-reader.mjs');
- assert.equal(geminiMinIntervalMs({}),500);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:'2000'}),2000);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:' '}),500);
+ assert.equal(geminiMinIntervalMs({}),250);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:'2000'}),2000);assert.equal(geminiMinIntervalMs({MIS_GEMINI_MIN_INTERVAL_MS:' '}),250);
  assert.equal(geminiRequestTimeoutMs({}),90000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'90000'}),90000);assert.equal(geminiRequestTimeoutMs({MIS_GEMINI_TIMEOUT_MS:'500'}),90000);
  assert.equal(geminiUprightOnly({}),false);assert.equal(geminiUprightOnly({MIS_GEMINI_UPRIGHT_ONLY:'true'}),true);
 });

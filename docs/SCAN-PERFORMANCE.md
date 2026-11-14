@@ -312,3 +312,39 @@ moment: `GET /api/vlb-batches` x3, `GET /api/vlb-batches/:id` x2,
 The freezes themselves are not explained by these; the "Recent server freezes"
 list on the same page names the requests running during each freeze and is the
 next thing to read. No production timing has been measured for this change.
+
+## Eight readers a queue and a 250 ms start gate (15 November 2026)
+
+On 14 November 2026 a 40-card Sasti VLB entry showed `5 reading · 31 waiting`
+for most of its life: the cards were being read by Pulse-II itself (not an
+engine), and Pulse-II read five cards at once per queue, the figure chosen
+before the recheck existed. Every trip card now costs two Gemini answers (the
+first read and the door recheck, about 6 s each on 12 November) plus its
+finish, so five workers moved a queue at roughly 20 cards a minute, and a
+40-card entry took about two minutes of reading after the last upload.
+
+- Pulse-II now reads eight cards at once per queue (`DEFAULT_GEMINI_WORKERS` in
+  `server/routes/bulk-card-scanning.mjs`), the figure the engines already used.
+  The single shared queue and the per-site lanes (`MIS_SCAN_LANES=sites`) both
+  take it; `MIS_SCAN_LANE_CONCURRENCY` still overrides it for site lanes, at
+  most 10. Local non-Gemini OCR stays at one worker.
+- The shared start gate on one key is 250 ms (240 starts a minute) instead of
+  500 ms. Eight workers at two reads of about 6 s each start about 160 requests
+  a minute, which the 500 ms gate would have capped at 120. A billed Flash
+  project allows far more than 240 requests a minute; an HTTP 429 still widens
+  the spacing for that key as before. `MIS_GEMINI_MIN_INTERVAL_MS` overrides it.
+
+Expected, not measured: a queue read by Pulse-II moves about three fifths
+faster (eight workers for five) while Gemini's answer time and the per-site
+keys are unchanged. Each worker holds a database connection only for its
+short progress and completion updates, so the pool cost of three more workers
+is small next to the entry reads bounded on 14 November. The next scanning
+day's `raw_fields.scanTiming` (`queuedMs`, `workers`) on the cards will show
+whether the queue wait fell.
+
+Not changed, and the next lever if the owner wants it: the door recheck sends
+the whole card again (all views, full prompt) and Gemini re-transcribes every
+trip row, so it costs as much as the first read. A recheck that sends only the
+header detail and asks only for the door and site when the first read had no
+other problem would cut a clean card's reading time by about a third, but it
+changes what the second read confirms, so it waits for the owner's decision.

@@ -49,3 +49,28 @@ test('VLB opening meters follow the preceding saved vehicle card in operational 
  assert.equal(sameShift.openingKmr,46);
  assert.equal(sameShift.openingHmr,1);
 });
+
+test('scan openings survive unrelated meter history and recover from old carryover',async()=>{
+ const extraction={openingKmr:'235465',openingHmr:'18660'};
+ const card={assetId:'1',location:'Sasti',bookDate:'2026-11-08',cardShift:'I',shiftHours:8,
+  ...extraction,closingKmr:'235568',closingHmr:'18666'};
+ const history={openingKmr:7506.9,openingHmr:596};
+ let lookups=0;
+ const fill=(draft,previous=history)=>fillVlbScanOpeningMeters(null,draft,{extraction,readRows:async()=>{
+  lookups++;
+  return [{date:'2026-11-07',bookShiftCode:'S3',...previous}];
+ }});
+ assert.deepEqual(await fill(card),card);
+ assert.equal(lookups,0);
+ const oldDraft={...card,...history,openingMeterCarryover:{identity:'1|2026-11-08|S1|Sasti',values:history}};
+ const restored=await fill(oldDraft);
+ assert.equal(restored.openingHmr,'18660');
+ assert.equal(restored.openingKmr,'235465');
+ assert.deepEqual(await fill(restored),restored);
+ assert.equal((await fill({...oldDraft,openingHmr:'18661'})).openingHmr,'18661');
+ const missing={...card,openingHmr:'',openingKmr:''};
+ assert.deepEqual(await fill(missing),missing);
+ const fallback=await fill(missing,{openingKmr:235464,openingHmr:18659});
+ assert.equal(fallback.openingKmr,235464);
+ assert.equal(fallback.openingHmr,18659);
+});

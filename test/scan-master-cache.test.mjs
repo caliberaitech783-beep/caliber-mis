@@ -59,5 +59,6 @@ test('automatic saving takes the master lists from the shared copy, read before 
  const options=route.slice(route.indexOf('const scanIssueOptions='),route.indexOf('const liveCards='));
  assert.doesNotMatch(options,/MASTER_SQL|readScanMasters/,'no master read while the save transaction is open');
  const save=route.slice(route.indexOf("app.post('/api/scan-cards/:id/auto-save'"));
- assert.ok(save.indexOf('issueMasters=await readScanIssueMasters()')>0&&save.indexOf('issueMasters=await readScanIssueMasters()')<save.indexOf('pool.connect()'),'masters are read before the connection is taken');
+ assert.match(save,/\[,prefetched,issueMasters\]=await Promise\.all\(/);
+ assert.ok(save.indexOf('readScanIssueMasters()')>0&&save.indexOf('readScanIssueMasters()')<save.indexOf('pool.connect()'),'masters are read before the connection is taken');
 });

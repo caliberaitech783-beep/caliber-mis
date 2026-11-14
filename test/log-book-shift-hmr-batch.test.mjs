@@ -33,3 +33,21 @@ test('ELB combined HMR counts only live cards linked to the same operational bat
   return true;
  });
 });
+
+test('a card over the shift limit with the same meter readings as a saved card is named as a repeat scan',async()=>{
+ const saved={openingHmr:100,closingHmr:106,openingKmr:1000,closingKmr:1040,cardShift:'I'};
+ const client={query:async()=>({rows:[{id:28,book_no:'VLB_S/8TH-NOV26/S1/028',site:'Sasti OC',data:saved}]})};
+ const card={...saved,assetId:1,door:'V956-02698',location:'Sasti OC',bookDate:'2026-11-08',shiftHours:8,scanCardNumber:'131'};
+ await assert.rejects(()=>assertCombinedShiftMeters(client,'vehicle',card),error=>{
+  assert.equal(error.details.code,'shift_hmr_limit');
+  assert.deepEqual(error.details.repeatOf,['VLB_S/8TH-NOV26/S1/028']);
+  assert.match(error.message,/would be 12 hours.*limit is 8 hours.*028 has the same opening and closing meter readings.*scanned twice/);
+  return true;
+ });
+ // A relief driver's card continues from the first card's closing reading: not a repeat.
+ await assert.rejects(()=>assertCombinedShiftMeters(client,'vehicle',{...card,openingHmr:106,closingHmr:112}),error=>{
+  assert.equal(error.details.repeatOf,undefined);
+  assert.match(error.message,/Check the opening and closing HMR on the cards\./);
+  return true;
+ });
+});

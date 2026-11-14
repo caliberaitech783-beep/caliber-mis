@@ -1,11 +1,20 @@
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {validTripTime} from '../../shared/vlb-trip-handover.mjs';
-import {CARD_SHIFTS,normalizeCardShift} from '../../shared/trip-card-rules.mjs';
+import {CARD_SHIFTS,normalizeCardShift,VLB_SHIFT_KMR_LIMIT} from '../../shared/trip-card-rules.mjs';
 
 const shiftOrder={S1:1,S2:2,S3:3,D:4,N:5};
 const openingFields=['openingKmr','openingHmr'];
 const reading=value=>['string','number'].includes(typeof value)&&String(value).trim()!==''&&Number.isFinite(Number(value));
 const seconds=value=>value.split(':').reduce((total,part,index)=>total+Number(part)*[3600,60,1][index],0);
+
+function fitsClosing(field,value,draft,hours){
+ if(!reading(value)||Number(value)<0)return false;
+ const closing=draft[field.replace('opening','closing')];
+ if(!reading(closing)||Number(closing)<0)return true;
+ const limit=field==='openingKmr'?VLB_SHIFT_KMR_LIMIT:hours;
+ const delta=Number(closing)-Number(value);
+ return delta>=0&&delta-limit<=Number.EPSILON*Math.max(1,Math.abs(Number(value)),Math.abs(Number(closing)))*4;
+}
 
 function tripTimes(trips){
  return (Array.isArray(trips)?trips:[]).flatMap(row=>['loadingTime','unloadingTime']
@@ -61,13 +70,18 @@ export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}
  const source=draft.openingMeterCarryover;
  const next={...draft};
  const values={};
+ const hours=[8,9,12].includes(Number(context.shiftHours))?Number(context.shiftHours):
+  CARD_SHIFTS[normalizeCardShift(context.cardShift)]?.hours??Infinity;
+ const fits=(field,value)=>fitsClosing(field,value,draft,hours);
  for(const field of openingFields){
   if(source?.values?.[field]===undefined||String(source.values[field])!==String(draft[field]))continue;
-  if(source.identity===identity)values[field]=draft[field];
-  else next[field]='';
+  // Recover existing review drafts where a previous card displaced the scanned value.
+  if(!source.version&&fits(field,extraction[field]))next[field]=extraction[field];
+  else if(source.identity===identity&&fits(field,draft[field]))values[field]=draft[field];
+  else next[field]=reading(extraction[field])?extraction[field]:'';
  }
  const candidates=openingFields.filter(field=>values[field]===undefined&&
-  (!reading(next[field])||(!source&&reading(extraction[field])&&String(extraction[field])===String(next[field]))));
+  (!reading(next[field])||(String(extraction[field])===String(next[field])&&!fits(field,next[field]))));
  if(candidates.length&&/^[1-9]\d{0,17}$/.test(assetId)&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&shift){
   const rows=await readRows(client,assetId,date,sites);
   const previous=rows.map(row=>{
@@ -82,7 +96,7 @@ export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}
    return {row,rank,lastTrip};
   }).filter(({row,rank,lastTrip})=>row.date<date||(rank>0&&rank<shiftOrder[shift])||Number.isFinite(lastTrip))
    .sort((a,b)=>b.row.date.localeCompare(a.row.date)||b.rank-a.rank||b.lastTrip-a.lastTrip)[0]?.row;
-  const filled=candidates.filter(field=>reading(previous?.[field]));
+  const filled=candidates.filter(field=>fits(field,previous?.[field]));
   for(const field of filled)next[field]=values[field]=previous[field];
   for(const key of ['meterReviewFields','extractionReviewFields']){
    if(filled.length&&Array.isArray(next[key]))next[key]=next[key].filter(field=>!filled.includes(field));
@@ -95,7 +109,7 @@ export async function fillVlbScanOpeningMeters(client,draft,{sites,extraction={}
   const fields=Object.keys(values);
   const unchanged=source?.identity===identity&&Object.keys(source.values||{}).length===fields.length&&
    fields.every(field=>String(source.values[field])===String(values[field]));
-  if(!unchanged)next.openingMeterCarryover={identity,values};
+  if(!unchanged)next.openingMeterCarryover={version:1,identity,values};
  }
  return next;
 }

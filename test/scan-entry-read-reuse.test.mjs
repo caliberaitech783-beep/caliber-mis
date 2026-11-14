@@ -149,11 +149,14 @@ test('an entry read with reuse returns what a full recheck returns, through ever
  await db.query("UPDATE mis_scan_cards SET status='rejected' WHERE id=$1",[twin]);
  cards=await same('after that card was rejected');assert.doesNotMatch(errors(cards[4]),/Duplicate card\./);
 
- // 7. An earlier Trip Card of a vehicle is saved: its closing meters become this card's opening meters.
+ // 7. A previous closing is only used to fill a missing or inconsistent opening.
  const vehicle=cards[5];assert.equal(Number(vehicle.draft.openingKmr),1000);
- await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('VLB/EARLIER/1','vehicle','2026-12-18','Sasti OB',$1,$2,$3,'alice')",[vehicle.draft.assetId,JSON.stringify({bookShiftCode:'S3',closingKmr:960,closingHmr:190}),randomUUID()]);
+ await db.query("UPDATE mis_scan_cards SET draft=draft||'{\"openingKmr\":\"\",\"openingHmr\":\"\"}'::jsonb WHERE id=$1",[vehicle.id]);
+ cards=await same('after the openings were cleared');
+ const missing=cards[5];assert.equal(missing.draft.openingKmr,'');
+ await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('VLB/EARLIER/1','vehicle','2026-12-18','Sasti OB',$1,$2,$3,'alice')",[vehicle.draft.assetId,JSON.stringify({bookShiftCode:'S3',closingKmr:960,closingHmr:200}),randomUUID()]);
  cards=await same('after an earlier Trip Card of the vehicle was saved');
- assert.equal(Number(cards[5].draft.openingKmr),960);assert.equal(Number(cards[5].draft.openingHmr),190);
- assert.ok(cards[5].revision>vehicle.revision,'the filled meters are stored on the card');
+ assert.equal(Number(cards[5].draft.openingKmr),960);assert.equal(Number(cards[5].draft.openingHmr),200);
+ assert.ok(cards[5].revision>missing.revision,'the filled meters are stored on the card');
  await same('on the read after the meters were filled');
 });
