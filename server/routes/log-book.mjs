@@ -1,7 +1,7 @@
 import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
 import {attachTransferHistory,assetAtSiteOnDate,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
-import {reportLane} from '../services/report-lane.mjs';
+import {reportLane,reportKey} from '../services/report-lane.mjs';
 import {isMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {registerLogBookDashboard} from './log-book-dashboard.mjs';
@@ -197,14 +197,15 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
  await syncElbBatchRecord(client,result.rows[0],createdBy);
  return result.rows[0];
 }
-export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session)}){
+// lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
+export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
  const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
  const batchScope=protect[2];
- registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane:reportLane});
+ registerManpowerReports(app,{pool,protect,ensureBooks:ensure,withHandovers:withVlbTripHandovers,lane});
  const attendanceAccess=(req,res,next)=>{
   const kind=req.method==='POST'?req.body?.kind:req.query?.kind;
   const page=kind==='vehicle'?'Vehicle Log Book':kind==='equipment'?'Equipment Log Book':'';
@@ -214,7 +215,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
  registerShiftAttendance(app,{pool,protect:[requireSession,attendanceAccess,batchScope],ensureBooks:ensure});
  registerProductionReports(app,{pool,protect,ensureBooks:ensure});
  registerMeterContinuityReport(app,{pool,protect,ensureBooks:ensure});
- registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure,lane:reportLane});
+ registerBatchStatusReport(app,{pool,protect,ensureBooks:ensure,lane});
  registerVlbBatches(app,{pool,protect:[requireSession,batchScope],recoveryProtect:protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,logBookOps:{readHours:input=>readHours(input),readBreakdownRows:actor=>readBreakdownRows(actor),resolve:resolveLogBookData,insert:insertLogBook,applyHours:(data,actor,hours=readHours)=>applyBreakdownHours(data,{readHours:hours,actor})},approvalOtp});
  registerLogBookDeletion(app,{pool,protect,ensureBooks:ensure,sendOtp:sendDeletionOtp,imageStorage,permittedSites:req=>filterLogBookSites(pool,req.logBookScope),assertSite:(req,site)=>requireLogBookSite(req.logBookScope,site),allowsSite:(req,site)=>siteAllowed(req.logBookScope,site)});
 
@@ -224,6 +225,13 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const valid=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
      if(!valid(from)||!valid(to)||to<from||(Date.parse(to)-Date.parse(from))/86400000>365)return res.status(400).json({error:'Choose a valid date range of at most 366 days.'});
      await ensure();
+     // parts=logbooks: Trip Timing & Gap and Loading Equipment-wise do not use the scanned cards, which only the Scans
+     // report shows, so that reading leaves them out. Any other value, or none, reads everything as before.
+     const withScans=req.query.parts!=='logbooks';
+     // A month of cards with all their details, read again by everyone who opens the report: it goes through the report
+     // lane with Batch Status and Manpower, so only a few heavy readings hold database connections at once, and people
+     // asking for the same dates with the same site access while one is running share it.
+     const body=await lane.run(reportKey('operations',req,{withScans}),async()=>{
      const sourceRecords=(await pool.query("SELECT id,book_no,book_type,data FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 AND book_type IN ('vehicle','equipment') ORDER BY book_date,id",[from,to])).rows;
      const visibleRecords=sourceRecords.filter(r=>siteAllowed(req.logBookScope,r.data.location));
      const permittedSites=await filterLogBookSites(pool,req.logBookScope);
@@ -236,10 +244,13 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const batches=staged?(await pool.query("SELECT site,book_date::text AS date,shift,CASE WHEN closed_at IS NOT NULL THEN 'closed' ELSE stage END AS stage FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 ORDER BY book_date,id",[from,to])).rows.filter(r=>siteAllowed(req.logBookScope,r.site)):[];
      const fleet=staged?(await pool.query("SELECT b.site,b.book_date::text AS date,b.shift,f.asset_id::text AS \"assetId\",f.door,f.equipment_name AS name,f.equipment_group AS \"group\" FROM mis_vlb_batch_fleet f JOIN mis_vlb_batches b ON b.id=f.batch_id WHERE b.deleted_at IS NULL AND b.archived_at IS NULL AND f.logbook_id IS NULL AND b.book_date>=$$2026-11-01$$ AND b.book_date BETWEEN $1 AND $2 ORDER BY b.book_date,b.id,f.door",[from,to])).rows.filter(r=>siteAllowed(req.logBookScope,r.site)):[];
      const shifts=masters.filter(r=>r.master_name==='Shift Master').map(({id,record_data:r})=>({id:String(id),name:text(r.shiftName||r.name||r.shift),site:text(r.site||r.siteName)}));
-     const exists=(await pool.query("SELECT to_regclass('mis_scan_cards') AS cards,to_regclass('mis_scan_batches') AS batches")).rows[0];
+     const exists=withScans?(await pool.query("SELECT to_regclass('mis_scan_cards') AS cards,to_regclass('mis_scan_batches') AS batches")).rows[0]:null;
      const scanRows=exists?.cards&&exists?.batches?(await pool.query("SELECT c.id,c.filename,c.status,c.draft,c.error,c.logbook_id,l.book_no,b.kind,to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') AS scanned_date FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE COALESCE(to_jsonb(b)->'expected_context'->>'logBookKind','')<>'lmv' AND (c.draft->>'bookDate' BETWEEN $1 AND $2 OR to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') BETWEEN $1 AND $2 OR c.draft ? '__caliberUtf8JsonV1') ORDER BY c.created_at,c.ordinal",[from,to])).rows:[];
      const cards=scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(req.logBookScope,c.draft?.location);});
-     res.set('Cache-Control','no-store').json({records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),batches,fleet,cards,scanConnected:Boolean(exists?.cards&&exists?.batches)});
+     // scanConnected is null when the scanned cards were not asked for, so a screen cannot read it as "not connected".
+     return {records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),batches,fleet,cards,scanConnected:withScans?Boolean(exists?.cards&&exists?.batches):null};
+     });
+     res.set('Cache-Control','no-store').json(body);
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
  app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
