@@ -61,6 +61,7 @@ import BdAgeingReport from "./bd-ageing-report.jsx";
 import { notificationParts, notificationSiteOptions, filterNotificationsBySite, notificationCategory, notificationCategoryOptions, filterNotificationsByCategory } from "./lib/notification-text.mjs";
 import { createNotificationTracker } from "./notification-alerts.mjs";
 import React, { useState, useRef, useEffect, useMemo, useDeferredValue } from "react";
+import { SCAN_CARD_SIDEBAR_EVENT, sidebarAutoHide } from "./scan-card-sidebar.mjs";
 import TelegramSiteGroups from './telegram-site-groups.jsx';
 import { ApplicationErrorBoundary, createLazyFeature } from "./lazy-feature.jsx";
 import { configureClientErrorReporting, installGlobalErrorReporting } from "./client-error-report.mjs";
@@ -11492,7 +11493,8 @@ function App() {
     [requestState, setRequestState] = useState({ token: "", loaded: false, error: "", updatedAt: 0 }),
     [menu, setMenu] = useState(false),
     [sidebarHidden,setSidebarHidden]=useState(()=>{try{return localStorage.getItem("caliberSidebarHidden")==="true";}catch{return false;}}),
-    [sidebarAuto,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
+    [scanCardOpen,setScanCardOpen]=useState(false),
+    [sidebarAutoSaved,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
     [sidebarPeek,setSidebarPeek]=useState(false),
     [canGoBack, setCanGoBack] = useState(false),
     [theme, setTheme] = useState(() => {
@@ -11505,6 +11507,9 @@ function App() {
     [employeeLocationOpen,setEmployeeLocationOpen]=useState(false),
     [accountDirectoryView,setAccountDirectoryView]=useState("directory");
   const changeSidebarHidden=hidden=>{setSidebarHidden(hidden);setMenu(false);try{localStorage.setItem("caliberSidebarHidden",String(hidden));}catch{}};
+  // Rule (15 Nov 2026): while a VLB, LMV or ELB scan card is open for review the sidebar runs in auto-hide.
+  const sidebarAuto=sidebarAutoHide(sidebarAutoSaved,scanCardOpen);
+  useEffect(()=>{const onCard=event=>{const open=Boolean(event.detail?.open);setScanCardOpen(open);if(open){setSidebarPeek(false);setMenu(false);}};window.addEventListener(SCAN_CARD_SIDEBAR_EVENT,onCard);return()=>window.removeEventListener(SCAN_CARD_SIDEBAR_EVENT,onCard);},[]);
   // Auto-hide: the menu stays closed and opens only while the pointer is at the left edge or inside it.
   const sidebarClosed=sidebarAuto?!sidebarPeek:sidebarHidden;
   const changeSidebarAuto=on=>{setSidebarAuto(on);setSidebarPeek(true);if(!on)changeSidebarHidden(false);try{localStorage.setItem("caliberSidebarAutoHide",String(on));}catch{}};
