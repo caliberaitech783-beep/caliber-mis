@@ -10,7 +10,7 @@ const user={role:'super',login:'site-user',permissions:{separateMisCredentials:t
 const admin={...user,login:'admin',permissions:{...user.permissions,misDesktopAccess:['Users & employees']}};
 test('generic MIS Admin labels do not grant administrative authority',()=>{
  assert.equal(isMisAdministrator(user),false);assert.equal(isMisAdministrator(admin),true);
- assert.deepEqual(MIS_ADMIN_PAGES,['User Sessions','Print helper','Full Backup','Audit Trail','Database']);
+ assert.deepEqual(MIS_ADMIN_PAGES,['User Sessions','Print helper','Full Backup','Audit Trail','Database','Diagnostics']);
  for(const page of MIS_ADMIN_PAGES){assert.equal(misPageAllowed(user,page),false);assert.equal(misPageAllowed(admin,page),true);}
  assert.equal(canViewUserSessions(user),false);assert.equal(canViewUserSessions(admin),true);
  for(const page of ['Tickets','Telegram Integration'])assert.equal(misPageAllowed(user,page),true);
