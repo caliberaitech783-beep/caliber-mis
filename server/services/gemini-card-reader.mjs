@@ -10,7 +10,7 @@ import {normalizeCardShift} from '../../shared/trip-card-rules.mjs';
 import {formatScannedDoor} from '../../shared/scan-door-text.mjs';
 import {siteKeySlug} from '../rules/scan-lanes.mjs';
 import {SAFETY_RULES,NO_INVENTION_RULE,HEADER_RULES,SITE_RULES,TIME_RULES,EMPLOYEE_RULES,MACHINE_NOTATION_RULES,M_NO_READING_RULES,M_NO_COMPLETENESS_RULES,DEMO_PREFIX_RULES,METER_DIGIT_RULE,DOOR_RULES,NAME_AND_FORM_RULES,FINAL_CHECK_RULE,TRIP_ROW_RULES} from '../../shared/gemini-scan-rules.mjs';
-import {MODEL,geminiGenerationConfig,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
+import {MODEL,geminiGenerationConfig,geminiLengthRetryConfig,localGeminiKey,aFields,validateA,validateB,normalizeTripNumbers,hybridHints} from './gemini-hybrid.mjs';
 
 export {MODEL};
 export const geminiEnabled=env=>env.MIS_GEMINI_API==='true'||(env.MIS_LOCAL_SCANNER_DATABASE==='true'&&env.MIS_GEMINI_HYBRID==='true');
@@ -200,12 +200,12 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
    const parts=await buildParts(!uprightOnly);let fullParts=uprightOnly?null:parts;
    const totalStarted=Date.now();
    let retryInstruction='',attempt=0,connectionRetries=0,serverRetries=0,rateLimitRetries=0,requests=0;
-   let serializedInstruction,requestBody;
+   let serializedInstruction,requestBody,lengthLimited=false,serializedLengthLimited=false;
    while(attempt<2){
-    if(serializedInstruction!==retryInstruction){
+    if(serializedInstruction!==retryInstruction||serializedLengthLimited!==lengthLimited){
      const requestParts=retryInstruction?[...(fullParts??=await buildParts(true)),{text:retryInstruction}]:parts;
-     requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:geminiGenerationConfig()});
-     serializedInstruction=retryInstruction;
+     requestBody=JSON.stringify({contents:[{role:'user',parts:requestParts}],generationConfig:lengthLimited?geminiLengthRetryConfig():geminiGenerationConfig()});
+     serializedInstruction=retryInstruction;serializedLengthLimited=lengthLimited;
     }
     const limitGeneration=await startRequest(gate,()=>onProgress?.('extracting',{attempt:attempt+connectionRetries+1,maxAttempts:4,startedAt:new Date().toISOString()}));
     const started=Date.now(),signal=AbortSignal.timeout(requestTimeoutMs);
@@ -267,7 +267,7 @@ export function createGeminiCardReader({getKey=configuredGeminiKey,fetchImpl=fet
      // Say why Google stopped (length limit, safety filter, no answer at all) and ask once more.
      const why=String(record.finishReason||body.promptFeedback?.blockReason||'no answer').replace(/[^A-Za-z_ ]/g,'').slice(0,40);
      console.error(`Gemini answer incomplete (${why}) after ${Date.now()-started} ms; model ${MODEL}, request ${requests}.`);
-     if(attempt<2){await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'incomplete answer: '+why,delayMs:0});continue;}
+     if(attempt<2){lengthLimited||=record.finishReason==='MAX_TOKENS';await onProgress?.('retrying',{attempt:2,maxAttempts:2,reason:'incomplete answer: '+why,delayMs:0});continue;}
      throw Error(`Gemini response was incomplete (${why}). The scan is retained; retry extraction.`);
     }
     const parsed=parseCardResponse(record.raw,kind);

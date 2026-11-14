@@ -21,6 +21,14 @@ export const MODEL=geminiModel();
 // request timeout. MIS_GEMINI_THINKING_LEVEL raises it (medium, high or xhigh).
 export const geminiThinkingLevel=(env=process.env)=>['low','medium','high','xhigh'].includes(env.MIS_GEMINI_THINKING_LEVEL?.trim())?env.MIS_GEMINI_THINKING_LEVEL.trim():'low';
 export const geminiGenerationConfig=(model=MODEL,env=process.env)=>/^gemini-4/.test(model)?{responseMimeType:'application/json',maxOutputTokens:65536,thinkingConfig:{thinkingLevel:geminiThinkingLevel(env)}}:{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192};
+// The second request after an answer cut off at the length limit. Before Gemini
+// 4, a card asked twice at temperature 0 with an 8192-token cap stopped at the
+// same place twice: on 14 Nov 2026 about 45 cards failed with MAX_TOKENS after
+// 65 to 70 s. The repeat therefore gets room to finish and the model's normal
+// temperature, which Google recommends for Gemini 3 and which breaks a
+// repeating answer. Both settings are accepted by every Gemini model, so the
+// repeat cannot fail for a reason the first request did not.
+export const geminiLengthRetryConfig=(model=MODEL,env=process.env)=>{const config=geminiGenerationConfig(model,env);return /^gemini-4/.test(model)?config:{...config,temperature:1,maxOutputTokens:32768};};
 const root=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'CaliberERP','gemini-hybrid');
 export async function localGeminiKey(){if(process.platform!=='win32')throw Error('Configure secure Gemini key storage on Windows.');try{const {stdout}=await promisify(execFile)(path.join(process.env.SystemRoot||'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -Force; $s=(Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'CaliberERP/gemini-hybrid/key.dpapi') -Raw).Trim() | ConvertTo-SecureString; $p=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try {[Console]::Write([Runtime.InteropServices.Marshal]::PtrToStringBSTR($p))} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p)}"],{windowsHide:true,maxBuffer:4096});if(!stdout.trim())throw Error();return stdout.trim();}catch{throw Error('Configure the Gemini key once using scripts/Setup-Gemini.ps1 on this Windows account.');}}
 export const aFields=kind=>['bookDate','site','shift','shiftHours','door','employeeCode','employeeName','cardNumber','openingHmr','closingHmr',...(kind==='vehicle'?['openingKmr','closingKmr','printedTotalTrips']:[])];
