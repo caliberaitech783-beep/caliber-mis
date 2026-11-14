@@ -27,6 +27,7 @@ import {aliasForSelection,attachEquipmentAliases} from '../shared/equipment-alia
 import ScanAliasMismatchDialog from './scan-alias-mismatch-dialog.jsx';
 import {mismatchPairCount} from './scan-alias-mismatch.mjs';
 import {trimScanPreview} from './scan-preview-crop.mjs';
+import {createScanPreviewLoader,SCAN_PREVIEW_PREFETCH} from './scan-preview-cache.mjs';
 import {transferPeriodLabel} from '../shared/log-book-transfers.mjs';
 import ScanCorrectionStatus from './scan-correction-status.jsx';
 import ScanExtractionStatus,{formatExtractionTime,ScanExtractionLine} from './scan-extraction-status.jsx';
@@ -467,36 +468,28 @@ export default function BulkCardScanning({kind,session,ReportSection,vlbBatch,lo
  const [scanPreview,setScanPreview]=useState(null),[previewAttempt,setPreviewAttempt]=useState(0);
  const currentPreview=scanPreview&&scanPreview.cardId===selected&&scanPreview.token===token?scanPreview:null;
  const {preview='',originalPreview='',error:previewError=''}=currentPreview||{};
+ // Scans stay in memory across card changes and the next cards in review order are
+ // downloaded ahead (src/scan-preview-cache.mjs), so moving on shows the scan at once.
+ const previewLoader=useRef(null);
+ if(!previewLoader.current)previewLoader.current=createScanPreviewLoader({fetch:(...args)=>fetch(...args),trim:trimScanPreview});
+ useEffect(()=>()=>previewLoader.current.clear(),[]);
  useEffect(()=>{
   setScanPreview(null);setRotation(0);setZoom(1);
   if(!selected||!showDetails)return;
-  const controller=new AbortController(),{signal}=controller;
-  let timedOut=false;
-  const timeout=setTimeout(()=>{timedOut=true;controller.abort();},20000);
-  let originalUrl,croppedUrl;
+  const loader=previewLoader.current;loader.setToken(token);
+  let active=true;
   const loadPreview=async()=>{
    try{
-    const response=await fetch('/api/scan-cards/'+selected+'/image',{signal,headers:{Authorization:`Bearer ${token}`}});
-    if(!response.ok)throw new Error('Could not load scan.');
-    const blob=await response.blob();
-    clearTimeout(timeout);
-    if(signal.aborted)return;
-    originalUrl=URL.createObjectURL(blob);
-    setScanPreview({cardId:selected,token,originalPreview:originalUrl,preview:originalUrl});
-    const cropped=await trimScanPreview(blob).catch(()=>blob);
-    if(signal.aborted||cropped===blob)return;
-    croppedUrl=URL.createObjectURL(cropped);
-    setScanPreview({cardId:selected,token,originalPreview:originalUrl,preview:croppedUrl});
-   }catch(error){if(!signal.aborted||timedOut)setScanPreview({cardId:selected,token,error:timedOut?'The scan preview took too long to load.':error.message});}
-   finally{clearTimeout(timeout);}
+    const entry=await loader.load(selected);
+    if(!active)return;
+    setScanPreview({cardId:selected,token,originalPreview:entry.original,preview:entry.original});
+    const cropped=await loader.cropped(selected);
+    if(!active||!cropped||cropped===entry.original)return;
+    setScanPreview({cardId:selected,token,originalPreview:entry.original,preview:cropped});
+   }catch(error){if(active)setScanPreview({cardId:selected,token,error:error.message});}
   };
   void loadPreview();
-  return()=>{
-   clearTimeout(timeout);timedOut=false;
-   controller.abort();
-   if(croppedUrl)URL.revokeObjectURL(croppedUrl);
-   if(originalUrl)URL.revokeObjectURL(originalUrl);
-  };
+  return()=>{active=false;};
  },[selected,token,showDetails,previewAttempt]);
 
  const refreshSavedLmv=async batchId=>{
@@ -678,6 +671,9 @@ const allocate=()=>allocation=allocation.then(async()=>{if(entryCount>=MAX_SCAN_
  const numberedCards=correctionQueue&&card?.status!=='rejected'?remainingCards:filtered;
  const cardPosition=scanReviewPosition(numberedCards,card?.id);
  const reviewNeighbours=scanReviewNeighbours(filtered,selected);
+ // Once the open card's scan is on screen, the next cards in review order are downloaded in the background.
+ const prefetchIds=(()=>{if(!selected||!showDetails||!preview||uploading)return '';const index=filtered.findIndex(row=>row.id===selected);return index<0?'':filtered.slice(index+1,index+1+SCAN_PREVIEW_PREFETCH).map(row=>row.id).join(',');})();
+ useEffect(()=>{if(prefetchIds)previewLoader.current.prefetch(prefetchIds.split(','));},[prefetchIds]);
  const moveReview=id=>{if(!id||busy||dirty||savingRef.current||!filtered.some(row=>row.id===id))return;selectedRevision.current=null;setSelected(id);setError('');setNotice('');const url=new URL(window.location.href);url.searchParams.set('card',id);window.history.replaceState(null,'',url.pathname+url.search+url.hash);};
  useEffect(()=>{
   if(!correctionQueue)activeReview.current=null;
