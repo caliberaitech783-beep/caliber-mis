@@ -44,3 +44,29 @@ export function createReleaseOtpDelivery({pool,telegram,whatsapp,alsoLogins=RELE
   throw Object.assign(new Error('The owner has no linked Telegram, so the OTP could not be sent.'),{status:503});
  };
 }
+
+// Everyone who may approve an urgent release: the owner's logins and RELEASE_OTP_ALSO_LOGINS.
+export async function releaseApproverLogins(pool,alsoLogins=RELEASE_OTP_ALSO_LOGINS){
+ return [...new Set([...await ownerTelegramLogins(pool),...alsoLogins.map(l=>String(l).trim().toLowerCase()).filter(Boolean)])];
+}
+
+export function releaseApprovalMessage({actor,runId,commit,subject}){
+ return [
+  'Pulse-II urgent production release',
+  `Requested by: ${actor||'unknown'} (GitHub run ${runId||'unknown'})`,
+  ...(commit?[`Version: ${String(commit).slice(0,7)}${subject?' - '+String(subject).slice(0,200):''}`]:[]),
+  'Approve only if main should go live now. The first tap decides.',
+ ].join('\n');
+}
+
+// Sends the Approve / Reject message to every approver who has linked Telegram. Returns how many got it.
+export function createReleaseApprovalDelivery({pool,sendButtons,alsoLogins=RELEASE_OTP_ALSO_LOGINS}){
+ return async({id,actor,runId,commit,subject})=>{
+  const logins=await releaseApproverLogins(pool,alsoLogins);
+  const {rows}=logins.length?await pool.query('SELECT DISTINCT chat_id FROM mis_telegram_links WHERE login_name=ANY($1::text[])',[logins]):{rows:[]};
+  const buttons=[[{text:'✅ Approve release',callback_data:`rel:${id}:a`},{text:'❌ Reject',callback_data:`rel:${id}:r`}]];
+  let sent=0;
+  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject}),buttons))sent++;}catch{}}
+  return {sent};
+ };
+}

@@ -23,7 +23,7 @@ on:
           - 'Scheduled window now (backup trigger: releases only in the hour after a window)'
         default: 'Next scheduled window (12:00, 15:00, 18:00, 00:00 IST)'
       otp:
-        description: 'Urgent only: the 6-digit OTP sent to Mr Anoop and Mr Mohit Chadda on Telegram (either one). Leave empty to send one.'
+        description: 'Urgent only, usually empty: Approve / Reject buttons go to Mr Anoop and Mr Mohit Chadda on Telegram and the run waits up to 10 minutes for a tap. Only if the buttons cannot be sent is a 6-digit OTP sent; then run again with it here.'
         type: string
         required: false
 

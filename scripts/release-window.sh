@@ -66,7 +66,32 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
   if [[ -n "$OTP" ]]; then echo "::add-mask::${OTP}"; fi
   if [[ -n "$OTP" && ! "$OTP" =~ ^[0-9]{6}$ ]]; then summary "Urgent release: enter the six-digit OTP."; echo "::error::The OTP must be six digits."; exit 1; fi
   mint_identity
+  # Approve / Reject on Telegram (owner's choice, 15 Nov 2026): the run sends the buttons to Mr Anoop and
+  # Mr Mohit Chadda and waits for the first tap. Only when the buttons cannot be sent (the server does not
+  # have them yet, or nobody has linked Telegram) does it fall back to the OTP below.
   if [[ -z "$OTP" ]]; then
+    SUBJECT="$(git log -1 --format=%s "${RELEASE_COMMIT:-HEAD}" 2>/dev/null | head -c 200 | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.stringify(s.trim())))")"
+    if approval="$(release_api /api/release-otp/request-approval "{\"commit\":\"${RELEASE_COMMIT:-}\",\"subject\":${SUBJECT:-\"\"}}")" \
+        && APPROVAL_ID="$(field id <<< "$approval")" && [[ "$APPROVAL_ID" =~ ^[0-9a-f]{16}$ ]]; then
+      WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-600}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
+      summary "Urgent release: Approve / Reject was sent to the $(field recipient <<< "$approval"). Waiting up to $((WAIT/60)) minutes for a tap."
+      DEADLINE=$(( $(date +%s) + WAIT ))
+      while (( $(date +%s) < DEADLINE )); do
+        sleep "$POLL"
+        mint_identity
+        decision="$(release_api /api/release-otp/decision "{\"id\":\"${APPROVAL_ID}\"}")" || continue
+        case "$(field status <<< "$decision")" in
+          approved) summary "Urgent release approved on Telegram by $(field by <<< "$decision"). Releasing main now."; decide true;;
+          rejected) summary "Urgent release rejected on Telegram by $(field by <<< "$decision"). Nothing was deployed."; echo "::error::The urgent release was rejected."; exit 1;;
+          expired|missing|used) summary "Urgent release: the approval request is no longer active. Nothing was deployed."; echo "::error::The urgent release approval is no longer active."; exit 1;;
+        esac
+      done
+      summary "Urgent release: nobody tapped Approve within $((WAIT/60)) minutes. Nothing was deployed."
+      echo "::error::The urgent release was not approved in time."
+      exit 1
+    fi
+    echo "Approval buttons could not be sent ($(field error <<< "${approval:-}")); sending an OTP instead."
+    mint_identity
     if result="$(release_api /api/release-otp/request '{}')"; then
       summary "Urgent release: an OTP was sent to the $(field recipient <<< "$result"). Get it from the owner, then Run workflow again with \"Urgent\" and the OTP within $(field expiresInMinutes <<< "$result") minutes. Nothing was deployed yet."
       decide false

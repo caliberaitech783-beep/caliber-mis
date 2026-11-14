@@ -20,7 +20,7 @@ import {createPulseWriter} from './server/rules/pulse-writer.mjs';
 import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pending.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/services/deletion-whatsapp.mjs';
 import {registerReleaseOtp} from './server/routes/release-otp.mjs';
-import {createReleaseOtpDelivery} from './server/services/release-otp-delivery.mjs';
+import {createReleaseOtpDelivery,createReleaseApprovalDelivery,releaseApproverLogins} from './server/services/release-otp-delivery.mjs';
 import {createReleaseWindowTrigger} from './server/services/release-window-trigger.mjs';
 import {createScanBatchReporter,scanBatchReportEnabled} from './server/services/scan-batch-report.mjs';
 import {createGithubOidcVerifier} from './server/services/github-oidc.mjs';
@@ -7952,7 +7952,9 @@ app.get('/api/reports/master-data',requireSession,async(req,res,next)=>{
 });
 
 const integrationSecrets=await createIntegrationSecretStore(pool,process.env.MIS_INTEGRATION_KEY_FILE||path.join(process.env.LOCALAPPDATA||process.env.HOME||os.homedir(),process.env.LOCALAPPDATA?'CaliberERP':'data/caliber-mis','integration.key'));
-const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession});
+// The release approval buttons are answered through the MIS Telegram webhook (set below).
+const telegramCallbacks={handle:null};
+const misTelegram=registerMisTelegram(app,{pool,store:integrationSecrets,requireSession,onCallback:input=>telegramCallbacks.handle?telegramCallbacks.handle(input):null});
 registerReleaseNotice(app,{pool,sign:data=>integrationSecrets.sign(RELEASE_NOTICE_PURPOSE,data),drain:()=>misTelegram.drain()});
 app.get('/api/mis-ticket-sites',requireSession,async(req,res,next)=>{
  try{const scope=await logBookScope(req.session);let sites=scope.sites;if(sites===null){const {rows}=await pool.query("SELECT DISTINCT site FROM mis_log_books WHERE book_date>=$$2026-11-01$$ AND deleted_at IS NULL UNION SELECT record_data->>'site' AS site FROM master_records WHERE master_name='Equipment master'");sites=[...new Set(rows.map(row=>displaySiteName(row.site)).filter(Boolean))];if(!sites.length)sites=['Not assigned'];}res.set('Cache-Control','no-store').json({sites:sites.length?sites.map(displaySiteName):['Not assigned']});}catch(error){next(error)}
@@ -7974,10 +7976,13 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
 // Urgent production release: the release workflow asks for an OTP on the owner's Telegram.
-registerReleaseOtp(app,{pool,
+const releaseOtp=registerReleaseOtp(app,{pool,
+ sendApproval:createReleaseApprovalDelivery({pool,sendButtons:(chatId,text,buttons)=>misTelegram.sendButtons(chatId,text,buttons)}),
+ isApprover:async login=>(await releaseApproverLogins(pool)).includes(String(login||'').toLowerCase()),
  sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:sendReleaseOtp}),
  verifyIdentity:createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile:'main_caliber-mis-783.yml'}),
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};}});
+telegramCallbacks.handle=input=>releaseOtp.handleTelegramCallback(input);
 // One request asks for its site scope more than once (row security, then the route). Answer the
 // later asks from the first read of the user's record instead of reading it again.
 const readLogBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));
