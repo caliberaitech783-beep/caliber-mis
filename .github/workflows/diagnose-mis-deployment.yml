@@ -32,6 +32,10 @@ jobs:
       - name: Check outbound reach from the live server
         if: inputs.target == 'outbound'
         run: node scripts/probe-outbound-reach.mjs
+      # Read-only: the app's own outbound path (subnet security rules, routes, NAT gateway).
+      - name: Read the app's outbound network path
+        if: inputs.target == 'outbound'
+        run: node scripts/probe-app-network-path.mjs
       - name: Read deployment and startup health
         if: inputs.target == 'pulse'
         run: node scripts/probe-ui-delta.mjs
