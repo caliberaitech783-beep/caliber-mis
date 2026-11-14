@@ -41,3 +41,14 @@ test('owner access never exposes known out-of-scope cards during partial posting
   });
  }finally{await db.close()}
 });
+
+test('a request about one scan entry or card checks that entry alone; only the list reads every entry',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const route=await readFile(new URL('../server/routes/bulk-card-scanning.mjs',import.meta.url),'utf8');
+ const gate=route.slice(route.indexOf('if(req.logBookScope.sites!==null&&req.params.id){'),route.indexOf("if(req.body?.draft?.location&&req.body.action!=='reject')"));
+ assert.ok(gate.length>0,'the per-entry gate exists');
+ assert.match(gate,/req\.allowedSiteBatches=uuid\(batchId\)\?await allowedScanBatches\(pool,req\.logBookScope,req\.session\.login\|\|req\.session\.name,batchId\):\[\]/,'one entry is checked with the narrow read');
+ assert.match(gate,/\}else req\.allowedSiteBatches=await allowedScanBatches\(pool,req\.logBookScope,req\.session\.login\|\|req\.session\.name\);/,'the list still gets every allowed entry');
+ assert.equal(gate.split('allowedScanBatches(').length-1,2,'no other whole-table read in the gate');
+ assert.match(gate,/return res\.status\(403\)\.json\(\{error:'This scan batch is not assigned to your site or region\.'\}\)/);
+});
