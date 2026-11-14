@@ -65,14 +65,14 @@ test('a shift whose end time has not passed is not yet due',()=>{
  assert.equal(report.shifts.some(r=>r.date==='2026-11-02'&&r.shift==='S2'),false);
 });
 
-test('a shift of today is counted the moment it ends, and the report says how many are in',()=>{
+test('a shift of today is counted the moment it ends; the owner removed the today figure from the screen (13 Nov 2026)',()=>{
  const sastiAt=clock=>{const report=buildBatchStatusReport({...input,now:at('02',clock).getTime()}),s=report.sites.find(s=>s.site===displaySiteName('Sasti'));return [s.due,s.todayCounted,s.todayShifts,report.today];};
  assert.deepEqual(sastiAt('12:59'),[3,0,3,'2026-11-02'],'Shift 1 of today has not ended');
  assert.deepEqual(sastiAt('13:00'),[4,1,3,'2026-11-02']);
  assert.deepEqual(sastiAt('21:30'),[5,2,3,'2026-11-02']);
  const report=buildBatchStatusReport({...input,now:at('02','14:00').getTime()});
  assert.deepEqual([report.total.todayCounted,report.total.todayShifts],[2,6]);
- assert.equal(sitesInsights(report.sites,report.total).includes("Today's shifts are counted as soon as they end: 2 of today's 6 site shifts are already in Shifts due."),true);
+ assert.equal(sitesInsights(report.sites,report.total).some(line=>/today's/i.test(line)),false,"no summary line about today's shifts");
  const past=buildBatchStatusReport(input);
  assert.deepEqual([past.today,past.sites[0].todayShifts,past.total.todayShifts],['',null,null],'a range that does not include today shows no today figure');
 });
