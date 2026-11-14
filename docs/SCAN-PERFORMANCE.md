@@ -250,3 +250,42 @@ Measured on the PGlite test database only: three whole reads with one slot hold
 one connection at a time and all answer. No production timing has been measured
 for this change yet; the next scanning day's `/api/health` and Diagnostics
 readings will show whether the pool stays free.
+
+## Two polls on every screen filled the pool (14 November 2026, afternoon)
+
+After the entry-read change above, `/api/health` at 15:50 IST still showed the
+pool at 10 of 10 with 65 to 125 requests waiting, `reading: 0`, `entryReads`
+nearly idle. The health request itself answered in 1 to 3 s behind that queue,
+so nothing was holding a connection for long: about 50 short queries a second
+were arriving and ten connections could not keep up.
+
+Two polls ran on every signed-in, visible screen regardless of what the user was
+doing:
+
+- The remote assistance check (`GET /api/remote-assistance/current`) every 2 s.
+  Each call cost the session lookup, an `UPDATE` marking expired assistance
+  requests, and the read itself: three queries, almost always answering "no
+  request".
+- The session message and announcement check (`GET /api/session-messages` and
+  `GET /api/announcements/pending`) every 3 s: two requests, four queries.
+
+Together that is about 2.8 queries a second per open screen, so some 18 open
+screens fill ten connections by themselves.
+
+Now:
+
+- An idle screen asks about remote assistance every 15 s and switches to every
+  2 s only while a request for it exists (pending, approved or active), so a
+  user who has approved a session still answers quickly. An administrator's new
+  request reaches the user within 15 s instead of 2 s.
+- Session messages and announcements are checked every 15 s.
+- The expiry `UPDATE` runs at most once every 30 s across every polled request
+  (`expireRemoteAssistanceSessionsThrottled` in `server.mjs`); the minute
+  cleanup timer runs it as before, and the current-request read skips rows past
+  `expires_at` itself, so an unmarked expired request never shows as live.
+
+Expected: about 0.4 queries a second per open screen for these two checks, an
+85 percent cut. The per-route numbers that would have named these holders are
+on Admin > Diagnostics, which needs a super admin login; this change was made
+from the public health figures and the code alone. No production timing has
+been measured for it yet.

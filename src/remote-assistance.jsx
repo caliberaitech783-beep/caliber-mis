@@ -7,7 +7,11 @@ import "rrweb/dist/style.css";
 import "./remote-assistance.css";
 import {startVisiblePoll} from "./visible-poll.mjs";
 
-const ASSISTANCE_POLL_MS=2000;
+// Every signed-in screen asks whether an administrator wants to see it. Almost
+// every answer is "no" and each ask costs the database two or three queries, so
+// an idle screen asks every 15 s; once a request exists it asks every 2 s.
+const ASSISTANCE_POLL_MS=15000;
+const ASSISTANCE_LIVE_POLL_MS=2000;
 const COMMAND_POLL_MS=700;
 
 async function assistanceJson(url,{token,method="GET",body,signal}={}){
@@ -120,7 +124,7 @@ export function RemoteAssistanceAgent({session}){
       }catch(pollError){if(pollError.name!=="AbortError"&&pollError.status!==401)console.warn("Remote assistance check failed.",pollError);}
     };
     // An open assistance session keeps its status live even in a background tab.
-    const stopPolling=startVisiblePoll(poll,ASSISTANCE_POLL_MS,{keepPolling:()=>Boolean(assistanceRef.current)});
+    const stopPolling=startVisiblePoll(poll,()=>assistanceRef.current?ASSISTANCE_LIVE_POLL_MS:ASSISTANCE_POLL_MS,{keepPolling:()=>Boolean(assistanceRef.current)});
     return()=>{controller.abort();stopPolling();};
   },[session?.token]);
   useEffect(()=>{

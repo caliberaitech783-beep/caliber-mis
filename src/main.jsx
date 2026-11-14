@@ -7082,8 +7082,10 @@ function SessionMessageInbox({session}) {
         ]);
       }catch(loadError){if(loadError.name!=='AbortError')console.warn('Session message check failed.',loadError);}
     };
+    // Two requests (four database queries) per tick on every signed-in screen: 15 s
+    // keeps the database free for entry work; a message still shows within that.
     void load();
-    const stopPolling=startVisiblePoll(load,3000);
+    const stopPolling=startVisiblePoll(load,15000);
     return()=>{controller.abort();stopPolling();};
   },[session?.token]);
   const current=messages[0];

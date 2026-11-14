@@ -50,6 +50,16 @@ test("keepPolling holds the cadence in a background tab",async()=>{
   assert.equal(page.timers.size,1);
 });
 
+test("a function interval is read before each wait",async()=>{
+  const page=fakePage();let live=false;
+  startVisiblePoll(async()=>{},()=>live?2000:15000,page);
+  await settle();
+  assert.deepEqual([...page.timers.values()].map((timer)=>timer.ms),[15000],"an idle screen waits the long interval");
+  live=true;
+  await page.runTimers();await settle();
+  assert.deepEqual([...page.timers.values()].map((timer)=>timer.ms),[2000],"a live screen waits the short one");
+});
+
 test("a failing poll does not stop later polls",async()=>{
   const page=fakePage();
   startVisiblePoll(async()=>{throw new Error("offline")},3000,page);
@@ -61,9 +71,20 @@ test("live feeds keep their cadence and reminders stay off the notification requ
   const server=fs.readFileSync(new URL("../server.mjs",import.meta.url),"utf8");
   const main=fs.readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
   const assist=fs.readFileSync(new URL("../src/remote-assistance.jsx",import.meta.url),"utf8");
-  assert.match(main,/startVisiblePoll\(load,3000\)/);
-  assert.match(assist,/const ASSISTANCE_POLL_MS=2000;/);
-  assert.match(assist,/startVisiblePoll\(poll,ASSISTANCE_POLL_MS,\{keepPolling:\(\)=>Boolean\(assistanceRef\.current\)\}\)/);
+  // Every signed-in screen runs these two polls. On 14 November 2026 they kept all 10
+  // database connections busy (about 50 short queries a second), so an idle screen asks
+  // every 15 s and only a screen with a live assistance request asks every 2 s.
+  assert.match(main,/startVisiblePoll\(load,15000\)/);
+  assert.match(assist,/const ASSISTANCE_POLL_MS=15000;/);
+  assert.match(assist,/const ASSISTANCE_LIVE_POLL_MS=2000;/);
+  assert.match(assist,/startVisiblePoll\(poll,\(\)=>assistanceRef\.current\?ASSISTANCE_LIVE_POLL_MS:ASSISTANCE_POLL_MS,\{keepPolling:\(\)=>Boolean\(assistanceRef\.current\)\}\)/);
+  // The polled routes share one throttled expiry update instead of one UPDATE per poll.
+  const current=server.slice(server.indexOf("app.get('/api/remote-assistance/current',"),server.indexOf("app.post('/api/user-sessions/:sessionId/assistance',"));
+  assert.match(current,/await expireRemoteAssistanceSessionsThrottled\(\);/);
+  assert.match(current,/AND status=ANY\(\$2::text\[\]\) AND expires_at>NOW\(\)/);
+  const events=server.slice(server.indexOf("app.get('/api/remote-assistance/:assistanceId/events',"),server.indexOf("app.post('/api/remote-assistance/:assistanceId/commands',"));
+  assert.match(events,/await expireRemoteAssistanceSessionsThrottled\(\);/);
+  assert.match(server,/const REMOTE_ASSISTANCE_EXPIRY_THROTTLE_MS=30_000;/);
   const route=server.slice(server.indexOf("app.get('/api/notifications',"),server.indexOf("app.get('/api/notifications/:id/target'"));
   assert.match(route,/scheduleMaintenanceReminderNotifications\(\);/);
   assert.doesNotMatch(route,/await createMaintenanceReminderNotifications/);
