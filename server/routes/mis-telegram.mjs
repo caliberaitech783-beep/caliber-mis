@@ -1,5 +1,6 @@
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {requireMisAdministrator} from '../../shared/mis-admin-access.mjs';
+import {telegramFetch} from '../services/telegram-fetch.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
@@ -9,16 +10,25 @@ export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_pending(token_hash TEXT PRIMARY KEY,login_name TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,used_at TIMESTAMPTZ);
  CREATE TABLE IF NOT EXISTS mis_telegram_outbox(id BIGSERIAL PRIMARY KEY,event_key TEXT UNIQUE NOT NULL,chat_id TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),lease_until TIMESTAMPTZ,last_error TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 `;
-export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=fetch}){
+export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch}){
  const hideAudit=(req,res,next)=>{req.audit=false;next()};
  const read=async()=>await store.read(key)||{};
  const login=req=>String(req.session.login||'').trim().toLowerCase();
+ // The error says why: Telegram could not be reached, or Telegram refused (its own reason, e.g. Unauthorized for a
+ // wrong token). Neither text carries the bot token.
  const call=async(config,method,body={})=>{
-  try{
-   const response=await fetchImpl(`https://api.telegram.org/bot${config.botToken}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
-   const data=await response.json();if(!response.ok||data.ok!==true)throw Error();return data.result;
-  }catch{throw Error('Telegram could not complete the request. Check the bot credentials, chat permissions and connection.');}
+  let response,data;
+  try{response=await fetchImpl(`https://api.telegram.org/bot${config.botToken}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});}
+  catch(error){const message=`The MIS server could not reach Telegram (${String(error?.code||error?.cause?.code||error?.name||'no answer').replace(/[^A-Z0-9_]/gi,'').slice(0,40)}). Please retry in a minute.`;throw Object.assign(Error(message),{status:503,publicMessage:message});}
+  try{data=await response.json();}catch{data=null;}
+  if(!response.ok||data?.ok!==true){
+   const reason=String(data?.description||`HTTP ${response.status}`).replace(/bot\d+:[A-Za-z0-9_-]+/g,'bot').slice(0,200);
+   const message=response.status===401||response.status===404?`Telegram refused the bot token (${reason}). Copy the token again from BotFather.`:`Telegram refused the request: ${reason}`;
+   throw Object.assign(Error(message),{status:response.status===401||response.status===404?400:502,publicMessage:message});
+  }
+  return data.result;
  };
+
  const view=config=>({configured:Boolean(config.botToken),enabled:config.enabled===true,botUsername:config.botUsername||'',adminChatId:config.adminChatId||'',webhookReady:config.webhookReady===true});
  const wrap=handler=>async(req,res,next)=>{req.audit=false;res.set('Cache-Control','no-store');try{await handler(req,res)}catch(error){res.status(error.status||503).json({error:error.publicMessage||'Telegram is temporarily unavailable. Please retry.'})}};
  const invalid=message=>{throw Object.assign(Error(message),{status:400,publicMessage:message})};
