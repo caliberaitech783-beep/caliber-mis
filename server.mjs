@@ -20,6 +20,7 @@ import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pen
 import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/services/deletion-whatsapp.mjs';
 import {registerReleaseOtp} from './server/routes/release-otp.mjs';
 import {createReleaseOtpDelivery} from './server/services/release-otp-delivery.mjs';
+import {createScanBatchReporter,scanBatchReportEnabled} from './server/services/scan-batch-report.mjs';
 import {createGithubOidcVerifier} from './server/services/github-oidc.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './server/services/scan-blob-storage.mjs';
 import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './server/rules/content-deletion-policy.mjs';
@@ -8020,7 +8021,7 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
  const [whatsappSettings,whatsappEnv,misBot,vlbAlerts,deletion]=await Promise.all([storedWhatsAppReportSettings(),metaWhatsAppRuntimeEnv(),integrationSecrets.read('mis-telegram').catch(()=>null),readAlertSettings(pool),
   pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',['mis_deletion_whatsapp']).then(result=>result.rows[0]?.setting_value,()=>null)]);
  return {whatsappSettings,whatsappConfigured:metaWhatsAppConfiguration(whatsappEnv).configured,misTelegram:{enabled:Boolean(misBot?.enabled&&misBot?.webhookReady)},
-  pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',
+  pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),
   scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
 registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch});
@@ -8028,6 +8029,8 @@ scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
+// Site-wise batch completion report on Telegram to the owner: each scan entry when its cards are read, each VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
+if(scanBatchReportEnabled())scheduleBackgroundStart(()=>createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()})}).start(),90000);
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:false});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});

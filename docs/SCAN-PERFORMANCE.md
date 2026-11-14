@@ -389,3 +389,28 @@ compare `gemini.totalElapsedMs`, `scanTiming.queuedMs`, the share of cards in
 review and the share corrected by hand per site. The scan engines take the
 change at their next nightly deploy (20:45 IST) or a manual run of the engine
 deploy workflow.
+
+## Site-wise batch completion report on Telegram (15 November 2026)
+
+The owner asked for a Telegram message for every scan entry of about 40 cards and
+for every whole batch, site by site. `server/services/scan-batch-report.mjs`
+checks every minute on Pulse-II and sends, on the MIS Telegram bot, to every MIS
+login whose registered mobile is the owner's number (the same rule as the urgent
+release OTP), under the header "Site-wise batch completion report":
+
+- **Scan entry read**: when no card of an entry is queued or being read and no
+  card arrived in the last two minutes. Cards read and failed, total time from
+  first upload to last read, queue wait (median, max), time per card (median,
+  average, Gemini), auto-check result (clean, flagged, re-read), model, tokens.
+- **Batch complete**: when a VLB batch (site, date, shift) is closed. All scan
+  entries of that site, date and shift together: cards scanned, saved, rejected,
+  scanning time, time per card, accuracy and the corrected fields, one line per
+  entry.
+
+Accuracy is the share of saved cards whose door or machine, employee, card
+number, shift, closing KMR, closing HMR and trip rows equal Gemini's own reading
+(`raw_fields.extractionDraft`), ignoring spacing, case, leading zeros and the
+time separator. Site, date and the opening meters are filled by the system and
+are not counted. Each report is sent once (`mis_scan_batch_reports`); entries and
+batches before the first start of this feature are not reported. Automation
+Centre lists it as A24. `MIS_SCAN_BATCH_REPORT=off` stops it.
