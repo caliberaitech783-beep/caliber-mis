@@ -29,12 +29,12 @@ const commit=(dir,file,text)=>{
   git(dir,'commit','-q','-m',file);
   return git(dir,'rev-parse','HEAD');
 };
-const decide=(dir,{event='schedule',live,head,today='2026-11-20'})=>{
+const decide=(dir,{event='schedule',when='',live,head,today='2026-11-20',now=Date.parse('2026-11-20T06:40:00Z')})=>{ // 12:10 IST
   const scratch=mkdtempSync(path.join(tmpdir(),'release-window-io-'));const output=path.join(scratch,'output');
   const health=path.join(scratch,'health.json');
   writeFileSync(output,'');
   writeFileSync(health,JSON.stringify({status:'ok',commit:live}));
-  execFileSync('bash',[script],{cwd:dir,encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:event,RELEASE_COMMIT:head,SCHEDULE_STARTS:'2026-11-15',GITHUB_OUTPUT:output,RELEASE_WINDOW_TODAY:today,RELEASE_WINDOW_HEALTH_FILE:health}});
+  execFileSync('bash',[script],{cwd:dir,encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:event,RELEASE_COMMIT:head,SCHEDULE_STARTS:'2026-11-15',GITHUB_OUTPUT:output,RELEASE_WINDOW_TODAY:today,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_WHEN:when,RELEASE_WINDOW_HEALTH_FILE:health}});
   const result=/deploy=(true|false)/.exec(readFileSync(output,'utf8'))[1];
   rmSync(scratch,{recursive:true,force:true});
   return result;
@@ -159,5 +159,26 @@ test('an unknown live commit releases, so production never stays behind main',()
   try{
     const head=commit(dir,'server.mjs','a');
     assert.equal(decide(dir,{live:'not-a-commit',head}),'true');
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a window release goes out only in the hour after a window, from GitHub timer or backup trigger',()=>{
+  const dir=repo();
+  try{
+    const live=commit(dir,'server.mjs','a');
+    const head=commit(dir,'server.mjs','b');
+    const BACKUP='Scheduled window now (backup trigger: releases only in the hour after a window)';
+    const at=iso=>Date.parse(iso);
+    // On time: 12:00, 15:59 and 00:05 IST.
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T06:30:00Z')}),'true');
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T10:29:00Z')}),'true');
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T18:35:00Z')}),'true');
+    // GitHub's timer six hours late (06:00 IST) or after the hour (13:01 IST): nothing deploys.
+    assert.equal(decide(dir,{live,head,now:at('2026-11-21T00:30:00Z')}),'false');
+    assert.equal(decide(dir,{live,head,now:at('2026-11-20T07:31:00Z')}),'false');
+    // The backup trigger follows the same rules.
+    assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live,head,now:at('2026-11-20T12:32:00Z')}),'true');   // 18:02 IST
+    assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live,head,now:at('2026-11-20T14:00:00Z')}),'false');  // 19:30 IST
+    assert.equal(decide(dir,{event:'workflow_dispatch',when:BACKUP,live:head,head,now:at('2026-11-20T12:32:00Z')}),'false','already released: a duplicate trigger finds nothing new');
   }finally{rmSync(dir,{recursive:true,force:true});}
 });

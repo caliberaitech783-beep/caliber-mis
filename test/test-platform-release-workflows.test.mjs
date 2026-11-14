@@ -94,6 +94,7 @@ test('production releases main at four scheduled windows without a release tag o
   assert.match(step(productionWorkflow,'Decide whether this window has changes to release'),/bash scripts\/release-window\.sh/,'a window with nothing new or only documentation skips the release');
   assert.match(triggers,/when:\n\s+description: 'Is this urgent, or can it go in the next scheduled window\?'\n\s+type: choice/,'Run workflow asks urgent or next window');
   assert.match(triggers,/default: 'Next scheduled window/,'a manual run defaults to waiting for the window');
+  assert.match(triggers,/- 'Scheduled window now \(backup trigger: releases only in the hour after a window\)'/,'a backup trigger can start a window release');
   assert.match(triggers,/otp:\n\s+description: 'Urgent only/);
   assert.match(productionWorkflow,/  plan:\n[\s\S]*?id-token: write[\s\S]*?RELEASE_WHEN: \$\{\{ inputs\.when \}\}\n\s+RELEASE_OTP: \$\{\{ inputs\.otp \}\}/,'the plan job identifies itself to Pulse-II for the OTP');
   assert.match(productionWorkflow,/full_tests:[\s\S]*?if: needs\.plan\.outputs\.lane != 'fast' && needs\.plan\.outputs\.deploy == 'true'/);
