@@ -8,6 +8,14 @@ const meterUnits=value=>Math.max(0,Math.round(Number(value)*1000)||0);
 const hmrUnits=data=>meterUnits(cardWorkingHmr(data));
 const kmrUnits=data=>meterUnits(data.totalRunningKmr??data.replacementKmr??(data.closingKmr-data.openingKmr));
 
+const reading=value=>value==null||String(value).trim()===''?null:meterUnits(value);
+// Two cards for one asset and shift cannot both start and end on the same meter values.
+function sameMeterReadings(left={},right={}){
+ const same=field=>reading(left[field])===reading(right[field]);
+ return reading(left.openingHmr)!==null&&reading(left.closingHmr)!==null&&hmrUnits(left)>0
+  &&['openingHmr','closingHmr','openingKmr','closingKmr'].every(same);
+}
+
 function shiftHmrLimit(data,shift){
  if(isJayantSecondShift({...data,bookShiftCode:shift}))return 9;
  if(data.manualShiftOverride)return Number(data.shiftHours);
@@ -67,8 +75,13 @@ export async function assertCombinedShiftMeters(client,kind,data,recordId=null,b
   if(total>limit*1000){
    const conflicts=peers.map(row=>({id:String(row.id),bookNo:row.book_no,batchName:row.batch_name||''}));
    const sources=conflicts.map(row=>row.bookNo+(row.batchName?' in '+row.batchName:'')).join(', ');
-   throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved${sources?' in '+sources:''}). The limit is ${limit} hours. Check the opening and closing HMR on the cards.`),
-    {status:409,details:{code:'shift_hmr_limit',conflicts}});
+   // The upload duplicate checks miss a repeat scan whose printed card number was read differently.
+   const repeats=peers.filter(row=>sameMeterReadings(data,row.data)).map(row=>row.book_no);
+   const advice=repeats.length
+    ?`${repeats.join(', ')} has the same opening and closing meter readings, so this looks like the same card scanned twice. Reject this card if it is a repeat.`
+    :'Check the opening and closing HMR on the cards.';
+   throw Object.assign(new Error(`Combined working HMR for ${data.door||'this asset'} on ${data.bookDate}, shift ${shift||data.shiftName||data.shiftId}, would be ${total/1000} hours (${saved/1000} already saved${sources?' in '+sources:''}). The limit is ${limit} hours. ${advice}`),
+    {status:409,details:{code:'shift_hmr_limit',conflicts,...(repeats.length?{repeatOf:repeats}:{})}});
   }
   // Each operator card carries the same equipment-shift Pulse snapshot.
   const breakdown=kind==='equipment'&&batchId&&data.breakdownHoursSource==='pulse'?meterUnits(data.breakdownHours):0;
