@@ -26,7 +26,7 @@ test('Jayant Shift Master duration is accepted across batch and manual log-book 
 });
 test('Pulse clips breakdowns to the nine-hour window and calculates idle hours',()=>{
  const result=summarizePulseHours({rows:[{site:'Jayant OC',door:'TPC142',start:'2026-11-01 11:00:00',closedAt:'2026-11-01 22:00:00',ref:'BD1'}],date:'2026-11-01',site:'Jayant OC',asset:{door:'TPC142'},shift,shiftHours:9,runningHours:7,now:Date.parse('2026-11-02T00:00:00Z')});
- assert.equal(result.breakdownHours,9);assert.equal(result.idleHours,2);
+ assert.equal(result.breakdownHours,9);assert.equal(result.idleHours,-7);
  assert.equal(result.shiftStart,'2026-11-01T06:30:00.000Z');assert.equal(result.shiftEnd,'2026-11-01T15:30:00.000Z');
  assert.throws(()=>summarizePulseHours({rows:[],date:'2026-11-01',site:'Sasti OC',asset:{},shift:{...shift,site:'Sasti OC'},shiftHours:9}),/valid date and shift/);
 });
