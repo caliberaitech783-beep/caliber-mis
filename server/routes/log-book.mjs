@@ -24,6 +24,7 @@ import {assetCapacityPair} from '../../shared/production-report.mjs';
 import {VLB_BATCH_SCHEMA,assertVlbBatchWrite,lockVlbBatchWrites,lockVlbBatchScope,vlbBatchScope,vlbRecordScope,syncVlbBatchRecord,isOpenBatchForDeletion,auditVlbBatch} from '../rules/vlb-batch-policy.mjs';
 import {assertCombinedShiftMeters} from '../rules/log-book-shift-hmr.mjs';
 import {assertSingleVlbCardPerShift} from '../rules/vlb-duplicate-card.mjs';
+import {formatTripCardSheet,savedCardSheets} from '../../shared/trip-card-sheet.mjs';
 import {twoStageEnabled,FLEET_STATUSES,NON_WORKING_STATUSES} from '../rules/vlb-two-stage.mjs';
 import {assertLmvBatchWrite,assertElbBatchWrite,syncElbBatchRecord} from '../rules/vlb-batch-stages.mjs';
 import {VLB_CARD_COUNTER_SCHEMA,allocateVlbCardNumber} from '../../shared/vlb-card-number.mjs';
@@ -199,6 +200,41 @@ export async function insertLogBook(client,kind,data,requestKey,createdBy,batchO
  await syncElbBatchRecord(client,result.rows[0],createdBy);
  return result.rows[0];
 }
+// A later sheet of a saved trip card (found by findVlbSheetTarget): its trip rows are added to that
+// card, so one shift keeps one record. Both sheets carry the shift's meters; a reading on the later
+// sheet widens the card's opening or closing only where it goes beyond them, so copied meters are
+// counted once. The joined card then passes the same batch, duplicate and shift-limit checks as an
+// edit of that card.
+const sheetMeter=(values,pick)=>{const numbers=values.filter(value=>value!==null&&value!==undefined&&value!=='').map(Number).filter(Number.isFinite);return numbers.length?pick(...numbers):null;};
+const summaryKey=value=>text(value).toUpperCase().replace(/[^A-Z0-9]/g,'');
+export async function joinVlbCardSheet(client,target,sheetData,{actor='',applyHours=null}={}){
+ const row=(await client.query("SELECT id,book_no,data,revision FROM mis_log_books WHERE id=$1 AND book_type='vehicle' AND deleted_at IS NULL FOR UPDATE",[target.id])).rows[0];
+ if(!row)throw Object.assign(new Error('Saved card '+target.bookNo+' is no longer available. Reload this batch.'),{status:409});
+ const saved=row.data||{},sheet=target.sheet,label=formatTripCardSheet(sheet);
+ if((saved.timeMode||'with')!==(sheetData.timeMode||'with'))throw Object.assign(new Error(`Sheet ${label} was read ${sheetData.timeMode==='without'?'without':'with'} trip times but ${row.book_no} was saved ${saved.timeMode==='without'?'without':'with'} them. Use the same With time / Without time choice on both sheets.`),{status:409});
+ const heldNumbers=savedCardSheets(saved).map(held=>held.sheetNo),firstHeld=heldNumbers.length?Math.min(...heldNumbers):1;
+ const trips=sheet.sheetNo<firstHeld?[...(sheetData.trips||[]),...(saved.trips||[])]:[...(saved.trips||[]),...(sheetData.trips||[])];
+ const meters={openingHmr:sheetMeter([saved.openingHmr,sheetData.openingHmr],Math.min),closingHmr:sheetMeter([saved.closingHmr,sheetData.closingHmr],Math.max)};
+ if(!kmrMeterReplaced(saved))Object.assign(meters,{openingKmr:sheetMeter([saved.openingKmr,sheetData.openingKmr],Math.min),closingKmr:sheetMeter([saved.closingKmr,sheetData.closingKmr],Math.max)});
+ const summary=new Map();
+ for(const entry of [...(saved.scanMachineSummary||[]),...(sheetData.scanMachineSummary||[])]){const key=summaryKey(entry.equipmentName);if(!key)continue;const prior=summary.get(key);summary.set(key,{...(prior||entry),tripCount:(prior?.tripCount||0)+Number(entry.tripCount||0)});}
+ const joined={sheet:label,scanCardId:sheetData.scanCardId,scanBatchId:sheetData.scanBatchId,scanCardNumber:sheetData.scanCardNumber||null,tripRows:(sheetData.trips||[]).length,totalTrips:sheetData.totalTrips??null,openingHmr:sheetData.openingHmr??null,closingHmr:sheetData.closingHmr??null,openingKmr:sheetData.openingKmr??null,closingKmr:sheetData.closingKmr??null,...(sheetData.scanSaveMode?{scanSaveMode:sheetData.scanSaveMode}:{}),joinedBy:actor,joinedAt:new Date().toISOString()};
+ const normalized=normalizeLogBook('vehicle',{...saved,...meters,trips,scanMachineSummary:[...summary.values()]});
+ const loaderHolds=(sheetData.siteHolds||[]).filter(hold=>hold.role==='vlb_loader');
+ const next={...saved,...normalized,joinedSheets:[...(Array.isArray(saved.joinedSheets)?saved.joinedSheets:[]),joined],siteHolds:[...(saved.siteHolds||[]),...loaderHolds]};
+ // The first sheet saved before its box was read: with two sheets, it is sheet 1 of 2.
+ if(!heldNumbers.length&&sheet.sheetTotal===2)next.tripCardSheet='1/2';
+ if(applyHours)await applyHours(next);
+ const batch=await assertVlbBatchWrite(client,next,actor,row.id);
+ await assertSingleVlbCardPerShift(client,next,{recordId:row.id,batch,actor});
+ await assertCombinedShiftMeters(client,'vehicle',next,row.id,null);
+ const result=await client.query('UPDATE mis_log_books SET data=$1::jsonb,updated_at=NOW(),revision=revision+1 WHERE id=$2 AND revision=$3 AND deleted_at IS NULL RETURNING id,book_no,book_type,data,revision,created_at,updated_at',[JSON.stringify(next),row.id,row.revision]);
+ if(!result.rowCount)throw Object.assign(new Error('Saved card '+row.book_no+' changed. Reload this batch and save the sheet again.'),{status:409});
+ await enqueueTripVerification(client,result.rows[0]);
+ await syncVlbBatchRecord(client,result.rows[0],actor);
+ if(batch)await auditVlbBatch(client,batch,actor,'card_sheet_joined',{bookNo:row.book_no,door:text(saved.door),sheet:label,scanCardId:sheetData.scanCardId,tripRows:joined.tripRows});
+ return result.rows[0];
+}
 // Parts of a saved card that only the scan and entry screens use. Trip Timing & Gap and Loading Equipment-wise never read
 // them, yet on 5 Nov 2026 they were 41% of a day's reading (7.4 of 18 MB, hoursSource alone 4.5 MB). The log-books-only
 // reading (parts=logbooks) leaves them out; every other reading still sends the whole card. A field may join this list
@@ -372,7 +408,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      let result;
      let meterBatch=null;
      if(updating){
-       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
+       const prior=(await client.query('SELECT data FROM mis_log_books WHERE id=$1 AND book_type=$2 AND deleted_at IS NULL AND book_date>=$$2026-11-01$$',[req.params.id,kind])).rows[0]?.data;if(kind==='equipment'&&prior?.entrySource==='batch-fleet'&&!isMisAdministrator(req.session))fail('Only an MIS administrator can edit a saved manual ELB.',403);if(kind==='equipment'&&prior?.operatorSplit)fail('Open ELB Manual for this batch to edit the Surface Miner operator split.',409);if(prior?.scanCardId){for(const key of ['scanCardId','scanBatchId','scanEntrySource','reviewedBy','reviewedAt','meterCorrectionHistory'])data[key]=prior[key];data.scanCardNumber=String(kind==='equipment'?data.jobCardNo:data.aFormNo).toUpperCase().replace(/[^A-Z0-9]/g,'')||null;}if(prior)for(const key of ['tripCardSheet','joinedSheets'])if(prior[key]!==undefined)data[key]=prior[key];if(prior)data.meterCorrectionHistory=recordMeterCorrection(prior.meterCorrectionHistory,prior,data,kind==='lmv'?'vehicle':kind,req.session.login||req.session.name);
        if(kind==='vehicle'&&!data.scanCardId)data.duplicateReason=text(req.body.duplicateReason)||text(prior?.duplicateReason);
        if(kind==='vehicle'){const batch=await assertVlbBatchWrite(client,data,req.session.login||req.session.name,req.params.id);await assertSingleVlbCardPerShift(client,data,{recordId:req.params.id,batch,actor:req.session.login||req.session.name});}
        else if(kind==='lmv'){

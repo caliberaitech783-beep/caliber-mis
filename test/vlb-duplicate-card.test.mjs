@@ -4,7 +4,11 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {insertLogBook,registerLogBooks,resolveLogBookData} from '../server/routes/log-book.mjs';
-import {assertSingleVlbCardPerShift} from '../server/rules/vlb-duplicate-card.mjs';
+import {assertSingleVlbCardPerShift,findVlbSheetTarget} from '../server/rules/vlb-duplicate-card.mjs';
+import {joinVlbCardSheet} from '../server/routes/log-book.mjs';
+import {parseTripCardSheet,isMultiSheet,savedCardSheets} from '../shared/trip-card-sheet.mjs';
+import {readTripCardSheet} from '../server/services/trip-card-sheet-reading.mjs';
+import {blockingScanWarnings} from '../shared/scan-auto-save.mjs';
 import {prepareVlbFixture} from './operational-fixture.mjs';
 
 process.env.VLB_TWO_STAGE_BATCHES='0';
@@ -95,7 +99,7 @@ test('a second scanned card for the same driver is allowed only with a different
  const scan={...first.data.data,scanCardId:randomUUID(),duplicateReason:'Another user uploaded the same PDF'};
  await assert.rejects(
   ()=>assertSingleVlbCardPerShift(db,scan),
-  error=>error.status===409&&error.details?.code==='duplicate_card'&&error.details.existing[0].bookNo===first.data.book_no&&/second scanned card for the same driver cannot be saved/i.test(error.message)
+  error=>error.status===409&&error.details?.code==='duplicate_card'&&error.details.existing[0].bookNo===first.data.book_no&&/same Trip card NO 129.*Trip card sheet/i.test(error.message)
  );
  const nextCard={...scan,aFormNo:'130',scanCardNumber:'130'};
  assert.deepEqual(await assertSingleVlbCardPerShift(db,nextCard),[]);
@@ -113,4 +117,64 @@ test('combined Day and Night HMR accepts exactly 12 hours and rejects the next t
   await assert.rejects(()=>assertCombinedShiftMeters(client,kind,{...data,closingHmr:112.001}),
    error=>error.details?.code==='shift_hmr_limit'&&/12\.001 hours.*limit is 12 hours/.test(error.message));
  }
+});
+
+test('the NO. OF TRIP CARDS box reads as sheet and total',()=>{
+ assert.deepEqual(parseTripCardSheet('2/2'),{sheetNo:2,sheetTotal:2});
+ assert.deepEqual(parseTripCardSheet(' 1 / 2 '),{sheetNo:1,sheetTotal:2});
+ assert.deepEqual(parseTripCardSheet('2 of 3'),{sheetNo:2,sheetTotal:3});
+ for(const bad of ['','3/2','0/2','2','2266','1/12',null,undefined])assert.equal(parseTripCardSheet(bad),null,String(bad));
+ assert.equal(isMultiSheet('1/1'),false);assert.equal(isMultiSheet('2/2'),true);
+ assert.equal(readTripCardSheet(JSON.stringify({fields:{tripCardSheet:{value:'2 / 2',status:'clear'}}})),'2/2');
+ assert.equal(readTripCardSheet(JSON.stringify({fields:{tripCardSheet:{value:null,status:'missing'}}})),'');
+ assert.equal(readTripCardSheet(JSON.stringify({fields:{}})),'');
+ assert.equal(readTripCardSheet('not json'),'');
+ assert.deepEqual(savedCardSheets({tripCardSheet:'1/2',joinedSheets:[{sheet:'2/2'}]}),[{sheetNo:1,sheetTotal:2},{sheetNo:2,sheetTotal:2}]);
+ assert.deepEqual(blockingScanWarnings(['Sheet 2/2 of this trip card: its trips are added to VLB_X/1 when saved.']),[]);
+});
+
+test('sheet 2 of a saved trip card joins that card instead of being refused',async t=>{
+ const {db,call}=await harness(t);
+ assert.equal((await call('/api/log-books/options')).status,200);
+ await prepareVlbFixture(db,input,'alice');
+ const first=await call('/api/log-books/vehicle','POST',{...input,aFormNo:'2292',requestKey:randomUUID()});
+ assert.equal(first.status,201,JSON.stringify(first.data));
+ const scanned=async(sheet,extra={})=>({...(await resolveLogBookData(db,'vehicle',{...input,aFormNo:'2292',closingHmr:107,trips:[{equipmentName:'VPC28',tripCount:3}],...extra})),scanCardId:randomUUID(),scanCardNumber:'2292',...(sheet?{tripCardSheet:sheet}:{})});
+ // Without the sheet box the scan is still refused, and the message says how to join it.
+ const unmarked=await scanned('');
+ assert.equal(await findVlbSheetTarget(db,unmarked),null);
+ await assert.rejects(()=>assertSingleVlbCardPerShift(db,unmarked),error=>error.status===409&&/same Trip card NO 2292.*Trip card sheet/i.test(error.message));
+ // The first sheet of a card cannot join one whose sheet is unknown.
+ assert.equal(await findVlbSheetTarget(db,await scanned('1/2')),null);
+ const sheet2=await scanned('2/2');
+ const target=await findVlbSheetTarget(db,sheet2);
+ assert.equal(target.bookNo,first.data.book_no);
+ const joined=await joinVlbCardSheet(db,target,sheet2,{actor:'alice'});
+ assert.equal(joined.id,first.data.id);assert.equal(joined.book_no,first.data.book_no);
+ assert.equal(joined.data.trips.length,2);assert.equal(joined.data.totalTrips,5);
+ assert.equal(joined.data.openingHmr,100);assert.equal(joined.data.closingHmr,107,'a later closing reading widens the card');
+ assert.equal(joined.data.totalWorkingHmr,7,'meters copied onto both sheets are counted once');
+ assert.equal(joined.data.tripCardSheet,'1/2');
+ assert.equal(joined.data.joinedSheets.length,1);assert.equal(joined.data.joinedSheets[0].sheet,'2/2');assert.equal(joined.data.joinedSheets[0].scanCardId,sheet2.scanCardId);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM mis_log_books WHERE deleted_at IS NULL")).rows[0].n,1);
+ assert.equal((await db.query("SELECT count(*)::int AS n FROM mis_vlb_batch_audit WHERE action='card_sheet_joined'")).rows[0].n,1);
+ // The same sheet scanned again, or a sheet of a different card size, is refused.
+ await assert.rejects(()=>scanned('2/2').then(again=>findVlbSheetTarget(db,again)),error=>error.status===409&&/Sheet 2\/2 of Trip card NO 2292.*already saved in/.test(error.message));
+ await assert.rejects(()=>scanned('3/3').then(other=>findVlbSheetTarget(db,other)),error=>error.status===409&&/holds sheet 1\/2, 2\/2/.test(error.message));
+ // An edit of the joined card keeps its sheets.
+ const edited=await call('/api/log-books/vehicle/'+first.data.id,'PUT',{...input,aFormNo:'2292',closingHmr:107,trips:joined.data.trips,revision:joined.revision});
+ assert.equal(edited.status,200,JSON.stringify(edited.data));
+ assert.equal(edited.data.data.joinedSheets.length,1);assert.equal(edited.data.data.tripCardSheet,'1/2');
+});
+
+test('a joined sheet still obeys the shift HMR limit',async t=>{
+ const {db,call}=await harness(t);
+ assert.equal((await call('/api/log-books/options')).status,200);
+ await prepareVlbFixture(db,input,'alice');
+ const first=await call('/api/log-books/vehicle','POST',{...input,aFormNo:'77',requestKey:randomUUID()});
+ assert.equal(first.status,201,JSON.stringify(first.data));
+ const sheet2={...(await resolveLogBookData(db,'vehicle',{...input,aFormNo:'77',openingHmr:104,closingHmr:108.5})),scanCardId:randomUUID(),scanCardNumber:'77',tripCardSheet:'2/2'};
+ const target=await findVlbSheetTarget(db,sheet2);
+ await assert.rejects(()=>joinVlbCardSheet(db,target,sheet2,{actor:'alice'}),error=>/8\.5 hours|limit/i.test(error.message));
+ assert.equal((await db.query('SELECT data FROM mis_log_books WHERE id=$1',[first.data.id])).rows[0].data.closingHmr,106);
 });

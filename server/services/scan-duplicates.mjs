@@ -3,6 +3,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {fingerprintScanImage,closestFingerprint,scanFingerprintSettings} from './scan-fingerprint.mjs';
+import {isMultiSheet} from '../../shared/trip-card-sheet.mjs';
 
 // Duplicate scan cards. A card is a duplicate when the same paper, for the same
 // card date, site and shift, already exists in any scan entry or saved log book
@@ -162,6 +163,9 @@ export function contentDuplicateMessage(original,certain){
 // with the possible duplicate named by checkScanCard.
 export async function applyContentDuplicate(client,kind,card,batch){
  const context=batch.expected_context;if(!context||card.status!=='review'||card.duplicate_of)return null;
+ // One sheet of a card written on two or more sheets shares its number, door and date with the other
+ // sheets; checkScanCard and the save tell a later sheet from the same sheet scanned twice.
+ if(kind==='vehicle'&&isMultiSheet(card.draft?.tripCardSheet))return null;
  if(!contentIdentityCertain(card,kind,context))return null;
  const draft=card.draft||{},number=cardNumberKey(kind==='vehicle'?draft.aFormNo:draft.jobCardNo);
  const original=await findContentDuplicate(client,kind,card,batch,{bookDate:draft.bookDate,door:scanDoorValue(card),number});
