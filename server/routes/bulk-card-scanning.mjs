@@ -631,9 +631,10 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  const logAutoSaveRefusal=fn=>async(req,res)=>{try{await fn(req,res)}catch(e){if(e?.status)console.warn('[scan] automatic save refused for card '+req.params.id+' by '+(req.session?.login||req.session?.name||'?')+': '+e.message);throw e}};
  app.post('/api/scan-cards/:id/auto-save',...protect,wrap(logAutoSaveRefusal(async(req,res)=>{
   if(!Number.isSafeInteger(req.body.revision))fail('Reload the card before automatic saving.',409);
-  const initial=await getCard(pool,req.params.id);if(initial.raw_fields?.fleetRestoration&&initial.raw_fields?.fleetBlock)fail('Review this restored card and save corrections before automatic saving.',409);await requireFleet(initial,initial.draft,req.session.login||req.session.name);
+  const initial=await getCard(pool,req.params.id);if(initial.raw_fields?.fleetRestoration&&initial.raw_fields?.fleetBlock)fail('Review this restored card and save corrections before automatic saving.',409);
   // Pulse is read before any lock; inside the transaction the saved feed answers without a remote call.
-  const actor=req.session.login||req.session.name,prefetched=await prefetchAutoSaveBreakdownRows(actor),issueMasters=await readScanIssueMasters();const c=await pool.connect();let batch,record;
+  // The fleet check, the breakdown feed and the masters do not depend on each other, so they are read together.
+  const actor=req.session.login||req.session.name,[,prefetched,issueMasters]=await Promise.all([requireFleet(initial,initial.draft,actor),prefetchAutoSaveBreakdownRows(actor),readScanIssueMasters()]);const c=await pool.connect();let batch,record;
   try{
    await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock_shared(709224102)');await c.query('SELECT pg_advisory_xact_lock_shared(hashtext($1))',[initial.batch_id]);
    batch=await getBatch(c,initial.batch_id);const card=await getCard(c,initial.id,true);
