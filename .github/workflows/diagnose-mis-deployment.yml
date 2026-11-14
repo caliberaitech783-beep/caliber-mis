@@ -37,7 +37,7 @@ jobs:
         if: inputs.target == 'outbound'
         run: node scripts/probe-app-network-path.mjs
       - name: Read deployment and startup health
-        if: inputs.target == 'pulse'
+        if: inputs.target != 'scan-engine' && inputs.target != 'outbound'
         run: node scripts/probe-ui-delta.mjs
       # Read-only: the last deployments, the deployment lock and the running processes of both slots.
       - name: Read why a slot refuses a new deployment
@@ -49,7 +49,7 @@ jobs:
       # Read-only: what the staging slot lacks compared with production (names and kinds, never values), and the
       # newest start-up logs of its app.
       - name: Compare the staging slot with production
-        if: always() && inputs.target == 'pulse'
+        if: always() && inputs.target != 'scan-engine' && inputs.target != 'outbound'
         env:
           MIS_STAGING_SLOT: ${{ vars.MIS_STAGING_SLOT || 'staging' }}
         run: node scripts/probe-slot-configuration.mjs
