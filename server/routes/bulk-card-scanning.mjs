@@ -9,7 +9,7 @@ import {registerSelectedScanAbort} from './scan-card-abort.mjs';
 import {registerScanCardGroupDeletion,SCAN_CARD_GROUP_DELETION_SCHEMA} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate,operationalScanSql} from '../../shared/operational-start.mjs';
-import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,findEarlierImageDuplicate,preloadDuplicateChecks,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
+import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,findEarlierImageDuplicate,preloadDuplicateChecks,ensureSavedCardNumberIndex,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
 import {scanFingerprintSettings} from '../services/scan-fingerprint.mjs';
 import {isDeletableScanCard} from '../../src/scan-card-deletion-selection.mjs';
 import {lockSavedVlbBatches,lockVlbBatchWrites,matchingVlbBatch,isOpenBatchForDeletion} from '../rules/vlb-batch-policy.mjs';
@@ -585,7 +585,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    lap('decode');
    const world=live.length?await scanCheckWorld(validationClient):null;
    lap('check-world');
-   const duplicateChecks=live.length?await preloadDuplicateChecks(db,batch,live):null;
+   const duplicateChecks=live.length?await preloadDuplicateChecks(db,batch,live,{lap}):null;
    lap('duplicate-preload');
    const meterSites=toFill.length&&fillMeters?await filterLogBookSites(db,req.logBookScope):null;
    lap('meter-sites');
@@ -909,6 +909,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   if(role==='engine')await keepLeases();
   timer=setInterval(()=>void pump(),2000);timer.unref?.();leaseTimer=setInterval(()=>void keepLeases(),30000);leaseTimer.unref?.();void pump();
   if(role==='app'&&fingerprintBackfill)void backfillScanFingerprints(pool,{imageStorage}).catch(error=>console.error('Scan fingerprint backfill stopped:',error?.message||String(error)));
+  if(role==='app')void ensureSavedCardNumberIndex(pool).catch(error=>console.error('Saved card number index not built:',error?.message||String(error)));
  },pump,
  // drainMs: let cards already being read finish (no new ones start), then
  // hand any unfinished card straight back to the queue (releaseLeases).
