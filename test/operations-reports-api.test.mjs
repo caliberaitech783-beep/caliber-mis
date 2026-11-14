@@ -4,6 +4,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {registerLogBooks,LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {encodeScanJson} from '../server/rules/scan-text-storage.mjs';
+import {createReportLane} from '../server/services/report-lane.mjs';
 process.env.VLB_TWO_STAGE_BATCHES='0'; // legacy single-step batch expectations
 test('read-only operations endpoint enforces access, validates dates, returns beyond 100 rows and decodes scans',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec(LOG_BOOK_SCHEMA);await db.exec('CREATE TABLE master_records(id BIGSERIAL PRIMARY KEY,master_name TEXT,record_data JSONB); CREATE TABLE mis_scan_batches(id TEXT PRIMARY KEY,kind TEXT); CREATE TABLE mis_scan_cards(id TEXT,batch_id TEXT,filename TEXT,status TEXT,draft JSONB,error TEXT,logbook_id BIGINT,created_at TIMESTAMPTZ,ordinal INTEGER)');
@@ -13,7 +14,8 @@ test('read-only operations endpoint enforces access, validates dates, returns be
  await db.exec("INSERT INTO mis_scan_batches VALUES('batch','vehicle')");
  await db.query("INSERT INTO mis_scan_cards VALUES('card','batch','scan.png','review',$1,NULL,NULL,'2026-11-01',1)",[JSON.stringify(encodeScanJson({bookDate:'2026-12-28',location:'सास्ती'}))]);
  const query=(sql,args)=>!args&&sql.includes(';')?db.exec(sql):db.query(sql,args);
- const app=express();registerLogBooks(app,{pool:{query},requireSession:(req,res,next)=>{req.session={role:'super',permissions:{adminLevel:'Admin',separateMisCredentials:Boolean(req.headers['x-site'])},...(req.headers['x-site']?{site:req.headers['x-site']}:{})};return req.headers.authorization?next():res.status(401).json({error:'Sign in'});},requireAdministrator:(req,res,next)=>req.headers.authorization==='admin'?next():res.status(403).json({error:'Forbidden'})});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ const app=express();registerLogBooks(app,{pool:{query},requireSession:(req,res,next)=>{req.session={role:'super',permissions:{adminLevel:'Admin',separateMisCredentials:Boolean(req.headers['x-site'])},...(req.headers['x-site']?{site:req.headers['x-site']}:{})};return req.headers.authorization?next():res.status(401).json({error:'Sign in'});},requireAdministrator:(req,res,next)=>req.headers.authorization==='admin'?next():res.status(403).json({error:'Forbidden'}),lane:createReportLane({cacheMs:0})});app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+ // A lane that keeps no finished result, so each call below reads the rows written just before it.
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));t.after(()=>{server.closeAllConnections();server.close();});const url=`http://127.0.0.1:${server.address().port}/api/reports/operations`;
  const call=(params,auth='admin')=>fetch(url+params,{headers:auth?{Authorization:auth}:{}});
  assert.equal((await call('?from=2026-12-28&to=2026-12-28','')).status,401);assert.equal((await call('?from=2026-12-28&to=2026-12-28','other')).status,403);

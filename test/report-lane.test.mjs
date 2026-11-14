@@ -65,7 +65,10 @@ test('people with different site access never share a report',()=>{
 
 test('production sends the dashboard reports through the shared lane and reports it in health',()=>{
   const logBook=readFileSync(new URL('../server/routes/log-book.mjs',import.meta.url),'utf8');
-  assert.match(logBook,/registerManpowerReports\(app,\{[^}]*lane:reportLane\}/);
-  assert.match(logBook,/registerBatchStatusReport\(app,\{[^}]*lane:reportLane\}/);
+  // registerLogBooks takes the shared lane unless a test passes its own, and hands it to every heavy report.
+  assert.match(logBook,/getSiteScope=async session=>logBookSiteScope\(session\),lane=reportLane\}\)\{/);
+  assert.match(logBook,/registerManpowerReports\(app,\{[^}]*,lane\}\);/);
+  assert.match(logBook,/registerBatchStatusReport\(app,\{[^}]*,lane\}\);/);
+  assert.match(logBook,/const body=await lane\.run\(reportKey\('operations',req,\{withScans\}\),async\(\)=>\{/,'Trip Timing, Loading Equipment-wise and the other operations reports too');
   assert.match(readFileSync(new URL('../server.mjs',import.meta.url),'utf8'),/reportLane:reportLane\.stats\(\)/);
 });
