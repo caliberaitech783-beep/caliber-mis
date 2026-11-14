@@ -34,7 +34,8 @@ const record={id:1,book_no:'VLB_S/1ST-NOV26/S1/030',book_type:'vehicle',data:{bo
 window.fetch=async url=>new Response(JSON.stringify(String(url).includes('/options')?options:String(url).includes('/hours')?{breakdownHours:0,warnings:[]}:{records:[],nextCursor:null}),{headers:{'Content-Type':'application/json'}});
 function ScanFixture(){
  const [draft,setDraft]=useState({location:'Sasti OC',timeMode:mode.startsWith('untimed')?'without':'with',trips:[record.data.trips[0],{...record.data.trips[0],rowNumber:9}]});
- const activeTripPage=0,correctionView=mode.endsWith('correction'),card={raw_fields:{responseRecoveryIssues:mode.includes('recovery')?['Check printed serial']:[]}},fieldIssues={};
+ // suggestions: the review screen's one-click fixes and impossible-time hints (shared/scan-correction-suggestions.mjs); none in this fixture.
+ const activeTripPage=0,correctionView=mode.endsWith('correction'),card={raw_fields:{responseRecoveryIssues:mode.includes('recovery')?['Check printed serial']:[]}},fieldIssues={},suggestions={};
  const recoveryIssues=activeResponseRecoveryIssues(card.raw_fields,draft);
  // A restrictive header filter must never hide valid trip controls.
  const visibleField=key=>mode!=='filtered-correction'||key.endsWith('.tripCount'),fieldClass=()=>'',tripEstimateNote=()=>'',cardMachineHint=()=>'',aliasMachineHint=()=>'',handoverTimeNote=()=>'',continueScanTrip=()=>{},interTripGap=()=>34;
