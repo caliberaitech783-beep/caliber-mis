@@ -41,9 +41,10 @@ test('release gate blocks every failed, cancelled or missing test result',()=>{
   const expression=release.match(/if: \$\{\{ (.+) \}\}/)[1];
   const evaluate=new Function('needs','cancelled',`return (${expression});`);
   const statuses=['success','failure','cancelled','skipped',''];
-  for(const lane of ['fast','full',''])for(const planResult of statuses)for(const testResult of statuses)for(const cancelled of [false,true]){
-    const expected=!cancelled&&planResult==='success'&&(lane==='fast'?testResult==='skipped':testResult==='success');
-    assert.equal(evaluate({plan:{result:planResult,outputs:{lane}},full_tests:{result:testResult}},()=>cancelled),expected,JSON.stringify({lane,planResult,testResult,cancelled}));
+  // deploy is false for a scheduled window with nothing new to release.
+  for(const deploy of ['true','false',''])for(const lane of ['fast','full',''])for(const planResult of statuses)for(const testResult of statuses)for(const cancelled of [false,true]){
+    const expected=!cancelled&&planResult==='success'&&deploy==='true'&&(lane==='fast'?testResult==='skipped':testResult==='success');
+    assert.equal(evaluate({plan:{result:planResult,outputs:{lane,deploy}},full_tests:{result:testResult}},()=>cancelled),expected,JSON.stringify({deploy,lane,planResult,testResult,cancelled}));
   }
 });
 

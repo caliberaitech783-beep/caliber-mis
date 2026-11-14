@@ -1,10 +1,12 @@
 # Deployment procedure
 
-- Complete all changes requested in the current group before starting deployment.
-- Test the completed group together. Do not deploy each individual change separately.
-- After all requested changes pass their relevant checks, ask the user once for deployment confirmation.
-- After confirmation, deploy the complete approved group in one production deployment.
-- If the user explicitly requests immediate deployment, follow that instruction without asking for a second confirmation.
+Set by the owner on 14 November 2026; scheduled releases start on 15 November 2026.
+
+- Work and test changes locally. A merge to `main` does not deploy anything by itself.
+- Production (`.github/workflows/main_caliber-mis-783.yml`) releases everything merged to `main` together four times a day: 12:00, 15:00, 18:00 and 00:00 IST. Changes from every person and every computer that reach `main` go out in the next window.
+- A window skips the release when `main` has nothing new since the commit Pulse-II serves, or only documentation changed (`scripts/release-window.sh`).
+- Merging to `main` is the step that queues a change for the next window, so complete and test the current group of changes before merging, and ask the user once before merging it.
+- An urgent fix outside the windows: Run workflow on "Build and deploy main to production - caliber-mis-783" releases `main` at once. Use it only when the user explicitly asks for an immediate deployment; then do not ask for a second confirmation.
 
 # Report operating manuals
 
