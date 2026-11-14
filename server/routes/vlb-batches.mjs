@@ -88,7 +88,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  // alone kept the 10-connection pool full. Row security also applies to the log-book
  // counts, so only share reads between callers with the same effective site scope.
  const sharedBatchRows=new Map();
- app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>{sharedBatchRows.clear();actorCache.clear();});next();});
+ app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>sharedBatchRows.clear());if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>actorCache.clear());next();});
  // Every open batch board asks every 10 to 15 s, and each ask looked the actor up in the
  // Users master. The lookup is reused for ACTOR_CACHE_MS per login (a copy each time,
  // because handle() adds fields to it) and dropped on any batch write.
