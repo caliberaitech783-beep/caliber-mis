@@ -9,7 +9,22 @@
 export function createReportLane({slots=3,cacheMs=15_000,maxCached=200,now=()=>Date.now()}={}){
  let active=0,served=0,shared=0,cached=0;
  const queue=[],inflight=new Map(),results=new Map();
- const acquire=()=>{if(active<slots){active++;return Promise.resolve();}return new Promise(resolve=>queue.push(resolve));};
+ const acquire=signal=>{
+  if(signal?.aborted)return Promise.reject(signal.reason);
+  if(active<slots){active++;return Promise.resolve();}
+  return new Promise((resolve,reject)=>{
+   const ready=()=>{
+    signal?.removeEventListener('abort',cancel);
+    resolve();
+   };
+   const cancel=()=>{
+    queue.splice(queue.indexOf(ready),1);
+    reject(signal.reason);
+   };
+   queue.push(ready);
+   signal?.addEventListener('abort',cancel,{once:true});
+  });
+ };
  const release=()=>{const next=queue.shift();if(next)next();else active--;};
  const remember=(key,value)=>{
   if(cacheMs<=0)return;
@@ -18,13 +33,13 @@ export function createReportLane({slots=3,cacheMs=15_000,maxCached=200,now=()=>D
   while(results.size>=maxCached)results.delete(results.keys().next().value);
   results.set(key,{value,until:time+cacheMs});
  };
- async function run(key,compute){
+ async function run(key,compute,{signal}={}){
   const hit=results.get(key);
   if(hit&&hit.until>now()){cached++;return hit.value;}
   const running=inflight.get(key);
   if(running){shared++;return running;}
   const job=(async()=>{
-   await acquire();
+   await acquire(signal);
    try{const value=await compute();served++;remember(key,value);return value;}
    finally{release();}
   })();

@@ -504,9 +504,20 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   // A whole or partial entry read holds one connection for as long as it runs (every card's fill
   // and checks). The lane keeps these reads to a few connections at a time, so saves, approvals
   // and other screens still find a free one when several entries are opened together.
-  const payload=await readLane.run({},async()=>{
+  const controller=new AbortController();
+  const cancel=()=>controller.abort();
+  res.once('close',cancel);
+  if(res.destroyed)cancel();
+  const queuedAt=performance.now();
+  let startedAt,connectedAt,payload;
+  try{
+  payload=await readLane.run({},async()=>{
+  startedAt=performance.now();
+  if(controller.signal.aborted)return;
   const db=await pool.connect();
   try{
+   connectedAt=performance.now();
+   if(controller.signal.aborted)return;
    const only=selectedScanCards(req.query.cards);
    {const earlierSameHash=`FROM mis_scan_cards earlier LEFT JOIN mis_log_books l ON l.id=earlier.logbook_id WHERE ${operationalScanSql('earlier')} AND earlier.image_hash=current.image_hash AND earlier.id<>current.id AND earlier.duplicate_of IS NULL AND earlier.status NOT IN('rejected') AND (earlier.status<>'posted' OR (l.id IS NOT NULL AND l.deleted_at IS NULL)) AND (earlier.created_at<current.created_at OR (earlier.created_at=current.created_at AND earlier.id<current.id))`;await db.query(`UPDATE mis_scan_cards current SET status='rejected',review_note='${EXACT_DUPLICATE_NOTE}',duplicate_of=COALESCE(current.duplicate_of,(SELECT earlier.id ${earlierSameHash} ORDER BY earlier.created_at,earlier.id LIMIT 1)),checked_by=COALESCE(checked_by,'system'),checked_at=COALESCE(checked_at,NOW()),revision=revision+1,error='' WHERE ${operationalScanSql('current')} AND current.batch_id=$1 AND current.status IN('queued','reading','review','approved','error') AND EXISTS(SELECT 1 ${earlierSameHash})`,[batch.id]);}
    const requested=await requestScanBatch(db,batch.id);if(requested.rowCount!==0)void pump();
@@ -546,6 +557,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     return world?checkMemo(row.id,memoKey('check',world,batch.kind,context,row.batch_id,row.page_count,row.expected_pages,row.image_hash,row.created_at,row.draft,rawKey),questions,compute):compute(questions);
    };
    for(const row of rows){
+    if(controller.signal.aborted)return;
     if(removed(row)){deletedCards.push({id:row.id,ordinal:row.ordinal,vehicle:row.raw_fields?.manualDeletion?.vehicle||''});continue;}
     const rawKey=world&&checked(row)?memoKey(row.raw_fields):'';
     if(fillable(row)){
@@ -560,7 +572,16 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
    return {batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)};
   }finally{db.release();}
-  });
+  },{signal:controller.signal});
+  }catch(error){
+   if(error!==controller.signal.reason)throw error;
+  }finally{res.off('close',cancel);}
+  if(res.destroyed)return;
+  res.set('Server-Timing',[
+   'scan-queue;dur='+(startedAt-queuedAt).toFixed(1),
+   'scan-connection;dur='+(connectedAt-startedAt).toFixed(1),
+   'scan-load;dur='+(performance.now()-connectedAt).toFixed(1),
+  ].join(', '));
   res.set('Cache-Control','no-store').json(payload);
  }));
  const contextGate=async(client,batch)=>scanContextGate(batch.expected_context,(await client.query('SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal FOR UPDATE',[batch.id])).rows.map(decodeScanRow));
