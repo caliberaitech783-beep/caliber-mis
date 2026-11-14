@@ -36,3 +36,12 @@ Set by the owner on 15 November 2026.
 - Every scanned card (VLB and ELB, review page or batch page) opens with all of its values visible ("Show all values" is the default).
 - The view narrows to "Show only fields needing input" only when the user clicks that button, and stays as the user left it until they click "Show all values" again. Opening a card, moving to the next card, changing the issue group or opening the review page never hides values by itself.
 - Do not change this default; `test/scan-review-page.test.mjs` checks it.
+
+# Report step style
+
+Set by the owner on 15 November 2026: every report, today's and every future one, is drawn like the OT Multiple Duties Step 1 / Step 2 / Step 3 tables. Only the format follows that look; each report keeps its own rows, columns and colours.
+
+- A drill-down keeps its steps one below the other: Step 1 stays on screen, Step 2 opens under it, Step 3 under that. Pressing a line in a step opens or changes the step below; the line that opened it is outlined in purple. Never replace one step with the next (`level===N&&`); show every step up to the one open (`level>=N&&`).
+- Build every report step with `ReportSection` (src/main.jsx). Its table draws in the step look by itself (`src/report-step-style.css`): no Sr. No. column, grey capital headings that wrap instead of scrolling sideways, figures on the right, soft square colour boxes, a purple band for the line of all of them. A new report needs no styling of its own for this.
+- Title each step `Step 1 · …`, `Step 2 · …`: a step that opens below the screen is scrolled into view by that title.
+- `test/report-step-style.test.mjs` checks this.

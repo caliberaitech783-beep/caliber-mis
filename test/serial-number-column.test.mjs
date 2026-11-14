@@ -33,12 +33,16 @@ test("shared tables number every row by default with the Sr. No. label and forwa
 
 test("report, backup and WhatsApp rule tables include Sr. No. before data columns", () => {
   const main = read("../src/main.jsx");
-  assert.match(main, /<thead>(?:[\s\S]*?className="fleet-site-header"[\s\S]*?<\/tr>\})?<tr>\{rowAction&&<th className="batch-edit-action" scope="col">Action<\/th>\}\{displayedColumns\[0\]\?\.key!=='requestShift'/);
+  // Tables keep Sr. No.; report steps (ReportSection) leave it out to match the OT Step tables (owner, 15 Nov 2026).
+  assert.match(main, /rowAction, rowEditor, serialColumn = true \}\) \{/);
+  assert.match(main, /const serialFirst = serialColumn && displayedColumns\[0\]\?\.key !== 'requestShift';/);
+  assert.match(main, /<thead>(?:[\s\S]*?className="fleet-site-header"[\s\S]*?<\/tr>\})?<tr>\{rowAction&&<th className="batch-edit-action" scope="col">Action<\/th>\}\{serialFirst&&<th className="table-serial-header" scope="col">Sr\. No\.<\/th>\}/);
   assert.match(main, /renderRow\(row, index, subtotalSerials \? subtotalSerials\.get\(row\) : firstVisibleRow \+ index\)/);
   // A subtotal line (Equipment Deployment, owner 13 Nov 2026) takes no Sr. No.; the lines after it keep counting on.
   assert.match(main, /new Map\(sortedRows\.map\(\(row\) => \[row, isSubtotalRow\(row\) \? null : \+\+serial\]\)\)/);
   assert.match(main, /<td className="table-serial-cell">\{serial \?\? "—"\}<\/td>/);
-  assert.match(main, /colSpan=\{displayedColumns\.length \+ 1 \+ Number\(Boolean\(rowAction\)\)\} className="empty-state"/);
+  assert.match(main, /const extraColumns = Number\(serialColumn\) \+ Number\(Boolean\(rowAction\)\);/);
+  assert.match(main, /colSpan=\{displayedColumns\.length \+ extraColumns\} className="empty-state"/);
   assert.match(read("../src/backup-administration.jsx"), /<thead><tr><th>Sr\. No\.<\/th><th>Date & time<\/th>/);
   assert.match(read("../src/backup-administration.jsx"), /history\.map\(\(row,index\)=><tr key=\{row\.id\}><td>\{index\+1\}<\/td>/);
   assert.match(read("../src/whatsapp-report-settings.jsx"), /<th scope="col">Sr\. No\.<\/th><th scope="col">Role<\/th>/);

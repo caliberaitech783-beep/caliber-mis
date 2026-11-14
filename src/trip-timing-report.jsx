@@ -91,6 +91,8 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  const summaryLine=t=>(t.timed?`${t.over} of ${t.timed} timed ${m.noun}s (${t.percent}%) took more than ${DELAY_LIMIT} minutes ${what}: ${BANDS.map(b=>t[b.key]+' in '+b.label).join(', ')}.${t.notJudged?' '+t.notJudged+' could not be judged.':''}`:`No ${m.noun} with both times written in these dates and filters.`)+exceptionLine(t);
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
  const rowClass=r=>r.total?'tt-total':'';
+ // Steps stay one below the other; the line that opened the step below it is marked.
+ const picked=(r,key)=>key&&(r.total?key===EVERY:r.key===key)?' report-row-picked':'';
  const where=siteLabel+(slot?' · '+slot.label:'');
  // An exception time is saved for what is on the screen: all sites, one site, or one date and shift.
  const scopeSite=site&&site!==EVERY?exceptionSiteKey(site):'',scopeSlot=slot&&slot.key!==EVERY?slot.key:'';
@@ -130,31 +132,31 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
  return <div className="tt-report">{tabs}
   <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
-  {level<5&&exceptionPanel}
-  {level===1&&<>
+  {exceptionPanel}
+  {<>
    <p className="tt-insight">{summaryLine(sites.total)}</p>
    <ReportSection key={'tt-sites-'+mode+exception} reportKey={'Trip timing sites '+mode} dataReady={dataReady} title={'Step 1 · '+m.label+' · All sites · '+period+viewTitle} category="operations-timing-sites" description={'One line per site. Press a site to see it date by date and shift by shift. Press a coloured number to see only the shifts behind it.'+viewNote}
-    rows={withTotal(sites.rows,sites.total)} columns={summaryColumns('site',mode,openSite,exception)} rowKey={r=>r.id} rowClassName={rowClass} onRowClick={r=>openSite(r)} emptyMessage="No trip rows in these dates and filters."/>
+    rows={withTotal(sites.rows,sites.total)} columns={summaryColumns('site',mode,openSite,exception)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,site)} onRowClick={r=>openSite(r)} emptyMessage="No trip rows in these dates and filters."/>
   </>}
-  {level===2&&<>
+  {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total.over,key=>shifts.total[key])}
    <ReportSection key={'tt-shifts-'+mode+site+band+exception} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date-wise and shift-wise · '+period+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-shifts" description={'One line per date and shift, newest first. Press a line to see the drivers of that shift. Press the last line to see the drivers for all the dates together.'+viewNote}
-    rows={withTotal(shiftsListed,band?{...shifts.total,id:'shown-total'}:shifts.total)} columns={summaryColumns('shift',mode,openSlot,exception)} rowKey={r=>r.id} rowClassName={rowClass} onRowClick={r=>openSlot(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
+    rows={withTotal(shiftsListed,band?{...shifts.total,id:'shown-total'}:shifts.total)} columns={summaryColumns('shift',mode,openSlot,exception)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,slot?.key)} onRowClick={r=>openSlot(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
   </>}
-  {level===3&&<>
-   <nav className="tt-subtabs" aria-label="Count by">{Object.entries(GROUPS).map(([key,label])=><button key={key} type="button" aria-current={group===key?'page':undefined} onClick={()=>setGroup(key)}>{label}</button>)}</nav>
+  {level>=3&&<>
+   <nav className="tt-subtabs" aria-label="Count by">{Object.entries(GROUPS).map(([key,label])=><button key={key} type="button" aria-current={group===key?'page':undefined} onClick={()=>{setGroup(key);setItem(null);setCard('');}}>{label}</button>)}</nav>
    <p className="tt-insight">{summaryLine(lines.total)}</p>
    {chips(lines.total.over,key=>lines.total[key])}
    <ReportSection key={'tt-lines-'+mode+group+site+slot.key+band+exception} reportKey={'Trip timing '+group+' '+mode} dataReady={dataReady} title={'Step 3 · '+m.label+' · '+where+' · '+GROUPS[group]+(band?' · '+LABELS[band]:'')+viewTitle} category={'operations-timing-'+group} description={'One line per '+(group==='driver'?'driver':group==='door'?'door number':'loading machine')+', worst first, with every band against the name. Press a line to see its delayed '+m.noun+'s.'+viewNote}
-    rows={withTotal(listed,band?{...lines.total,id:'shown-total'}:lines.total)} columns={summaryColumns(group,mode,openItem,exception)} rowKey={r=>r.id} rowClassName={rowClass} onRowClick={r=>openItem(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
+    rows={withTotal(listed,band?{...lines.total,id:'shown-total'}:lines.total)} columns={summaryColumns(group,mode,openItem,exception)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+(item?.group===group?picked(r,item.key):'')} onRowClick={r=>openItem(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
   </>}
-  {level===4&&<>
+  {level>=4&&<>
    {chips(allDelayed.length,key=>key===EXCEPTION_KEY?delayedEntries(itemEntries,mode,EXCEPTION_KEY).length:allDelayed.filter(e=>e[mode].band===key).length)}
    <ReportSection key={'tt-delayed-'+mode+item.group+item.key+slot.key+band+exception} reportKey={'Trip timing delayed '+mode+(item.group==='driver'&&item.key!==EVERY?'':' with driver')} dataReady={dataReady} title={'Step 4 · '+m.label+' · '+item.label+' · '+where+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-delayed" description={(band===EXCEPTION_KEY?'Every '+m.noun+' your exception time moved to a lower band, newest first.':'Every '+m.noun+' over '+DELAY_LIMIT+' minutes, newest first.')+' Press a line to see the full trip card.'+viewNote}
-    rows={delayed} columns={delayedColumns(mode,item.group!=='driver'||item.key===EVERY,exception)} rowKey={e=>e.id} onRowClick={e=>setCard(e.recordId)} emptyMessage={'No '+m.noun+' in this band.'}/>
+    rows={delayed} columns={delayedColumns(mode,item.group!=='driver'||item.key===EVERY,exception)} rowKey={e=>e.id} rowClassName={e=>card&&e.recordId===card?'report-row-picked':''} onRowClick={e=>setCard(e.recordId)} emptyMessage={'No '+m.noun+' in this band.'}/>
   </>}
-  {level===5&&cardHead&&<ReportSection key={'tt-card-'+card+exception} reportKey="Trip timing card" dataReady={dataReady} showSearch={false} title={'Step 5 · Trip card '+cardHead.book+viewTitle} category="operations-timing-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card with both timings`}
+  {level>=5&&cardHead&&<ReportSection key={'tt-card-'+card+exception} reportKey="Trip timing card" dataReady={dataReady} showSearch={false} title={'Step 5 · Trip card '+cardHead.book+viewTitle} category="operations-timing-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card with both timings`}
    rows={cardEntries} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Loading → Unloading is the unloading time minus the loading time of the same trip row.</li>
