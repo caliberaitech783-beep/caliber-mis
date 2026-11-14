@@ -120,6 +120,22 @@ test('two-stage batch: holds wait for transfer, lock builds the fleet, stepper e
  assert.equal((await call('/api/log-books/lmv','POST',lmv())).status,409,'LMV waits for its own VLB lock');
  const secondSelection={...selection,date:'2026-12-19'};
  assert.equal((await call('/api/vlb-batches','POST',{...secondSelection,requestKey:randomUUID()})).status,409,'the next batch waits for VLB');
+ // 14 Nov 2026: a shift was locked with 42 scanned trip cards still in review. A card still waiting in a
+ // scan entry for this site/date/shift now holds Lock VLB; another shift's or another site's does not.
+ await db.exec("CREATE TABLE mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NULL,name TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),expected_context JSONB);CREATE TABLE mis_scan_cards(id UUID PRIMARY KEY,batch_id UUID NOT NULL,filename TEXT NOT NULL DEFAULT '',status TEXT NOT NULL,duplicate_of UUID,review_note TEXT NOT NULL DEFAULT '',raw_fields JSONB NOT NULL DEFAULT '{}')");
+ const scanEntry=async(name,context,statuses)=>{const id=randomUUID();await db.query('INSERT INTO mis_scan_batches(id,kind,name,expected_context) VALUES($1,$2,$3,$4)',[id,'vehicle',name,JSON.stringify(context)]);for(const status of statuses)await db.query('INSERT INTO mis_scan_cards(id,batch_id,status) VALUES($1,$2,$3)',[randomUUID(),id,status]);return id;};
+ const waitingEntry=await scanEntry('CMLL/2026-12-18/SASTI OB/S1/ALICE/B02',{bookDate:'2026-12-18',location:'Sasti OB',cardShift:'I',confirmed:true},['review','review','error','posted','rejected']);
+ await scanEntry('other shift',{bookDate:'2026-12-18',location:'Sasti OC',cardShift:'II'},['review']);
+ await scanEntry('other site',{bookDate:'2026-12-18',location:'Jayant OC',cardShift:'I'},['review']);
+ await scanEntry('cancelled',{bookDate:'2026-12-18',location:'Sasti OC',cardShift:'I',cancelled:true},['review']);
+ view=await call(batch);assert.equal(view.data.canLockVlb,false,'waiting scanned cards disable Lock VLB');
+ assert.deepEqual(view.data.waitingScans.map(e=>[e.name,e.waiting,e.failed]),[['CMLL/2026-12-18/SASTI OB/S1/ALICE/B02',3,1]]);
+ const waitingRefused=await call(batch+'/lock-vlb','POST',{});assert.equal(waitingRefused.status,409);
+ assert.match(waitingRefused.data.error,/3 scanned trip cards not saved yet: 3 in CMLL\/2026-12-18\/SASTI OB\/S1\/ALICE\/B02 \(1 failed\)\. Save or delete each card/);
+ assert.equal(view.data.waitingScanMessage,waitingRefused.data.error);
+ await db.query("UPDATE mis_scan_cards SET status='posted' WHERE batch_id=$1 AND status='review'",[waitingEntry]);
+ await db.query("UPDATE mis_scan_cards SET status='rejected',review_note='Card deleted manually by user. Upload again if needed.' WHERE batch_id=$1 AND status='error'",[waitingEntry]);
+ view=await call(batch);assert.deepEqual(view.data.waitingScans,[],'saved and deleted cards no longer wait');
  const vlbLocked=await call(batch+'/lock-vlb','POST',{});
  assert.equal(vlbLocked.status,200,JSON.stringify(vlbLocked.data));
  assert.equal(vlbLocked.data.stage,'lmv_open');

@@ -87,10 +87,13 @@ test('the test release keeps every verification step and checks the test address
   assert.match(uiReleaseScript,/verifyPublishedUiRelease\(\{base,expected:process\.env\.EXPECTED_COMMIT\}\)/);
 });
 
-test('production stages releases from main without a release tag or approval gate',()=>{
+test('production releases main at four scheduled windows without a release tag or approval gate',()=>{
   const triggers=topLevel(productionWorkflow,'on');
-  assert.match(triggers,/push:\n\s+branches: \[main\]/);
-  assert.match(triggers,/paths-ignore:\n\s+- 'docs\/\*\*'\n\s+- '\*\.md'/,'documentation-only changes skip production deployment');
+  assert.doesNotMatch(triggers,/push:/,'a merge to main never deploys by itself');
+  assert.match(triggers,/schedule:\n\s+- cron: '30 6,9,12,18 \* \* \*'/,'12:00, 15:00, 18:00 and 00:00 IST');
+  assert.match(step(productionWorkflow,'Decide whether this window has changes to release'),/bash scripts\/release-window\.sh/,'a window with nothing new or only documentation skips the release');
+  assert.match(productionWorkflow,/full_tests:[\s\S]*?if: needs\.plan\.outputs\.lane != 'fast' && needs\.plan\.outputs\.deploy == 'true'/);
+  assert.match(productionWorkflow,/release:\n\s+needs: \[plan, full_tests\][\s\S]*?needs\.plan\.outputs\.deploy == 'true'/);
   assert.match(triggers,/^\s+workflow_dispatch:/m);
   assert.doesNotMatch(triggers,/tags:/);
   assert.doesNotMatch(triggers,/reason:/);

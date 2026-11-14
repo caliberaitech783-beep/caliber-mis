@@ -1,13 +1,14 @@
 name: Build and deploy main to production - caliber-mis-783
 
-# Small changes use the direct deployment path: validate the exact commit
-# pushed to main, deploy it once to production, and verify the live release.
+# A merge to main no longer deploys by itself. Everything merged to main is
+# collected and released together four times a day: 12:00, 15:00, 18:00 and
+# 00:00 IST (06:30, 09:30, 12:30 and 18:30 UTC). A window skips the release when
+# main has nothing new since the commit Pulse-II serves, or only documentation.
+# Run workflow releases main at once (owner-approved urgent fix only).
+# GitHub may start a scheduled run some minutes after its time.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
+  schedule:
+    - cron: '30 6,9,12,18 * * *'
   workflow_dispatch:
 
 # Finish an active release safely; GitHub replaces superseded pending runs.
@@ -26,6 +27,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      deploy: ${{ steps.window.outputs.deploy }}
       lane: ${{ steps.test-plan.outputs.lane }}
       tests: ${{ steps.test-plan.outputs.tests }}
       delta: ${{ steps.test-plan.outputs.delta }}
@@ -41,8 +43,17 @@ jobs:
       - name: Resolve the classification commit
         run: echo "RELEASE_COMMIT=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_ENV"
 
+      # A scheduled window releases only when main has something new for
+      # Pulse-II. A manual run always releases.
+      - name: Decide whether this window has changes to release
+        id: window
+        env:
+          SCHEDULE_STARTS: '2026-11-15'
+        run: bash scripts/release-window.sh
+
       - name: Select safe release test lane
         id: test-plan
+        if: steps.window.outputs.deploy == 'true'
         env:
           BEFORE_COMMIT: ${{ github.event.before }}
         run: |
@@ -64,7 +75,7 @@ jobs:
             printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$GITHUB_EVENT_NAME" != "push" || ! "$BEFORE_COMMIT" =~ ^[0-9a-f]{40}$ || "$BEFORE_COMMIT" =~ ^0+$ ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" || ! "$BEFORE_COMMIT" =~ ^[0-9a-f]{40}$ || "$BEFORE_COMMIT" =~ ^0+$ ]]; then
             printf 'lane=full\ntests=\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -79,7 +90,7 @@ jobs:
   full_tests:
     name: Full tests (shard ${{ matrix.shard }}/3)
     needs: plan
-    if: needs.plan.outputs.lane != 'fast'
+    if: needs.plan.outputs.lane != 'fast' && needs.plan.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -160,7 +171,7 @@ jobs:
     needs: [plan, full_tests]
     # A skipped matrix is valid only for the focused UI lane. Failed/cancelled
     # shards, missing classification or cancellation always prevent deployment.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && ((needs.plan.outputs.lane == 'fast' && needs.full_tests.result == 'skipped') || (needs.plan.outputs.lane != 'fast' && needs.full_tests.result == 'success')) }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.deploy == 'true' && ((needs.plan.outputs.lane == 'fast' && needs.full_tests.result == 'skipped') || (needs.plan.outputs.lane != 'fast' && needs.full_tests.result == 'success')) }}
     runs-on: ubuntu-latest
     environment:
       name: production

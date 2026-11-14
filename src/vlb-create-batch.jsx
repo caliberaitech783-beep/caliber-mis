@@ -5,6 +5,7 @@ import SmartSelect from './smart-select.jsx';
 import LogBookDeletion from './log-book-deletion.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
+import {WaitingScans} from './vlb-waiting-scans.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {displaySiteName} from '../shared/region-scope.mjs';
 import {withLmvEntrySite} from './vlb-entry-context.mjs';
@@ -226,13 +227,14 @@ export default function VlbCreateBatch({session,onExit,ReportSection,onManual,on
   </section>}
   {viewed&&<section className="logbook-section vlb-active-batch-panel">{!entryMode&&<StepBackButton onBack={clearView} label="Back to batch list"/>}<h2>{viewed.name}</h2><div className="vlb-batch-stage-toolbar">{twoStage&&<StageSteps stage={stage} waiting={Boolean(viewed.stageWait)}/>}<button type="button" disabled={busy||detailLoading} onClick={clearView}>Show unbatched entries</button></div>
     {viewed.stageWait&&<p className="logbook-message" role="status">{viewed.stageWait}</p>}
+    {twoStage&&<WaitingScans entries={viewed.waitingScans} stage={stage}/>}
     {(lmvOpen||stage==='vlb_open')&&(onManual||onScan)&&<div className="vlb-batch-actions" role="group" aria-label="Batch entry options">
      <button type="button" aria-pressed={entryFilter==='manual'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='manual'?'':'manual')}>Manual ({entryCounts.manual})</button>
      <button type="button" aria-pressed={entryFilter==='scan'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='scan'?'':'scan')}>Scan ({entryCounts.scan})</button>
      <button type="button" aria-pressed={entryFilter==='upload'} disabled={busy||detailLoading} onClick={()=>setEntryFilter(value=>value==='upload'?'':'upload')}>PDF ({entryCounts.upload})</button>
    </div>}
    {viewed&&twoStage&&<div className="vlb-two-stage">
-    {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={()=>lockStage('vlb')}>Lock VLB</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{viewed.lockBlockers?.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {viewed.lockBlockers.join(' ')}</p>}</>}
+    {stage==='vlb_open'&&<><div className="vlb-batch-actions"><button type="button" className="vlb-approval-primary" disabled={busy||detailLoading||!viewed.canLockVlb} onClick={()=>lockStage('vlb')}>Lock VLB</button><button type="button" disabled={busy} onClick={()=>setNewEquipment(v=>!v)}>{newEquipment?'Hide new equipment form':'Create new equipment'}</button></div>{(()=>{const shown=(viewed.lockBlockers||[]).filter(text=>text!==viewed.waitingScanMessage);return shown.length>0&&<p className="logbook-message" role="status">Lock VLB is blocked: {shown.join(' ')}</p>})()}</>}
     {lmvOpen&&<div className="vlb-batch-actions">
      {onLmvManual&&<button type="button" onClick={()=>onLmvManual(viewed)}>Add LMV manually</button>}
      {onLmvScan&&<button type="button" onClick={()=>onLmvScan(viewed)}>Scan or upload LMV PDF</button>}

@@ -15,6 +15,8 @@ import {twoStageEnabled,batchStage,activeSiteHolds,holdSummary,buildMachineSnaps
 import {pendingTransferFor} from '../routes/vehicle-transfer-express.mjs';
 
 import {readBatchStageWait} from './vlb-batch-queue.mjs';
+import {readWaitingScans,vlbLockScanBlocker,lmvLockScanBlocker,closeScanBlocker} from './vlb-waiting-scans.mjs';
+const batchWaitingScans=(client,batch)=>readWaitingScans(client,{site:batch.site,date:batch.report_date,shift:batch.shift});
 
 const fail=batchFail;
 async function requireStageTurn(client,batch){
@@ -87,7 +89,11 @@ export async function stageDetails(client,batch,{assets,tripCardRecords}={}){
    (cards[record.id]??=[]).push(index);
   });
  }
- return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved}):[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates}):[],machineReport:report,statuses:FLEET_STATUSES};
+ const waitingScans=stage==='closed'?[]:await batchWaitingScans(client,batch);
+ const lmvWaiting=stage==='lmv_open'?lmvLockScanBlocker(waitingScans):'';
+ // The sentence this stage's next step is refused with; the page shows it once, as the waiting list.
+ const waitingScanMessage=stage==='vlb_open'?vlbLockScanBlocker(waitingScans):stage==='lmv_open'?lmvWaiting:stage==='elb_open'?closeScanBlocker(waitingScans):'';
+ return {twoStage:true,stage,stageWait:await readBatchStageWait(client,batch),holds,machines,fleet,fleetProgress:progress,elbRecords:elb,elbTripCardRows,waitingScans,waitingScanMessage,lockBlockers:stage==='vlb_open'?lockBlockers({stage,records:vlb,holds,unresolved:buildMachineSnapshot(vlb,assets,batch.site).unresolved,waitingScans}):[],lmvLockBlockers:lmvWaiting?[lmvWaiting]:[],closeBlockers:stage==='elb_open'?closureBlockers({stage,fleet,holds,duplicates,waitingScans}):[],machineReport:report,statuses:FLEET_STATUSES};
 }
 function duplicateElb(records){
  const byAsset=new Map(),duplicates=new Set();
@@ -116,7 +122,7 @@ export async function lockVlb(client,batch,actor,{assets}={}){
  assets??=await equipmentAssets(client);
  const stage=batchStage(batch),records=await batchVlbRecords(client,batch),holds=holdSummary(records,assets);
  const snapshot=buildMachineSnapshot(records,assets,batch.site);
- const blockers=lockBlockers({stage,records,holds,unresolved:snapshot.unresolved});
+ const blockers=lockBlockers({stage,records,holds,unresolved:snapshot.unresolved,waitingScans:stage==='vlb_open'?await batchWaitingScans(client,batch):[]});
  if(blockers.length)fail(blockers.join(' '),409);
  await client.query('DELETE FROM mis_vlb_batch_machines WHERE batch_id=$1',[batch.id]);
  for(const m of snapshot.machines)await client.query('INSERT INTO mis_vlb_batch_machines(batch_id,asset_id,machine_label,door,trips,source_cards) VALUES($1,$2,$3,$4,$5,$6)',[batch.id,m.assetId,m.label,m.door,m.trips,m.sourceCards]);
@@ -259,6 +265,8 @@ export async function saveFleetEntry(client,batch,assetId,input,actor,ops){
 export async function lockLmv(client,batch,actor){
  if(!twoStageEnabled()||batchStage(batch)!=='lmv_open')fail('LMV must be open before it can be locked.',409);
  await requireStageTurn(client,batch);
+ const waiting=lmvLockScanBlocker(await batchWaitingScans(client,batch));
+ if(waiting)fail(waiting,409);
  const locked=(await client.query("UPDATE mis_vlb_batches SET stage='elb_open',lmv_locked_at=NOW() WHERE id=$1 RETURNING *,book_date::text AS report_date",[batch.id])).rows[0];
  await auditVlbBatch(client,batch,actor,'lmv_locked');
  return locked;
