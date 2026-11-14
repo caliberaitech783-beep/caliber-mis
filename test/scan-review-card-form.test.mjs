@@ -1,3 +1,4 @@
+import {idleShiftHours} from '../shared/breakdown-hours-source.mjs';
 // Regression: on 1 November 2026 the meter-limit refactor removed the
 // `meterLimitIssues` definition from the VLB scan page but left two uses in the
 // Total KMR / Total HMR labels. Every card opened in review then threw a
@@ -12,7 +13,7 @@ import {readFileSync} from 'node:fs';
 import {transformWithOxc} from 'vite';
 import {scanContextGate} from '../shared/scan-batch-context.mjs';
 const source=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
-const scope={React};
+const scope={idleShiftHours,React};
 for(const match of source.matchAll(/^import \{([^}]+)\} from '([^']+)';$/gm)){
  if(!match[2].startsWith('.'))continue;
  const module=await import(new URL('../src/'+match[2],import.meta.url));
