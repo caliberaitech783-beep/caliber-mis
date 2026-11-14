@@ -196,7 +196,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  return {errors,warnings,data,number};
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?DEFAULT_GEMINI_WORKERS:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
- readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),entryReadSteps=createEntryReadSteps(),filterLogBookSites=createLogBookSiteCache(),
+ readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),entryReadSteps=createEntryReadSteps(),filterLogBookSites=createLogBookSiteCache({pool}),
  progressLane=createReportLane({slots:scanProgressSlots(process.env),cacheMs:SCAN_PROGRESS_SHARE_MS}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
  alertAdministrators=null,outageProbeMs=OUTAGE_PROBE_MS,

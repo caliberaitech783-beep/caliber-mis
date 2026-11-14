@@ -22,6 +22,7 @@ import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/
 import {registerReleaseOtp} from './server/routes/release-otp.mjs';
 import {createReleaseOtpDelivery,ownerTelegramLogins,RELEASE_OTP_ALSO_LOGINS} from './server/services/release-otp-delivery.mjs';
 import {registerReleaseApproval} from './server/routes/release-approval.mjs';
+import {registerReleaseReport} from './server/routes/release-report.mjs';
 import {createReleaseWindowTrigger} from './server/services/release-window-trigger.mjs';
 import {createScanBatchReporter,scanBatchReportEnabled} from './server/services/scan-batch-report.mjs';
 import {createGithubOidcVerifier} from './server/services/github-oidc.mjs';
@@ -7975,19 +7976,23 @@ const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PU
 registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
  audit:(req,{action,reference,details})=>{req.audit={eventType:'Master data',module:'Equipment master',action,targetType:'Equipment master',targetReference:reference,details};}});
 // Urgent production release: the release workflow asks for an OTP on the owner's Telegram.
+const releaseIdentity=createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile:'main_caliber-mis-783.yml'});
+const releaseAudit=(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};};
 // Urgent production release and PR merge + release: Approve / Reject buttons on Telegram for Mr Anoop and
 // Mr Mohit Chadda (the same people as the release OTP). Both release workflows may ask; only the production one spends.
-const releaseIdentity=(()=>{
+const releaseApprovalIdentity=(()=>{
  const verifiers=['main_caliber-mis-783.yml','merge-and-release.yml'].map(workflowFile=>createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile}));
  return async token=>{let last;for(const verify of verifiers){try{return await verify(token);}catch(error){last=error;}}throw last;};
 })();
-const releaseApproval=registerReleaseApproval(app,{pool,telegram:misTelegram,verifyIdentity:releaseIdentity,
+const releaseApproval=registerReleaseApproval(app,{pool,telegram:misTelegram,verifyIdentity:releaseApprovalIdentity,
  approverLogins:async()=>[...await ownerTelegramLogins(pool),...RELEASE_OTP_ALSO_LOGINS],
- audit:(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};}});
+ audit:releaseAudit});
 registerReleaseOtp(app,{pool,
  sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:sendReleaseOtp}),
- verifyIdentity:createGithubOidcVerifier({audience:'pulse-ii-release',repository:'caliberaitech783-beep/caliber-mis',workflowFile:'main_caliber-mis-783.yml'}),
- audit:(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};}});
+ verifyIdentity:releaseIdentity,audit:releaseAudit});
+// After every production release the workflow reports what it deployed; the owner gets it on Telegram.
+registerReleaseReport(app,{verifyIdentity:releaseIdentity,ownerLogins:()=>ownerTelegramLogins(pool),
+ telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),audit:releaseAudit});
 // One request asks for its site scope more than once (row security, then the route). Answer the
 // later asks from the first read of the user's record instead of reading it again.
 const readLogBookScope=async session=>logBookSiteScope(session,await currentUserRecord(session));

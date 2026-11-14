@@ -250,6 +250,14 @@ jobs:
           echo "RELEASE_COMMIT=${RELEASE_COMMIT}" >> "$GITHUB_ENV"
           echo "Deploying ${RELEASE_COMMIT} from main (${GITHUB_EVENT_NAME})"
 
+      # The release report lists every change between this version and the new one.
+      - name: Note the version Pulse-II serves before this release
+        continue-on-error: true
+        run: |
+          PREVIOUS_COMMIT="$(curl --fail --silent --max-time 20 https://pulse-ll.cmll.in/api/health | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const c=JSON.parse(s).commit;if(/^[0-9a-f]{40}$/.test(c))process.stdout.write(c)}catch{}})" || true)"
+          echo "PREVIOUS_COMMIT=${PREVIOUS_COMMIT}" >> "$GITHUB_ENV"
+          echo "Pulse-II serves ${PREVIOUS_COMMIT:-an unknown version} before this release."
+
       - name: Use the classified release plan
         id: test-plan
         env:
@@ -486,3 +494,12 @@ jobs:
       - name: Stop staging if validation failed before the swap
         if: failure() && steps.start-slot.outcome == 'success' && steps.swap-slot.outcome == 'skipped'
         run: az webapp stop --resource-group coalmine-fleet-maintenance-rg --name caliber-mis-783 --slot "$MIS_STAGING_SLOT"
+
+      # Every release, done or failed, tells the owner on Telegram what it deployed.
+      - name: Send the owner the release report
+        if: always()
+        continue-on-error: true
+        env:
+          RELEASE_STATUS: ${{ job.status }}
+          RELEASE_WHEN: ${{ inputs.when }}
+        run: node scripts/send-release-report.mjs

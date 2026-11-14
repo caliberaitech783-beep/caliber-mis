@@ -30,12 +30,16 @@ export async function filterLogBookSites(client,scope){
 // reading this site list, which it reads again on every poll. The list only grows
 // when a log book is saved at a site that had none, so one read is shared by all
 // callers for ttlMs and the user's scope is still applied to it on every call.
-export function createLogBookSiteCache({ttlMs=60_000,now=()=>Date.now()}={}){
+// The read itself took up to 17 s on live, so once a list is held an expired list
+// is still answered at once and the new one is read through `pool` in the
+// background; the caller's own connection is never kept after its request ends.
+export function createLogBookSiteCache({pool=null,ttlMs=60_000,now=()=>Date.now()}={}){
   let sites=null,readAt=0,reading=null;
+  const refresh=client=>reading??=client.query(LOG_BOOK_SITES_SQL).then(({rows})=>{sites=rows.map(row=>row.site);readAt=now();return sites;}).finally(()=>{reading=null;});
   const all=client=>{
     if(sites&&now()-readAt<ttlMs)return sites;
-    reading??=client.query(LOG_BOOK_SITES_SQL).then(({rows})=>{sites=rows.map(row=>row.site);readAt=now();return sites;}).finally(()=>{reading=null;});
-    return reading;
+    if(sites&&pool){refresh(pool).catch(()=>{});return sites;}
+    return refresh(client);
   };
   return async(client,scope)=>{
     if(scope.sites===null)return null;
