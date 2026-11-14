@@ -45,6 +45,7 @@ import {geminiEnabled,geminiKeySource,MODEL,MAX_GEMINI_CONCURRENCY} from '../ser
 import {encodeScanJson as encodeLocalScanJson,encodeScanText as encodeLocalScanText,decodeScanRow as decodeStoredScanRow,decodeScanJson} from '../rules/scan-text-storage.mjs';
 import {createPaddleEvidence,validatePaddleEvidence,paddleEvidenceResult} from '../services/paddle-evidence.mjs';
 import {mergeReextractedDraft} from '../rules/scan-reextract.mjs';
+import {createReportLane} from '../services/report-lane.mjs';
 import {ignoreScanLoadingWithoutEquipment,CARD_SHIFTS,machineDiscrepancies,bookShiftCode,machineTripTotal} from '../../shared/trip-card-rules.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {randomUUID,randomInt,createHash,timingSafeEqual} from 'node:crypto';
@@ -76,6 +77,10 @@ CREATE TABLE IF NOT EXISTS mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NU
  ${SCAN_LEASE_SCHEMA}
  ${READER_OUTAGE_SCHEMA}`;
 const uuid=v=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(String(v||''));
+// How many whole or partial scan entry reads run at once on this server (MIS_SCAN_READ_SLOTS).
+// Each holds one of the pool's connections while it runs; the rest of the pool stays free for
+// saves, approvals and every other screen.
+export const scanReadSlots=(env=process.env)=>{const n=Number(String(env.MIS_SCAN_READ_SLOTS??'').trim());return Number.isInteger(n)&&n>=1&&n<=50?n:4;};
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 const cardKey=v=>String(v||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
 function decodeScanRow(row){
@@ -154,6 +159,7 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  return {errors,warnings,data,number};
 }
 export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,requireSession,requireAdministrator,getGroqConfig,ocr=localCardOcr({getGroqConfig}),readHours,readBreakdownRows=null,sendCardDeletionOtp=request=>sendDeletionOtp({pool,...request}),readPulseFleet=null,refreshPulseFleet=null,archiveSavedBatch=null,archiveTarget=null,imageStorage=null,localDrafts=false,scanConcurrency=geminiEnabled(process.env)?5:1,getSiteScope=async()=>({sites:null}),fingerprintBackfill=!process.env.NODE_TEST_CONTEXT,
+ readLane=createReportLane({slots:scanReadSlots(process.env),cacheMs:0}),
  // Tells the administrators when the reading account stops reading (no credit, key refused, quota).
  alertAdministrators=null,outageProbeMs=OUTAGE_PROBE_MS,
  // role 'engine' = the separate scan engine process: reads cards for its own
@@ -318,7 +324,7 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
    await c.query("UPDATE mis_scan_cards SET raw_fields=raw_fields||jsonb_build_object('fleetReview',$2::jsonb),status=$3,review_note=$4,revision=revision+1 WHERE id=$1",[card.id,JSON.stringify(encodeScanJson(next)),rejected?'rejected':'review',rejected?'Rejected by user: equipment not present at selected site':'Awaiting completion of existing equipment transfer in Pulse']);await c.query('COMMIT');res.json({review:next,rejected,pulseUrl:'https://pulse.cmll.in/'});
   }catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}
  }));
- app.get('/api/scan-batches',...protect,wrap(async(req,res)=>{const offset=Number(req.query.offset||0);if(!Number.isSafeInteger(offset)||offset<0)fail('Invalid batch history offset.');const {rows}=await pool.query(`SELECT b.*,count(c.id) FILTER(WHERE c.review_note<>'Removed from batch: wrong date, site or shift' AND c.review_note NOT LIKE 'Card deleted manually by user%' AND c.duplicate_of IS NULL)::int AS cards,count(c.id) FILTER(WHERE c.duplicate_of IS NOT NULL)::int AS duplicates,count(c.id) FILTER(WHERE c.status='approved')::int AS approved,count(c.id) FILTER(WHERE c.status='posted' AND c.review_note NOT LIKE 'Card deleted manually by user%')::int AS posted FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id AND ${operationalScanSql('c')} WHERE COALESCE(NULLIF(b.expected_context->>'bookDate',''),to_char(b.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD'))>=$$2026-11-01$$ AND NOT(COALESCE(b.expected_context,'{}'::jsonb) ?| ARRAY['deletedVlbBatch','deletedScanEntry']) AND b.kind=ANY($1::text[]) AND (COALESCE(b.expected_context->>'logBookKind','')='lmv')=$4 AND ($2::uuid[] IS NULL OR b.id=ANY($2::uuid[])) GROUP BY b.id ORDER BY b.created_at DESC,b.id DESC LIMIT 100 OFFSET $3`,[req.misAllowedScanKinds||['vehicle','equipment'],req.allowedSiteBatches,offset,req.query.logBookKind==='lmv']);res.set('Cache-Control','no-store').json({batches:rows,nextOffset:rows.length===100?offset+rows.length:null});}));
+ app.get('/api/scan-batches',...protect,wrap(async(req,res)=>{const offset=Number(req.query.offset||0);if(!Number.isSafeInteger(offset)||offset<0)fail('Invalid batch history offset.');const {rows}=await pool.query(`SELECT b.*,count(c.id) FILTER(WHERE c.review_note<>'Removed from batch: wrong date, site or shift' AND c.review_note NOT LIKE 'Card deleted manually by user%' AND c.duplicate_of IS NULL)::int AS cards,count(c.id) FILTER(WHERE c.duplicate_of IS NOT NULL)::int AS duplicates,count(c.id) FILTER(WHERE c.status='approved')::int AS approved,count(c.id) FILTER(WHERE c.status='posted' AND c.review_note NOT LIKE 'Card deleted manually by user%')::int AS posted FROM mis_scan_batches b LEFT JOIN mis_scan_cards c ON c.batch_id=b.id AND ${operationalScanSql('c')} WHERE COALESCE(NULLIF(b.expected_context->>'bookDate',''),to_char(b.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD'))>=$$2026-11-01$$ AND NOT(COALESCE(b.expected_context,'{}'::jsonb) ?| ARRAY['deletedVlbBatch','deletedScanEntry']) AND b.kind=ANY($1::text[]) AND (COALESCE(b.expected_context->>'logBookKind','')='lmv')=$4 AND ($2::uuid[] IS NULL OR b.id=ANY($2::uuid[])) GROUP BY b.id ORDER BY b.created_at DESC,b.id DESC LIMIT 100 OFFSET $3`,[req.misAllowedScanKinds||['vehicle','equipment'],req.allowedSiteBatches,offset,req.query.logBookKind==='lmv']);const tripTotals=await scanEntryTripTotals(pool,rows.map(b=>b.id));res.set('Cache-Control','no-store').json({batches:rows.map(b=>({...b,trip_total:tripTotals.get(b.id)??0})),nextOffset:rows.length===100?offset+rows.length:null});}));
  app.post('/api/scan-batches',...protect,wrap(async(req,res)=>{if(!['vehicle','equipment'].includes(req.body.kind))fail('Choose Trip Cards or Job Cards.');let context;try{context=requireScanUploadContext(req.body.kind,req.body.expectedContext)}catch(e){fail(e.message)}if(context)requireLogBookSite(req.logBookScope,context.location);const batch=await createScanBatch(pool,{id:randomUUID(),kind:req.body.kind,name:req.body.name,user:req.session.login||req.session.name,expectedContext:context||undefined});res.status(201).json(batch);}));
  app.post('/api/scan-batches/:id/remove',...protect,wrap(async(req,res)=>{const batch=await getBatch(pool,req.params.id);const c=await pool.connect();let blobs=[];try{await c.query('BEGIN');await c.query('SELECT id FROM mis_scan_batches WHERE id=$1 FOR UPDATE',[batch.id]);const cards=(await c.query('SELECT status,image_blob_key FROM mis_scan_cards WHERE batch_id=$1 FOR UPDATE',[batch.id])).rows;if(cards.some(card=>card.status==='posted'))fail('This batch contains saved log-book records and cannot be removed here.',409);blobs=cards.map(card=>card.image_blob_key).filter(Boolean);await c.query('DELETE FROM mis_scan_cards WHERE batch_id=$1',[batch.id]);await c.query('DELETE FROM mis_scan_batches WHERE id=$1',[batch.id]);await c.query('COMMIT');}catch(error){await c.query('ROLLBACK');throw error}finally{c.release()}if(imageStorage?.remove)for(const key of blobs)try{await imageStorage.remove(key)}catch{}res.json({removed:true});}));
  // Section 3 of the equipment alias spec: written machines no Pulse door answers, beside the Pulse
@@ -391,6 +397,22 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
   }
   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(pool,batch,req)},cards,duplicates:[],progress:true,storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(pool,batch)});
  };
+ // The entry list carries every listed entry's trip total from this one query. Until 14 November
+ // 2026 the screen asked for each entry's progress separately to add the totals up: with the
+ // entries of two weeks that was up to 100 requests at once, which by themselves filled the
+ // 10-connection pool every time the list refreshed. The counting is the one sendScanProgress does.
+ const scanEntryTripTotals=async(client,batchIds)=>{
+  const totals=new Map(batchIds.map(id=>[id,0]));
+  if(!batchIds.length)return totals;
+  const {rows}=await client.query(`SELECT c.batch_id,c.review_note,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('manualDeletion',c.raw_fields->'manualDeletion') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('trips',c.draft->'trips') END AS draft,l.data->'trips' AS saved_trips FROM mis_scan_cards c LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE ${operationalScanSql('c')} AND c.batch_id=ANY($1::uuid[]) AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}')`,[batchIds]);
+  for(const row of rows){
+   const fields=decodeScanJson(row.raw_fields)||{};
+   if(fields.manualDeletion||row.review_note.startsWith('Card deleted manually by user'))continue;
+   const trips=Array.isArray(row.saved_trips)?row.saved_trips:decodeScanJson(row.draft)?.trips;
+   totals.set(row.batch_id,(totals.get(row.batch_id)||0)+machineTripTotal(Array.isArray(trips)?trips:[]));
+  }
+  return totals;
+ };
  // ?cards=id,id limits the full read to the cards the screen saw change, so a
  // card that finishes reading no longer re-validates every other card in the
  // entry. The answer carries partial:true; its batch.deletedCards covers the
@@ -418,6 +440,10 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  };
  app.get('/api/scan-batches/:id',...protect,wrap(async(req,res)=>{
   const batch=await getBatch(pool,req.params.id);if(req.query.progress==='1')return sendScanProgress(req,res,batch);
+  // A whole or partial entry read holds one connection for as long as it runs (every card's fill
+  // and checks). The lane keeps these reads to a few connections at a time, so saves, approvals
+  // and other screens still find a free one when several entries are opened together.
+  const payload=await readLane.run({},async()=>{
   const db=await pool.connect();
   try{
    const only=selectedScanCards(req.query.cards);
@@ -471,8 +497,10 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
     cards.push({...publicCard(row),validationPending:Boolean(row.validationPending),checks:row.validationPending?null:{errors:check.errors,warnings:check.warnings}});
    }
    const gateCards=only?(await db.query(`SELECT c.status FROM mis_scan_cards c WHERE ${operationalScanSql('c')} AND c.batch_id=$1 AND c.duplicate_of IS NULL AND c.review_note NOT IN('${REMOVED_FROM_BATCH_NOTE}','${EXACT_DUPLICATE_NOTE}') AND NOT (c.raw_fields ? 'manualDeletion') AND c.review_note NOT LIKE 'Card deleted manually by user%'`,[batch.id])).rows:cards;
-   res.set('Cache-Control','no-store').json({batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)});
+   return {batch:{...batch,deletedCards,openDeletion:await openDeletion(db,batch,req)},...(only?{partial:true}:{}),cards:cards.map(card=>matchingPublicCard(card,batch,req.session)).filter(Boolean),duplicates,contextGate:scanContextGate(batch.expected_context,gateCards),storage:{localDrafts,archiveEnabled:Boolean(archiveSavedBatch),target:imageStorage?'hot-blob':archiveTarget,azureUploadEnabled:Boolean(imageStorage)||archiveTarget==='azure'},reader:await readerInfo(db,batch)};
   }finally{db.release();}
+  });
+  res.set('Cache-Control','no-store').json(payload);
  }));
  const contextGate=async(client,batch)=>scanContextGate(batch.expected_context,(await client.query('SELECT id,ordinal,filename,status,revision,draft,raw_fields FROM mis_scan_cards WHERE batch_id=$1 ORDER BY ordinal FOR UPDATE',[batch.id])).rows.map(decodeScanRow));
  const requireContextReady=async(client,batch,{individualCard=false}={})=>{
@@ -685,6 +713,8 @@ export function registerBulkCardScanning(app,{trackJob=(name,task)=>task(),pool,
  status:()=>({mode:role==='engine'?'engine':enginesExternal?'external':scanLanes?'lanes':'single',reading:workers,readTotal,lanes:[...lanes.values()].map(lane=>({site:lane.name||'other',workers:lane.workers,key:geminiKeySource(process.env,lane.name||'')})),liveEngines:liveEngineCount,
   // Entry reads: how often a card's fill and checks were reused (hits) or worked out (misses).
   entryReadReuse:{fill:fillMemo.stats(),check:checkMemo.stats()},
+  // Whole and partial entry reads running now, waiting for a slot, and served since start.
+  entryReadLane:readLane.stats(),
   // Reading held because the account failed: Pulse-II reports every reader's hold (from the database), an engine its own.
   outages:role==='app'?knownOutages.map(({detail,...outage})=>outage):[singleLane,...lanes.values()].filter(lane=>lane.outage).map(lane=>({lane:outageLaneKey(lane.name),reason:lane.outage.reason,httpStatus:lane.outage.status,since:lane.outage.since}))}),
  activeReads:()=>workers};

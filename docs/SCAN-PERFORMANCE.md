@@ -197,3 +197,47 @@ the rows each scope sees on one shared connection.
 server may hold. It is a setting, not a code change, so it can be raised without
 a release once the PostgreSQL server's connection limit has been checked against
 every app that shares it. No production timing has been measured for this change.
+
+## Entry reads filled the pool while no card was being read (14 November 2026)
+
+At 14:15 IST `/api/health` showed the Pulse-II pool at 10 of 10 connections with
+45 to 103 requests waiting for ten minutes, while every card was being read by
+the engines (`reading: 0`). Admin > Diagnostics named the holder: every one of
+the ten connections was held by `GET /api/scan-batches/:id`. That label covers
+the whole entry read, the `?cards=` partial read and the `?progress=1` poll.
+
+Two causes in the code:
+
+- The scan entry list asked for every listed entry's progress separately to add
+  up its trip total, all at once. With a VLB batch selected that is the entries
+  of one site, date and shift; on the job-card screen or without a batch it is
+  every entry since 1 November, up to 100. One screen opening, and every save,
+  delete or reject after it, put up to 100 requests of five to seven queries each
+  on the pool at the same moment.
+- A whole or partial entry read takes one connection when it starts and holds it
+  until every card's fill and checks are done, with no limit on how many run at
+  once. Ten people opening entries together left nothing for saves, approvals or
+  any other page.
+
+Now:
+
+- `GET /api/scan-batches` returns `trip_total` for every entry from one query
+  over the listed entries' cards, counted the way the progress read counts
+  (saved log-book trips first, manually deleted, duplicate and removed cards left
+  out, unloading-only rows not counted). The screen uses it and asks for an
+  entry's progress only when an older server answers without it, during a
+  release swap.
+- Whole and partial entry reads run through a lane of `MIS_SCAN_READ_SLOTS`
+  connections (default 4). A read waits in the server for a slot instead of
+  holding a connection; the progress poll stays outside the lane. The lane's
+  numbers are under `scanReading.entryReads` in `/api/health` (running,
+  waiting, served).
+- The pool size setting from the change above (`MIS_DATABASE_POOL_MAX`) is the
+  other lever. The scan engines hold 4 connections each (eight engines, 32) on
+  the same PostgreSQL server, so compare the server's `max_connections` with
+  every app's pool before raising it.
+
+Measured on the PGlite test database only: three whole reads with one slot hold
+one connection at a time and all answer. No production timing has been measured
+for this change yet; the next scanning day's `/api/health` and Diagnostics
+readings will show whether the pool stays free.
