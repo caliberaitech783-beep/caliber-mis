@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {matchScannedSite,tripCardLocation,tripCardLocationChoices} from '../shared/scan-site-match.mjs';
 import {extractCard} from '../server/rules/scan-extraction.mjs';
 import {cardPrompt,MODEL} from '../server/services/gemini-card-reader.mjs';
-import {DEFAULT_MODEL,geminiModel,geminiRecheckModel,geminiGenerationConfig,geminiThinkingLevel} from '../server/services/gemini-hybrid.mjs';
+import {DEFAULT_MODEL,geminiModel,geminiRecheckModel,geminiGenerationConfig,geminiLengthRetryConfig,geminiThinkingLevel} from '../server/services/gemini-hybrid.mjs';
 const east='Dudhichua East OC',west='Dudhichua OC',sites=[east,west,'Jayant OC'];
 test('DCH direction aliases return the actual master label across spacing, case and punctuation',()=>{
  for(const reading of ['DCH (East)','dch EAST','D.C.H. (EAST)','D C H - East','Site: DCH(East)','DCH East O.C.'])assert.equal(matchScannedSite([reading],sites),east,reading);
@@ -74,6 +74,9 @@ test('Gemini keeps literal location evidence and checks direction without changi
  assert.deepEqual(geminiGenerationConfig('gemini-4-hydrogen',{}),{responseMimeType:'application/json',maxOutputTokens:65536,thinkingConfig:{thinkingLevel:'low'}});
  assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:' medium '}),'medium');assert.equal(geminiThinkingLevel({MIS_GEMINI_THINKING_LEVEL:'minimal'}),'low');
  assert.deepEqual(geminiGenerationConfig('gemini-3.8-flash',{}),{temperature:0,responseMimeType:'application/json',maxOutputTokens:8192});
+ assert.deepEqual(geminiLengthRetryConfig('gemini-3.8-flash',{}),{temperature:1,responseMimeType:'application/json',maxOutputTokens:32768});
+ assert.deepEqual(geminiLengthRetryConfig('gemini-3.1-flash-lite',{}),{temperature:1,responseMimeType:'application/json',maxOutputTokens:32768});
+ assert.deepEqual(geminiLengthRetryConfig('gemini-4-hydrogen',{}),geminiGenerationConfig('gemini-4-hydrogen',{}));
  assert.equal(geminiModel({}),DEFAULT_MODEL);assert.equal(geminiModel({MIS_GEMINI_MODEL:' gemini-3.8-flash '}),'gemini-3.8-flash');assert.equal(geminiModel({MIS_GEMINI_MODEL:'other/model'}),DEFAULT_MODEL);assert.equal(MODEL,geminiModel());
  for(const kind of ['vehicle','equipment']){const prompt=cardPrompt(kind);assert.match(prompt,/Transcribe DCH \(East\) and DCH \(West\) literally/);assert.match(prompt,/mark location unclear instead of guessing/);}
 });

@@ -90,6 +90,27 @@ export async function requeueExpiredReads(pool){
  return pool.query(`UPDATE mis_scan_cards SET status='queued',read_lease_owner=NULL,read_lease_until=NULL
  WHERE status='reading' AND (read_lease_until IS NULL OR read_lease_until<clock_timestamp())`);
 }
+// A database that is busy or restarting is not a failed scan. On 14 Nov 2026 a
+// full connection pool made the engines mark ten good Gemini reads "OCR could
+// not read this scan", and the cards had to be typed in by hand. Such a card
+// goes back to the queue (the Gemini answer is cached, so the next read is
+// quick); after DATABASE_REQUEUE_LIMIT tries it fails with a plain reason.
+export const DATABASE_REQUEUE_LIMIT=3;
+const DATABASE_UNAVAILABLE=/timeout exceeded when trying to connect|Connection terminated|connection timeout|too many clients|Database security is initializing|the database system is (?:starting up|shutting down)/i;
+export function scanDatabaseUnavailable(error){
+ if(!error||error.provider)return false;
+ const code=String(error.code||'');
+ return /^08|^57P0[1-3]$|^53300$/.test(code)||DATABASE_UNAVAILABLE.test(String(error.message||''));
+}
+export const DATABASE_FAILURE_TEXT='The database was too busy to save the reading of this card. Retry OCR to read it again.';
+export async function requeueAfterDatabaseFailure(pool,card){
+ return pool.query(`UPDATE mis_scan_cards SET
+  status=CASE WHEN COALESCE((raw_fields->>'databaseRequeues')::int,0)>=${DATABASE_REQUEUE_LIMIT} THEN 'error' ELSE 'queued' END,
+  error=CASE WHEN COALESCE((raw_fields->>'databaseRequeues')::int,0)>=${DATABASE_REQUEUE_LIMIT} THEN $3 ELSE '' END,
+  raw_fields=raw_fields||jsonb_build_object('databaseRequeues',COALESCE((raw_fields->>'databaseRequeues')::int,0)+1),
+  read_lease_owner=NULL,read_lease_until=NULL,revision=revision+1
+  WHERE id=$1 AND status='reading' AND raw_fields->>'scanReadToken'=$2 RETURNING status`,[card.id,card.raw_fields?.scanReadToken,DATABASE_FAILURE_TEXT]);
+}
 // On a clean stop, hand this process's unfinished cards straight back so the
 // next reader starts them at once instead of waiting for the hold to run out.
 export async function releaseReadLeases(pool,owner=processLeaseOwner){

@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createGeminiCardReader,parseCardResponse,cardPrompt,geminiHttpError,MODEL} from '../server/services/gemini-card-reader.mjs';
-import {aFields} from '../server/services/gemini-hybrid.mjs';
+import {aFields,geminiGenerationConfig,geminiLengthRetryConfig} from '../server/services/gemini-hybrid.mjs';
 import {extractCard} from '../server/rules/scan-extraction.mjs';
 const field=value=>({value,status:value===null?'missing':'clear'});
 const response=(kind='vehicle')=>({documentType:kind==='vehicle'?'VLB':'ELB',fields:{...Object.fromEntries(aFields(kind).map(k=>[k,field(null)])),bookDate:field('2026-10-11'),site:field('Jayant'),door:field('V309'),cardNumber:field('75'),employeeCode:field('3943'),openingHmr:field('18749'),closingHmr:field('18756'),...(kind==='vehicle'?{openingKmr:field('222772.9'),closingKmr:field('222836.3'),printedTotalTrips:field('2')}:{}),machineSummary:kind==='vehicle'?[{equipmentName:field('T50'),tripCount:field('2')}]:[]},trips:kind==='vehicle'?{p:true,r:[[1,'T50','12:38','12:49'],[2,'T50','1:03','1:12']]}:{p:false,r:[]}});
@@ -369,4 +369,18 @@ test('an incomplete answer is asked once more and the final message says why Goo
  const result=await reader.recognize(Buffer.from('short-once'));assert.equal(result.extraction.attempts,2);
  let failing=0;const always=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async()=>{failing++;return stopped('MAX_TOKENS');}});
  await assert.rejects(always.recognize(Buffer.from('short-always')),/Gemini response was incomplete \(MAX_TOKENS\)/);assert.equal(failing,2);
+});
+
+test('an answer cut at the length limit is asked again with room to finish and the normal temperature',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'gemini-length-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const configs=[];
+ const stopped=reason=>({ok:true,json:async()=>({candidates:[{finishReason:reason,content:{parts:[{text:'{"documentType":"VLB"'}]}}]})});
+ const reader=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(url,init)=>{configs.push(JSON.parse(init.body).generationConfig);return configs.length===1?stopped('MAX_TOKENS'):ok(JSON.stringify(response()));}});
+ await reader.recognize(Buffer.from('length-once'));
+ assert.equal(configs.length,2);
+ assert.deepEqual(configs[0],geminiGenerationConfig());
+ assert.deepEqual(configs[1],geminiLengthRetryConfig());
+ const configsAfterSafety=[];
+ const safety=createGeminiCardReader({cacheDir:dir,getKey:async()=>'test',prepareViews:async()=>[],minIntervalMs:0,sleep:async()=>{},fetchImpl:async(url,init)=>{configsAfterSafety.push(JSON.parse(init.body).generationConfig);return configsAfterSafety.length===1?stopped('SAFETY'):ok(JSON.stringify(response()));}});
+ await safety.recognize(Buffer.from('safety-once'));
+ assert.deepEqual(configsAfterSafety[1],geminiGenerationConfig(),'only a length stop changes the request');
 });
