@@ -57,3 +57,8 @@ test('the batch list uses the shared read, cleared by every batch action, and hi
  // The scan screen's card total uses the shared visible-tab poll (every 15 s, none while hidden).
  assert.match(scan,/'\/card-counts'[\s\S]{0,500}startVisiblePoll\(refresh,VLB_CARD_COUNT_POLL_MS\)/);
 });
+
+test('a batch write also drops the cached batch actors',()=>{
+ const routes=readFileSync(new URL('../server/routes/vlb-batches.mjs',import.meta.url),'utf8');
+ assert.match(routes,/app\.use\('\/api\/vlb-batches'.*res\.on\('finish',\(\)=>actorCache\.clear\(\)\)/);
+});
