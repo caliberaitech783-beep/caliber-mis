@@ -70,7 +70,7 @@ test('the scanning screen waits out a busy server instead of listing the card as
  assert.match(source,/autoSaveWithBusyRetry\(\(\)=>api\('\/api\/scan-cards\/'\+next\.id\+'\/auto-save'/);
  assert.match(source,/if\(isBusyAutoSaveError\(e\)\)\{[\s\S]{0,200}autoSaveAttempts\.current\.delete\(key\);[\s\S]{0,200}autoSavePaused\.current=next\.batch_id;/);
  assert.ok(source.indexOf('if(isBusyAutoSaveError(e)){')<source.indexOf('autoSaveFailures.current.set(key,e.message)'),'a busy failure returns before the refusal list is touched');
- assert.match(source,/The server is busy\. Card \{autoSaveWait\.ordinal\} will be saved automatically/);
+ assert.match(source,/Server busy\. Retrying card '\+waitingToRetry\.ordinal/);
  assert.match(source,/onClick=\{\(\)=>\{autoSavePaused\.current=false;autoSaveAttempts\.current\.clear\(\)/);
 });
 
