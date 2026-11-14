@@ -2,11 +2,13 @@ import React,{useEffect,useId,useRef,useState} from 'react';
 import {ChevronDown} from 'lucide-react';
 import {doorLabel,searchSiteDoors} from './door-search.mjs';
 import {exactTypedOption} from '../shared/typed-option-selection.mjs';
+import {assetForSiteOnDate} from '../shared/equipment-transfer-history.mjs';
 import './equipment-combobox.css';
-export default function DoorCombobox({records=[],kind,location,value,onSelect,disabled=false,loading=false,onUnmatched=null}){
+export default function DoorCombobox({records=[],kind,location,bookDate,value,onSelect,disabled=false,loading=false,onUnmatched=null}){
  const id=useId(),input=useRef(null),list=useRef(null),[query,setQuery]=useState(null),[open,setOpen]=useState(false),[active,setActive]=useState(-1);
  const label=row=>doorLabel(row,kind);
- const atSite=searchSiteDoors(records,kind,location),selected=atSite.find(r=>String(r.id)===String(value)),options=searchSiteDoors(records,kind,location,query||''),expanded=open&&!disabled&&Boolean(location),activeRow=options[active];
+ const effective=bookDate?records.map(row=>assetForSiteOnDate(row,location,bookDate)):records;
+ const atSite=searchSiteDoors(effective,kind,location),selected=atSite.find(r=>String(r.id)===String(value)),options=searchSiteDoors(effective,kind,location,query||''),expanded=open&&!disabled&&Boolean(location),activeRow=options[active];
  useEffect(()=>{input.current?.setCustomValidity(selected?'':'Select a door number from the matching list for this location.');},[selected,query]);
  useEffect(()=>{if(value)setQuery(null);},[value]);
  useEffect(()=>{list.current?.querySelector('[data-active="true"]')?.scrollIntoView({block:'nearest'});},[active]);
