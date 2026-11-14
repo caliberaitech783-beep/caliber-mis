@@ -1,4 +1,5 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
+import {automationOnForEventKey} from '../services/automation-switches.mjs';
 import {displaySiteName,userSiteScope} from '../../shared/region-scope.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
@@ -126,6 +127,7 @@ export function createVlbBatchAlertWorker({pool,telegram,pmLogins,ensureSchema=a
  }
  async function deliver(alert,settings,sequence,nowMs){
   const recipients=await recipientsFor(alert,settings),message=alertMessage(alert,{nowMs,sequence}),delivered=[],failures=[];
+  if(!await automationOnForEventKey(`vlb-alert:${alert.key}:${sequence}`))return {recipients,delivered,error:'Switched off in the Automation Centre.'};
   for(const to of recipients){
    try{if(await telegram.send(to,message,`vlb-alert:${alert.key}:${sequence}`))delivered.push(to);}
    catch(error){failures.push(`${to}: ${error.message}`);}

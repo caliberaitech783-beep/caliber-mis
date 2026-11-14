@@ -29,7 +29,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/mis-telegram/me'||route==='/api/mis-telegram/link')return read&&route.endsWith('/me')||req.method==='POST'&&route.endsWith('/link');
  if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test'));
  if(route==='/api/automation-centre')return read&&isMisAdministrator(session);
- if(route==='/api/automation-centre/equipment-mismatch')return req.method==='PUT'&&isMisAdministrator(session);
+ if(route==='/api/automation-centre/equipment-mismatch'||route==='/api/automation-centre/switch')return req.method==='PUT'&&isMisAdministrator(session);
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');

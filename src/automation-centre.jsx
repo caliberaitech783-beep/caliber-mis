@@ -21,6 +21,13 @@ export default function AutomationCentre({session,onOpenPage}){
  useEffect(()=>{void load()},[load]);
  const save=async event=>{event.preventDefault();setBusy(true);setError('');setNotice('');
   try{accept(await request('/equipment-mismatch','PUT',{...form,intervalHours:Number(form.intervalHours)}));setNotice('Equipment list mismatch automation saved.')}catch(e){setError(e.message)}finally{setBusy(false)}};
+ const toggle=async row=>{
+  const enabled=!row.switchedOn,label=row.code+' '+row.name;
+  const question=enabled?`Switch ON ${label}?\n\nIt will send again by its own settings.`
+   :`Switch OFF ${label}?\n\nNo Telegram, WhatsApp or email message of this automation will go out until it is switched ON again.${row.offWarning?'\n\n'+row.offWarning:''}`;
+  if(!window.confirm(question))return;
+  setBusy(true);setError('');setNotice('');
+  try{accept(await request('/switch','PUT',{key:row.key,enabled}));setNotice(`${label} switched ${enabled?'ON':'OFF'}.`)}catch(e){setError(e.message)}finally{setBusy(false)}};
  const categories=useMemo(()=>['All',...new Set((data?.rows||[]).map(row=>row.category))],[data]);
  const rows=(data?.rows||[]).filter(row=>category==='All'||row.category===category);
  const totals=data?.totals;
@@ -42,14 +49,17 @@ export default function AutomationCentre({session,onOpenPage}){
    </dl>
    {tab!=='Equipment mismatch settings'&&<label className="automation-filter">Category<select value={category} onChange={event=>setCategory(event.target.value)}>{categories.map(name=><option key={name}>{name}</option>)}</select></label>}
    {tab==='Overview'&&<>{rows.length>0&&<TableSmartPrint row title={'Automation Centre · Overview'+printScope}/>}<div className="automation-table"><table>
-    <thead><tr><th>#</th><th>Automation</th><th>Category</th><th>State</th><th>Telegram</th><th>WhatsApp</th><th>Pop-up</th><th>Email</th><th>Sent to date</th><th>People</th></tr></thead>
+    <thead><tr><th>#</th><th>Automation</th><th>Category</th><th>Switch</th><th>Telegram</th><th>WhatsApp</th><th>Pop-up</th><th>Email</th><th>Sent to date</th><th>People</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.code}>
      <td>{row.number}</td>
      <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}</td>
-     <td>{row.category}</td><td><span className={'automation-channel '+(row.active?'is-on':'is-off')}>{row.active?'ACTIVE':'OFF'}</span></td>
+     <td>{row.category}</td><td><button type="button" role="switch" aria-checked={row.switchedOn} aria-label={'Switch '+row.code+' '+(row.switchedOn?'off':'on')} disabled={busy} className={'automation-switch '+(row.switchedOn?'is-on':'is-off')} onClick={()=>void toggle(row)}><span aria-hidden="true"></span>{row.switchedOn?'ON':'OFF'}</button>
+      {row.notSendingReason&&<small className="automation-why">{row.notSendingReason}</small>}
+      {!row.switchedOn&&row.switchChangedBy&&<small>Switched off by {row.switchChangedBy}{row.switchChangedAt?' on '+stamp(row.switchChangedAt):''}</small>}</td>
      <td><Channel state={row.channels.telegram}/></td><td><Channel state={row.channels.whatsapp}/></td><td><Channel state={row.channels.popup}/></td><td><Channel state={row.channels.email}/></td>
      <td className="automation-number">{number(row.sent)}{row.countNote&&<small>{row.countNote}</small>}</td><td>{row.people}</td></tr>)}</tbody>
-   </table></div></>}
+   </table></div>
+   <p className="automation-note">Switch: press ON or OFF to start or stop an automation. OFF stops every Telegram, WhatsApp and email message of that automation; the in-app pop-ups of breakdowns and tickets stay. ON lets it send by its own settings, so a line can be ON and still send nothing: the reason is written under the switch.</p></>}
    {tab==='Rules'&&<>{rows.length>0&&<TableSmartPrint row title={'Automation Centre · Rules'+printScope}/>}<div className="automation-table"><table>
     <thead><tr><th>#</th><th>Automation</th><th>Rule</th><th>When it runs</th><th>Message format</th><th>People</th><th>Switched on / off in</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.code}><td>{row.number}</td><td><span className="automation-code">{row.code}</span> <b>{row.name}</b></td><td>{row.rule}</td><td>{row.trigger}</td><td>{row.format}</td><td>{row.people}</td><td>{row.controlledIn}</td></tr>)}</tbody>

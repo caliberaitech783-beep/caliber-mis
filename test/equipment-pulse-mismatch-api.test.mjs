@@ -162,6 +162,9 @@ test('MIS logins reach the Automation Centre only as administrators',()=>{
  assert.equal(misRequestAllowed(session(['Users & employees']),put),true);
  assert.equal(misRequestAllowed(session(['Reports']),get),false);
  assert.equal(misRequestAllowed(session(['Reports']),put),false);
+ const toggle={path:'/api/automation-centre/switch',method:'PUT'};
+ assert.equal(misRequestAllowed(session(['Users & employees']),toggle),true);
+ assert.equal(misRequestAllowed(session(['Reports']),toggle),false);
  assert.equal(misRequestAllowed(session(['Reports']),{path:'/api/reports/equipment-pulse-mismatch/notice',method:'GET'}),true);
  assert.equal(misRequestAllowed(session(['Dashboard']),{path:'/api/reports/equipment-pulse-mismatch',method:'GET'}),false);
 });

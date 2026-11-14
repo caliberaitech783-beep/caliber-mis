@@ -2,6 +2,7 @@ import {META_WORKFLOW_TEMPLATES,LEGACY_WORKFLOW_TEMPLATES,baseTemplateKey} from 
 import {whatsAppMessageParameters} from './whatsapp-message-format.mjs';
 import {normalizeWhatsAppReportSettings,whatsappPurposeEnabled} from '../../shared/whatsapp-report-settings.mjs';
 import {effectiveReportTemplate} from '../services/whatsapp-template-runtime.mjs';
+import {automationOnForPurpose,switchedOffError} from '../services/automation-switches.mjs';
 
 const clean=(value)=>String(value??'').trim();
 const providerName=(env=process.env)=>clean(env.WHATSAPP_PROVIDER||'meta').toLowerCase()==='fast2sms'?'fast2sms':'meta';
@@ -14,6 +15,7 @@ const assertDeliveryActive=async(env,purpose='')=>{
     const error=new Error('WhatsApp delivery is paused by Report settings.');
     error.code='WHATSAPP_POLICY_PAUSED';error.status=409;throw error;
   }
+  if(!await automationOnForPurpose(purpose))throw switchedOffError('WHATSAPP_POLICY_PAUSED');
   return settings;
 };
 
