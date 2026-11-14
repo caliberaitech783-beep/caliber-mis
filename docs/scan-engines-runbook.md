@@ -41,6 +41,8 @@ For each site:
 4. Create an API key (APIs & Services > Credentials), restricted to the Generative Language API.
 5. Check the project's rate limit for the model the app uses (`gemini-3.8-flash` by default, or the `MIS_GEMINI_MODEL` app setting) under Quotas.
 
+The engine health page showing `"key": "site"` for every site proves only that each site has its own key, not that the keys come from separate projects. If the bill or the quota still behaves like one shared limit, open APIs & Services > Credentials in each project and confirm that no project holds more than one of the seven site keys.
+
 Keys are never shared in chat or put in the repository. They go into Azure settings only (steps 2 and 4).
 
 ## Step 2: the engine Web App (owner)
@@ -56,6 +58,7 @@ Keys are never shared in chat or put in the repository. They go into Azure setti
    - `MIS_SCAN_BLOB_ENABLED`, `MIS_SCAN_BLOB_ACCOUNT`, `MIS_SCAN_BLOB_CONTAINER`
    - `MIS_SCAN_ENGINE_SITES` = `Sasti OC;Majri OC;Dhoptala OC (2nd);Gauri Pauni OC (2nd);Jayant OC;Dudhichua OC;Dudhichua East OC`
    - optional `MIS_SCAN_LANE_CONCURRENCY` = `8` (cards read at once per site, max 10)
+   - `MIS_GEMINI_UPRIGHT_ONLY` = `true` (the nightly deploy sets it too; cards are fed upright, so the first read skips the 180 degree views and costs about half the image tokens)
 6. Give the GitHub deploy identity (the one in the `AZUREAPPSERVICE_CLIENTID_…` secret) the Website Contributor role on the new app.
 7. In GitHub > Settings > Variables, add `SCAN_ENGINE_APP` = `caliber-mis-scan-engine`.
 8. Run the workflow "Deploy scan engines (nightly)" once by hand with "force" ticked, after 20:00.
@@ -71,6 +74,7 @@ On `caliber-mis-783`, add:
 - `MIS_SCAN_LANES` = `sites` (Pulse-II's own fallback reading also uses one queue per site)
 - `MIS_SCAN_ENGINES` = `external` (leave each site with a running engine to that engine)
 - the same `GEMINI_API_KEY_<SITE>` settings, so fallback reading also uses each site's key
+- `MIS_GEMINI_UPRIGHT_ONLY` = `true` (the Pulse-II release sets it too), so fallback reads cost the same as engine reads
 
 Saving settings restarts Pulse-II once. `https://pulse-ll.cmll.in/api/health` then shows `"scanReading": {"mode": "external", "liveEngines": 7, …}`.
 
