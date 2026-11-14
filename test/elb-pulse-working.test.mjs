@@ -12,6 +12,8 @@ function fixture({bd=0,trips=0,unavailable=false,surfaceMiner=false,secondSite='
   if(sql.includes('FROM mis_vlb_batches older'))return {rows:[]};
   if(sql.startsWith('SELECT * FROM mis_vlb_batch_fleet'))return {rows:[row]};
   if(sql.startsWith('SELECT asset_id FROM mis_vlb_batch_fleet'))return {rows:[{asset_id:'19'}]};
+  if(sql.includes("master_name='Vehicle transfers'"))return {rows:[]};
+  if(sql.includes("master_name='Equipment master'"))return {rows:[{id:'19',record_data:{door:row.door,site:'Sasti OC',group:surfaceMiner?'Surface Miner':'Excavator'}}]};
   if(sql.includes("master_name='Shift Master'"))return {rows:[{id:'4',record_data:shift}]};
   if(sql.includes('WHERE master_name=ANY'))return {rows:[]};
   if(sql.includes('FROM master_records WHERE id=ANY'))return {rows:[

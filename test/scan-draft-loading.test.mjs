@@ -21,6 +21,7 @@ test('OCR completion replaces the reading draft without autosaving stale empty v
  scope.model=model;
  scope.useState=initial=>{const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return [hooks[i].value,value=>{const next=typeof value==='function'?value(hooks[i].value):value;if(!Object.is(hooks[i].value,next)){hooks[i].value=next;changed=true;}}];};
  scope.useRef=initial=>{const i=cursor++;hooks[i]??={current:initial};return hooks[i];};
+ scope.useMemo=(factory,deps)=>{const i=cursor++,previous=hooks[i];if(!previous||deps.some((v,n)=>!Object.is(v,previous.deps[n])))hooks[i]={deps,value:factory()};return hooks[i].value;};
  scope.useEffect=(effect,deps)=>{const i=cursor++,previous=hooks[i];if(!previous||deps.some((v,n)=>!Object.is(v,previous.deps[n]))){hooks[i]={deps};pending.push(()=>{previous?.cleanup?.();hooks[i].cleanup=effect();});}};
  scope.window={location:{search:''},addEventListener(){},removeEventListener(){}};
  scope.localStorage={getItem(){return null},setItem(){},removeItem(){}};
