@@ -7,7 +7,7 @@ const siteRecipients=new Map([
  ['dudhichau ob','916394694715'],
  ['sasti ob','917379771776'],
  ['majri ob','919801238859'],
- ['gauri pauni ob 2nd','918535853563'],
+ ['gauri pauni ob 2nd','917463036212'],
  ['dhoptala ob 2nd','919392864944'],
 ]);
 export function deletionPhone(sites=[]){

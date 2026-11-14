@@ -50,7 +50,7 @@ test('each WCL site sends deletion OTPs only to its assigned number',async()=>{
  const cases=[
   [['Sasti OC','Sasti OB'],'917379771776'],
   [['Majri OC','Majri OB'],'919801238859'],
-  [['Gauri Pauni OC (2nd)','Gouri Pouni OB (2nd)'],'918535853563'],
+  [['Gauri Pauni OC (2nd)','Gouri Pouni OB (2nd)'],'917463036212'],
   [['Dhoptala OC','Dhoptala OC (2nd)'],'919392864944'],
  ];
  for(const [sites,to] of cases){
