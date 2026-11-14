@@ -72,7 +72,7 @@ test('scheduled windows wait for the start date',()=>{
 });
 
 // Run workflow: a fake GitHub identity endpoint and a fake Pulse-II release OTP API.
-const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api})=>{
+const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,actor='someone-else',owner='caliberaitech783-beep'})=>{
   const calls=[];
   const server=createServer((req,res)=>{
     let body='';req.on('data',d=>body+=d).on('end',()=>{
@@ -92,7 +92,7 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api})=>
   try{
     await execFileAsync('bash',[script],{encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:'workflow_dispatch',RELEASE_COMMIT:'x',GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summaryFile,
       RELEASE_WHEN:when,RELEASE_OTP:otp,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_OTP_BASE_URL:base,
-      ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token'}});
+      ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token',GITHUB_ACTOR:actor,GITHUB_REPOSITORY_OWNER:owner}});
   }catch(error){code=error.code;}
   server.close();
   const result={code,calls,deploy:/deploy=(true|false)/.exec(readFileSync(output,'utf8'))?.[1]||'',summary:readFileSync(summaryFile,'utf8')};
@@ -126,6 +126,23 @@ test('Urgent without an OTP asks Pulse-II to send one and deploys nothing yet',a
   assert.match(refused.summary,/Urgent release refused: Pulse-II answered HTTP 404/);
 });
 
+test('before Pulse-II has the OTP service, only the repository owner can start an urgent release',async()=>{
+  const notLive=()=>[404,'<!DOCTYPE html><pre>Cannot POST /api/release-otp/request</pre>'];
+  const owner=await dispatch({when:URGENT,api:notLive,actor:'caliberaitech783-beep'});
+  assert.equal(owner.code,0);assert.equal(owner.deploy,'true');
+  assert.match(owner.summary,/does not have the release OTP service yet \(HTTP 404\).*repository owner \(caliberaitech783-beep\): releasing main now\./);
+  // Anyone else, or any other failure, still stops the run.
+  const other=await dispatch({when:URGENT,api:notLive,actor:'someone-else'});
+  assert.equal(other.code,1);assert.equal(other.deploy,'');
+  for(const api of [()=>[429,{error:'Wait a minute.'}],()=>[404,{error:'Unknown request.'}],()=>[502,'<html>Bad gateway</html>']]){
+   const r=await dispatch({when:URGENT,api,actor:'caliberaitech783-beep'});
+   assert.equal(r.code,1);assert.equal(r.deploy,'');
+  }
+  // Once the service answers, the owner needs the OTP like everyone else.
+  const live=await dispatch({when:URGENT,api:()=>[200,{recipient:'owner on Telegram',expiresInMinutes:10}],actor:'caliberaitech783-beep'});
+  assert.equal(live.deploy,'false');assert.match(live.summary,/OTP was sent/);
+  assert.equal((await dispatch({when:URGENT,otp:'123456',api:notLive,actor:'caliberaitech783-beep'})).code,1);
+});
 test('Urgent with the right OTP deploys; a wrong or malformed OTP fails the run',async()=>{
   const api=(_path,body)=>body.otp==='123456'?[200,{approved:true}]:[400,{error:'Wrong OTP. 4 attempts left.'}];
   const ok=await dispatch({when:URGENT,otp:' 123456 ',api});

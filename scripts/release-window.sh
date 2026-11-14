@@ -64,6 +64,17 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
       summary "Urgent release: an OTP was sent to the $(field recipient <<< "$result"). Get it from the owner, then Run workflow again with \"Urgent\" and the OTP within $(field expiresInMinutes <<< "$result") minutes. Nothing was deployed yet."
       decide false
     fi
+    # Bootstrap: the OTP service ships with a release, so until the first release that carries it
+    # Pulse-II answers HTTP 404 and no OTP can ever be sent. Only then, and only for a run started
+    # by the repository owner's account, an urgent release goes ahead. Once Pulse-II answers this
+    # route at all, every urgent release needs the OTP again. (Owner's decision, 15 Nov 2026
+    # 00:35 IST: the 00:00 scheduled release had not started; GitHub starts this repository's
+    # timed runs about six hours late.)
+    if [[ "$(field error <<< "$result")" == *"HTTP 404: the release OTP service is not live there yet"* \
+          && -n "${GITHUB_ACTOR:-}" && "${GITHUB_ACTOR}" == "${GITHUB_REPOSITORY_OWNER:-}" ]]; then
+      summary "Urgent release: Pulse-II does not have the release OTP service yet (HTTP 404), so no OTP can be sent. Started by the repository owner (${GITHUB_ACTOR}): releasing main now. This release puts the OTP service live; urgent releases after it need the owner's OTP."
+      decide true
+    fi
     summary "Urgent release: the OTP could not be sent. $(field error <<< "$result")"
     echo "::error::The urgent release OTP could not be sent."
     exit 1
