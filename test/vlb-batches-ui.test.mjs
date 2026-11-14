@@ -105,6 +105,25 @@ test('Create and Close Batch controls follow saved membership and open batch sta
  const tab=label=>nodes(tree,n=>n.props.role==='tab'&&n.props.children===label)[0];assert.equal(tab('Open').props['aria-selected'],true);assert.doesNotMatch(html,/Locked batch/);
  tab('Closed').props.onClick();tree=render();assert.equal(nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Closed')[0].props['aria-selected'],true);
  assert.match(renderToStaticMarkup(tree),/Locked batch/);assert.doesNotMatch(renderToStaticMarkup(tree),/Other open batch/);
+ slots[0]={...options,sites:['Sasti OC','Sasti OB','Jayant OC','Majri OC']};
+ slots[3].push({...batch,id:'jayant-open',name:'Jayant active batch',site:'Jayant OC'},
+  {...batch,id:'jayant-closed',name:'Jayant archive batch',site:'Jayant OC',closed_at:'2026-10-30T10:00:00Z'});
+ tree=render();
+ const batchNames=()=>nodes(nodes(tree,n=>n.props.id==='vlb-batch-site-panel')[0],n=>n.type==='tr')
+  .slice(1).map(row=>row.props.children[0]?.props.children);
+ const choose=label=>{tab(label).props.onClick();tree=render()};
+ assert.equal(nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Sasti OC').length,1,'site aliases share one tab');
+ assert.ok(tab('Majri OC'),'a site can be selected even with no current batches');
+ choose('Jayant OC');assert.deepEqual(batchNames(),['Jayant archive batch']);
+ choose('Open');choose('Sasti OC');assert.deepEqual(batchNames(),[batch.name,'Other open batch']);
+ choose('Edit');choose('Jayant OC');assert.deepEqual(batchNames(),['Jayant active batch','Jayant archive batch']);
+ const search=nodes(tree,n=>n.props['aria-label']==='Search VLB batches')[0];
+ search.props.onChange({target:{value:'archive'}});tree=render();assert.deepEqual(batchNames(),['Jayant archive batch']);
+ search.props.onChange({target:{value:''}});tree=render();
+ choose('Closed');assert.equal(tab('Jayant OC').props['aria-selected'],true);
+ choose('All sites');assert.deepEqual(batchNames(),['Locked batch','Jayant archive batch']);
+ choose('Edit');choose('All sites');
+ choose('Closed');
  nodes(tree,n=>n.props.role==='tab'&&n.props.children==='Open')[0].props.onClick();tree=render();
  const rows=nodes(tree,n=>n.type==='tr');const ownerRow=rows.find(n=>renderToStaticMarkup(n).includes('CMLL/SASTI'));const otherRow=rows.find(n=>renderToStaticMarkup(n).includes('Other open batch'));assert.equal(button(ownerRow,'Save &amp; lock batch').props.disabled,false);assert.equal(button(otherRow,'Save &amp; lock batch').props.disabled,true);
  await button(ownerRow,'Save &amp; lock batch').props.onClick();assert.ok(calls.at(-1).url.endsWith('/batch1/close'));
