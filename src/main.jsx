@@ -4314,7 +4314,7 @@ function ActionsTable(props) {
 }
 // A click on a control inside the row (button, link, field) or a text selection is not a row click.
 const plainRowClick = (event) => !event.target.closest?.("button,a,input,select,textarea,label") && !window.getSelection?.().toString();
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
@@ -4370,6 +4370,8 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
     const next = {sourceRows: rows, rows: [...sortedRows, ...totalRows], columns: displayedColumns, allColumns: columns};
     if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
   });
+  // A subtotal line (Equipment Deployment) takes no Sr. No.: it shows a dash and the lines after it keep counting on.
+  const subtotalSerials = isSubtotalRow ? (() => { let serial = 0; return new Map(sortedRows.map((row) => [row, isSubtotalRow(row) ? null : ++serial])); })() : null;
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
   const pagedRows = sortedRows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
@@ -4452,7 +4454,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
           </React.Fragment>
         ))}</tr></thead>
         <tbody>
-          {pagedRows.length ? pagedRows.map((row, index) => renderRow(row, index, firstVisibleRow + index)) : <tr><td colSpan={displayedColumns.length + 1 + Number(Boolean(rowAction))} className="empty-state">{emptyMessage}</td></tr>}
+          {pagedRows.length ? pagedRows.map((row, index) => renderRow(row, index, subtotalSerials ? subtotalSerials.get(row) : firstVisibleRow + index)) : <tr><td colSpan={displayedColumns.length + 1 + Number(Boolean(rowAction))} className="empty-state">{emptyMessage}</td></tr>}
         </tbody>
         {totalRows.length > 0 && <tfoot className="report-table-totals">{totalRows.map((row, index) => renderRow(row, index))}</tfoot>}
       </table>
@@ -7358,8 +7360,8 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
     </div>
   </section>;
 }
-function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
-  const recordCount = isTotalRow ? rows.filter((row) => !isTotalRow(row)).length : rows.length;
+function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {
+  const recordCount = rows.filter((row) => !isTotalRow?.(row) && !isSubtotalRow?.(row)).length;
   const [exportView, setExportView] = useState(null);
   const TableViewport = category === "vehicle-history" ? VehicleHistoryScroll : "div";
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => columns.map((column) => column.key));
@@ -7396,7 +7398,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             rows={rows}
             rowKey={rowKey}
             rowClassName={rowClassName}
-            isTotalRow={isTotalRow}
+            isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
             rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick}
             emptyMessage={emptyMessage}
             columns={columns}
