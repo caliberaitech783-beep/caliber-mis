@@ -109,13 +109,15 @@ const timeMode=input.timeMode==='without'?'without':'with';
 
 const woNames=WORK_ORDER_MASTERS;
 const woNumber=r=>text(r.workOrderNo||r.workOrderNumber||r.woNo||r.contractNo||r.number||r.code||r.name);
-export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit,manualEntry=false}={}){
+// assets: the Equipment master with aliases attached when the caller has already read it (a scan card
+// save reads it once, from the shared master copy, before its transaction starts).
+export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=false,operatorSplit,manualEntry=false,assets:knownAssets=null}={}){
  requireOperationalDate(input.bookDate||systemBookDate());
- const transferRows=(await client.query("SELECT record_data FROM master_records WHERE master_name='Vehicle transfers'")).rows.map(row=>row.record_data);
- const historicalAssets=attachTransferHistory((await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})),transferRows);
+ // knownAssets already carry their transfer history and aliases (readSaveEquipment in the scan routes).
+ const historicalAssets=knownAssets||attachTransferHistory((await client.query("SELECT id,record_data FROM master_records WHERE master_name='Equipment master'")).rows.map(r=>({...r.record_data,id:String(r.id)})),(await client.query("SELECT record_data FROM master_records WHERE master_name='Vehicle transfers'")).rows.map(row=>row.record_data));
  let resolved={...input};if(!resolved.workOrderId){const rows=(await client.query('SELECT id,record_data FROM master_records WHERE master_name=ANY($1::text[])',[woNames])).rows.map(r=>({...r.record_data,id:String(r.id)}));const latest=latestWorkOrder(rows,resolved.location,resolved.bookDate||systemBookDate());if(latest)resolved.workOrderId=latest.id;}input=resolved;
  if(kind==='vehicle'||kind==='lmv'){
- const assets=(await withEquipmentAliases(client,historicalAssets)).map(asset=>assetForSiteOnDate(asset,input.location,input.bookDate));
+ const assets=(knownAssets||await withEquipmentAliases(client,historicalAssets)).map(asset=>assetForSiteOnDate(asset,input.location,input.bookDate));
  const validation=validateTripEquipment(input,assets,{anySite:kind==='vehicle'&&twoStageEnabled()});
  const equipmentErrors=[...new Set(Object.values(validation.issues))];
  if(equipmentErrors.length)fail(equipmentErrors.join(' '));
