@@ -3,7 +3,8 @@ import {StepBackButton} from './step-back.jsx';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,GOOD_PERCENT,POOR_PERCENT,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
 import {startVisiblePoll} from './visible-poll.mjs';
-import {LIVE_REFRESH_MS,siteLiveCells,batchLiveCell,liveSummary,agoLabel} from '../shared/batch-status-live.mjs';
+import {LIVE_REFRESH_MS,siteLiveCells,siteLockCells,lastLockLabel,batchLiveCell,liveSummary,agoLabel} from '../shared/batch-status-live.mjs';
+import {RECENT_WINDOWS} from '../shared/recent-activity.mjs';
 import './production-reports.css';
 import './batch-status-report.css';
 
@@ -20,12 +21,16 @@ const stageBadge=r=><span className={'bs-stage bs-stage-'+r.stage}>{r.stageLabel
 const flagged=(text,bad)=>bad?<span className="bs-late">{text}</span>:text;
 
 const rated=(r,text)=>r.rating?<span className={'bs-rating bs-rating-'+r.rating}>{text}</span>:text;
-export const siteColumns=[column('rank','Rank',null,r=>blank(r.rank)?'—':rated(r,r.rank)),column('site','Site'),column('workingNow','Working now'),column('lastAction','Last action'),column('due','Shifts due'),
- column('todayCounted',"Of which today's shifts",r=>blank(r.todayShifts)?'—':`${r.todayCounted} of ${r.todayShifts}`),column('locked','Locked'),
+// Batches locked in the last 6, 12 and 24 hours: a 0 is red, so a site that saves but locks nothing stands out.
+const lockColumn=hours=>({...column('locked'+hours,'Batches locked, last '+hours+' h',r=>r.locksRead?r['locked'+hours]:'…',r=>!r.locksRead?'…':r['locked'+hours]||<span className="bs-late">0</span>),sortValue:r=>r.locksRead?r['locked'+hours]:-1});
+const lastLockColumn={...column('lastLockMinutes','Last batch locked',r=>r.locksRead?lastLockLabel(r.lastLockMinutes):'…',r=>!r.locksRead?'…':flagged(lastLockLabel(r.lastLockMinutes),r.lastLockMinutes===null||r.lastLockMinutes>TARGET_HOURS*60)),
+ sortValue:r=>!r.locksRead?-1:r.lastLockMinutes??Number.MAX_SAFE_INTEGER};
+export const siteColumns=[column('rank','Rank',null,r=>blank(r.rank)?'—':rated(r,r.rank)),column('site','Site'),column('workingNow','Working now'),column('lastAction','Last action'),
+ lastLockColumn,...RECENT_WINDOWS.map(lockColumn),column('due','Shifts due'),column('locked','Locked'),
  column('percentDone','Done (% of shifts due)',r=>blank(r.percentDone)?'—':r.percentDone+'%',r=>blank(r.percentDone)?'—':rated(r,r.percentDone+'%')),
- column('ratingLabel','Performance',null,r=>r.ratingLabel?rated(r,r.ratingLabel):'—'),column('balance','Balance'),column('notCreated','Batch not created'),column('vlbOpen','VLB open'),column('lmvOpen','LMV open'),column('elbOpen','ELB open'),
+ column('ratingLabel','Performance',null,r=>r.ratingLabel?rated(r,r.ratingLabel):'—'),column('balance','Balance'),column('notCreated','Batch not created'),
  column('oldestPending','Oldest pending shift'),
- column('withinTargetPercent','Locked within '+TARGET_HOURS+' hours',r=>blank(r.withinTargetPercent)?'—':r.withinTargetPercent+'%'),
+ column('withinTargetPercent','Locked within '+TARGET_HOURS+' h of shift end',r=>blank(r.withinTargetPercent)?'—':r.withinTargetPercent+'%'),
  column('averageLockHours','Average hours, shift end to locked',null,r=>blank(r.averageLockHours)?'—':flagged(r.averageLockHours,r.averageLockHours>TARGET_HOURS)),
  column('slowestStage','Slowest stage',r=>r.slowestStage?`${r.slowestStage} (${r.slowestStageHours} h)`:'—'),column('rework','Unlocked or reopened (times)')];
 export const shiftColumns=allSites=>[...(allSites?[column('site','Site')]:[]),column('date','Date',r=>displayDate(r.date)),column('shiftLabel','Shift'),column('stageLabel','Stage now',null,stageBadge),column('workingNow','Working now'),
@@ -40,7 +45,7 @@ export const reworkColumns=[column('label','Rework in this batch'),column('count
 export const actionColumns=[column('sr','Sr'),column('at','Time',r=>when(r.at)),column('stage','Stage'),column('action','Action'),column('item','Item'),column('by','Done by'),column('gapMinutes','Gap from previous action (minutes)'),column('workMinutes','Working time (minutes)'),column('remark','Remark')];
 
 // On the dashboard (embedded) the page is kept short: one-line Live now heading, a summary that can be hidden, no search box and no notes.
-export default function BatchStatusReport({session,ReportSection,embedded=false}){
+export default function BatchStatusReport({session,ReportSection,embedded=false,paused=false}){
  const [filters,setFilters]=useState(()=>({from:monthStart(today()),to:today()})),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [run,setRun]=useState(()=>({query:new URLSearchParams({from:monthStart(today()),to:today()}).toString(),at:0}));
  const [siteKey,setSiteKey]=useState(''),[stage,setStage]=useState(''),[batchId,setBatchId]=useState(''),[detail,setDetail]=useState(null),[detailError,setDetailError]=useState(''),[actionStage,setActionStage]=useState('');
@@ -62,13 +67,15 @@ export default function BatchStatusReport({session,ReportSection,embedded=false}
  const reportShown=Boolean(result);
  const [summaryHidden,setSummaryHidden]=useState(()=>{try{return localStorage.getItem('caliberBatchSummaryHidden')==='1';}catch{return false;}});
  const toggleSummary=()=>setSummaryHidden(hidden=>{try{localStorage.setItem('caliberBatchSummaryHidden',hidden?'0':'1');}catch{}return !hidden;});
- // Working now re-reads once a minute while the page is on screen, and not at all in a hidden tab.
+ // Working now re-reads once a minute while the page is on screen, and not at all in a hidden tab. On the dashboard it
+ // also stops while another Sr No is shown (paused); the last figures stay and it reads again when its tab comes back.
  useEffect(()=>{
-  setLive(null);setLiveError('');if(!reportShown)return;
+  if(!reportShown){setLive(null);setLiveError('');return;}
+  if(paused)return;
   const c=new AbortController();
   const stop=startVisiblePoll(()=>request('/api/reports/batch-status/live',session.token,c.signal).then(data=>{if(!c.signal.aborted){setLive(data);setLiveError('');}}).catch(e=>{if(!c.signal.aborted)setLiveError(e.message);}),LIVE_REFRESH_MS);
   return()=>{c.abort();stop();};
- },[reportShown,session.token]);
+ },[reportShown,session.token,paused]);
  const set=(key,value)=>{setFilters(f=>({...f,[key]:value}));setError('');setBatchId('');setActionStage('');};
  const report=result?.query===query&&!busy?result.data:null;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&(Date.parse(filters.to)-Date.parse(filters.from))/86400000<MAX_DAYS;
@@ -98,12 +105,13 @@ export default function BatchStatusReport({session,ReportSection,embedded=false}
    {liveError&&<p role="alert" className="production-error">Working now could not be read: {liveError}</p>}
    <ReportSection key="bs-live" title={'Live now · '+(live?live.count+' working'+(embedded?' · as on '+when(live.asOf):''):'reading…')} category="batch-status-live" description={embedded?'':liveSummary(live)+(live?' As on '+when(live.asOf)+'. Refreshes every minute while this page is on screen. Press a line to open that site.':'')}
     rows={live?.people||[]} columns={liveColumns} rowKey={r=>r.id} showSearch={false} onRowClick={r=>r.siteKey&&openSite(r.siteKey)} emptyMessage={live?'Nobody has saved anything in a batch in the last '+live.windowMinutes+' minutes.':'Reading who is working now…'}/>
-   <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site, best first'+asOf+'. Done = Locked out of Shifts due. Green = '+GOOD_PERCENT+'% or more done, orange = '+POOR_PERCENT+'% to '+(GOOD_PERCENT-1)+'%, red = below '+POOR_PERCENT+'%. Balance = Batch not created + VLB open + LMV open + ELB open; each shift is counted once, at the stage where it stands now. Press a site to see it shift by shift.'}
-    rows={report.sites.length?[...report.sites.map(s=>({...s,...siteLiveCells(live,s.siteKey)})),{...report.total,...siteLiveCells(live,'')}]:[]} columns={siteColumns} rowKey={r=>r.id} showSearch={!embedded} isTotalRow={r=>r.id==="all-sites"} rowClassName={r=>(r.id==='all-sites'?'bs-total ':'')+(r.rating?'bs-band-'+r.rating:'')} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
+   <ReportSection key={'bs-sites-'+query} title={'Step 1 · All sites · '+period} category="batch-status-sites" description={'One line per site, best first'+asOf+'. Done = Locked out of Shifts due. Green = '+GOOD_PERCENT+'% or more done, orange = '+POOR_PERCENT+'% to '+(GOOD_PERCENT-1)+'%, red = below '+POOR_PERCENT+'%. Balance = shifts due not yet locked, Batch not created among them. Batches locked in the last 6, 12 and 24 hours count by the time of the lock, whatever the date on the batch; red = none. Press a site to see it shift by shift, with VLB, LMV and ELB open.'}
+    rows={report.sites.length?[...report.sites.map(s=>({...s,...siteLiveCells(live,s.siteKey),...siteLockCells(live,s.siteKey)})),{...report.total,...siteLiveCells(live,''),...siteLockCells(live,'')}]:[]} columns={siteColumns} rowKey={r=>r.id} showSearch={!embedded} isTotalRow={r=>r.id==="all-sites"} rowClassName={r=>(r.id==='all-sites'?'bs-total ':'')+(r.rating?'bs-band-'+r.rating:'')} onRowClick={r=>openSite(r.siteKey||EVERY)} emptyMessage="No batch has been created at your sites up to this date."/>
    {!embedded&&<details className="bs-notes"><summary>How this report counts</summary><ul>
-    <li>A site is counted from the date of its first batch. A shift is counted once its end time (from the Shift Master) has passed, so Shifts due grows during the day: each shift of today is added the moment it ends. Of which today's shifts shows how many of today's shifts are already counted.</li>
+    <li>A site is counted from the date of its first batch. A shift is counted once its end time (from the Shift Master) has passed, so Shifts due grows during the day: each shift of today is added the moment it ends.</li>
     <li>Done is Locked as a percentage of Shifts due. Rank 1 is the site with the highest Done; sites with the same percentage share a rank. Performance: Good (green) from {GOOD_PERCENT}%, Average (orange) from {POOR_PERCENT}% to {GOOD_PERCENT-1}%, Poor (red) below {POOR_PERCENT}%.</li>
-    <li>Locked within {TARGET_HOURS} hours and the average are measured from the end of the shift to the time the batch was locked.</li>
+    <li>Locked within {TARGET_HOURS} h of shift end and the average are measured from the end of the shift to the time the batch was locked.</li>
+    <li>Batches locked in the last 6, 12 and 24 hours and Last batch locked count whole batches saved and locked, by the time of the lock and whatever the date on the batch, so they agree with Batches locked on the dashboard. A 0 is red, and so is a last lock more than {TARGET_HOURS} hours ago: the site may be saving cards but is not closing batches. They refresh every minute with Working now.</li>
     <li>Slowest stage is the stage with the highest average clock time among the locked batches of the site.</li>
     <li>If a batch was unlocked or reopened, the times shown are its final lock times; the last column counts how often that happened.</li>
     <li>Working now lists the people who saved something in a batch at the site in the last 10 minutes: a trip card, an LMV log book, a machine entry, a lock or an unlock. Someone checking a card without saving it is not shown until they save. Last action is the time of the latest save at the site in the last 24 hours. Both refresh every minute while this page is on screen.</li>

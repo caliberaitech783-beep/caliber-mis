@@ -25,6 +25,23 @@ test('identical requests made together share one read',async()=>{
   assert.equal(reads,1);assert.ok(results.every(r=>r===results[0]));assert.equal(lane.stats().shared,4);
 });
 
+test('a cancelled read leaves the queue without taking a slot or dropping the next read',async()=>{
+  const lane=createReportLane({slots:1,cacheMs:0});
+  const gate=deferred();
+  const controller=new AbortController();
+  const running=lane.run('running',()=>gate.promise);
+  const abandoned=lane.run('abandoned',()=>assert.fail('cancelled read ran'),{signal:controller.signal});
+  const next=lane.run('next',()=>42);
+  assert.equal(lane.stats().waiting,2);
+  controller.abort();
+  await assert.rejects(abandoned,{name:'AbortError'});
+  assert.equal(lane.stats().waiting,1);
+  gate.resolve();
+  await running;
+  assert.equal(await next,42);
+  assert.equal(lane.stats().active,0);
+});
+
 test('a finished report is reused only for its short window',async()=>{
   let time=1000,reads=0;const lane=createReportLane({slots:1,cacheMs:15000,now:()=>time});
   const read=()=>lane.run('k',async()=>++reads);

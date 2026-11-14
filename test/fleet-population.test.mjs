@@ -5,6 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {registerProductionReports} from '../server/routes/production-report-api.mjs';
 import {misRequestAllowed} from '../shared/mis-application-access.mjs';
 import {canonicalSiteName} from '../shared/site-location.mjs';
+import {fleetPopulationReports,deploymentTableRows} from '../shared/fleet-population.mjs';
 
 test('fleet capacity seeds once, supports admin edits and counts only assigned fleet locations',async t=>{
  const db=new PGlite();
@@ -52,4 +53,35 @@ test('fleet capacity seeds once, supports admin edits and counts only assigned f
  assert.equal(model.dailyCapacity,5100);
  assert.equal(report.deployment.find(row=>row.equipment==='Excavator').population[site],2);
  assert.equal(report.deployment.find(row=>row.equipment==='Dumper/Tipper').population[site],1);
+ assert.equal(report.deploymentByCategory.find(row=>row.equipment==='Excavator').population[site],2,'the by-category list is sent too');
+});
+
+test('Equipment Deployment by category: groups under the master category, a subtotal after each, the grand total last',()=>{
+ const locations=['Sasti','Jayant'],sasti=canonicalSiteName('Sasti'),jayant=canonicalSiteName('Jayant');
+ const assets=[
+  {group:'Excavator',category:'EQUIPMENT',location:'Sasti'},{group:'EXCAVATORS',category:'Equipment',location:'Jayant'},
+  {group:'Dozer',category:' equipment ',location:'Sasti'},
+  {group:'Tipper',category:'VEHICLE',location:'Sasti'},{group:'WATER TANKER',category:'VEHICLE',location:'Jayant'},
+  // A tanker Pulse has already moved to LMV is counted there, beside the ones still under Vehicle.
+  {group:'WATER TANKER',category:'LMV',location:'Sasti'},
+  {group:'HAULPAK DUMPER',category:'VEHICLE',location:'Jayant'},
+  {group:'Excavator',location:'Sasti'},
+  {group:'Excavator',category:'EQUIPMENT',location:'Sasti',sourceMissing:true},{group:'Excavator',category:'EQUIPMENT',location:'Elsewhere'}];
+ const report=fleetPopulationReports({assets,locations,capacities:[]});
+ const lines=report.deploymentByCategory.map(row=>[row.categoryLabel,row.equipment,row.population[sasti]||0,row.population[jayant]||0]);
+ assert.deepEqual(lines.slice(0,3),[['Equipment','Excavator',1,1],['Equipment','Surface Miner',0,0],['Equipment','Payloader',0,0]]);
+ assert.deepEqual(lines.filter(([category])=>category!=='Equipment'),[
+  ['Vehicle','Dumper/Tipper',1,0],['Vehicle','Water Tanker',0,1],['Vehicle','Diesel Bowser',0,0],['Vehicle','Service Van',0,0],['Vehicle','HAULPAK DUMPER',0,1],
+  ['LMV','Water Tanker',1,0],
+  ['No category in the master','Excavator',1,0]],'standard groups first, others A to Z; no category last');
+ assert.deepEqual(lines.filter(([category])=>category==='Equipment').map(line=>line[1]),['Excavator','Surface Miner','Payloader','Dozer','Drill','Grader','Crane','Rock Breaker'],'an empty standard group stays, as 0, under its kind');
+ assert.equal(report.deployment.find(row=>row.equipment==='Water Tanker').population[sasti],1,'the by-group list (read by the Pulse check) is unchanged');
+ const table=deploymentTableRows(report.deploymentByCategory,[sasti,jayant]);
+ const subtotals=table.filter(row=>row.kind==='subtotal').map(row=>[row.equipment,row.population[sasti],row.population[jayant],row.total,row.groups]);
+ assert.deepEqual(subtotals,[['Equipment subtotal',2,1,3,8],['Vehicle subtotal',1,2,3,5],['LMV subtotal',1,0,1,1],['No category in the master subtotal',1,0,1,1]]);
+ const total=table.at(-1);
+ assert.deepEqual([total.kind,total.equipment,total.population[sasti],total.population[jayant],total.total],['total','Total',5,3,8]);
+ assert.deepEqual(table.slice(0,9).map(row=>row.kind),[...Array(8).fill('group'),'subtotal'],'each category ends with its subtotal');
+ assert.equal(table.find(row=>row.equipment==='Excavator').total,2);
+ assert.equal(new Set(table.map(row=>row.id)).size,table.length,'every line has its own key');
 });

@@ -4,7 +4,7 @@ import {siteAllowed,requireLogBookSite,filterLogBookSites} from '../../shared/lo
 import {savedLogBookFilters} from '../rules/saved-log-book-filters.mjs';
 import {misPageAllowed} from '../../shared/mis-application-access.mjs';
 import {OPERATIONAL_START} from '../../shared/operational-start.mjs';
-import {RECENT_WINDOWS,recentWindow,buildRecentActivity} from '../../shared/recent-activity.mjs';
+import {recentWindow,recentWindows,buildRecentActivity} from '../../shared/recent-activity.mjs';
 import {bookShiftCode} from '../../shared/trip-card-rules.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 
@@ -67,25 +67,34 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
  app.get('/api/dashboard/log-books/recent',...protect,handle(async(req,res)=>{
   const kinds=['vehicle','equipment'].filter(kind=>!req.session.permissions?.separateMisCredentials||misPageAllowed(req.session,kind==='vehicle'?'Vehicle Log Book':'Equipment Log Book'));
   const current=now(),since=hours=>new Date(current-hours*3600000).toISOString(),allowed=row=>siteAllowed(req.logBookScope,row.site);
-  // Counted by site, book and also card date and shift, so that a site opens into its shifts.
+  // 6, 12 and 24 hours, and with ?hours= one more window of the user's own choice (whole hours, 1 to 24).
+  const windows=recentWindows(req.query.hours),widest=Math.max(...windows);
+  // Counted by site, book and also card date and shift, so that a site opens into its shifts. One count for each window:
+  // the windows are whole numbers checked above, and their times go in as parameters $1, $2, ...
+  const counts=windows.map((hours,index)=>`count(*) FILTER (WHERE created_at>=$${index+1}::timestamptz)::int AS h${hours}`).join(',');
+  const p=windows.length;
   const cards=(await pool.query(`SELECT CASE WHEN book_type='lmv' THEN COALESCE(NULLIF(data->>'location',''),site) ELSE site END AS site,book_type,book_date::text AS date,
    COALESCE(data->>'bookShiftCode','') AS book_shift,COALESCE(data->>'cardShift','') AS card_shift,COALESCE(data->>'batchShift','') AS batch_shift,COALESCE(data->>'shiftName','') AS shift_name,
-   count(*) FILTER (WHERE created_at>=$1::timestamptz)::int AS h6,count(*) FILTER (WHERE created_at>=$2::timestamptz)::int AS h12,count(*)::int AS h24
-   FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$4::date AND created_at>=$3::timestamptz AND book_type=ANY($5::text[]) GROUP BY 1,2,3,4,5,6,7`,
-   [...RECENT_WINDOWS.map(since),OPERATIONAL_START,['vehicle','lmv','equipment']])).rows.filter(allowed).map(row=>({site:row.site,book_type:row.book_type,date:row.date,shift:savedCardShift(row),h6:row.h6,h12:row.h12,h24:row.h24}));
+   ${counts}
+   FROM mis_log_books WHERE deleted_at IS NULL AND book_date>=$${p+1}::date AND created_at>=$${p+2}::timestamptz AND book_type=ANY($${p+3}::text[]) GROUP BY 1,2,3,4,5,6,7`,
+   [...windows.map(since),OPERATIONAL_START,since(widest),['vehicle','lmv','equipment']])).rows.filter(allowed)
+   .map(row=>({site:row.site,book_type:row.book_type,date:row.date,shift:savedCardShift(row),...Object.fromEntries(windows.map(hours=>['h'+hours,row['h'+hours]]))}));
+  // Every site this login may see that works in batches, so that a site which locked nothing can be named.
+  const batchSites=(await pool.query(`SELECT DISTINCT site FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date>=$1::date`,[OPERATIONAL_START])).rows
+   .filter(allowed).map(row=>row.site);
   // With each batch: the trip cards and the ELB cards saved in it (the same counts as the Batch Status report).
   // created_at is the batch start: with the lock times it gives the batch start to close time and its VLB, LMV and ELB parts.
   const batches=(await pool.query(`SELECT b.id,b.name,b.site,b.book_date::text AS date,b.shift,b.created_at,COALESCE(b.creator_login,b.created_by,'') AS created_by,b.vlb_locked_at,b.lmv_locked_at,b.closed_at,
    (SELECT count(*)::int FROM mis_vlb_batch_entries e JOIN mis_log_books l ON l.id=e.logbook_id AND l.deleted_at IS NULL WHERE e.batch_id=b.id) AS cards,
    (SELECT count(*)::int FROM mis_vlb_batch_fleet f JOIN mis_log_books l ON l.id=f.logbook_id AND l.deleted_at IS NULL WHERE f.batch_id=b.id) AS machines_saved
    FROM mis_vlb_batches b WHERE b.deleted_at IS NULL AND b.archived_at IS NULL AND b.book_date>=$2::date AND (b.vlb_locked_at>=$1::timestamptz OR b.lmv_locked_at>=$1::timestamptz OR b.closed_at>=$1::timestamptz)
-   ORDER BY b.book_date,b.id LIMIT 5000`,[since(Math.max(...RECENT_WINDOWS)),OPERATIONAL_START])).rows.filter(allowed);
+   ORDER BY b.book_date,b.id LIMIT 5000`,[since(widest),OPERATIONAL_START])).rows.filter(allowed);
   // Who saved and locked each batch: the lock is recorded in the batch history at the same moment (index on occurred_at).
   // Who started it is on the batch itself. Both are shown by name where Users & employees has one.
   const closedBatches=batches.filter(batch=>batch.closed_at);
   if(closedBatches.length){
    const lockers=new Map((await pool.query(`SELECT batch_id::text AS batch_id,actor FROM mis_vlb_batch_audit WHERE occurred_at>=$1::timestamptz AND action='saved_and_locked' ORDER BY occurred_at,id LIMIT 20000`,
-    [since(Math.max(...RECENT_WINDOWS))])).rows.map(row=>[row.batch_id,String(row.actor||'').trim()]));
+    [since(widest)])).rows.map(row=>[row.batch_id,String(row.actor||'').trim()]));
    const starter=batch=>String(batch.created_by||'').trim();
    const logins=[...new Set([...lockers.values(),...closedBatches.map(starter)].map(actor=>actor.toLowerCase()).filter(Boolean))];
    const names=logins.length?new Map((await pool.query(`SELECT lower(trim(record_data->>'login')) AS login,
@@ -100,7 +109,7 @@ export function registerLogBookDashboard(app,{pool,protect,ensureBooks,now=()=>D
    COALESCE(data->>'bookShiftCode','') AS book_shift,COALESCE(data->>'cardShift','') AS card_shift,COALESCE(data->>'shiftName','') AS shift_name,count(*)::int AS count
    FROM mis_log_books WHERE book_type='lmv' AND deleted_at IS NULL AND book_date=ANY($1::date[]) GROUP BY 1,2,3,4,5`,[dates])).rows
    .map(row=>({site:row.site,date:row.date,shift:vlbRecordShift({bookShiftCode:row.book_shift,cardShift:row.card_shift,shiftName:row.shift_name}),count:row.count})):[];
-  res.json(buildRecentActivity({now:current,cards,batches,lmvBooks,kinds}));
+  res.json(buildRecentActivity({now:current,cards,batches,lmvBooks,kinds,windows,batchSites}));
  }));
  app.get('/api/dashboard/log-books/records',...protect,handle(async(req,res)=>{
   const {filters,kinds,hours,params}=await context(req),kind=String(req.query.kind||'');

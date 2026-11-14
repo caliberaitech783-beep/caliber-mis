@@ -34,7 +34,9 @@ test("shared tables number every row by default with the Sr. No. label and forwa
 test("report, backup and WhatsApp rule tables include Sr. No. before data columns", () => {
   const main = read("../src/main.jsx");
   assert.match(main, /<thead>(?:[\s\S]*?className="fleet-site-header"[\s\S]*?<\/tr>\})?<tr>\{rowAction&&<th className="batch-edit-action" scope="col">Action<\/th>\}\{displayedColumns\[0\]\?\.key!=='requestShift'/);
-  assert.match(main, /renderRow\(row, index, firstVisibleRow \+ index\)/);
+  assert.match(main, /renderRow\(row, index, subtotalSerials \? subtotalSerials\.get\(row\) : firstVisibleRow \+ index\)/);
+  // A subtotal line (Equipment Deployment, owner 13 Nov 2026) takes no Sr. No.; the lines after it keep counting on.
+  assert.match(main, /new Map\(sortedRows\.map\(\(row\) => \[row, isSubtotalRow\(row\) \? null : \+\+serial\]\)\)/);
   assert.match(main, /<td className="table-serial-cell">\{serial \?\? "—"\}<\/td>/);
   assert.match(main, /colSpan=\{displayedColumns\.length \+ 1 \+ Number\(Boolean\(rowAction\)\)\} className="empty-state"/);
   assert.match(read("../src/backup-administration.jsx"), /<thead><tr><th>Sr\. No\.<\/th><th>Date & time<\/th>/);

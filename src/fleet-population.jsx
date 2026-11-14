@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import './production-reports.css';
 import {EquipmentPulseMatch} from './equipment-pulse-mismatch.jsx';
+import {deploymentTableRows} from '../shared/fleet-population.mjs';
 
 const fields=[['make','Make'],['model','Model'],['bucketCapacity','Bucket Capacity'],['dailyCapacity','Daily Capacity (cu.m)']];
 const columns=fields.map(([key,label])=>({key,label,value:row=>row[key],...(key.endsWith('Capacity')?{render:row=>row[key]??''}:{})}));
@@ -57,19 +58,30 @@ export function FleetCapacityMaster({session,ReportSection}){
  </>;
 }
 
-export function FleetPopulationReport({session,ReportSection,capacity}){
- const {data,error}=useFleetData(reportPath,session.token);
- const title=capacity?'Fleet Capacity':'Equipment Deployment';
- if(!data)return <p role={error?'alert':'status'}>{error||'Loading '+title+'…'}</p>;
- const rows=capacity?data.capacity:data.deployment;
- const base=capacity?columns:[{key:'equipment',label:'Equipment',value:row=>row.equipment}];
+// Equipment Deployment (owner, 13 Nov 2026): one line per equipment group under its category (the Equipment category of
+// the Equipment master), a subtotal line after each category and the grand total at the foot. Subtotals take no Sr. No.
+function EquipmentDeployment({data,session,ReportSection}){
+ const lines=deploymentTableRows(data.deploymentByCategory,data.sites.map(site=>site.key));
+ const columns=[{key:'categoryLabel',label:'Category',value:row=>row.categoryLabel},{key:'equipment',label:'Equipment',value:row=>row.equipment},
+  ...[...data.sites,{key:null,label:'Total'}].map(({key,label})=>({key:JSON.stringify([key,'population']),label,value:row=>key===null?row.total:row.population[key]||0}))];
+ return <section className="production-reports">
+  <ReportSection title="Equipment Deployment" category="equipment-deployment"
+   description="Current equipment population by category, equipment group and location. Category is the Equipment category of each machine in the Equipment master, as Pulse keeps it; each category ends with its subtotal and the grand total is on the last line."
+   columns={columns} rows={lines} rowKey={row=>row.id} isTotalRow={row=>row.kind==='total'} isSubtotalRow={row=>row.kind==='subtotal'}
+   rowClassName={row=>row.kind==='subtotal'?'fleet-population-subtotal':row.kind==='total'?'fleet-population-total':undefined}/>
+  <EquipmentPulseMatch session={session}/>
+ </section>;
+}
+
+// Fleet Capacity: population and capacity by make and model at each site.
+function FleetCapacity({data,ReportSection}){
+ const rows=data.capacity;
  const population=(row,key)=>key===null?data.sites.reduce((sum,site)=>sum+(row.population[site.key]||0),0):row.population[key]||0;
  const total={make:'Total',equipment:'Total',population:Object.fromEntries(data.sites.map(({key})=>[key,rows.reduce((sum,row)=>sum+population(row,key),0)]))};
- const totals=new Map(capacity?data.sites.map(({key})=>[key,rows.reduce((sum,row)=>sum+population(row,key)*row.dailyCapacity,0)]):[]);
- const groups=[...data.sites,{key:null,label:capacity?'Total Caliber':'Total'}];
- const reportColumns=[...base,...groups.flatMap(({key,label})=>{
-  const count={key:JSON.stringify([key,'population']),label:capacity?label+' · Population':label,...(capacity?{headerGroup:label,headerLabel:'Population'}:{}),value:row=>population(row,key)};
-  if(!capacity)return [{...count,render:count.value}];
+ const totals=new Map(data.sites.map(({key})=>[key,rows.reduce((sum,row)=>sum+population(row,key)*row.dailyCapacity,0)]));
+ const groups=[...data.sites,{key:null,label:'Total Caliber'}];
+ const reportColumns=[...columns,...groups.flatMap(({key,label})=>{
+  const count={key:JSON.stringify([key,'population']),label:label+' · Population',headerGroup:label,headerLabel:'Population',value:row=>population(row,key)};
   const volume={key:JSON.stringify([key,'capacity']),label:label+' · Capacity (cu.m)',headerGroup:label,headerLabel:'Capacity (cu.m)',value:row=>{
    const result=row===total?(key===null?[...totals.values()].reduce((sum,n)=>sum+n,0):totals.get(key)):population(row,key)*row.dailyCapacity;
    return Math.round(result*1000)/1000;
@@ -77,9 +89,13 @@ export function FleetPopulationReport({session,ReportSection,capacity}){
   return [{...count,render:count.value},{...volume,render:volume.value}];
  })];
  return <section className="production-reports">
-  <ReportSection title={title} category={capacity?'fleet-capacity':'equipment-deployment'}
-   description={capacity?'Current fleet by make and model. Site capacity is population multiplied by daily capacity.':'Current equipment population by equipment group and location.'}
-   columns={reportColumns} rowClassName={row=>row===total?'fleet-population-total':undefined} rows={[...rows,total]} rowKey={row=>JSON.stringify(capacity?[row.make,row.model]:[row.equipment])}/>
-  {!capacity&&<EquipmentPulseMatch session={session}/>}
+  <ReportSection title="Fleet Capacity" category="fleet-capacity" description="Current fleet by make and model. Site capacity is population multiplied by daily capacity."
+   columns={reportColumns} rowClassName={row=>row===total?'fleet-population-total':undefined} rows={[...rows,total]} rowKey={row=>JSON.stringify([row.make,row.model])}/>
  </section>;
+}
+
+export function FleetPopulationReport({session,ReportSection,capacity}){
+ const {data,error}=useFleetData(reportPath,session.token);
+ if(!data)return <p role={error?'alert':'status'}>{error||'Loading '+(capacity?'Fleet Capacity':'Equipment Deployment')+'…'}</p>;
+ return capacity?<FleetCapacity data={data} ReportSection={ReportSection}/>:<EquipmentDeployment data={data} session={session} ReportSection={ReportSection}/>;
 }

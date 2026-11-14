@@ -5200,7 +5200,7 @@ app.post('/api/vehicle-transfers',requireSession,async(req,res,next)=>{
     if(!permittedSource){await client.query('ROLLBACK');return res.status(403).json({error:'You can submit transfers only for vehicles at your assigned locations.'})}
     const transferNo=String(req.body?.transferNo||'').trim().slice(0,80)||`VT-${Date.now()}-${randomUUID().slice(0,4).toUpperCase()}`;
     const record=normalizeOperationalSiteFields({
-      transferNo,transferDate:String(req.body?.transferDate||'').trim(),source,
+      transferNo,transferDate:String(req.body?.transferDate||'').trim(),transferTime:String(req.body?.transferTime||'').trim(),source,
       destination:String(req.body?.destination||'').trim(),equipmentMasterId:equipmentRow.id,
       equipment:equipment.door||equipment.reg||equipment.equipmentName||equipment.itemName||'',door:equipment.door||'',reg:equipment.reg||'',
       modelNo:equipment.modelNo||equipment.model||'',manufacturerSerialNo:equipment.manufacturerSerialNo||'',lastMaintenanceDate:equipment.lastMaintenanceDate||'',
@@ -5209,7 +5209,7 @@ app.post('/api/vehicle-transfers',requireSession,async(req,res,next)=>{
       remarks:String(req.body?.remarks||'').trim().slice(0,1000),status:VEHICLE_TRANSFER_STATUS.SOURCE_APPROVAL,
       submittedBy:req.session.name||req.session.login||'MIS',submittedLogin:String(req.session.login||'').trim().toLowerCase(),submittedAt:new Date().toISOString(),
     });
-    const validationError=vehicleTransferValidationError(record);
+    const validationError=/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(record.transferTime)?vehicleTransferValidationError(record):'Enter the actual transfer time in IST.';
     if(validationError){await client.query('ROLLBACK');return res.status(400).json({error:validationError})}
     const duplicate=await client.query(`SELECT id,record_data FROM master_records WHERE master_name='Vehicle transfers'
       AND lower(record_data->>'transferNo')=lower($1) LIMIT 1`,[transferNo]);
