@@ -12,12 +12,16 @@ export function createPulseSignInBridge({pool,fetchImpl=fetch}){
  return {
   status:()=>({connected}),
   async start(){await refresh();timer=setInterval(()=>void refresh(),15000);timer.unref?.()},stop(){clearInterval(timer)},
-  async request(action,payload={},actor,{menu=null}={}){
+  // timeoutMs: how long to wait for Pulse (45 s for background reads; a person waiting on a
+  // button gets less). A 404 that carries Pulse's own error sentence is Pulse's answer (for
+  // example "not a site in Pulse") and keeps its status; a bare 404 means the bridge route is missing.
+  async request(action,payload={},actor,{menu=null,timeoutMs=45000}={}){
    const [session]=await rows(actor,menu);
    if(!session)throw Object.assign(new Error('Sign in to Pulse II normally to reconnect Pulse automatically.'),{status:401});
-   let response;try{response=await fetchImpl('https://pulse.cmll.in/api/integrations/mis/pulse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grant:session.grant_token,action,...payload}),redirect:'error',signal:AbortSignal.timeout(45000)});}catch{throw Error('Pulse is temporarily unavailable; automatic retry is pending.');}
+   let response;try{response=await fetchImpl('https://pulse.cmll.in/api/integrations/mis/pulse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grant:session.grant_token,action,...payload}),redirect:'error',signal:AbortSignal.timeout(timeoutMs)});}catch{throw Error('Pulse is temporarily unavailable; automatic retry is pending.');}
    const data=await response.json().catch(()=>null);
-   if(!response.ok)throw Object.assign(new Error(response.status===404?'Pulse connection update is still being applied; automatic retry is pending.':data?.error||'Pulse connection failed.'),{status:response.status===404?503:response.status});
+   const bare404=response.status===404&&!data?.error;
+   if(!response.ok)throw Object.assign(new Error(bare404?'Pulse connection update is still being applied; automatic retry is pending.':data?.error||'Pulse connection failed.'),{status:bare404?503:response.status});
    return data;
   }
  };

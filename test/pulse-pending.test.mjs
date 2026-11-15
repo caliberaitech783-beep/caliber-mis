@@ -8,7 +8,7 @@ test('the Pulse writer refuses in off mode and needs a URL and token in live mod
  assert.equal(pulseWriteMode({}),'off');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'LIVE'}),'live');assert.equal(pulseWriteMode({PULSE_WRITE_MODE:'dry-run'}),'off');
  const off=createPulseWriter({env:{}});
  await assert.rejects(off.assertAvailable('transfer'),e=>e.status===409&&e.message===PULSE_UNAVAILABLE_MESSAGES.transfer&&e.extra.code==='pulse_write_unavailable');
- await assert.rejects(off.completeTransfer({transfer:{transferNo:'VT-1'},equipment:{id:1},approvedBy:['pm'],requester:'mis'}),/Pulse cannot be updated from Pulse-II yet/);
+ await assert.rejects(off.completeTransfer({transfer:{transferNo:'VT-1'},equipment:{id:1},approvedBy:['pm'],requester:'mis'}),/Sending vehicle transfers to Pulse is switched off/);
  await assert.rejects(off.createEquipment({equipment:{site:'Sasti OC',door:'V99'}}),/create this asset in Pulse/);
  const unconfigured=createPulseWriter({env:{PULSE_WRITE_MODE:'live'}});
  await assert.rejects(unconfigured.assertAvailable('equipment'),e=>e.status===503&&/PULSE_INTEGRATION_URL/.test(e.message));

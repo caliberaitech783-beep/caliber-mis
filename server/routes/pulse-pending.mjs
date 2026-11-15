@@ -52,7 +52,7 @@ export async function remindPendingPulse({pool,telegram,logins=[],nowMs=Date.now
 
 export function registerPulsePending(app,{pool,requireSession,requireAdministrator,writer=null}){
  const guard=[requireSession,requireAdministrator];
- app.get('/api/pulse-pending',...guard,async(req,res,next)=>{try{req.audit=false;res.set('Cache-Control','no-store').json({mode:writer?.mode?.()||'off',items:await listPendingPulseWrites(pool)});}catch(e){next(e);}});
+ app.get('/api/pulse-pending',...guard,async(req,res,next)=>{try{req.audit=false;res.set('Cache-Control','no-store').json({mode:writer?.mode?.()||'off',transferMode:writer?.transferMode?await writer.transferMode():'off',items:await listPendingPulseWrites(pool)});}catch(e){next(e);}});
  app.post('/api/pulse-pending/:kind/:id/applied',...guard,async(req,res,next)=>{try{
   const result=await markPulseWriteApplied(pool,{kind:req.params.kind,id:req.params.id,by:req.session.login||req.session.name,note:req.body?.note});
   req.audit={eventType:'Master data',module:'Pulse Master Sync',action:'Mark express change applied in Pulse',targetType:req.params.kind==='transfer'?'Vehicle transfer':'Equipment',targetReference:String(req.params.id),changedFields:[],details:{note:text(req.body?.note)}};
