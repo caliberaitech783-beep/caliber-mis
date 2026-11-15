@@ -4,7 +4,7 @@ name: Merge a PR and make it live (Telegram approval)
 # Pulse-II sends Mr Anoop and Mr Mohit Chadda Approve / Reject buttons on
 # Telegram with the PR, its size, who asked, from which computer and IP.
 # Approve merges the PR into main and starts the production release at once;
-# Reject or no answer in ten minutes merges nothing (scripts/merge-and-release.sh,
+# Reject or no answer in twenty minutes merges nothing (scripts/merge-and-release.sh,
 # server/routes/release-otp.mjs).
 on:
   workflow_dispatch:
@@ -25,6 +25,10 @@ on:
         description: 'Your public IP address (shown in the Telegram approval)'
         required: false
         type: string
+      brief:
+        description: 'What it fixes, one or two points split by | (empty = taken from the PR description)'
+        required: false
+        type: string
 
 # One approval at a time; a newer request replaces an unanswered one in Pulse-II.
 concurrency:
@@ -36,7 +40,7 @@ jobs:
     # Only runs from main, so the Pulse-II identity check (main only) accepts it.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
@@ -59,5 +63,6 @@ jobs:
           MERGE_REQUESTED_BY: ${{ inputs.requested_by }}
           MERGE_COMPUTER: ${{ inputs.computer }}
           MERGE_IP: ${{ inputs.ip }}
+          MERGE_BRIEF: ${{ inputs.brief }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/merge-and-release.sh

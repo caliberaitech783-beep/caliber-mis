@@ -64,10 +64,10 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
   if [[ -z "$OTP" ]]; then
     SUBJECT="$(git log -1 --format=%s "${RELEASE_COMMIT:-HEAD}" 2>/dev/null | head -c 200)"
     # Who asked and from where, shown in the Telegram message (Run workflow fields; GitHub cannot tell).
-    BODY="$(json_body commit="${RELEASE_COMMIT:-}" subject="$SUBJECT" requestedBy="${RELEASE_REQUESTED_BY:-}" computer="${RELEASE_COMPUTER:-}" ip="${RELEASE_REQUESTER_IP:-}" runUrl="${RELEASE_RUN_URL:-}")"
+    BODY="$(json_body commit="${RELEASE_COMMIT:-}" subject="$SUBJECT" brief="${RELEASE_BRIEF:-}" requestedBy="${RELEASE_REQUESTED_BY:-}" computer="${RELEASE_COMPUTER:-}" ip="${RELEASE_REQUESTER_IP:-}" runUrl="${RELEASE_RUN_URL:-}")"
     if approval="$(release_api /api/release-otp/request-approval "$BODY")" \
         && APPROVAL_ID="$(field id <<< "$approval")" && [[ "$APPROVAL_ID" =~ ^[0-9a-f]{16}$ ]]; then
-      WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-600}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
+      WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-1200}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
       summary "Urgent release: Approve / Reject was sent to the $(field recipient <<< "$approval"). Waiting up to $((WAIT/60)) minutes for a tap."
       DEADLINE=$(( $(date +%s) + WAIT ))
       while (( $(date +%s) < DEADLINE )); do

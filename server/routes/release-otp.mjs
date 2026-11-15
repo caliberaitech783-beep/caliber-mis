@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {generateOtp,hashOtp,checkOtpAttempt,resendTooSoon,otpExpiresAt,OTP_TTL_MINUTES,OTP_RESEND_SECONDS} from '../../shared/otp-approval.mjs';
+import {generateOtp,hashOtp,checkOtpAttempt,resendTooSoon,otpExpiresAt,OTP_TTL_MINUTES,OTP_RESEND_SECONDS,releaseApprovalExpiresAt,RELEASE_APPROVAL_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 
 // Urgent production release approval. The production release workflow
 // (.github/workflows/main_caliber-mis-783.yml) calls these with its GitHub OIDC
@@ -15,6 +15,10 @@ const RECIPIENTS={telegram:'owners (Mr Anoop and Mr Mohit Chadda) on Telegram',w
 // the production release with the approval id; that release is then told "approved" once, within this time.
 const MERGE_RELEASE_WITHIN_MS=30*60*1000;
 const clean=(value,max)=>String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').trim().slice(0,max);
+// What the release fixes, in at most two short points (owner, 15 Nov 2026): one per line or split by " | "
+// (Run workflow fields are one line); list marks are dropped.
+export const briefPoints=value=>(Array.isArray(value)?value:String(value??'').split(/\r?\n|\s*\|\s*/))
+ .map(point=>clean(String(point??'').replace(/^\s*(?:[-*•]|\d{1,2}[.)])\s+/,''),180)).filter(Boolean).slice(0,2);
 // verifyApprovalIdentity also accepts the merge workflow; it may only ask for and follow Approve / Reject.
 export function registerReleaseOtp(app,{pool,verifyIdentity,verifyApprovalIdentity=verifyIdentity,sendOtp,sendApproval=null,isApprover=async()=>false,now=()=>Date.now(),audit=()=>{}}){
  const identity=async req=>verifyIdentity(String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim());
@@ -80,14 +84,15 @@ export function registerReleaseOtp(app,{pool,verifyIdentity,verifyApprovalIdenti
    const merge=fromMergeWorkflow(claims),prNumber=merge?Number(body.prNumber):null;
    if(merge&&!(Number.isSafeInteger(prNumber)&&prNumber>0))throw Object.assign(new Error('A pull request number is required.'),{status:400});
    const pr=merge?{prNumber,prTitle:clean(body.prTitle,200),changes:clean(body.changes,200)}:null;
+   const brief=briefPoints(body.brief);
    await withRow(async(row,save)=>{
     if(['sent','awaiting'].includes(row?.status)&&resendTooSoon(row.requested_at,{now:now()}))throw Object.assign(new Error(`An approval was asked less than ${OTP_RESEND_SECONDS} seconds ago. Wait a minute.`),{status:429});
-    const {sent}=await sendApproval({id,actor,runId,commit,subject,requester,pr});
+    const {sent}=await sendApproval({id,actor,runId,commit,subject,requester,pr,brief});
     if(!sent)throw Object.assign(new Error('Nobody who can approve has linked Telegram, so no approval buttons could be sent.'),{status:503});
-    await save({id,mode:'buttons',kind:merge?'merge-release':'release',pr_number:pr?.prNumber??null,status:'awaiting',attempts:0,requested_at:new Date(now()).toISOString(),expires_at:otpExpiresAt(now()),actor,run_id:runId,channel:'telegram'});
+    await save({id,mode:'buttons',kind:merge?'merge-release':'release',pr_number:pr?.prNumber??null,status:'awaiting',attempts:0,requested_at:new Date(now()).toISOString(),expires_at:releaseApprovalExpiresAt(now()),actor,run_id:runId,channel:'telegram'});
    });
-   audit(req,{action:merge?'Merge and release approval asked on Telegram':'Urgent release approval asked on Telegram',reference:runId,details:{actor,...requester,...(pr||{})}});
-   res.json({id,recipient:RECIPIENTS.telegram,expiresInMinutes:OTP_TTL_MINUTES});
+   audit(req,{action:merge?'Merge and release approval asked on Telegram':'Urgent release approval asked on Telegram',reference:runId,details:{actor,...requester,...(pr||{}),...(brief.length?{brief}:{})}});
+   res.json({id,recipient:RECIPIENTS.telegram,expiresInMinutes:RELEASE_APPROVAL_TTL_MINUTES});
   }catch(error){fail(res,error)}
  });
 

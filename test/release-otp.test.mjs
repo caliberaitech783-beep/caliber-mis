@@ -166,14 +166,18 @@ test('Approve / Reject on Telegram: buttons go to the approvers, the first tap d
     assert.equal((await post('/api/release-otp/decision',{id},jwt({run_id:'99'}))).body.status,'missing');
     assert.deepEqual((await post('/api/release-otp/decision',{id})).body,{status:'approved',by:'mohitchadda'});
     assert.equal((await post('/api/release-otp/decision',{id})).body.status,'used');
-    // Reject, and expiry after ten minutes.
+    // Reject, and the buttons lapse after twenty minutes (owner, 15 Nov 2026), not ten.
     clock.now+=61000;
     const second=(await post('/api/release-otp/request-approval',{})).body.id;
     await release.handleTelegramCallback({data:`rel:${second}:r`,logins:['anoop']});
     assert.deepEqual((await post('/api/release-otp/decision',{id:second})).body,{status:'rejected',by:'anoop'});
     clock.now+=61000;
-    const third=(await post('/api/release-otp/request-approval',{})).body.id;
-    clock.now+=11*60000;
+    const thirdAsk=await post('/api/release-otp/request-approval',{});
+    assert.equal(thirdAsk.body.expiresInMinutes,20);
+    const third=thirdAsk.body.id;
+    clock.now+=19*60000;
+    assert.equal((await post('/api/release-otp/decision',{id:third})).body.status,'awaiting');
+    clock.now+=2*60000;
     assert.equal((await post('/api/release-otp/decision',{id:third})).body.status,'expired');
     assert.match((await release.handleTelegramCallback({data:`rel:${third}:a`,logins:['anoop']})).answer,/closed|expired/);
   }finally{server.close();}
@@ -219,8 +223,10 @@ test('Approve on a pull request goes from the merge run to exactly one productio
     assert.equal((await post('/api/release-otp/request',{},mergeRun)).status,401);
     assert.equal((await post('/api/release-otp/request-approval',{commit:'b'.repeat(40)},mergeRun)).status,400);
     const ask=await post('/api/release-otp/request-approval',{commit:'b'.repeat(40),prNumber:'300',prTitle:'Join sheet 2',changes:'11 files, +176 / -20; checks passed (2)',
-      requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2\nInjected',runUrl:'https://github.com/x/runs/500'},mergeRun);
+      requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2\nInjected',runUrl:'https://github.com/x/runs/500',
+      brief:'- Sheet 2/2 of a trip card joins the saved card | Site sees why a card is refused | third point dropped'},mergeRun);
     assert.equal(ask.status,200);
+    assert.deepEqual(asked[0].brief,['Sheet 2/2 of a trip card joins the saved card','Site sees why a card is refused']);
     assert.deepEqual(asked[0].pr,{prNumber:300,prTitle:'Join sheet 2',changes:'11 files, +176 / -20; checks passed (2)'});
     assert.deepEqual(asked[0].requester,{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2 Injected',runUrl:'https://github.com/x/runs/500'});
     assert.equal(asked[0].actor,'caliberaitech783-beep');
@@ -249,4 +255,23 @@ test('the Telegram message names the pull request and whom you are approving',as
   for(const part of ['MERGE + RELEASE','PR #300: Join sheet 2','Changes: 11 files','Requested by: Claude Code session for Mohit','Computer: MOHIT-PC','IP address: 49.36.1.2','as given by the requester','GitHub account: caliberaitech783-beep (checked by GitHub)','https://github.com/x/runs/500','Approve = merge PR #300 into main and make it live now.'])assert.ok(text.includes(part),part);
   const urgent=releaseApprovalMessage({actor:'dev1',runId:'77',commit:'abcdef1234'});
   assert.ok(urgent.includes('Pulse-II urgent production release')&&urgent.includes('Requested by: (name not given)')&&urgent.includes('IP address: (not given)'));
+  assert.ok(!urgent.includes('What it fixes')&&urgent.includes('Valid for 20 minutes.'),urgent);
+  const briefed=releaseApprovalMessage({actor:'dev1',runId:'77',pr:{prNumber:320,prTitle:'Approval 20 minutes',changes:'9 files'},brief:['Approval lapses after 20 minutes','Message says what it fixes']});
+  assert.match(briefed,/PR #320: Approval 20 minutes\n\nWhat it fixes:\n1\. Approval lapses after 20 minutes\n2\. Message says what it fixes\n\nChanges: 9 files/);
+});
+
+test('the brief keeps at most two points, one per line or split by |, without list marks',async()=>{
+  const {briefPoints}=await import('../server/routes/release-otp.mjs');
+  assert.deepEqual(briefPoints('1. First fix\n2) Second fix\n3. Third'),['First fix','Second fix']);
+  assert.deepEqual(briefPoints('• 20 minutes to approve | brief shown'),['20 minutes to approve','brief shown']);
+  assert.deepEqual(briefPoints(''),[]);
+  assert.deepEqual(briefPoints(['a\u0007b',null,'c']),['a b','c']);
+});
+
+test('a PR description gives its first two points, or its first two sentences',async()=>{
+  const {prBrief}=await import('../scripts/pr-brief.mjs');
+  assert.deepEqual(prBrief('## Summary\n- **Join** sheet 2 to sheet 1\n- Clearer `refusal` message\n- Third\n## Tests\n- x'),['Join sheet 2 to sheet 1','Clearer refusal message']);
+  assert.deepEqual(prBrief('## Why\n\nOwner asked for 20 minutes. The message should say what it fixes. More text.\n\n## What changes\n- y'),['Owner asked for 20 minutes.','The message should say what it fixes.']);
+  assert.deepEqual(prBrief(''),[]);
+  assert.ok(prBrief('- '+'word '.repeat(80))[0].length<=180);
 });
