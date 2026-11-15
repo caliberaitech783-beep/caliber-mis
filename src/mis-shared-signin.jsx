@@ -1,5 +1,6 @@
 import './mis-workspace.css';
 import {useEffect,useState} from 'react';
+import {SIGN_IN_LOCATION_NOTICE} from './sign-in-location.mjs';
 let configuration;
 // The sign-in mode is believed only when the server states it. A read that fails (the app restarts
 // during every release) is retried and never taken as "off": "off" opens the old password form, and
@@ -83,5 +84,5 @@ export function useMisSharedSignIn(session,{paused=false,autoStart=true}={}){
 }
 
 export function MisSharedLogin({error,message='Continue to Pulse, select MIS, and enter your existing Pulse username and password there.'}){
- return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-credentials/start">Sign in through Pulse</a><p>Your session will open automatically in MIS after sign-in.</p></section></main>;
+ return <main className="boot-status"><section className="boot-card mis-credential-login"><h1>Caliber MIS</h1><p>{error||message}</p><a href="/api/mis-credentials/start">Sign in through Pulse</a><p>Your session will open automatically in MIS after sign-in.</p><p>{SIGN_IN_LOCATION_NOTICE}</p></section></main>;
 }

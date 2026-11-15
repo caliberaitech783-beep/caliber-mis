@@ -401,6 +401,7 @@ import { APP_VERSION } from "./app-version.js";
 import { formatCountDelta } from "./fleet-count-trend.mjs";
 import DateInput from "./date-input.mjs";
 import { approveEquipmentChanges, equipmentChangeText, equipmentChanges } from "./equipment-otp-dialog.mjs";
+import { recordSignInLocation, SIGN_IN_LOCATION_NOTICE } from "./sign-in-location.mjs";
 
 const vehicles = [];
 const breakdowns = [];
@@ -1002,6 +1003,7 @@ function Login({ onLogin, theme, toggleTheme }) {
           >
             {working ? "Signing in…" : "Sign in"} <ChevronRight />
           </button>
+          <p className="login-help">{SIGN_IN_LOCATION_NOTICE}</p>
           <p className="login-help">Having trouble signing in? Contact your site administrator.</p>
         </form>}
       </main>
@@ -11600,6 +11602,7 @@ function App() {
     const activityEvents=['pointerdown','keydown','touchstart','wheel'];
     activityEvents.forEach((name)=>window.addEventListener(name,markActivity,{passive:true,capture:true}));
     void heartbeat(true);
+    void recordSignInLocation(session.token);
     return()=>{
       closed=true;
       activityEvents.forEach((name)=>window.removeEventListener(name,markActivity,{capture:true}));

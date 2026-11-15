@@ -98,7 +98,7 @@ import {PC_BACKUP_KEY_LIMIT,PC_BACKUP_KEY_SETTING,createAttemptLimiter,createPcB
 import {certificateSummary,generatePrintHelperSigning,resolvePrintHelperSigning,signPrintRequest} from './server/services/print-helper-signing.mjs';
 import {createSessionStore} from './server/services/auth-session.mjs';
 import {repairLegacySessionDefaults} from './server/rules/auth-session-schema.mjs';
-import {initializeLoginHistory,registerLoginHistoryRoutes} from './server/routes/user-login-history.mjs';
+import {initializeLoginHistory,registerLoginHistoryRoutes,registerSignInLocationRoute} from './server/routes/user-login-history.mjs';
 import {parseIndiaRequestDateTime} from './shared/request-time.mjs';
 import {REQUEST_TIMELINE_FIELDS,parseRequestTimelineTimestamp,requestExpectedCompletionValue,validateRequestTimelineChange,buildRequestTimelineChanges,requestTimelineEvents,requestTimelineDurations} from './shared/request-timeline.mjs';
 import {requestsWithDoorNumbers} from './shared/equipment-door.mjs';
@@ -3053,6 +3053,7 @@ app.patch('/api/remote-assistance/:assistanceId/end',requireSession,async(req,re
 });
 
 registerLoginHistoryRoutes(app,{pool,requireSuper:requireSession,requireAdministrator:requireUserSessionView,locationName:userSessionLocationName});
+registerSignInLocationRoute(app,{pool,requireSession});
 registerOemEmailAdmin(app,{pool,requireSuper,requireAdministrator,loadData:loadOemEmailData,scheduledJobsEnabled});
 app.get('/api/user-sessions',requireSession,requireUserSessionView,async(req,res,next)=>{
   try{

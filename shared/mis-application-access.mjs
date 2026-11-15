@@ -37,6 +37,7 @@ export function misRequestAllowed(session,req){
  if(route==='/api/backups'||/^\/api\/backups\/[a-f0-9-]{36}\/download$/.test(route))return read&&isMisAdministrator(session);
  // Only session maintenance and menu discovery are unconditional. New routes fail closed.
  if(['/api/logout','/api/session-heartbeat','/api/session-messages','/api/preferred-language','/api/navigation-settings','/api/request-shifts','/api/announcements','/api/notifications'].includes(route))return read||['/api/logout','/api/session-heartbeat','/api/preferred-language'].includes(route);
+ if(route==='/api/session-location')return req.method==='POST';
  if(route==='/api/masters')return read;
  // Report controls use the same menu grant as their source tables. The server
  // still validates export payloads and scopes saved views to the signed-in user.
