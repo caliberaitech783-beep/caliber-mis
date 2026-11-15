@@ -12,6 +12,7 @@ import {vlbBatchSelection,vlbBatchName,vlbRecordShift} from '../../shared/vlb-ba
 import {VLB_BATCH_SCHEMA,batchLogin,batchFail,lockVlbBatchWrites,lockVlbBatchScope,lockVlbBatchSite,vlbRecordScope,auditVlbBatch,matchingVlbBatch,syncVlbBatchRecord} from '../rules/vlb-batch-policy.mjs';
 import {createBreakdownRowsPrefetchCache,lockedReadHours} from '../../shared/breakdown-hours-source.mjs';
 import {jsonEntityTag,requestEtagMatches} from '../services/response-etag.mjs';
+import {withoutRowSecurityRequest} from '../services/row-security.mjs';
 import {vlbBatchActor,batchPmAtSite} from '../rules/vlb-batch-access.mjs';
 import {readFleetBreakdowns,stageDetails,lockVlb,lockLmv,unlockVlb,assertCloseAllowed,saveFleetDraft,saveFleetEntry,equipmentAssets} from '../rules/vlb-batch-stages.mjs';
 import {twoStageEnabled,batchStage,FLEET_STATUSES} from '../rules/vlb-two-stage.mjs';
@@ -85,9 +86,14 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  let ready;
  const prefetchFleetBreakdownRows=createBreakdownRowsPrefetchCache(logBookOps?.readBreakdownRows);
  // Every open batch board asks for the batch list every 4 s, and on 11 Nov 2026 those reads
- // alone kept the 10-connection pool full. Row security also applies to the log-book
- // counts, so only share reads between callers with the same effective site scope.
- const sharedBatchRows=new Map();
+ // alone kept the 10-connection pool full. Until 15 Nov 2026 the list was read once per
+ // site scope, and each read ran the row-security site check on every log book since
+ // 1 Nov: that day it held 73,000 connection-seconds in 2.6 h (more than every other
+ // route together), so automatic card saves waited 18 s each for a connection.
+ // The list is now one trusted read shared by every login. It holds no log-book
+ // content, only per-batch card counts, and each caller still receives only the
+ // batches of its own sites (siteAllowed below).
+ const sharedBatchRows=createSharedRead({ttlMs:listCacheMs});
  app.use('/api/vlb-batches',(req,res,next)=>{if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>sharedBatchRows.clear());if(req.method!=='GET'&&req.method!=='HEAD')res.on('finish',()=>actorCache.clear());next();});
  // Every open batch board asks every 10 to 15 s, and each ask looked the actor up in the
  // Users master. The lookup is reused for ACTOR_CACHE_MS per login (a copy each time,
@@ -132,14 +138,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
  };
  const recovery=registerVlbBatchDeletions(app,{pool,protect:recoveryProtect,handle,ensure,sendOtp,imageStorage});
  app.get('/api/vlb-batches',...protect,handle(async(req,res)=>{
-  const scopeKey=JSON.stringify(req.logBookScope.sites===null?null:[...req.logBookScope.sites].map(canonicalSiteName).sort());
-  let read=sharedBatchRows.get(scopeKey);
-  if(!read){
-   if(sharedBatchRows.size>=128)sharedBatchRows.delete(sharedBatchRows.keys().next().value);
-   read=createSharedRead({ttlMs:listCacheMs});
-   sharedBatchRows.set(scopeKey,read);
-  }
-  const rows=await read(async()=>(await pool.query(`
+  const rows=await sharedBatchRows(()=>withoutRowSecurityRequest(async()=>(await pool.query(`
    WITH visible_batches AS (
     SELECT * FROM mis_vlb_batches WHERE archived_at IS NULL AND book_date>=$$2026-11-01$$
    ), vlb_counts AS (
@@ -161,7 +160,7 @@ export function registerVlbBatches(app,{pool,protect,recoveryProtect=protect,ens
    LEFT JOIN vlb_counts v ON v.batch_id=b.id
    LEFT JOIN elb_counts e ON e.batch_id=b.id
    ORDER BY (b.closed_at IS NULL) DESC,b.created_at DESC,b.id DESC
-  `)).rows);
+  `)).rows));
   const twoStage=twoStageEnabled();
   const waits=twoStage?batchStageWaits([...rows].reverse()):new Map();
   const batches=rows.filter(b=>siteAllowed(req.logBookScope,b.site)).map(b=>({...b,created_by:creator(b),stageWait:waits.get(b.id)||'',twoStage,canClose:!waits.has(b.id)&&canClose(b,req.batchActor,twoStage),stage:twoStage?batchStage(b):(b.closed_at?'closed':'open')}));
