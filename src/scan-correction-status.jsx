@@ -1,7 +1,7 @@
 import React from 'react';
 import {scanReviewHelp} from './scan-review-layout.mjs';
 
-export default function ScanCorrectionStatus({errors=[],warnings=[],status='',dirty=false,working=''}){
+export default function ScanCorrectionStatus({errors=[],warnings=[],status='',dirty=false,working='',actions=null}){
  const required=[...new Set(errors.map(scanReviewHelp))];
  const advisory=[...new Set(warnings.map(scanReviewHelp))].filter(issue=>!required.includes(issue));
  const failed=status.startsWith('Not saved');
@@ -19,5 +19,6 @@ export default function ScanCorrectionStatus({errors=[],warnings=[],status='',di
    <summary>{required.length?'View checks':'View notes'}</summary>
    {[...required,...advisory].map(issue=><p key={issue}>{issue}</p>)}
   </details>}
+  {required.length>0&&actions&&<div className="scan-correction-actions">{actions}</div>}
  </div>;
 }

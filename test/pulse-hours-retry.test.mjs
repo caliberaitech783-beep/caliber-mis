@@ -29,3 +29,17 @@ test('the scan screen repeats the lookup and clears the warning when a repeat su
  assert.match(screen,/\.then\(r=>\{if\(live\)\{setPulseHoursError\(''\);setPulseHours\(r\)/);
  assert.match(screen,/return\(\)=>\{live=false;clearTimeout\(timer\)\}/);
 });
+
+test('the yellow review line names why Pulse gave no BD hours',async()=>{
+ const {pulseHoursReviewMessage,pulseHoursSiteMismatch}=await import('../src/pulse-hours-retry.mjs');
+ const site=pulseHoursReviewMessage('Vehicle and shift must belong to this location.');
+ assert.match(site,/does not show this machine at this site on this date/);assert.match(site,/Equipment review/);assert.equal(pulseHoursSiteMismatch('Vehicle and shift must belong to this location.'),true);
+ assert.match(pulseHoursReviewMessage('Pulse request failed (504).',{retrying:true}),/did not answer in time \(Pulse request failed \(504\)\)\. Trying again automatically/);
+ assert.match(pulseHoursReviewMessage('Pulse request failed (504).'),/Press Retry Pulse lookup/);
+ assert.match(pulseHoursReviewMessage('Connect Pulse to fetch breakdown hours.'),/not connected/);
+ assert.match(pulseHoursReviewMessage('Pulse request failed (500).'),/could not provide them \(Pulse request failed \(500\)\)/);
+ assert.equal(pulseHoursSiteMismatch('Pulse request failed (504).'),false);
+ const screen=readFileSync(new URL('../src/bulk-card-scanning.jsx',import.meta.url),'utf8');
+ assert.doesNotMatch(screen,/because Pulse could not provide them/);
+ assert.match(screen,/pulseHoursReviewMessage\(pulseHoursError,\{retrying:pulseHoursRetrying\}\)/);
+});
