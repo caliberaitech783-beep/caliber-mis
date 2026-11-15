@@ -4,6 +4,7 @@ import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {fingerprintScanImage,closestFingerprint,scanFingerprintSettings} from './scan-fingerprint.mjs';
 import {isMultiSheet} from '../../shared/trip-card-sheet.mjs';
+import {fingerprintInWorker} from './scan-fingerprint-pool.mjs';
 
 // Duplicate scan cards. A card is a duplicate when the same paper, for the same
 // card date, site and shift, already exists in any scan entry or saved log book
@@ -32,8 +33,10 @@ export const cardNumberKey=value=>String(value||'').toUpperCase().replace(/[^A-Z
 export const scanDoorValue=card=>String(card?.draft?.doorTextWritten||card?.raw_fields?.door||card?.draft?.doorText||card?.draft?.door||'').trim();
 export const scanDoorKey=(card,kind)=>cardMachineKey(scanDoorValue(card),kind);
 
-export async function fingerprintForUpload(image){
- try{return await fingerprintScanImage(image);}catch(error){console.error('Scan fingerprint failed:',error?.message||String(error));return null;}
+// Uploads work the fingerprint out on a worker thread (scan-fingerprint-pool.mjs)
+// so a stack of uploads does not freeze the server's pages.
+export async function fingerprintForUpload(image,{fingerprint=fingerprintInWorker}={}){
+ try{return await fingerprint(image);}catch(error){console.error('Scan fingerprint failed:',error?.message||String(error));return null;}
 }
 
 const liveCardSql=alias=>`${operationalScanSql(alias)} AND ${alias}.duplicate_of IS NULL AND ${alias}.status NOT IN('rejected') AND (${alias}.status<>'posted' OR EXISTS(SELECT 1 FROM mis_log_books lb WHERE lb.id=${alias}.logbook_id AND lb.deleted_at IS NULL))`;
