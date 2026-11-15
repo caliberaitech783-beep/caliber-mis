@@ -4,6 +4,7 @@ import {employeeIdentity,matchesEmployeeReference,suggestedCaliberId} from '../.
 import {bookShiftCode,selectedMasterShift} from '../../shared/trip-card-rules.mjs';
 import {operationalDate,OPERATIONAL_START} from '../../shared/operational-start.mjs';
 import {normalizeEquipmentGroup} from '../../shared/equipment-group.mjs';
+import {isDummyEmployeeId} from '../../shared/dummy-employee-ids.mjs';
 import {batchStage} from './vlb-two-stage.mjs';
 import {fleetAssetKind,assetIdentity} from './fleet-reconciliation.mjs';
 
@@ -130,7 +131,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const dutiesOf=(saved,review)=>group(saved.filter(r=>r.eligible&&r.employeeKey&&r.shift),r=>JSON.stringify([r.employeeKey,canonicalSiteName(r.site),r.date,r.shift])).map(cards=>{
   const r=cards[0],hours=sum(cards.map(c=>c.performanceValid?c.hours:null));
   const issue=hours!==null&&r.schedule&&hours>r.schedule.hours;
-  if(issue&&review)for(const card of cards)addIssue(card,'Combined card HMR exceeds this duty’s scheduled hours; review assignments.');
+  if(issue&&review&&!dummyDuty(r))for(const card of cards)addIssue(card,'Combined card HMR exceeds this duty’s scheduled hours; review assignments.');
   return {key:JSON.stringify([r.employeeKey,canonicalSiteName(r.site),r.date,r.shift]),date:r.date,site:r.site,shift:r.shift,employeeKey:r.employeeKey,employeeId:r.employeeId,caliberCode:r.caliberCode,designation:r.designation,employeeName:r.employeeName,schedule:cards.some(c=>c.issues.some(s=>/shift start differs/.test(s)))?null:r.schedule,cards,hours:issue?null:hours,trips:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.trips:null)),km:sum(cards.filter(c=>c.kind==='vehicle').map(c=>c.performanceValid?c.km:null))};
  });
  // OT reads all three log books. The manpower, performance and attendance tables stay VLB and ELB only.
@@ -254,9 +255,14 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
 }
 
 // `marks` receives, for every duty in a flagged pattern, its strongest colour, the written reasons and the other shifts worked.
+// A card row or duty worked under one of the shared dummy IDs of temporary drivers.
+function dummyDuty(d){
+ return [d.employeeId,d.caliberCode,d.savedEmployeeId,...(d.cards||[]).map(c=>c.savedEmployeeId)].some(isDummyEmployeeId);
+}
 function buildOt(duties,filters,marks=new Map()){
  const events=[];
- for(const person of group(duties,d=>JSON.stringify([d.employeeKey,canonicalSiteName(d.site)]))){
+ // A dummy ID is many temporary drivers, so its several shifts in a day are not OT.
+ for(const person of group(duties.filter(d=>!dummyDuty(d)),d=>JSON.stringify([d.employeeKey,canonicalSiteName(d.site)]))){
   const byDay=group(person,d=>d.date).sort((a,b)=>a[0].date.localeCompare(b[0].date));
   const add=(set,reason,severity)=>{
    for(const duty of set){

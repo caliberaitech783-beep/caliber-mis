@@ -3,6 +3,7 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {CARD_SHIFTS,normalizeCardShift,VLB_SHIFT_KMR_LIMIT} from '../../shared/trip-card-rules.mjs';
 import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
 import {cardWorkingHmr} from '../../shared/log-book-shared-shift.mjs';
+import {cardHasDummyEmployee} from '../../shared/dummy-employee-ids.mjs';
 
 const meterUnits=value=>Math.max(0,Math.round(Number(value)*1000)||0);
 const hmrUnits=data=>meterUnits(cardWorkingHmr(data));
@@ -27,7 +28,8 @@ async function assertVlbDriverShiftHmr(client,data,recordId){
  const limit=shiftHmrLimit(data,shift);
  const employeeId=String(data.employeeId??'').trim();
  const caliberId=String(data.caliberId??'').trim().toUpperCase();
- if(!limit||(!employeeId&&!caliberId))return;
+ // A dummy ID is many temporary drivers, so their hours are not one person's.
+ if(!limit||(!employeeId&&!caliberId)||cardHasDummyEmployee(data))return;
  const {rows}=await client.query(`SELECT id,book_no,site,asset_id,data FROM mis_log_books
   WHERE book_type='vehicle' AND book_date=$1 AND deleted_at IS NULL
     AND ($2::bigint IS NULL OR id<>$2::bigint)
