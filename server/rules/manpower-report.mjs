@@ -145,7 +145,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   const logBooks=LOG_BOOKS.map(([,code])=>code).filter(code=>d.cards.some(r=>logBookCode(r.kind)===code));
   return {id:d.key,date:d.date,shift:d.shift,site:siteName(d.site),siteKey:canonicalSiteName(d.site),employeeKey:d.employeeKey,employeeId:d.employeeId,caliberCode:d.caliberCode,employeeName:d.employeeName,category:d.designation||'Category not in Employee master',
    equipment:equipmentName(main.group),doors:unique(d.cards.map(r=>r.door)).join('; '),makeModel:unique(d.cards.map(makeModelName)).join('; '),logBooks,logBook:logBooks.join(' + '),
-   flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,books:d.cards.map(r=>r.book).join('; ')};
+   flag:mark?.severity||'normal',flagLabel:mark?unique(mark.reasons).join('; '):'Normal duty',others:others.length?'Also worked '+others.join(', '):'',hours:d.hours,trips:d.trips,km:d.km,books:d.cards.map(r=>r.book).join('; ')};
  }).sort((x,y)=>x.date.localeCompare(y.date)||x.site.localeCompare(y.site)||x.shift.localeCompare(y.shift)||x.employeeName.localeCompare(y.employeeName));
  const visibleExceptions=exceptions.filter(e=>rowMatches(e.record,f)).map(({record,...e})=>({...e,site:siteName(e.site),siteKey:canonicalSiteName(e.site),logBook:logBookCode(record.kind)}));
  const visibleBatches=batches.filter(b=>b.report_date>=f.from&&b.report_date<=f.to);

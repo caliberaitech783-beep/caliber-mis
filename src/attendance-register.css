@@ -1,0 +1,60 @@
+/* Attendance Batch-wise and Month-wise (attendance-register.jsx). Codes: P present (green, or the OT colour), A absent,
+   ? pending, TR at another site. Caliber ID and Name stay on screen while the month grid scrolls sideways. */
+.ar-register .ar-legend{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.ar-legend-item{display:inline-flex;gap:6px;align-items:baseline;padding:5px 10px;border:1px solid currentColor;border-radius:7px;font-size:12px;font-weight:600}
+.ar-legend-item b{font-weight:800}
+.ar-register :is(.ar-legend-item,.ar-code).ar-present{background:#e3f4e6;color:#1f6b33}
+.ar-register :is(.ar-legend-item,.ar-code).ar-double{background:#fff0d8;color:#984800}
+.ar-register :is(.ar-legend-item,.ar-code).ar-flag-red{background:#c92c2c;color:#fff}
+.ar-register :is(.ar-legend-item,.ar-code).ar-flag-orange{background:#fbd3a8;color:#7a3a00}
+.ar-register :is(.ar-legend-item,.ar-code).ar-flag-review{background:#e8d2bd;color:#5c3310}
+.ar-register :is(.ar-legend-item,.ar-code).ar-flag-zero{background:#e1edff;color:#1c4f9c}
+.ar-register :is(.ar-legend-item,.ar-code).ar-absent{background:#ffe0e0;color:#a31f20}
+.ar-register :is(.ar-legend-item,.ar-code).ar-pending{background:#ececf1;color:#4d4d5c}
+.ar-register :is(.ar-legend-item,.ar-code).ar-away{background:#dcf2f4;color:#0e5e6f}
+
+/* Step 2 batch-wise: the batch state under each count. */
+.ar-register .dsg-note.ar-state-locked{color:#1f6b33}
+.ar-register .dsg-note.ar-state-open{color:#984800}
+.ar-register .dsg-note.ar-state-none{color:#a31f20}
+.ar-register .dsg-count.ar-batch-none{border-color:#e5a3a3}
+.ar-register .dsg-count.ar-batch-open{border-color:#f0c48c}
+
+/* Step 2 month-wise: the register grid. */
+.ar-grid-wrap{overflow-x:auto;max-width:100%;border:1px solid #e6dff0;border-radius:10px}
+.ar-grid{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
+.ar-grid :is(th,td){padding:6px 5px;border-bottom:1px solid #eee8f5;white-space:nowrap;text-align:center}
+.ar-grid thead th{position:sticky;top:0;z-index:2;background:#f4f1f9;color:#4d5b74;font-size:12px;font-weight:700}
+.ar-grid thead th small{display:block;color:#8490a4;font-size:10px;font-weight:600}
+.ar-grid .ar-sticky{position:sticky;z-index:1;background:var(--card,#fff);text-align:left}
+.ar-grid thead .ar-sticky{z-index:3;background:#f4f1f9}
+.ar-grid .ar-id{left:0;min-width:92px;font-variant-numeric:tabular-nums}
+.ar-grid .ar-name{left:92px;min-width:150px;max-width:190px;white-space:normal;box-shadow:2px 0 0 #e6dff0}
+.ar-grid .ar-name small{display:block;color:#8490a4;font-size:11px;font-weight:600}
+.ar-grid .ar-name .mp-cat-open{margin-left:0;padding:0;font-weight:700;text-align:left}
+.ar-grid .ar-day{min-width:34px}
+.ar-grid .ar-sunday:not(.ar-code){background:#e7e3ee}
+.ar-grid .ar-later{color:#b7bfcc}
+.ar-grid .ar-code{min-width:34px;font-weight:750;font-size:12px}
+.ar-grid td.ar-code.ar-future.ar-sunday,.ar-grid td.ar-code:empty.ar-sunday{background:#f4f2f7}
+.ar-grid .ar-total-head{background:#ece6f5}
+.ar-grid .ar-total{min-width:44px;font-variant-numeric:tabular-nums;font-weight:600}
+.ar-grid .ar-total-absent{color:#a31f20;font-weight:800}
+.ar-grid .ar-total-double{color:#984800;font-weight:800}
+.ar-grid tbody tr:hover .ar-sticky{background:#faf8fd}
+.ar-grid tr.report-row-picked .ar-name{box-shadow:inset 4px 0 0 #59338b,2px 0 0 #e6dff0}
+.ar-grid tfoot :is(th,td){border-top:2px solid #c7b5dd;background:#f4f1f9;font-weight:750}
+.ar-grid tfoot .ar-sticky{background:#f4f1f9}
+
+:root[data-theme="dark"] .ar-grid thead th,:root[data-theme="dark"] .ar-grid thead .ar-sticky,:root[data-theme="dark"] .ar-grid tfoot :is(th,td),:root[data-theme="dark"] .ar-grid tfoot .ar-sticky{background:#1d2b42;color:#dbe4f3}
+:root[data-theme="dark"] .ar-grid .ar-sticky{background:#17253a;color:#eef3fb}
+:root[data-theme="dark"] .ar-grid :is(th,td){border-color:#2c415e}
+:root[data-theme="dark"] .ar-grid .ar-sunday:not(.ar-code){background:#24324a}
+:root[data-theme="dark"] .ar-grid-wrap{border-color:#2c415e}
+
+@media print{
+ .ar-register :is(.ar-code,.ar-legend-item,.dsg-note){print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .ar-grid-wrap{overflow:visible;border:0}
+ .ar-grid .ar-sticky{position:static}
+ .ar-grid{font-size:9px}
+}
