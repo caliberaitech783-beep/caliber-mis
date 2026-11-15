@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,clockAt,BANDS,IDLE_LIMIT,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
+import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,gapParts,clockTags,clockAt,BANDS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
 import {normalise} from '../src/operations-report-model.mjs';
 import fs from 'node:fs';
 import {transformWithOxc} from 'vite';
@@ -126,9 +126,12 @@ test('the shift time-line lays the gaps on the hours of the shift, through midni
  assert.deepEqual(line.marks.map(m=>m.clock),['05:00','06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00']);
  assert.deepEqual(line.marks.filter(m=>m.edge).map(m=>m.clock),['05:00','13:00']);
  const hour=h=>[h.label,h.loadings,h.count,h.green,h.orange,h.red,h.rest,h.worst];
- // 05:00 to 06:00: four loadings (the first has no colour); 12 minutes in green, 8 of the 18-minute stop, 40 before the first loading.
- assert.deepEqual(hour(line.hours[0]),['05:00 to 06:00',4,{green:3,orange:0,red:0},12,8,0,40,'orange']);
- assert.deepEqual(hour(line.hours[1]),['06:00 to 07:00',5,{green:2,orange:2,red:1},8,17,30,5,'red']);
+ // 05:00 to 06:00: four loadings (the first has no colour); 12 minutes of normal working, then the 18-minute stop from
+ // 05:52: green for its first 5 minutes, orange from 05:57; 40 minutes before the first loading.
+ assert.deepEqual(hour(line.hours[0]),['05:00 to 06:00',4,{green:3,orange:0,red:0},17,3,0,40,'orange']);
+ // 06:00 to 07:00: the rest of that stop (10 orange); the 30-minute stop 06:10 to 06:40 is 5 green, 15 orange, 10 red;
+ // two loadings of 4 minutes; the 7-minute stop from 06:48 is 5 green and 2 orange up to 06:55.
+ assert.deepEqual(hour(line.hours[1]),['06:00 to 07:00',5,{green:2,orange:2,red:1},18,27,10,5,'red']);
  assert.deepEqual(hour(line.hours[2]),['07:00 to 08:00',0,{green:0,orange:0,red:0},0,0,0,60,'rest']);
  assert.equal(line.hours.length,8);assert.deepEqual(line.breakdowns.map(b=>b.label),['BD-7 · Hose burst · 06:15 to 06:35']);
  const night=shiftTimeline(find('EX1','S3'));
@@ -139,6 +142,45 @@ test('the shift time-line lays the gaps on the hours of the shift, through midni
  const free=shiftTimeline(loose);
  assert.deepEqual([loose.axis.known,free.lo,free.hi,free.marks.map(m=>m.clock).join(),free.pieces.map(p=>p.minutes).join()],[false,0,60,'07:10,08:10','30']);
  assert.equal(shiftTimeline(find('EX2')),null,'no loading with a time, no strip');
+});
+
+test('on the strip a gap turns orange at its 5th minute and red at its 20th, with the clock time of each turn',()=>{
+ assert.equal(RED_AFTER,20);
+ assert.deepEqual(gapParts(0,4),[{from:0,to:4,tone:'green'}]);
+ assert.deepEqual(gapParts(10,15),[{from:10,to:15,tone:'green'}],'exactly 5 minutes stays green');
+ assert.deepEqual(gapParts(10,30).map(p=>p.tone),['green','orange'],'exactly 20 minutes never turns red');
+ assert.deepEqual(gapParts(220,256),[{from:220,to:225,tone:'green'},{from:225,to:240,tone:'orange'},{from:240,to:256,tone:'red'}]);
+ const line=shiftTimeline(ex6);
+ const stop=line.pieces.find(p=>p.minutes===30);
+ assert.deepEqual(stop.turns.map(t=>[t.clock,t.tone]),[['06:15','orange'],['06:30','red']]);
+ assert.deepEqual([stop.fromClock,stop.fromDoor,stop.toClock,stop.door],['06:10','T5','06:40','T1']);
+ assert.deepEqual(line.pieces.find(p=>p.minutes===18).turns.map(t=>t.clock),['05:57']);
+ assert.deepEqual(line.pieces.filter(p=>p.band==='ok').flatMap(p=>p.turns),[],'a green gap has no turn');
+ // Every minute of every gap is drawn in exactly one colour.
+ for(const p of line.pieces)assert.equal(p.parts.reduce((s,x)=>s+x.to-x.from,0),p.to-p.from);
+ // The whole 8-hour shift is drawn: the time before the first loading and after the last is named.
+ assert.deepEqual(line.lead,{from:0,to:40,clock:'05:40',minutes:40});
+ assert.deepEqual(line.tail,{from:115,to:480,clock:'06:55',minutes:365});
+ assert.equal(line.ticks.length,24,'a tick every quarter of an hour between the 9 hour marks');assert.ok(line.ticks.every(m=>m%15===0&&m%60));
+ const loose=machineShifts(normalise([vlb(41,'V9041',[trip('EX8','07:10','07:30'),trip('EX8','07:40','08:00')],{location:'Site C',shiftName:'Day',bookShiftCode:'D',masterShiftStart:'',shiftHours:12})]),{assets})[0];
+ assert.deepEqual([shiftTimeline(loose).lead,shiftTimeline(loose).tail],[null,null],'without the shift hours there is no before or after');
+ assert.deepEqual(shiftTimeline(loose).pieces[0].turns.map(t=>t.clock),['07:15','07:30']);
+});
+
+test('the clock tags under a strip never overlap; red stops come first and a tag at the end of the strip reads leftwards',()=>{
+ const line=shiftTimeline(ex6);
+ // A letter is 2 minutes of the strip here, so the tags of the 30-minute stop crowd each other.
+ const tags=clockTags(line,{width:2,lanes:3});
+ assert.deepEqual(tags.map(g=>[g.text,g.lane]),[['05:57 orange',1],['06:15 orange',0],['06:30 red',1],['06:40 loaded',2],['06:53 orange',0]]);
+ for(const a of tags)for(const b of tags)if(a!==b&&a.lane===b.lane){
+  const span=g=>g.end?[g.at-g.text.length*2,g.at]:[g.at,g.at+g.text.length*2];
+  const [a1,a2]=span(a),[b1,b2]=span(b);assert.ok(a2+2<=b1||b2+2<=a1,a.text+' and '+b.text+' overlap');
+ }
+ // With one row the red stop is served first and what does not fit is left to the pop-up and the list.
+ assert.deepEqual(clockTags(line,{width:2,lanes:1}).map(g=>g.text),['06:15 orange','06:53 orange']);
+ // A tag that would run past the end of the strip is drawn to the left of its time.
+ const late={hi:100,pieces:[{id:'p',band:'b4',tone:'red',minutes:30,to:99,toClock:'13:59',turns:[{at:74,tone:'orange',clock:'13:34'},{at:89,tone:'red',clock:'13:49'}]}]};
+ assert.deepEqual(clockTags(late,{width:1,lanes:3}).map(g=>[g.text,g.end,g.lane]),[['13:34 orange',false,0],['13:49 red',false,0],['13:59 loaded',true,1]]);
 });
 
 test('a machine that did not run is in BD (red) or has no hours (brown)',()=>{
@@ -224,7 +266,14 @@ test('the screen shows working and idle time first, keeps the old list as a seco
 
 test('pressing a machine opens its shift time-line: the strip, then every loading in its colour with the tipper trips delayed',async()=>{
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
- assert.match(screen,/\{ran&&<ShiftTimelines entries=\{itemEntries\}[^\n]*onPick=\{setOnly\}\/>\}\s*\{ran&&tripChips\}\s*\{ran&&<ReportSection key=\{'lm-trips-'/,'the strip, the colour chips, then the list');
+ assert.match(screen,/\{\(focus\|\|!stacked\)&&ran&&<ShiftTimelines entries=\{shownEntries\}[^\n]*onPick=\{setOnly\}\/>\}\s*\{ran&&tripChips\}\s*\{ran&&<ReportSection key=\{'lm-trips-'/,'the strip, the colour chips, then the list');
+ // A machine over many shifts: one strip per shift (Step 4); pressing one opens that shift full width (Step 5).
+ assert.match(screen,/\{stacked&&<ShiftTimelines entries=\{itemEntries\} step="Step 4 · "[^\n]*onOpen=\{openStrip\}/);
+ assert.match(screen,/const listStep=stacked&&focus\?5:4,cardStep=listStep\+1;/);
+ // Step 3 is under the grid as soon as a site is open, for every date and shift until a box is pressed.
+ assert.match(screen,/const slotEntries=!site\?\[\]:!slot\?siteEntries:/);
+ assert.match(screen,/onOpenAll=\{\(\)=>openSlot\(shifts\.total\)\}[^\n]*\n[^\n]*allPicked=\{allShifts\}/);
+ assert.match(screen,/const openSlot=\(row,pick=only\)=>\{setSlot\(row\.total\?null:/);
  assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines\)\}[^\n]*rowClassName=\{l=>lineClass\(l\)[^\n]*onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
  assert.match(screen,/column\('delayedCount','Tipper trips delayed'/);assert.match(screen,/column\('breakdown','Breakdown in Pulse'/);
  // With a band chosen, the machines of the shift are followed by the stops of that band, so the delayed trips show without another press.
@@ -233,7 +282,16 @@ test('pressing a machine opens its shift time-line: the strip, then every loadin
  for(const [,key,label] of screen.matchAll(/column\('([^']+)','([^']+)'/g))assert.ok(!isDurationColumn(label,key),label+' must not be taken for a duration, or the table reorders the lines');
  const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
  for(const [tone,colour] of [['green','#edf8f0'],['orange','#fff3e0'],['red','#fde4e2']])assert.match(css,new RegExp('tr\\.lm-line-'+tone+'>td[^{]*\\{background:'+colour),'a '+tone+' loading is a '+tone+' line');
- assert.match(css,/\.lm-seg-ok\{background:#3aa863\}/);assert.match(css,/\.lm-seg-b4\{background:#d6362f/);
+ assert.match(css,/\.lm-part-green,\.lm-report \.lm-seg-ok\{background:#3aa863\}/);assert.match(css,/\.lm-part-orange\{background:#ffb04d\}/);assert.match(css,/\.lm-part-red,\.lm-report \.lm-seg-b4\{background:#d6362f\}/);
+ assert.match(css,/\.lm-tag-end\{transform:translateX\(-100%\)/,'a tag at the end of the strip reads leftwards');
+});
+
+test('a piece of the strip reads in full: the loading before, each turn of colour by the clock, the next loading',async()=>{
+ const source=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ const start=source.indexOf('export function pieceText'),end=start+source.slice(start).search(/\r?\n\}\r?\n/)+3;
+ const pieceText=new Function('BAND_LABELS','plural',source.slice(start,end).replace('export ','')+';return pieceText;')({b4:'20+ min'},(n,one)=>n+' '+one+(n===1?'':'s'));
+ const p=shiftTimeline(ex6).pieces.find(x=>x.minutes===30);
+ assert.equal(pieceText(p),'06:10 loading (T5) → 06:15 turned orange → 06:30 turned red → 06:40 next loading (T1) · 30 min idle · 20+ min · 2 tipper trips delayed · Breakdown in Pulse: BD-7 · Hose burst · 06:15 to 06:35');
 });
 
 test('screens asking for the same dates share one reading of the log books; Refresh reads again',async()=>{
