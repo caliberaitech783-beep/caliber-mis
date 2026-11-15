@@ -4340,7 +4340,8 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
   const notifyColumnsChange = onVisibleColumnsChange;
   // A report step (Step 1, Step 2...) is a fixed table, as in the OT report: every column, no saved layout to hide one.
-  visibleColumnKeys = stepLook ? columns.map((column) => column.key) : appliedColumns;
+  // A column marked printOnly is left off the screen and kept in Smart Print, PDF and Excel.
+  visibleColumnKeys = stepLook ? columns.filter((column) => !column.printOnly).map((column) => column.key) : appliedColumns;
   onVisibleColumnsChange = keys => { applyColumns(keys); notifyColumnsChange?.(keys); };
   if(columns[0]?.key==='requestShift'&&visibleColumnKeys.length)visibleColumnKeys=['requestShift',...visibleColumnKeys.filter(key=>key!=='requestShift')];
   const [columnWidths, setColumnWidth, resetColumnWidths] = useColumnWidths(layoutKey || "report-table", columns);
@@ -4388,7 +4389,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const exportViewRef = useRef(null);
   useEffect(() => {
     if (!onExportViewChange) return;
-    const next = {sourceRows: rows, rows: [...sortedRows, ...totalRows], columns: displayedColumns, allColumns: columns};
+    const next = {sourceRows: rows, rows: [...sortedRows, ...totalRows], columns: stepLook ? columns : displayedColumns, allColumns: columns};
     if (!sameReportView(exportViewRef.current, next)) { exportViewRef.current = next; onExportViewChange(next); }
   });
   // A subtotal line (Equipment Deployment) takes no Sr. No.: it shows a dash and the lines after it keep counting on.
