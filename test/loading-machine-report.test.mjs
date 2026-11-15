@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,gapParts,clockTags,clockAt,BANDS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
+import {bandOf,bandShare,idleText,percentWorked,machineShifts,summarise,idleStops,shiftsNotWorked,loadingLines,shiftTimeline,gapParts,clockTags,clockAt,breakdownText,mergePeriods,BANDS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,TONES} from '../shared/loading-machine-report.mjs';
+import {reportBreakdowns,readReportBreakdowns} from '../server/rules/report-pulse-breakdowns.mjs';
 import {normalise} from '../src/operations-report-model.mjs';
 import fs from 'node:fs';
 import {transformWithOxc} from 'vite';
@@ -98,7 +99,10 @@ const waiting=normalise([
  // Pulse shows a breakdown of EX6 from 06:15 to 06:35 India time.
  elb(36,106,'EX6',{pulseBreakdowns:[{reference:'BD-7',description:'Hose burst',start:'2026-12-14T00:45:00.000Z',end:'2026-12-14T01:05:00.000Z',shiftStart:'2026-12-14T00:45:00.000Z',shiftEnd:'2026-12-14T01:05:00.000Z'}]})
 ]);
-const ex6=machineShifts(waiting,{assets:[...assets,{id:'106',door:'EX6',site:'Site A',kind:'equipment',group:'Excavator',name:'SAMPLE EXCAVATOR'}]}).find(e=>e.door==='EX6');
+const ex6Assets=[...assets,{id:'106',door:'EX6',site:'Site A',kind:'equipment',group:'Excavator',name:'SAMPLE EXCAVATOR'}];
+// EX6 as Pulse is read when the report opens with no breakdown of it, and as its ELB card copied the breakdown when saved.
+const ex6=machineShifts(waiting,{assets:ex6Assets,pulseBreakdowns:[]}).find(e=>e.door==='EX6');
+const ex6bd=machineShifts(waiting,{assets:ex6Assets}).find(e=>e.door==='EX6');
 
 test('an idle stop names the tipper trips delayed in it and the breakdown Pulse shows inside it',()=>{
  assert.equal(WAIT_LIMIT,15,'the limit of the Trip Timing & Gap Report');
@@ -107,11 +111,11 @@ test('an idle stop names the tipper trips delayed in it and the breakdown Pulse 
   // T1 unloaded at 06:00 and was loaded again only at 06:40: empty for 10 minutes of this stop.
   ['05:52','06:10',18,'b3',[['T1','06:00','06:40',40,10]],''],
   // T1 and T3 stood empty through the stop. T2 took 14 minutes from unloading to loading, which is no delay; T4 unloaded only 3 minutes before the stop ended.
-  ['06:10','06:40',30,'b4',[['T1','06:00','06:40',40,30],['T3','06:20','06:48',28,20]],'BD-7 · Hose burst · 06:15 to 06:35'],
+  ['06:10','06:40',30,'b4',[['T1','06:00','06:40',40,30],['T3','06:20','06:48',28,20]],''],
   ['06:48','06:55',7,'b1',[['T4','06:37','06:55',18,7]],'']
  ]);
  assert.equal(ex6.delayed,3,'T1 is one trip although it stood through two stops');
- assert.deepEqual(ex6.bdPeriods.map(p=>[p.from,p.to]),[[75,95]]);
+ assert.deepEqual(ex6.bdPeriods,[]);
  // A wait that runs backwards (the row above was unloaded after this loading) or is longer than a shift is not judged.
  assert.equal(find('EX1').stopList.find(s=>s.band==='b4').delayed.map(d=>d.door+' '+d.waited).join(),'V9002 30');
  assert.equal(find('EX1').delayed,1);
@@ -133,7 +137,7 @@ test('the shift time-line lays the gaps on the hours of the shift, through midni
  // two loadings of 4 minutes; the 7-minute stop from 06:48 is 5 green and 2 orange up to 06:55.
  assert.deepEqual(hour(line.hours[1]),['06:00 to 07:00',5,{green:2,orange:2,red:1},18,27,10,5,'red']);
  assert.deepEqual(hour(line.hours[2]),['07:00 to 08:00',0,{green:0,orange:0,red:0},0,0,0,60,'rest']);
- assert.equal(line.hours.length,8);assert.deepEqual(line.breakdowns.map(b=>b.label),['BD-7 · Hose burst · 06:15 to 06:35']);
+ assert.equal(line.hours.length,8);assert.deepEqual(line.breakdowns,[]);
  const night=shiftTimeline(find('EX1','S3'));
  assert.deepEqual(night.pieces.map(p=>[p.from,p.to,p.fromClock,p.toClock]),[[170,176,'23:50','23:56'],[176,190,'23:56','00:10']]);
  assert.deepEqual([night.marks[0].clock,night.marks[3].clock,night.marks.at(-1).clock,night.hours[3].label],['21:00','00:00','05:00','00:00 to 01:00']);
@@ -289,9 +293,12 @@ test('pressing a machine opens its shift time-line: the strip, then every loadin
 test('a piece of the strip reads in full: the loading before, each turn of colour by the clock, the next loading',async()=>{
  const source=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
  const start=source.indexOf('export function pieceText'),end=start+source.slice(start).search(/\r?\n\}\r?\n/)+3;
- const pieceText=new Function('BAND_LABELS','plural',source.slice(start,end).replace('export ','')+';return pieceText;')({b4:'20+ min'},(n,one)=>n+' '+one+(n===1?'':'s'));
+ const pieceText=new Function('BAND_LABELS','plural',source.slice(start,end).replace('export ','')+';return pieceText;')({b1:'5 to 10 min',b4:'20+ min'},(n,one)=>n+' '+one+(n===1?'':'s'));
  const p=shiftTimeline(ex6).pieces.find(x=>x.minutes===30);
- assert.equal(pieceText(p),'06:10 loading (T5) → 06:15 turned orange → 06:30 turned red → 06:40 next loading (T1) · 30 min idle · 20+ min · 2 tipper trips delayed · Breakdown in Pulse: BD-7 · Hose burst · 06:15 to 06:35');
+ assert.equal(pieceText(p),'06:10 loading (T5) → 06:15 turned orange → 06:30 turned red → 06:40 next loading (T1) · 30 min idle · 20+ min · 2 tipper trips delayed');
+ // The same gap with 20 minutes of breakdown in it: the breakdown and its end take their place among the turns.
+ const q=shiftTimeline(ex6bd).pieces.find(x=>x.gap===30);
+ assert.equal(pieceText(q),'06:10 loading (T5) → 06:15 breakdown → 06:35 breakdown over, orange → 06:40 next loading (T1) · 30 min between loadings, 20 min of it in breakdown · 10 min idle · 5 to 10 min · 1 tipper trip delayed · Breakdown in Pulse: BD-7 · Hose burst · 06:15 to 06:35');
 });
 
 test('screens asking for the same dates share one reading of the log books; Refresh reads again',async()=>{
@@ -309,4 +316,94 @@ test('screens asking for the same dates share one reading of the log books; Refr
  const other=operationsData('2026-11-02','2026-11-13','token',false);assert.equal(calls,3,'other dates are another reading');
  other.release();assert.equal(stopped,1,'a reading nobody waits for is stopped');
  assert.deepEqual(await refreshed.promise,{records:[],call:2});refreshed.release();assert.equal(stopped,1,'a finished reading is not stopped');
+});
+
+// Owner, 15 Nov 2026: "if a vehicle is BD for around 15 minutes, 1 hour or 2 hours, it should show in black. And upon
+// clicking it, it should show the reason of breakdown also." Then: "Yes, take BD out of idle and build it".
+test('a breakdown is black on the strip and the idle clock stops while it lasts',()=>{
+ assert.deepEqual(mergePeriods([{from:30,to:50},{from:10,to:20},{from:15,to:35}]),[{from:10,to:50}]);
+ // 10 idle minutes (5 green, 5 orange), 30 minutes of breakdown, then the clock goes on from 10: orange till its 20th minute, then red.
+ assert.deepEqual(gapParts(0,60,[{from:10,to:40}]),[{from:0,to:5,tone:'green'},{from:5,to:10,tone:'orange'},{from:10,to:40,tone:'bd'},{from:40,to:50,tone:'orange'},{from:50,to:60,tone:'red'}]);
+ // A breakdown at the start of the gap: the clock starts when it ends.
+ assert.deepEqual(gapParts(0,30,[{from:-10,to:20}]),[{from:0,to:20,tone:'bd'},{from:20,to:25,tone:'green'},{from:25,to:30,tone:'orange'}]);
+ assert.deepEqual(gapParts(0,30,[{from:0,to:30}]),[{from:0,to:30,tone:'bd'}],'a gap wholly in breakdown is all black');
+ assert.deepEqual(gapParts(0,30,[{from:40,to:50}]),gapParts(0,30),'a breakdown outside the gap changes nothing');
+});
+
+test('the minutes in breakdown are taken out of the idle stop, its band and the tipper trips delayed',()=>{
+ const stops=ex6bd.stopList.map(s=>[s.from.clock,s.to.clock,s.gap,s.bdMinutes,s.minutes,s.band,s.delayed.map(d=>[d.door,d.inside]),s.breakdown]);
+ assert.deepEqual(stops,[
+  ['05:52','06:10',18,0,18,'b3',[['T1',10]],''],
+  // 30 minutes between two loadings, 20 of them in breakdown: a 10-minute stop. T1 stood empty 10 idle minutes of it; T3,
+  // unloaded at 06:20, stood empty only 5 minutes outside the breakdown, which is no delay.
+  ['06:10','06:40',30,20,10,'b1',[['T1',10]],'BD-7 · Hose burst · 06:15 to 06:35'],
+  ['06:48','06:55',7,0,7,'b1',[['T4',7]],'']
+ ]);
+ assert.deepEqual([ex6bd.b1,ex6bd.b3,ex6bd.b4,ex6bd.idleMinutes,ex6bd.longest,ex6bd.bdMinutes,ex6bd.delayed],[2,1,0,35,18,20,2]);
+ assert.equal(summarise([ex6bd,ex6],'machine').total.bdMinutes,20);
+ assert.deepEqual(ex6bd.bdPeriods.map(b=>[b.from,b.to,b.minutes,b.fromClock,b.toClock,b.reference,b.reason]),[[75,95,20,'06:15','06:35','BD-7','Hose burst']]);
+});
+
+test('the strip draws the breakdown black with its clock times, and the hours count its minutes',()=>{
+ const line=shiftTimeline(ex6bd);
+ assert.deepEqual(line.breakdowns.map(b=>[b.from,b.to]),[[75,95]]);
+ const gap=line.pieces.find(p=>p.gap===30);
+ assert.deepEqual(gap.parts,[{from:70,to:75,tone:'green'},{from:75,to:95,tone:'bd'},{from:95,to:100,tone:'orange'}]);
+ assert.deepEqual(gap.turns,[],'the breakdown and its end are marked by the breakdown itself');
+ assert.deepEqual(gap.events.map(e=>e.clock+' '+e.words),['06:15 breakdown','06:35 breakdown over, orange']);
+ const hour=line.hours[1];
+ assert.deepEqual([hour.green,hour.orange,hour.red,hour.bd,hour.rest],[18,17,0,20,5]);
+ assert.equal(line.bdMinutes,20);
+ // The breakdown's tags come first.
+ assert.deepEqual(clockTags(line,{width:2,lanes:3}).filter(g=>g.breakdown).map(g=>g.text),['06:15 BD','06:35 BD over']);
+ assert.equal(breakdownText(line.breakdowns[0]),'Breakdown · 06:15 to 06:35 · 20 min in this shift · Pulse BD-7 · Reason: Hose burst · Restored (from 14/12 06:15 to 14/12 06:35)');
+ assert.equal(breakdownText({...line.breakdowns[0],minutes:135,ongoing:true}),'Breakdown · 06:15 to 06:35 · 2 h 15 min in this shift · Pulse BD-7 · Reason: Hose burst · Still open in Pulse (started 14/12 06:15)');
+});
+
+test('Pulse read when the report opens wins over the copy on the ELB card, and a machine down all shift is drawn black',()=>{
+ const feed=[
+  {ref:'BD-21',site:'Site A',door:'EX6',start:'2026-12-14T00:40:00.000Z',end:'2026-12-14T01:10:00.000Z',status:'Closed',reason:'Engine overheating'},
+  {ref:'BD-22',site:'Site B',door:'EX6',start:'2026-12-14T00:40:00.000Z',end:null,status:'Ongoing',reason:'Another site'},
+  // EX5 has no ELB and no loading: Pulse shows it down for the whole shift, 05:00 to 13:00 India time, still open.
+  {ref:'BD-23',site:'Site A',door:'EX5',start:'2026-12-13T22:00:00.000Z',end:null,status:'Ongoing',reason:'Gear box'}
+ ];
+ const live=machineShifts(waiting,{assets:ex6Assets,pulseBreakdowns:feed}).find(e=>e.door==='EX6');
+ assert.deepEqual(live.bdPeriods.map(b=>[b.reference,b.fromClock,b.toClock,b.reason]),[['BD-21','06:10','06:40','Engine overheating']],'the card copy BD-7 is not used');
+ assert.deepEqual(['minutes','band'].map(k=>live.lines.find(l=>l.gap===30)[k]),[0,'ok'],'a gap wholly in breakdown is no idle stop');
+ const all=machineShifts(records,{assets,fleet,batches,pulseBreakdowns:feed,now:Date.parse('2026-12-14T09:00:00.000Z')});
+ const ex5=all.find(e=>e.door==='EX5');
+ assert.deepEqual([ex5.state,ex5.statusLabel,ex5.bdMinutes],['breakdown','Breakdown in Pulse',480]);
+ const line=shiftTimeline(ex5);
+ assert.deepEqual([line.pieces.length,line.empty,line.breakdowns.map(b=>[b.from,b.to,b.ongoing])],[0,{from:0,to:480},[[0,480,true]]]);
+ assert.equal(shiftTimeline(find('EX5')),null,'without Pulse there is nothing to draw');
+});
+
+test('the report reads Pulse breakdowns of the chosen dates and sites only, and never waits long for Pulse',async()=>{
+ const rows=[
+  {ref:'A',site:'Site A',door:'EX1',start:'2026-11-07 08:10',closedAt:'2026-11-07 10:25',status:'Closed',description:'Hydraulic hose burst'},
+  {ref:'B',site:'Site A',door:'EX1',start:'2026-10-01 08:10',closedAt:'2026-10-01 09:00'},
+  {ref:'C',site:'Site Z',door:'EX1',start:'2026-11-07 08:10',closedAt:'—'},
+  {ref:'D',site:'Site A',door:'EX2',start:'2026-11-07 08:10',closedAt:'',vehicleIdle:true,idealApprovedAt:'2026-11-07 09:00',reason:'Pump'},
+  {ref:'E',site:'Site A',door:'EX3',start:'2026-11-07 08:10',archivedAt:'2026-11-08'},
+  {ref:'F',site:'Site A',door:'EX4',start:'2026-11-05 08:10',closedAt:'—',category:'Electrical'}
+ ];
+ const list=reportBreakdowns(rows,{from:'2026-11-07',to:'2026-11-07',siteAllowed:site=>site!=='Site Z'});
+ assert.deepEqual(list.map(r=>[r.ref,r.start,r.end,r.status,r.reason]),[
+  ['A','2026-11-07T02:40:00.000Z','2026-11-07T04:55:00.000Z','Closed','Hydraulic hose burst'],
+  // Moved to idle in Pulse: the breakdown ends when the machine went idle.
+  ['D','2026-11-07T02:40:00.000Z','2026-11-07T03:30:00.000Z','Restored','Pump'],
+  ['F','2026-11-05T02:40:00.000Z',null,'Ongoing','Electrical']
+ ]);
+ const slow=await readReportBreakdowns(()=>new Promise(()=>{}),{from:'2026-11-07',to:'2026-11-07',waitMs:20});
+ assert.deepEqual(slow,{pulseBreakdowns:null,pulseBreakdownsError:'Pulse did not answer in time.'});
+ const fine=await readReportBreakdowns(async()=>rows,{from:'2026-11-07',to:'2026-11-07'});
+ assert.equal(fine.pulseBreakdowns.length,4);
+ const route=fs.readFileSync(new URL('../server/routes/log-book.mjs',import.meta.url),'utf8');
+ assert.match(route,/!withScans&&pulseMasterSync\?await readReportBreakdowns\(/);
+ assert.match(route,/chassis:text\(r\.chassisNo\|\|r\.chassis\)/);
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/machineShifts\(records,\{assets,fleet,batches,filters,pulseBreakdowns\}\)/);
+ assert.match(screen,/className=\{'lm-bd'/);
+ assert.match(screen,/breakdownText\(saidBd\)/);
+ assert.match(fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8'),/pulseBreakdowns=\{data\.pulseBreakdowns\?\?null\}/);
 });

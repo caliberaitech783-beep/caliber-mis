@@ -1,4 +1,5 @@
 import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
+import {readReportBreakdowns} from '../rules/report-pulse-breakdowns.mjs';
 import {attachTransferHistory,assetAtSiteOnDate,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
 import {reportLane,reportKey} from '../services/report-lane.mjs';
@@ -293,7 +294,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const allRecords=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
      const records=withScans?allRecords:logBooksForTiming(allRecords);
      const masters=(await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;
-     const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r),group:text(r.group||r.equipmentGroup),name:text(r.equipmentName||r.equipment||r.name)}));
+     const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r),group:text(r.group||r.equipmentGroup),name:text(r.equipmentName||r.equipment||r.name),chassis:text(r.chassisNo||r.chassis)}));
      // Loading Equipment-wise Report: the stage of every batch in the dates, and the site machines of those batches with no saved ELB.
      const staged=(await pool.query("SELECT to_regclass('mis_vlb_batch_fleet') AS fleet")).rows[0]?.fleet;
      const batches=staged?(await pool.query("SELECT site,book_date::text AS date,shift,CASE WHEN closed_at IS NOT NULL THEN 'closed' ELSE stage END AS stage FROM mis_vlb_batches WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date>=$$2026-11-01$$ AND book_date BETWEEN $1 AND $2 ORDER BY book_date,id",[from,to])).rows.filter(r=>siteAllowed(req.logBookScope,r.site)):[];
@@ -305,7 +306,10 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      // scanConnected is null when the scanned cards were not asked for, so a screen cannot read it as "not connected".
      return {records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),batches,fleet,cards,scanConnected:withScans?Boolean(exists?.cards&&exists?.batches):null};
      });
-     res.set('Cache-Control','no-store').json(body);
+     // Loading Equipment-wise Report: the breakdowns in Pulse now, for each person apart (Pulse reads are per sign-in and
+     // reused for a short while), so that a breakdown entered or closed after the ELB was saved still shows.
+     const pulse=!withScans&&pulseMasterSync?await readReportBreakdowns(()=>pulseMasterSync.readBreakdownRequests({actor:req.session.login||req.session.name}),{from,to,siteAllowed:site=>siteAllowed(req.logBookScope,site)}):{pulseBreakdowns:null,pulseBreakdownsError:withScans?'':'Pulse is not connected.'};
+     res.set('Cache-Control','no-store').json({...body,...pulse});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
  app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
