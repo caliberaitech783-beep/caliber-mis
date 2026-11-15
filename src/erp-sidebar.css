@@ -1,0 +1,86 @@
+/* Pulse-II menu, 15 Nov 2026: every row starts on one straight left edge (no indented
+   sub-tabs), tabs (Masters, MIS, Reports…) in gold, the pages under them in white,
+   report sub-groups in aqua, and a smart search that lists matching pages with their path.
+   Selectors start at the sidebar's id so they win over the older erp-layout.css rules. */
+.app.erp-shell>aside#admin-primary-navigation.erp-sidebar{
+  --nav-tab:#ffd66b;--nav-sub:#ffffff;--nav-group:#9fe7ff;--nav-dim:#ffffffb8;--nav-line:#ffffff2e;--nav-hover:#ffffff1a;--nav-row-x:10px;
+  background:linear-gradient(#170b3040,#170b3040),linear-gradient(115deg,var(--brand-purple,#522e90),var(--brand-red,#f04e53))!important;
+  padding:20px 12px 14px!important;scrollbar-width:thin;scrollbar-color:#ffffff4d transparent}
+#admin-primary-navigation .erp-sidebar-brand{margin:0 2px 16px;padding:0}
+#admin-primary-navigation .erp-sidebar-brand .erp-brand-icon{width:44px;height:44px;flex-basis:44px}
+
+/* Hide sidebar + Auto-hide share one row. */
+#admin-primary-navigation .erp-sidebar-controls{display:flex;gap:6px;margin:0 0 12px}
+#admin-primary-navigation .erp-sidebar-controls .erp-pin{flex:1 1 0;min-width:0;margin:0;padding:8px 6px;gap:6px;font-size:12px;font-weight:600;white-space:nowrap;border-radius:9px}
+#admin-primary-navigation .erp-sidebar-controls .erp-autohide[aria-pressed=true]{background:#ffffff26;border-color:#ffffff70}
+#admin-primary-navigation .erp-switch{position:relative;flex:0 0 22px;width:22px;height:12px;border-radius:12px;background:#ffffff40;transition:background .18s}
+#admin-primary-navigation .erp-switch::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:#fff;transition:transform .18s}
+#admin-primary-navigation .erp-autohide[aria-pressed=true] .erp-switch{background:var(--nav-tab)}
+#admin-primary-navigation .erp-autohide[aria-pressed=true] .erp-switch::after{transform:translateX(10px)}
+
+/* Smart search box. */
+#admin-primary-navigation .erp-menu-search-wrap{margin:0 0 14px}
+#admin-primary-navigation .erp-menu-search{margin:0;padding:0 8px 0 10px;gap:8px;min-height:38px;border-radius:10px;background:#ffffff1f;border:1px solid #ffffff40;transition:background .18s,border-color .18s,box-shadow .18s}
+#admin-primary-navigation .erp-menu-search:focus-within{background:#ffffff2b;border-color:var(--nav-tab);box-shadow:0 0 0 3px #ffd66b38}
+#admin-primary-navigation .erp-menu-search input{font-size:13px!important;padding:9px 0!important;outline:none}
+#admin-primary-navigation .erp-menu-search kbd{flex:0 0 auto;font-family:inherit;font-size:10px;font-weight:700;line-height:1;letter-spacing:.3px;padding:4px 6px;border-radius:5px;border:1px solid #ffffff45;background:#ffffff14;color:var(--nav-dim)!important;white-space:nowrap}
+#admin-primary-navigation .erp-search-clear{display:grid;place-items:center;flex:0 0 22px;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:#ffffff26;cursor:pointer}
+#admin-primary-navigation .erp-search-clear:hover{background:#ffffff40}
+
+/* One straight left edge for every row. */
+.app.erp-shell>#admin-primary-navigation>nav{gap:2px!important}
+#admin-primary-navigation .erp-submenus,#admin-primary-navigation .erp-nested-menu>.erp-submenus{margin:0!important;padding:0!important;border:0!important;gap:1px!important}
+.app.erp-shell>#admin-primary-navigation .erp-page,
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle,
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu>summary,
+.app.erp-shell>#admin-primary-navigation nav>button[data-nav="announcements"]{box-sizing:border-box;width:100%;min-height:38px;margin:0;padding:8px var(--nav-row-x)!important;gap:10px;line-height:1.3}
+.app.erp-shell>#admin-primary-navigation .erp-submenus .erp-page{padding-left:var(--nav-row-x)!important}
+
+/* Tabs: gold. */
+.app.erp-shell>#admin-primary-navigation .erp-nav-group{margin-top:6px}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle{color:var(--nav-tab)!important;font-size:12px!important;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;background:transparent!important}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle svg{color:var(--nav-tab)!important;opacity:.85;flex:0 0 auto}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle span{display:flex;align-items:center;gap:7px}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle.holds-active:not([aria-expanded=true]) span::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--nav-tab)}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle[aria-expanded=true]{border-radius:9px 9px 0 0!important;border-color:transparent!important;border-bottom-color:#ffd66b59!important;margin-bottom:4px}
+.app.erp-shell>#admin-primary-navigation .erp-group-toggle:hover{background:var(--nav-hover)!important}
+
+/* Sub-tabs (pages): white. */
+.app.erp-shell>#admin-primary-navigation .erp-page,
+.app.erp-shell>#admin-primary-navigation nav>button[data-nav="announcements"]{color:var(--nav-sub)!important;font-size:14px!important;font-weight:600}
+.app.erp-shell>#admin-primary-navigation .erp-page svg,
+.app.erp-shell>#admin-primary-navigation nav>button[data-nav="announcements"] svg{flex:0 0 15px;width:15px;height:15px;opacity:.8}
+.app.erp-shell>#admin-primary-navigation .erp-page:hover{background:var(--nav-hover)!important;border-color:#ffffff24!important}
+.app.erp-shell>#admin-primary-navigation .erp-page.selected{background:#fff!important;border-color:#fff!important;box-shadow:inset 3px 0 0 var(--nav-tab),0 4px 14px #1a0b3333!important}
+.app.erp-shell>#admin-primary-navigation .erp-page.selected,
+.app.erp-shell>#admin-primary-navigation .erp-page.selected *{color:#522e90!important;opacity:1}
+
+/* Report sub-groups (Manpower & OT…): aqua, their pages sit on the same left edge in a soft panel. */
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu{border-radius:10px}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu>summary{display:flex;justify-content:space-between;color:var(--nav-group)!important;font-size:13.5px!important;font-weight:700;border-radius:9px;cursor:pointer}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu>summary *{color:var(--nav-group)!important}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu>summary svg{flex:0 0 auto;transition:transform .18s;transform:rotate(-90deg)}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu[open]>summary svg{transform:none}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu>summary:hover{background:var(--nav-hover)}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu[open]{background:#ffffff0f}
+.app.erp-shell>#admin-primary-navigation .erp-nested-menu[open]>summary{background:transparent}
+.app.erp-shell>#admin-primary-navigation .erp-nested-pages .erp-page{font-size:13px!important;font-weight:500;min-height:34px}
+
+/* Smart search results. */
+#admin-primary-navigation .erp-search-results,#admin-primary-navigation [role=listbox]{min-width:0;max-width:100%}
+#admin-primary-navigation .erp-search-results{display:flex;flex-direction:column;gap:2px}
+#admin-primary-navigation .erp-search-count{margin:0 var(--nav-row-x) 6px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--nav-tab)!important}
+#admin-primary-navigation .erp-search-hint{margin:2px var(--nav-row-x) 10px;font-size:12px;line-height:1.45;color:var(--nav-dim)!important}
+#admin-primary-navigation [role=listbox]{display:flex;flex-direction:column;gap:2px}
+#admin-primary-navigation .erp-search-result{position:relative;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;align-content:center;column-gap:8px;row-gap:1px;width:100%;min-width:0;min-height:0;height:auto;margin:0;padding:7px var(--nav-row-x);border:1px solid transparent;border-radius:9px;background:transparent;text-align:left;cursor:pointer;font:inherit;line-height:1.25}
+#admin-primary-navigation .erp-search-result-label{display:block;min-width:0;white-space:normal;font-size:14px;font-weight:600;line-height:1.25;overflow-wrap:anywhere;color:var(--nav-sub)!important}
+#admin-primary-navigation .erp-search-result-path{display:block;grid-column:1;min-width:0;white-space:normal;margin:0;font-size:11px;font-weight:600;line-height:1.25;letter-spacing:.4px;overflow-wrap:anywhere;color:var(--nav-tab)!important;opacity:.9}
+#admin-primary-navigation .erp-search-enter{grid-column:2;grid-row:1/span 2}
+#admin-primary-navigation .erp-search-result mark{background:#ffd66b;color:#3b1d5c!important;border-radius:3px;padding:0 1px}
+#admin-primary-navigation .erp-search-result.active{background:#fff;border-color:#fff;box-shadow:inset 3px 0 0 var(--nav-tab),0 4px 14px #1a0b3333}
+#admin-primary-navigation .erp-search-result.active :is(.erp-search-result-label,.erp-search-enter){color:#522e90!important}
+#admin-primary-navigation .erp-search-result.active .erp-search-result-path{color:#9a3d7a!important}
+#admin-primary-navigation .erp-search-result.active mark{background:#ffe7a3}
+
+#admin-primary-navigation footer{margin-top:18px;padding:14px var(--nav-row-x) 0}
+@media(prefers-reduced-motion:reduce){#admin-primary-navigation *{transition:none!important}}
