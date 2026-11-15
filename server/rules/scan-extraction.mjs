@@ -47,8 +47,8 @@ export function matchScanDraft(draft,raw,kind,masters){
 }
 
 export const scanEquipmentMasters=masters=>masters.filter(r=>r.master_name==='Equipment master'&&assetBookKind(r.record_data)==='equipment').map(r=>({...r.record_data,id:String(r.id),kind:'equipment',site:r.record_data.currentLocation||r.record_data.site||r.record_data.location||''}));
-export function extractScanResult(result,kind,masters){
- const extracted=extractCard(result.text,kind,masters,result),data=result.extraction||result.hybrid;
+export function extractScanResult(result,kind,masters,{lmv=false}={}){
+ const extracted=extractCard(result.text,kind,masters,result,{lmv}),data=result.extraction||result.hybrid;
  if(result.firstScanReadRecovery)extracted.raw.firstScanReadRecovery=result.firstScanReadRecovery;
  if(data){
   extracted.raw[result.extraction?'gemini':'hybrid']=data;
@@ -66,7 +66,7 @@ export function extractScanResult(result,kind,masters){
  }
  return extracted;
 }
-export function extractCard(text,kind,masters=[],hints={}){
+export function extractCard(text,kind,masters=[],hints={},{lmv=false}={}){
  text=String(text||'');const pick=pattern=>{const m=text.match(new RegExp('(?:^|\\n|\\b)(?:'+pattern+')[ \t]*(?:[:=#][ \t]*|[ \t]+)([^\\n]+)','i'));return m?.[1]?.split(/\b(?:CALIBER\s*ID|FORM\s*A|TRIP\s+CARD|DRIVER\s*NAME|DOOR\s*NO\.?)\b/i)[0]?.trim()||'';};
  const numeric=pattern=>{const raw=normalizeScannedMeter(pick(pattern).replaceAll(',',''));return /^\d+(?:\.\d+)?$/.test(raw)?raw:''};
  const rawDate=(hints.handwritingCandidates?.bookDate?.conflict||(hints.provider==='paddleocr'&&hints.handwritingCandidates?.bookDate&&!hints.handwrittenFields?.bookDate))?'':hints.handwrittenFields?.bookDate||pick('book date|date'),m=rawDate.match(/^(\d{1,2})[-/.\s]+(\d{1,2})[-/.\s]+(\d{4}|\d{2})\b/);
@@ -122,7 +122,8 @@ export function extractCard(text,kind,masters=[],hints={}){
   out.draft.tripLocationRuleVersion=1;
   out.raw.shiftRuleVersion=1;
   out.draft.shiftRuleVersion=1;
-  out.draft.shiftHours=CARD_SHIFTS[cardShift]?.hours||'';
+  const readHours=lmv?/^\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)?\s*$/i.exec(hints.handwrittenFields?.shiftHours??pick('shift hours?|shift hrs?'))?.[1]:'';
+  out.draft.shiftHours=readHours||CARD_SHIFTS[cardShift]?.hours||'';
   if(!cardShift){out.draft.shiftId='';out.draft.extractionReviewFields.push('cardShift','shiftHours');}
   out.raw.shiftSelectionStatus=cardShift?'clear':shiftUnclear?'unclear':'missing';
   out.raw.tripLocationRuleVersion=1;

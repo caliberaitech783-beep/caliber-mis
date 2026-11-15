@@ -8,8 +8,8 @@ export function manualShiftHours(input={}){
  if(!Number.isFinite(hours)||hours<=0||hours>24||!validShiftHours(hours,input))throw Object.assign(new Error('Select an 8-hour or 12-hour shift.'),{status:400});
  return hours;
 }
-export function manualShiftWindow(input={},base={},shifts=[]){
- const hours=manualShiftHours({...base,...input}),choice=MANUAL_SHIFTS.find(row=>row.value===input.manualShift);
+export function manualShiftWindow(input={},base={},shifts=[],{flexible=false}={}){
+ const hours=flexible?Number(input.shiftHours):manualShiftHours({...base,...input}),choice=MANUAL_SHIFTS.find(row=>row.value===input.manualShift);
  let selected=base;
  if(['day','night'].includes(input.manualShift)){
   const code=input.manualShift==='day'?'D':'N';
@@ -17,6 +17,7 @@ export function manualShiftWindow(input={},base={},shifts=[]){
   if(matches.length)selected=matches.sort((a,b)=>String(b.effectiveFrom||'').localeCompare(String(a.effectiveFrom||'')))[0];
  }
  const start=String(selected.startTime||selected.start||'').slice(0,5),label=choice?.label||selected.shiftName||selected.name;
+ if(flexible&&(!/^\d{2}:\d{2}$/.test(start)||!Number.isFinite(hours)))return {...selected,name:label,shiftName:label};
  if(!/^\d{2}:\d{2}$/.test(start))throw Object.assign(new Error('Select a Shift Master entry with a valid start time.'),{status:400});
  const [h,m]=start.split(':').map(Number),end=(Math.round((h*60+m)+hours*60))%1440;
  return {...selected,manualShift:input.manualShift,name:label,shiftName:label,startTime:start,endTime:String(Math.floor(end/60)).padStart(2,'0')+':'+String(end%60).padStart(2,'0')};
