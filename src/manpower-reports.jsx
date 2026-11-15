@@ -443,13 +443,15 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
- const query=useMemo(()=>new URLSearchParams(register?{...filters,site:'',shift:'',batch:'',asset:''}:reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId,register]);
+ const query=useMemo(()=>new URLSearchParams(register?{from:filters.from,to:filters.to,view:'attendance'}:reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId,register]);
+ // The register has its own lighter read (only its duties, presence and batches); `view` keeps its result apart from the full report's.
+ const source=(register?'/api/reports/manpower/attendance?':'/api/reports/manpower?')+query;
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
  useEffect(()=>{
   const controller=new AbortController();setError('');setData(null);if(!valid){setBusy(false);return ()=>controller.abort();}setBusy(true);
-  fetch('/api/reports/manpower?'+query,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
+  fetch(source,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal}).then(async response=>{const payload=await response.json();if(!response.ok)throw Error(payload.error||'Unable to load saved manpower records.');return payload;}).then(payload=>{if(!controller.signal.aborted){setData({query,payload});if(!register)setOptions(payload.options);}}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
   return()=>controller.abort();
- },[query,session.token,refresh,valid]);
+ },[query,register,session.token,refresh,valid]);
  const ready=data?.query===query&&valid&&!busy&&!error,report=ready?data.payload:null;
  const siteKey=canonicalSiteName(filters.site),otSites=!report?[]:siteKey?report.otSites.filter(s=>s.siteKey===siteKey):report.otSites;
  // Month and year counts and a driver's history are read for one site at a time, only while that site's drivers are listed.

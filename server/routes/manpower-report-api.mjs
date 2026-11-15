@@ -2,20 +2,27 @@ import {canonicalSiteName} from '../../shared/site-location.mjs';
 import {manpowerFilters,buildManpowerReport,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
+import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
 
 const HISTORY_CARD_FIELDS=['bookDate','location','bookShiftCode','cardShift','shiftName','shiftId','masterShiftStart','door','assetId','employeeId','caliberId','employeeName','openingHmr','closingHmr','openingKmr','closingKmr','completedTrips','totalTrips','scanBatchId','scanCardId'];
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // Slim read for OT look-backs: only the card fields that decide a duty, from all three log books.
-async function slimCards(client,range,sites){
+async function slimCards(client,range,sites,fields=HISTORY_CARD_FIELDS){
  const {rows}=await client.query(`SELECT l.id,l.book_no,l.book_type,l.book_date::text,l.site,l.asset_id,
   (SELECT COALESCE(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])) AS data,
   '[]'::jsonb AS batches
   FROM mis_log_books l WHERE l.book_type IN ('vehicle','equipment','lmv') AND l.deleted_at IS NULL AND l.book_date>=$$2026-11-01$$
   AND l.book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR l.site=ANY($3::text[]))
-  ORDER BY l.book_date,l.id LIMIT 50001`,[range.contextFrom,range.contextTo,sites,HISTORY_CARD_FIELDS]);
+  ORDER BY l.book_date,l.id LIMIT 50001`,[range.contextFrom,range.contextTo,sites,fields]);
  if(rows.length>50000)throw Object.assign(new Error('Earlier duty history is too large to read for this selection. Open one site and try again.'),{status:400});
  return rows;
 }
+// The attendance register needs the duty fields plus the trip rows (trip count), the second operator and ELB trips.
+const ATTENDANCE_CARD_FIELDS=[...HISTORY_CARD_FIELDS,'trips','timeMode','operatorSplit','fleetTrips'];
+// What the register reads of a duty line and of a presence line.
+const DUTY_FIELDS=['id','date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','category','equipment','doors','makeModel','logBook','flag','flagLabel','hours','trips','km','books'];
+const PRESENCE_FIELDS=['date','shift','site','siteKey','employeeKey','employeeId','caliberCode','employeeName','equipment','doors','makeModel','flag','flagLabel','trips','actual'];
+const pick=(row,fields)=>Object.fromEntries(fields.map(k=>[k,row[k]]));
 const MASTER_NAMES=['Equipment master','Shift Master','Employee master','ERP Employee master','C-Dir Employee master','Users & employees'];
 async function reportMasters(client){
  const masters=(await client.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[]) ORDER BY id",[MASTER_NAMES])).rows;
@@ -62,6 +69,44 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    const report=buildManpowerReport({records:[...linked,...visible.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),assets:fromMaster(['Equipment master']),employees:fromMaster(['Employee master','ERP Employee master','C-Dir Employee master','Users & employees']),shifts:fromMaster(['Shift Master']),batches,filters});
    const fleetSites=new Set(report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)).map(s=>s.siteKey));
    return {...report,fleet:report.fleet.filter(m=>fleetSites.has(m.siteKey)),fleetWork:report.fleetWork.filter(w=>fleetSites.has(w.siteKey)),otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),generatedAt:new Date().toISOString()};
+   }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
+   finally{client?.release();}
+   });
+   res.set('Cache-Control','private, no-store').json(body);
+  }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
+ });
+ // Attendance Batch-wise and Month-wise: the same duties as the full report, without the card data, batch list per card,
+ // trip-handover links and tables those two screens never show. Trip counts come from each card's own trip rows, as in
+ // the full report; handover links between cards do not change them.
+ app.get('/api/reports/manpower/attendance',...protect,async(req,res,next)=>{
+  try{
+   const filters=manpowerFilters({from:req.query.from,to:req.query.to});
+   await ensureBooks();
+   const body=await lane.run(reportKey('manpower-attendance',req),async()=>{
+   let client;
+   try{
+   client=await pool.connect();
+   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+   const sites=await filterLogBookSites(client,req.logBookScope);
+   const rows=(await slimCards(client,filters,sites,ATTENDANCE_CARD_FIELDS)).filter(r=>siteAllowed(req.logBookScope,r.site));
+   const {rows:attendance}=await client.query(`SELECT book_date::text AS date,site,shift,employee_id,asset_id,reason,remarks
+    FROM mis_shift_attendance WHERE book_date BETWEEN $1 AND $2 AND ($3::text[] IS NULL OR site=ANY($3::text[]))
+    ORDER BY book_date,site,shift,employee_id LIMIT 50001`,[filters.from,filters.to,req.logBookScope.sites]);
+   if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
+   const masters=await reportMasters(client);
+   const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
+    WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+   await client.query('COMMIT');
+   client.release();client=null;
+   const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
+   const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,batches,filters,parts:'attendance'});
+   const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
+   return {filters:report.filters,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
+    // Only presence the duty lines do not already hold: a zero-trip entry without a card, or the second operator of a card.
+    attendanceEquipment:report.attendanceEquipment.filter(r=>r.actual&&r.employeeKey&&r.shift&&!held.has(dutyKey(r))).map(r=>pick(r,PRESENCE_FIELDS)),
+    attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),
+    otSites:report.otSites.filter(s=>siteAllowed(req.logBookScope,s.site)),attendanceSites:report.attendanceSites.filter(s=>siteAllowed(req.logBookScope,s.site)),
+    exceptions:report.exceptions,notes:report.notes,generatedAt:new Date().toISOString()};
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});throw error;}
    finally{client?.release();}
    });
