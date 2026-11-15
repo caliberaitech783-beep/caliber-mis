@@ -1,6 +1,7 @@
 import {compactLogBookLabel,tripSerialNumber} from './log-book-labels.mjs';
 import {meterCorrectionReport} from './scan-meter-history.mjs';
 import {scanContextIssues} from './scan-batch-context.mjs';
+import {shiftDisplayName} from './shift-master.mjs';
 import {machineLabel,isUnloadingOnlyTrip} from './trip-card-rules.mjs';
 import {matchCardMachine} from './scan-machine-rules.mjs';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
@@ -24,7 +25,7 @@ export function scanBatchReport(batch,cards=[],options=null,{includeAllCards=fal
   const totalTrips=vehicle?(number(data.totalTrips)??sum((data.trips||[]).map(t=>number(t.tripCount)))):null;
   return {id:card.id,ordinal:card.ordinal,saved,deleted,contextIssues,status:deleted?'Deleted log book':contextIssues.length&&card.status!=='rejected'?'Date/site/shift mismatch':card.status==='posted'&&!saved?'Saved values unavailable':states[card.status]||card.status,
    bookNo:card.book_no||'',cardNo:(vehicle?data.aFormNo:data.jobCardNo)||'',bookDate:date(data.bookDate),location:data.location||'',door:data.door||data.doorText||raw.door||'',
-   employeeCode:data.caliberId||employee?.caliberId||employee?.employeeCode||raw.employeeCode||'',employeeName:data.employeeName||employee?.name||raw.employeeName||'',shift:data.shiftName||data.cardShift||'',shiftHours:number(data.shiftHours),workOrder:data.workOrderContract||'',
+   employeeCode:data.caliberId||employee?.caliberId||employee?.employeeCode||raw.employeeCode||'',employeeName:data.employeeName||employee?.name||raw.employeeName||'',shift:shiftDisplayName(data.shiftName)||data.cardShift||'',shiftHours:number(data.shiftHours),workOrder:data.workOrderContract||'',
    openingKmr:number(data.openingKmr),closingKmr:number(data.closingKmr),kilometres:vehicle?(number(data.totalRunningKmr)??difference(data.openingKmr,data.closingKmr)):null,
    openingHmr:number(data.openingHmr),closingHmr:number(data.closingHmr),hours:number(data.totalWorkingHmr)??difference(data.openingHmr,data.closingHmr),trips:totalTrips,openingTrips:number(data.openingTrips),endingTrips:number(data.endingTrips),
    ...meterCorrectionReport(data,data.meterCorrectionHistory||raw.meterCorrectionHistory),filename:card.filename||'',remark:data.remark||'',details:saved?data.trips||[]:[]};

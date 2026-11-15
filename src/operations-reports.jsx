@@ -11,6 +11,7 @@ import {operationReports,requirements,normalise,filterRecords,buildOperationRepo
 import './operations-reports.css';
 import {encodeDateRange,parseDateRange} from './date-range-filter.mjs';
 import {monthStartDate} from '../shared/operational-start.mjs';
+import {shiftDisplayName} from '../shared/shift-master.mjs';
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 // The dashboard shows two of these reports at once (Trip Timing & Gap and Loading Equipment-wise). They ask for the same
 // dates, so the second one shares the first one's reading of the log books instead of reading the month again. A reading
@@ -51,7 +52,7 @@ function SavedOperationReports({session,reportId='daily',onSelect=()=>{},ReportS
  const selected=useMemo(()=>filterRecords(all,effective),[all,filters,id]);
  const report=useMemo(()=>buildOperationReport(id,selected,{...data,filters:effective,monthly}),[id,selected,data,filters,monthly]);
  const set=(key,value)=>setFilters(f=>({...f,[key]:value}));
- const optionRows=[...all,...(data?.cards||[]).map(c=>c.draft||{}),...(data?.assets||[]).map(a=>({location:a.site,assetId:a.id,door:a.door})),...(data?.shifts||[]).map(s=>({location:s.site,shiftId:s.id,shiftName:s.name}))];
+ const optionRows=[...all,...(data?.cards||[]).map(c=>c.draft?{...c.draft,shiftName:shiftDisplayName(c.draft.shiftName)}:{}),...(data?.assets||[]).map(a=>({location:a.site,assetId:a.id,door:a.door})),...(data?.shifts||[]).map(s=>({location:s.site,shiftId:s.id,shiftName:shiftDisplayName(s.name)}))];
  const options=(key,label)=>[...new Map(optionRows.filter(r=>!filters.site||r.location===filters.site).map(r=>[String(r[key]||''),r[label]||r[key]])).entries()].filter(([v])=>v).sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
  const field=(key,label,choices)=> <label>{label}<SmartSelect value={filters[key]} onChange={e=>set(key,e.target.value)} disabled={id==='missing'&&['employee','workOrder'].includes(key)}><option value="">All</option>{choices.map(([value,text])=><option key={value} value={value}>{text}</option>)}</SmartSelect></label>;
  const canExport=Boolean(data)&&!busy&&!error&&valid&&data.reportRange===filters.from+'|'+filters.to;

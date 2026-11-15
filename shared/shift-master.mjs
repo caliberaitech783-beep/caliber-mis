@@ -93,6 +93,14 @@ export function normalizeShiftRecord(record={}){
   };
 }
 
+// One spelling for a shift name, whatever case the Shift Master held when the card was saved: "SHIFT A",
+// "shift a" and "Shift A" all read "Shift A"; "SHIFT DAY" reads "Shift Day". Single letters, roman numerals
+// (I, II, III) and words with a digit (S1) stay in capitals.
+export function shiftDisplayName(name){
+  const text=String(name??'').trim().replace(/\s+/g,' ');
+  return text.replace(/[A-Za-z0-9]+/g,word=>word.length===1||/\d/.test(word)||/^[IVX]+$/i.test(word)?word.toUpperCase():word[0].toUpperCase()+word.slice(1).toLowerCase());
+}
+
 export function shiftIdentity(record={}){
   return `${String(record.site||'').trim().toLowerCase()}|${String(record.shiftCode||defaultShiftCode(record.shiftName)).trim().toLowerCase()}`;
 }

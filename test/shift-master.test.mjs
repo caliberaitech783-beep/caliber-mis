@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
-import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftDurationMinutes,shiftIdentity} from '../shared/shift-master.mjs';
+import {SHIFT_MASTER_DEFAULTS,normalizeShiftRecord,shiftDurationMinutes,shiftIdentity,shiftDisplayName} from '../shared/shift-master.mjs';
+import {normalise} from '../src/operations-report-model.mjs';
 import {displaySiteName,normalizeOperationalSiteFields} from '../shared/region-scope.mjs';
 
 test('supplied Shift Master workbook rows are represented once with the supplied shift times',()=>{
@@ -41,4 +42,18 @@ test('Shift Master is wired into navigation, CRUD, seed data, and Equipment Mast
   assert.match(server,/jayant_shift_timings_0500_v1/);
   assert.match(server,/master==='Equipment master'\|\|master==='Shift Master'/);
   assert.match(server,/normalizeShiftRecord\(record\)/);
+});
+
+test('a shift name reads one way in reports whatever case the Shift Master held when the card was saved',()=>{
+  assert.deepEqual(['SHIFT A','Shift A','shift  a',' SHIFT C ','SHIFT DAY','Shift Night','SHIFT-B','II','iii','S1','Day','',null,undefined].map(shiftDisplayName),
+    ['Shift A','Shift A','Shift A','Shift C','Shift Day','Shift Night','Shift-B','II','III','S1','Day','','','']);
+  const rows=normalise([
+    {id:1,book_no:'B1',book_type:'vehicle',data:{bookDate:'2026-11-07',shiftName:'Shift A',trips:[]}},
+    {id:2,book_no:'B2',book_type:'vehicle',data:{bookDate:'2026-11-06',shiftName:'SHIFT A',trips:[]}},
+  ]);
+  assert.deepEqual(rows.map(r=>r.shiftName),['Shift A','Shift A']);
+  const screen=readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
+  assert.match(screen,/shiftName:shiftDisplayName\(s\.name\)/);
+  const scan=readFileSync(new URL('../shared/scan-batch-report.mjs',import.meta.url),'utf8');
+  assert.match(scan,/shift:shiftDisplayName\(data\.shiftName\)\|\|data\.cardShift/);
 });
