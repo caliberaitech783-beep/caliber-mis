@@ -82,7 +82,8 @@ test('server and interface wire submission, both PM actions, audit, notification
   assert.match(server,/action:'Submit vehicle transfer'/);
   assert.match(server,/action:'Release vehicle from source'/);
   assert.match(server,/action:'Verify vehicle at destination'/);
-  assert.match(server,/action:'Accept vehicle at destination'/);
+  assert.match(server,/action='Accept vehicle at destination'/);
+  assert.match(server,/action:'Accept vehicle at destination \(waiting for Pulse\)'/,'acceptance goes to Pulse first');
   assert.match(server,/eventType:'Vehicle transfer'/);
   assert.match(server,/vehicleTransferAuditDetails/);
   assert.match(server,/VEHICLE_TRANSFER_PM_ROLES=\['Project Manager','Production Manager'\]/);

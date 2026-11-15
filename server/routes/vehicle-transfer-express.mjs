@@ -28,9 +28,13 @@ export async function completeExpressTransfer(client,{transferId,approvedBy,requ
  const {rows}=await client.query(`SELECT id,record_data FROM master_records WHERE id=$1 AND master_name='Vehicle transfers' FOR UPDATE`,[transferId]);
  const before=rows[0]?.record_data;if(!before)otpFail('Vehicle transfer not found.',404);
  if(!PENDING.includes(vehicleTransferStatus(before)))otpFail('This transfer is no longer pending.',409);
- const equipmentRows=await client.query(`SELECT id,record_data FROM master_records WHERE master_name='Equipment master' FOR UPDATE`);
- const equipmentRow=equipmentRows.rows.find(row=>transferMatchesEquipment(before,{id:row.id,...row.record_data}));
- if(!equipmentRow)otpFail('The matching asset was not found in the Equipment master. Correct the master identity before transferring.',409);
+ // Only this asset's row is locked: Pulse is asked inside this transaction, and locking the whole
+ // Equipment master would hold up the hourly copy and other transfers while Pulse answers.
+ const equipmentRows=await client.query(`SELECT id,record_data FROM master_records WHERE master_name='Equipment master'`);
+ const match=equipmentRows.rows.find(row=>transferMatchesEquipment(before,{id:row.id,...row.record_data}));
+ if(!match)otpFail('The matching asset was not found in the Equipment master. Correct the master identity before transferring.',409);
+ const equipmentRow=(await client.query(`SELECT id,record_data FROM master_records WHERE id=$1 AND master_name='Equipment master' FOR UPDATE`,[match.id])).rows[0];
+ if(!equipmentRow)otpFail('The asset changed in the Equipment master while it was transferred. Try again.',409);
  const at=new Date().toISOString();
  const pulse=pulseWriter?await pulseWriter.completeTransfer({transfer:before,equipment:{id:equipmentRow.id,...equipmentRow.record_data},approvedBy,requester}):{mode:'local-only'};
  const updatedEquipment=applyAcceptedVehicleTransfer(equipmentRow.record_data,before,{acceptedAt:at,acceptedBy:`Express OTP transfer (${requester})`});

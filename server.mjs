@@ -17,6 +17,8 @@ import {createEquipmentMismatchWorker,registerEquipmentMismatch} from './server/
 import {createAutomationCentre,registerAutomationCentre} from './server/routes/automation-centre.mjs';
 import {automationOn,configureAutomationSwitches} from './server/services/automation-switches.mjs';
 import {createPulseWriter} from './server/rules/pulse-writer.mjs';
+import {createPulseTransferSwitch} from './server/services/pulse-transfer-switch.mjs';
+import {acceptancePeople,completeAcceptance,createTransferPulseQueue,findTransferEquipment,queueAcceptance} from './server/rules/vehicle-transfer-acceptance.mjs';
 import {registerPulsePending,remindPendingPulse} from './server/routes/pulse-pending.mjs';
 import {sendDeletionOtp as sendScopedDeletionOtp,sendReleaseOtp} from './server/services/deletion-whatsapp.mjs';
 import {registerReleaseOtp} from './server/routes/release-otp.mjs';
@@ -4643,7 +4645,10 @@ async function syncOracleEquipmentTransfers(fromDate=null){
         await client.query(`INSERT INTO master_records (master_name,record_data)
           SELECT 'Vehicle transfers',value FROM jsonb_array_elements($1::jsonb) AS value`,[JSON.stringify(transferRecords)]);
       }
-      const equipmentRows=await client.query(`SELECT id,record_data FROM master_records
+      // While vehicle transfers go to Pulse, Pulse decides every vehicle's site: Oracle transfers
+      // are kept as history only and no longer move a vehicle here (it would move back within the hour).
+      const sitesFromPulse=await pulseMasterWriter.transferMode()!=='off';
+      const equipmentRows=sitesFromPulse?{rows:[]}:await client.query(`SELECT id,record_data FROM master_records
         WHERE master_name='Equipment master' FOR UPDATE`);
       const changed=[];
       for(const row of equipmentRows.rows){
@@ -4661,7 +4666,7 @@ async function syncOracleEquipmentTransfers(fromDate=null){
         VALUES ('oracle_equipment_transfer_sync',$1,NOW())
         ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()`,[JSON.stringify({transfers:transferRecords.length,equipmentUpdated:changed.length})]);
       await client.query('COMMIT');
-      return {transfersImported:transferRecords.length,equipmentUpdated:changed.length,fromDate};
+      return {transfersImported:transferRecords.length,equipmentUpdated:changed.length,fromDate,...(sitesFromPulse?{sitesFromPulse:true,note:'Vehicle sites are taken from Pulse while vehicle transfers go to Pulse; Oracle transfers were kept as history only.'}:{})};
     }catch(error){
       await client.query('ROLLBACK');
       throw error;
@@ -5192,7 +5197,8 @@ app.get('/api/vehicle-transfers',requireSession,async(req,res,next)=>{
       .map((record)=>({...record,
         canApproveSource:vehicleTransferStatus(record)===VEHICLE_TRANSFER_STATUS.SOURCE_APPROVAL&&transferSiteActionAllowed(context,record.source),
         canVerifyDestination:vehicleTransferStatus(record)===VEHICLE_TRANSFER_STATUS.MIS_VERIFICATION&&transferMisVerificationAllowed(context,record.destination),
-        canAcceptDestination:vehicleTransferStatus(record)===VEHICLE_TRANSFER_STATUS.DESTINATION_ACCEPTANCE&&transferSiteActionAllowed(context,record.destination),
+        canAcceptDestination:vehicleTransferStatus(record)===VEHICLE_TRANSFER_STATUS.DESTINATION_ACCEPTANCE&&!record.pulseQueue&&transferSiteActionAllowed(context,record.destination),
+        pulseWaiting:Boolean(record.pulseQueue),
       }));
     const equipment=equipmentRows.map((row)=>({id:row.id,...row.record_data})).filter((record)=>{
       if(!context.canSubmit)return false;
@@ -5300,38 +5306,65 @@ app.patch('/api/vehicle-transfers/:id/destination-verification',requireSession,a
   }catch(error){await client.query('ROLLBACK').catch(()=>{});next(error)}finally{client.release()}
 });
 
+// Destination PM acceptance. Pulse keeps the Equipment master, so the transfer is completed in
+// Pulse first (vehicle-transfer-acceptance.mjs) and the vehicle moves here only after Pulse answers;
+// before 16 Nov 2026 it moved here only and the hourly copy from Pulse moved it back.
+async function notifyAcceptedVehicleTransfer(updated){
+  const [sourceRecipients,destinationMisRecipients]=await Promise.all([
+    vehicleTransferPmLogins(pool,updated.source),vehicleTransferMisLogins(pool,updated.destination),
+  ]);
+  const recipients=[updated.submittedLogin,...sourceRecipients,...destinationMisRecipients].filter(Boolean);
+  const where=updated.pulseWrite?.mode==='pulse'?'Pulse and Pulse-II now show':'Vehicle Master now shows';
+  await addTicketNotificationsBestEffort(pool,recipients,updated.transferNo,`Vehicle transfer ${updated.transferNo} was accepted at ${updated.destination}. ${where} ${updated.equipment} at ${updated.destination}.`,null,{whatsapp:false});
+}
+function acceptedTransferAudit(before,updated,action='Accept vehicle at destination'){
+  const transferAudit=vehicleTransferAuditDetails(updated,{previousStatus:before.status});
+  transferAudit.changedFields.push({field:'Vehicle Master location',before:before.source,after:before.destination});
+  const pulse=updated.pulseWrite||{};
+  transferAudit.changedFields.push({field:'Pulse',before:'',after:pulse.mode==='pulse'?`Completed in Pulse (Pulse transfer ${pulse.pulseTransferId||''}${pulse.replay?', repeated':''}${pulse.alreadyAtDestination?', vehicle was already there in Pulse':''})`:`Not sent to Pulse: ${pulse.note||'switched off'}`});
+  return {eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:updated.transferNo,...transferAudit};
+}
+
 app.patch('/api/vehicle-transfers/:id/destination-acceptance',requireSession,async(req,res,next)=>{
-  const client=await pool.connect();
   try{
-    const context=await vehicleTransferAccessContext(req.session,client);
+    const context=await vehicleTransferAccessContext(req.session);
     const id=Number(req.params.id);
     if(!Number.isInteger(id)||id<=0)return res.status(400).json({error:'A valid vehicle transfer is required.'});
-    await client.query('BEGIN');
-    const {rows}=await client.query(`SELECT record_data FROM master_records WHERE id=$1 AND master_name='Vehicle transfers' FOR UPDATE`,[id]);
-    const before=rows[0]?.record_data;
-    if(!before){await client.query('ROLLBACK');return res.status(404).json({error:'Vehicle transfer not found.'})}
-    if(!transferSiteActionAllowed(context,before.destination)){await client.query('ROLLBACK');return res.status(403).json({error:'Only the assigned destination-site Project Manager can accept this vehicle.'})}
-    if(vehicleTransferStatus(before)!==VEHICLE_TRANSFER_STATUS.DESTINATION_ACCEPTANCE){await client.query('ROLLBACK');return res.status(409).json({error:'This transfer is not awaiting destination PM acceptance.'})}
-    if(!before.destinationMisVerifiedAt){await client.query('ROLLBACK');return res.status(409).json({error:'Destination MIS verification must be completed before PM acceptance.'})}
-    const equipmentRows=await client.query(`SELECT id,record_data FROM master_records WHERE master_name='Equipment master' FOR UPDATE`);
-    const equipmentRow=equipmentRows.rows.find((row)=>transferMatchesEquipment(before,{id:row.id,...row.record_data}));
-    if(!equipmentRow){await client.query('ROLLBACK');return res.status(409).json({error:'The matching vehicle was not found in Vehicle Master. Update the master identity before accepting.'})}
-    const acceptedAt=new Date().toISOString(),acceptedBy=req.session.name||req.session.login||'PM';
-    const updatedEquipment=applyAcceptedVehicleTransfer(equipmentRow.record_data,before,{acceptedAt,acceptedBy});
-    const updated={...before,status:VEHICLE_TRANSFER_STATUS.COMPLETED,destinationAcceptedBy:acceptedBy,destinationAcceptedLogin:String(req.session.login||'').trim().toLowerCase(),destinationAcceptedAt:acceptedAt,vehicleMasterUpdatedAt:acceptedAt,vehicleMasterRecordId:equipmentRow.id};
-    await client.query(`UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name='Equipment master'`,[JSON.stringify(updatedEquipment),equipmentRow.id]);
-    await client.query(`UPDATE master_records SET record_data=$1::jsonb WHERE id=$2 AND master_name='Vehicle transfers'`,[JSON.stringify(updated),id]);
-    await client.query('COMMIT');
-    const [sourceRecipients,destinationMisRecipients]=await Promise.all([
-      vehicleTransferPmLogins(pool,updated.source),vehicleTransferMisLogins(pool,updated.destination),
-    ]);
-    const recipients=[updated.submittedLogin,...sourceRecipients,...destinationMisRecipients].filter(Boolean);
-    await addTicketNotificationsBestEffort(pool,recipients,updated.transferNo,`Vehicle transfer ${updated.transferNo} was accepted at ${updated.destination}. Vehicle Master now shows ${updated.equipment} at ${updated.destination}.`,null,{whatsapp:false});
-    const transferAudit=vehicleTransferAuditDetails(updated,{previousStatus:before.status});
-    transferAudit.changedFields.push({field:'Vehicle Master location',before:before.source,after:before.destination});
-    req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action:'Accept vehicle at destination',targetType:'Vehicle transfer',targetReference:updated.transferNo,...transferAudit};
-    res.json({id,...updated});
-  }catch(error){await client.query('ROLLBACK').catch(()=>{});next(error)}finally{client.release()}
+    // Checks first, without a lock: Pulse is asked before any Pulse-II row is locked.
+    const before=(await pool.query(`SELECT record_data FROM master_records WHERE id=$1 AND master_name='Vehicle transfers'`,[id])).rows[0]?.record_data;
+    if(!before)return res.status(404).json({error:'Vehicle transfer not found.'});
+    if(!transferSiteActionAllowed(context,before.destination))return res.status(403).json({error:'Only the assigned destination-site Project Manager can accept this vehicle.'});
+    if(vehicleTransferStatus(before)!==VEHICLE_TRANSFER_STATUS.DESTINATION_ACCEPTANCE)return res.status(409).json({error:'This transfer is not awaiting destination PM acceptance.'});
+    if(!before.destinationMisVerifiedAt)return res.status(409).json({error:'Destination MIS verification must be completed before PM acceptance.'});
+    if(before.pulseQueue)return res.status(409).json({error:`${before.pulseQueue.acceptedBy||'The destination PM'} already accepted this vehicle. It moves as soon as Pulse confirms; Pulse-II keeps trying by itself.`});
+    const vehicle=await findTransferEquipment(pool,before);
+    if(!vehicle)return res.status(409).json({error:'The matching vehicle was not found in Vehicle Master. Update the master identity before accepting.'});
+    const acceptance={acceptedAt:new Date().toISOString(),acceptedBy:req.session.name||req.session.login||'PM',acceptedLogin:String(req.session.login||'').trim().toLowerCase()};
+    let pulse={mode:'local-only',note:'Sending vehicle transfers to Pulse is switched off on the Pulse Master Sync page.'};
+    if(await pulseMasterWriter.transferMode()!=='off'){
+      try{
+        pulse=await pulseMasterWriter.completeTransfer({transfer:before,equipment:{id:vehicle.id,...vehicle.record_data},people:acceptancePeople(acceptance),route:'workflow'});
+      }catch(error){
+        if(error.retryable===false||error.extra?.code==='pulse_refused'){
+          req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action:'Accept vehicle at destination (refused by Pulse)',targetType:'Vehicle transfer',targetReference:before.transferNo,reason:error.message};
+          return res.status(409).json({error:error.message,code:'pulse_refused'});
+        }
+        if(!error.retryable)throw error;
+        const client=await pool.connect();let queued;
+        try{await client.query('BEGIN');queued=await queueAcceptance(client,{id,acceptance,error});await client.query('COMMIT');}
+        catch(queueError){await client.query('ROLLBACK').catch(()=>{});throw queueError;}finally{client.release();}
+        req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action:'Accept vehicle at destination (waiting for Pulse)',targetType:'Vehicle transfer',targetReference:before.transferNo,reason:error.message};
+        return res.status(202).json({id,...queued,queued:true,
+          message:`Accepted. Pulse could not take the transfer just now (${error.message}). The vehicle moves in Pulse and Pulse-II as soon as Pulse confirms; Pulse-II tries again every few minutes by itself.`});
+      }
+    }
+    const client=await pool.connect();let result;
+    try{await client.query('BEGIN');result=await completeAcceptance(client,{id,acceptance,pulse});await client.query('COMMIT');}
+    catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
+    await notifyAcceptedVehicleTransfer(result.updated);
+    req.audit=acceptedTransferAudit(result.before,result.updated);
+    res.json({id,...result.updated});
+  }catch(error){if(error.status&&error.status<500)return res.status(error.status).json({error:error.message});next(error)}
 });
 
 async function sendScheduledConsolidatedWhatsAppReports(now=new Date()){
@@ -8022,10 +8055,29 @@ const scanImageStorage=createScanBlobStorage(scanBlobConfig());
 pulseBreakdownMirror=String(process.env.PULSE_BREAKDOWN_MIRROR||'').trim().toLowerCase()==='off'?null:createPulseBreakdownMirror({pool,readFeed:()=>pulseMasterSync.readFullBreakdownFeed()});
 const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror:pulseBreakdownMirror,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});
 // PM approvals by OTP for express site transfers and new equipment raised from a VLB/ELB batch.
-// Telegram first, WhatsApp fallback. Pulse is the only Equipment master: until Pulse exposes write
-// endpoints the writer records local-only so the test platform can trial the flow end to end.
+// Telegram first, WhatsApp fallback. Pulse is the only Equipment master: vehicle transfers are
+// completed in Pulse through its MIS bridge (switch on the Pulse Master Sync page); new assets are
+// still refused until Pulse can create them from here.
 const approvalOtpDelivery=createOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:{async send(to,otp){const result=await sendMetaWhatsAppTemplate({to,templateKey:'passwordResetOtp',purpose:'pmApprovalOtp',parameters:[otp]});return Boolean(result?.sent??result?.messageId??result);}}});
-const pulseMasterWriter=createPulseWriter({env:process.env});
+const pulseTransferSwitch=createPulseTransferSwitch({pool});
+const pulseMasterWriter=createPulseWriter({env:process.env,sharedSignIn:pulseSignInBridge,transferSwitch:pulseTransferSwitch,pool});
+// Acceptances Pulse could not take at once (no answer, sign-in) are finished here when Pulse answers.
+const transferPulseQueue=createTransferPulseQueue({pool,writer:pulseMasterWriter,
+  onCompleted:async({updated})=>{await notifyAcceptedVehicleTransfer(updated);},
+  onRefused:async({transfer,error})=>{const recipients=[transfer.pulseRefused?.acceptedLogin,transfer.submittedLogin].filter(Boolean);
+    await addTicketNotificationsBestEffort(pool,recipients,transfer.transferNo,`Pulse refused vehicle transfer ${transfer.transferNo} (${transfer.equipment}, ${transfer.source} to ${transfer.destination}): ${error} The vehicle was not moved. Correct it and accept again.`,null,{whatsapp:false});}});
+if(process.env.PULSE_TRANSFER_QUEUE!=='0')scheduleBackgroundStart(()=>transferPulseQueue.start(),60000);
+app.get('/api/pulse-transfer-write',requireSession,requireAdministrator,async(_req,res,next)=>{try{
+  res.set('Cache-Control','no-store').json({...await pulseTransferSwitch.status(),mode:await pulseMasterWriter.transferMode(),waiting:await transferPulseQueue.waiting(),queue:transferPulseQueue.status()});
+}catch(error){next(error)}});
+app.put('/api/pulse-transfer-write',requireSession,requireAdministrator,async(req,res,next)=>{try{
+  if(typeof req.body?.on!=='boolean')return res.status(400).json({error:'Choose ON or OFF.'});
+  const before=await pulseTransferSwitch.status();
+  const saved=await pulseTransferSwitch.set(req.body.on,req.session.login);
+  req.audit={eventType:'Settings',module:'Pulse Master Sync',action:`Send vehicle transfers to Pulse: ${saved.on?'ON':'OFF'}`,targetType:'Setting',targetReference:'pulse_transfer_write',
+    changedFields:[{field:'Send vehicle transfers to Pulse',before:before.on?'ON':'OFF',after:saved.on?'ON':'OFF'}]};
+  res.json({...saved,mode:await pulseMasterWriter.transferMode(),waiting:await transferPulseQueue.waiting()});
+}catch(error){next(error)}});
 const expressOtpDeps={pool,requireSession,accessContext:vehicleTransferAccessContext,pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request),pulseWriter:pulseMasterWriter,ensureSchema:()=>logBooks.initialize()};
 registerVehicleTransferExpress(app,{...expressOtpDeps,auditEvent:(req,{action,reference,details})=>{req.audit={eventType:'Vehicle transfer',module:'Vehicle transfers',action,targetType:'Vehicle transfer',targetReference:reference,changedFields:details?.changedFields||[],details};},
   notify:async(client,transfer)=>{const recipients=await vehicleTransferPmLogins(client,transfer.destination);await addTicketNotificationsBestEffort(client,recipients,transfer.transferNo,`Express transfer ${transfer.transferNo}: ${transfer.equipment} joined ${transfer.destination} from ${transfer.source} with source-site PM OTP approval.`,null,{whatsapp:false});}});
