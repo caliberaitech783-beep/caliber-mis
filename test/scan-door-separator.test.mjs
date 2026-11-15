@@ -42,10 +42,16 @@ test('V/840 read as V1840 puts the real door V-840 in the box and keeps the writ
  assert.equal(canonicalLinkedScanDoor(tipper('1840','V1840','Dudhichua East OB'),'V1840','vehicle'),'V1840');
  assert.equal(doorSuggestion({doorText:'V-840',location:'Dudhichua East OB'},dch),null);
 });
-test('the Pulse site check passes with the corrected door and fails with the raw read',()=>{
+test('the Pulse site check reads V1840 as V-840 too, unless Pulse has a real V1840',()=>{
  const pulse=[{door:'V-840',currentLocation:'Dudhichua East OB'}];
  assert.equal(scanFleetAssignment(pulse,{doorText:'V-840',location:'Dudhichua East OB'}),null);
- assert.equal(scanFleetAssignment(pulse,{doorText:'V1840',location:'Dudhichua East OB'}).pulseSite,'Not registered');
+ assert.equal(scanFleetAssignment(pulse,{doorText:'V1840',location:'Dudhichua East OB'}),null);
+ // V-840 at another mine still needs its transfer.
+ assert.equal(scanFleetAssignment([{door:'V-840',currentLocation:'Majri OB'}],{doorText:'V1840',location:'Dudhichua East OB'}).pulseSite,'Majri OB');
+ // A real V1840 wins: its own site decides.
+ assert.equal(scanFleetAssignment([...pulse,{door:'V1840',currentLocation:'Majri OB'}],{doorText:'V1840',location:'Dudhichua East OB'}).pulseSite,'Majri OB');
+ // Two V840 records never guess.
+ assert.equal(scanFleetAssignment([...pulse,{door:'V/840',currentLocation:'Majri OB'}],{doorText:'V1840',location:'Dudhichua East OB'}).pulseSite,'Not registered');
 });
 test('the scan fills the real door at read time and when matched later',()=>{
  const masters=[{id:840,master_name:'Equipment master',record_data:{door:'V-840',category:'vehicle',currentLocation:'Dudhichua East OB'}}];
