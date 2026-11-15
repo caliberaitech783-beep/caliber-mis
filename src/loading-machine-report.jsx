@@ -46,9 +46,12 @@ const idle=onPick=>[...BANDS.map(b=>banded(b,onPick)),column('stops','Total idle
 export function summaryColumns(group,onPick){
  return [...identity[group],column('running',STATES.running),counted('breakdown',STATES.breakdown,'lm-count lm-breakdown',onPick),counted('nohours',STATES.nohours,'lm-count lm-nohours',onPick),...work,...idle(onPick),...more];
 }
+// Owner, 15 Nov 2026: Step 3 fits the screen; First and Last loading, Shift hours, Hours in BD and Not judged are left off
+// the screen and kept in Smart Print, PDF and Excel (`printOnly`).
+const printOnly=c=>({...c,printOnly:true});
 export function machineColumns(onPick,manyShifts=false){
  return [column('door','Door no.'),column('machineName','Machine'),column('operator','Operator'),...(manyShifts?[column('machineShifts','Shifts')]:[]),column('statusLabel','Status',null,stateBadge),
-  ...work,...idle(onPick),...(manyShifts?[]:[column('firstLoading','First loading'),column('lastLoading','Last loading')]),column('tipperCount','Tippers loaded'),...more,column('reason','Remark')];
+  ...work,...idle(onPick),...(manyShifts?[]:[column('firstLoading','First loading'),column('lastLoading','Last loading')].map(printOnly)),column('tipperCount','Tippers loaded'),...more.map(printOnly),column('reason','Remark')];
 }
 // One line per loading: when the machine loaded, how long after the loading before, in which colour, and for an idle stop
 // the tipper trips delayed in it. `many` adds the date, shift and machine, for a list across shifts or machines.

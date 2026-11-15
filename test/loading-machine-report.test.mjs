@@ -193,6 +193,16 @@ test('a machine is found by the door number written on the card, and by its mast
  assert.deepEqual(list.map(e=>[e.door,e.trips,e.names]).sort(),[['EX1',2,['ex 01','EX-1']],['EX2',1,['SOMETHING ELSE']]]);
 });
 
+test('Step 3 leaves First and Last loading, Shift hours, Hours in BD and Not judged to Smart Print so it fits the screen',()=>{
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/\[column\('firstLoading','First loading'\),column\('lastLoading','Last loading'\)\]\.map\(printOnly\)/);
+ assert.match(screen,/\.\.\.more\.map\(printOnly\),column\('reason','Remark'\)/);
+ assert.match(screen,/const printOnly=c=>\(\{\.\.\.c,printOnly:true\}\);/);
+ const main=fs.readFileSync(new URL('../src/main.jsx',import.meta.url),'utf8');
+ assert.match(main,/visibleColumnKeys = stepLook \? columns\.filter\(\(column\) => !column\.printOnly\)\.map\(\(column\) => column\.key\) : appliedColumns;/,'not on the screen');
+ assert.match(main,/columns: stepLook \? columns : displayedColumns, allColumns: columns/,'still in Smart Print, PDF and Excel');
+});
+
 test('the screen shows working and idle time first, keeps the old list as a second view and the totals at the foot',()=>{
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
  assert.match(screen,/\[\['idle','Machine working and idle time'\],\['rows','All machines list'\]\]/);
