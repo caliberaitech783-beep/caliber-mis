@@ -1,3 +1,5 @@
+import {isDummyEmployeeId} from './dummy-employee-ids.mjs';
+
 const key=value=>String(value??'').trim().toUpperCase();
 
 function cardOperators(data={}){
@@ -7,10 +9,15 @@ function cardOperators(data={}){
  ].filter(operator=>operator.id||operator.code);
 }
 
-export function shareCardOperator(left,right){
+// A dummy ID (shared/dummy-employee-ids.mjs) stands for many temporary drivers, so two cards
+// that share only a dummy ID are different people. `sameDummy` keeps them one person, for
+// the second sheet of one trip card.
+export function shareCardOperator(left,right,{sameDummy=false}={}){
  const first=cardOperators(left),second=cardOperators(right);
- return !first.length||!second.length||first.some(a=>second.some(b=>
-  (a.id&&a.id===b.id)||(a.code&&a.code===b.code)
+ if(!first.length||!second.length)return true;
+ const real=operator=>sameDummy||!isDummyEmployeeId(operator.code);
+ return first.some(a=>real(a)&&second.some(b=>real(b)&&
+  ((a.id&&a.id===b.id)||(a.code&&a.code===b.code))
  ));
 }
 

@@ -30,7 +30,7 @@ export async function findOtherVlbCards(client,data,recordId=null){
 export async function findVlbSheetTarget(client,data){
  const sheet=parseTripCardSheet(data?.tripCardSheet),number=printedNumber(data);
  if(!data?.scanCardId||!sheet||sheet.sheetTotal<2||!number)return null;
- const matches=(await findOtherVlbCards(client,data)).filter(row=>!row.additional&&shareCardOperator(data,row.data)&&printedNumber(row.data)===number);
+ const matches=(await findOtherVlbCards(client,data)).filter(row=>!row.additional&&shareCardOperator(data,row.data,{sameDummy:true})&&printedNumber(row.data)===number);
  if(matches.length!==1)return null;
  const target=matches[0],held=savedCardSheets(target.data),label=formatTripCardSheet(sheet);
  const refuse=message=>{throw Object.assign(new Error(message),{status:409,details:{code:'duplicate_card',existing:[{id:target.id,bookNo:target.bookNo}]}});};
