@@ -100,7 +100,7 @@ test("visible From and To fields apply valid ranges, preserve the prior filter f
 
 test("Reports retain their table implementation and share date controls with filtering, saved views and exports", () => {
   const main=readFileSync(new URL("../src/main.jsx",import.meta.url),"utf8");
-  const report=main.slice(main.indexOf("function ReportTable("),main.indexOf("function ReportTable(")+11000);
+  const report=main.slice(main.indexOf("function ReportTable("),main.indexOf("function ReportTable(")+12000);
   assert.match(report,/<table className="report-filter-table">/);
   assert.match(report,/primaryRecordDateColumn\(columns\)/);
   assert.match(report,/dateControl && !recordDateFilter && <RecordDateRange/,'a report with an external period control must not render a second range');

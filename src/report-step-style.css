@@ -132,3 +132,66 @@
   .generated-report-section:not([data-category="vlb-saved-batch"]) > .reports-section-heading > .generated-report-title { flex: 1 1 420px; min-width: 0; }
   .generated-report-section:not([data-category="vlb-saved-batch"]) > .reports-section-heading > .generated-report-heading-actions { margin-left: auto; }
 }
+
+/* A report step fits the screen: names and headings wrap onto more lines instead of the table scrolling sideways. */
+.generated-report-section[data-step-look] .report-filter-table tbody td,
+.generated-report-section[data-step-look] .report-filter-table tfoot td { white-space: normal; }
+.generated-report-section[data-step-look] .report-filter-table td.report-figure-cell { white-space: nowrap; }
+
+/* Step 2 · date by shift (src/date-shift-grid.jsx), drawn like the OT report's date by shift table: the date down the
+   side, the shifts across, and in each shift box the count followed by a coloured box for every colour found there. */
+.generated-report-section .dsg-table thead th small { display: block; margin-top: 2px; color: #8490a4; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.generated-report-section .dsg-table thead th:not(:first-child) { text-align: right; }
+.generated-report-section .dsg-table tbody th,
+.generated-report-section .dsg-table tfoot th { padding: 12px; border: 0; border-bottom: 1px solid #e6dff0; background: #f9fafc; color: #4d5b74; font-size: 14px; font-weight: 700; text-align: left; white-space: nowrap; vertical-align: middle; }
+.generated-report-section .dsg-table tbody th small { display: block; margin-top: 2px; color: #8490a4; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+.generated-report-section .dsg-table tbody td,
+.generated-report-section .dsg-table tfoot td { color: #5e6d84; text-align: right; white-space: nowrap; }
+.generated-report-section .dsg-cell { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.generated-report-section .dsg-stack { flex-direction: column; align-items: flex-end; }
+.generated-report-section .dsg-count { min-width: 40px; padding: 4px 6px; border: 2px solid transparent; border-radius: 8px; background: none; color: inherit; font: inherit; font-weight: 600; text-align: right; }
+.generated-report-section button.dsg-count { cursor: pointer; }
+.generated-report-section button.dsg-count:hover { border-color: #c7b5dd; }
+.generated-report-section .dsg-table .dsg-box { min-width: 40px; padding: 4px 8px; font-size: 14px; }
+.generated-report-section .dsg-table button.dsg-box,
+.generated-report-section .dsg-table .dsg-stack button { cursor: pointer; }
+.generated-report-section .dsg-table button:is(.dsg-count, .dsg-box, .bs-stage)[aria-pressed="true"] { border-color: #59338b; box-shadow: 0 0 0 2px rgba(89, 51, 139, .25); }
+.generated-report-section .dsg-table .dsg-stack button:disabled { cursor: default; }
+.generated-report-section .dsg-note { flex-basis: 100%; color: #8490a4; font-size: 11px; font-weight: 600; text-align: right; }
+.generated-report-section .dsg-zero { color: #a3adbd; }
+.generated-report-section .dsg-empty { margin: 0; padding: 18px 4px; color: #5e6d84; }
+.generated-report-section .dsg-total th,
+.generated-report-section .dsg-total td { border-top: 2px solid #c7b5dd; background: color-mix(in srgb, #59338b 7%, transparent); color: #2d2547; font-weight: 750; }
+.generated-report-section .dsg-all { padding: 0; border: 0; background: none; color: #51317d; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.generated-report-section .dsg-table tr.report-row-picked > th { box-shadow: inset 4px 0 0 #59338b, inset 0 2px 0 #59338b, inset 0 -2px 0 #59338b; }
+.generated-report-section .dsg-table tr.report-row-picked > td:first-of-type { box-shadow: inset 0 2px 0 #59338b, inset 0 -2px 0 #59338b; }
+:root[data-theme="dark"] .generated-report-section .dsg-table tbody th,
+:root[data-theme="dark"] .generated-report-section .dsg-table tfoot th { border-color: #2c415e; background: #17253a; color: #eef3fb; }
+:root[data-theme="dark"] .generated-report-section .dsg-table tbody td,
+:root[data-theme="dark"] .generated-report-section .dsg-table tfoot td { color: #c9d6ea; }
+:root[data-theme="dark"] .generated-report-section .dsg-total th,
+:root[data-theme="dark"] .generated-report-section .dsg-total td { border-top-color: #5b4a7d; background: color-mix(in srgb, #8b6cc7 18%, #142136); color: #fff; }
+:root[data-theme="dark"] .generated-report-section .dsg-all { color: #cdb8f5; }
+:root[data-theme="dark"] .generated-report-section .dsg-table tr.report-row-picked > th { box-shadow: inset 4px 0 0 #b79cf0, inset 0 2px 0 #b79cf0, inset 0 -2px 0 #b79cf0; }
+@media (max-width: 700px) {
+  .generated-report-section .dsg-table tbody th, .generated-report-section .dsg-table tfoot th { padding: 10px 8px; }
+  .generated-report-section .dsg-table .dsg-box, .generated-report-section .dsg-count { min-width: 32px; padding: 3px 6px; }
+}
+.generated-report-section[data-step-look] .report-filter-table thead th .sort-header { min-width: 0; }
+/* Wide steps (Trip Timing Step 3 has 13 columns) still fit beside the menu: a little less room around each figure. */
+@media (min-width: 701px) and (max-width: 1400px) {
+  .generated-report-section[data-step-look] .report-filter-table thead th,
+  .generated-report-section[data-step-look] .report-filter-table tbody td,
+  .generated-report-section[data-step-look] .report-filter-table tfoot td { padding: 11px 8px; }
+  .generated-report-section[data-step-look] .reports-detail-table :is(.tt-band, .lm-count, .bs-rating, .bs-stage) { min-width: 38px; padding: 4px 7px; }
+}
+/* Loading Equipment idle bands: the share sits under its coloured number, so 4 bands fit beside the other columns. */
+.generated-report-section[data-step-look] .lm-banded { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.generated-report-section[data-step-look] .lm-banded .lm-share { margin: 0; font-size: 12px; }
+.generated-report-section[data-step-look] .reports-detail-table .lm-status { white-space: normal; }
+@media (min-width: 701px) and (max-width: 1400px) {
+  .generated-report-section[data-step-look] .report-filter-table { font-size: 13px; }
+  .generated-report-section[data-step-look] .report-filter-table tbody td,
+  .generated-report-section[data-step-look] .report-filter-table tfoot td { font-size: 13px; }
+}
+.generated-report-section[data-step-look] .report-filter-table td.report-unbroken-cell { white-space: nowrap; }

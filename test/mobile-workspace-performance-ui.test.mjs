@@ -59,7 +59,8 @@ test("phone report and ticket layouts retain every workflow in compact horizonta
   assert.match(phoneCss, /\.reports-page \.generated-report-title\s*\{[^}]*flex:\s*0 0 auto !important/);
   assert.match(phoneCss, /\.ticket-page \.ticket-page-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(phoneCss, /\.ticket-page \.master-actions-slot \.record-date-range\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(main, /useState\(\(\) => mobileTablePageSize\(\) \|\| 50\)/);
+  // A report step (Step 1, Step 2...) shows every line; other tables keep the phone page size.
+  assert.match(main, /useState\(\(\) => stepLook \? 1000 : mobileTablePageSize\(\) \|\| 50\)/);
 });
 
 test("phone alerts are bounded and unchanged feeds avoid expensive workflow rerenders", () => {

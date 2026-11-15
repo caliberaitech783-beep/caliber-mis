@@ -1,5 +1,6 @@
 import React,{useMemo,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {BANDS,BAND_LABELS,IDLE_LIMIT,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,shiftsNotWorked,idleText,groupKey,clockAt} from '../shared/loading-machine-report.mjs';
 import {tripEntries} from '../shared/trip-timing-report.mjs';
 import './trip-timing-report.css';
@@ -154,6 +155,13 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    +(band?` ${BAND_LABELS[band]}: ${plural(lines.length,'stop')}`+(lines.length?`, ${idleText(lines.reduce((s,l)=>s+l.minutes,0))} in all, ${plural(delayedHere,'tipper trip')} delayed in ${lines.length===1?'it':'them'}`:'')+(lines.length&&lines.length<=3?': '+lines.map(stopWords).join('; '):'')+'.':'');
  };
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
+ // Step 2 is the date by shift table of the OT report: a colour chosen above it keeps only that colour in the boxes.
+ const gridBoxes=[{key:'breakdown',label:STATES.breakdown,className:'lm-count lm-breakdown'},{key:'nohours',label:STATES.nohours,className:'lm-count lm-nohours'},...BANDS.map(b=>({key:b.key,label:'Idle '+b.label,className:'tt-band lm-'+b.key}))].filter(b=>!upper||b.key===upper);
+ // The share worked counts only the machine shifts whose ELB gives both hours, as on the lines themselves.
+ const shiftGrid=dateShiftGrid(shiftsListed.map(r=>({...r,judgedHours:r.percent===null?0:r.percent*r.shiftHours/100})),{sumKeys:['machineShifts','running','breakdown','nohours','trips','judgedHours','shiftHours','stops','idleMinutes',...BANDS.map(b=>b.key)]});
+ const shiftDay=[{key:'machines',label:'Machine shifts',value:t=>t.machineShifts},{key:'trips',label:'Trips loaded',value:t=>t.trips},
+  {key:'percent',label:'% of shift worked',value:t=>t.shiftHours?Math.round(t.judgedHours/t.shiftHours*1000)/10+'%':'—'},{key:'stops',label:'Idle stops',value:t=>t.stops}];
+ const shiftExport=dateShiftExport(shiftGrid,{count:r=>r.machineShifts,countLabel:'machines',boxes:gridBoxes,dayColumns:shiftDay});
  const where=siteLabel+(slot?' · '+slot.label:'');
  // One step back: the step before the one on screen, as in the line of steps above the table.
  const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
@@ -169,8 +177,11 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
   {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total,true)}
-   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date-wise and shift-wise · '+period+filtered} category="operations-loading-shifts" description="One line per date and shift, newest first. Press a line to see the machines of that shift. Press the last line to see the machines for all the dates together. Idle time is complete only after the VLB of the shift is locked."
-    rows={withTotal(shiftsListed,upper?{...shifts.total,id:'shown-total'}:shifts.total)} columns={summaryColumns('shift',openSlot)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,slot?.key)} isTotalRow={isTotal} onRowClick={r=>openSlot(r)} emptyMessage="No shift with such a machine here."/>
+   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date by shift · '+period+filtered} category="operations-loading-shifts" description="In each box: the machines of that shift, then the machines in BD (red), with no hours (brown) and the idle stops of each band, with the entry stage under them. Press a box for the machines of that shift; press a colour for only those. Idle time is complete only after the VLB of the shift is locked."
+    rows={shiftExport.rows} columns={shiftExport.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <DateShiftGrid grid={shiftGrid} count={r=>r.machineShifts} countLabel="Machines" boxes={gridBoxes} dayColumns={shiftDay} cellNote={r=>r.stageLabel} onOpen={(r,b)=>openSlot(r,b||upper)} onOpenAll={()=>openSlot(shifts.total)}
+     isPicked={r=>slot?.key===r.key} pickedBox={upper} allPicked={slot?.key===EVERY} ariaLabel="Loading machines by date and shift" emptyMessage="No shift with such a machine here."/>
+   </ReportSection>
   </>}
   {level>=3&&<>
    <p className="tt-insight">{summaryLine(machines.total)}</p>
