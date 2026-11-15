@@ -54,21 +54,45 @@
 .lm-report .lm-tl-track,.lm-report .lm-tl-rest{background:repeating-linear-gradient(135deg,#e6e4ec 0 6px,#f3f2f7 6px 12px)}
 .lm-report .lm-tl-track{position:relative;height:26px;border-radius:6px;overflow:hidden}
 .lm-report .lm-tl-single .lm-tl-track{height:48px}
+/* A piece is one gap between two loadings; its dark left edge is the loading. Inside it the colour follows the clock:
+   green for the first 5 minutes, orange from the 5th, red from the 20th (.lm-part-*). */
 .lm-report .lm-seg{position:absolute;top:0;bottom:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-left:1px solid rgba(20,10,40,.55);font-size:12px;font-weight:800;line-height:1;cursor:pointer}
 .lm-report .lm-tl-single .lm-seg{font-size:14px}
 .lm-report .lm-seg-end{width:0;cursor:default;pointer-events:none}
-.lm-report .lm-seg-ok{background:#3aa863}
-.lm-report .lm-seg-b1{background:#ffd98f;color:#5e3200}
-.lm-report .lm-seg-b2{background:#ffb04d;color:#4f2700}
-.lm-report .lm-seg-b3{background:#f28a2e;color:#3b1a00}
-.lm-report .lm-seg-b4{background:#d6362f;color:#fff}
+.lm-report .lm-seg-chosen{outline:3px solid #2a2140;outline-offset:-3px;z-index:3}
+.lm-report .lm-seg b{position:relative;z-index:2;color:#fff;text-shadow:0 0 2px #1d0f0f,0 0 3px #1d0f0f}
+.lm-report .lm-part{position:absolute;top:0;bottom:0}
+.lm-report .lm-part-green,.lm-report .lm-seg-ok{background:#3aa863}
+.lm-report .lm-part-orange{background:#ffb04d}
+.lm-report .lm-part-red,.lm-report .lm-seg-b4{background:#d6362f}
+/* The clock time a gap turned orange or red: a dotted notch on the strip and a tag under it. */
+.lm-report .lm-turn{position:absolute;top:0;bottom:0;width:0;border-left:2px dotted rgba(255,255,255,.95);z-index:1;pointer-events:none}
+.lm-report .lm-tl-restzone{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;font-weight:750;color:#4f4660;white-space:nowrap}
+.lm-report .lm-tl-tags{position:relative;margin-top:4px}
+.lm-report .lm-tag{position:absolute;box-sizing:border-box;padding:1px 6px 1px 5px;border-left:3px solid;border-radius:0 4px 4px 0;font-size:12px;font-weight:750;line-height:16px;white-space:nowrap;cursor:pointer}
+.lm-report .lm-tag-end{transform:translateX(-100%);padding:1px 5px 1px 6px;border-left:0;border-right:3px solid;border-radius:4px 0 0 4px}
+.lm-report .lm-tag-orange{background:#fff1dc;color:#6b3a00;border-color:#f28a2e}
+.lm-report .lm-tag-red{background:#fde4e2;color:#8f1a12;border-color:#d6362f}
+.lm-report .lm-tag-green{background:#e3f4e8;color:#17602b;border-color:#3aa863}
+.lm-report .lm-tl-chosen{margin:6px 0 2px;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:650;line-height:1.45}
+.lm-report .lm-tl-chosen-green{background:#e3f4e8;color:#14522a}
+.lm-report .lm-tl-chosen-orange{background:#fff1dc;color:#5a3200}
+.lm-report .lm-tl-chosen-red{background:#fde4e2;color:#7d1a1a}
+/* Many shifts one under the other: each strip opens its shift. */
+.lm-report .lm-tl-openable{margin:0 -6px;padding:3px 6px;border-radius:8px;cursor:pointer}
+.lm-report .lm-tl-openable:hover,.lm-report .lm-tl-openable:focus-visible{background:#f4f0fb;outline:none}
+.lm-report .lm-tl-picked,.lm-report .lm-tl-picked:hover{background:#ebe2fa;box-shadow:inset 4px 0 0 #5b3fa0}
 .lm-report .lm-tl-bd{position:relative;height:8px;margin-top:3px}
 .lm-report .lm-tl-bd span,.lm-report .lm-tl-bdkey{background:repeating-linear-gradient(45deg,#4a0d0d 0 4px,#b42323 4px 8px)}
 .lm-report .lm-tl-bd span{position:absolute;top:0;bottom:0;border-radius:3px}
 .lm-report .lm-tl-axis{position:relative;height:18px;font-size:11px;color:#4f4660}
+.lm-report .lm-tl-single .lm-tl-axis{height:22px;font-size:12px}
+.lm-report .lm-tl-single .lm-tl-axis span{top:6px}
+.lm-report .lm-tick{position:absolute;top:0;height:4px;border-left:1px solid #9a90ad}
+.lm-report .lm-tick-half{height:7px}
 .lm-report .lm-tl-axis span{position:absolute;top:3px;transform:translateX(-50%);white-space:nowrap}
-.lm-report .lm-tl-axis span:first-child{transform:none}
-.lm-report .lm-tl-axis span:last-child{transform:translateX(-100%)}
+.lm-report .lm-tl-axis span:first-of-type{transform:none}
+.lm-report .lm-tl-axis span:last-of-type{transform:translateX(-100%)}
 .lm-report .lm-tl-axis .lm-edge{font-weight:800;color:#2a2140}
 .lm-report .lm-tl-hours{position:relative;height:46px;margin-top:2px}
 .lm-report .lm-hour{position:absolute;top:0;bottom:0;box-sizing:border-box;overflow:hidden;padding:4px 6px;border-left:1px solid #cfc4e0;font-size:12px;line-height:1.4;white-space:nowrap}

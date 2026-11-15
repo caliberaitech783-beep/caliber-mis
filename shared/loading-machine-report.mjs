@@ -222,25 +222,70 @@ export function idleStops(entries,band=''){return loadingLines(entries,band||'st
 // The picture of one machine shift for the screen: the gaps between its loadings as coloured pieces laid on the hours of
 // the shift, and for every hour the loadings and the minutes in each colour. Positions are minutes from the start of the
 // shift (from the first loading when the shift start is not known). Null when the machine has no timed loading.
+// Owner, 15 Nov 2026: on the strip a gap changes colour as its minutes pass ("where it was green, where it became orange,
+// and where it became red with that same timer mark"): green for the first 5 minutes after a loading, orange from the 5th
+// minute, red from the 20th, until the next loading. Only the drawing follows the clock; a stop is still counted in the
+// band of its full length.
+export const RED_AFTER=20;
+export function gapParts(from,to){
+ const cuts=[[from,Math.min(to,from+IDLE_LIMIT),'green'],[from+IDLE_LIMIT,Math.min(to,from+RED_AFTER),'orange'],[from+RED_AFTER,to,'red']];
+ return cuts.filter(([a,b])=>b-a>1e-9).map(([a,b,tone])=>({from:round1(a),to:round1(b),tone}));
+}
 export function shiftTimeline(entry){
  const lines=entry.lines||[];if(!lines.length)return null;
- const first=lines[0].to.off,last=lines.at(-1).to.off,shiftMinutes=entry.axis.known?entry.axis.minutes:Math.max(60,last);
+ const start=entry.axis.start,first=lines[0].to.off,last=lines.at(-1).to.off,shiftMinutes=entry.axis.known?entry.axis.minutes:Math.max(60,last);
  const lo=Math.floor(Math.min(0,first)/60)*60,hi=Math.ceil(Math.max(shiftMinutes,last)/60)*60;
- const pieces=lines.filter(l=>l.from).map(l=>({id:l.id,from:l.from.off,to:l.to.off,minutes:l.minutes,band:l.band,tone:TONES[l.band],fromClock:l.from.clock,toClock:l.to.clock,door:l.to.door,delayed:l.delayed.length,breakdown:l.breakdown}));
+ const pieces=lines.filter(l=>l.from).map(l=>{
+  const parts=gapParts(l.from.off,l.to.off);
+  // The clock times at which the gap turned orange and red: the "timer marks" of the strip.
+  const turns=parts.slice(1).map(p=>({at:p.from,tone:p.tone,clock:clockAt(start,p.from)}));
+  return {id:l.id,from:l.from.off,to:l.to.off,minutes:l.minutes,band:l.band,tone:TONES[l.band],fromClock:l.from.clock,toClock:l.to.clock,fromDoor:l.from.door,door:l.to.door,delayed:l.delayed.length,breakdown:l.breakdown,parts,turns};
+ });
  const hours=[];
  for(let h=lo;h<hi;h+=60){
-  // `count` is the loadings of the hour by colour; green, orange and red are the minutes of the hour in each colour.
-  const hour={id:entry.id+'|h'+h,from:h,to:h+60,label:clockAt(entry.axis.start,h)+' to '+clockAt(entry.axis.start,h+60),loadings:0,count:{green:0,orange:0,red:0},green:0,orange:0,red:0,longest:null};
+  // `count` is the loadings of the hour by the colour of the gap before each; green, orange and red are the minutes of
+  // the hour drawn in each colour on the strip.
+  const hour={id:entry.id+'|h'+h,from:h,to:h+60,label:clockAt(start,h)+' to '+clockAt(start,h+60),loadings:0,count:{green:0,orange:0,red:0},green:0,orange:0,red:0,longest:null};
   for(const l of lines)if(l.to.off>=h&&l.to.off<h+60){hour.loadings++;if(l.from)hour.count[TONES[l.band]]++;}
-  for(const p of pieces){const share=Math.min(p.to,h+60)-Math.max(p.from,h);if(share<=0)continue;hour[p.tone]+=share;if(p.tone!=='green'&&(hour.longest===null||p.minutes>hour.longest))hour.longest=p.minutes;}
+  for(const p of pieces){
+   if(Math.min(p.to,h+60)-Math.max(p.from,h)<=0)continue;
+   for(const part of p.parts){const share=Math.min(part.to,h+60)-Math.max(part.from,h);if(share>0)hour[part.tone]+=share;}
+   if(p.tone!=='green'&&(hour.longest===null||p.minutes>hour.longest))hour.longest=p.minutes;
+  }
   for(const tone of ['green','orange','red'])hour[tone]=round1(hour[tone]);
   // What is left of the hour lies before the first loading or after the last one: the report does not judge it.
   hour.rest=round1(Math.max(0,60-hour.green-hour.orange-hour.red));
   hour.worst=hour.red>0?'red':hour.orange>0?'orange':hour.green>0?'green':'rest';
   hours.push(hour);
  }
- const marks=[];for(let h=lo;h<=hi;h+=60)marks.push({at:h,clock:clockAt(entry.axis.start,h),edge:entry.axis.known&&(h===0||h===shiftMinutes)});
- return {lo,hi,shiftMinutes,known:entry.axis.known,first,last,firstClock:lines[0].to.clock,lastClock:lines.at(-1).to.clock,pieces,hours,marks,breakdowns:entry.bdPeriods||[]};
+ const marks=[];for(let h=lo;h<=hi;h+=60)marks.push({at:h,clock:clockAt(start,h),edge:entry.axis.known&&(h===0||h===shiftMinutes)});
+ // A small tick every quarter of an hour between the hour marks.
+ const ticks=[];for(let m=lo+15;m<hi;m+=15)if(m%60)ticks.push(m);
+ // With the shift hours known, the whole shift is drawn: the time before the first loading and after the last is named.
+ const lead=entry.axis.known&&first>0?{from:0,to:first,clock:lines[0].to.clock,minutes:round1(first)}:null;
+ const tail=entry.axis.known&&last<shiftMinutes?{from:last,to:shiftMinutes,clock:lines.at(-1).to.clock,minutes:round1(shiftMinutes-last)}:null;
+ return {lo,hi,shiftMinutes,known:entry.axis.known,first,last,firstClock:lines[0].to.clock,lastClock:lines.at(-1).to.clock,pieces,hours,marks,ticks,lead,tail,breakdowns:entry.bdPeriods||[]};
+}
+// The clock tags printed under one strip, so that no two overlap: the turns of the red stops first, then the time each red
+// stop ended, then the turns of the orange stops from the longest down. `width` is a tag's width in minutes of the strip
+// for each letter; a tag that finds no room in `lanes` rows is left to the pop-up of its piece and to the list below.
+export function clockTags(t,{width=1,lanes=3}={}){
+ const wanted=[];
+ for(const p of t.pieces){
+  if(p.band==='ok')continue;
+  for(const turn of p.turns)wanted.push({id:p.id+'|'+turn.tone,at:turn.at,tone:turn.tone,text:turn.clock+' '+turn.tone,rank:p.tone==='red'?0:2,minutes:p.minutes,piece:p.id});
+  if(p.tone==='red')wanted.push({id:p.id+'|end',at:p.to,tone:'green',text:p.toClock+' loaded',rank:1,minutes:p.minutes,piece:p.id});
+ }
+ wanted.sort((a,b)=>a.rank-b.rank||b.minutes-a.minutes||a.at-b.at);
+ const rows=Array.from({length:lanes},()=>[]),placed=[];
+ for(const w of wanted){
+  const size=w.text.length*width,end=w.at+size>t.hi;
+  const from=end?w.at-size:w.at,to=end?w.at:w.at+size;
+  const lane=rows.findIndex(row=>row.every(r=>to+width<=r.from||from>=r.to+width));
+  if(lane<0)continue;
+  rows[lane].push({from,to});placed.push({...w,lane,end});
+ }
+ return placed.sort((a,b)=>a.at-b.at||a.lane-b.lane);
 }
 // The shifts in which a machine did not run, newest first, with what its ELB and Pulse say.
 export function shiftsNotWorked(entries){
