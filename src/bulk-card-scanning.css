@@ -254,6 +254,7 @@
 .scan-review-page .scan-correction-status.scan-warning{padding:14px 16px}
 .scan-review-page .scan-correction-status p{margin:12px 0}
 .scan-review-page .scan-correction-status details>summary{cursor:pointer}
+.scan-correction-status .scan-correction-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.scan-correction-status .scan-correction-actions button{font-size:15px;padding:6px 12px}
 /* Let long checks grow with the entry instead of scrolling inside the yellow box. */
 .scan-review-compact .scan-draft-sheet{overflow:auto}
 .scan-review-compact .scan-draft-sheet fieldset{flex:0 0 auto;overflow:visible}

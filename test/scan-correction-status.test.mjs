@@ -31,3 +31,11 @@ test('active checks replace stale input prompts and advisory notes do not reques
  const advisory=renderToStaticMarkup(React.createElement(Status,{warnings:['Batch values applied.']}));
  assert.match(advisory,/View notes/);assert.doesNotMatch(advisory,/User input needed|System is working/);
 });
+
+test('buttons sit inside the yellow box only while input is needed',()=>{
+ const button=React.createElement('button',null,'Retry Pulse lookup');
+ const html=renderToStaticMarkup(React.createElement(Status,{errors:['BD hours not checked: Pulse did not answer in time.'],actions:button}));
+ assert.match(html,/scan-correction-actions/);assert.match(html,/Retry Pulse lookup/);
+ const saved=renderToStaticMarkup(React.createElement(Status,{status:'All scan corrections saved to MIS.',actions:button}));
+ assert.doesNotMatch(saved,/Retry Pulse lookup/);
+});
