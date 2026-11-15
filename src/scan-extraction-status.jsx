@@ -27,6 +27,6 @@ export function ScanExtractionLine({batchId,pending,total,reading}){
  useEffect(()=>{if(pending<=0)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[pending>0]);
  const started=readTime(startKey(batchId));
  const end=pending===0?readTime(endKey(batchId)):0;
- return <p>{reading} reading · {pending-reading} waiting · {total-pending}/{total} processed · Time taken: {formatExtractionTime(started?((end||now)-started)/1000:0)}</p>;
+ return <p>{reading} reading · {pending-reading} waiting to be read ·{total-pending}/{total} processed · Time taken: {formatExtractionTime(started?((end||now)-started)/1000:0)}</p>;
 }
 

@@ -33,17 +33,30 @@ export function chooseScanEntry(entries,{remembered=''}={}){
  return open.find(entryHasUnsavedCards)||null;
 }
 
-// The open entry describes itself from the same card summary as the Card status
-// tiles (saved, waiting for automatic save, needs attention, reading), so the two
-// never disagree. Other entries only have the server counts: cards, saved, unsaved.
+// The open entry describes itself with the same counts and the same words as the
+// Card status tiles (Needs attention, Wrong HMR, MWS / TED mismatch, ...) and the
+// reading line under them (reading, waiting to be read), so a reader can match each
+// figure to a tile. Other entries only have the server counts: cards, saved, unsaved.
+const LIVE_GROUP_WORDS=[
+ ['brown','needs attention','need attention'],
+ ['wrong-door','wrong door no.'],
+ ['wrong-caliber','wrong Caliber ID'],
+ ['wrong-hmr','wrong HMR'],
+ ['wrong-kmr','wrong KMR'],
+ ['mws-ted','MWS / TED mismatch'],
+ ['red','blank / no data'],
+ ['error','error','errors']
+];
 export function describeScanEntry(entry,live=null){
  const cards=live?Number(live.total||0):Number(entry?.cards||0),posted=live?Number(live.saved||0):Number(entry?.posted||0),duplicates=Number(entry?.duplicates||0);
  const parts=[cards+' card'+(cards===1?'':'s')];
  if(posted)parts.push(posted+' saved');
  if(live){
   if(live.waiting>0)parts.push(live.waiting+' waiting to save');
-  if(live.attention>0)parts.push(live.attention+' need'+(live.attention===1?'s':'')+' attention');
-  if(live.pending>0)parts.push(live.pending+' reading');
+  for(const [group,one,many=one] of LIVE_GROUP_WORDS){const count=Number(live[group]||0);if(count>0)parts.push(count+' '+(count===1?one:many));}
+  const pending=Number(live.pending||0),reading=Math.min(pending,Math.max(0,Number(live.reading||0)));
+  if(reading>0)parts.push(reading+' reading');
+  if(pending>reading)parts.push((pending-reading)+' waiting to be read');
  }else if(cards>posted)parts.push((cards-posted)+' unsaved');
  if(duplicates)parts.push(duplicates+' duplicate'+(duplicates===1?'':'s')+' skipped');
  return parts.join(' · ');
