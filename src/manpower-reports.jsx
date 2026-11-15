@@ -3,11 +3,12 @@ import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import AttendanceRegister from './attendance-register.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
 import './manpower-reports.css';
 
-const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties']];
+const views=[['manpower','Manpower by Category'],['manpower-reconciliation','Manpower by Category Reconciliation'],['employee','Shift Performance'],['attendance','Shift Attendance Equipment Wise'],['ot','OT & Multiple Duties'],['attendance-batch','Attendance Batch-wise'],['attendance-month','Attendance Month-wise']];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const columns=entries=>entries.map(([key,label])=>({key,label:compactLogBookLabel(label),value:r=>r[key]??'—'}));
 const context=[['date','Duty date'],['site','Site'],['shift','Shift']];
@@ -440,7 +441,9 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [logBook,setLogBook]=useState(''),[tally,setTally]=useState({key:'',data:null,error:''}),[driverOpen,setDriverOpen]=useState('');
  const [pick,setPick]=useState(noPick),[otPick,setOtPick]=useState(noOtPick),[mpPick,setMpPick]=useState(noMpPick),[rcPick,setRcPick]=useState(noRcPick);
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
- const query=useMemo(()=>new URLSearchParams(reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId]);
+ // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
+ const register=['attendance-batch','attendance-month'].includes(reportId);
+ const query=useMemo(()=>new URLSearchParams(register?{...filters,site:'',shift:'',batch:'',asset:''}:reportId==='ot'?{...filters,site:''}:filters).toString(),[filters,reportId,register]);
  const valid=filters.from>=OPERATIONAL_START&&filters.to>=filters.from&&Date.parse(filters.to)-Date.parse(filters.from)<=30*86400000;
  useEffect(()=>{
   const controller=new AbortController();setError('');setData(null);if(!valid){setBusy(false);return ()=>controller.abort();}setBusy(true);
@@ -494,8 +497,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
   {!valid&&<p role="alert">Choose a valid range of up to 31 days, starting on or after 1 November 2026.</p>}{busy&&<p role="status">Loading saved records and checking shift patterns…</p>}{error&&<p role="alert">{error}</p>}
   {report&&<>
    <p className="mp-source">{description} · Updated {new Date(report.generatedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
-   {!['attendance','ot','manpower-reconciliation'].includes(reportId)&&<div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>}
-   {reportId==='attendance'?<>
+   {!register&&!['attendance','ot','manpower-reconciliation'].includes(reportId)&&<div className="mp-metrics">{[['assets','Distinct assets'],['employees','Distinct employees'],['duties','Employee shift duties'],['exceptions','Review items']].map(([key,label])=><div key={key}><strong>{report.totals[key]}</strong><span>{label}</span></div>)}</div>}
+   {register?<AttendanceRegister report={report} filters={filters} mode={reportId} ReportSection={ReportSection} sites={otSites} query={query}/>:reportId==='attendance'?<>
     {attendanceOverview({report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
    </>:reportId==='ot'?<>
     {otOverview({report,filters,query,ReportSection,sites:otSites,otPick,setOtPick,logBook,setLogBook,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox})}
@@ -507,7 +510,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    </>:<>
     {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick})}
    </>}
-   {embedded?null:['attendance','ot','manpower-reconciliation'].includes(reportId)?exceptions.length>0&&<details className="mp-notes mp-review"><summary>{exceptions.length===1?'1 saved card needs':exceptions.length+' saved cards need'} correction (list for the MIS team)</summary>{review}</details>:review}
+   {embedded?null:register||['attendance','ot','manpower-reconciliation'].includes(reportId)?exceptions.length>0&&<details className="mp-notes mp-review"><summary>{exceptions.length===1?'1 saved card needs':exceptions.length+' saved cards need'} correction (list for the MIS team)</summary>{review}</details>:review}
    {!embedded&&<details className="mp-notes"><summary>Sources and calculation rules</summary><ul>{report.notes.map(note=><li key={note}>{note}</li>)}</ul><p>Manpower requirements, shortages and relief availability are reserved for a later phase.</p></details>}
   </>}
  </section>;
