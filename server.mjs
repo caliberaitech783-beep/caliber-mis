@@ -99,6 +99,7 @@ import {certificateSummary,generatePrintHelperSigning,resolvePrintHelperSigning,
 import {createSessionStore} from './server/services/auth-session.mjs';
 import {repairLegacySessionDefaults} from './server/rules/auth-session-schema.mjs';
 import {initializeLoginHistory,registerLoginHistoryRoutes,registerSignInLocationRoute} from './server/routes/user-login-history.mjs';
+import {createSignInLocationGuard} from './server/rules/sign-in-location.mjs';
 import {parseIndiaRequestDateTime} from './shared/request-time.mjs';
 import {REQUEST_TIMELINE_FIELDS,parseRequestTimelineTimestamp,requestExpectedCompletionValue,validateRequestTimelineChange,buildRequestTimelineChanges,requestTimelineEvents,requestTimelineDurations} from './shared/request-timeline.mjs';
 import {requestsWithDoorNumbers} from './shared/equipment-door.mjs';
@@ -330,6 +331,8 @@ const databasePool=new Pool({
 // Before the row-security wrapper takes hold of connect, so every checkout is counted.
 const poolClients=trackPoolClients(databasePool,{requestLabel:()=>{const req=currentRequest();return req?`${req.method} ${normalizeRoutePath(req.originalUrl||req.path)}`:'';}});
 const pool=rowSecurityPool(databasePool,{enabled:process.env.MIS_RLS_ENABLED==='true',resolveScope:req=>req.logBookScope||logBookScope(req.securitySession||req.session)});
+// Owner rule (15 Nov 2026): a sign-in that refused its location cannot use Pulse-II.
+const signInLocationGuard=createSignInLocationGuard(pool);
 // Admin > Diagnostics shows these numbers: server freezes, slow pages and database waits.
 const performanceMonitor=createPerformanceMonitor({pool,poolClients});
 performanceMonitor.start();
@@ -2653,6 +2656,7 @@ async function requireSession(req,res,next){
     const scannerSession=typeof scannerConnectorAuth==='undefined'?null:await scannerConnectorAuth.authenticate(req);
     const session=scannerSession||await readSession(req);
     if(!session)return res.status(401).json({error:'Your sign-in has expired. Please sign in again.'});
+    if(typeof signInLocationGuard==='function'&&await signInLocationGuard(req,res,session,{machine:Boolean(scannerSession)}))return;
     if(session.permissions?.separateMisCredentials&&!await authorizeMisRequest(session,req,pool))return res.status(403).json({error:'This MIS menu is not assigned to your login.'});
     req.session=session;
     req.auditSessionId=session.sessionId;
@@ -2698,6 +2702,7 @@ async function requireSuper(req,res,next){
   try{
     const session=await readSession(req);
     if(!session)return res.status(401).json({error:'Your sign-in has expired. Please sign in again.'});
+    if(typeof signInLocationGuard==='function'&&await signInLocationGuard(req,res,session))return;
     if(session.permissions?.separateMisCredentials&&!await authorizeMisRequest(session,req,pool))return res.status(403).json({error:'This MIS menu is not assigned to your login.'});
     if(['HR User','HR Manager'].includes(session.assignedRole)&&isCdirMaster(req.params?.master?decodeURIComponent(req.params.master):'')){
       req.session=session;return next();

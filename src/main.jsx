@@ -401,7 +401,8 @@ import { APP_VERSION } from "./app-version.js";
 import { formatCountDelta } from "./fleet-count-trend.mjs";
 import DateInput from "./date-input.mjs";
 import { approveEquipmentChanges, equipmentChangeText, equipmentChanges } from "./equipment-otp-dialog.mjs";
-import { recordSignInLocation, SIGN_IN_LOCATION_NOTICE } from "./sign-in-location.mjs";
+import { SIGN_IN_LOCATION_NOTICE } from "./sign-in-location.mjs";
+import { useSignInLocationGate, SignInLocationScreen } from "./sign-in-location-gate.jsx";
 
 const vehicles = [];
 const breakdowns = [];
@@ -11529,6 +11530,7 @@ function App() {
   const [sharedSignedOut,setSharedSignedOut]=useState(false);
   const sharedSignIn=useMisSharedSignIn(session,{autoStart:true,paused:sharedSignedOut});
   const accountSecurity=useAccountSecurity(session,{enabled:sharedSignIn.mode==='client'||Boolean(session?.browserSession||session?.permissions?.separateMisCredentials)});
+  const locationGate=useSignInLocationGate(session?.token);
   useEffect(()=>{
     const receive=event=>{const value=event.detail;if(!value?.token)return;
       authToken=value.token;currentEmployeeName=value.name;
@@ -11602,7 +11604,6 @@ function App() {
     const activityEvents=['pointerdown','keydown','touchstart','wheel'];
     activityEvents.forEach((name)=>window.addEventListener(name,markActivity,{passive:true,capture:true}));
     void heartbeat(true);
-    void recordSignInLocation(session.token);
     return()=>{
       closed=true;
       activityEvents.forEach((name)=>window.removeEventListener(name,markActivity,{capture:true}));
@@ -12054,6 +12055,7 @@ function App() {
     session, theme,
   ]);
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
+  if (session?.token&&locationGate.phase!=='open') return <SignInLocationScreen gate={locationGate} onSignOut={logout}/>;
   // 'checking' = the server has not yet said which sign-in applies; never show the old password form on a guess.
   if (!session && (sharedSignIn.mode==='client'||sharedSignIn.mode==='checking')) return <MisSharedLogin error={sharedSignIn.error} message={sharedSignIn.mode==='checking'?'Opening MIS sign-in…':undefined}/>;
   if (!session) return <Login onLogin={completeLogin} theme={theme} toggleTheme={toggleTheme} />;
