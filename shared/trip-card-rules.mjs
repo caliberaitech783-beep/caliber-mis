@@ -7,7 +7,7 @@ export function kmrMeterReplaced({openingKmr,closingKmr}={}){
 export const VLB_SHIFT_KMR_LIMIT=250;
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
- if(![8,9,12].includes(hours))return issues;
+ if(kind!=='lmv'&&![8,9,12].includes(hours))return issues;
  for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
   if(a==null||b==null||String(a).trim()===''||String(b).trim()==='')continue;
@@ -21,7 +21,7 @@ export function shiftMeterIssues(draft={},kind='vehicle'){
    continue;
   }
   const difference=replaced?Number(actual):closing-opening;
-  if(difference-limit>Number.EPSILON*(replaced?limit:Math.max(1,Math.abs(opening),Math.abs(closing)))*4){
+  if(kind!=='lmv'&&difference-limit>Number.EPSILON*(replaced?limit:Math.max(1,Math.abs(opening),Math.abs(closing)))*4){
    const format=n=>Number(n.toFixed(3)),unit=meter==='Hmr'?'hours':'km';
    const label=replaced?'Actual KMR distance':meter.toUpperCase()+' difference (closing - opening)';
    issues[field]=`${label} is ${format(difference)} ${unit}; maximum for an ${hours}-hour shift is ${limit}. Exceeds limit by ${format(difference-limit)} ${unit}.`;

@@ -1,4 +1,5 @@
 import {idleShiftHours} from '../../shared/breakdown-hours-source.mjs';
+import {isLmv} from '../../shared/equipment-kind.mjs';
 import {validShiftHours} from '../../shared/site-shift-hours.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
 const round=n=>Math.round(n*1000)/1000;
@@ -6,7 +7,7 @@ const epoch=v=>{if(!v)return NaN;const s=String(v).trim();return Date.parse(/^\d
 const identity=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export function summarizePulseHours({rows,date,site,asset,shift,shiftHours,runningHours,portion,now=Date.now()}){
  const time=String(shift?.startTime||shift?.start||'');if(!/^\d{2}:\d{2}(?::\d{2})?$/.test(time))throw new Error('Shift Master start time is missing.');
- const shiftStart=epoch(date+' '+time),start=portion?.start??shiftStart,end=portion?.end??(shiftStart+Number(shiftHours)*3600000);if(!Number.isFinite(start)||!validShiftHours(shiftHours,{...shift,site}))throw new Error('Select a valid date and shift.');
+ const shiftStart=epoch(date+' '+time),start=portion?.start??shiftStart,end=portion?.end??(shiftStart+Number(shiftHours)*3600000);if(!Number.isFinite(start)||(isLmv(asset)?!Number.isFinite(end)||Number(shiftHours)<0:!validShiftHours(shiftHours,{...shift,site})))throw new Error('Select a valid date and shift.');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(shiftStart).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'})!==date)throw new Error('Enter a valid book date.');
  const equipmentName=String(asset.category||'').trim().toLowerCase()==='vehicle'?null:asset.equipmentName;
  const doors=[asset.door,asset.doorNo,equipmentName,asset.registration,asset.reg].filter(Boolean).map(identity);const ranges=[],references=[],breakdowns=[];

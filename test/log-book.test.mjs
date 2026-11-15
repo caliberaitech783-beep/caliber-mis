@@ -54,10 +54,11 @@ test('database-backed log books enforce access, persist both forms, generate num
  assert.equal((await call('/api/log-books/vehicle','GET',undefined,'')).status,401);assert.equal((await call('/api/log-books/vehicle','GET',undefined,'normal')).status,403);
  for(const name of ['Dudhicua East OC','Dudhichua East OC','Dudhichua East OB'])await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2)',['Site master',JSON.stringify({name})]);
  const lmvAsset=(await db.query('INSERT INTO master_records(master_name,record_data) VALUES($1,$2) RETURNING id',['Equipment master',JSON.stringify({category:'LMV',door:'BUS-TEST',currentLocation:'Sasti OC'})])).rows[0].id;
- const lmvBody={...input(),assetId:lmvAsset,employeeId:7,shiftId:'',manualShift:'day',shiftHours:12,trips:[],requestKey:randomUUID()};
+ const lmvBody={...input(),assetId:lmvAsset,employeeId:7,shiftId:'',manualShift:'day',shiftHours:10.5,trips:[],requestKey:randomUUID()};
  const lmv=await call('/api/log-books/lmv','POST',lmvBody);
  assert.equal(lmv.status,201,JSON.stringify(lmv.data));
  assert.equal(lmv.data.data.shiftId,null);
+ assert.equal(lmv.data.data.shiftHours,10.5);
  assert.equal(lmv.data.data.shiftName,'Day');
  const cleared=await call('/api/log-books/lmv/'+lmv.data.id,'PUT',{...lmvBody,manualShift:'',bookShiftCode:lmv.data.data.bookShiftCode,revision:1});
  assert.equal(cleared.status,200,JSON.stringify(cleared.data));
