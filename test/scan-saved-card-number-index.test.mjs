@@ -5,7 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
-import {ensureSavedCardNumberIndex,savedCardNumberIndexState,preloadDuplicateChecks,SAVED_CARD_NUMBER_INDEX} from '../server/services/scan-duplicates.mjs';
+import {ensureSavedCardNumberIndex,savedCardNumberIndexState,preloadDuplicateChecks,findContentDuplicate,SAVED_CARD_NUMBER_INDEX,RETIRED_CARD_NUMBER_INDEXES} from '../server/services/scan-duplicates.mjs';
 
 const quiet={log:{log(){}}};
 async function database(t){
@@ -81,4 +81,43 @@ test('Pulse-II builds the index in the background when it starts and shows it on
  assert.match(source,/preloadDuplicateChecks\(db,batch,live,\{lap\}\)/);
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.ok(server.includes('savedCardNumberIndex:s.savedCardNumberIndex'));
+});
+
+// Live on 15 Nov 2026: card numbers repeat every day and today's log books are not in the table
+// statistics yet. The first index was skipped for mis_log_books_date_site (the whole day read and
+// filtered), and #344's number-first index read that number on every day (13-18 s, reverted).
+test('with card numbers repeating every day and today missing from the statistics, one day of one number is read',async t=>{
+ const db=await database(t);
+ const number=`regexp_replace(upper(COALESCE(data->>'scanCardNumber',NULLIF(data->>'aFormNo',''),data->>'jobCardNo','')),'[^A-Z0-9]','','g')`;
+ const fill=(date,n)=>db.query(`INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) SELECT 'B'||g||$1,'vehicle',$1::date,'Sasti OC',g,jsonb_build_object('aFormNo',(g%120)::text,'door','D'||g,'pad',repeat('x',2000)),gen_random_uuid(),'test' FROM generate_series(1,$2) g`,[date,n]);
+ for(let day=1;day<=14;day++)await fill('2026-11-'+String(day).padStart(2,'0'),500);
+ await db.exec(`CREATE INDEX ${RETIRED_CARD_NUMBER_INDEXES[0]} ON mis_log_books (book_type,book_date,(${number})) WHERE deleted_at IS NULL; CREATE INDEX ${RETIRED_CARD_NUMBER_INDEXES[1]} ON mis_log_books ((${number}),book_type,book_date) WHERE deleted_at IS NULL`);
+ const batch={id:randomUUID(),kind:'vehicle',expected_context:{bookDate:'2026-11-15',location:'Sasti OC'}};
+ const card={id:randomUUID(),batch_id:batch.id,created_at:new Date().toISOString(),draft:{aFormNo:'7',bookDate:'2026-11-15',door:'D7'},raw_fields:{}};
+ const ask=async()=>{
+  const sql=[];
+  const spy={query:(text,params)=>{sql.push({text,params});return db.query(text,params);}};
+  const checks=await preloadDuplicateChecks(spy,batch,[card]);
+  const found=[(await checks.content(card,{bookDate:'2026-11-15',door:'D7',number:'7'}))?.kind,(await findContentDuplicate(spy,'vehicle',card,batch,{bookDate:'2026-11-15',door:'D7',number:'7'}))?.kind];
+  return {found,saved:sql.filter(q=>/FROM mis_log_books l (LEFT JOIN|WHERE l\.book_type)/.test(q.text))};
+ };
+ // Before this server has the index valid, the queries keep the plain date.
+ await db.query('SELECT 1');
+ const before=await ask();
+ if(savedCardNumberIndexState().state!=='valid')assert.ok(before.saved.every(q=>!q.text.includes('book_date+0')),'no book_date+0 without the index');
+ assert.equal(await ensureSavedCardNumberIndex(db,quiet),true);
+ assert.deepEqual((await db.query('SELECT relname FROM pg_class WHERE relname=ANY($1::text[])',[RETIRED_CARD_NUMBER_INDEXES])).rows,[],'the earlier indexes are dropped');
+ await fill('2026-11-15',500); // today: saved after the last ANALYZE
+ const after=await ask();
+ assert.deepEqual(after.found,['logbook','logbook']);
+ assert.equal(after.saved.length,2);
+ for(const query of after.saved){
+  assert.ok(query.text.includes('book_date+0'));
+  const plan=(await db.query('EXPLAIN ANALYZE '+query.text,query.params)).rows.map(row=>Object.values(row)[0]).join('\n');
+  assert.match(plan,new RegExp(`Index Scan using ${SAVED_CARD_NUMBER_INDEX}`),plan);
+  assert.match(plan,/Index Cond: .*book_date \+ 0.*regexp_replace/,plan);
+  const removed=Number(plan.match(/Rows Removed by Filter: (\d+)/)?.[1]||0);
+  assert.ok(removed<10,'only that number on that day is read: '+plan);
+ }
+ assert.equal(savedCardNumberIndexState().usedByPlanner,true);
 });
