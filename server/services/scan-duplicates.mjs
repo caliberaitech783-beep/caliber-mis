@@ -1,6 +1,6 @@
 import {operationalScanSql} from '../../shared/operational-start.mjs';
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {cardMachineKey} from '../../shared/scan-machine-rules.mjs';
+import {cardMachineKey,separatorCorrectedKey} from '../../shared/scan-machine-rules.mjs';
 import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {fingerprintScanImage,closestFingerprint,scanFingerprintSettings} from './scan-fingerprint.mjs';
 import {isMultiSheet} from '../../shared/trip-card-sheet.mjs';
@@ -93,6 +93,9 @@ export function contentIdentityCertain(card,kind,context){
  return !['system-fallback','scan-unreadable'].includes(draft.bookDateSource);
 }
 
+// A saved log book keeps the real door, so a card whose slash was read as 1
+// (written V1840, saved V-840) is still the same card.
+const savedDoorKeys=(door,kind,doorKey)=>new Set([doorKey,separatorCorrectedKey(door,kind)].filter(Boolean));
 // Same date, door and card number on a live card in any entry for this date,
 // site and shift (earlier cards win), or in a saved log book.
 export async function findContentDuplicate(client,kind,card,batch,{bookDate,door,number}){
@@ -103,7 +106,8 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
  const sibling=siblings.map(row=>decodeScanRow(row)).find(row=>scanDoorKey(row,kind)===doorKey);
  if(sibling)return {kind:'card',...originalSummary(sibling)};
  const savedRows=(await client.query("SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$3 AND COALESCE(l.data->>'scanCardId','')<>$4",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
- const saved=savedRows.find(row=>cardMachineKey(row.data?.door||row.data?.doorText,kind)===doorKey);
+ const savedKeys=savedDoorKeys(door||scanDoorValue(card),kind,doorKey);
+ const saved=savedRows.find(row=>savedKeys.has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
  if(saved){const origin=saved.scan_card_id?(await client.query('SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1',[saved.scan_card_id])).rows[0]:null;return {kind:'logbook',cardId:origin?.id||null,batchId:origin?.batch_id||null,entryName:origin?.batch_name||null,ordinal:origin?.ordinal||null,bookNo:saved.book_no};}
  return null;
 }
@@ -161,7 +165,7 @@ export async function preloadDuplicateChecks(client,batch,cards,{lap=()=>{}}={})
    const created=time(card.created_at);
    const sibling=siblings.find(row=>row.id!==card.id&&row.number===number&&row.book_date===bookDate&&(time(row.created_at)<created||(time(row.created_at)===created&&row.id<card.id))&&scanDoorKey(row,kind)===doorKey);
    if(sibling)return {kind:'card',...originalSummary(sibling)};
-   const saved=savedRows.find(row=>row.number===number&&row.book_date===bookDate&&(row.scan_card_id||'')!==card.id&&cardMachineKey(row.data?.door||row.data?.doorText,kind)===doorKey);
+   const saved=savedRows.find(row=>row.number===number&&row.book_date===bookDate&&(row.scan_card_id||'')!==card.id&&savedDoorKeys(door||scanDoorValue(card),kind,doorKey).has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
    if(saved)return {kind:'logbook',cardId:saved.origin_id||null,batchId:saved.origin_batch_id||null,entryName:saved.origin_batch_name||null,ordinal:saved.origin_ordinal||null,bookNo:saved.book_no};
    return null;
   }

@@ -129,6 +129,9 @@ test('a borderline scan is read and tagged as a suspect; a certain content match
  await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('MAJ/0012','vehicle','2026-11-01','Majri OB',5,$1,$2,'alice')",[JSON.stringify({door:'V5',scanCardNumber:'A12'}),randomUUID()]);
  assert.equal(await findContentDuplicate(pool,'vehicle',differentDoor,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V6',number:'A12'}),null,'a saved card with the same number but a different written door is not a duplicate');
  assert.equal((await findContentDuplicate(pool,'vehicle',unsureCard,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V5',number:'A12'})).bookNo,'MAJ/0012','a saved card with the same written door remains a duplicate');
+ await db.query("INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) VALUES('MAJ/0013','vehicle','2026-11-01','Majri OB',5,$1,$2,'alice')",[JSON.stringify({door:'V-840',scanCardNumber:'A13'}),randomUUID()]);
+ const slashRead={...unsureCard,raw_fields:{...unsureCard.raw_fields,door:'V1840'},draft:{...unsureCard.draft,doorText:'V-840',doorTextWritten:'V1840'}};
+ assert.equal((await findContentDuplicate(pool,'vehicle',slashRead,{...context,id:b02.id},{bookDate:'2026-11-01',door:'V1840',number:'A13'})).bookNo,'MAJ/0013','a re-scan reading V/840 as V1840 matches the book saved with the real door V-840');
  assert.equal(contentDuplicateMessage(found,false),'','an uncertain content match does not block a valid card');
  assert.equal(contentDuplicateMessage(found,true),'Same card number, door and date already appear on card 1 in entry '+b01.name+'. Reject this card or correct the values.');
  // A card dated differently from its entry is never certain: the mismatch gate handles it.
