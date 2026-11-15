@@ -407,3 +407,18 @@ test('the report reads Pulse breakdowns of the chosen dates and sites only, and 
  assert.match(screen,/breakdownText\(saidBd\)/);
  assert.match(fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8'),/pulseBreakdowns=\{data\.pulseBreakdowns\?\?null\}/);
 });
+
+// Owner, 15 Nov 2026: "Fix the cut-off BD over label". On his screen the strip was about 560 px wide, so "12:12 BD over" ran
+// past the end of an 8-hour shift; the tags are now placed by the real width of the strip, padding included.
+test('a tag near the end of a narrow strip reads leftwards instead of running off it',()=>{
+ const t={lo:0,hi:480,shiftMinutes:480,pieces:[],breakdowns:[{id:'bd',from:305,to:432,fromClock:'10:05',toClock:'12:12',minutes:127,ongoing:false}]};
+ const placed=px=>{const per=480/px;return clockTags(t,{width:7.4*per,pad:16*per,lanes:3}).map(g=>[g.text,g.end]);};
+ assert.deepEqual(placed(560),[['10:05 BD',false],['12:12 BD over',true]],'560 px: drawn to the left of 12:12');
+ assert.deepEqual(placed(1400),[['10:05 BD',false],['12:12 BD over',false]],'1,400 px: room to the right');
+ const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/<div ref=\{track\} className="lm-tl-track"/);
+ assert.match(screen,/clockTags\(t,\{width:7\.4\*perPx,pad:16\*perPx,lanes:3\}\)/);
+ assert.match(screen,/new ResizeObserver\(measure\)/);
+ const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
+ assert.match(css,/\.lm-hour-counts\{display:flex;flex-wrap:wrap;/,'the BD minutes of an hour wrap instead of being cut off');
+});

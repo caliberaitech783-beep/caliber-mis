@@ -103,10 +103,11 @@
 .lm-report .lm-tl-axis span:first-of-type{transform:none}
 .lm-report .lm-tl-axis span:last-of-type{transform:translateX(-100%)}
 .lm-report .lm-tl-axis .lm-edge{font-weight:800;color:#2a2140}
-.lm-report .lm-tl-hours{position:relative;height:46px;margin-top:2px}
+.lm-report .lm-tl-hours{position:relative;height:66px;margin-top:2px}
 .lm-report .lm-hour{position:absolute;top:0;bottom:0;box-sizing:border-box;overflow:hidden;padding:4px 6px;border-left:1px solid #cfc4e0;font-size:12px;line-height:1.4;white-space:nowrap}
 .lm-report .lm-hour b{font-size:14px}
-.lm-report .lm-hour-counts{display:flex;gap:3px;margin-top:2px}
+/* The colour counts and the minutes in breakdown wrap to a second line in a narrow hour, so none is cut off. */
+.lm-report .lm-hour-counts{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
 .lm-report .lm-hour-counts em{font-style:normal;font-weight:750}
 .lm-report .lm-pill{display:inline-block;min-width:22px;padding:1px 5px;border-radius:999px;font-style:normal;font-size:12px;font-weight:800;line-height:1.5;text-align:center}
 .lm-report .lm-pill-green{background:#3aa863;color:#fff}
