@@ -114,10 +114,13 @@ export const subBatchLabel=name=>{const parts=String(name||'').split('/').map(p=
 // flagged for a person to check), so the two add up to the total.
 const clearedLine=s=>`${s.cards} · ✅${s.autoCleared} · ❌${s.cards-s.autoCleared}`;
 // The full batch name "CMLL/GAURI PAUNI OC (2ND)/9TH -NOV-26/S1/B01" is too wide for one phone line,
-// so the picture shows it in full and the text line leaves out the site, printed on the picture
-// just above it: "CMLL/9TH -NOV-26/S1/B01".
-export const batchLineName=name=>{const parts=String(name||'').split('/');
- return parts.length>=4&&parts[0]==='CMLL'?[parts[0],...parts.slice(2)].join('/'):String(name||'-');};
+// so the picture shows it in full and the text line leaves out "CMLL" (the same on every batch)
+// and the site (printed on the picture just above it), then adds the user who made the batch
+// (owner, 16 Nov 2026): "9TH -NOV-26/S1/B01 · teklalmahto".
+export const batchLineName=(name,user='')=>{const parts=String(name||'').split('/');
+ const short=parts.length>=4&&parts[0]==='CMLL'?parts.slice(2).join('/'):String(name||'-');
+ const login=String(user||'').trim().toLowerCase();
+ return login?`${short} · ${login}`:short;};
 // A Telegram photo caption holds 1024 characters; a batch with very many sub batches lists the first ones.
 const MAX_SUB_BATCH_LINES=12;
 
@@ -134,7 +137,7 @@ export function batchClosedMessage(batch,entries){
  const shown=subs.slice(0,MAX_SUB_BATCH_LINES);
  return [
   `<b>${REPORT_TITLE}</b>`,
-  `📋 ${escapeHtml(`${kinds} · ${batchLineName(batch.name)}`)}`,
+  `📋 ${escapeHtml(`${kinds} · ${batchLineName(batch.name,batch.creator)}`)}`,
   `🗂 Scanned ${all.cards} · Trips ${all.trips}`,
   `🔍 Extracted ${all.read-all.errors} · Processed ${all.saved}`,
   `📦 ${subs.length} sub ${subs.length===1?'batch':'batches'} · ✅ auto · ❌ error`,
@@ -163,7 +166,7 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
  const deliver=async(key,message,photo)=>{let sent=0;for(const login of await recipients()){try{if(await telegram.send(login,message,`scan-batch-report:${key}:${login}`,{html:true,photo}))sent++;}catch(error){log.error?.('Scan batch report not sent:',error?.message||error);}}return sent;};
 
  async function reportClosedBatches(){
-  const {rows}=await pool.query(`SELECT v.id,v.name,v.site,v.book_date::text AS book_date,v.shift,v.closed_at FROM mis_vlb_batches v,mis_scan_batch_report_start s
+  const {rows}=await pool.query(`SELECT v.id,v.name,v.site,v.book_date::text AS book_date,v.shift,v.closed_at,COALESCE(v.creator_login,v.created_by) AS creator FROM mis_vlb_batches v,mis_scan_batch_report_start s
    WHERE v.closed_at IS NOT NULL AND v.closed_at>=s.started_at AND v.closed_at>NOW()-make_interval(days=>${LOOKBACK_DAYS})
    AND v.deleted_at IS NULL AND v.archived_at IS NULL
    AND NOT EXISTS(SELECT 1 FROM mis_scan_batch_reports r WHERE r.subject=v.id::text AND r.stage='closed')
