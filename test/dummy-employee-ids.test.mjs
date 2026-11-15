@@ -31,6 +31,16 @@ test('a dummy ID may drive several vehicles in one shift without the driver HMR 
  await assert.rejects(()=>assertCombinedShiftMeters(sameVehicle,'vehicle',{...data,caliberId:'CMLL8856'}),error=>error.details?.code==='shift_hmr_limit');
 });
 
+test('one dummy ID can save several cards on one tipper in the same shift; a real driver cannot',async()=>{
+ const {assertSingleVlbCardPerShift}=await import('../server/rules/vlb-duplicate-card.mjs');
+ const card=(id,caliberId)=>({id,book_no:'VLB-'+id,data:{location:'Jayant OC',bookShiftCode:'S1',employeeId:77,caliberId,scanCardNumber:'500'}});
+ const data=caliberId=>({assetId:1,door:'V1',location:'Jayant OC',bookDate:'2026-11-15',bookShiftCode:'S1',employeeId:77,caliberId,scanCardId:'scan-9',scanCardNumber:'500'});
+ const dummy={query:async()=>({rows:[card(1,'CMLL8856'),card(2,'CMLL8856'),card(3,'CMLL8856')]})};
+ assert.deepEqual(await assertSingleVlbCardPerShift(dummy,data('CMLL8856')),[]);
+ const real={query:async()=>({rows:[card(1,'CMPL3228')]})};
+ await assert.rejects(()=>assertSingleVlbCardPerShift(real,data('CMPL3228')),error=>error.details?.code==='duplicate_card');
+});
+
 test('a dummy ID in all three shifts of one day raises no OT flag',()=>{
  const site='Jayant OC',date='2026-11-10';
  const shifts=[['A','05:00','13:00'],['B','13:00','21:00'],['C','21:00','05:00']].map(([shiftCode,startTime,endTime],i)=>({id:String(31+i),site,shiftCode,shiftName:'Shift '+shiftCode,startTime,endTime,status:'Active'}));
