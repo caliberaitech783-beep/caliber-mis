@@ -10,3 +10,11 @@ test('manual BD entry appears only after Pulse fails, and keyboard entry preserv
  assert.equal(nodes(Field({...props,error:'',pulse:{breakdownHours:null}})).some(n=>n.type==='input'),true);
  assert.equal(nodes(Field({...props,readOnly:true,savedValue:2})).find(n=>n.type==='output').props.children,'2.00');
 });
+
+test('BD hours from the stored Pulse copy say when Pulse was read, and an old copy says what may be missing',()=>{
+ const small=tree=>nodes(tree).filter(n=>n.type==='small').map(n=>n.props.children);
+ assert.deepEqual(small(Field({ready:true,pulse:{breakdownHours:1.5,pulseAsOf:'2026-11-15T14:05:00.000Z',warnings:[]}})),['From Pulse · as of 19:35']);
+ const old=small(Field({ready:true,pulse:{breakdownHours:1.5,pulseAsOf:'2026-11-15T14:05:00.000Z',warnings:['Pulse could not be read since 15 Nov, 19:35 IST; breakdowns after that are not counted yet.']}}));
+ assert.equal(old.length,2);assert.match(old[1],/not counted yet/);
+ assert.deepEqual(small(Field({ready:true,pulse:{breakdownHours:0}})),['From Pulse'],'live answers keep the old wording');
+});

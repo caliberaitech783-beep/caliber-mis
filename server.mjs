@@ -49,6 +49,7 @@ import {registerErpMasters} from './server/routes/erp-master-sync.mjs';
 import {bdmsEffectiveReport} from './shared/telegram-bdms-period.mjs';
 import {registerPulseMasterSync} from './server/routes/pulse-master-sync.mjs';
 import {createPulseSignInBridge} from './server/services/pulse-signin-bridge.mjs';
+import {createPulseBreakdownMirror} from './server/services/pulse-breakdown-mirror.mjs';
 import {registerEquipmentMasterOtp} from './server/routes/equipment-master-otp.mjs';
 import {registerTripVerification} from './server/routes/pulse-trip-verification.mjs';
 import {registerLogBooks} from './server/routes/log-book.mjs';
@@ -3648,6 +3649,7 @@ app.get('/api/health',async(_req,res)=>{
       releaseWindowTrigger:releaseWindowTrigger.state,
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
+      pulseBreakdownCopy:pulseBreakdownMirror?(({readAt,ageSeconds,rows,fresh,lastError})=>({readAt,ageSeconds,rows,fresh,lastError}))(pulseBreakdownMirror.status()):{enabled:false},
       scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane,entryReadSteps:s.entryReadSteps,progressReads:s.progressReadLane};}catch{return null;}})(),
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
@@ -7978,6 +7980,9 @@ const savedOracleConfig=async()=>await integrationSecrets.read('oracle')||(proce
 const aliasAlertLogins=async()=>[...new Set([(await readAliasApprover(pool)).login,...await misManagerLogins(pool)])];
 registerLmvImport(app,{pool,requireSession,requireAdministrator});
 const pulseSignInBridge=createPulseSignInBridge({pool});
+// Pulse-II's stored copy of Pulse's breakdown list, read once a minute, so BD hours never wait on Pulse.
+// PULSE_BREAKDOWN_MIRROR=off switches it off; BD hours then read Pulse live per user as before.
+let pulseBreakdownMirror=null;
 const pulseMasterSync=registerPulseMasterSync(app,{pool,stateFile:process.env.PULSE_SYNC_STATE_FILE,credentialStore:integrationSecrets,sharedSignIn:pulseSignInBridge,requireSession,requireAdministrator,onSnapshot:()=>reconcileEquipmentAliases(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),notifyLogins:aliasAlertLogins})});
 // Equipment master is two-way with Pulse: changes made here reach Pulse after one shared OTP.
 registerEquipmentMasterOtp(app,{pool,pulse:pulseMasterSync,sharedSignIn:pulseSignInBridge,requireSuper,
@@ -8014,7 +8019,8 @@ const logBookScope=session=>{
 registerErpEmployees(app,{pool,requireSession,requireAdministrator,getSiteScope:logBookScope});
 registerEmployeeMaster(app,{pool,requireSession,requireAdministrator});
 const scanImageStorage=createScanBlobStorage(scanBlobConfig());
-const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});
+pulseBreakdownMirror=String(process.env.PULSE_BREAKDOWN_MIRROR||'').trim().toLowerCase()==='off'?null:createPulseBreakdownMirror({pool,readFeed:()=>pulseMasterSync.readFullBreakdownFeed()});
+const logBooks=registerLogBooks(app,{imageStorage:scanImageStorage,pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror:pulseBreakdownMirror,getSiteScope:logBookScope,sendDeletionOtp:request=>sendScopedDeletionOtp({pool,...request}),approvalOtp:{pmLogins:vehicleTransferPmLogins,deliver:request=>approvalOtpDelivery.send(request)}});
 // PM approvals by OTP for express site transfers and new equipment raised from a VLB/ELB batch.
 // Telegram first, WhatsApp fallback. Pulse is the only Equipment master: until Pulse exposes write
 // endpoints the writer records local-only so the test platform can trial the flow end to end.
@@ -8847,6 +8853,7 @@ async function initializeDatabase(){
     databaseReady=true;
     databaseError='';
     await pulseMasterSync.start();
+    await pulseBreakdownMirror?.start();
     await logBooks.initialize();
     await initializeRowSecurity(pool,{enabled:process.env.MIS_RLS_ENABLED==='true'});
     await bulkScanning.start();
