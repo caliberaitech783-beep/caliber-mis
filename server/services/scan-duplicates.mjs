@@ -129,15 +129,51 @@ const UUID_SQL="'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 const SAVED_NUMBER_SQL=(prefix='')=>NUMBER_KEY_SQL(`${prefix}data->>'scanCardNumber',NULLIF(${prefix}data->>'aFormNo',''),${prefix}data->>'jobCardNo'`);
 export const SAVED_CARD_NUMBER_INDEX='mis_log_books_saved_card_number';
 // CONCURRENTLY keeps log book saves running while the index is built; a build that stopped half
-// way leaves an invalid index, which is dropped and built again on the next start.
-export async function ensureSavedCardNumberIndex(pool,{log=console}={}){
- const existing=(await pool.query('SELECT i.indisvalid AS valid FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid WHERE c.relname=$1',[SAVED_CARD_NUMBER_INDEX])).rows[0];
- if(existing?.valid)return false;
- if(existing)await pool.query(`DROP INDEX CONCURRENTLY IF EXISTS ${SAVED_CARD_NUMBER_INDEX}`);
- const started=Date.now();
- await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,(${SAVED_NUMBER_SQL()})) WHERE deleted_at IS NULL`);
- log.log?.(`Saved card number index built in ${Date.now()-started} ms.`);
- return true;
+// way leaves an invalid index, which is dropped and built again.
+// While one build runs its index is also "invalid", and on 15 Nov 2026 duplicate-saved stayed at
+// 0.6-3.3 s after release, as if the index was not there. Both Pulse-II slots and every instance
+// start this, so only the one that holds SAVED_CARD_NUMBER_LOCK may drop or build, and an index
+// another server is still building is never dropped. /api/health shows the outcome.
+const SAVED_CARD_NUMBER_LOCK=709224190;
+const savedIndexState={state:'not-started'};
+export const savedCardNumberIndexState=()=>({...savedIndexState});
+const SAVED_INDEX_PROBE=`SELECT l.id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${SAVED_NUMBER_SQL('l.')}=ANY($3::text[])`;
+export async function ensureSavedCardNumberIndex(pool,{log=console,now=()=>Date.now()}={}){
+ const client=typeof pool.connect==='function'?await pool.connect():pool;
+ let locked=false;
+ try{
+  const state=async()=>(await client.query('SELECT i.indisvalid AS valid FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid WHERE c.relname=$1',[SAVED_CARD_NUMBER_INDEX])).rows[0];
+  let existing=await state();
+  if(!existing?.valid){
+   locked=(await client.query('SELECT pg_try_advisory_lock($1) AS locked',[SAVED_CARD_NUMBER_LOCK])).rows[0].locked;
+   if(!locked){Object.assign(savedIndexState,{state:'building-elsewhere',checkedAt:new Date(now()).toISOString()});return 'busy';}
+   existing=await state();
+  }
+  let built=false;
+  if(!existing?.valid){
+   let buildingElsewhere=false;
+   try{buildingElsewhere=Boolean((await client.query('SELECT 1 FROM pg_stat_progress_create_index p JOIN pg_class c ON c.oid=p.index_relid WHERE c.relname=$1',[SAVED_CARD_NUMBER_INDEX])).rows.length);}catch{buildingElsewhere=false;}
+   if(buildingElsewhere){Object.assign(savedIndexState,{state:'building-elsewhere',checkedAt:new Date(now()).toISOString()});return 'busy';}
+   Object.assign(savedIndexState,{state:'building',startedAt:new Date(now()).toISOString()});
+   const started=now();
+   if(existing)await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${SAVED_CARD_NUMBER_INDEX}`);
+   await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,(${SAVED_NUMBER_SQL()})) WHERE deleted_at IS NULL`);
+   await client.query('ANALYZE mis_log_books');
+   savedIndexState.buildMs=now()-started;
+   log.log?.(`Saved card number index built in ${savedIndexState.buildMs} ms.`);
+   built=true;
+  }
+  // Whether the planner reads the saved-record question through the index (no rows are read).
+  const plan=(await client.query('EXPLAIN '+SAVED_INDEX_PROBE,['vehicle',[new Date(now()).toISOString().slice(0,10)],['0']])).rows.map(row=>Object.values(row)[0]).join('\n');
+  Object.assign(savedIndexState,{state:'valid',usedByPlanner:plan.includes(SAVED_CARD_NUMBER_INDEX),checkedAt:new Date(now()).toISOString()});
+  return built;
+ }catch(error){
+  Object.assign(savedIndexState,{state:'failed',error:String(error?.message||error).slice(0,200),checkedAt:new Date(now()).toISOString()});
+  throw error;
+ }finally{
+  if(locked)await client.query('SELECT pg_advisory_unlock($1)',[SAVED_CARD_NUMBER_LOCK]).catch(()=>{});
+  if(client!==pool)client.release?.();
+ }
 }
 export async function preloadDuplicateChecks(client,batch,cards,{lap=()=>{}}={}){
  const kind=batch.kind,ids=new Set(cards.map(card=>card.id));

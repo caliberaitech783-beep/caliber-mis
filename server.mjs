@@ -3650,7 +3650,7 @@ app.get('/api/health',async(_req,res)=>{
       scanDuplicates:scanDuplicateFlags(),
       hotScanStorage:{enabled:process.env.MIS_SCAN_BLOB_ENABLED==='true',ready:scanBlobReady},
       pulseBreakdownCopy:pulseBreakdownMirror?(({readAt,ageSeconds,rows,fresh,lastError})=>({readAt,ageSeconds,rows,fresh,lastError}))(pulseBreakdownMirror.status()):{enabled:false},
-      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane,entryReadSteps:s.entryReadSteps,progressReads:s.progressReadLane};}catch{return null;}})(),
+      scanReading:(()=>{try{const s=bulkScanning.status();return {mode:s.mode,reading:s.reading,liveEngines:s.liveEngines,siteLanes:s.lanes.length,blocked:s.outages,entryReads:s.entryReadLane,entryReadSteps:s.entryReadSteps,savedCardNumberIndex:s.savedCardNumberIndex,progressReads:s.progressReadLane};}catch{return null;}})(),
       automaticMisVerification:{enabled:pulseTripVerification.status().enabled,connected:pulseTripVerification.status().connected,lastCheckedAt:pulseTripVerification.status().lastRun},
       crmAdminLockPolicyPaused:ADMIN_LOCK_POLICY_PAUSED,
       oemEmailSchedule:{enabled:scheduledJobsEnabled,mailConfigured:ticketEmailConfiguration().configured,timeZone:'Asia/Kolkata',hour:17},
