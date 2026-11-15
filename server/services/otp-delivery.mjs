@@ -27,11 +27,13 @@ export function createOtpDelivery({pool,telegram=null,whatsapp=null}={}){
 // Telegram sender backed by the MIS Telegram outbox created by registerMisTelegram.
 export function telegramOutboxSender(pool,{drain=()=>{}}={}){
  return {
-  async send(login,message,eventKey){
+  // html: the message is Telegram HTML (for a bold line). photo {site,kind}: a site picture is sent with the message as its caption.
+  async send(login,message,eventKey,{html=false,photo=null}={}){
    if(!await automationOnForEventKey(eventKey))return false;
    const {rows}=await pool.query('SELECT chat_id FROM mis_telegram_links WHERE login_name=$1',[login]);
    if(!rows[0])return false;
-   await pool.query('INSERT INTO mis_telegram_outbox(event_key,chat_id,message) VALUES($1,$2,$3) ON CONFLICT(event_key) DO NOTHING',[eventKey||`otp:${login}:${Date.now()}`,rows[0].chat_id,String(message).slice(0,4000)]);
+   await pool.query('INSERT INTO mis_telegram_outbox(event_key,chat_id,message,parse_mode,photo) VALUES($1,$2,$3,$4,$5) ON CONFLICT(event_key) DO NOTHING',
+    [eventKey||`otp:${login}:${Date.now()}`,rows[0].chat_id,String(message).slice(0,4000),html?'HTML':'',photo?JSON.stringify(photo):null]);
    void Promise.resolve().then(()=>drain()).catch(()=>{});
    return true;
   },

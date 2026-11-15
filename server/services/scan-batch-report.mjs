@@ -7,12 +7,11 @@ import {displaySiteName} from '../../shared/region-scope.mjs';
 
 // Site-wise batch completion report (owner's request, 14 Nov 2026), sent on the
 // MIS Telegram bot to the owner's linked logins (the owner's registered mobile,
-// the same rule as the urgent release OTP):
-//  1. "read": a scan entry (about 40 cards) has no card left to read.
-//     Time, queue wait, reading time per card, auto-check result, model, tokens.
-//  2. "closed": a VLB batch (site, date, shift) is closed. All its scan entries
-//     together, with accuracy = cards saved without any operator correction.
-// Each report is sent once (mis_scan_batch_reports); only entries and batches
+// the same rule as the urgent release OTP). One message per site batch, when the
+// VLB batch (site, date, shift) is closed: all its scan entries together, with
+// accuracy = cards saved without any operator correction. Since 16 Nov 2026
+// (owner) there is no separate message when a scan entry has been read.
+// Each report is sent once (mis_scan_batch_reports); only batches
 // after the first start of this feature are reported, so a deploy does not send
 // a report for every old batch. MIS_SCAN_BATCH_REPORT=off switches it off.
 
@@ -22,13 +21,9 @@ export const SCAN_BATCH_REPORT_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_scan_batch_report_start(id INTEGER PRIMARY KEY CHECK(id=1),started_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  INSERT INTO mis_scan_batch_report_start(id) VALUES(1) ON CONFLICT DO NOTHING;`;
 
-export const REPORT_HEADER='📋 Site-wise batch completion report';
-// Template (owner, 15 Nov 2026): the site name is the header of every message,
-// so a chat full of reports reads site by site.
-export const siteHeader=site=>`📍 ${(displaySiteName(site)||'Site not set').toUpperCase()}`;
-const RULE='━━━━━━━━━━━━━━━━';
-// An entry still being uploaded is not "done": wait this long after its last card arrived.
-export const SETTLE_MS=2*60000;
+export const REPORT_TITLE='SITE-WISE BATCH COMPLETION REPORT';
+// Template (owner, 15 Nov 2026): the site picture first, then the site name,
+// the bold title, the batch and four figure lines (reportLines below).
 const LOOKBACK_DAYS=3;
 
 const finite=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -43,7 +38,6 @@ export function duration(ms){
  return h?`${h} h ${m} min`:`${m} min ${s} s`;
 }
 const clock=ms=>finite(ms)?new Date(ms).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}):'-';
-const tokens=n=>!finite(n)?'-':n>=1e6?(Math.round(n/1e5)/10)+'M':n>=1e3?Math.round(n/1e3)+'k':String(n);
 
 // Fields an operator checks against the card. Context fields (site, date) and
 // the opening meters (carried over from the previous card) are filled by the
@@ -82,6 +76,8 @@ export function cardFacts(row){
   model:gemini.model||raw.model||'',tokens:gemini.usage?.totalTokenCount,
   flagged,error:row.status==='error',rechecked:Boolean(recovery?.attempted),
   corrected:saved?correctedFields(raw.extractionDraft,draft):null,
+  // Trip rows on the card: as saved by the operator, else as read.
+  trips:Array.isArray(draft.trips)&&(saved||draft.trips.length)?draft.trips.length:Array.isArray(raw.extractionDraft?.trips)?raw.extractionDraft.trips.length:0,
  };
 }
 
@@ -96,7 +92,8 @@ export function summarize(cards){
  const tokenList=read.map(c=>c.tokens).filter(finite);
  return {
   cards:cards.length,read:read.length,errors:read.filter(c=>c.error).length,
-  flagged:read.filter(c=>c.flagged).length,rechecked:read.filter(c=>c.rechecked).length,
+  flagged:read.filter(c=>c.flagged).length,autoCleared:read.filter(c=>!c.flagged).length,
+  trips:cards.reduce((sum,c)=>sum+(c.trips||0),0),rechecked:read.filter(c=>c.rechecked).length,
   rejected:cards.filter(c=>c.status==='rejected').length,
   firstUpload:first,lastRead:last,wallMs:first!==null&&last!==null&&last>=first?last-first:null,
   queueMedianMs:median(read.map(c=>c.queuedMs)),queueMaxMs:read.map(c=>c.queuedMs).filter(finite).reduce((a,b)=>Math.max(a,b),-1),
@@ -107,46 +104,46 @@ export function summarize(cards){
 }
 
 const kindLabel=entry=>entry.kind==='equipment'?'ELB':entry.context?.logBookKind==='lmv'?'LMV':'VLB';
-const line=(label,value)=>`${label}: ${value}`;
+// Telegram HTML: only the heading is bold, everything else is plain text.
+export const escapeHtml=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-export function entryReadMessage(entry,s){
- const ctx=entry.context||{};
- const autoClean=s.read-s.flagged;
- return [
-  siteHeader(ctx.location),
-  `${REPORT_HEADER} | Scan entry read`,
-  [kindLabel(entry),ctx.bookDate,vlbRecordShift(ctx)&&'Shift '+vlbRecordShift(ctx)].filter(Boolean).join(' | '),
-  line('Entry',entry.name||'-'),
-  RULE,
-  line('🗂 Cards',`${s.read} read`+(s.errors?`, ${s.errors} failed`:'')),
-  line('⏱ Total time',`${duration(s.wallMs)} (upload ${clock(s.firstUpload)} to last read ${clock(s.lastRead)})`),
-  line('⏳ Queue wait',`median ${duration(s.queueMedianMs)}, max ${duration(s.queueMaxMs)}`),
-  line('⚡ Time per card',`median ${duration(s.readMedianMs)}, average ${duration(s.readAverageMs)} (Gemini ${duration(s.geminiMedianMs)})`),
-  line('✅ Auto-check',`${autoClean} clean (${pct(autoClean,s.read)??'-'}%), ${s.flagged} flagged for review, ${s.rechecked} re-read`),
-  line('🤖 Model',`${s.models.join(', ')||'-'} | tokens ${tokens(s.tokens)}`),
-  line('🎯 Accuracy','comes in the batch report when the batch is closed (after operator checking)'),
- ].join('\n');
-}
+// "CMLL/2026-11-09/GAURI PAUNI OB 2ND/S1/TEKLALMAHTO/B02" -> "B02 TEKLALMAHTO": site, date and shift are already in the batch name.
+export const subBatchLabel=name=>{const parts=String(name||'').split('/').map(p=>p.trim()).filter(Boolean);
+ return parts.length>=5?`${parts.at(-1)} ${parts.at(-2)}`:parts.join('/')||'-';};
+// Total · ✅ auto-cleared · ❌ error. Error = not auto-cleared (failed to read or
+// flagged for a person to check), so the two add up to the total.
+const clearedLine=s=>`${s.cards} · ✅${s.autoCleared} · ❌${s.cards-s.autoCleared}`;
+// The full batch name "CMLL/GAURI PAUNI OC (2ND)/9TH -NOV-26/S1/B01" is too wide for one phone line,
+// so the picture shows it in full and the text line leaves out the site, printed on the picture
+// just above it: "CMLL/9TH -NOV-26/S1/B01".
+export const batchLineName=name=>{const parts=String(name||'').split('/');
+ return parts.length>=4&&parts[0]==='CMLL'?[parts[0],...parts.slice(2)].join('/'):String(name||'-');};
+// A Telegram photo caption holds 1024 characters; a batch with very many sub batches lists the first ones.
+const MAX_SUB_BATCH_LINES=12;
 
+// One message per closed batch (owner, 15-16 Nov 2026), sent as the caption of the
+// site picture (site-report-banner.mjs), which carries the site name (not repeated
+// here). Every line is short enough to stay on one line of a phone screen (owner,
+// 16 Nov 2026): bold title, full batch name, cards and trips, extracted and
+// processed, every sub batch with total, auto-cleared and error, time, average per
+// card with accuracy (after operator check), model.
 export function batchClosedMessage(batch,entries){
  const all=summarize(entries.flatMap(e=>e.facts));
- const fields=Object.entries(all.fieldCounts).sort((a,b)=>b[1]-a[1]).map(([f,n])=>`${f} ${n}`).join(', ');
- const kinds={};for(const e of entries)kinds[kindLabel(e)]=(kinds[kindLabel(e)]||0)+1;
- const closedAt=Date.parse(batch.closed_at);
+ const kinds=[...new Set(entries.map(kindLabel))].join('+')||'VLB';
+ const subs=entries.map(e=>({name:subBatchLabel(e.name),s:summarize(e.facts)}));
+ const shown=subs.slice(0,MAX_SUB_BATCH_LINES);
  return [
-  siteHeader(batch.site),
-  `${REPORT_HEADER} | Batch complete`,
-  [batch.book_date,'Shift '+batch.shift].join(' | '),
-  line('Batch',batch.name),
-  RULE,
-  line('📦 Scan entries',`${entries.length} (${Object.entries(kinds).map(([k,n])=>k+' '+n).join(', ')})`),
-  line('🗂 Cards',`${all.cards} scanned, ${all.saved} saved, ${all.rejected} rejected`+(all.errors?`, ${all.errors} failed to read`:'')),
-  line('⏱ Scanning time',`${duration(all.wallMs)} (first upload ${clock(all.firstUpload)} to last read ${clock(all.lastRead)}), closed ${clock(closedAt)}`),
-  line('⚡ Time per card',`median ${duration(all.readMedianMs)}, queue wait median ${duration(all.queueMedianMs)}`),
-  line('🎯 Accuracy',all.saved?`${all.accuracy}% (${all.clean} of ${all.saved} saved cards needed no correction)`:'no saved scan cards'),
-  ...(fields?[line('✏️ Corrected',fields)]:[]),
-  line('🤖 Model',`${all.models.join(', ')||'-'} | tokens ${tokens(all.tokens)}`),
-  ...(entries.length>1?[RULE,'Per scan entry:',...entries.map(e=>{const s=summarize(e.facts);return `- ${e.name}: ${s.cards} cards, ${duration(s.wallMs)}, accuracy ${s.accuracy??'-'}%`;})]:[]),
+  `<b>${REPORT_TITLE}</b>`,
+  `📋 ${escapeHtml(`${kinds} · ${batchLineName(batch.name)}`)}`,
+  `🗂 Scanned ${all.cards} · Trips ${all.trips}`,
+  `🔍 Extracted ${all.read-all.errors} · Processed ${all.saved}`,
+  `📦 ${subs.length} sub ${subs.length===1?'batch':'batches'} · ✅ auto · ❌ error`,
+  ...shown.map(({name,s})=>`• ${escapeHtml(name)} · ${clearedLine(s)}`),
+  ...(subs.length>shown.length?[`• +${subs.length-shown.length} more`]:[]),
+  `▸ All · ${clearedLine(all)}`,
+  `⏱ ${clock(all.firstUpload)} → ${clock(all.lastRead)} · ${duration(all.wallMs)}`,
+  `⚡ ${duration(all.readAverageMs)}/card · Accuracy ${all.saved?`${all.accuracy}%`:'-'}`,
+  `🤖 ${escapeHtml(all.models.join(', ')||'-')}`,
  ].join('\n');
 }
 
@@ -163,25 +160,7 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
  const cardsOf=async ids=>(await pool.query(`SELECT c.batch_id,c.status,c.created_at,c.raw_fields,c.draft FROM mis_scan_cards c
   WHERE c.batch_id=ANY($1::uuid[]) AND ${CARD_FILTER('c')} ORDER BY c.ordinal`,[ids])).rows;
  const claim=async(subject,stage)=>(await pool.query('INSERT INTO mis_scan_batch_reports(subject,stage) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING subject',[subject,stage])).rows.length>0;
- const deliver=async(key,message)=>{let sent=0;for(const login of await recipients()){try{if(await telegram.send(login,message,`scan-batch-report:${key}:${login}`))sent++;}catch(error){log.error?.('Scan batch report not sent:',error?.message||error);}}return sent;};
-
- async function reportReadEntries(){
-  const cutoff=new Date(now()-SETTLE_MS);
-  const {rows}=await pool.query(`SELECT b.id,b.name,b.kind,b.expected_context FROM mis_scan_batches b,mis_scan_batch_report_start s
-   WHERE b.created_at>=s.started_at AND b.created_at>NOW()-make_interval(days=>${LOOKBACK_DAYS}) AND ${LIVE_ENTRY}
-   AND NOT EXISTS(SELECT 1 FROM mis_scan_batch_reports r WHERE r.subject=b.id::text AND r.stage='read')
-   AND EXISTS(SELECT 1 FROM mis_scan_cards c WHERE c.batch_id=b.id AND ${CARD_FILTER('c')})
-   AND NOT EXISTS(SELECT 1 FROM mis_scan_cards c WHERE c.batch_id=b.id AND c.status IN('queued','reading') AND ${CARD_FILTER('c')})
-   AND NOT EXISTS(SELECT 1 FROM mis_scan_cards c WHERE c.batch_id=b.id AND c.created_at>$1)
-   ORDER BY b.created_at LIMIT 20`,[cutoff]);
-  let sent=0;
-  for(const entry of rows){
-   if(!await claim(entry.id,'read'))continue;
-   const facts=(await cardsOf([entry.id])).map(cardFacts);
-   sent+=await deliver(`read:${entry.id}`,entryReadMessage({name:entry.name,kind:entry.kind,context:entry.expected_context||{}},summarize(facts)));
-  }
-  return sent;
- }
+ const deliver=async(key,message,photo)=>{let sent=0;for(const login of await recipients()){try{if(await telegram.send(login,message,`scan-batch-report:${key}:${login}`,{html:true,photo}))sent++;}catch(error){log.error?.('Scan batch report not sent:',error?.message||error);}}return sent;};
 
  async function reportClosedBatches(){
   const {rows}=await pool.query(`SELECT v.id,v.name,v.site,v.book_date::text AS book_date,v.shift,v.closed_at FROM mis_vlb_batches v,mis_scan_batch_report_start s
@@ -199,7 +178,7 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
    if(!entries.length)continue;
    const cards=await cardsOf(entries.map(e=>e.id));
    const withFacts=entries.map(e=>({name:e.name,kind:e.kind,context:e.expected_context||{},facts:cards.filter(c=>c.batch_id===e.id).map(cardFacts)})).filter(e=>e.facts.length);
-   if(withFacts.length)sent+=await deliver(`closed:${batch.id}`,batchClosedMessage(batch,withFacts));
+   if(withFacts.length)sent+=await deliver(`closed:${batch.id}`,batchClosedMessage(batch,withFacts),{site:displaySiteName(batch.site)||'',kind:[...new Set(withFacts.map(kindLabel))].join('+'),batch:batch.name||''});
   }
   return sent;
  }
@@ -207,7 +186,7 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
  return {
   async tick(){
    if(running)return {skipped:true};running=true;
-   try{await ensure();return {read:await reportReadEntries(),closed:await reportClosedBatches()};}
+   try{await ensure();return {closed:await reportClosedBatches()};}
    finally{running=false;}
   },
   start({intervalMs=60000}={}){
