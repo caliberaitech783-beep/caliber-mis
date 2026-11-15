@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {parseSignInLocation,SIGN_IN_LOCATION_UPDATE_SQL,SIGN_IN_LOCATION_STATUS_SQL,signInLocationBlocks,createSignInLocationGuard,signInLocationAccepted,signInLocationRequired,signInLocationExceptions,requestRoute,SIGN_IN_LOCATION_REQUIRED_CODE} from '../server/rules/sign-in-location.mjs';
+import {parseSignInLocation,SIGN_IN_LOCATION_UPDATE_SQL,SIGN_IN_LOCATION_STATUS_SQL,signInLocationBlocks,signInLocationRequiredFor,createSignInLocationGuard,signInLocationAccepted,signInLocationRequired,signInLocationExceptions,requestRoute,SIGN_IN_LOCATION_REQUIRED_CODE} from '../server/rules/sign-in-location.mjs';
 import {registerSignInLocationRoute,initializeLoginHistory} from '../server/routes/user-login-history.mjs';
 import {recordSignInLocation,readPosition,nearestPlaceLabel,formatAccuracy,signInLocationCell,sessionMark,signInLocationDone} from '../src/sign-in-location.mjs';
 import {auditShouldRecord} from '../server/rules/audit-trail.mjs';
 
+// The rule is on hold unless SIGN_IN_LOCATION_REQUIRED=1; these tests switch it on.
+const ON=Object.freeze({SIGN_IN_LOCATION_REQUIRED:'1'});
 const read=path=>readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
 
 test('server accepts only a known status and real coordinates',()=>{
@@ -18,7 +20,7 @@ test('server accepts only a known status and real coordinates',()=>{
 });
 
 test('owner rule: Block keeps the app closed, a device that cannot find a location is let in',()=>{
-  const env={};
+  const env=ON;
   const user={login:'Ramesh',locationStatus:''};
   assert.equal(signInLocationBlocks(user,{route:'/api/requests',env}),true,'no answer yet: closed');
   assert.equal(signInLocationBlocks({...user,locationStatus:'refused'},{route:'/api/requests',env}),true,'Block: closed');
@@ -28,10 +30,16 @@ test('owner rule: Block keeps the app closed, a device that cannot find a locati
     assert.equal(signInLocationBlocks(user,{route,env}),false,route);
   assert.equal(signInLocationBlocks(user,{route:'/api/requests',env,machine:true}),false,'scanner connector has no browser');
   assert.equal(signInLocationBlocks({login:'MIS_SYNC_SERVICE'},{route:'/api/masters',env}),false,'machine login');
-  assert.equal(signInLocationBlocks(user,{route:'/api/requests',env:{SIGN_IN_LOCATION_EXCEPTIONS:' ramesh , x'}}),false,'exception list');
+  assert.equal(signInLocationBlocks(user,{route:'/api/requests',env:{...ON,SIGN_IN_LOCATION_EXCEPTIONS:' ramesh , x'}}),false,'exception list');
   assert.equal(signInLocationBlocks(user,{route:'/api/requests',env:{SIGN_IN_LOCATION_REQUIRED:'0'}}),false,'switch off');
-  assert.equal(signInLocationRequired({}),true);assert.equal(signInLocationRequired({SIGN_IN_LOCATION_REQUIRED:' 0 '}),false);
-  assert.deepEqual([...signInLocationExceptions({})],['mis_sync_service']);
+  assert.equal(signInLocationRequired({}),false,'on hold by default (owner, 15 Nov 2026)');
+  assert.equal(signInLocationRequired({SIGN_IN_LOCATION_REQUIRED:' 1 '}),true);assert.equal(signInLocationRequired({SIGN_IN_LOCATION_REQUIRED:'0'}),false);
+  assert.equal(signInLocationBlocks(user,{route:'/api/requests',env:{}}),false,'on hold: nobody is held');
+  assert.equal(signInLocationAccepted('refused',user,{}),true,'on hold: a refusal still opens the app');
+  assert.deepEqual([...signInLocationExceptions({})],['mis_sync_service','mohitchadda']);
+  assert.equal(signInLocationBlocks({login:' MohitChadda '},{route:'/api/requests',env:ON}),false,'mohitchadda is never held');
+  assert.equal(signInLocationRequiredFor({login:'mohitchadda'},ON),false);
+  assert.equal(signInLocationRequiredFor(user,ON),true);assert.equal(signInLocationRequiredFor(user,{}),false);
   assert.equal(signInLocationAccepted('refused',user,env),false);
   assert.equal(signInLocationAccepted('unavailable',user,env),true);
   assert.equal(signInLocationAccepted('shared',user,env),true);
@@ -47,7 +55,8 @@ test('a share is never undone; until then the latest answer is kept, and the gua
 test('location route saves on the history and tells the browser whether to open',async()=>{
   let path,guard,handler;const queries=[];let stored={rowCount:1,rows:[]};
   const requireSession=()=>{};
-  registerSignInLocationRoute({post(p,g,h){path=p;guard=g;handler=h;}},{pool:{async query(sql,params){queries.push({sql,params});return /^SELECT/.test(sql)?{rows:stored.rows}:{rowCount:stored.rowCount};}},requireSession,env:{}});
+  let getHandler;
+  registerSignInLocationRoute({get(p,g,h){assert.equal(p,'/api/session-location');assert.equal(g,requireSession);getHandler=h;},post(p,g,h){path=p;guard=g;handler=h;}},{pool:{async query(sql,params){queries.push({sql,params});return /^SELECT/.test(sql)?{rows:stored.rows}:{rowCount:stored.rowCount};}},requireSession,env:ON});
   assert.equal(path,'/api/session-location');assert.equal(guard,requireSession);
   const reply=()=>({code:200,body:null,status(c){this.code=c;return this;},json(b){this.body=b;return this;}});
   const call=async(body,session={sessionId:'abc',login:'a'})=>{const res=reply();await handler({body,session},res,error=>{throw error;});return res;};
@@ -64,6 +73,9 @@ test('location route saves on the history and tells the browser whether to open'
   assert.equal((await call({status:'shared'})).code,400);
   assert.deepEqual((await call({status:'refused'},{login:'a'})).body,{recorded:false,accepted:false});
   assert.equal(queries.length,before);
+  const required=login=>{const res={body:null,set(){},json(b){this.body=b;return this;}};getHandler({session:{sessionId:'s',login}},res);return res.body;};
+  assert.deepEqual(required('ramesh'),{required:true});
+  assert.deepEqual(required('mohitchadda'),{required:false});
 });
 
 test('schema adds the location columns; the session table and session read stay as they were',()=>{
@@ -83,7 +95,7 @@ test('both session guards answer 428 (not 401, which signs the user out) until t
   const guard=name=>server.slice(server.indexOf('async function '+name+'(req,res,next){'),server.indexOf('async function '+name+'(req,res,next){')+900);
   assert.match(guard('requireSession'),/if\(typeof signInLocationGuard==='function'&&await signInLocationGuard\(req,res,session,\{machine:Boolean\(scannerSession\)\}\)\)return;/);
   assert.match(guard('requireSuper'),/if\(typeof signInLocationGuard==='function'&&await signInLocationGuard\(req,res,session\)\)return;/);
-  assert.match(read('shared/mis-application-access.mjs'),/route==='\/api\/session-location'\)return req\.method==='POST'/);
+  assert.match(read('shared/mis-application-access.mjs'),/route==='\/api\/session-location'\)return read\|\|req\.method==='POST'/);
   assert.equal(SIGN_IN_LOCATION_REQUIRED_CODE,'SIGN_IN_LOCATION_REQUIRED');
   assert.equal(auditShouldRecord('POST','/api/session-location',{statusCode:200}),false);
 });
@@ -91,7 +103,7 @@ test('both session guards answer 428 (not 401, which signs the user out) until t
 test('guard reads each sign-in once, remembers an open one, holds a refusal and never locks anyone out on a lookup failure',async()=>{
   const statuses={a:'',b:'refused',c:'shared',d:'unavailable'};let reads=0,broken=false;
   const pool={async query(sql,[id]){reads++;if(broken)throw new Error('database down');assert.equal(sql,SIGN_IN_LOCATION_STATUS_SQL);return {rows:id in statuses?[{status:statuses[id]}]:[]};}};
-  const guard=createSignInLocationGuard(pool,{env:{},log:{error(){}}});
+  const guard=createSignInLocationGuard(pool,{env:ON,log:{error(){}}});
   const reply=()=>({code:200,body:null,status(c){this.code=c;return this;},json(b){this.body=b;return this;}});
   const check=async(sessionId,{route='/api/requests',login='u',machine=false}={})=>{const res=reply();const stopped=await guard({originalUrl:route},res,{sessionId,login},{machine});return {stopped,res};};
   const r=await check('a');assert.equal(r.stopped,true);assert.equal(r.res.code,428);assert.equal(r.res.body.code,'SIGN_IN_LOCATION_REQUIRED');
@@ -184,6 +196,9 @@ test('both apps stay on the location screen until it opens, and the sign-in scre
   assert.match(read('src/user-login-history.jsx'),/<th>Location at sign-in<\/th>/);
   const gate=read('src/sign-in-location-gate.jsx');
   assert.match(gate,/Try again/);assert.match(gate,/Location is blocked/);
+  // On hold: the app opens at once when the server says the location is not required.
+  assert.match(gate,/if\(required===true\)\{void ask\(\);return;\}/);
+  assert.match(gate,/setState\(\{token,phase:'open'\}\);\s*void recordSignInLocation\(token\);/);
 });
 
 const connectionString=process.env.AUTH_SESSION_TEST_DATABASE_URL;
@@ -204,7 +219,7 @@ test('PostgreSQL: the history follows the answers, a share is final, and the gua
     await client.query("INSERT INTO auth_sessions(session_public_id,login_name,employee_name) VALUES ('one','alice','Alice'),('two','bob','Bob')");
     const save=body=>id=>{const l=parseSignInLocation(body);return client.query(SIGN_IN_LOCATION_UPDATE_SQL,[id,l.status,l.latitude,l.longitude,l.accuracy]);};
     const row=async id=>(await client.query('SELECT location_status AS s,location_latitude AS lat,location_longitude AS lng,location_accuracy_m AS acc FROM user_login_history WHERE session_id=$1',[id])).rows[0];
-    const guard=createSignInLocationGuard(client,{env:{}});
+    const guard=createSignInLocationGuard(client,{env:ON});
     const held=async id=>{let code=200;await guard({originalUrl:'/api/requests'},{status(c){code=c;return this;},json(){return this;}},{sessionId:id,login:'x'});return code===428;};
     assert.equal(await held('two'),true,'existing sign-ins start held');
     await save({status:'refused'})('one');
@@ -223,4 +238,15 @@ test('PostgreSQL: the history follows the answers, a share is final, and the gua
     assert.equal(await held('two'),false);
     assert.equal(await held('no-such-session'),false);
   }finally{await client.query('ROLLBACK');client.release();await pool.end();}
+});
+
+test('browser asks the server whether the location is required and treats no answer as not required',async()=>{
+  const {fetchSignInLocationRequired}=await import('../src/sign-in-location.mjs');
+  let seen;
+  assert.equal(await fetchSignInLocationRequired('t',{fetchImpl:async(url,options)=>{seen={url,options};return {ok:true,json:async()=>({required:true})};}}),true);
+  assert.equal(seen.url,'/api/session-location');assert.equal(seen.options.headers.Authorization,'Bearer t');assert.equal(seen.options.method,undefined);
+  assert.equal(await fetchSignInLocationRequired('t',{fetchImpl:async()=>({ok:true,json:async()=>({required:false})})}),false);
+  assert.equal(await fetchSignInLocationRequired('t',{fetchImpl:async()=>({ok:false})}),null);
+  assert.equal(await fetchSignInLocationRequired('t',{fetchImpl:async()=>{throw new Error('offline');}}),null);
+  assert.equal(await fetchSignInLocationRequired('',{fetchImpl:async()=>assert.fail('no token, no call')}),null);
 });

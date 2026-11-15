@@ -1,4 +1,4 @@
-import {parseSignInLocation,signInLocationAccepted,SIGN_IN_LOCATION_STATUS_SQL,SIGN_IN_LOCATION_UPDATE_SQL} from '../rules/sign-in-location.mjs';
+import {parseSignInLocation,signInLocationAccepted,signInLocationRequiredFor,SIGN_IN_LOCATION_STATUS_SQL,SIGN_IN_LOCATION_UPDATE_SQL} from '../rules/sign-in-location.mjs';
 
 // Separate from exportable audit records and expiring authentication credentials.
 export async function initializeLoginHistory(pool) {
@@ -52,6 +52,11 @@ export function loginHistoryRange(query={}, now=new Date()) {
 // Every signed-in user reports their own sign-in location; no administrator check.
 // "accepted" tells the browser whether the app may open (a refusal keeps it closed).
 export function registerSignInLocationRoute(app,{pool,requireSession,env=process.env}) {
+  // Tells the browser whether to keep the app closed until the location is in.
+  app.get('/api/session-location',requireSession,(req,res)=>{
+    res.set('Cache-Control','no-store');
+    res.json({required:signInLocationRequiredFor(req.session,env)});
+  });
   app.post('/api/session-location',requireSession,async(req,res,next)=>{
     const location=parseSignInLocation(req.body);
     if(location.error)return res.status(400).json({error:location.error});
