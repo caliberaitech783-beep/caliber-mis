@@ -14,7 +14,7 @@ export const MIS_TELEGRAM_SCHEMA=`
  ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS parse_mode TEXT NOT NULL DEFAULT '';
  ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS photo JSONB;
 `;
-export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null}){
+export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null,sendReleaseApprovalSample=null}){
  const hideAudit=(req,res,next)=>{req.audit=false;next()};
  const read=async()=>await store.read(key)||{};
  const login=req=>String(req.session.login||'').trim().toLowerCase();
@@ -73,6 +73,14 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  app.post('/api/mis-telegram/test',...admin,wrap(async(req,res)=>{
   const config=await read();if(!config.enabled||!config.adminChatId)invalid('Enable Telegram and enter the admin chat ID first.');
   await call(config,'sendMessage',{chat_id:config.adminChatId,text:'Caliber Pulse-II MIS Telegram connection is working.',disable_web_page_preview:true});res.json({sent:true});
+ }));
+ // A SAMPLE release approval to the approvers' linked Telegram, to check the format. Its buttons do nothing.
+ app.post('/api/mis-telegram/test-release-approval',...admin,wrap(async(req,res)=>{
+  const config=await read();if(!config.enabled||!config.webhookReady||!sendReleaseApprovalSample)invalid('Enable Telegram and finish the bot setup first.');
+  const {sent}=await sendReleaseApprovalSample();
+  if(!sent)invalid('No release approver has connected Telegram, so the sample was not sent.');
+  req.audit={eventType:'Integration',module:'Telegram',action:'Sample release approval sent',targetType:'Telegram',targetReference:'release-approval-sample',details:{sent}};
+  res.json({sent});
  }));
  app.post('/api/mis-telegram/webhook',wrap(async(req,res)=>{
   const config=await read();if(!equal(req.get('X-Telegram-Bot-Api-Secret-Token'),config.webhookSecret))return res.status(403).json({error:'Invalid webhook authentication.'});

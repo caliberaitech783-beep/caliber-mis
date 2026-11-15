@@ -85,12 +85,25 @@ export function releaseApprovalMessage({actor,runId,commit,subject,requester={},
 
 // Sends the Approve / Reject message to every approver who has linked Telegram. Returns how many got it.
 export function createReleaseApprovalDelivery({pool,sendButtons,alsoLogins=RELEASE_OTP_ALSO_LOGINS}){
- return async({id,actor,runId,commit,subject,requester={},pr=null,brief=[]})=>{
+ return async({id,actor,runId,commit,subject,requester={},pr=null,brief=[],sample=false})=>{
   const logins=await releaseApproverLogins(pool,alsoLogins);
   const {rows}=logins.length?await pool.query('SELECT DISTINCT chat_id FROM mis_telegram_links WHERE login_name=ANY($1::text[])',[logins]):{rows:[]};
-  const buttons=[[{text:pr?`✅ Approve merge + release`:'✅ Approve release',callback_data:`rel:${id}:a`},{text:'❌ Reject',callback_data:`rel:${id}:r`}]];
+  // A sample's buttons carry no release id, so a tap only answers "This button is no longer active."
+  const ref=sample?'sample':id;
+  const buttons=[[{text:pr?`✅ Approve merge + release`:'✅ Approve release',callback_data:`rel:${ref}:a`},{text:'❌ Reject',callback_data:`rel:${ref}:r`}]];
+  const text=(sample?'🧪 <b>SAMPLE - format test only.</b> Nothing is merged or released; the buttons do nothing.\n\n':'')+releaseApprovalMessage({actor,runId,commit,subject,requester,pr,brief});
   let sent=0;
-  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject,requester,pr,brief}),buttons,{parse_mode:'HTML'}))sent++;}catch{}}
+  for(const row of rows){try{if(await sendButtons(row.chat_id,text,buttons,{parse_mode:'HTML'}))sent++;}catch{}}
   return {sent};
  };
+}
+
+// Owner, 16 Nov 2026: an MIS administrator can send this sample to the approvers to see the real format.
+export const RELEASE_APPROVAL_SAMPLE=Object.freeze({actor:'caliberaitech783-beep',runId:'43742987504',commit:'c9757ce',
+ requester:{requestedBy:'Claude Code session for owner',computer:'ANOOP_PAUL',ip:'223.238.183.191',runUrl:'https://github.com/caliberaitech783-beep/caliber-mis/actions/runs/43742987504'},
+ pr:{prNumber:348,prTitle:'Driver continuing into the next shift = OT, not a duplicate card',changes:'3 files, +104 / -11; checks passed (2)'},
+ brief:['Driver continuing from one shift into another on the same trip card is counted as OT, not refused as duplicate','Same-shift duplicate checks unchanged']});
+export function createReleaseApprovalSample(options){
+ const deliver=createReleaseApprovalDelivery(options);
+ return ()=>deliver({...RELEASE_APPROVAL_SAMPLE,sample:true});
 }
