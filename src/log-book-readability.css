@@ -59,20 +59,27 @@
   #scan-entry-fields .scan-review-doc-meta strong { font-size: 16px !important; }
   .scan-page .scan-draft-sheet #scan-entry-fields {
     display: grid;
-    grid-template-columns: repeat(4,minmax(0,1fr));
+    grid-template-columns: repeat(6,minmax(0,1fr));
     align-content: start;
     gap: 12px 10px;
     padding: 2px;
   }
   #scan-entry-fields .scan-card-fields { display: contents; }
-  #scan-entry-fields > :is(section,.scan-trips,.scan-fields,.scan-actions,p,label),
-  #scan-entry-fields .scan-book-number, #scan-entry-fields .scan-review-doc-meta,
-  #scan-entry-fields .scan-review-remarks { grid-column: 1 / -1; }
-  #scan-entry-fields [data-field="assetId"], #scan-entry-fields [data-field="employeeId"],
-  #scan-entry-fields [data-field="workOrderId"],
-  #scan-entry-fields .scan-card-fields > label:has(.employee-id-lookup) { grid-column: span 2; }
+  #scan-entry-fields > :is(section,.scan-trips,.scan-fields,.scan-actions,p,label) { grid-column: 1 / -1; }
+  /* Card values read two to a line in the card's order (owner, 15 Nov 2026):
+     Caliber ID | Driver, Book date | Location, Door NO | Linked equipment,
+     Shift | Shift HRS, Work order | Card shift; each meter reads
+     Opening | Closing | Total on one line. Six columns: a pair spans 3, a meter 2. */
+  #scan-entry-fields .scan-card-fields > label { grid-column: span 3; }
+  #scan-entry-fields .scan-card-fields > .scan-doc-type { grid-column: span 2; }
+  #scan-entry-fields .scan-card-fields > .scan-book-number { grid-column: span 4; }
+  #scan-entry-fields .scan-card-fields > :is([data-field="openingKmr"],[data-field="closingKmr"],[data-meter-total],[data-field="openingHmr"],[data-field="closingHmr"]) { grid-column: span 2; }
+  #scan-entry-fields .scan-card-fields > :is(.scan-review-doc-meta,.scan-review-remarks,[data-field="replacementKmr"]) { grid-column: 1 / -1; }
   #scan-entry-fields .scan-trips { display: block; padding: 8px 0; }
-  #scan-entry-fields .scan-trips > .scan-time-entry { max-width: 300px; margin: 10px 0; }
+  /* Time entry first, "Apply selected shift to trip times" beside it. */
+  #scan-entry-fields .scan-trip-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 10px 0; }
+  #scan-entry-fields .scan-trip-tools > .scan-time-entry { flex: 0 1 300px; margin: 0; }
+  #scan-entry-fields .scan-trip-tools > button { min-height: 48px; font-size: 16px !important; }
   /* The legacy row-layout flex basis becomes a 220px height in column labels. */
   #scan-entry-fields .scan-time-entry > :is(select,.searchable-select) { width: 100%; min-width: 0; flex: 0 0 auto; }
   /* Named fields keep optional correction fields from shifting the time/gap columns. */
@@ -236,9 +243,7 @@
     }
   }
   @container scan-review (max-width:720px) {
-    .scan-page .scan-draft-sheet #scan-entry-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
     #scan-entry-fields .scan-trip-untimed { grid-template-columns: 82px minmax(0,1.2fr) 56px minmax(0,1fr) 44px; grid-template-areas: "serial equipment trips job remove"; }
-    #scan-entry-fields .scan-machine-summary .scan-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
   }
   @container scan-review (max-width:560px) {
     #scan-entry-fields .scan-trip-entry,
@@ -250,7 +255,7 @@
   }
   @container scan-review (max-width:390px) {
     .scan-page .scan-draft-sheet #scan-entry-fields { grid-template-columns: minmax(0,1fr); }
-    #scan-entry-fields [data-field], #scan-entry-fields .scan-card-fields > label { grid-column: 1 / -1; }
+    #scan-entry-fields [data-field], .scan-page .scan-draft-sheet #scan-entry-fields .scan-card-fields > * { grid-column: 1 / -1; }
     #scan-entry-fields .scan-machine-summary .scan-fields { grid-template-columns: minmax(0,1fr); }
     #scan-entry-fields .scan-trip-entry,
     #scan-entry-fields .scan-trip-correction:not(.scan-trip-untimed) { grid-template-areas: "serial remove" "equipment equipment" "loading loading" "unloading unloading" "trips gap" "job job"; }
