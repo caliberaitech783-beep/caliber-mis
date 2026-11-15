@@ -55,7 +55,7 @@ test('Wrong door review keeps every VLB card field visible while focusing its me
  assert.ok(status.props.errors.some(message=>/door/i.test(message)));
  assert.ok(!status.props.errors.some(message=>/HMR|driver|summary|date/i.test(message)));
  assert.deepEqual(status.props.warnings,[]);
- assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['bookDate','location','doorText','assetId','employeeId','shiftId','cardShift','shiftHours','workOrderId','openingKmr','closingKmr','openingHmr','closingHmr']);
+ assert.deepEqual(nodes(tree,n=>n.props['data-field']&&!n.props.hidden).map(n=>n.props['data-field']),['employeeId','bookDate','location','doorText','assetId','shiftId','shiftHours','workOrderId','cardShift','openingKmr','closingKmr','openingHmr','closingHmr']);
  assert.ok(nodes(tree,n=>n.props['data-review-section']==='trips').every(n=>!n.props.hidden));
  assert.equal(nodes(tree,n=>n.type==='h2'&&n.props.children==='Ready for automatic saving').length,0,'hidden issues continue blocking final save');
  const expandedToggle=nodes(tree,n=>n.type==='button'&&n.props.children==='Show only fields needing input')[0];
