@@ -2,6 +2,7 @@ import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import {requireMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {telegramFetch} from '../services/telegram-fetch.mjs';
 import {automationOn} from '../services/automation-switches.mjs';
+import {siteReportBanner} from '../services/site-report-banner.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
@@ -10,6 +11,8 @@ export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_links(login_name TEXT PRIMARY KEY,chat_id TEXT NOT NULL,linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  CREATE TABLE IF NOT EXISTS mis_telegram_pending(token_hash TEXT PRIMARY KEY,login_name TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,used_at TIMESTAMPTZ);
  CREATE TABLE IF NOT EXISTS mis_telegram_outbox(id BIGSERIAL PRIMARY KEY,event_key TEXT UNIQUE NOT NULL,chat_id TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),lease_until TIMESTAMPTZ,last_error TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS parse_mode TEXT NOT NULL DEFAULT '';
+ ALTER TABLE mis_telegram_outbox ADD COLUMN IF NOT EXISTS photo JSONB;
 `;
 export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=telegramFetch,onCallback=null}){
  const hideAudit=(req,res,next)=>{req.audit=false;next()};
@@ -102,6 +105,25 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   if(linked)await call(config,'sendMessage',{chat_id:String(message.chat.id),text:'Your Caliber Pulse-II MIS account is connected. Ticket resolution updates will appear here.'}).catch(()=>{});
   res.json({ok:true});
  }));
+ // A row with a photo (the site picture of a batch completion report) goes as one photo with the
+ // message as its caption; if the picture cannot be drawn or sent, the message still goes as text.
+ const sendPhoto=async(config,fields,png)=>{
+  const form=new FormData();for(const [k,v] of Object.entries(fields))if(v)form.append(k,String(v));
+  form.append('photo',new Blob([png],{type:'image/png'}),'site.png');
+  const response=await fetchImpl(`https://api.telegram.org/bot${config.botToken}/sendPhoto`,{method:'POST',body:form,signal:AbortSignal.timeout(30000)});
+  const data=await response.json().catch(()=>null);if(!response.ok||data?.ok!==true)throw Error('Telegram refused the photo');
+ };
+ async function deliverRow(config,row){
+  const parse_mode=row.parse_mode||undefined;
+  if(row.photo){
+   // A caption holds 1024 characters: a longer report goes as the picture, then the text.
+   const fits=String(row.message).length<=1024;
+   try{const photo=typeof row.photo==='string'?JSON.parse(row.photo):row.photo;
+    await sendPhoto(config,fits?{chat_id:row.chat_id,caption:row.message,parse_mode}:{chat_id:row.chat_id},await siteReportBanner(photo));if(fits)return;}
+   catch{/* falls back to text below */}
+  }
+  await call(config,'sendMessage',{chat_id:row.chat_id,text:row.message,disable_web_page_preview:true,...(parse_mode?{parse_mode}:{})});
+ }
  let draining=false,timer;
  async function drain(){
   if(draining)return;draining=true;
@@ -110,7 +132,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    for(let i=0;i<5;i++){
     const {rows}=await pool.query("UPDATE mis_telegram_outbox SET status='sending',attempts=attempts+1,lease_until=NOW()+INTERVAL '60 seconds' WHERE id=(SELECT id FROM mis_telegram_outbox WHERE (status='pending' AND next_attempt_at<=NOW()) OR (status='sending' AND lease_until<NOW()) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *");
     const row=rows[0];if(!row)break;
-    try{await call(config,'sendMessage',{chat_id:row.chat_id,text:row.message,disable_web_page_preview:true});await pool.query("UPDATE mis_telegram_outbox SET status='sent',last_error='' WHERE id=$1",[row.id]);}
+    try{await deliverRow(config,row);await pool.query("UPDATE mis_telegram_outbox SET status='sent',last_error='' WHERE id=$1",[row.id]);}
     catch{await pool.query("UPDATE mis_telegram_outbox SET status=$2,next_attempt_at=NOW()+($3::text||' seconds')::interval,last_error='Telegram delivery failed; check bot and chat permissions.' WHERE id=$1",[row.id,row.attempts>=5?'failed':'pending',Math.min(900,10*2**row.attempts)]);}
    }
   }catch{/* Notification failures do not change saved tickets. */}finally{draining=false}

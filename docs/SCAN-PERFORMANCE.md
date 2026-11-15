@@ -392,21 +392,26 @@ deploy workflow.
 
 ## Site-wise batch completion report on Telegram (15 November 2026)
 
-The owner asked for a Telegram message for every scan entry of about 40 cards and
-for every whole batch, site by site. `server/services/scan-batch-report.mjs`
-checks every minute on Pulse-II and sends, on the MIS Telegram bot, to every MIS
-login whose registered mobile is the owner's number (the same rule as the urgent
-release OTP). Every message starts with the site name as its header (for example
-"📍 DIPKA"), then "Site-wise batch completion report" and the kind of report:
+One Telegram message per site batch, sent when the VLB batch (site, date, shift)
+is closed (owner, 16 November 2026; until then a message also went for every scan
+entry once read). `server/services/scan-batch-report.mjs` checks every minute on
+Pulse-II and sends, on the MIS Telegram bot, to every MIS login whose registered
+mobile is the owner's number (the same rule as the urgent release OTP).
 
-- **Scan entry read**: when no card of an entry is queued or being read and no
-  card arrived in the last two minutes. Cards read and failed, total time from
-  first upload to last read, queue wait (median, max), time per card (median,
-  average, Gemini), auto-check result (clean, flagged, re-read), model, tokens.
-- **Batch complete**: when a VLB batch (site, date, shift) is closed. All scan
-  entries of that site, date and shift together: cards scanned, saved, rejected,
-  scanning time, time per card, accuracy and the corrected fields, one line per
-  entry.
+Layout (owner, 16 November 2026): every text line fits on one line of a phone
+screen. A site picture first (`server/services/site-report-banner.mjs`: the site
+name, the log book kind and the full batch name on a Pulse-II card), with the
+report as its caption: **SITE-WISE BATCH COMPLETION REPORT** in bold; the log book
+kind and batch name without the site (`CMLL/9TH -NOV-26/S1/B01`; the full name
+is too wide for one line and is on the picture); cards scanned and trips; extracted
+and processed; the sub batches (scan entries), one line each with total, ✅
+auto-cleared and ❌ error, then the line for all of them; start and end time with
+the total time; average time per card with accuracy; the model.
+Auto-cleared = read and not flagged for review; Error = failed to read or flagged
+for review, so the two add up to the total. Trips are the trip rows as saved by
+the operator, else as read. Up to 12 sub batches are listed by name. A caption
+longer than Telegram's 1024 characters goes as the picture, then the text; if the
+picture cannot be sent, the text still goes.
 
 Accuracy is the share of saved cards whose door or machine, employee, card
 number, shift, closing KMR, closing HMR and trip rows equal Gemini's own reading
