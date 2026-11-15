@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
+import {DateShiftGrid,dateShiftGrid,dateLine} from './date-shift-grid.jsx';
 import {OPERATIONAL_START} from '../shared/operational-start.mjs';
 import {STAGE_LABELS,PENDING_STAGES,TARGET_HOURS,GOOD_PERCENT,POOR_PERCENT,MAX_DAYS,displayDate,sitesInsights,shiftsInsight} from '../shared/batch-status-report.mjs';
 import {startVisiblePoll} from './visible-poll.mjs';
@@ -90,6 +91,19 @@ export default function BatchStatusReport({session,ReportSection,embedded=false,
  // One step back: the step before the one on screen, as in the line of steps above the table.
  const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
  const actions=detail?detail.actions.filter(a=>actionStage===EVERY||a.stage===actionStage):[];
+ // Step 2 is the date by shift table of the OT report: in each shift box the stage of its batch and the hours (shift end
+ // to locked, or pending since shift end; red above the target). Pressing a box opens that batch below. Smart Print still
+ // carries every column of the shift lines.
+ const shiftList=listed.map(r=>({...r,workingNow:batchLiveCell(live,r.batchId)}));
+ const shiftNames=Object.fromEntries(shiftList.map(r=>[r.shift,r.shiftLabel]));
+ const shiftGrid=dateShiftGrid(shiftList.map(r=>({...r,lockedCount:r.stage==='locked'?1:0,shiftCount:1})),{sumKeys:['shiftCount','lockedCount','cards'],
+  lineOf:r=>siteKey===EVERY?{key:r.date+'|'+r.site,label:r.site,sub:displayDate(r.date)}:dateLine(r)});
+ const shiftDay=[{key:'shifts',label:'Shifts',value:t=>t.shiftCount},{key:'locked',label:'Locked',value:t=>t.lockedCount},{key:'cards',label:'Trip cards saved',value:t=>t.cards}];
+ const batchCell=list=><span className="dsg-cell dsg-stack">{list.map(r=>{
+  const hours=r.stage==='locked'?r.lockHours:r.pendingHours,late=!blank(hours)&&hours>TARGET_HOURS;
+  return <button key={r.id} type="button" className={'bs-stage bs-stage-'+r.stage} disabled={!r.batchId} aria-pressed={Boolean(batchId)&&batchId===r.batchId}
+   title={r.stage==='locked'?'Shift end to locked (hours)':'Pending for (hours since shift ended)'} aria-label={r.stageLabel+(blank(hours)?'':' · '+hours+' hours')+' · '+displayDate(r.date)+' '+r.shiftLabel} onClick={()=>openBatch(r)}>
+   {r.stageLabel}{blank(hours)?null:<span className={late?'bs-late':undefined}> · {hours} h</span>}{r.workingNow&&!['—','…'].includes(r.workingNow)?<small> · {r.workingNow}</small>:null}</button>;})}</span>;
  const batchLine=detail?`${detail.batch.site} · ${displayDate(detail.batch.date)} · ${detail.batch.shiftLabel} · ${detail.batch.stageLabel}${detail.batch.enteredBy?' · entered by '+detail.batch.enteredBy:''}`:'';
  return <section className="production-reports batch-status-report"><header><small>REPORTS / OPERATIONS</small><h1>Batch Status & Turnaround</h1><p>Where every shift stands, how long each stage took, and how much of that was actual work on the website.</p></header>
   <form className="production-filters" onSubmit={e=>{e.preventDefault();if(valid){setRun({query,at:Date.now()});}}}>
@@ -120,8 +134,11 @@ export default function BatchStatusReport({session,ReportSection,embedded=false,
   {report&&level>=2&&<>
    <p className="bs-insight">{shiftsInsight(siteShifts)}</p>
    <nav className="production-tabs" aria-label="Stage">{[['','All shifts',siteShifts.length],...['locked',...PENDING_STAGES].map(key=>[key,STAGE_LABELS[key],siteShifts.filter(r=>r.stage===key).length])].map(([key,label,count])=><button key={key||'all'} type="button" aria-current={stage===key?'page':undefined} onClick={()=>setStage(key)}>{label} · {count}</button>)}</nav>
-   <ReportSection key={'bs-shifts-'+query+'-'+siteKey+'-'+stage} title={'Step 2 · '+siteLabel+' · shift by shift · '+period+(stage?' · '+STAGE_LABELS[stage]:'')} category="batch-status-shifts" description={'One line per shift'+asOf+'. Hours in each stage are by the clock. Red = more than '+TARGET_HOURS+' hours from shift end to locked. Press a line to open its batch.'}
-    rows={listed.map(r=>({...r,workingNow:batchLiveCell(live,r.batchId)}))} columns={shiftColumns(siteKey===EVERY)} rowKey={r=>r.id} rowClassName={r=>'bs-row-'+r.stage+(batchId&&r.batchId===batchId?' report-row-picked':'')} onRowClick={openBatch} emptyMessage="No shifts at this stage."/>
+   <ReportSection key={'bs-shifts-'+query+'-'+siteKey+'-'+stage} title={'Step 2 · '+siteLabel+' · date by shift · '+period+(stage?' · '+STAGE_LABELS[stage]:'')} category="batch-status-shifts" description={'In each box: the stage of the batch and its hours'+asOf+': shift end to locked, or pending since shift end. Red = more than '+TARGET_HOURS+' hours. Press a box to open its batch. Smart Print gives every column of the shifts, with the hours in each stage.'}
+    rows={shiftList} columns={shiftColumns(siteKey===EVERY)} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <DateShiftGrid grid={shiftGrid} renderCell={batchCell} dayColumns={shiftDay} shiftLabel={code=>shiftNames[code]||code} label={siteKey===EVERY?'Site · date':'Date'}
+     isPicked={r=>Boolean(batchId)&&r.batchId===batchId} ariaLabel="Batches by date and shift" emptyMessage="No shifts at this stage."/>
+   </ReportSection>
   </>}
   {report&&level>=3&&detailError&&<p role="alert" className="production-error">{detailError}</p>}
   {report&&level>=3&&!detail&&!detailError&&<p role="status">Reading the batch…</p>}

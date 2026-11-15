@@ -197,7 +197,9 @@ test('the screen shows working and idle time first, keeps the old list as a seco
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
  assert.match(screen,/\[\['idle','Machine working and idle time'\],\['rows','All machines list'\]\]/);
  assert.match(screen,/const work=\[column\('trips','Trips loaded'\),column\('percent','% of shift worked'[^\n]*column\('hoursWorked','Hours worked'/,'% of shift worked sits between Trips loaded and Hours worked');
- assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,3,'site, shift and machine tables keep their total line at the foot');
+ // Step 2 is the date by shift table (owner, 15 Nov 2026), with its All dates line at the foot of the grid.
+ assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,2,'site and machine tables keep their total line at the foot');
+ assert.match(screen,/<DateShiftGrid grid=\{shiftGrid\}/);
  assert.match(screen,/r\.state==='breakdown'\?'lm-row-breakdown':r\.state==='nohours'\?'lm-row-nohours'/);
  assert.match(screen,/const idle=onPick=>\[\.\.\.BANDS\.map\(b=>banded\(b,onPick\)\)/,'every idle band carries its own percentage');
  assert.match(screen,/r\[key\]\+' \('\+share\(r\)\+'\)'/,'the printed and downloaded report carries the percentage beside the count');

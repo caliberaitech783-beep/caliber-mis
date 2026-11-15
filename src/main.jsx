@@ -4317,6 +4317,10 @@ function ActionsTable(props) {
 }
 // A click on a control inside the row (button, link, field) or a text selection is not a row click.
 const plainRowClick = (event) => !event.target.closest?.("button,a,input,select,textarea,label") && !window.getSelection?.().toString();
+// Codes, ids, dates and door numbers (no space in any value) stay on one line in a report step; names may wrap.
+function unbrokenColumnKeys(columns, rows, valueOf) {
+  return new Set(columns.filter((column) => rows.every((row) => { const text = String(valueOf(row, column) ?? "").trim(); return text.length <= 24 && !/\s/.test(text); })).map((column) => column.key));
+}
 // The columns whose every value on the page is a number or a percentage: report steps put them on the right.
 function figureColumnKeys(columns, rows, valueOf) {
   return new Set(columns.filter((column) => {
@@ -4330,12 +4334,13 @@ function figureColumnKeys(columns, rows, valueOf) {
     return found;
   }).map((column) => column.key));
 }
-function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true }) {
+function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], onVisibleColumnsChange, rows = [], query = "", emptyMessage, rowKey, rowClassName, isTotalRow, isSubtotalRow, toolbarTarget = null, toolbarPortal = false, title = "", layoutKey = "", onExportViewChange = null, onResetSearch = null, smartPrintAction = false, recordDateFilter = null, dataReady = true, rowAction, rowEditor, serialColumn = true, stepLook = false }) {
   const {shifts}=useRequestShiftData();
   columns=requestShiftColumns(columns,rows,shifts);
   const [appliedColumns, applyColumns] = useColumnPreferences(layoutKey || "report-table", columns, visibleColumnKeys);
   const notifyColumnsChange = onVisibleColumnsChange;
-  visibleColumnKeys = appliedColumns;
+  // A report step (Step 1, Step 2...) is a fixed table, as in the OT report: every column, no saved layout to hide one.
+  visibleColumnKeys = stepLook ? columns.map((column) => column.key) : appliedColumns;
   onVisibleColumnsChange = keys => { applyColumns(keys); notifyColumnsChange?.(keys); };
   if(columns[0]?.key==='requestShift'&&visibleColumnKeys.length)visibleColumnKeys=['requestShift',...visibleColumnKeys.filter(key=>key!=='requestShift')];
   const [columnWidths, setColumnWidth, resetColumnWidths] = useColumnWidths(layoutKey || "report-table", columns);
@@ -4347,7 +4352,7 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const [sortDialogOpen, setSortDialogOpen] = useState(false);
   const dateColumn = primaryRecordDateColumn(columns);
   const dateControl = recordDateFilter === false ? null : recordDateFilter || (dateColumn ? {label:dateColumn.label,value:columnFilters[dateColumn.key] || "",onChange:value=>setColumnFilters(current=>({...current,[dateColumn.key]:value}))} : null);
-  const [pageSize, setPageSize] = useState(() => mobileTablePageSize() || 50);
+  const [pageSize, setPageSize] = useState(() => stepLook ? 1000 : mobileTablePageSize() || 50);
   const [page, setPage] = useState(0);
   const deferredQuery = useDeferredValue(query);
   const columnValue = (row, column) => tableFilterText(column.value?.(row));
@@ -4427,11 +4432,12 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   const serialFirst = serialColumn && displayedColumns[0]?.key !== 'requestShift';
   const serialAfterShift = serialColumn && displayedColumns[0]?.key === 'requestShift';
   const figureKeys = serialColumn ? new Set() : figureColumnKeys(displayedColumns, [...pagedRows, ...totalRows], columnValue);
+  const unbrokenKeys = stepLook ? unbrokenColumnKeys(displayedColumns, pagedRows, columnValue) : new Set();
   const extraColumns = Number(serialColumn) + Number(Boolean(rowAction));
   const renderRow = (row, index, serial) => (
     <React.Fragment key={rowKey?.(row, index) ?? index}><tr className={[rowClassName?.(row, index), onRowClick && "report-row-clickable"].filter(Boolean).join(" ")} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? (event) => { if (plainRowClick(event)) onRowClick(row); } : undefined} onKeyDown={onRowClick ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onRowClick(row); } : undefined}>
       {rowAction&&<td className="batch-edit-action">{rowAction(row)}</td>}{serialFirst&&<td className="table-serial-cell">{serial ?? "—"}</td>}
-      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell", figureKeys.has(column.key) && "report-figure-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{serialAfterShift&&column.key==='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}</React.Fragment>)}
+      {displayedColumns.map((column) => <React.Fragment key={column.key}><td className={[(column.key === "complaint" || column.wrap) && "report-complaint-cell", columnWidths[column.key] && "column-resized-cell", figureKeys.has(column.key) && "report-figure-cell", unbrokenKeys.has(column.key) && "report-unbroken-cell"].filter(Boolean).join(" ") || undefined} style={columnWidthStyle(columnWidths[column.key])}>{reportTime12(columnValue(row, column)) !== columnValue(row, column) ? reportTime12(columnValue(row, column)) : column.render ? column.render(row) : columnValue(row, column) || "—"}</td>{serialAfterShift&&column.key==='requestShift'&&<td className="table-serial-cell">{serial ?? "—"}</td>}</React.Fragment>)}
     </tr>
     {rowEditor?.(row, displayedColumns.length + extraColumns)}
     </React.Fragment>
@@ -4484,9 +4490,9 @@ function ReportTable({ onRowClick = null, columns = [], visibleColumnKeys = [], 
   );
   return (
     <>
-      {toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
+      {stepLook ? null : toolbarTarget ? createPortal(reportTableToolbar, toolbarTarget) : toolbarPortal ? null : reportTableToolbar}
       {isTotalRow ? <div className="report-totals-scroll" tabIndex={0} role="region" aria-label={reportTitle}>{table}</div> : table}
-      <div className="report-table-pagination"><span>{firstVisibleRow}-{lastVisibleRow} of {sortedRows.length.toLocaleString("en-IN")}</span><div><button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={currentPage === 0} aria-label="Previous report page" title="Previous page"><ChevronLeft /></button><b>{currentPage + 1} / {pageCount}</b><button type="button" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next report page" title="Next page"><ChevronRight /></button></div></div>
+      {(!stepLook || pageCount > 1) && <div className="report-table-pagination"><span>{firstVisibleRow}-{lastVisibleRow} of {sortedRows.length.toLocaleString("en-IN")}</span><div><button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={currentPage === 0} aria-label="Previous report page" title="Previous page"><ChevronLeft /></button><b>{currentPage + 1} / {pageCount}</b><button type="button" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={currentPage >= pageCount - 1} aria-label="Next report page" title="Next page"><ChevronRight /></button></div></div>}
       <TableParameterFilter columns={columns} rows={detailRows} filters={columnFilters} onFilterChange={updateColumnFilter} onClearFilters={() => setColumnFilters({})} open={filterDialogOpen} onOpenChange={setFilterDialogOpen} hideTrigger dialogMode />
       {columnDialogOpen && <ReportColumnSelector columns={columns} visibleColumnKeys={displayedColumns.map((column) => column.key)} layoutStore={layoutStore} onApply={(keys) => { onVisibleColumnsChange?.(ensureJobReferenceVisibleKeys(keys, columns)); setColumnDialogOpen(false); }} onClose={() => setColumnDialogOpen(false)} />}
       {sortDialogOpen && <ReportSortDialog columns={displayedColumns} sort={sort} onApply={(key, direction) => { changeSort(key, direction); setSortDialogOpen(false); }} onClose={() => setSortDialogOpen(false)} />}
@@ -7398,8 +7404,12 @@ function ReportSection({ title, description, category = "general", icon: ReportI
   const [tableToolbarTarget, setTableToolbarTarget] = useState(null);
   const visibleColumns = visibleColumnKeys.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
   const laterStep = Number(/^Step (\d+)/.exec(String(title))?.[1] || 0) > 1;
+  // Owner's rule, 15 Nov 2026: a report step is drawn like the OT Step 1 / 2 / 3 tables, with only its title and Smart Print
+  // above it: no search box, record count, Rows or Actions, and every line on screen.
+  const stepLook = /^Step \d/.test(String(title));
+  const searchShown = showSearch && !stepLook;
   return (
-    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category}>
+    <div ref={laterStep ? showOpenedStep : undefined} className="reports-section generated-report-section" data-category={category} data-step-look={stepLook ? "true" : undefined}>
       <div className="reports-section-heading">
         <div className="generated-report-title">
           <span className="generated-report-icon"><ReportIcon aria-hidden="true" /></span>
@@ -7415,7 +7425,7 @@ function ReportSection({ title, description, category = "general", icon: ReportI
         </div>
       </div>
       {controls}
-      {!children && (showSearch || onBack) && <div className="generated-report-search">{onBack && <StepBackButton onBack={onBack} label={backLabel} />}{showSearch && <><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{recordCount.toLocaleString("en-IN")} record{recordCount === 1 ? "" : "s"}</span></>}</div>}
+      {!children && (searchShown || onBack) && <div className="generated-report-search">{onBack && <StepBackButton onBack={onBack} label={backLabel} />}{searchShown && <><label><Search /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search this report" aria-label={`Search ${title}`} /></label><span>{recordCount.toLocaleString("en-IN")} record{recordCount === 1 ? "" : "s"}</span></>}</div>}
       {children || (
         <TableViewport className="reports-detail-table emptytable">
           <ReportTable
@@ -7424,12 +7434,12 @@ function ReportSection({ title, description, category = "general", icon: ReportI
             title={title}
             onExportViewChange={setExportView} smartPrintAction={smartPrintAction}
             onResetSearch={() => { setSearchQuery(""); onResetSearch?.(); }}
-            query={showSearch ? searchQuery : query}
+            query={searchShown ? searchQuery : query}
             rows={rows}
             rowKey={rowKey}
             rowClassName={rowClassName}
             isTotalRow={isTotalRow} isSubtotalRow={isSubtotalRow}
-            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} serialColumn={false}
+            rowAction={rowAction} rowEditor={rowEditor} onRowClick={onRowClick} serialColumn={false} stepLook={stepLook}
             emptyMessage={emptyMessage}
             columns={columns}
             visibleColumnKeys={visibleColumnKeys}
