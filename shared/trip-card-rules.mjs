@@ -2,11 +2,37 @@ import {normalizeScannedTime,validScannedTime} from './scan-clock.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 export function kmrMeterReplaced({openingKmr,closingKmr}={}){
  return [openingKmr,closingKmr].every(value=>value!=null&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)>=0)
-  && Number(closingKmr)<Number(openingKmr);
+  && Number(closingKmr)<Number(openingKmr)
+  && !kmrMissingDigitReadings({openingKmr,closingKmr}).length;
 }
 export const VLB_SHIFT_KMR_LIMIT=250;
+// A closing KMR one digit shorter than the opening (Jayant OC, 7 Nov 2026: 292146.5 then 29276.4)
+// is a digit missed on the card or by the reader, not a new meter: putting one digit back gives a
+// normal shift distance. Those full readings are returned, nearest first. A new meter starts near
+// zero, so its reading is several digits shorter than a 5-digit-plus odometer and never qualifies.
+export function kmrMissingDigitReadings({openingKmr,closingKmr}={}){
+ const open=String(openingKmr??'').trim(),close=String(closingKmr??'').trim(),reading=/^\d+(?:\.\d+)?$/;
+ if(!reading.test(open)||!reading.test(close))return [];
+ const opening=Number(open),[whole,fraction]=close.split('.'),openWhole=open.split('.')[0].replace(/^0+(?=\d)/,'');
+ if(!(Number(close)<opening)||openWhole.length<5||whole.replace(/^0+(?=\d)/,'').length!==openWhole.length-1)return [];
+ const found=new Map();
+ for(let at=0;at<=whole.length;at++)for(let digit=0;digit<=9;digit++){
+  const full=whole.slice(0,at)+digit+whole.slice(at)+(fraction===undefined?'':'.'+fraction),value=Number(full);
+  if(full[0]!=='0'&&value>=opening&&value-opening<=VLB_SHIFT_KMR_LIMIT)found.set(value,full);
+ }
+ return [...found].sort((a,b)=>a[0]-b[0]).map(([,full])=>full);
+}
+export function kmrMissingDigitIssue(draft={}){
+ const readings=kmrMissingDigitReadings(draft);
+ if(!readings.length)return '';
+ const km=full=>Number((Number(full)-Number(draft.openingKmr)).toFixed(3));
+ return `Closing KMR ${String(draft.closingKmr).trim()} has one digit fewer than opening KMR ${String(draft.openingKmr).trim()}: a digit is missing on the card or was misread. This is not a meter replacement. Enter the full closing reading, for example ${readings.slice(0,3).map(full=>full+' ('+km(full)+' km)').join(', ')}, or correct the opening KMR.`;
+}
 export function shiftMeterIssues(draft={},kind='vehicle'){
  const issues={},hours=Number(draft.shiftHours);
+ // Blocks saving whatever the shift hours: below the opening and not a replacement, the
+ // reading would otherwise be saved with a negative distance.
+ if(kind!=='equipment'){const missing=kmrMissingDigitIssue(draft);if(missing)issues.closingKmr=missing;}
  if(kind!=='lmv'&&![8,9,12].includes(hours))return issues;
  for(const meter of (kind==='lmv'?['Kmr']:kind==='vehicle'?['Hmr','Kmr']:['Hmr'])){
   const a=draft['opening'+meter],b=draft['closing'+meter];
@@ -38,7 +64,7 @@ export function meterRuleIssues(draft={},kind='vehicle'){
    if(value!==null&&value!==undefined&&String(value).trim()!==''&&Number.isFinite(Number(value))&&Number(value)<0)issues[key]=`${prefix==='opening'?'Opening':'Closing'} ${meter.toUpperCase()} is negative.`;
   }
   const a=draft['opening'+meter],b=draft['closing'+meter];
-  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&kmrMeterReplaced(draft)))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
+  if(a!==null&&b!==null&&a!==undefined&&b!==undefined&&String(a).trim()!==''&&String(b).trim()!==''&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(b)<Number(a)&&!(meter==='Kmr'&&(kmrMeterReplaced(draft)||kmrMissingDigitReadings(draft).length)))issues['closing'+meter]=`Closing ${meter.toUpperCase()} is below opening ${meter.toUpperCase()}.`;
  }
  return issues;
 }

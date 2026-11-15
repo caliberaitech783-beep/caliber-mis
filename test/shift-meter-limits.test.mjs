@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shiftMeterIssues} from '../shared/trip-card-rules.mjs';
+import {shiftMeterIssues,meterRuleIssues,kmrMeterReplaced,kmrMissingDigitReadings} from '../shared/trip-card-rules.mjs';
 import {normalizeLogBook} from '../server/routes/log-book.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
 import {applyScanContext} from '../shared/scan-batch-context.mjs';
@@ -66,4 +66,36 @@ test('a replacement meter preserves both readings and requires actual distance w
   assert.deepEqual([data.openingKmr,data.closingKmr,data.replacementKmr,data.totalRunningKmr],[1000,900,replacementKmr,replacementKmr]);
  }
  assert.equal(normalizeLogBook('vehicle',{...base,replacementKmr:65}).totalRunningKmr,250);
+});
+test('a closing KMR one digit short is a reading to correct, not a meter replacement (Jayant OC V293, 7 Nov 2026)',()=>{
+ const card={...base,openingKmr:'292146.5',closingKmr:'29276.4',openingHmr:'18337',closingHmr:'18344'};
+ assert.deepEqual(kmrMissingDigitReadings(card),['292176.4','292276.4','292376.4']);
+ assert.equal(kmrMeterReplaced(card),false);
+ const message=shiftMeterIssues(card).closingKmr;
+ assert.match(message,/one digit fewer/);
+ assert.match(message,/not a meter replacement/);
+ assert.match(message,/292176\.4 \(29\.9 km\)/);
+ assert.equal(shiftMeterIssues(card).replacementKmr,undefined);
+ assert.equal(scanFieldIssues(card).closingKmr,message);
+ assert.equal(scanFieldIssues(card).replacementKmr,undefined);
+ assert.equal(meterRuleIssues(card).closingKmr,message);
+ // An actual distance typed in to get past the old question no longer saves the card.
+ assert.throws(()=>normalizeLogBook('vehicle',{...card,replacementKmr:30}),/one digit fewer/);
+ // Without shift hours the reading still blocks instead of saving a negative distance.
+ assert.match(shiftMeterIssues({...card,shiftHours:''}).closingKmr,/one digit fewer/);
+ const fixed={...card,closingKmr:'292176.4'};
+ assert.deepEqual(shiftMeterIssues(fixed),{});
+ assert.equal(normalizeLogBook('vehicle',fixed).totalRunningKmr,29.9);
+});
+test('a genuine new meter on a large odometer still asks for the actual distance',()=>{
+ for(const closingKmr of ['35.2','812','4120.5']){
+  const draft={...base,openingKmr:'292146.5',closingKmr};
+  assert.deepEqual(kmrMissingDigitReadings(draft),[]);
+  assert.equal(kmrMeterReplaced(draft),true);
+  assert.match(shiftMeterIssues(draft).replacementKmr,/actual distance/);
+ }
+ // One digit short but no single digit gives a normal shift distance: still a replacement.
+ const far={...base,openingKmr:'292146.5',closingKmr:'15000'};
+ assert.deepEqual(kmrMissingDigitReadings(far),[]);
+ assert.equal(kmrMeterReplaced(far),true);
 });
