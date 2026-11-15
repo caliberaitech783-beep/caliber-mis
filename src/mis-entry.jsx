@@ -4,7 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import MisWorkspace from './mis-workspace.jsx';
 import EnvironmentBanner from './environment-banner.jsx';
-import {recordSignInLocation} from './sign-in-location.mjs';
+import {useSignInLocationGate,SignInLocationScreen} from './sign-in-location-gate.jsx';
 import './mis-workspace.css';
 
 const sessionKey='nerveCenterSession';
@@ -19,6 +19,7 @@ function MisApp(){
   const [session,setSession]=useState(readSession);
   const [signedOut,setSignedOut]=useState(false);
   const signIn=useMisSharedSignIn(session,{paused:signedOut,autoStart:true});
+  const locationGate=useSignInLocationGate(session?.token);
   useEffect(()=>{
     const receive=event=>{
       if(!event.detail?.token)return;
@@ -36,7 +37,7 @@ function MisApp(){
         if(!controller.signal.aborted&&response.status===401){clearSession();setSession(null);}
       }catch{}
     };
-    void check();void recordSignInLocation(session.token);const timer=window.setInterval(check,60000);
+    void check();const timer=window.setInterval(check,60000);
     return()=>{controller.abort();window.clearInterval(timer);};
   },[session?.token]);
   const signOut=()=>{
@@ -44,6 +45,7 @@ function MisApp(){
     clearSession();setSignedOut(true);setSession(null);
   };
   if(!session?.token)return <MisSharedLogin error={signIn.error} message={signedOut?'You have signed out of MIS.':'Sign in with your Pulse username and password.'}/>;
+  if(locationGate.phase!=='open')return <SignInLocationScreen gate={locationGate} onSignOut={signOut}/>;
   return <MisWorkspace onSignOut={signOut}/>;
 }
 

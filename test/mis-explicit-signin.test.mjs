@@ -33,14 +33,17 @@ test('only a completed shared-sign-in callback exchanges the server-held handoff
 test('refreshing MIS restores the saved session instead of signing the user out',async()=>{
   const entry=readFileSync(new URL('../src/mis-entry.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/enableCalendarFieldClicks\(document\);[\s\S]*$/,'');
   const {code}=await transformWithOxc(entry,'mis-entry.jsx',{jsx:{runtime:'classic'}});
-  const Login=()=>null,Workspace=()=>null;
+  const Login=()=>null,Workspace=()=>null,LocationScreen=()=>null;
+  let gate={phase:'open'};
   let options,receivedSession;
   const saved={token:'old-synthetic-session'};
   const scope={React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],useEffect:()=>{},
     useMisSharedSignIn:(session,settings)=>{receivedSession=session;options=settings;return {error:''};},MisSharedLogin:Login,MisWorkspace:Workspace,
+    useSignInLocationGate:()=>gate,SignInLocationScreen:LocationScreen,
     sessionStorage:{getItem:()=>JSON.stringify(saved),setItem:()=>{},removeItem:()=>{}},localStorage:{getItem:()=>null,removeItem:()=>{}}};
   const App=new Function(...Object.keys(scope),`${code};return MisApp;`)(...Object.values(scope));
   assert.equal(App().type,Workspace);assert.deepEqual(receivedSession,saved);assert.equal(options.autoStart,true);
+  gate={phase:'asking'};assert.equal(App().type,LocationScreen,'a restored sign-in without its location waits on the location screen');
 });
 
 

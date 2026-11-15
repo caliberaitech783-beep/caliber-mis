@@ -1,4 +1,4 @@
-import {parseSignInLocation,SIGN_IN_LOCATION_UPDATE_SQL} from '../rules/sign-in-location.mjs';
+import {parseSignInLocation,signInLocationAccepted,SIGN_IN_LOCATION_STATUS_SQL,SIGN_IN_LOCATION_UPDATE_SQL} from '../rules/sign-in-location.mjs';
 
 // Separate from exportable audit records and expiring authentication credentials.
 export async function initializeLoginHistory(pool) {
@@ -50,15 +50,19 @@ export function loginHistoryRange(query={}, now=new Date()) {
 }
 
 // Every signed-in user reports their own sign-in location; no administrator check.
-export function registerSignInLocationRoute(app,{pool,requireSession}) {
+// "accepted" tells the browser whether the app may open (a refusal keeps it closed).
+export function registerSignInLocationRoute(app,{pool,requireSession,env=process.env}) {
   app.post('/api/session-location',requireSession,async(req,res,next)=>{
     const location=parseSignInLocation(req.body);
     if(location.error)return res.status(400).json({error:location.error});
     const sessionId=String(req.session?.sessionId||'').trim();
-    if(!sessionId)return res.json({recorded:false});
     try{
+      let accepted=signInLocationAccepted(location.status,req.session,env);
+      if(!sessionId)return res.json({recorded:false,accepted});
       const result=await pool.query(SIGN_IN_LOCATION_UPDATE_SQL,[sessionId,location.status,location.latitude,location.longitude,location.accuracy]);
-      res.json({recorded:result.rowCount>0});
+      // A sign-in that already shared stays open even if a later answer is a refusal.
+      if(!accepted&&!result.rowCount){const {rows}=await pool.query(SIGN_IN_LOCATION_STATUS_SQL,[sessionId]);accepted=!rows.length||rows[0].status==='shared';}
+      res.json({recorded:result.rowCount>0,accepted});
     }catch(error){next(error);}
   });
 }
