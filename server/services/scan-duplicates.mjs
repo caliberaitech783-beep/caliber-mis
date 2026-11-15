@@ -5,6 +5,35 @@ import {decodeScanRow} from '../rules/scan-text-storage.mjs';
 import {fingerprintScanImage,closestFingerprint,scanFingerprintSettings} from './scan-fingerprint.mjs';
 import {isMultiSheet} from '../../shared/trip-card-sheet.mjs';
 import {fingerprintInWorker} from './scan-fingerprint-pool.mjs';
+import {vlbRecordShift} from '../../shared/vlb-batch-format.mjs';
+import {shareCardOperator} from '../../shared/log-book-shared-shift.mjs';
+
+// Rule (owner, 15 November 2026): a driver or operator who works one shift and then continues
+// into another shift of the same day (Shift 1, then Shift 2 or any other shift) is on overtime,
+// not a duplicate. A saved card with the same card number, door and date is therefore not a
+// duplicate when it belongs to another shift, carries the same driver or operator, and its meter
+// readings differ (the shift was continued on the same trip card). The OT & Multiple Duties report
+// counts the two duties as OT. Identical meter readings are still the same card saved twice.
+const meterValue=value=>value==null||String(value).trim()===''?null:Math.round(Number(value)*1000);
+function sameMeterReadings(left={},right={}){
+ const fields=['openingHmr','closingHmr','openingKmr','closingKmr'].filter(field=>meterValue(left[field])!==null&&meterValue(right[field])!==null);
+ return !fields.length||fields.every(field=>meterValue(left[field])===meterValue(right[field]));
+}
+const hasOperator=data=>Boolean(String(data?.employeeId??'').trim()||String(data?.caliberId??'').trim()||String(data?.operatorSplit?.secondOperatorId??'').trim());
+export function isShiftContinuation(saved,current){
+ if(!saved||!current)return false;
+ const savedShift=vlbRecordShift(saved),currentShift=vlbRecordShift(current);
+ if(!savedShift||!currentShift||savedShift===currentShift)return false;
+ if(!hasOperator(saved)||!hasOperator(current)||!shareCardOperator(saved,current,{sameDummy:true}))return false;
+ return !sameMeterReadings(saved,current);
+}
+const otherShift=(saved,current)=>{const a=vlbRecordShift(saved||{}),b=vlbRecordShift(current||{});return Boolean(a&&b&&a!==b);};
+// What checkScanCard shows instead of the duplicate error.
+export function continuationNote(original){
+ return 'Shift continuation: the same driver/operator also worked shift '+String(original.shift).replace(/^S(?=\d)/,'')+' on this card ('+original.bookNo+'). Saved as a separate duty and counted as OT for this driver in the OT & Multiple Duties report.';
+}
+// The fields isShiftContinuation reads from a saved log book.
+const CONTINUATION_FIELDS=['bookShiftCode','cardShift','shiftName','employeeId','caliberId','operatorSplit','openingHmr','closingHmr','openingKmr','closingKmr'];
 
 // Duplicate scan cards. A card is a duplicate when the same paper, for the same
 // card date, site and shift, already exists in any scan entry or saved log book
@@ -101,7 +130,10 @@ export function contentIdentityCertain(card,kind,context){
 const savedDoorKeys=(door,kind,doorKey)=>new Set([doorKey,separatorCorrectedKey(door,kind)].filter(Boolean));
 // Same date, door and card number on a live card in any entry for this date,
 // site and shift (earlier cards win), or in a saved log book.
-export async function findContentDuplicate(client,kind,card,batch,{bookDate,door,number}){
+// `current` is the card's resolved values (shift, driver, meters); a saved card of another shift is then
+// a shift continuation when isShiftContinuation says so. `sameShiftOnly` leaves every saved card of
+// another shift to the review (the automatic rejection after reading uses it).
+export async function findContentDuplicate(client,kind,card,batch,{bookDate,door,number,current=null,sameShiftOnly=false}){
  const doorKey=cardMachineKey(door||scanDoorValue(card),kind);
  if(!bookDate||!doorKey||!number)return null;
  const batches=await sameContextBatches(client,batch);
@@ -110,7 +142,11 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
  if(sibling)return {kind:'card',...originalSummary(sibling)};
  const savedRows=(await client.query("SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$3 AND COALESCE(l.data->>'scanCardId','')<>$4",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
  const savedKeys=savedDoorKeys(door||scanDoorValue(card),kind,doorKey);
- const saved=savedRows.find(row=>savedKeys.has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
+ const matching=savedRows.filter(row=>savedKeys.has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
+ const shiftOf=current||{...card.draft,cardShift:batch.expected_context?.cardShift||card.draft?.cardShift};
+ const saved=matching.find(row=>!(sameShiftOnly&&otherShift(row.data,shiftOf))&&!isShiftContinuation(row.data,current));
+ const continued=!saved&&current&&matching.find(row=>isShiftContinuation(row.data,current));
+ if(continued)return {kind:'continuation',bookNo:continued.book_no,shift:vlbRecordShift(continued.data)};
  if(saved){const origin=saved.scan_card_id?(await client.query('SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1',[saved.scan_card_id])).rows[0]:null;return {kind:'logbook',cardId:origin?.id||null,batchId:origin?.batch_id||null,entryName:origin?.batch_name||null,ordinal:origin?.ordinal||null,bookNo:saved.book_no};}
  return null;
 }
@@ -191,20 +227,23 @@ export async function preloadDuplicateChecks(client,batch,cards,{lap=()=>{}}={})
   siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.created_at,c.draft->>'bookDate' AS book_date,${number} AS number,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('door',c.raw_fields->'door') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('doorTextWritten',c.draft->'doorTextWritten','doorText',c.draft->'doorText','door',c.draft->'door') END AS draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND ${number}=ANY($2::text[]) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),numbers])).rows.map(row=>decodeScanRow(row));lap('duplicate-cards');
   if(dates.length){
    const savedNumber=SAVED_NUMBER_SQL('l.');
-   savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText') AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;lap('duplicate-saved');
+   savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText',${CONTINUATION_FIELDS.map(field=>`'${field}',l.data->'${field}'`).join(',')}) AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;lap('duplicate-saved');
   }
  }
  const time=value=>new Date(value).getTime();
  return {
   async image(card){return ids.has(card.id)?imageDuplicates.has(card.id):Boolean(await findEarlierImageDuplicate(client,card));},
-  async content(card,{bookDate,door,number}){
+  async content(card,{bookDate,door,number,current=null}){
    const doorKey=cardMachineKey(door||scanDoorValue(card),kind);
    if(!bookDate||!doorKey||!number)return null;
-   if(!numbers.includes(number)||!dates.includes(bookDate))return findContentDuplicate(client,kind,card,batch,{bookDate,door,number});
+   if(!numbers.includes(number)||!dates.includes(bookDate))return findContentDuplicate(client,kind,card,batch,{bookDate,door,number,current});
    const created=time(card.created_at);
    const sibling=siblings.find(row=>row.id!==card.id&&row.number===number&&row.book_date===bookDate&&(time(row.created_at)<created||(time(row.created_at)===created&&row.id<card.id))&&scanDoorKey(row,kind)===doorKey);
    if(sibling)return {kind:'card',...originalSummary(sibling)};
-   const saved=savedRows.find(row=>row.number===number&&row.book_date===bookDate&&(row.scan_card_id||'')!==card.id&&savedDoorKeys(door||scanDoorValue(card),kind,doorKey).has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
+   const matching=savedRows.filter(row=>row.number===number&&row.book_date===bookDate&&(row.scan_card_id||'')!==card.id&&savedDoorKeys(door||scanDoorValue(card),kind,doorKey).has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
+   const saved=matching.find(row=>!isShiftContinuation(row.data,current));
+   const continued=!saved&&current&&matching.find(row=>isShiftContinuation(row.data,current));
+   if(continued)return {kind:'continuation',bookNo:continued.book_no,shift:vlbRecordShift(continued.data)};
    if(saved)return {kind:'logbook',cardId:saved.origin_id||null,batchId:saved.origin_batch_id||null,entryName:saved.origin_batch_name||null,ordinal:saved.origin_ordinal||null,bookNo:saved.book_no};
    return null;
   }
@@ -227,8 +266,8 @@ export async function applyContentDuplicate(client,kind,card,batch){
  if(kind==='vehicle'&&isMultiSheet(card.draft?.tripCardSheet))return null;
  if(!contentIdentityCertain(card,kind,context))return null;
  const draft=card.draft||{},number=cardNumberKey(kind==='vehicle'?draft.aFormNo:draft.jobCardNo);
- const original=await findContentDuplicate(client,kind,card,batch,{bookDate:draft.bookDate,door:scanDoorValue(card),number});
- if(!original||!original.cardId)return null;
+ const original=await findContentDuplicate(client,kind,card,batch,{bookDate:draft.bookDate,door:scanDoorValue(card),number,sameShiftOnly:true});
+ if(!original||!original.cardId||original.kind==='continuation')return null;
  await client.query("UPDATE mis_scan_cards SET status='rejected',duplicate_of=$2,review_note=$3,checked_by='system',checked_at=NOW(),raw_fields=raw_fields||jsonb_build_object('duplicate',$4::jsonb),revision=revision+1 WHERE id=$1 AND status='review' AND duplicate_of IS NULL",[card.id,original.cardId,duplicateNote(original),JSON.stringify({reason:'content',original,decidedAt:new Date().toISOString()})]);
  return original;
 }
