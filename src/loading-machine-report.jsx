@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
-import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt} from '../shared/loading-machine-report.mjs';
+import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt,breakdownText} from '../shared/loading-machine-report.mjs';
 import {tripEntries} from '../shared/trip-timing-report.mjs';
 import './trip-timing-report.css';
 import './loading-machine-report.css';
@@ -43,7 +43,9 @@ const identity={
 // here have their own order, so these keys and headings are chosen to stay clear of that rule.
 const work=[column('trips','Trips loaded'),column('percent','% of shift worked',share,null,r=>r.percent??-1),column('hoursWorked','Hours worked',r=>blank(r.hours)?'—':r.hours)];
 const more=[column('shiftHours','Shift hours',r=>r.shiftHours||'—'),column('bdHours','Hours in BD'),column('notJudged','Not judged')];
-const idle=onPick=>[...BANDS.map(b=>banded(b,onPick)),column('stops','Total idle stops'),column('idleMinutes','Total idle time',r=>r.running?idleText(r.idleMinutes):'—',null,r=>r.running?r.idleMinutes:-1),column('longest','Longest idle (min)')];
+// Minutes the machines were in breakdown in Pulse, by the clock of the shift: taken out of the idle time.
+const inBd=column('bdMinutes','In BD (Pulse)',r=>r.bdMinutes>0?idleText(r.bdMinutes):'—',r=>r.bdMinutes>0?<span className="lm-count lm-bdcount">{idleText(r.bdMinutes)}</span>:'—',r=>r.bdMinutes||0);
+const idle=onPick=>[...BANDS.map(b=>banded(b,onPick)),column('stops','Total idle stops'),column('idleMinutes','Total idle time',r=>r.running?idleText(r.idleMinutes):'—',null,r=>r.running?r.idleMinutes:-1),column('longest','Longest idle (min)'),inBd];
 export function summaryColumns(group,onPick){
  return [...identity[group],column('running',STATES.running),counted('breakdown',STATES.breakdown,'lm-count lm-breakdown',onPick),counted('nohours',STATES.nohours,'lm-count lm-nohours',onPick),...work,...idle(onPick),...more];
 }
@@ -64,7 +66,9 @@ const waitingText=l=>l.delayed.map(d=>d.door+' · '+d.waited+' min').join(', ')|
 export function tripColumns(many=false){
  return [...(many?[column('date','Date',l=>day(l.date)),column('shift','Shift'),column('machine','Loading machine')]:[]),
   column('fromClock','Loading before at',l=>l.from?.clock||'—'),column('toClock','Loaded at',l=>l.to.clock),
-  column('minutes','Gap from loading before (min)',l=>l.band==='first'?'—':l.minutes,l=>l.band==='first'?'—':<span className={'tt-band lm-'+l.band}>{l.minutes}</span>,l=>l.minutes??-1),
+  column('gapAll','Gap from loading before (min)',l=>l.band==='first'?'—':l.gap??l.minutes,null,l=>l.gap??-1),
+  column('bdIn','Of it in BD (min)',l=>l.bdMinutes>0?l.bdMinutes:'—',l=>l.bdMinutes>0?<span className="lm-count lm-bdcount">{l.bdMinutes}</span>:'—',l=>l.bdMinutes||0),
+  column('minutes','Idle (min)',l=>l.band==='first'?'—':l.minutes,l=>l.band==='first'?'—':<span className={'tt-band lm-'+l.band}>{l.minutes}</span>,l=>l.minutes??-1),
   column('band','Colour',colourText),column('toDoor','Tipper loaded',l=>l.to.door),column('toDriver','Driver',l=>l.to.driver||'—'),
   column('delayedCount','Tipper trips delayed',l=>l.band==='first'||l.band==='ok'?'—':l.delayed.length,l=>l.delayed.length>0?<span className="lm-count lm-delayed">{l.delayed.length}</span>:l.band==='first'||l.band==='ok'?'—':0,l=>l.delayed.length),
   column('waiting','Tippers delayed · unloading to loading',waitingText),column('breakdown','Breakdown in Pulse',l=>l.breakdown||'—'),column('book','Book no.',l=>l.to.book)];
@@ -84,44 +88,60 @@ const place=(t,from,to)=>({left:((from-t.lo)/(t.hi-t.lo)*100).toFixed(3)+'%',...
 // Inside a piece, each colour part is placed as a share of the piece itself.
 const within=(p,part)=>({left:((part.from-p.from)/(p.to-p.from)*100).toFixed(3)+'%',width:((part.to-part.from)/(p.to-p.from)*100).toFixed(3)+'%'});
 // The wording of a piece, for its pop-up and for the line under the strip when it is pressed.
+// A breakdown inside the gap is named in its place among the turns; its minutes are not idle.
 export function pieceText(p){
- if(p.band==='ok')return `${p.fromClock} loading (${p.fromDoor}) to ${p.toClock} loading (${p.door}) · ${p.minutes} min · green`;
- return [`${p.fromClock} loading (${p.fromDoor})`,...p.turns.map(turn=>`${turn.clock} turned ${turn.tone}`),`${p.toClock} next loading (${p.door})`].join(' → ')
-  +` · ${p.minutes} min idle · ${BAND_LABELS[p.band]}`+(p.delayed?' · '+plural(p.delayed,'tipper trip')+' delayed':'')+(p.breakdown?' · Breakdown in Pulse: '+p.breakdown:'');
+ const bd=p.bdMinutes>0?` · ${p.gap} min between loadings, ${p.bdMinutes} min of it in breakdown`:'';
+ if(p.band==='ok'&&!bd)return `${p.fromClock} loading (${p.fromDoor}) to ${p.toClock} loading (${p.door}) · ${p.minutes} min · green`;
+ return [`${p.fromClock} loading (${p.fromDoor})`,...p.events.map(e=>`${e.clock} ${e.words}`),`${p.toClock} next loading (${p.door})`].join(' → ')
+  +bd+` · ${p.minutes} min idle · ${BAND_LABELS[p.band]}`+(p.delayed?' · '+plural(p.delayed,'tipper trip')+' delayed':'')+(p.breakdown?' · Breakdown in Pulse: '+p.breakdown:'');
 }
 // Wide enough for its text: a share of the strip (single view of one shift, many shifts one under the other).
 const roomy=(t,from,to,share)=>(to-from)/(t.hi-t.lo)>=share;
+// A machine shift is drawn when it has a timed loading, or when Pulse shows it in breakdown during the shift.
+const canDraw=e=>e.lines.length>0||e.bdPeriods.length>0&&e.axis.known;
+const bdLength=m=>m>=120?Math.floor(m/60)+' h '+String(Math.round(m%60)).padStart(2,'0')+' min':Math.round(m)+' min';
 function Strip({entry,label,single,onPick,onOpen,picked=false}){
  const t=shiftTimeline(entry);
  const [chosen,setChosen]=useState('');
  // Tags are about 7 px a letter on a strip of about 1,000 px: in minutes of the strip, 7/1000 of its length per letter.
  const tags=single?clockTags(t,{width:(t.hi-t.lo)*0.0072,lanes:3}):[];
- const said=t.pieces.find(p=>p.id===chosen);
+ const said=t.pieces.find(p=>p.id===chosen),saidBd=t.breakdowns.find(b=>b.id===chosen);
  const press=p=>{if(onOpen)return onOpen(entry);setChosen(p.id);onPick(p.band);};
+ // Pressing a breakdown gives its time, Pulse reference and reason; it changes no list below.
+ const pressBd=b=>{if(onOpen)return onOpen(entry);setChosen(b.id);};
  const rest=(part,words)=>part&&<span className="lm-tl-restzone" style={place(t,part.from,part.to)} title={words}>{roomy(t,part.from,part.to,single?0.1:0.16)?words:''}</span>;
+ const bdWords=t.bdMinutes>0?`; ${bdLength(t.bdMinutes)} in breakdown`:'';
  return <div className={'lm-tl-row'+(single?' lm-tl-single':'')+(onOpen?' lm-tl-openable':'')+(picked?' lm-tl-picked':'')} onClick={onOpen?()=>onOpen(entry):undefined} role={onOpen?'button':undefined} tabIndex={onOpen?0:undefined} onKeyDown={onOpen?e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onOpen(entry);}}:undefined}
   title={onOpen?'Open this shift full width with its clock times':undefined}>
   {label&&<div className="lm-tl-label" title={label}>{label}</div>}
   <div className="lm-tl-body">
-   <div className="lm-tl-track" role="img" aria-label={`${entry.door}, ${day(entry.date)}, ${entry.shift}: ${entry.loadings} loadings from ${t.firstClock} to ${t.lastClock}; ${entry.ok} within ${IDLE_LIMIT} minutes, ${entry.b1+entry.b2+entry.b3} after ${IDLE_LIMIT} to 20 minutes, ${entry.b4} after more than 20 minutes`}>
+   <div className="lm-tl-track" role="img" aria-label={entry.loadings?`${entry.door}, ${day(entry.date)}, ${entry.shift}: ${entry.loadings} loadings from ${t.firstClock} to ${t.lastClock}; ${entry.ok} within ${IDLE_LIMIT} minutes, ${entry.b1+entry.b2+entry.b3} after ${IDLE_LIMIT} to 20 minutes, ${entry.b4} after more than 20 minutes${bdWords}`:`${entry.door}, ${day(entry.date)}, ${entry.shift}: no timed loading${bdWords}`}>
     {rest(t.lead,'No loading till '+t.lead?.clock)}
     {rest(t.tail,'No loading after '+t.tail?.clock)}
+    {rest(t.empty,'No loading with a time')}
     {t.pieces.map(p=><span key={p.id} className={'lm-seg lm-seg-'+p.band+(p.id===chosen?' lm-seg-chosen':'')} style={place(t,p.from,p.to)} onClick={e=>{e.stopPropagation();press(p);}} title={pieceText(p)}>
-     {p.parts.map(part=><i key={part.tone} className={'lm-part lm-part-'+part.tone} style={within(p,part)}/>)}
+     {p.parts.map((part,i)=><i key={i} className={'lm-part lm-part-'+part.tone} style={within(p,part)}/>)}
      {p.band!=='ok'&&roomy(t,p.from,p.to,single?0.026:0.045)&&<b>{Math.round(p.minutes)}</b>}
     </span>)}
-    {t.pieces.flatMap(p=>p.turns.map(turn=><span key={p.id+turn.tone} className={'lm-turn lm-turn-'+turn.tone} style={place(t,turn.at)} aria-hidden="true"/>))}
-    <span className="lm-seg lm-seg-end" style={place(t,t.last)} aria-hidden="true"/>
+    {t.pieces.flatMap(p=>p.turns.map(turn=><span key={p.id+turn.tone+turn.at} className={'lm-turn lm-turn-'+turn.tone} style={place(t,turn.at)} aria-hidden="true"/>))}
+    {/* Owner, 15 Nov 2026: the machine in breakdown is black on the strip, whatever the colour under it; press it for the reason. */}
+    {t.breakdowns.map(b=><span key={b.id} className={'lm-bd'+(b.id===chosen?' lm-seg-chosen':'')} style={place(t,b.from,b.to)} onClick={e=>{e.stopPropagation();pressBd(b);}} title={breakdownText(b)}>
+     {roomy(t,b.from,b.to,single?0.05:0.08)?'BD '+bdLength(b.minutes):roomy(t,b.from,b.to,single?0.018:0.03)?'BD':''}
+    </span>)}
+    {t.last!==null&&<span className="lm-seg lm-seg-end" style={place(t,t.last)} aria-hidden="true"/>}
    </div>
-   {t.breakdowns.length>0&&<div className="lm-tl-bd">{t.breakdowns.map((b,i)=><span key={i} style={place(t,b.from,b.to)} title={'Breakdown in Pulse · '+b.label}/>)}</div>}
-   {tags.length>0&&<div className="lm-tl-tags" style={{height:(Math.max(...tags.map(g=>g.lane))+1)*20+'px'}}>{tags.map(g=><span key={g.id} className={'lm-tag lm-tag-'+g.tone+(g.end?' lm-tag-end':'')} style={{...place(t,g.at),top:g.lane*20+'px'}}
-     onClick={()=>{const p=t.pieces.find(x=>x.id===g.piece);if(p)press(p);}} title={pieceText(t.pieces.find(x=>x.id===g.piece))}>{g.text}</span>)}</div>}
+   {tags.length>0&&<div className="lm-tl-tags" style={{height:(Math.max(...tags.map(g=>g.lane))+1)*20+'px'}}>{tags.map(g=>{
+    const piece=g.piece&&t.pieces.find(x=>x.id===g.piece),bd=g.breakdown&&t.breakdowns.find(x=>x.id===g.breakdown);
+    return <span key={g.id} className={'lm-tag lm-tag-'+g.tone+(g.end?' lm-tag-end':'')} style={{...place(t,g.at),top:g.lane*20+'px'}}
+     onClick={()=>{if(piece)press(piece);else if(bd)pressBd(bd);}} title={piece?pieceText(piece):bd?breakdownText(bd):''}>{g.text}</span>;})}</div>}
    <div className="lm-tl-axis" aria-hidden="true">{single&&t.ticks.map(m=><i key={m} className={'lm-tick'+(m%30?'':' lm-tick-half')} style={place(t,m)}/>)}{t.marks.map(m=><span key={m.at} className={m.edge?'lm-edge':undefined} style={place(t,m.at)}>{m.clock}</span>)}</div>
    {single&&said&&<p className={'lm-tl-chosen lm-tl-chosen-'+said.tone} role="status">{pieceText(said)}</p>}
+   {single&&saidBd&&<p className="lm-tl-chosen lm-tl-chosen-bd" role="status">{breakdownText(saidBd)}</p>}
    {single&&<div className="lm-tl-hours">{t.hours.map(h=><div key={h.id} className={'lm-hour lm-hour-'+h.worst} style={place(t,h.from,h.to)}
-     title={`${h.label}: ${plural(h.loadings,'loading')} (${h.count.green} green, ${h.count.orange} orange, ${h.count.red} red) · minutes of the hour in green ${h.green}, in orange ${h.orange}, in red ${h.red}, before the first or after the last loading ${h.rest}`}>
+     title={`${h.label}: ${plural(h.loadings,'loading')} (${h.count.green} green, ${h.count.orange} orange, ${h.count.red} red) · minutes of the hour in green ${h.green}, in orange ${h.orange}, in red ${h.red}, in breakdown ${h.bd}, before the first or after the last loading ${h.rest}`}>
      <b>{h.loadings}</b> {h.loadings===1?'trip':'trips'}
-     <span className="lm-hour-counts">{h.loadings>0?['green','orange','red'].filter(tone=>h.count[tone]>0).map(tone=><i key={tone} className={'lm-pill lm-pill-'+tone}>{h.count[tone]}</i>):<em>{h.worst==='rest'?'Not judged':'No loading'}</em>}</span>
+     <span className="lm-hour-counts">{h.loadings>0?['green','orange','red'].filter(tone=>h.count[tone]>0).map(tone=><i key={tone} className={'lm-pill lm-pill-'+tone}>{h.count[tone]}</i>):<em>{h.worst==='rest'?'Not judged':h.worst==='bd'?'':'No loading'}</em>}
+      {h.bd>0&&<i className="lm-pill lm-pill-bd" title={Math.round(h.bd)+' minutes of this hour in breakdown'}>BD {Math.round(h.bd)}m</i>}</span>
     </div>)}</div>}
   </div>
  </div>;
@@ -130,7 +150,7 @@ const stripOrder=(a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.lo
 // One strip: the shift full width with its clock times. Many strips (a machine over many shifts, or many machines): one
 // under the other, newest shift on top; pressing a strip opens that shift on its own (`onOpen`).
 export function ShiftTimelines({entries=[],title='',step='',onPick=()=>{},onOpen=null,pickedId=''}){
- const drawn=entries.filter(e=>e.lines.length).sort(stripOrder);
+ const drawn=entries.filter(canDraw).sort(stripOrder);
  if(!drawn.length)return null;
  const shown=drawn.slice(0,MAX_STRIPS),single=drawn.length===1,manyShifts=new Set(drawn.map(e=>e.slotKey)).size>1,manyMachines=new Set(drawn.map(e=>e.machineKey)).size>1;
  const label=e=>single?'':[manyShifts&&day(e.date)+' · '+e.shift,(manyMachines||!manyShifts)&&e.door].filter(Boolean).join(' · ');
@@ -138,18 +158,18 @@ export function ShiftTimelines({entries=[],title='',step='',onPick=()=>{},onOpen
  const one=drawn[0],heading=single?'Machine '+one.door+' · '+one.site+' · '+day(one.date)+' · '+one.shift+(one.axis.known?' · '+clockAt(one.axis.start)+' to '+clockAt(one.axis.start,one.axis.minutes):''):title;
  return <section className="lm-timeline" aria-label="Shift time-line">
   <h3>{step}{single?'Shift time-line':'Shift time-lines'} · {heading}</h3>
-  <p className="lm-tl-legend"><span><i className="lm-part-green"/>Green · first {IDLE_LIMIT} min after a loading</span><span><i className="lm-part-orange"/>Orange · from the {IDLE_LIMIT}th minute</span><span><i className="lm-part-red"/>Red · from the {RED_AFTER}th minute, till the next loading</span><span><i className="lm-tl-rest"/>Before the first or after the last loading</span>{shown.some(e=>e.bdPeriods.length>0)&&<span><i className="lm-tl-bdkey"/>Breakdown recorded in Pulse</span>}</p>
+  <p className="lm-tl-legend"><span><i className="lm-part-green"/>Green · first {IDLE_LIMIT} min after a loading</span><span><i className="lm-part-orange"/>Orange · from the {IDLE_LIMIT}th minute</span><span><i className="lm-part-red"/>Red · from the {RED_AFTER}th minute, till the next loading</span><span><i className="lm-part-bd"/>Black · breakdown in Pulse, not idle</span><span><i className="lm-tl-rest"/>Before the first or after the last loading</span></p>
   <div className="lm-tl-scroll"><div className="lm-tl-inner">{shown.map(e=><Strip key={e.id} entry={e} label={label(e)} single={single} onPick={onPick} onOpen={single?null:onOpen} picked={e.id===pickedId}/>)}</div></div>
   <p className="lm-tl-foot">{single
-   ?`Every dark line inside the strip is one loading; the number on a piece is its minutes. Under the strip: the clock time each stop turned orange and red, and when a red stop ended with the next loading. Below each hour: the trips loaded in it, by the colour of the gap before each. Press a piece or a clock time to read it in full and list only the loadings of its band.`
-   :`Every strip is one shift of 8 hours, newest on top. Press a strip to open that shift full width with the clock time of every change of colour.`}
+   ?`Every dark line inside the strip is one loading; the number on a piece is its idle minutes. Black is the time the machine was in breakdown in Pulse: it is not idle, and the idle clock stops while it lasts. Under the strip: when each breakdown began and ended, the clock time each stop turned orange and red, and when a red stop ended with the next loading. Below each hour: the trips loaded in it, by the colour of the gap before each, and its minutes in breakdown. Press a piece, a black breakdown or a clock time to read it in full.`
+   :`Every strip is one shift of 8 hours, newest on top; black is a breakdown in Pulse. Press a strip to open that shift full width with the clock time of every change of colour.`}
    {drawn.length>shown.length?` The newest ${shown.length} of ${drawn.length} shifts are drawn; the list below has all of them.`:''}</p>
  </section>;
 }
 
-export default function LoadingMachineReport({records=[],assets=[],fleet=[],batches=[],filters={},loading='',period='',ReportSection,dataReady=true,rowsView=null}){
+export default function LoadingMachineReport({records=[],assets=[],fleet=[],batches=[],pulseBreakdowns=null,pulseBreakdownsError='',filters={},loading='',period='',ReportSection,dataReady=true,rowsView=null}){
  const [mode,setMode]=useState('idle'),[site,setSite]=useState(''),[slot,setSlot]=useState(null),[item,setItem]=useState(null),[strip,setStrip]=useState(''),[only,setOnly]=useState(''),[card,setCard]=useState('');
- const entries=useMemo(()=>machineShifts(records,{assets,fleet,batches,filters}),[records,assets,fleet,batches,filters]);
+ const entries=useMemo(()=>machineShifts(records,{assets,fleet,batches,filters,pulseBreakdowns}),[records,assets,fleet,batches,filters,pulseBreakdowns]);
  const visible=useMemo(()=>loading?entries.filter(e=>e.names.includes(loading)||e.door===loading):entries,[entries,loading]);
  const cardRows=useMemo(()=>card?tripEntries(records).filter(e=>e.recordId===card):[],[records,card]),cardHead=cardRows[0];
  const reset=()=>{setSite('');setSlot(null);setItem(null);setStrip('');setOnly('');setCard('');};
@@ -168,7 +188,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const itemEntries=!item?[]:item.key===EVERY?slotEntries:slotEntries.filter(e=>groupKey('machine',e)===item.key);
  // A machine over many shifts (or many machines) is drawn as one 8-hour strip per shift; pressing a strip opens that
  // shift on its own. With one shift to draw, that shift is open at once.
- const drawable=itemEntries.filter(e=>e.lines.length).sort(stripOrder),stacked=drawable.length>1;
+ const drawable=itemEntries.filter(canDraw).sort(stripOrder),stacked=drawable.length>1;
  const focus=strip?itemEntries.find(e=>e.id===strip)||null:null;
  const shownEntries=focus?[focus]:itemEntries;
  const level=!site?1:!item?2:3;
@@ -191,14 +211,14 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const tripChips=<nav className="tt-chips" aria-label="Show only">{[['','All trips',opened.loadings,''],['ok','Green · '+BAND_LABELS.ok,opened.ok,'lm-ok'],...BANDS.map(b=>[b.key,(b.key==='b4'?'Red · ':'Orange · ')+b.label,opened[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={pick===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
  const summaryLine=t=>t.machineShifts?`${t.running} of ${t.machineShifts} machine shifts ran, ${t.breakdown} were in BD and ${t.nohours} had no hours without BD. `
   +(t.percent===null?'':`The machines with an ELB worked ${t.percent}% of their shift hours (${t.hours} of ${t.shiftHours} hours). `)
-  +`${t.trips} trips loaded. `+(t.gaps?`Out of ${t.gaps} timed gaps between two loadings, ${t.stops} were idle stops of more than ${IDLE_LIMIT} minutes (${idleText(t.idleMinutes)} in all): ${BANDS.map(b=>`${t[b.key]} in ${b.label} (${t[b.key+'Share']}%)`).join(', ')}.`:'No gap between two loadings could be timed.'):'No loading machine in these dates and filters.';
+  +`${t.trips} trips loaded. `+(t.gaps?`Out of ${t.gaps} timed gaps between two loadings, ${t.stops} were idle stops of more than ${IDLE_LIMIT} minutes (${idleText(t.idleMinutes)} in all): ${BANDS.map(b=>`${t[b.key]} in ${b.label} (${t[b.key+'Share']}%)`).join(', ')}.`:'No gap between two loadings could be timed.')+(t.bdMinutes>0?` ${idleText(t.bdMinutes)} in breakdown in Pulse is taken out of the idle time.`:''):'No loading machine in these dates and filters.';
  // What the time-line says in words; with a band chosen, also the stops of that band and the tipper trips delayed in them.
  const stopWords=l=>`${l.minutes} minutes from ${l.from.clock} to ${l.to.clock}`+(manyLines?` (${l.machine}, ${day(l.date)})`:'')+`, ${plural(l.delayed.length,'tipper trip')} delayed`;
  const timelineLine=t=>{
-  if(!t.loadings)return 'No loading with a time here: the tipper cards were saved without times, or no tipper card names the machine.';
+  if(!t.loadings)return 'No loading with a time here: the tipper cards were saved without times, or no tipper card names the machine.'+(t.bdMinutes>0?` ${idleText(t.bdMinutes)} in breakdown in Pulse.`:'');
   const delayedHere=new Set(lines.flatMap(l=>l.delayed.map(d=>d.key))).size;
   return `${plural(t.loadings,'loading')} with a time. ${t.ok} came within ${IDLE_LIMIT} minutes of the loading before (green), ${t.b1+t.b2+t.b3} after ${IDLE_LIMIT} to 20 minutes (orange) and ${t.b4} after more than 20 minutes (red). `
-   +`The idle stops add up to ${idleText(t.idleMinutes)}`+(t.longest===null?'':`; the longest gap was ${t.longest} minutes`)+`. ${plural(t.delayed,'tipper trip')} delayed during the idle stops.`
+   +`The idle stops add up to ${idleText(t.idleMinutes)}`+(t.longest===null?'':`; the longest gap was ${t.longest} minutes`)+`. ${plural(t.delayed,'tipper trip')} delayed during the idle stops.`+(t.bdMinutes>0?` ${idleText(t.bdMinutes)} in breakdown in Pulse is black on the strip and not counted as idle.`:'')
    +(band?` ${BAND_LABELS[band]}: ${plural(lines.length,'stop')}`+(lines.length?`, ${idleText(lines.reduce((s,l)=>s+l.minutes,0))} in all, ${plural(delayedHere,'tipper trip')} delayed in ${lines.length===1?'it':'them'}`:'')+(lines.length&&lines.length<=3?': '+lines.map(stopWords).join('; '):'')+'.':'');
  };
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
@@ -221,6 +241,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  return <div className="tt-report lm-report">{tabs}
   <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
   {<>
+   {pulseBreakdownsError&&<p className="tt-insight lm-pulse-note" role="status">Pulse could not be read just now ({pulseBreakdownsError}). The breakdowns shown are the ones copied onto the ELB cards when they were saved; press Refresh to read Pulse again.</p>}
    <p className="tt-insight">{summaryLine(sites.total)}</p>
    <ReportSection key="lm-sites" reportKey="Loading machines sites" dataReady={dataReady} title={'Step 1 · Loading machines · All sites · '+period} category="operations-loading-sites" description="One line per site. Press a site to see it date by date and shift by shift. Press a coloured number to see only the shifts behind it."
     rows={withTotal(sites.rows,sites.total)} columns={summaryColumns('site',openSite)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,site)} isTotalRow={isTotal} onRowClick={r=>openSite(r)} emptyMessage="No loading machine in these dates and filters."/>
@@ -254,10 +275,11 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    rows={cardRows} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Trips loaded are the trips of every tipper card row that names the machine. A row with only an unloading time belongs to the shift that loaded it.</li>
-   <li>An idle stop is the time from one loading to the next loading by the same machine, across all the tippers it loaded in the shift. {IDLE_LIMIT} minutes or less is normal working. The bands are more than 5 and up to 10 minutes, up to 15, up to 20, and more than 20. Total idle time adds up every stop of more than {IDLE_LIMIT} minutes in full.</li>
+   <li>An idle stop is the time from one loading to the next loading by the same machine, across all the tippers it loaded in the shift, less any time the machine was in breakdown. {IDLE_LIMIT} minutes or less is normal working. The bands are more than 5 and up to 10 minutes, up to 15, up to 20, and more than 20. Total idle time adds up every stop of more than {IDLE_LIMIT} minutes in full.</li>
    <li>The shift time-line of a machine is a strip over all the hours of the shift with every loading that has a time. After each loading the strip is green; if the next loading has not come in {IDLE_LIMIT} minutes it turns orange, and after {RED_AFTER} minutes red, until the next loading. The clock time of each turn is printed under the strip. A loading in the list is coloured by the whole gap before it: green within {IDLE_LIMIT} minutes, orange up to {RED_AFTER}, red above {RED_AFTER}. The first loading of the shift has no loading before it and no colour.</li>
    <li>Tipper trips delayed in an idle stop: the tipper was loaded by this machine at the end of the stop or after it, took more than {WAIT_LIMIT} minutes from its unloading to that loading (a delay in the Trip Timing &amp; Gap Report), and stood empty for more than {IDLE_LIMIT} minutes of the stop. The minutes beside each tipper are its time from unloading to loading. The cards cannot tell whether the tippers waited for the machine or the machine for the tippers: a stop with no tipper trip delayed means no tipper was waiting.</li>
-   <li>Breakdown in Pulse is shown against a stop when a breakdown of the machine recorded in Pulse falls inside it. It needs the ELB of the machine to be saved.</li>
+   <li>Breakdowns are read from Pulse when the report opens (start, end, Pulse reference and reason), matched to the machine by its door number or chassis. A breakdown ends when Pulse closes it or moves the machine to idle; one still open runs to now. If Pulse cannot be read, the breakdowns copied onto the machine's ELB when it was saved are used.</li>
+   <li>Minutes in breakdown are black on the strip and are not idle: a stop is judged on the minutes between two loadings less the minutes in breakdown, and the idle clock (green, then orange from the 5th minute, red from the 20th) stops while the breakdown lasts and goes on after it. Tipper trips are not counted as delayed for the minutes the machine was in breakdown. In BD (Pulse) gives the minutes of breakdown inside the shift.</li>
    <li>The % beside each idle count is that band's own share of all the timed gaps between one loading and the next on the same line, the normal gaps of {IDLE_LIMIT} minutes or less included: 50 stops out of 1,000 timed gaps is 5%. Each band has its own %; together with normal working they add up to 100%.</li>
    <li>% of shift worked is the hours worked on the machine's ELB out of the hours of the shift: 8 hours in an 8-hour shift is 100%. On a line for many machines it is their hours together out of their shift hours together. A machine with no ELB is left out of it.</li>
    <li>Running: the machine loaded a trip or its ELB shows hours. In BD (red line): it did not run and its ELB is saved as Breakdown or Maintenance, or Pulse shows breakdown for the whole shift. No hours, not in BD (brown): it did not run and was not in BD, such as No operator, Not in use, or no ELB entered.</li>

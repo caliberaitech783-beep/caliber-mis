@@ -43,6 +43,15 @@ const mostCommon=values=>{const count=new Map();for(const v of values)if(v!==''&
 const unique=values=>[...new Set(values.filter(Boolean))];
 const stamp=value=>{const t=Date.parse(value);return Number.isFinite(t)?new Date(t).toLocaleString('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',',''):'';};
 
+const identity=v=>text(v).toUpperCase().replace(/[^A-Z0-9]/g,'');
+// Breakdown periods as [from, to] minutes of the shift, joined where they overlap, and the minutes of them inside a window.
+export function mergePeriods(periods){
+ const merged=[];
+ for(const p of [...periods].sort((a,b)=>a.from-b.from)){const prev=merged.at(-1);if(prev&&p.from<=prev.to)prev.to=Math.max(prev.to,p.to);else merged.push({from:p.from,to:p.to});}
+ return merged;
+}
+function overlap(down,from,to){let m=0;for(const p of down)m+=Math.max(0,Math.min(to,p.to)-Math.max(from,p.from));return m;}
+
 export function bandOf(minutes){if(minutes===null||minutes===undefined)return null;if(minutes<=IDLE_LIMIT)return 'ok';return BANDS.find(b=>minutes>b.above&&minutes<=b.upTo).key;}
 // Always hours and minutes ("0 h 45 min", "3 h 05 min"), so that the column sorts in the order of the time.
 export function idleText(minutes){if(minutes===null||minutes===undefined)return '—';const m=Math.round(minutes);return Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min';}
@@ -58,11 +67,12 @@ export function clockAt(start,minutes=0){const m=((Math.floor(start+minutes)%144
 // The tipper trips delayed by the idle stop that ends with loading `i`: the tipper was loaded by this machine at the end of
 // the stop or later, took more than WAIT_LIMIT minutes from its unloading to that loading, and stood empty for more than
 // IDLE_LIMIT minutes of the stop itself. `judged` are the loadings of the machine in the order of the shift.
-function tippersKeptWaiting(judged,i){
+// Minutes the machine was in breakdown are taken out: a tipper standing while the machine was broken down is not idle time.
+function tippersKeptWaiting(judged,i,down=[]){
  const from=judged[i-1].off,to=judged[i].off,list=[];
  for(let k=i;k<judged.length;k++){
   const l=judged[k];if(l.waited===null||l.waited<=WAIT_LIMIT)continue;
-  const inside=round1(to-Math.max(from,l.off-l.waited));
+  const since=Math.max(from,l.off-l.waited),inside=round1(to-since-overlap(down,since,to));
   if(inside>IDLE_LIMIT)list.push({key:l.recordId+'-'+l.row,recordId:l.recordId,book:l.book,door:l.door,driver:l.driver,unloadedAt:l.unloadedAt,loadedAt:l.clock,waited:l.waited,inside});
  }
  return list;
@@ -70,9 +80,14 @@ function tippersKeptWaiting(judged,i){
 
 // One entry per loading machine, site, date and shift. `records` are rows from normalise(); `assets`, `fleet` and
 // `batches` come with them from GET /api/reports/operations. `fleet` lists the site machines of a batch with no saved ELB.
-export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}={}){
+// `pulseBreakdowns` is Pulse's breakdown list read when the report opened (null when Pulse could not be read): when given,
+// a machine's breakdowns come from it, so that a breakdown entered or closed in Pulse after the ELB was saved still shows.
+// Without it, the breakdowns copied onto the ELB card when it was saved are used.
+export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},pulseBreakdowns=null,now=Date.now()}={}){
  const siteName=siteLabels(records);
  const byId=new Map(assets.map(a=>[String(a.id),a]));
+ const live=Array.isArray(pulseBreakdowns),requests=new Map();
+ if(live)for(const r of pulseBreakdowns){const site=canonicalSiteName(r.site);if(!requests.has(site))requests.set(site,[]);requests.get(site).push({...r,keys:[r.door,r.equipment,r.reg].map(identity).filter(Boolean),chassisKey:identity(r.chassis)});}
  // Door numbers of the machines of each site; a door shared by two machines identifies neither.
  const doors=new Map();
  for(const a of assets){if(a.kind!=='equipment')continue;const site=canonicalSiteName(a.site),key=fleetDoorKey(a.door);if(!key)continue;if(!doors.has(site))doors.set(site,new Map());doors.get(site).set(key,doors.get(site).has(key)?null:a);}
@@ -127,8 +142,8 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
    const status=text([...m.cards].reverse().find(c=>text(c.shiftStatus))?.shiftStatus);
    const running=m.trips>0||(hours??0)>0;
    const down=!running&&m.cards.length>0&&(status==='breakdown'||status==='maintenance'||bdHours!==null&&Boolean(shiftHours)&&bdHours>=shiftHours);
-   const state=running?'running':down?'breakdown':'nohours';
-   const statusLabel=running?(!m.cards.length?'Working · ELB not entered':status==='working_partial_breakdown'||bdHours>0?'Working, part breakdown':'Working')
+   let state=running?'running':down?'breakdown':'nohours';
+   let statusLabel=running?(!m.cards.length?'Working · ELB not entered':status==='working_partial_breakdown'||bdHours>0?'Working, part breakdown':'Working')
     :down?(status==='maintenance'?'Maintenance':'Breakdown')
     :!m.cards.length?'ELB not entered':status==='no_operator'?'No operator':status==='not_in_use'?'Not in use':'No hours recorded';
    // Loadings in the order of the shift. Without a shift start, the longest silence of the day is the time outside the shift.
@@ -140,30 +155,47 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
     const first=sorted[cut].at;judged=sorted.map(l=>({...l,off:(l.at-first+1440)%1440}));
    }
    judged.sort((a,b)=>a.off-b.off||String(a.book).localeCompare(String(b.book))||a.row-b.row);
-   // Breakdowns recorded in Pulse for this shift, as minutes from the start of the shift (the ELB card carries them).
+   // Breakdowns of the machine in this shift, as minutes from the start of the shift: from Pulse when it was read (owner,
+   // 15 Nov 2026: a machine in BD for 15 minutes, an hour or two shows black on the strip, and pressing it gives the
+   // reason), otherwise from the copy on the ELB card. Owner, same day: "take BD out of idle".
    const axisStart=start!==null?start:judged[0]?.at??null,shiftAt=start===null?NaN:Date.parse(slot.date+'T'+clockAt(start)+':00+05:30');
-   const bdPeriods=!Number.isFinite(shiftAt)?[]:m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>{
-    const a=Date.parse(b.shiftStart||b.start),z=Date.parse(b.shiftEnd||b.end||''),from=round1(Math.max(0,(a-shiftAt)/60000)),to=round1(Math.min(shiftMinutes,Number.isFinite(z)?(z-shiftAt)/60000:shiftMinutes));
-    return {from,to,label:[text(b.reference),text(b.description),clockAt(start,from)+' to '+clockAt(start,to)].filter(Boolean).join(' · ')};
-   }).filter(p=>Number.isFinite(p.from)&&p.to>p.from).sort((a,b)=>a.from-b.from);
+   const winFrom=Math.min(0,judged[0]?.off??0),winTo=Math.max(shiftMinutes,judged.at(-1)?.off??0);
+   let source=[];
+   if(live){
+    const aliases=new Set([asset?.door,/\d/.test(text(asset?.name))?asset.name:'',m.roster?.door,last?.door,...m.names].map(identity).filter(Boolean)),chassis=identity(asset?.chassis);
+    source=(requests.get(canonicalSiteName(slot.site))||[]).filter(r=>chassis&&r.chassisKey?chassis===r.chassisKey:r.keys.some(k=>aliases.has(k)))
+     .map(r=>({reference:r.ref,reason:r.reason,status:r.status,start:r.start,end:r.end,ongoing:!r.end}));
+   }else source=m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>({reference:b.reference,reason:b.description,status:b.status,start:b.start,end:b.end,ongoing:b.ongoing??!b.end,from:b.shiftStart,to:b.shiftEnd}));
+   const seen=new Set(),bdPeriods=!Number.isFinite(shiftAt)?[]:source.map(b=>{
+    const a=Date.parse(b.start),z=b.end?Date.parse(b.end):now,from=round1(Math.max(winFrom,(a-shiftAt)/60000)),to=round1(Math.min(winTo,(z-shiftAt)/60000));
+    const minutes=round1(to-from);
+    return {from,to,minutes,fromClock:clockAt(start,from),toClock:clockAt(start,to),reference:text(b.reference),reason:text(b.reason)||'Not written in Pulse',status:text(b.status)||(b.ongoing?'Ongoing':'Restored'),ongoing:Boolean(b.ongoing),
+     started:stamp(b.start),ended:b.end?stamp(b.end):'',label:[text(b.reference),text(b.reason),clockAt(start,from)+' to '+clockAt(start,to)].filter(Boolean).join(' · ')};
+   }).filter(p=>Number.isFinite(p.from)&&p.to>p.from&&!seen.has(p.reference+'|'+p.from)&&seen.add(p.reference+'|'+p.from)).sort((a,b)=>a.from-b.from);
+   const bdSpans=mergePeriods(bdPeriods),bdMinutes=round1(overlap(bdSpans,0,shiftMinutes));
+   // A machine that did not run and that Pulse shows in breakdown for the whole shift is in BD, ELB or not.
+   if(state==='nohours'&&bdMinutes>=shiftMinutes-1){state='breakdown';statusLabel='Breakdown in Pulse';}
    // One line per timed loading in the order of the shift, with the gap from the loading before it. The first loading has no gap.
+   // The minutes of a gap in breakdown are not idle: the stop is judged on what is left (`minutes`); `gap` is the whole of it.
    const count={b1:0,b2:0,b3:0,b4:0},lines=[],stopList=[],kept=new Set();let longest=null,idleMinutes=0,ok=0;
    judged.forEach((l,i)=>{
-    const line={id:slot.key+'|'+m.key+'|'+i,n:i+1,minutes:null,band:'first',from:null,to:l,delayed:[],breakdown:''};
+    const line={id:slot.key+'|'+m.key+'|'+i,n:i+1,minutes:null,gap:null,bdMinutes:0,band:'first',from:null,to:l,delayed:[],breakdown:''};
     lines.push(line);if(i===0)return;
-    line.from=judged[i-1];line.minutes=round1(l.off-line.from.off);line.band=bandOf(line.minutes);
+    line.from=judged[i-1];line.gap=round1(l.off-line.from.off);line.bdMinutes=round1(overlap(bdSpans,line.from.off,l.off));
+    line.minutes=round1(Math.max(0,line.gap-line.bdMinutes));line.band=bandOf(line.minutes);
+    line.breakdown=bdPeriods.filter(p=>p.from<l.off&&p.to>line.from.off).map(p=>p.label).join('; ');
     if(longest===null||line.minutes>longest)longest=line.minutes;
     if(line.band==='ok'){ok++;return;}
     count[line.band]++;idleMinutes+=line.minutes;stopList.push(line);
-    line.delayed=tippersKeptWaiting(judged,i);line.delayed.forEach(d=>kept.add(d.key));
-    line.breakdown=bdPeriods.filter(p=>p.from<l.off&&p.to>line.from.off).map(p=>p.label).join('; ');
+    line.delayed=tippersKeptWaiting(judged,i,bdSpans);line.delayed.forEach(d=>kept.add(d.key));
    });
    const door=text(asset?.door||last?.door||m.roster?.door)||[...m.names][0]||'Not recorded';
    out.push({id:slot.key+'|'+m.key,slotKey:slot.key,machineKey:m.key,site,date:slot.date,shiftCode:slot.code,shift,stage:slot.stage||'',
     door,machineName,names:[...m.names],operator:unique(m.cards.flatMap(c=>[text(c.employeeName),text(c.operatorSplit?.secondOperatorName)])).join(', '),
     state,status,statusLabel,reason:text(last?.statusReason||last?.remark),elbBooks:unique(m.cards.map(c=>text(c.book))).join(', '),
-    breakdowns:m.cards.flatMap(c=>Array.isArray(c.pulseBreakdowns)?c.pulseBreakdowns:[]).map(b=>[text(b.reference),text(b.description),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · ')).join('; '),
-    trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,
+    breakdowns:(bdPeriods.length?bdPeriods.map(b=>[b.reference,b.reason,[b.started,b.ended||'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))
+     :source.map(b=>[text(b.reference),text(b.reason),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))).join('; '),
+    trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,bdMinutes,
     loadings:judged.length,gaps:Math.max(judged.length-1,0),firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',ok,...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,delayed:kept.size,stopList,
     lines,bdPeriods,axis:{start:axisStart,known:start!==null,minutes:shiftMinutes}});
   }
@@ -174,7 +206,7 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={}}
 const keyOf={site:e=>e.site,shift:e=>e.slotKey,machine:e=>e.machineKey};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function totals(list){
- const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,loadings:0,ok:0,b1:0,b2:0,b3:0,b4:0,gaps:0,stops:0,idleMinutes:0,longest:null,notJudged:0,delayed:0};
+ const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,bdMinutes:0,loadings:0,ok:0,b1:0,b2:0,b3:0,b4:0,gaps:0,stops:0,idleMinutes:0,longest:null,notJudged:0,delayed:0};
  const tippers=new Set();let judgedHours=0;
  for(const e of list){
   t[e.state]++;t.trips+=e.trips;t.loadings+=e.loadings;t.ok+=e.ok;t.delayed+=e.delayed;e.tippers.forEach(d=>tippers.add(d));
@@ -183,10 +215,10 @@ function totals(list){
   if(e.hours!==null&&e.shiftHours){judgedHours+=e.hours;t.shiftHours+=e.shiftHours;}
   if(e.bdHours!==null)t.bdHours=(t.bdHours??0)+e.bdHours;
   for(const b of BANDS)t[b.key]+=e[b.key];
-  t.gaps+=e.gaps;t.stops+=e.stops;t.idleMinutes+=e.idleMinutes;t.notJudged+=e.notJudged;
+  t.gaps+=e.gaps;t.stops+=e.stops;t.idleMinutes+=e.idleMinutes;t.notJudged+=e.notJudged;t.bdMinutes+=e.bdMinutes||0;
   if(e.longest!==null&&(t.longest===null||e.longest>t.longest))t.longest=e.longest;
  }
- t.tipperCount=tippers.size;t.idleMinutes=round1(t.idleMinutes);t.percent=percentWorked(t.shiftHours?judgedHours:null,t.shiftHours);
+ t.tipperCount=tippers.size;t.idleMinutes=round1(t.idleMinutes);t.bdMinutes=round1(t.bdMinutes);t.percent=percentWorked(t.shiftHours?judgedHours:null,t.shiftHours);
  if(t.hours!==null)t.hours=round3(t.hours);if(t.bdHours!==null)t.bdHours=round3(t.bdHours);
  for(const b of BANDS)t[b.key+'Share']=bandShare(t[b.key],t.gaps);
  return t;
@@ -227,54 +259,92 @@ export function idleStops(entries,band=''){return loadingLines(entries,band||'st
 // minute, red from the 20th, until the next loading. Only the drawing follows the clock; a stop is still counted in the
 // band of its full length.
 export const RED_AFTER=20;
-export function gapParts(from,to){
- const cuts=[[from,Math.min(to,from+IDLE_LIMIT),'green'],[from+IDLE_LIMIT,Math.min(to,from+RED_AFTER),'orange'],[from+RED_AFTER,to,'red']];
- return cuts.filter(([a,b])=>b-a>1e-9).map(([a,b,tone])=>({from:round1(a),to:round1(b),tone}));
+// Owner, 15 Nov 2026: the minutes in breakdown are black and are not idle. The idle clock stops while the machine is in
+// breakdown and goes on from where it stopped when the breakdown ends: 3 green minutes, a breakdown, then 2 more green
+// and the gap turns orange. `down` are the breakdown periods of the shift (mergePeriods).
+export function gapParts(from,to,down=[]){
+ const parts=[];let idle=0,at=from;
+ const push=(a,b,tone)=>{if(b-a<=1e-9)return;const prev=parts.at(-1);if(prev&&prev.tone===tone&&Math.abs(prev.to-a)<1e-9)prev.to=b;else parts.push({from:a,to:b,tone});};
+ const run=(a,b)=>{
+  // Idle minutes from `a` to `b`, the idle clock standing at `idle` minutes at `a`.
+  const greenEnd=a+Math.max(0,IDLE_LIMIT-idle),orangeEnd=a+Math.max(0,RED_AFTER-idle);
+  push(a,Math.min(b,greenEnd),'green');push(Math.max(a,greenEnd),Math.min(b,orangeEnd),'orange');push(Math.max(a,orangeEnd),b,'red');
+  idle+=b-a;
+ };
+ for(const p of down){
+  if(p.to<=at||p.from>=to)continue;
+  const a=Math.max(at,p.from),b=Math.min(to,p.to);
+  if(a>at)run(at,a);
+  push(a,b,'bd');at=b;
+ }
+ if(to>at)run(at,to);
+ return parts.map(p=>({from:round1(p.from),to:round1(p.to),tone:p.tone}));
+}
+// The wording of a breakdown, for its pop-up and the line under the strip when it is pressed.
+export function breakdownText(b){
+ const length=b.minutes>=60?Math.floor(b.minutes/60)+' h '+String(Math.round(b.minutes%60)).padStart(2,'0')+' min':Math.round(b.minutes)+' min';
+ return ['Breakdown · '+b.fromClock+' to '+b.toClock+' · '+length+' in this shift',b.reference&&'Pulse '+b.reference,'Reason: '+b.reason,
+  b.ongoing?'Still open in Pulse (started '+b.started+')':b.status+(b.started?' (from '+b.started+' to '+b.ended+')':'')].filter(Boolean).join(' · ');
 }
 export function shiftTimeline(entry){
- const lines=entry.lines||[];if(!lines.length)return null;
- const start=entry.axis.start,first=lines[0].to.off,last=lines.at(-1).to.off,shiftMinutes=entry.axis.known?entry.axis.minutes:Math.max(60,last);
- const lo=Math.floor(Math.min(0,first)/60)*60,hi=Math.ceil(Math.max(shiftMinutes,last)/60)*60;
+ const lines=entry.lines||[],periods=entry.bdPeriods||[];
+ // A machine with no timed loading is still drawn when Pulse shows it in breakdown during the shift.
+ if(!lines.length&&!(periods.length&&entry.axis.known))return null;
+ const start=entry.axis.start,first=lines.length?lines[0].to.off:null,last=lines.length?lines.at(-1).to.off:null;
+ const shiftMinutes=entry.axis.known?entry.axis.minutes:Math.max(60,last);
+ const lo=Math.floor(Math.min(0,first??0)/60)*60,hi=Math.ceil(Math.max(shiftMinutes,last??0)/60)*60;
+ const down=mergePeriods(periods.map(p=>({from:Math.max(lo,p.from),to:Math.min(hi,p.to)})).filter(p=>p.to>p.from));
  const pieces=lines.filter(l=>l.from).map(l=>{
-  const parts=gapParts(l.from.off,l.to.off);
-  // The clock times at which the gap turned orange and red: the "timer marks" of the strip.
-  const turns=parts.slice(1).map(p=>({at:p.from,tone:p.tone,clock:clockAt(start,p.from)}));
-  return {id:l.id,from:l.from.off,to:l.to.off,minutes:l.minutes,band:l.band,tone:TONES[l.band],fromClock:l.from.clock,toClock:l.to.clock,fromDoor:l.from.door,door:l.to.door,delayed:l.delayed.length,breakdown:l.breakdown,parts,turns};
+  const parts=gapParts(l.from.off,l.to.off,down);
+  // The clock times at which the gap turned orange and red: the "timer marks" of the strip. A breakdown and its end are
+  // marked by the breakdown itself, so the turns name only the idle colours.
+  const turns=parts.slice(1).filter((p,i)=>p.tone!=='bd'&&parts[i].tone!=='bd').map(p=>({at:p.from,tone:p.tone,clock:clockAt(start,p.from)}));
+  // Every change of colour in words, the breakdown and its end included, for the pop-up and the line under the strip.
+  const events=parts.slice(1).map((part,i)=>({clock:clockAt(start,part.from),words:part.tone==='bd'?'breakdown':parts[i].tone==='bd'?'breakdown over, '+part.tone:'turned '+part.tone}));
+  return {id:l.id,events,from:l.from.off,to:l.to.off,minutes:l.minutes,gap:l.gap??l.minutes,bdMinutes:l.bdMinutes||0,band:l.band,tone:TONES[l.band],fromClock:l.from.clock,toClock:l.to.clock,fromDoor:l.from.door,door:l.to.door,delayed:l.delayed.length,breakdown:l.breakdown,parts,turns};
  });
  const hours=[];
  for(let h=lo;h<hi;h+=60){
   // `count` is the loadings of the hour by the colour of the gap before each; green, orange and red are the minutes of
-  // the hour drawn in each colour on the strip.
-  const hour={id:entry.id+'|h'+h,from:h,to:h+60,label:clockAt(start,h)+' to '+clockAt(start,h+60),loadings:0,count:{green:0,orange:0,red:0},green:0,orange:0,red:0,longest:null};
+  // the hour drawn in each colour on the strip, bd the minutes in breakdown.
+  const hour={id:entry.id+'|h'+h,from:h,to:h+60,label:clockAt(start,h)+' to '+clockAt(start,h+60),loadings:0,count:{green:0,orange:0,red:0},green:0,orange:0,red:0,bd:0,longest:null};
   for(const l of lines)if(l.to.off>=h&&l.to.off<h+60){hour.loadings++;if(l.from)hour.count[TONES[l.band]]++;}
   for(const p of pieces){
    if(Math.min(p.to,h+60)-Math.max(p.from,h)<=0)continue;
-   for(const part of p.parts){const share=Math.min(part.to,h+60)-Math.max(part.from,h);if(share>0)hour[part.tone]+=share;}
+   for(const part of p.parts){if(part.tone==='bd')continue;const share=Math.min(part.to,h+60)-Math.max(part.from,h);if(share>0)hour[part.tone]+=share;}
    if(p.tone!=='green'&&(hour.longest===null||p.minutes>hour.longest))hour.longest=p.minutes;
   }
-  for(const tone of ['green','orange','red'])hour[tone]=round1(hour[tone]);
+  hour.bd=overlap(down,h,h+60);
+  for(const tone of ['green','orange','red','bd'])hour[tone]=round1(hour[tone]);
   // What is left of the hour lies before the first loading or after the last one: the report does not judge it.
-  hour.rest=round1(Math.max(0,60-hour.green-hour.orange-hour.red));
-  hour.worst=hour.red>0?'red':hour.orange>0?'orange':hour.green>0?'green':'rest';
+  hour.rest=round1(Math.max(0,60-hour.green-hour.orange-hour.red-hour.bd));
+  hour.worst=hour.red>0?'red':hour.orange>0?'orange':hour.bd>0?'bd':hour.green>0?'green':'rest';
   hours.push(hour);
  }
  const marks=[];for(let h=lo;h<=hi;h+=60)marks.push({at:h,clock:clockAt(start,h),edge:entry.axis.known&&(h===0||h===shiftMinutes)});
  // A small tick every quarter of an hour between the hour marks.
  const ticks=[];for(let m=lo+15;m<hi;m+=15)if(m%60)ticks.push(m);
  // With the shift hours known, the whole shift is drawn: the time before the first loading and after the last is named.
- const lead=entry.axis.known&&first>0?{from:0,to:first,clock:lines[0].to.clock,minutes:round1(first)}:null;
- const tail=entry.axis.known&&last<shiftMinutes?{from:last,to:shiftMinutes,clock:lines.at(-1).to.clock,minutes:round1(shiftMinutes-last)}:null;
- return {lo,hi,shiftMinutes,known:entry.axis.known,first,last,firstClock:lines[0].to.clock,lastClock:lines.at(-1).to.clock,pieces,hours,marks,ticks,lead,tail,breakdowns:entry.bdPeriods||[]};
+ const lead=entry.axis.known&&first!==null&&first>0?{from:0,to:first,clock:lines[0].to.clock,minutes:round1(first)}:null;
+ const tail=entry.axis.known&&last!==null&&last<shiftMinutes?{from:last,to:shiftMinutes,clock:lines.at(-1).to.clock,minutes:round1(shiftMinutes-last)}:null;
+ const empty=!lines.length?{from:0,to:shiftMinutes}:null;
+ const breakdowns=periods.map((p,i)=>({...p,id:entry.id+'|bd'+i,from:Math.max(lo,p.from),to:Math.min(hi,p.to)})).filter(p=>p.to>p.from);
+ return {lo,hi,shiftMinutes,known:entry.axis.known,first,last,firstClock:lines[0]?.to.clock||'',lastClock:lines.at(-1)?.to.clock||'',pieces,hours,marks,ticks,lead,tail,empty,breakdowns,bdMinutes:round1(overlap(down,lo,hi))};
 }
-// The clock tags printed under one strip, so that no two overlap: the turns of the red stops first, then the time each red
-// stop ended, then the turns of the orange stops from the longest down. `width` is a tag's width in minutes of the strip
-// for each letter; a tag that finds no room in `lanes` rows is left to the pop-up of its piece and to the list below.
+// The clock tags printed under one strip, so that no two overlap: the breakdowns first (when each began and ended), then
+// the turns of the red stops, then the time each red stop ended, then the turns of the orange stops from the longest down.
+// `width` is a tag's width in minutes of the strip for each letter; a tag that finds no room in `lanes` rows is left to the
+// pop-up of its piece and to the list below.
 export function clockTags(t,{width=1,lanes=3}={}){
  const wanted=[];
+ for(const b of t.breakdowns||[]){
+  wanted.push({id:b.id+'|from',at:b.from,tone:'bd',text:b.fromClock+' BD',rank:0,minutes:b.minutes,breakdown:b.id});
+  if(!b.ongoing&&b.to<t.hi)wanted.push({id:b.id+'|to',at:b.to,tone:'bdover',text:b.toClock+' BD over',rank:0,minutes:b.minutes,breakdown:b.id});
+ }
  for(const p of t.pieces){
   if(p.band==='ok')continue;
-  for(const turn of p.turns)wanted.push({id:p.id+'|'+turn.tone,at:turn.at,tone:turn.tone,text:turn.clock+' '+turn.tone,rank:p.tone==='red'?0:2,minutes:p.minutes,piece:p.id});
-  if(p.tone==='red')wanted.push({id:p.id+'|end',at:p.to,tone:'green',text:p.toClock+' loaded',rank:1,minutes:p.minutes,piece:p.id});
+  for(const turn of p.turns)wanted.push({id:p.id+'|'+turn.tone+turn.at,at:turn.at,tone:turn.tone,text:turn.clock+' '+turn.tone,rank:p.tone==='red'?1:3,minutes:p.minutes,piece:p.id});
+  if(p.tone==='red')wanted.push({id:p.id+'|end',at:p.to,tone:'green',text:p.toClock+' loaded',rank:2,minutes:p.minutes,piece:p.id});
  }
  wanted.sort((a,b)=>a.rank-b.rank||b.minutes-a.minutes||a.at-b.at);
  const rows=Array.from({length:lanes},()=>[]),placed=[];
