@@ -214,6 +214,15 @@ export function createPulseMasterSync({pool,stateFile,credentialStore,sharedSign
      if(!Array.isArray(snapshot?.['Equipment master'])||!snapshot['Equipment master'].length)throw Error('Pulse returned no equipment list.');
      return snapshot['Equipment master'];
    },
+   // Pulse's whole breakdown list, every site, for Pulse-II's stored copy (pulse-breakdown-mirror.mjs).
+   // The saved Pulse service account reads it directly; otherwise a recent Pulse-II sign-in with
+   // the Pulse Master Sync menu reads it through Pulse's MIS bridge.
+   async readFullBreakdownFeed(){
+     const rows=token?await authorizedRequest('/api/requests'):sharedSignIn?await sharedSignIn.request('breakdown-mirror',{},null,{menu:'Pulse Master Sync'}):null;
+     if(!token&&!sharedSignIn)throw new Error('Connect Pulse to keep the breakdown copy.');
+     if(!Array.isArray(rows))throw new Error('Pulse returned an invalid breakdown feed.');
+     return rows;
+   },
    async readBreakdownRequests({fresh=false,actor}={}){
      if(!token&&sharedSignIn){
        // One read of Pulse's feed per actor per window; callers only read the rows.
