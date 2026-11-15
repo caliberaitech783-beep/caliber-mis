@@ -47,8 +47,11 @@ test('a failed read is not kept, and ttlMs 0 reads every time',async()=>{
 
 test('the batch list uses the shared read, cleared by every batch action, and hidden tabs and entry pickers do not poll',()=>{
  const routes=readFileSync(new URL('../server/routes/vlb-batches.mjs',import.meta.url),'utf8');
- assert.match(routes,/sharedBatchRows\.get\(scopeKey\)/);
- assert.match(routes,/const rows=await read\(/);
+ // One trusted read for every login (no row-security site check per log book); each
+ // caller is still limited to its own sites by siteAllowed.
+ assert.match(routes,/const sharedBatchRows=createSharedRead\(\{ttlMs:listCacheMs\}\)/);
+ assert.match(routes,/const rows=await sharedBatchRows\(\(\)=>withoutRowSecurityRequest\(/);
+ assert.match(routes,/const batches=rows\.filter\(b=>siteAllowed\(req\.logBookScope,b\.site\)\)/);
  assert.match(routes,/app\.use\('\/api\/vlb-batches'.*res\.on\('finish',\(\)=>sharedBatchRows\.clear\(\)\)/);
  const board=readFileSync(new URL('../src/vlb-create-batch.jsx',import.meta.url),'utf8');
  assert.match(board,/setInterval\(\(\)=>\{if\(!entryMode&&document\.visibilityState!=='hidden'\)void load\(\)\},15000\)/);
