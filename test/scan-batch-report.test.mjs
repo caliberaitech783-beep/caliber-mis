@@ -41,14 +41,14 @@ test('summary counts time, flags, trips and accuracy of saved cards',()=>{
 
 test('one message per closed batch: full batch name, sub batches with auto-cleared, error and total, cards with trips',()=>{
  const facts=rows.map(cardFacts);
- const text=batchClosedMessage({site:'Gauri Pauni OC (2nd)',name:'CMLL/GAURI PAUNI OC (2ND)/9TH -NOV-26/S1/B01',shift:'S1'},[
+ const text=batchClosedMessage({site:'Gauri Pauni OC (2nd)',name:'CMLL/GAURI PAUNI OC (2ND)/9TH -NOV-26/S1/B01',shift:'S1',creator:'TeklalMahto'},[
   {name:'CMLL/2026-11-15/DIPKA/S1/TEKLALMAHTO/B01',kind:'vehicle',context:{},facts:facts.slice(0,2)},
   {name:'CMLL/2026-11-15/DIPKA/S1/RAMU/B02',kind:'vehicle',context:{},facts:facts.slice(2)},
  ]);
  const lines=text.split('\n');
  assert.deepEqual(lines,[
   '<b>'+REPORT_TITLE+'</b>',
-  '📋 VLB · CMLL/9TH -NOV-26/S1/B01',
+  '📋 VLB · 9TH -NOV-26/S1/B01 · teklalmahto',
   '🗂 Scanned 4 · Trips 4',
   '🔍 Extracted 3 · Processed 2',
   '📦 2 sub batches · ✅ auto · ❌ error',
@@ -60,9 +60,10 @@ test('one message per closed batch: full batch name, sub batches with auto-clear
   '🤖 gemini-3.1-flash-lite',
  ],'the site name and the full batch name are on the picture; every text line fits one phone line');
  assert.match(lines[8],/^⏱ \d\d:\d\d → \d\d:\d\d · 30 min 0 s$/);
- assert.ok(lines.every(line=>line.replace(/<\/?b>/g,'').length<=36),'short enough for one line on a phone');
+ assert.ok(lines.every(line=>line.replace(/<\/?b>/g,'').length<=42),'short enough for one line on a phone');
  assert.equal(subBatchLabel('VLB entry 1'),'VLB entry 1');
- assert.equal(batchLineName('CMLL/DIPKA/15TH -NOV-26/S1/B02'),'CMLL/15TH -NOV-26/S1/B02');
+ assert.equal(batchLineName('CMLL/DIPKA/15TH -NOV-26/S1/B02','ramu'),'15TH -NOV-26/S1/B02 · ramu','the user who made the batch');
+ assert.equal(batchLineName('CMLL/DIPKA/15TH -NOV-26/S1/B02',null),'15TH -NOV-26/S1/B02');
  assert.equal(batchLineName('Other name'),'Other name');
  assert.match(batchClosedMessage({site:'Dipka',name:'A<B',shift:'S1'},[{name:'y',kind:'vehicle',context:{},facts}]),/\n📋 VLB · A&lt;B\n/);
  const many=Array.from({length:20},(_,i)=>({name:'S'+i,kind:'vehicle',context:{},facts}));
@@ -76,7 +77,7 @@ test('one message per closed batch, sent once, only after the feature started',a
   CREATE TABLE mis_scan_batches(id UUID PRIMARY KEY,kind TEXT,name TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),expected_context JSONB);
   CREATE TABLE mis_scan_cards(id UUID PRIMARY KEY,batch_id UUID,ordinal INT,status TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),raw_fields JSONB DEFAULT '{}',draft JSONB DEFAULT '{}',
    logbook_id BIGINT,duplicate_of UUID,review_note TEXT NOT NULL DEFAULT '');
-  CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ);`);
+  CREATE TABLE mis_vlb_batches(id UUID PRIMARY KEY,name TEXT,site TEXT,book_date DATE,shift TEXT,closed_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ,archived_at TIMESTAMPTZ,created_by TEXT,creator_login TEXT);`);
  const sent=[];const telegram={async send(login,message,key,options){sent.push({login,message,key,options});return true;}};
  const reporter=createScanBatchReporter({pool:pgPool(db),telegram,recipients:async()=>['owner'],log:{error(){}}});
  await reporter.tick();// starts the feature clock
@@ -90,11 +91,11 @@ test('one message per closed batch, sent once, only after the feature started',a
  await reporter.tick();
  assert.equal(sent.length,0,'no message while the batch is open, not even when a sub batch has been read');
  await db.query(`UPDATE mis_scan_cards SET status='posted'`);
- await db.query(`INSERT INTO mis_vlb_batches VALUES('00000000-0000-4000-8000-000000000501','CMLL/DIPKA/15 -NOV-26/S1','DIPKA','2026-11-15','S1',NOW()+interval '2 second',NULL,NULL)`);
+ await db.query(`INSERT INTO mis_vlb_batches VALUES('00000000-0000-4000-8000-000000000501','CMLL/DIPKA/15 -NOV-26/S1','DIPKA','2026-11-15','S1',NOW()+interval '2 second',NULL,NULL,NULL,'teklalmahto')`);
  await reporter.tick();await reporter.tick();
  assert.equal(sent.length,1,'one message for the closed batch');
  assert.equal(sent[0].login,'owner');assert.match(sent[0].key,/^scan-batch-report:closed:/);
- assert.match(sent[0].message,/^<b>SITE-WISE BATCH COMPLETION REPORT<\/b>\n📋 VLB · CMLL\/15 -NOV-26\/S1\n/);
+ assert.match(sent[0].message,/^<b>SITE-WISE BATCH COMPLETION REPORT<\/b>\n📋 VLB · 15 -NOV-26\/S1 · teklalmahto\n/);
  assert.match(sent[0].message,/🗂 Scanned 3 · Trips 3\n🔍 Extracted 3 · Processed 3\n/);
  assert.match(sent[0].message,/📦 1 sub batch · ✅ auto · ❌ error\n• VLB entry 1 · 3 · ✅3 · ❌0\n/);
  assert.match(sent[0].message,/Accuracy 100%/);

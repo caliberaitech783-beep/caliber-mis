@@ -402,8 +402,9 @@ Layout (owner, 16 November 2026): every text line fits on one line of a phone
 screen. A site picture first (`server/services/site-report-banner.mjs`: the site
 name, the log book kind and the full batch name on a Pulse-II card), with the
 report as its caption: **SITE-WISE BATCH COMPLETION REPORT** in bold; the log book
-kind and batch name without the site (`CMLL/9TH -NOV-26/S1/B01`; the full name
-is too wide for one line and is on the picture); cards scanned and trips; extracted
+kind, batch name without "CMLL" and the site, and the login of the user who made
+the batch (`VLB · 9TH -NOV-26/S1/B01 · teklalmahto`; the full name is too wide
+for one line and is on the picture); cards scanned and trips; extracted
 and processed; the sub batches (scan entries), one line each with total, ✅
 auto-cleared and ❌ error, then the line for all of them; start and end time with
 the total time; average time per card with accuracy; the model.
