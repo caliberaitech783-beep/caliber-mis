@@ -193,12 +193,13 @@ test('approval buttons go only to approvers who linked Telegram, and nobody link
     throw Error(sql);
   }};
   const sent=[];
-  const deliver=createReleaseApprovalDelivery({pool,sendButtons:async(chat,text,buttons)=>{sent.push({chat,text,buttons});return true}});
+  const deliver=createReleaseApprovalDelivery({pool,sendButtons:async(chat,text,buttons,options)=>{sent.push({chat,text,buttons,options});return true}});
   assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'77',commit:'abcdef1234567',subject:'Fix'}),{sent:2});
   assert.deepEqual(sent.map(s=>s.chat),['11','22']);
   assert.deepEqual(sent[0].buttons[0].map(b=>b.callback_data),['rel:0123456789abcdef:a','rel:0123456789abcdef:r']);
-  assert.match(sent[0].text,/Version: abcdef1 - Fix\n/);
-  assert.match(sent[0].text,/GitHub account: dev1 \(checked by GitHub\), run 77/);
+  assert.deepEqual(sent[0].options,{parse_mode:'HTML'});
+  assert.match(sent[0].text,/<b>Version:<\/b> abcdef1 - Fix\n/);
+  assert.match(sent[0].text,/<b>GitHub:<\/b> dev1 \(checked by GitHub\), run 77/);
   links=[];
   assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'78'}),{sent:0});
 });
@@ -250,14 +251,18 @@ test('Approve on a pull request goes from the merge run to exactly one productio
 
 test('the Telegram message names the pull request and whom you are approving',async()=>{
   const {releaseApprovalMessage}=await import('../server/services/release-otp-delivery.mjs');
-  const text=releaseApprovalMessage({actor:'caliberaitech783-beep',runId:'500',commit:'b'.repeat(40),subject:'',
-    requester:{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2',runUrl:'https://github.com/x/runs/500'},pr:{prNumber:300,prTitle:'Join sheet 2',changes:'11 files'}});
-  for(const part of ['MERGE + RELEASE','PR #300: Join sheet 2','Changes: 11 files','Requested by: Claude Code session for Mohit','Computer: MOHIT-PC','IP address: 49.36.1.2','as given by the requester','GitHub account: caliberaitech783-beep (checked by GitHub)','https://github.com/x/runs/500','Approve = merge PR #300 into main and make it live now.'])assert.ok(text.includes(part),part);
-  const urgent=releaseApprovalMessage({actor:'dev1',runId:'77',commit:'abcdef1234'});
+  // Sent as Telegram HTML; the checks read the text the approver sees.
+  const plain=html=>html.replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  const raw=releaseApprovalMessage({actor:'caliberaitech783-beep',runId:'500',commit:'b'.repeat(40),subject:'',
+    requester:{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2',runUrl:'https://github.com/x/runs/500'},pr:{prNumber:300,prTitle:'Join <sheet> 2 & 3',changes:'11 files'}});
+  const text=plain(raw);
+  for(const part of ['MERGE + RELEASE','Approval details: PR #300 - Join <sheet> 2 & 3','Changes: 11 files','Requested by: Claude Code session for Mohit','Computer: MOHIT-PC','IP address: 49.36.1.2','as given by the requester','GitHub: caliberaitech783-beep (checked by GitHub), run 500','Approve only if main should go live now.','Approve = merge PR #300 into main and make it live now.','Mr Anoop or Mr Mohit Chadda: the first tap decides.'])assert.ok(text.includes(part),part);
+  for(const part of ['<b><u>Pulse-II: MERGE + RELEASE to production</u></b>','Join &lt;sheet&gt; 2 &amp; 3','<a href="https://github.com/x/runs/500">run 500</a>','<b>Approve only if main should go live now.</b>','<b>Mr Anoop</b> or <b>Mr Mohit Chadda</b>'])assert.ok(raw.includes(part),part);
+  const urgent=plain(releaseApprovalMessage({actor:'dev1',runId:'77',commit:'abcdef1234'}));
   assert.ok(urgent.includes('Pulse-II urgent production release')&&urgent.includes('Requested by: (name not given)')&&urgent.includes('IP address: (not given)'));
   assert.ok(!urgent.includes('What it fixes')&&urgent.includes('Valid for 20 minutes.'),urgent);
-  const briefed=releaseApprovalMessage({actor:'dev1',runId:'77',pr:{prNumber:320,prTitle:'Approval 20 minutes',changes:'9 files'},brief:['Approval lapses after 20 minutes','Message says what it fixes']});
-  assert.match(briefed,/PR #320: Approval 20 minutes\n\nWhat it fixes:\n1\. Approval lapses after 20 minutes\n2\. Message says what it fixes\n\nChanges: 9 files/);
+  const briefed=plain(releaseApprovalMessage({actor:'dev1',runId:'77',pr:{prNumber:320,prTitle:'Approval 20 minutes',changes:'9 files'},brief:['Approval lapses after 20 minutes','Message says what it fixes']}));
+  assert.match(briefed,/PR #320 - Approval 20 minutes\n\nWhat it fixes:\n1\. Approval lapses after 20 minutes\n2\. Message says what it fixes\n\nChanges: 9 files/);
 });
 
 test('the brief keeps at most two points, one per line or split by |, without list marks',async()=>{

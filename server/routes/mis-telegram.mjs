@@ -86,7 +86,9 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
      const {rows}=await pool.query('SELECT login_name FROM mis_telegram_links WHERE chat_id=$1',[chatId]);
      const result=await onCallback({data:String(query.data||''),logins:rows.map(row=>row.login_name)});
      if(result?.answer)answer=result.answer;
-     if(result?.done)await call(config,'editMessageText',{chat_id:chatId,message_id:query.message.message_id,text:String(query.message.text||'').slice(0,3500)+'\n\n'+result.answer}).catch(()=>{});
+     // Telegram gives the shown text without its HTML; its entities keep the bold and link after the edit.
+     if(result?.done){const kept=String(query.message.text||'').slice(0,3500),entities=(query.message.entities||[]).filter(e=>e.offset+e.length<=kept.length);
+      await call(config,'editMessageText',{chat_id:chatId,message_id:query.message.message_id,text:kept+'\n\n'+result.answer,disable_web_page_preview:true,...(entities.length?{entities}:{})}).catch(()=>{});}
     }
    }catch{answer='Could not record this. Please try again.';}
    await call(config,'answerCallbackQuery',{callback_query_id:String(query.id),text:answer.slice(0,190)}).catch(()=>{});
@@ -145,7 +147,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);},
   start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();void ensureWebhook();}},
   // Sends at once (not through the outbox) a message with buttons to one private chat.
-  async sendButtons(chatId,text,buttons){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,reply_markup:{inline_keyboard:buttons}});return true;},
+  async sendButtons(chatId,text,buttons,{parse_mode}={}){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,...(parse_mode?{parse_mode}:{}),reply_markup:{inline_keyboard:buttons}});return true;},
   stop(){clearInterval(timer);timer=null;},drain,
   async notify(event,ticket){
    const config=await read();if(!config.enabled||!config.webhookReady)return;

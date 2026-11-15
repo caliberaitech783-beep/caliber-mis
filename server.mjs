@@ -8026,7 +8026,7 @@ const mergeReleaseIdentity=createGithubOidcVerifier({audience:'pulse-ii-release'
 const releaseApprovalIdentity=async token=>{try{return await releaseIdentity(token);}catch{return mergeReleaseIdentity(token);}};
 const releaseAudit=(req,{action,reference,details})=>{req.audit={eventType:'Release',module:'Production release',action,targetType:'Workflow run',targetReference:reference,details};};
 const releaseOtp=registerReleaseOtp(app,{pool,
- sendApproval:createReleaseApprovalDelivery({pool,sendButtons:(chatId,text,buttons)=>misTelegram.sendButtons(chatId,text,buttons)}),
+ sendApproval:createReleaseApprovalDelivery({pool,sendButtons:(chatId,text,buttons,options)=>misTelegram.sendButtons(chatId,text,buttons,options)}),
  isApprover:async login=>(await releaseApproverLogins(pool)).includes(String(login||'').toLowerCase()),
  sendOtp:createReleaseOtpDelivery({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),whatsapp:sendReleaseOtp}),
  verifyIdentity:releaseIdentity,audit:releaseAudit,
