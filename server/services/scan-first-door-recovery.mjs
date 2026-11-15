@@ -13,7 +13,7 @@ export async function recoverFirstScanDoor({kind,extracted,readAgain,extract,onP
   const candidate=await extract(result);
   const site=canonicalSiteName(extracted.draft.location),retrySite=canonicalSiteName(candidate.draft.location);
   if(!candidate.draft.assetId||!site||retrySite!==site)return extracted;
-  extracted.draft={...extracted.draft,doorText:candidate.draft.doorText,assetId:candidate.draft.assetId};
+  extracted.draft={...extracted.draft,doorText:candidate.draft.doorText,assetId:candidate.draft.assetId,...(candidate.draft.doorTextWritten?{doorTextWritten:candidate.draft.doorTextWritten}:{})};
   extracted.raw.door=candidate.raw.door;
   extracted.raw.machineNotation=candidate.raw.machineNotation;
   extracted.raw.handwritingCandidates={...extracted.raw.handwritingCandidates,...(candidate.raw.handwritingCandidates?.door?{door:candidate.raw.handwritingCandidates.door}:{})};

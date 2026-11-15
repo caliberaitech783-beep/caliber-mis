@@ -39,5 +39,5 @@ test('reader preserves a punctuated S reading while site matching safely links i
  assert.equal(result.extraction.doorFormatting.original,'S:162');assert.equal(result.extraction.fields.door.value,'S:162');
  const {extractCard}=await import('../server/rules/scan-extraction.mjs');
  const extracted=extractCard(result.text,'vehicle',[{id:62,master_name:'Equipment master',record_data:{door:'Scania 62',category:'vehicle',site:'Jayant OC'}}],result);
- assert.equal(extracted.draft.doorText,'S:162');assert.equal(extracted.draft.assetId,'62');
+ assert.equal(extracted.raw.door,'S:162');assert.equal(extracted.draft.doorTextWritten,'S:162');assert.equal(extracted.draft.doorText,'Scania 62');assert.equal(extracted.draft.assetId,'62');
 });

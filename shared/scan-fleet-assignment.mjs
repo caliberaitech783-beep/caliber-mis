@@ -1,5 +1,5 @@
 import {fleetDoorKey} from './scan-fleet-door.mjs';
-import {cardMachineKey} from './scan-machine-rules.mjs';
+import {cardMachineKey,separatorCorrectedKey} from './scan-machine-rules.mjs';
 import {canonicalSiteName} from './site-location.mjs';
 import {tripCardLocation} from './scan-site-match.mjs';
 import {equipmentDoorNumber} from './equipment-door.mjs';
@@ -24,7 +24,12 @@ export function scanFleetAssignment(rows,draft={},raw={},localDoor='',kind='vehi
  // distinct machines such as DEMO19 and DEMO25 separate even if DEMO19 carries
  // an obsolete DE25 alias.
  const realMatches=eligibleRows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===key);
- const broadMatches=realMatches.length?realMatches:eligibleRows.filter(row=>aliasKeys(row).includes(key));
+ const writtenMatches=realMatches.length?realMatches:eligibleRows.filter(row=>aliasKeys(row).includes(key));
+ // A vehicle door whose slash was read as 1 (V/840 read as V1840): when Pulse has no
+ // V1840 and exactly one V840, the card means V840, as matchCardMachine links it.
+ const corrected=kind==='vehicle'&&!writtenMatches.length?separatorCorrectedKey(door,kind):'';
+ const separatorMatches=corrected?eligibleRows.filter(row=>fleetDoorKey(row.door||row.doorNo||row.equipmentDoorNo||equipmentDoorNumber(row),kind)===corrected):[];
+ const broadMatches=separatorMatches.length===1?separatorMatches:writtenMatches;
  const requestedExact=exactKey(door),hasSuffix=/^[A-Z]+\d+-[^-]+$/.test(requestedExact);
  const exactMatches=hasSuffix?broadMatches.filter(row=>identifiers(row).some(value=>exactKey(value)===requestedExact)):[];
  const candidates=hasSuffix?exactMatches:broadMatches;
