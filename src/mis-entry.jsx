@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {useMisSharedSignIn,MisSharedLogin} from './mis-shared-signin.jsx';
 import MisWorkspace from './mis-workspace.jsx';
 import EnvironmentBanner from './environment-banner.jsx';
+import {recordSignInLocation} from './sign-in-location.mjs';
 import './mis-workspace.css';
 
 const sessionKey='nerveCenterSession';
@@ -35,7 +36,7 @@ function MisApp(){
         if(!controller.signal.aborted&&response.status===401){clearSession();setSession(null);}
       }catch{}
     };
-    void check();const timer=window.setInterval(check,60000);
+    void check();void recordSignInLocation(session.token);const timer=window.setInterval(check,60000);
     return()=>{controller.abort();window.clearInterval(timer);};
   },[session?.token]);
   const signOut=()=>{

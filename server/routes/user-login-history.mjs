@@ -1,3 +1,5 @@
+import {parseSignInLocation,SIGN_IN_LOCATION_UPDATE_SQL} from '../rules/sign-in-location.mjs';
+
 // Separate from exportable audit records and expiring authentication credentials.
 export async function initializeLoginHistory(pool) {
   await pool.query(`
@@ -7,6 +9,11 @@ export async function initializeLoginHistory(pool) {
       device_id TEXT NOT NULL DEFAULT '', ip_address TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS user_login_history_login_idx ON user_login_history (login,started_at DESC);
+    ALTER TABLE user_login_history ADD COLUMN IF NOT EXISTS location_status TEXT NOT NULL DEFAULT '';
+    ALTER TABLE user_login_history ADD COLUMN IF NOT EXISTS location_latitude DOUBLE PRECISION;
+    ALTER TABLE user_login_history ADD COLUMN IF NOT EXISTS location_longitude DOUBLE PRECISION;
+    ALTER TABLE user_login_history ADD COLUMN IF NOT EXISTS location_accuracy_m DOUBLE PRECISION;
+    ALTER TABLE user_login_history ADD COLUMN IF NOT EXISTS location_at TIMESTAMPTZ;
     CREATE OR REPLACE FUNCTION record_user_login_history() RETURNS trigger LANGUAGE plpgsql AS $history$
     BEGIN
       INSERT INTO user_login_history (session_id,login,name,started_at,last_seen_at,device_id,ip_address,user_agent)
@@ -42,6 +49,20 @@ export function loginHistoryRange(query={}, now=new Date()) {
   return {from,to};
 }
 
+// Every signed-in user reports their own sign-in location; no administrator check.
+export function registerSignInLocationRoute(app,{pool,requireSession}) {
+  app.post('/api/session-location',requireSession,async(req,res,next)=>{
+    const location=parseSignInLocation(req.body);
+    if(location.error)return res.status(400).json({error:location.error});
+    const sessionId=String(req.session?.sessionId||'').trim();
+    if(!sessionId)return res.json({recorded:false});
+    try{
+      const result=await pool.query(SIGN_IN_LOCATION_UPDATE_SQL,[sessionId,location.status,location.latitude,location.longitude,location.accuracy]);
+      res.json({recorded:result.rowCount>0});
+    }catch(error){next(error);}
+  });
+}
+
 export function registerLoginHistoryRoutes(app,{pool,requireSuper,requireAdministrator,locationName}) {
   app.get('/api/user-login-history',requireSuper,requireAdministrator,async(req,res,next)=>{
     let range;
@@ -53,6 +74,8 @@ export function registerLoginHistoryRoutes(app,{pool,requireSuper,requireAdminis
       if(req.query.login){
         const {rows}=await pool.query(`SELECT h.session_id AS "sessionId",h.login,h.name,h.started_at AS "createdAt",
           h.last_seen_at AS "lastSeenAt",h.device_id AS "deviceId",h.ip_address AS "ipAddress",h.user_agent AS "userAgent",
+          h.location_status AS "locationStatus",h.location_latitude AS "latitude",h.location_longitude AS "longitude",
+          h.location_accuracy_m AS "accuracy",h.location_at AS "locationAt",
           EXISTS(SELECT 1 FROM auth_sessions s WHERE s.session_public_id=h.session_id
             AND s.last_seen_at>NOW()-INTERVAL '15 minutes' AND s.created_at>NOW()-INTERVAL '30 days') AS active
           FROM user_login_history h WHERE h.login=$3 AND h.started_at<$2 AND h.last_seen_at>=$1
