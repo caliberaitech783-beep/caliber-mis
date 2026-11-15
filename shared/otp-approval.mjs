@@ -15,6 +15,10 @@ export function otpMatches(id,otp,hash){
 }
 export const validOtpInput=value=>/^\d{6}$/.test(String(value||'').trim());
 export const otpExpiresAt=(now=Date.now())=>new Date(now+OTP_TTL_MINUTES*60000).toISOString();
+// Telegram Approve / Reject for a production release stays open longer than an OTP
+// (owner's choice, 15 Nov 2026: 20 minutes before it lapses).
+export const RELEASE_APPROVAL_TTL_MINUTES=20;
+export const releaseApprovalExpiresAt=(now=Date.now())=>new Date(now+RELEASE_APPROVAL_TTL_MINUTES*60000).toISOString();
 export const otpFail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 
 // Evaluates a stored OTP row against an entered code. Returns the next row state;

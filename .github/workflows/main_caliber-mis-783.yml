@@ -23,7 +23,7 @@ on:
           - 'Scheduled window now (backup trigger: releases only in the hour after a window)'
         default: 'Next scheduled window (06:00, 09:00, 12:00, 15:00, 18:00, 21:00, 00:00 IST)'
       otp:
-        description: 'Urgent only, usually empty: Approve / Reject buttons go to Mr Anoop and Mr Mohit Chadda on Telegram and the run waits up to 10 minutes for a tap. Only if the buttons cannot be sent is a 6-digit OTP sent; then run again with it here.'
+        description: 'Urgent only, usually empty: Approve / Reject buttons go to Mr Anoop and Mr Mohit Chadda on Telegram and the run waits up to 20 minutes for a tap. Only if the buttons cannot be sent is a 6-digit OTP sent; then run again with it here.'
         type: string
         required: false
       requested_by:
@@ -36,6 +36,10 @@ on:
         required: false
       ip:
         description: 'Urgent only: your public IP address (shown in the Telegram approval)'
+        type: string
+        required: false
+      brief:
+        description: 'Urgent only: what it fixes, one or two points split by | (shown first in the Telegram approval)'
         type: string
         required: false
       approval:
@@ -89,6 +93,7 @@ jobs:
           RELEASE_REQUESTED_BY: ${{ inputs.requested_by }}
           RELEASE_COMPUTER: ${{ inputs.computer }}
           RELEASE_REQUESTER_IP: ${{ inputs.ip }}
+          RELEASE_BRIEF: ${{ inputs.brief }}
           RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/release-window.sh
 

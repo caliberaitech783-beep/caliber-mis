@@ -5,11 +5,12 @@
 #      and every check finished without failing; otherwise nothing is asked.
 #   2. Pulse-II sends both of them Approve / Reject (server/routes/release-otp.mjs)
 #      with the PR, its size, who asked, the computer and its IP; this run
-#      waits up to ten minutes for the first tap.
+#      waits up to twenty minutes for the first tap.
 #   3. Approve: the PR is merged exactly as it was shown (same head commit),
 #      then the production release starts with the approval, which it spends
 #      once. Reject or no tap: nothing is merged.
 # Inputs: MERGE_PR, MERGE_REQUESTED_BY, MERGE_COMPUTER, MERGE_IP, RUN_URL,
+# MERGE_BRIEF (what it fixes, two points split by |; empty = taken from the PR description),
 # GH_TOKEN/GH_REPO for gh, and GitHub's ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN.
 # For tests: RELEASE_APPROVAL_WAIT_SECONDS, RELEASE_APPROVAL_POLL_SECONDS.
 set -uo pipefail
@@ -23,7 +24,7 @@ PR="$(tr -d '[:space:]#' <<< "${MERGE_PR:-}")"
 
 # GitHub works out "mergeable" in the background; ask again for a short while.
 for attempt in 1 2 3 4 5 6; do
-  info="$(gh pr view "$PR" --json state,isDraft,baseRefName,headRefOid,title,mergeable,additions,deletions,changedFiles,statusCheckRollup,url)" || refuse "Pull request #${PR} could not be read."
+  info="$(gh pr view "$PR" --json state,isDraft,baseRefName,headRefOid,title,mergeable,additions,deletions,changedFiles,statusCheckRollup,url,body)" || refuse "Pull request #${PR} could not be read."
   [[ "$(field mergeable <<< "$info")" == UNKNOWN ]] || break
   sleep 5
 done
@@ -40,13 +41,17 @@ process.stdout.write(waiting.length?'waiting: '+waiting.join(', '):failed.length
 [[ "$checks" == passed* ]] || refuse "Pull request #${PR} checks are not all green (${checks}). Nothing was sent for approval."
 HEAD_SHA="$(field headRefOid <<< "$info")" TITLE="$(field title <<< "$info")"
 CHANGES="$(field changedFiles <<< "$info") files, +$(field additions <<< "$info") / -$(field deletions <<< "$info"); checks ${checks}"
+# What it fixes, at most two points (owner, 15 Nov 2026): as typed, else from the PR description.
+if [[ -n "${MERGE_BRIEF// }" ]]; then BRIEF="$MERGE_BRIEF"
+else BRIEF="$(field body <<< "$info" | node "$(dirname "${BASH_SOURCE[0]}")/pr-brief.mjs")"
+fi
 
 mint_identity
-body="$(json_body commit="$HEAD_SHA" prNumber="$PR" prTitle="$TITLE" changes="$CHANGES" requestedBy="${MERGE_REQUESTED_BY:-}" computer="${MERGE_COMPUTER:-}" ip="${MERGE_IP:-}" runUrl="${RUN_URL:-}")"
+body="$(json_body commit="$HEAD_SHA" prNumber="$PR" prTitle="$TITLE" changes="$CHANGES" brief="$BRIEF" requestedBy="${MERGE_REQUESTED_BY:-}" computer="${MERGE_COMPUTER:-}" ip="${MERGE_IP:-}" runUrl="${RUN_URL:-}")"
 result="$(release_api /api/release-otp/request-approval "$body")" || refuse "The Telegram approval could not be sent. $(field error <<< "$result")"
 ID="$(field id <<< "$result")"
 [[ "$ID" =~ ^[0-9a-f]{16}$ ]] || refuse "Pulse-II did not return an approval reference."
-WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-600}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
+WAIT="${RELEASE_APPROVAL_WAIT_SECONDS:-1200}" POLL="${RELEASE_APPROVAL_POLL_SECONDS:-10}"
 summary "PR #${PR} (${TITLE}): Approve / Reject sent on Telegram to the $(field recipient <<< "$result"). Waiting up to $((WAIT/60)) minutes for a tap."
 
 APPROVER=''

@@ -1,5 +1,5 @@
 import {DELETION_PHONE} from '../rules/deletion-otp-routing.mjs';
-import {OTP_TTL_MINUTES} from '../../shared/otp-approval.mjs';
+import {OTP_TTL_MINUTES,RELEASE_APPROVAL_TTL_MINUTES} from '../../shared/otp-approval.mjs';
 
 // Urgent production release OTP goes on Telegram to every MIS login whose
 // registered mobile is the owner's number (DELETION_PHONE), and to Mr Mohit
@@ -52,10 +52,14 @@ export async function releaseApproverLogins(pool,alsoLogins=RELEASE_OTP_ALSO_LOG
 
 // Whom you are approving (owner's request, 15 Nov 2026): name, computer and IP as given by the person or
 // session that started the run, and the GitHub account, which GitHub vouches for. pr: merge + release.
-export function releaseApprovalMessage({actor,runId,commit,subject,requester={},pr=null}){
+// brief: at most two short points on what the release fixes, shown first so the approver knows what goes live.
+export function releaseApprovalMessage({actor,runId,commit,subject,requester={},pr=null,brief=[]}){
+ const points=(Array.isArray(brief)?brief:[]).filter(Boolean).slice(0,2);
  return [
   pr?'Pulse-II: MERGE + RELEASE to production':'Pulse-II urgent production release',
-  ...(pr?[`PR #${pr.prNumber}: ${pr.prTitle||''}`.trim(),...(pr.changes?[`Changes: ${pr.changes}`]:[])]:[]),
+  ...(pr?[`PR #${pr.prNumber}: ${pr.prTitle||''}`.trim()]:[]),
+  ...(points.length?['','What it fixes:',...points.map((point,i)=>`${i+1}. ${point}`),'']:[]),
+  ...(pr?.changes?[`Changes: ${pr.changes}`]:[]),
   ...(commit?[`Version: ${String(commit).slice(0,7)}${subject?' - '+String(subject).slice(0,200):''}`]:[]),
   '',
   `Requested by: ${requester.requestedBy||'(name not given)'}`,
@@ -66,18 +70,18 @@ export function releaseApprovalMessage({actor,runId,commit,subject,requester={},
   ...(requester.runUrl?[requester.runUrl]:[]),
   '',
   pr?`Approve = merge PR #${pr.prNumber} into main and make it live now.`:'Approve only if main should go live now.',
-  'Mr Anoop or Mr Mohit Chadda: the first tap decides. Valid for 10 minutes.',
- ].join('\n');
+  `Mr Anoop or Mr Mohit Chadda: the first tap decides. Valid for ${RELEASE_APPROVAL_TTL_MINUTES} minutes.`,
+ ].join('\n').replace(/\n{3,}/g,'\n\n');
 }
 
 // Sends the Approve / Reject message to every approver who has linked Telegram. Returns how many got it.
 export function createReleaseApprovalDelivery({pool,sendButtons,alsoLogins=RELEASE_OTP_ALSO_LOGINS}){
- return async({id,actor,runId,commit,subject,requester={},pr=null})=>{
+ return async({id,actor,runId,commit,subject,requester={},pr=null,brief=[]})=>{
   const logins=await releaseApproverLogins(pool,alsoLogins);
   const {rows}=logins.length?await pool.query('SELECT DISTINCT chat_id FROM mis_telegram_links WHERE login_name=ANY($1::text[])',[logins]):{rows:[]};
   const buttons=[[{text:pr?`✅ Approve merge + release`:'✅ Approve release',callback_data:`rel:${id}:a`},{text:'❌ Reject',callback_data:`rel:${id}:r`}]];
   let sent=0;
-  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject,requester,pr}),buttons))sent++;}catch{}}
+  for(const row of rows){try{if(await sendButtons(row.chat_id,releaseApprovalMessage({actor,runId,commit,subject,requester,pr,brief}),buttons))sent++;}catch{}}
   return {sent};
  };
 }
