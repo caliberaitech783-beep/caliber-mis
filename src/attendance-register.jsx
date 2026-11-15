@@ -128,7 +128,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const dutyColumns=cols([['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
   return <>{step2}
    <ReportSection key={'ar-person-'+query+'-'+open+'-'+person.employeeKey} title={'Step 3 · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
-    description={[person.category,many(person.duties,'duty'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
+    description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
     rows={[...person.lines].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift))} columns={dutyColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="No duty in these dates."/>
   </>;
  }
