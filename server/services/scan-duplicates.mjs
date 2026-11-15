@@ -105,7 +105,7 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
  const siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.raw_fields,c.draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.id<>$2 AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND c.draft->>'bookDate'=$3 AND regexp_replace(upper(COALESCE(NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND (c.created_at<$5 OR (c.created_at=$5 AND c.id<$2)) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),card.id,bookDate,number,card.created_at])).rows;
  const sibling=siblings.map(row=>decodeScanRow(row)).find(row=>scanDoorKey(row,kind)===doorKey);
  if(sibling)return {kind:'card',...originalSummary(sibling)};
- const savedRows=(await client.query(`SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date+0=$2::date AND l.deleted_at IS NULL AND ${SAVED_NUMBER_SQL('l.')}=$3 AND COALESCE(l.data->>'scanCardId','')<>$4`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
+ const savedRows=(await client.query("SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$3 AND COALESCE(l.data->>'scanCardId','')<>$4",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
  const savedKeys=savedDoorKeys(door||scanDoorValue(card),kind,doorKey);
  const saved=savedRows.find(row=>savedKeys.has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
  if(saved){const origin=saved.scan_card_id?(await client.query('SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id WHERE c.id=$1',[saved.scan_card_id])).rows[0]:null;return {kind:'logbook',cardId:origin?.id||null,batchId:origin?.batch_id||null,entryName:origin?.batch_name||null,ordinal:origin?.ordinal||null,bookNo:saved.book_no};}
@@ -127,13 +127,7 @@ const UUID_SQL="'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 // expression, so the saved-record question below reads only the matching log books of the date
 // instead of opening the whole data of every log book saved that day.
 const SAVED_NUMBER_SQL=(prefix='')=>NUMBER_KEY_SQL(`${prefix}data->>'scanCardNumber',NULLIF(${prefix}data->>'aFormNo',''),${prefix}data->>'jobCardNo'`);
-// After #340 the first index (book_type, book_date, number) was valid but unused: for today's date
-// the table statistics are not yet up to date, so the planner expects almost no rows and reads every
-// log book of the day through a date index instead. The index now starts with the number, and the
-// saved-record queries write the date as `book_date+0` so no date-led index can serve them; the
-// planner then finds the few log books with that number first and checks type and date on them.
-export const SAVED_CARD_NUMBER_INDEX='mis_log_books_card_number_first';
-export const RETIRED_CARD_NUMBER_INDEX='mis_log_books_saved_card_number';
+export const SAVED_CARD_NUMBER_INDEX='mis_log_books_saved_card_number';
 // CONCURRENTLY keeps log book saves running while the index is built; a build that stopped half
 // way leaves an invalid index, which is dropped and built again.
 // While one build runs its index is also "invalid", and on 15 Nov 2026 duplicate-saved stayed at
@@ -143,7 +137,7 @@ export const RETIRED_CARD_NUMBER_INDEX='mis_log_books_saved_card_number';
 const SAVED_CARD_NUMBER_LOCK=709224190;
 const savedIndexState={state:'not-started'};
 export const savedCardNumberIndexState=()=>({...savedIndexState});
-const SAVED_INDEX_PROBE=`SELECT l.id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date+0=ANY($2::date[]) AND l.deleted_at IS NULL AND ${SAVED_NUMBER_SQL('l.')}=ANY($3::text[])`;
+const SAVED_INDEX_PROBE=`SELECT l.id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${SAVED_NUMBER_SQL('l.')}=ANY($3::text[])`;
 export async function ensureSavedCardNumberIndex(pool,{log=console,now=()=>Date.now()}={}){
  const client=typeof pool.connect==='function'?await pool.connect():pool;
  let locked=false;
@@ -163,16 +157,11 @@ export async function ensureSavedCardNumberIndex(pool,{log=console,now=()=>Date.
    Object.assign(savedIndexState,{state:'building',startedAt:new Date(now()).toISOString()});
    const started=now();
    if(existing)await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${SAVED_CARD_NUMBER_INDEX}`);
-   await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books ((${SAVED_NUMBER_SQL()}),book_type,book_date) WHERE deleted_at IS NULL`);
+   await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,(${SAVED_NUMBER_SQL()})) WHERE deleted_at IS NULL`);
    await client.query('ANALYZE mis_log_books');
    savedIndexState.buildMs=now()-started;
    log.log?.(`Saved card number index built in ${savedIndexState.buildMs} ms.`);
    built=true;
-  }
-  // The first index is no longer read by any query; it only slows log book saves, so it goes.
-  if((await client.query("SELECT to_regclass($1) IS NOT NULL AS present",[RETIRED_CARD_NUMBER_INDEX])).rows[0].present){
-   if(!locked)locked=(await client.query('SELECT pg_try_advisory_lock($1) AS locked',[SAVED_CARD_NUMBER_LOCK])).rows[0].locked;
-   if(locked)await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${RETIRED_CARD_NUMBER_INDEX}`);
   }
   // Whether the planner reads the saved-record question through the index (no rows are read).
   const plan=(await client.query('EXPLAIN '+SAVED_INDEX_PROBE,['vehicle',[new Date(now()).toISOString().slice(0,10)],['0']])).rows.map(row=>Object.values(row)[0]).join('\n');
@@ -199,7 +188,7 @@ export async function preloadDuplicateChecks(client,batch,cards,{lap=()=>{}}={})
   siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.created_at,c.draft->>'bookDate' AS book_date,${number} AS number,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('door',c.raw_fields->'door') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('doorTextWritten',c.draft->'doorTextWritten','doorText',c.draft->'doorText','door',c.draft->'door') END AS draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND ${number}=ANY($2::text[]) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),numbers])).rows.map(row=>decodeScanRow(row));lap('duplicate-cards');
   if(dates.length){
    const savedNumber=SAVED_NUMBER_SQL('l.');
-   savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText') AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date+0=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;lap('duplicate-saved');
+   savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText') AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;lap('duplicate-saved');
   }
  }
  const time=value=>new Date(value).getTime();

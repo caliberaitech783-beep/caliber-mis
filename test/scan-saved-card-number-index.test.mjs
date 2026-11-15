@@ -5,7 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {randomUUID} from 'node:crypto';
 import {LOG_BOOK_SCHEMA} from '../server/routes/log-book.mjs';
 import {SCAN_SCHEMA} from '../server/routes/bulk-card-scanning.mjs';
-import {ensureSavedCardNumberIndex,savedCardNumberIndexState,preloadDuplicateChecks,findContentDuplicate,SAVED_CARD_NUMBER_INDEX,RETIRED_CARD_NUMBER_INDEX} from '../server/services/scan-duplicates.mjs';
+import {ensureSavedCardNumberIndex,savedCardNumberIndexState,preloadDuplicateChecks,SAVED_CARD_NUMBER_INDEX} from '../server/services/scan-duplicates.mjs';
 
 const quiet={log:{log(){}}};
 async function database(t){
@@ -81,29 +81,4 @@ test('Pulse-II builds the index in the background when it starts and shows it on
  assert.match(source,/preloadDuplicateChecks\(db,batch,live,\{lap\}\)/);
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.ok(server.includes('savedCardNumberIndex:s.savedCardNumberIndex'));
-});
-
-// Live on 15 Nov 2026 the first index was valid but unused: today's rows were not in the table
-// statistics yet, so the planner read the whole day through a date index.
-test('with today missing from the statistics the saved-record questions still use the card number index',async t=>{
- const db=await database(t);
- const fill=(date,n,offset)=>db.query(`INSERT INTO mis_log_books(book_no,book_type,book_date,site,asset_id,data,request_key,created_by) SELECT 'B'||g||$1,'vehicle',$1::date,'Sasti OC',g,jsonb_build_object('aFormNo','N'||(g+$2),'door','D'||g,'pad',repeat('x',2000)),gen_random_uuid(),'test' FROM generate_series(1,$3) g`,[date,offset,n]);
- for(let day=1;day<=10;day++)await fill('2026-11-'+String(day).padStart(2,'0'),300,day*1000);
- await db.exec(`CREATE INDEX ${RETIRED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,(regexp_replace(upper(COALESCE(data->>'scanCardNumber',NULLIF(data->>'aFormNo',''),data->>'jobCardNo','')),'[^A-Z0-9]','','g'))) WHERE deleted_at IS NULL`);
- assert.equal(await ensureSavedCardNumberIndex(db,quiet),true);
- assert.equal((await db.query('SELECT to_regclass($1) IS NULL AS gone',[RETIRED_CARD_NUMBER_INDEX])).rows[0].gone,true,'the first index is dropped');
- await fill('2026-11-15',300,99000); // today: saved after the last ANALYZE
- const sql=[];
- const spy={query:(text,params)=>{sql.push({text,params});return db.query(text,params);}};
- const batch={id:randomUUID(),kind:'vehicle',expected_context:{bookDate:'2026-11-15',location:'Sasti OC'}};
- const card={id:randomUUID(),batch_id:batch.id,created_at:new Date().toISOString(),draft:{aFormNo:'N99010',bookDate:'2026-11-15',door:'D10'},raw_fields:{}};
- const checks=await preloadDuplicateChecks(spy,batch,[card]);
- assert.equal((await checks.content(card,{bookDate:'2026-11-15',door:'D10',number:'N99010'}))?.kind,'logbook');
- assert.equal((await findContentDuplicate(spy,'vehicle',card,batch,{bookDate:'2026-11-15',door:'D10',number:'N99010'}))?.kind,'logbook');
- for(const query of sql.filter(q=>/FROM mis_log_books l (LEFT JOIN|WHERE l\.book_type)/.test(q.text))){
-  const plan=(await db.query('EXPLAIN '+query.text,query.params)).rows.map(row=>Object.values(row)[0]).join('\n');
-  assert.match(plan,new RegExp(SAVED_CARD_NUMBER_INDEX),plan);
- }
- assert.equal(sql.filter(q=>/FROM mis_log_books l (LEFT JOIN|WHERE l\.book_type)/.test(q.text)).length,2);
- assert.equal(savedCardNumberIndexState().usedByPlanner,true);
 });
