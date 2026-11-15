@@ -100,6 +100,12 @@ test('one message per closed batch, sent once, only after the feature started',a
  assert.match(sent[0].message,/📦 1 sub batch · ✅ auto · ❌ error\n• VLB entry 1 · 3 · ✅3 · ❌0\n/);
  assert.match(sent[0].message,/Accuracy 100%/);
  assert.deepEqual(sent[0].options,{html:true,photo:{site:'DIPKA',kind:'VLB',batch:'CMLL/DIPKA/15 -NOV-26/S1'}},'the site picture with the full batch name goes first');
+ // A sample is the same report of the latest closed batch, sent again under its own key each time.
+ assert.deepEqual(await reporter.sendSample(),{batch:'CMLL/DIPKA/15 -NOV-26/S1',people:1,sent:1});
+ assert.equal(sent.length,2);assert.match(sent[1].key,/^scan-batch-report:sample:00000000-0000-4000-8000-000000000501:\d+:owner$/);
+ assert.equal(sent[1].message,sent[0].message);assert.deepEqual(sent[1].options,sent[0].options);
+ await reporter.sendSample();assert.notEqual(sent[2].key,sent[1].key,'every sample is a new message');
+ await reporter.tick();assert.equal(sent.length,3,'a sample never repeats the real report');
 });
 
 test('the report can be switched off and is listed in the Automation Centre',()=>{

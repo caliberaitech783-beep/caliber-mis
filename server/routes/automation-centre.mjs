@@ -74,7 +74,7 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  return {overview,rollUp,counts,start,stop,ensure};
 }
 
-export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null}){
+export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null,scanBatchReporter=null}){
  const guard=[requireSession,requireAdministrator];
  const people=async settings=>mismatchWorker?.recipientCheck?mismatchWorker.recipientCheck(settings).catch(()=>null):null;
  app.get('/api/automation-centre',...guard,async(req,res,next)=>{try{req.audit=false;const settings=await readMismatchSettings(pool);res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:settings,recipientCheck:await people(settings)});}catch(e){next(e);}});
@@ -85,6 +85,16 @@ export function registerAutomationCentre(app,{pool,requireSession,requireAdminis
   const saved=await writeMismatchSettings(pool,{...await readMismatchSettings(pool),...input});
   req.audit={eventType:'Administration',module:'Automation Centre',action:'Change equipment list mismatch automation',targetReference:'equipment-mismatch',details:saved};
   res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:saved,recipientCheck:await people(saved)});
+ }catch(e){next(e);}});
+ // A24 "Send sample to Telegram": the batch completion report of the most recently closed batch.
+ app.post('/api/automation-centre/scan-batch-report/sample',...guard,async(req,res,next)=>{try{
+  if(!scanBatchReporter)return res.status(503).json({error:'The batch completion report is not running on this server.'});
+  const result=await scanBatchReporter.sendSample();
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Send sample A24 Site-wise batch completion report',targetReference:'scan-batch-report',details:result};
+  if(!result.batch)return res.status(404).json({error:'No closed batch with scanned cards was found to make a sample from.'});
+  if(!result.people)return res.status(409).json({error:'Nobody can receive it: no MIS login on the owner\'s mobile number has connected Telegram.'});
+  if(!result.sent)return res.status(409).json({error:'The sample was not sent. A24 may be switched OFF, or the owner\'s Telegram is not connected.'});
+  res.set('Cache-Control','private, no-store').json(result);
  }catch(e){next(e);}});
  // The ON/OFF switch of one automation. A01 keeps its switch in its own settings.
  app.put('/api/automation-centre/switch',...guard,async(req,res,next)=>{try{

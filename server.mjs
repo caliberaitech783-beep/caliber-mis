@@ -8112,13 +8112,15 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
   pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),
   scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
-registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch});
+// Site-wise batch completion report on Telegram to the owner: one message per VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
+// The Automation Centre sends a sample of it on request.
+const scanBatchReporter=createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()})});
+registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter});
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
-// Site-wise batch completion report on Telegram to the owner: each scan entry when its cards are read, each VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
-if(scanBatchReportEnabled())scheduleBackgroundStart(()=>createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()})}).start(),90000);
+if(scanBatchReportEnabled())scheduleBackgroundStart(()=>scanBatchReporter.start(),90000);
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:false});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
