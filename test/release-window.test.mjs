@@ -29,13 +29,15 @@ const commit=(dir,file,text)=>{
   git(dir,'commit','-q','-m',file);
   return git(dir,'rev-parse','HEAD');
 };
+let lastApproval='';
 const decide=(dir,{event='schedule',when='',live,head,today='2026-11-20',now=Date.parse('2026-11-20T06:40:00Z')})=>{ // 12:10 IST
   const scratch=mkdtempSync(path.join(tmpdir(),'release-window-io-'));const output=path.join(scratch,'output');
   const health=path.join(scratch,'health.json');
   writeFileSync(output,'');
   writeFileSync(health,JSON.stringify({status:'ok',commit:live}));
   execFileSync('bash',[script],{cwd:dir,encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:event,RELEASE_COMMIT:head,SCHEDULE_STARTS:'2026-11-15',GITHUB_OUTPUT:output,RELEASE_WINDOW_TODAY:today,RELEASE_WINDOW_NOW_MS:String(now),RELEASE_WHEN:when,RELEASE_WINDOW_HEALTH_FILE:health}});
-  const result=/deploy=(true|false)/.exec(readFileSync(output,'utf8'))[1];
+  const text=readFileSync(output,'utf8'),result=/deploy=(true|false)/.exec(text)[1];
+  lastApproval=/approval=(\w+)/.exec(text)?.[1]||'';
   rmSync(scratch,{recursive:true,force:true});
   return result;
 };
@@ -95,7 +97,7 @@ const dispatch=async({when,otp='',now=Date.parse('2026-11-15T07:00:00Z'),api,act
       ACTIONS_ID_TOKEN_REQUEST_URL:`${base}/token?x=1`,ACTIONS_ID_TOKEN_REQUEST_TOKEN:'request-token',GITHUB_ACTOR:actor,GITHUB_REPOSITORY_OWNER:owner,RELEASE_APPROVAL_POLL_SECONDS:'0',RELEASE_APPROVAL_WAIT_SECONDS:'3',...env}});
   }catch(error){code=error.code;}
   server.close();
-  const result={code,calls,deploy:/deploy=(true|false)/.exec(readFileSync(output,'utf8'))?.[1]||'',summary:readFileSync(summaryFile,'utf8')};
+  const result={code,calls,deploy:/deploy=(true|false)/.exec(readFileSync(output,'utf8'))?.[1]||'',approval:/approval=(\w+)/.exec(readFileSync(output,'utf8'))?.[1]||'',summary:readFileSync(summaryFile,'utf8')};
   rmSync(scratch,{recursive:true,force:true});
   return result;
 };
@@ -228,4 +230,29 @@ test('a release started after Approve on a pull request spends that approval onc
   assert.ok(!spent.calls.some(c=>c.path.includes('request')),'never asks again or falls back to the OTP');
   const bad=await dispatch({when:URGENT,api:()=>[200,{}],env:{RELEASE_APPROVAL:'zz'}});
   assert.equal(bad.code,1);assert.equal(bad.calls.length,0);
+});
+
+// The off-schedule Telegram notice reads how a release was allowed (scripts/release-notice-rule.mjs).
+test('every release says how it was allowed: window, telegram, otp or owner',async()=>{
+  const dir=repo();
+  try{
+    const live=commit(dir,'server.mjs','a');
+    const head=commit(dir,'server.mjs','b');
+    assert.equal(decide(dir,{live,head}),'true');assert.equal(lastApproval,'window');
+    assert.equal(decide(dir,{live,head,event:'workflow_dispatch',when:'Scheduled window now (backup trigger: releases only in the hour after a window)'}),'true');
+    assert.equal(lastApproval,'window');
+    assert.equal(decide(dir,{live,head:live}),'false');assert.equal(lastApproval,'');
+  }finally{rmSync(dir,{recursive:true,force:true});}
+  const id='0123456789abcdef';
+  const buttons=await dispatch({when:URGENT,api:p=>p==='/api/release-otp/request-approval'?[200,{id,recipient:'owners on Telegram'}]:[200,{status:'approved',by:'anoop'}]});
+  assert.equal(buttons.deploy,'true');assert.equal(buttons.approval,'telegram');
+  // "Merge a PR and make it live" starts the release with the approval it already got on Telegram.
+  const merged=await dispatch({when:URGENT,env:{RELEASE_APPROVAL:id},api:(p,body)=>(assert.equal(body.id,id),[200,{status:'approved',by:'mohitchadda',prNumber:321}])});
+  assert.equal(merged.deploy,'true');assert.equal(merged.approval,'telegram');assert.match(merged.summary,/PR #321 merged/);
+  const otp=await dispatch({when:URGENT,otp:'123456',api:()=>[200,{approved:true}]});
+  assert.equal(otp.deploy,'true');assert.equal(otp.approval,'otp');
+  const owner=await dispatch({when:URGENT,actor:'caliberaitech783-beep',api:()=>[404,'<!DOCTYPE html><pre>Cannot POST /api/release-otp/request</pre>']});
+  assert.equal(owner.deploy,'true');assert.equal(owner.approval,'owner');
+  const later=await dispatch({when:LATER,api:()=>[500,{}]});
+  assert.equal(later.deploy,'false');assert.equal(later.approval,'');
 });

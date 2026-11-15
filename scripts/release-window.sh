@@ -16,7 +16,17 @@
 # RELEASE_WINDOW_NOW_MS replaces the clock and RELEASE_OTP_BASE_URL the app address.
 set -uo pipefail
 
-decide() { echo "deploy=$1" >> "$GITHUB_OUTPUT"; echo "Deploy this window: $1"; exit 0; }
+# decide true|false [approval]. The approval says how a release was allowed:
+#   window   - a release window (GitHub's timer or the Pulse-II backup start)
+#   telegram - an Approve tap on Telegram (urgent run, or "Merge a PR and make it live")
+#   otp      - the owner's OTP
+#   owner    - the one-time bootstrap release by the repository owner
+# The off-schedule Telegram notice (scripts/send-release-notice.mjs) reads it.
+decide() {
+  echo "deploy=$1" >> "$GITHUB_OUTPUT"
+  if [[ -n "${2:-}" ]]; then echo "approval=$2" >> "$GITHUB_OUTPUT"; fi
+  echo "Deploy this window: $1${2:+ (approval: $2)}"; exit 0
+}
 summary() { echo "$1"; echo "$1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
 BASE_URL="${RELEASE_OTP_BASE_URL:-https://pulse-ll.cmll.in}"
 
@@ -52,7 +62,7 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
     if decision="$(release_api /api/release-otp/decision "{\"id\":\"${MERGE_APPROVAL}\"}")" && [[ "$(field status <<< "$decision")" == approved ]]; then
       PR_NUMBER="$(field prNumber <<< "$decision")"
       summary "Urgent release approved on Telegram by $(field by <<< "$decision")${PR_NUMBER:+ (PR #${PR_NUMBER} merged)}. Releasing main now."
-      decide true
+      decide true telegram
     fi
     summary "Urgent release refused: the Telegram approval is $(field status <<< "${decision:-}")$(field error <<< "${decision:-}"). Nothing was deployed."
     echo "::error::The merge approval was not accepted."
@@ -75,7 +85,7 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
         mint_identity
         decision="$(release_api /api/release-otp/decision "{\"id\":\"${APPROVAL_ID}\"}")" || continue
         case "$(field status <<< "$decision")" in
-          approved) summary "Urgent release approved on Telegram by $(field by <<< "$decision"). Releasing main now."; decide true;;
+          approved) summary "Urgent release approved on Telegram by $(field by <<< "$decision"). Releasing main now."; decide true telegram;;
           rejected) summary "Urgent release rejected on Telegram by $(field by <<< "$decision"). Nothing was deployed."; echo "::error::The urgent release was rejected."; exit 1;;
           expired|missing|used) summary "Urgent release: the approval request is no longer active. Nothing was deployed."; echo "::error::The urgent release approval is no longer active."; exit 1;;
         esac
@@ -99,7 +109,7 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
     if [[ "$(field error <<< "$result")" == *"HTTP 404: the release OTP service is not live there yet"* \
           && -n "${GITHUB_ACTOR:-}" && "${GITHUB_ACTOR}" == "${GITHUB_REPOSITORY_OWNER:-}" ]]; then
       summary "Urgent release: Pulse-II does not have the release OTP service yet (HTTP 404), so no OTP can be sent. Started by the repository owner (${GITHUB_ACTOR}): releasing main now. This release puts the OTP service live; urgent releases after it need the owner's OTP."
-      decide true
+      decide true owner
     fi
     summary "Urgent release: the OTP could not be sent. $(field error <<< "$result")"
     echo "::error::The urgent release OTP could not be sent."
@@ -107,7 +117,7 @@ if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "$WINDOW_RUN" != true ]
   fi
   if result="$(release_api /api/release-otp/verify "{\"otp\":\"${OTP}\"}")"; then
     summary "Urgent release approved by the owner's OTP. Releasing main now."
-    decide true
+    decide true otp
   fi
   summary "Urgent release refused: $(field error <<< "$result")"
   echo "::error::The urgent release OTP was not accepted."
@@ -150,10 +160,10 @@ if [[ "$LIVE" == "$RELEASE_COMMIT" ]]; then
 fi
 
 # Unknown live commit: release, so production never stays behind main.
-if [[ ! "$LIVE" =~ ^[0-9a-f]{40}$ ]]; then decide true; fi
+if [[ ! "$LIVE" =~ ^[0-9a-f]{40}$ ]]; then decide true window; fi
 git cat-file -e "${LIVE}^{commit}" 2>/dev/null || git fetch --quiet --depth=50 origin "$LIVE" 2>/dev/null || true
 if ! git cat-file -e "${LIVE}^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$LIVE" "$RELEASE_COMMIT" 2>/dev/null; then
-  decide true
+  decide true window
 fi
 
 CHANGED="$(git diff --name-only "$LIVE" "$RELEASE_COMMIT")"
@@ -163,4 +173,4 @@ if [[ -z "$CHANGED" ]] || ! grep -qvE '^docs/|^[^/]+\.md$' <<< "$CHANGED"; then
   echo "Only documentation changed; nothing to release."
   decide false
 fi
-decide true
+decide true window
