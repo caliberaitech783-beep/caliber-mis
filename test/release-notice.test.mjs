@@ -7,6 +7,7 @@ import {MIS_TELEGRAM_SCHEMA} from '../server/routes/mis-telegram.mjs';
 import {registerReleaseNotice,releaseNoticePayload,releaseNoticeMessage,RELEASE_NOTICE_PURPOSE} from '../server/routes/release-notice.mjs';
 import {integrationSignature} from '../server/services/integration-secret-store.mjs';
 import {readFile} from 'node:fs/promises';
+import {offScheduleNoticeNeeded} from '../scripts/release-notice-rule.mjs';
 
 const commit='a'.repeat(40);
 test('an off-schedule release tells the linked release-alert people once, and only a signed notice is accepted',async t=>{
@@ -52,7 +53,11 @@ test('an off-schedule release tells the linked release-alert people once, and on
 test('the release workflow sends the notice only for a release outside the schedule, without failing it',async()=>{
  const workflow=await readFile(new URL('../.github/workflows/main_caliber-mis-783.yml',import.meta.url),'utf8');
  const step=workflow.slice(workflow.indexOf('- name: Tell the release-alert people'));
- assert.match(step,/if: always\(\) && steps\.live-health\.outcome == 'success' && github\.event_name != 'schedule'/);
+ assert.match(step,/if: always\(\) && steps\.live-health\.outcome == 'success' && github\.event_name != 'schedule' && needs\.plan\.outputs\.approval != 'window' && needs\.plan\.outputs\.approval != 'telegram'/);
+ assert.match(step,/RELEASE_APPROVAL_KIND: \$\{\{ needs\.plan\.outputs\.approval \}\}/);
+ const login=workflow.slice(workflow.indexOf('- name: Refresh Azure sign-in for the off-schedule notice'));
+ assert.match(login,/if: [^\n]*needs\.plan\.outputs\.approval != 'telegram'/);
+ assert.match(workflow,/approval: \$\{\{ steps\.window\.outputs\.approval \}\}/);
  assert.match(step,/continue-on-error: true/);
  assert.match(step,/RELEASE_ALERT_MOBILES: \$\{\{ secrets\.RELEASE_ALERT_MOBILES \}\}/);
  assert.match(workflow,/name: Verify Pulse-II release health\r?\n\s+id: live-health/);
@@ -62,4 +67,15 @@ test('the release workflow sends the notice only for a release outside the sched
 test('the notice message names the schedule and the commit',()=>{
  const text=releaseNoticeMessage({commit,subject:'',actor:'',runUrl:'',liveAt:new Date('2026-11-15T03:00:00Z')});
  assert.match(text,/06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST/);assert.match(text,/Started by: unknown/);
+});
+
+test('no notice for a window release or an Approve tap on Telegram; an OTP or unknown release still tells',()=>{
+ assert.equal(offScheduleNoticeNeeded({trigger:'schedule'}),false);
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch',when:'Scheduled window now (backup trigger: releases only in the hour after a window)'}),false);
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch',approval:'window'}),false);
+ // 15 Nov 2026: PR 320 and PR 321, both approved on Telegram, alerted Anoop and Mohit as "OUTSIDE the schedule".
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch',when:'Urgent: deploy now (needs OTP from the owner)',approval:'telegram'}),false);
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch',when:'Urgent: deploy now (needs OTP from the owner)',approval:'otp'}),true);
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch',approval:'owner'}),true);
+ assert.equal(offScheduleNoticeNeeded({trigger:'workflow_dispatch'}),true);
 });

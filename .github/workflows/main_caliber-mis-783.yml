@@ -66,6 +66,8 @@ jobs:
       id-token: write
     outputs:
       deploy: ${{ steps.window.outputs.deploy }}
+      # How the release was allowed: window, telegram, otp or owner (scripts/release-window.sh).
+      approval: ${{ steps.window.outputs.approval }}
       lane: ${{ steps.test-plan.outputs.lane }}
       tests: ${{ steps.test-plan.outputs.tests }}
       delta: ${{ steps.test-plan.outputs.delta }}
@@ -477,8 +479,11 @@ jobs:
       # A release outside 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST (Run workflow) tells the
       # release-alert people on Telegram once Pulse-II serves it. The numbers live in the
       # RELEASE_ALERT_MOBILES secret. A failed notice never fails the release.
+      # No notice when a window allowed it (GitHub's timer or the Pulse-II backup start) or when
+      # someone tapped Approve on Telegram: the release-alert people already approved it there
+      # (owner, 15 Nov 2026). An OTP or bootstrap release still tells them.
       - name: Refresh Azure sign-in for the off-schedule notice
-        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule'
+        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule' && needs.plan.outputs.approval != 'window' && needs.plan.outputs.approval != 'telegram'
         continue-on-error: true
         uses: azure/login@v2
         with:
@@ -487,10 +492,12 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D6C9CBBB0A24F138D5B5B2F35480688 }}
 
       - name: Tell the release-alert people about an off-schedule release
-        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule'
+        if: always() && steps.live-health.outcome == 'success' && github.event_name != 'schedule' && needs.plan.outputs.approval != 'window' && needs.plan.outputs.approval != 'telegram'
         continue-on-error: true
         env:
           RELEASE_ALERT_MOBILES: ${{ secrets.RELEASE_ALERT_MOBILES }}
+          RELEASE_APPROVAL_KIND: ${{ needs.plan.outputs.approval }}
+          RELEASE_WHEN: ${{ inputs.when }}
         run: node scripts/send-release-notice.mjs
 
       - name: Stop staging if validation failed before the swap

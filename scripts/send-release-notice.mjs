@@ -1,6 +1,7 @@
 // Tells the release-alert people on Telegram that production went live outside the release
 // schedule (06:00, 09:00, 12:00, 15:00, 18:00, 21:00 and 00:00 IST). Runs at the end of a Run workflow release, after
-// Pulse-II is serving the new commit. A scheduled release never sends.
+// Pulse-II is serving the new commit. A window release or a release approved by a tap on
+// Telegram never sends (scripts/release-notice-rule.mjs).
 //
 // The numbers come from the RELEASE_ALERT_MOBILES secret and are never printed: this repository
 // and its logs are public. The request is signed with a key derived from the live server's
@@ -8,10 +9,12 @@
 import {execFileSync} from 'node:child_process';
 import {integrationSignature} from '../server/services/integration-secret-store.mjs';
 import {RELEASE_NOTICE_PURPOSE, releaseNoticePayload} from '../server/routes/release-notice.mjs';
+import {offScheduleNoticeNeeded} from './release-notice-rule.mjs';
 
 const trigger = process.env.GITHUB_EVENT_NAME || '';
-if (trigger === 'schedule') {
-  console.log('Scheduled release: no off-schedule notice.');
+const approval = process.env.RELEASE_APPROVAL_KIND || '';
+if (!offScheduleNoticeNeeded({trigger, when: process.env.RELEASE_WHEN || '', approval})) {
+  console.log(`No off-schedule notice: the release was allowed by ${approval === 'telegram' ? 'an Approve tap on Telegram' : 'a release window'}.`);
   process.exit(0);
 }
 const mobiles = String(process.env.RELEASE_ALERT_MOBILES || '').split(/[,;\s]+/).map(value => value.replace(/\D/g, '')).filter(Boolean);
