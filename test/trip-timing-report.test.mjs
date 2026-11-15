@@ -88,7 +88,7 @@ test('the shared screen shows the delay views on the Trip Timing tab only',()=>{
  const screen=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(screen,/id==='timing'\?<TripTimingReport records=\{selected\} loading=\{filters\.loading\}/);
  const view=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
- for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ','Step 4 · ','Step 5 · Trip card ','date-wise and shift-wise'])assert.ok(view.includes(text),text);
+ for(const text of ['All trip rows','Step 1 · ','Step 2 · ','Step 3 · ','Step 4 · ','Step 5 · Trip card ',' · date by shift · ','<DateShiftGrid grid={shiftGrid}'])assert.ok(view.includes(text),text);
 });
 
 // Exception time: the owner's example. Shift 05:00 to 13:00, blasting from 06:00 to 07:00.

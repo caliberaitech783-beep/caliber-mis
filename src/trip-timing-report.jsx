@@ -1,5 +1,6 @@
 import React,{useMemo,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {tableLayoutAccount} from './table-layouts.mjs';
 import {BANDS,BAND_LABELS,MODES,GROUPS,DELAY_LIMIT,EXCEPTION_KEY,EXCEPTION_LABEL,tripEntries,summarise,delayedEntries,entryRemark,groupKey,
  withExceptionTime,addExceptionRule,exceptionRulesFor,exceptionSiteKey,exceptionStorageKey,readExceptionView,storeExceptionView} from '../shared/trip-timing-report.mjs';
@@ -90,6 +91,12 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  const exceptionLine=t=>!exception?'':t[EXCEPTION_KEY]?` Personalised view: your exception time moved ${t[EXCEPTION_KEY]} ${m.noun}${t[EXCEPTION_KEY]===1?'':'s'} to a lower band.`:` Personalised view: no ${m.noun} here falls in your exception time.`;
  const summaryLine=t=>(t.timed?`${t.over} of ${t.timed} timed ${m.noun}s (${t.percent}%) took more than ${DELAY_LIMIT} minutes ${what}: ${BANDS.map(b=>t[b.key]+' in '+b.label).join(', ')}.${t.notJudged?' '+t.notJudged+' could not be judged.':''}`:`No ${m.noun} with both times written in these dates and filters.`)+exceptionLine(t);
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
+ // Step 2 is the date by shift table of the OT report: a colour chosen above it keeps only that colour in the boxes.
+ const gridBoxes=[...BANDS,...(exception?[{key:EXCEPTION_KEY,label:EXCEPTION_LABEL}]:[])].filter(b=>!band||b.key===band).map(b=>({key:b.key,label:LABELS[b.key],className:'tt-band tt-'+b.key}));
+ const shiftGrid=dateShiftGrid(shiftsListed,{sumKeys:['timed','ok',...BANDS.map(b=>b.key),'over','notJudged',EXCEPTION_KEY]});
+ const overShare=t=>t.timed?Math.round(t.over/t.timed*1000)/10+'%':'—';
+ const shiftDay=[{key:'timed',label:'Day '+m.noun+'s',value:t=>t.timed},{key:'over',label:'Over '+DELAY_LIMIT+' min',sub:'Any colour',value:t=>t.over},{key:'percent',label:'Over '+DELAY_LIMIT+' min %',value:overShare}];
+ const shiftExport=dateShiftExport(shiftGrid,{count:r=>r.timed,countLabel:m.unit.toLowerCase(),boxes:gridBoxes,dayColumns:shiftDay});
  const rowClass=r=>r.total?'tt-total':'';
  // Steps stay one below the other; the line that opened the step below it is marked.
  const picked=(r,key)=>key&&(r.total?key===EVERY:r.key===key)?' report-row-picked':'';
@@ -141,8 +148,11 @@ export default function TripTimingReport({records=[],loading='',period='',Report
   {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total.over,key=>shifts.total[key])}
-   <ReportSection key={'tt-shifts-'+mode+site+band+exception} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date-wise and shift-wise · '+period+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-shifts" description={'One line per date and shift, newest first. Press a line to see the drivers of that shift. Press the last line to see the drivers for all the dates together.'+viewNote}
-    rows={withTotal(shiftsListed,band?{...shifts.total,id:'shown-total'}:shifts.total)} columns={summaryColumns('shift',mode,openSlot,exception)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,slot?.key)} onRowClick={r=>openSlot(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
+   <ReportSection key={'tt-shifts-'+mode+site+band+exception} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date by shift · '+period+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-shifts" description={'In each box: '+m.noun+'s timed, then the yellow, orange and red '+m.noun+'s among them. Press a box for the drivers of that shift; press a colour for only those. Press All dates for every date together.'+viewNote}
+    rows={shiftExport.rows} columns={shiftExport.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <DateShiftGrid grid={shiftGrid} count={r=>r.timed} countLabel={m.unit} boxes={gridBoxes} dayColumns={shiftDay} onOpen={(r,b)=>openSlot(r,b||band)} onOpenAll={()=>openSlot(shifts.total)}
+     isPicked={r=>slot?.key===r.key} pickedBox={band} allPicked={slot?.key===EVERY} ariaLabel={m.unit+' by date and shift'} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
+   </ReportSection>
   </>}
   {level>=3&&<>
    <nav className="tt-subtabs" aria-label="Count by">{Object.entries(GROUPS).map(([key,label])=><button key={key} type="button" aria-current={group===key?'page':undefined} onClick={()=>{setGroup(key);setItem(null);setCard('');}}>{label}</button>)}</nav>
