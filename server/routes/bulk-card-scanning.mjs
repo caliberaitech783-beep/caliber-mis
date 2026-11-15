@@ -9,7 +9,7 @@ import {registerSelectedScanAbort} from './scan-card-abort.mjs';
 import {registerScanCardGroupDeletion,SCAN_CARD_GROUP_DELETION_SCHEMA} from './scan-card-group-deletion.mjs';
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate,operationalScanSql} from '../../shared/operational-start.mjs';
-import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,findEarlierImageDuplicate,preloadDuplicateChecks,ensureSavedCardNumberIndex,savedCardNumberIndexState,contentIdentityCertain,contentDuplicateMessage,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
+import {EXACT_DUPLICATE_NOTE,REMOVED_FROM_BATCH_NOTE,fingerprintForUpload,findExactDuplicate,findVisualDuplicate,insertDuplicateCard,listDuplicateCards,restoreDuplicateCard,findContentDuplicate,findEarlierImageDuplicate,preloadDuplicateChecks,ensureSavedCardNumberIndex,savedCardNumberIndexState,contentIdentityCertain,contentDuplicateMessage,continuationNote,applyContentDuplicate,backfillScanFingerprints,contentRejectEnabled} from '../services/scan-duplicates.mjs';
 import {scanFingerprintSettings} from '../services/scan-fingerprint.mjs';
 import {createKeyedSerializer,uploadDuplicateLockKey} from '../services/scan-upload-gate.mjs';
 import {isDeletableScanCard} from '../../src/scan-card-deletion-selection.mjs';
@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS mis_scan_batches(id UUID PRIMARY KEY,kind TEXT NOT NU
  CREATE INDEX IF NOT EXISTS mis_scan_cards_duplicate_of ON mis_scan_cards(duplicate_of) WHERE duplicate_of IS NOT NULL;
  ALTER TABLE mis_scan_cards ADD COLUMN IF NOT EXISTS page_count INTEGER NOT NULL DEFAULT 1;ALTER TABLE mis_scan_cards ADD COLUMN IF NOT EXISTS expected_pages INTEGER NOT NULL DEFAULT 1;
  CREATE INDEX IF NOT EXISTS mis_scan_cards_hash ON mis_scan_cards(image_hash);CREATE INDEX IF NOT EXISTS mis_scan_cards_queue ON mis_scan_cards(status,created_at);
- CREATE UNIQUE INDEX IF NOT EXISTS mis_log_books_scanned_card ON mis_log_books(book_type,book_date,asset_id,(data->>'scanCardNumber')) WHERE data ? 'scanCardNumber' AND deleted_at IS NULL;
+ CREATE UNIQUE INDEX IF NOT EXISTS mis_log_books_scanned_card_shift ON mis_log_books(book_type,book_date,asset_id,(data->>'scanCardNumber'),(COALESCE(NULLIF(data->>'bookShiftCode',''),NULLIF(data->>'cardShift',''),data->>'shiftName',''))) WHERE data ? 'scanCardNumber' AND deleted_at IS NULL;
+ DROP INDEX IF EXISTS mis_log_books_scanned_card;
  ${SCAN_LEASE_SCHEMA}
  ${READER_OUTAGE_SCHEMA}`;
 const uuid=v=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(String(v||''));
@@ -178,10 +179,11 @@ export async function checkScanCard(client,kind,card,input=card.draft,{enforceEm
  if(data&&number){
   // The same card number, door and date on a live card in any entry for this date, site and shift, or in a saved log book, is a duplicate. A certain identity blocks with the original named; an uncertain one asks the operator to confirm first.
   const batch={id:card.batch_id,kind,expected_context:context};
-  const identity={bookDate:data.bookDate,door:input.doorTextWritten||card.raw_fields?.door||input.doorText||data.door,number};
+  const identity={bookDate:data.bookDate,door:input.doorTextWritten||card.raw_fields?.door||input.doorText||data.door,number,current:data};
   const original=duplicates?await duplicates.content(card,identity):await findContentDuplicate(client,kind,card,batch,identity);
   const sheetNote=original&&kind==='vehicle'&&!lmv?await laterSheetNote(client,original,input):'';
   if(sheetNote)warnings.push(sheetNote);
+  else if(original?.kind==='continuation')warnings.push(continuationNote(original));
   else if(original){const duplicateError=original.kind==='logbook'&&!original.ordinal?'Card already exists in '+original.bookNo+'.':contentDuplicateMessage(original,contentIdentityCertain({...card,draft:input},kind,context));if(duplicateError)errors.push(duplicateError);}
  }
  if(card.raw_fields?.duplicateSuspect?.ordinal&&!errors.some(e=>/duplicate/i.test(e)))warnings.push('This scan looks like card '+card.raw_fields.duplicateSuspect.ordinal+' in entry '+(card.raw_fields.duplicateSuspect.entryName||'')+'. Confirm it is a different card before saving.');
