@@ -44,8 +44,25 @@ test('entry heading shows card and trip totals on two lines',()=>{
 });
 
 test('the open entry describes itself from the card status summary so the chip and the tiles agree',()=>{
- assert.equal(describeScanEntry({cards:37,posted:24},{total:37,saved:24,waiting:11,attention:2,pending:0}),'37 cards · 24 saved · 11 waiting to save · 2 need attention');
- assert.equal(describeScanEntry({cards:3,posted:1,duplicates:1},{total:3,saved:1,waiting:1,attention:1,pending:0}),'3 cards · 1 saved · 1 waiting to save · 1 needs attention · 1 duplicate skipped');
- assert.equal(describeScanEntry({cards:5,posted:5},{total:5,saved:5,waiting:0,attention:0,pending:0}),'5 cards · 5 saved');
- assert.equal(describeScanEntry({cards:4,posted:0},{total:4,saved:0,waiting:0,attention:1,pending:3}),'4 cards · 1 needs attention · 3 reading');
+ assert.equal(describeScanEntry({cards:37,posted:24},{total:37,saved:24,waiting:11,brown:2,pending:0}),'37 cards · 24 saved · 11 waiting to save · 2 need attention');
+ assert.equal(describeScanEntry({cards:3,posted:1,duplicates:1},{total:3,saved:1,waiting:1,brown:1,pending:0}),'3 cards · 1 saved · 1 waiting to save · 1 needs attention · 1 duplicate skipped');
+ assert.equal(describeScanEntry({cards:5,posted:5},{total:5,saved:5,waiting:0,pending:0}),'5 cards · 5 saved');
+ assert.equal(describeScanEntry({cards:4,posted:0},{total:4,saved:0,waiting:0,brown:1,pending:3,reading:3}),'4 cards · 1 needs attention · 3 reading');
+});
+
+test('the open entry uses the tile words and splits reading from waiting to be read',()=>{
+ // The Jayant OB 5 Nov S2 B02 screen: tiles 15 all okay (10 saved, 5 waiting),
+ // Needs attention 1, Wrong HMR 1, MWS / TED mismatch 1; line under them 2 reading, 20 waiting.
+ const live={total:40,saved:10,waiting:5,orange:15,brown:1,'wrong-hmr':1,'mws-ted':1,red:0,error:0,pending:22,reading:2,attention:3};
+ assert.equal(describeScanEntry({cards:40,posted:10},live),'40 cards · 10 saved · 5 waiting to save · 1 needs attention · 1 wrong HMR · 1 MWS / TED mismatch · 2 reading · 20 waiting to be read');
+ assert.equal(describeScanEntry({cards:6},{total:6,saved:0,waiting:0,'wrong-door':2,'wrong-caliber':1,'wrong-kmr':1,red:1,error:1,pending:0}),'6 cards · 2 wrong door no. · 1 wrong Caliber ID · 1 wrong KMR · 1 blank / no data · 1 error');
+ assert.equal(describeScanEntry({cards:9},{total:9,saved:0,waiting:0,error:2,pending:7}),'9 cards · 2 errors · 7 waiting to be read');
+});
+
+test('the card summary counts cards being read the same way as the reading line',async()=>{
+ const {reviewGroupSummary}=await import('../shared/scan-card-groups.mjs');
+ const summary=reviewGroupSummary([{status:'reading'},{status:'queued'},{status:'queued'},{status:'posted',draft:{}}],'vehicle');
+ assert.equal(summary.pending,3);
+ assert.equal(summary.reading,1);
+ assert.equal(describeScanEntry({cards:4,posted:1},summary),'4 cards · 1 saved · 1 reading · 2 waiting to be read');
 });

@@ -40,8 +40,8 @@ export function reviewGroupSummary(cards,kind,options=null,context=null){
  for(const card of cards)counts[cardDisplayGroup(card,kind,options,context)]++;
  const ready=cards.length>0&&counts.orange===cards.length;
  const approved=ready&&cards.every(c=>c.status==='posted'||(c.status==='approved'&&c.checked_by));
- const saved=cards.filter(c=>c.status==='posted').length;
- return {...counts,total:cards.length,saved,waiting:counts.orange-saved,attention:cards.length-counts.orange-counts.pending,ready,canSaveAll:Boolean(approved&&cards.some(c=>c.status!=='posted'))};
+ const saved=cards.filter(c=>c.status==='posted').length,reading=cards.filter(c=>c.status==='reading').length;
+ return {...counts,total:cards.length,saved,reading,waiting:counts.orange-saved,attention:cards.length-counts.orange-counts.pending,ready,canSaveAll:Boolean(approved&&cards.some(c=>c.status!=='posted'))};
 }
 // A card the server refused to save automatically is not "All okay": the refusal
 // becomes a check error on that card, so the status tiles, the card list and the
