@@ -1,4 +1,4 @@
-import React,{useMemo,useState} from 'react';
+import React,{useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt,breakdownText} from '../shared/loading-machine-report.mjs';
@@ -103,8 +103,12 @@ const bdLength=m=>m>=120?Math.floor(m/60)+' h '+String(Math.round(m%60)).padStar
 function Strip({entry,label,single,onPick,onOpen,picked=false}){
  const t=shiftTimeline(entry);
  const [chosen,setChosen]=useState('');
- // Tags are about 7 px a letter on a strip of about 1,000 px: in minutes of the strip, 7/1000 of its length per letter.
- const tags=single?clockTags(t,{width:(t.hi-t.lo)*0.0072,lanes:3}):[];
+ // The tags are placed by the real width of the strip on this screen: about 7.4 px a letter and 16 px of padding and edge,
+ // so that on a narrow screen a tag near the end of the shift reads leftwards instead of running off the strip.
+ const track=useRef(null),[trackPx,setTrackPx]=useState(1000);
+ useLayoutEffect(()=>{const el=track.current;if(!el)return;const measure=()=>{if(el.clientWidth>0)setTrackPx(el.clientWidth);};measure();
+  if(typeof ResizeObserver==='undefined')return;const watch=new ResizeObserver(measure);watch.observe(el);return()=>watch.disconnect();},[]);
+ const perPx=(t.hi-t.lo)/trackPx,tags=single?clockTags(t,{width:7.4*perPx,pad:16*perPx,lanes:3}):[];
  const said=t.pieces.find(p=>p.id===chosen),saidBd=t.breakdowns.find(b=>b.id===chosen);
  const press=p=>{if(onOpen)return onOpen(entry);setChosen(p.id);onPick(p.band);};
  // Pressing a breakdown gives its time, Pulse reference and reason; it changes no list below.
@@ -115,7 +119,7 @@ function Strip({entry,label,single,onPick,onOpen,picked=false}){
   title={onOpen?'Open this shift full width with its clock times':undefined}>
   {label&&<div className="lm-tl-label" title={label}>{label}</div>}
   <div className="lm-tl-body">
-   <div className="lm-tl-track" role="img" aria-label={entry.loadings?`${entry.door}, ${day(entry.date)}, ${entry.shift}: ${entry.loadings} loadings from ${t.firstClock} to ${t.lastClock}; ${entry.ok} within ${IDLE_LIMIT} minutes, ${entry.b1+entry.b2+entry.b3} after ${IDLE_LIMIT} to 20 minutes, ${entry.b4} after more than 20 minutes${bdWords}`:`${entry.door}, ${day(entry.date)}, ${entry.shift}: no timed loading${bdWords}`}>
+   <div ref={track} className="lm-tl-track" role="img" aria-label={entry.loadings?`${entry.door}, ${day(entry.date)}, ${entry.shift}: ${entry.loadings} loadings from ${t.firstClock} to ${t.lastClock}; ${entry.ok} within ${IDLE_LIMIT} minutes, ${entry.b1+entry.b2+entry.b3} after ${IDLE_LIMIT} to 20 minutes, ${entry.b4} after more than 20 minutes${bdWords}`:`${entry.door}, ${day(entry.date)}, ${entry.shift}: no timed loading${bdWords}`}>
     {rest(t.lead,'No loading till '+t.lead?.clock)}
     {rest(t.tail,'No loading after '+t.tail?.clock)}
     {rest(t.empty,'No loading with a time')}

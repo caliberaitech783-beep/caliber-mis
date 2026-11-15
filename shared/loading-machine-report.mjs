@@ -333,9 +333,10 @@ export function shiftTimeline(entry){
 }
 // The clock tags printed under one strip, so that no two overlap: the breakdowns first (when each began and ended), then
 // the turns of the red stops, then the time each red stop ended, then the turns of the orange stops from the longest down.
-// `width` is a tag's width in minutes of the strip for each letter; a tag that finds no room in `lanes` rows is left to the
-// pop-up of its piece and to the list below.
-export function clockTags(t,{width=1,lanes=3}={}){
+// `width` is a tag's width in minutes of the strip for each letter and `pad` its padding and edge; a tag that finds no room
+// in `lanes` rows is left to the pop-up of its piece and to the list below. A tag that would run past the end of the strip
+// is drawn to the left of its time.
+export function clockTags(t,{width=1,lanes=3,pad=0}={}){
  const wanted=[];
  for(const b of t.breakdowns||[]){
   wanted.push({id:b.id+'|from',at:b.from,tone:'bd',text:b.fromClock+' BD',rank:0,minutes:b.minutes,breakdown:b.id});
@@ -349,7 +350,7 @@ export function clockTags(t,{width=1,lanes=3}={}){
  wanted.sort((a,b)=>a.rank-b.rank||b.minutes-a.minutes||a.at-b.at);
  const rows=Array.from({length:lanes},()=>[]),placed=[];
  for(const w of wanted){
-  const size=w.text.length*width,end=w.at+size>t.hi;
+  const size=w.text.length*width+pad,end=w.at+size>t.hi;
   const from=end?w.at-size:w.at,to=end?w.at:w.at+size;
   const lane=rows.findIndex(row=>row.every(r=>to+width<=r.from||from>=r.to+width));
   if(lane<0)continue;
