@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
+import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 
 const site='Sasti OC',date='2026-11-10';
 const shifts=[['A','05:00','13:00'],['B','13:00','21:00'],['C','21:00','05:00']].map(([shiftCode,startTime,endTime],i)=>({id:String(31+i),site,shiftCode,shiftName:'Shift '+shiftCode,startTime,endTime,status:'Active'}));
@@ -117,6 +118,28 @@ function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
  const h=apiHarness(),r=await h.run();assert.equal(r.status,200);assert.equal(r.result.totals.assets,1);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.released,true);assert.match(h.calls[0].sql,/REPEATABLE READ READ ONLY/);const query=h.calls.find(c=>c.sql.includes('SELECT l.id'));assert.deepEqual(query.args[2],[site]);assert.match(query.sql,/l.deleted_at IS NULL/);assert.match(query.sql,/b.deleted_at IS NULL/);assert.ok(query.sql.includes("l.book_type IN ('vehicle','equipment','lmv')"),'LMV books are read for the OT view');assert.equal(h.calls.at(-1).sql,'COMMIT');assert.ok(!JSON.stringify(r.result).includes('record_data'));
+});
+test('attendance API reads slim card fields and returns the register duties of the full report',async()=>{
+ const split=card(2,2,{operatorSplit:{secondOperatorId:22,secondOperatorCaliberId:'102'},trips:[{tripCount:3,loadingTime:'06:10',unloadingTime:'06:40'}]});
+ const cards=[card(1,1),split],h=apiHarness({sites:null},cards),r=await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance');
+ assert.equal(r.status,200);assert.equal(r.released,true);assert.equal(r.headers['Cache-Control'],'private, no-store');
+ const read=h.calls.find(c=>c.sql.includes('SELECT l.id'));
+ assert.ok(read.sql.includes('FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])'),'only the listed card fields are read');assert.doesNotMatch(read.sql,/mis_vlb_batch_entries/,'no batch list per card');
+ for(const field of ['trips','operatorSplit','fleetTrips','employeeId','closingHmr'])assert.ok(read.args[3].includes(field),field);
+ assert.equal(read.args[2],null,'an all-sites login reads every site');assert.equal(h.calls.at(-1).sql,'COMMIT');
+ const full=report(linkVlbTripHandovers(cards)),fields=Object.keys(r.result.otDuties[0]);
+ assert.deepEqual(r.result.otDuties,full.otDuties.map(d=>Object.fromEntries(fields.map(k=>[k,d[k]]))));
+ assert.equal(r.result.otDuties[1].trips,3,'trip count from the card rows');
+ assert.ok(!('details' in r.result)&&!('performance' in r.result)&&!('fleetWork' in r.result),'tables of other views are not sent');
+ assert.deepEqual(r.result.attendanceEquipment.map(p=>[p.employeeId,p.shift,p.actual]),[['102','S2',true]],'only the second operator, whom no duty line holds');
+ assert.ok(Array.isArray(r.result.attendanceShifts)&&Array.isArray(r.result.otSites)&&Array.isArray(r.result.notes));
+ assert.equal((await h.run({from:'bad',to:date},'/api/reports/manpower/attendance')).status,400);
+});
+test('attendance-only build skips the other tables and keeps the same duty lines',()=>{
+ const cards=[card(1,1),card(2,2)],all=report(cards),slim=report(cards,{parts:'attendance'});
+ assert.deepEqual(slim.otDuties,all.otDuties);assert.deepEqual(slim.attendanceEquipment,all.attendanceEquipment);assert.deepEqual(slim.attendanceShifts,all.attendanceShifts);assert.deepEqual(slim.otSites,all.otSites);
+ assert.deepEqual([slim.details,slim.summary,slim.performance,slim.shiftAttendance,slim.fleet,slim.fleetWork,slim.options.employees],[[],[],[],[],[],[],[]]);
+ assert.ok(all.details.length&&all.performance.length&&all.options.employees.length);
 });
 test('API rejects unassigned sites and malformed dates before reading records',async()=>{
  const h=apiHarness();assert.equal((await h.run({from:date,to:date,site:'Jayant OC'})).status,403);assert.equal((await h.run({from:'bad',to:date})).status,400);assert.equal(h.calls.length,0);

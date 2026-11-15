@@ -178,3 +178,11 @@ Owner's request of 10 Nov 2026: "how many machines were available at the site as
 - Steps: every site; one site, one line per date and shift; one date and shift by equipment category; the machines, one line per machine, date and shift, with status, trips, kilometres, hours, driver and cards. Totals over several shifts are machine-shifts.
 - Not included: breakdown and idle reasons (they need the live Pulse breakdown read of the Fleet reconciliation screen, one shift at a time) and LMVs. The owner did not answer the two questions on what counts as deployed and on LMVs; both columns (Card saved and Active production) are shown so either reading can be used.
 - Data: `GET /api/reports/manpower` adds `fleet` (`siteKey`, `key`, `door`, `equipment`, `makeModel`) and `fleetWork` (one line per site, date, shift and machine with `inFleet`, `trips`, `km`, `hours`, `active`, `zeroKm`, `employees`, `books`), both limited to the sites of the login. No new read.
+
+## Attendance tabs load on their own read (15 Nov 2026)
+
+Attendance Batch-wise and Month-wise first used the full `GET /api/reports/manpower`. For 1 to 15 November across all sites that was about 31,000 cards and an 86 MB answer, which took close to a minute, and building it froze the server for several seconds.
+
+- They now read `GET /api/reports/manpower/attendance?from=&to=` (same access chain, site scope and report lane). It reads only the card fields a duty needs plus the trip rows, the second operator and ELB trips (no full card data, no batch list per card, no trip-handover read across other cards), and builds only the duty lines, presence, batches and sites (`buildManpowerReport(..., parts: 'attendance')`).
+- The answer holds `otDuties` (the fields the register shows), `attendanceEquipment` limited to presence that no duty line holds (a zero-trip entry without a card, or a second operator), `attendanceShifts`, `otSites`, `attendanceSites`, `exceptions` and `notes`. Trip counts come from each card's own trip rows, as in the full report.
+- The full report also got faster: site names are worked out once per spelling, and the filter lists no longer search every row for each door, person and batch.

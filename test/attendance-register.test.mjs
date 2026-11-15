@@ -75,7 +75,8 @@ test('the two tabs are listed under Manpower & OT and routed to the manpower rep
  const route=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(route,/'attendance-batch','attendance-month'\]\.includes\(props\.reportId\)\)return <ManpowerReports/);
  const screen=fs.readFileSync(new URL('../src/manpower-reports.jsx',import.meta.url),'utf8');
- assert.match(screen,/register\?\{\.\.\.filters,site:'',shift:'',batch:'',asset:''\}/,'the register reads every shift and site');
+ assert.match(screen,/register\?\{from:filters\.from,to:filters\.to,view:'attendance'\}/,'the register reads every shift and site');
+ assert.match(screen,/register\?'\/api\/reports\/manpower\/attendance\?'/,'through its own lighter read');
  assert.match(screen,/register\?<AttendanceRegister /);
 });
 
