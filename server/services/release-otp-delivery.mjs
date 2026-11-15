@@ -53,27 +53,33 @@ export async function releaseApproverLogins(pool,alsoLogins=RELEASE_OTP_ALSO_LOG
 // Whom you are approving (owner's request, 15 Nov 2026): name, computer and IP as given by the person or
 // session that started the run, and the GitHub account, which GitHub vouches for. pr: merge + release.
 // brief: at most two short points on what the release fixes, shown first so the approver knows what goes live.
-// Telegram HTML (owner, 16 Nov 2026): headline bold + underlined, labels and approver names bold, run as a link.
+// Telegram HTML, professional layout (owner, 16 Nov 2026): headline in a quote box, then Approval details /
+// What it fixes / Requested by, and the decision last. Every value from outside is escaped.
 const html=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 export function releaseApprovalMessage({actor,runId,commit,subject,requester={},pr=null,brief=[]}){
  const points=(Array.isArray(brief)?brief:[]).filter(Boolean).slice(0,2);
  const run=`run ${html(runId||'unknown')}`;
+ const facts=[
+  ...(commit?[`Version <code>${html(String(commit).slice(0,7))}</code>${subject?' - '+html(String(subject).slice(0,200)):''}`]:[]),
+  ...(pr?.changes?[html(pr.changes)]:[]),
+ ];
  return [
-  `🚀 <b><u>${pr?'Pulse-II: MERGE + RELEASE to production':'Pulse-II urgent production release'}</u></b>`,
-  ...(pr?[`<b>Approval details: PR #${pr.prNumber}</b> - ${html(pr.prTitle||'')}`.trim()]:[]),
-  ...(points.length?['','<b>What it fixes:</b>',...points.map((point,i)=>`${i+1}. ${html(point)}`),'']:[]),
-  ...(pr?.changes?[`<b>Changes:</b> ${html(pr.changes)}`]:[]),
-  ...(commit?[`<b>Version:</b> ${String(commit).slice(0,7)}${subject?' - '+html(String(subject).slice(0,200)):''}`]:[]),
+  `<blockquote>🚀 <b>${pr?'PULSE-II · MERGE + RELEASE TO PRODUCTION':'PULSE-II · URGENT PRODUCTION RELEASE'}</b>\nApproval required · valid for ${RELEASE_APPROVAL_TTL_MINUTES} minutes</blockquote>`,
   '',
-  `<b>Requested by:</b> ${html(requester.requestedBy||'(name not given)')}`,
-  `<b>Computer:</b> ${html(requester.computer||'(not given)')}`,
-  `<b>IP address:</b> ${html(requester.ip||'(not given)')}`,
-  '<i>(name, computer and IP as given by the requester)</i>',
-  `<b>GitHub:</b> ${html(actor||'unknown')} (checked by GitHub), ${/^https:\/\//.test(requester.runUrl||'')?`<a href="${html(requester.runUrl)}">${run}</a>`:run}`,
+  '📋 <b>Approval details</b>',
+  ...(pr?[`PR #${pr.prNumber}${pr.prTitle?' — '+html(pr.prTitle):''}`]:[]),
+  ...(facts.length?[facts.join(' · ')]:[]),
+  ...(points.length?['','🛠 <b>What it fixes</b>',...points.map((point,i)=>`${i+1}. ${html(point)}`)]:[]),
   '',
-  '<b>Approve only if main should go live now.</b>',
-  ...(pr?[`Approve = merge PR #${pr.prNumber} into main and make it live now.`]:[]),
-  `<b>Mr Anoop</b> or <b>Mr Mohit Chadda</b>: the first tap decides. Valid for ${RELEASE_APPROVAL_TTL_MINUTES} minutes.`,
+  '👤 <b>Requested by</b>',
+  html(requester.requestedBy||'(name not given)'),
+  `<b>Computer:</b> <code>${html(requester.computer||'(not given)')}</code> · <b>IP:</b> <code>${html(requester.ip||'(not given)')}</code>`,
+  `<b>GitHub:</b> ${html(actor||'unknown')} ✓ · ${/^https:\/\//.test(requester.runUrl||'')?`<a href="${html(requester.runUrl)}">${run}</a>`:run}`,
+  '<i>Name, computer and IP as given by the requester; GitHub account checked by GitHub.</i>',
+  '━━━━━━━━━━━━━━━━',
+  '⚠️ <b>Approve only if main should go live now.</b>',
+  ...(pr?[`Approve = merge PR #${pr.prNumber} into main and make it live.`]:[]),
+  '<b>Mr Anoop</b> or <b>Mr Mohit Chadda</b> — the first tap decides.',
  ].join('\n').replace(/\n{3,}/g,'\n\n');
 }
 

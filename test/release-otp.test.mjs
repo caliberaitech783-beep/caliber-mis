@@ -198,8 +198,8 @@ test('approval buttons go only to approvers who linked Telegram, and nobody link
   assert.deepEqual(sent.map(s=>s.chat),['11','22']);
   assert.deepEqual(sent[0].buttons[0].map(b=>b.callback_data),['rel:0123456789abcdef:a','rel:0123456789abcdef:r']);
   assert.deepEqual(sent[0].options,{parse_mode:'HTML'});
-  assert.match(sent[0].text,/<b>Version:<\/b> abcdef1 - Fix\n/);
-  assert.match(sent[0].text,/<b>GitHub:<\/b> dev1 \(checked by GitHub\), run 77/);
+  assert.match(sent[0].text,/Version <code>abcdef1<\/code> - Fix\n/);
+  assert.match(sent[0].text,/<b>GitHub:<\/b> dev1 ✓ · run 77/);
   links=[];
   assert.deepEqual(await deliver({id:'0123456789abcdef',actor:'dev1',runId:'78'}),{sent:0});
 });
@@ -256,13 +256,13 @@ test('the Telegram message names the pull request and whom you are approving',as
   const raw=releaseApprovalMessage({actor:'caliberaitech783-beep',runId:'500',commit:'b'.repeat(40),subject:'',
     requester:{requestedBy:'Claude Code session for Mohit',computer:'MOHIT-PC',ip:'49.36.1.2',runUrl:'https://github.com/x/runs/500'},pr:{prNumber:300,prTitle:'Join <sheet> 2 & 3',changes:'11 files'}});
   const text=plain(raw);
-  for(const part of ['MERGE + RELEASE','Approval details: PR #300 - Join <sheet> 2 & 3','Changes: 11 files','Requested by: Claude Code session for Mohit','Computer: MOHIT-PC','IP address: 49.36.1.2','as given by the requester','GitHub: caliberaitech783-beep (checked by GitHub), run 500','Approve only if main should go live now.','Approve = merge PR #300 into main and make it live now.','Mr Anoop or Mr Mohit Chadda: the first tap decides.'])assert.ok(text.includes(part),part);
-  for(const part of ['<b><u>Pulse-II: MERGE + RELEASE to production</u></b>','Join &lt;sheet&gt; 2 &amp; 3','<a href="https://github.com/x/runs/500">run 500</a>','<b>Approve only if main should go live now.</b>','<b>Mr Anoop</b> or <b>Mr Mohit Chadda</b>'])assert.ok(raw.includes(part),part);
+  for(const part of ['MERGE + RELEASE TO PRODUCTION','Approval required · valid for 20 minutes','Approval details\nPR #300 — Join <sheet> 2 & 3\nVersion bbbbbbb · 11 files','Requested by\nClaude Code session for Mohit','Computer: MOHIT-PC · IP: 49.36.1.2','as given by the requester','GitHub: caliberaitech783-beep ✓ · run 500','Approve only if main should go live now.','Approve = merge PR #300 into main and make it live.','Mr Anoop or Mr Mohit Chadda — the first tap decides.'])assert.ok(text.includes(part),part);
+  for(const part of ['<blockquote>🚀 <b>PULSE-II · MERGE + RELEASE TO PRODUCTION</b>','Join &lt;sheet&gt; 2 &amp; 3','<code>MOHIT-PC</code>','<a href="https://github.com/x/runs/500">run 500</a>','⚠️ <b>Approve only if main should go live now.</b>','<b>Mr Anoop</b> or <b>Mr Mohit Chadda</b>'])assert.ok(raw.includes(part),part);
   const urgent=plain(releaseApprovalMessage({actor:'dev1',runId:'77',commit:'abcdef1234'}));
-  assert.ok(urgent.includes('Pulse-II urgent production release')&&urgent.includes('Requested by: (name not given)')&&urgent.includes('IP address: (not given)'));
-  assert.ok(!urgent.includes('What it fixes')&&urgent.includes('Valid for 20 minutes.'),urgent);
+  assert.ok(urgent.includes('URGENT PRODUCTION RELEASE')&&urgent.includes('Requested by\n(name not given)')&&urgent.includes('IP: (not given)'),urgent);
+  assert.ok(!urgent.includes('What it fixes')&&!urgent.includes('Approve = merge')&&urgent.includes('valid for 20 minutes'),urgent);
   const briefed=plain(releaseApprovalMessage({actor:'dev1',runId:'77',pr:{prNumber:320,prTitle:'Approval 20 minutes',changes:'9 files'},brief:['Approval lapses after 20 minutes','Message says what it fixes']}));
-  assert.match(briefed,/PR #320 - Approval 20 minutes\n\nWhat it fixes:\n1\. Approval lapses after 20 minutes\n2\. Message says what it fixes\n\nChanges: 9 files/);
+  assert.match(briefed,/PR #320 — Approval 20 minutes\n9 files\n\n🛠 What it fixes\n1\. Approval lapses after 20 minutes\n2\. Message says what it fixes\n\n👤 Requested by/);
 });
 
 test('the brief keeps at most two points, one per line or split by |, without list marks',async()=>{
