@@ -165,28 +165,54 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
  const claim=async(subject,stage)=>(await pool.query('INSERT INTO mis_scan_batch_reports(subject,stage) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING subject',[subject,stage])).rows.length>0;
  const deliver=async(key,message,photo)=>{let sent=0;for(const login of await recipients()){try{if(await telegram.send(login,message,`scan-batch-report:${key}:${login}`,{html:true,photo}))sent++;}catch(error){log.error?.('Scan batch report not sent:',error?.message||error);}}return sent;};
 
+ const BATCH_COLUMNS='v.id,v.name,v.site,v.book_date::text AS book_date,v.shift,v.closed_at,COALESCE(v.creator_login,v.created_by) AS creator';
+ // The scan entries (sub batches) of a VLB batch's site, date and shift, with their cards.
+ async function subBatches(batch){
+  const candidates=(await pool.query(`SELECT b.id,b.name,b.kind,b.expected_context,b.created_at FROM mis_scan_batches b
+   WHERE b.expected_context->>'bookDate'=$1 AND ${LIVE_ENTRY} ORDER BY b.created_at`,[batch.book_date])).rows;
+  const site=canonicalSiteName(batch.site);
+  const entries=candidates.filter(b=>canonicalSiteName(b.expected_context?.location)===site&&vlbRecordShift(b.expected_context||{})===batch.shift);
+  if(!entries.length)return [];
+  const cards=await cardsOf(entries.map(e=>e.id));
+  return entries.map(e=>({name:e.name,kind:e.kind,context:e.expected_context||{},facts:cards.filter(c=>c.batch_id===e.id).map(cardFacts)})).filter(e=>e.facts.length);
+ }
+ const deliverBatch=(key,batch,withFacts)=>deliver(key,batchClosedMessage(batch,withFacts),
+  {site:displaySiteName(batch.site)||'',kind:[...new Set(withFacts.map(kindLabel))].join('+'),batch:batch.name||''});
+
  async function reportClosedBatches(){
-  const {rows}=await pool.query(`SELECT v.id,v.name,v.site,v.book_date::text AS book_date,v.shift,v.closed_at,COALESCE(v.creator_login,v.created_by) AS creator FROM mis_vlb_batches v,mis_scan_batch_report_start s
+  const {rows}=await pool.query(`SELECT ${BATCH_COLUMNS} FROM mis_vlb_batches v,mis_scan_batch_report_start s
    WHERE v.closed_at IS NOT NULL AND v.closed_at>=s.started_at AND v.closed_at>NOW()-make_interval(days=>${LOOKBACK_DAYS})
    AND v.deleted_at IS NULL AND v.archived_at IS NULL
    AND NOT EXISTS(SELECT 1 FROM mis_scan_batch_reports r WHERE r.subject=v.id::text AND r.stage='closed')
    ORDER BY v.closed_at LIMIT 20`);
   let sent=0;
   for(const batch of rows){
-   const candidates=(await pool.query(`SELECT b.id,b.name,b.kind,b.expected_context,b.created_at FROM mis_scan_batches b
-    WHERE b.expected_context->>'bookDate'=$1 AND ${LIVE_ENTRY} ORDER BY b.created_at`,[batch.book_date])).rows;
-   const site=canonicalSiteName(batch.site);
-   const entries=candidates.filter(b=>canonicalSiteName(b.expected_context?.location)===site&&vlbRecordShift(b.expected_context||{})===batch.shift);
+   const withFacts=await subBatches(batch);
    if(!await claim(batch.id,'closed'))continue;
-   if(!entries.length)continue;
-   const cards=await cardsOf(entries.map(e=>e.id));
-   const withFacts=entries.map(e=>({name:e.name,kind:e.kind,context:e.expected_context||{},facts:cards.filter(c=>c.batch_id===e.id).map(cardFacts)})).filter(e=>e.facts.length);
-   if(withFacts.length)sent+=await deliver(`closed:${batch.id}`,batchClosedMessage(batch,withFacts),{site:displaySiteName(batch.site)||'',kind:[...new Set(withFacts.map(kindLabel))].join('+'),batch:batch.name||''});
+   if(withFacts.length)sent+=await deliverBatch(`closed:${batch.id}`,batch,withFacts);
   }
   return sent;
  }
 
+ // "Send sample to Telegram" on the Automation Centre (owner, 16 Nov 2026): the report of the most
+ // recently closed batch that has scanned cards, to the same people as the real report. It is not
+ // recorded as reported, so it never stops or repeats the real message of a batch.
+ async function sendSample(){
+  await ensure();
+  const {rows}=await pool.query(`SELECT ${BATCH_COLUMNS} FROM mis_vlb_batches v
+   WHERE v.closed_at IS NOT NULL AND v.deleted_at IS NULL AND v.archived_at IS NULL ORDER BY v.closed_at DESC LIMIT 15`);
+  for(const batch of rows){
+   const withFacts=await subBatches(batch);
+   if(!withFacts.length)continue;
+   const people=(await recipients()).length;
+   const sent=await deliverBatch(`sample:${batch.id}:${now()}`,batch,withFacts);
+   return {batch:batch.name,people,sent};
+  }
+  return {batch:null,people:0,sent:0};
+ }
+
  return {
+  sendSample,
   async tick(){
    if(running)return {skipped:true};running=true;
    try{await ensure();return {closed:await reportClosedBatches()};}
