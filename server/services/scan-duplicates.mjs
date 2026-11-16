@@ -140,7 +140,7 @@ export async function findContentDuplicate(client,kind,card,batch,{bookDate,door
  const siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.raw_fields,c.draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.id<>$2 AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND c.draft->>'bookDate'=$3 AND regexp_replace(upper(COALESCE(NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo','')),'[^A-Z0-9]','','g')=$4 AND (c.created_at<$5 OR (c.created_at=$5 AND c.id<$2)) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),card.id,bookDate,number,card.created_at])).rows;
  const sibling=siblings.map(row=>decodeScanRow(row)).find(row=>scanDoorKey(row,kind)===doorKey);
  if(sibling)return {kind:'card',...originalSummary(sibling)};
- const savedRows=(await client.query("SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND regexp_replace(upper(COALESCE(l.data->>'scanCardNumber',NULLIF(l.data->>'aFormNo',''),l.data->>'jobCardNo','')),'[^A-Z0-9]','','g')=$3 AND COALESCE(l.data->>'scanCardId','')<>$4",[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
+ const savedRows=(await client.query(`SELECT l.id,l.book_no,l.data,l.data->>'scanCardId' AS scan_card_id,l.data->>'scanBatchId' AS scan_batch_id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=$2 AND l.deleted_at IS NULL AND ${await savedNumberSql(client)}=$3 AND COALESCE(l.data->>'scanCardId','')<>$4`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,bookDate,number,card.id])).rows;
  const savedKeys=savedDoorKeys(door||scanDoorValue(card),kind,doorKey);
  const matching=savedRows.filter(row=>savedKeys.has(cardMachineKey(row.data?.door||row.data?.doorText,kind)));
  const shiftOf=current||{...card.draft,cardShift:batch.expected_context?.cardShift||card.draft?.cardShift};
@@ -162,52 +162,121 @@ export async function findEarlierImageDuplicate(client,card){
 // (a date or card number outside this entry's cards) is answered by those directly.
 const NUMBER_KEY_SQL=source=>`regexp_replace(upper(COALESCE(${source},'')),'[^A-Z0-9]','','g')`;
 const UUID_SQL="'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'";
-// The normalised card number of a saved log book. ensureSavedCardNumberIndex indexes exactly this
-// expression, so the saved-record question below reads only the matching log books of the date
-// instead of opening the whole data of every log book saved that day.
+// The normalised card number of a saved log book, as the duplicate check compares it.
 const SAVED_NUMBER_SQL=(prefix='')=>NUMBER_KEY_SQL(`${prefix}data->>'scanCardNumber',NULLIF(${prefix}data->>'aFormNo',''),${prefix}data->>'jobCardNo'`);
-export const SAVED_CARD_NUMBER_INDEX='mis_log_books_saved_card_number';
+// mis_log_books has FORCE ROW LEVEL SECURITY in production (MIS_RLS_ENABLED). Postgres then searches
+// an index with a condition only when every function in it is leakproof: = on text and on date are,
+// but upper, regexp_replace, jsonb ->> and date + integer are not. So no index on the expression
+// above could narrow the saved-record question by card number (#316, #344 and #349 on 15 Nov 2026),
+// and #349's book_date+0 also stopped the narrowing by date: every card read every log book
+// (duplicate-saved about 3 s, up to 6 s, from 00:40 IST on 16 Nov 2026).
+// The number is therefore kept in its own column, card_number_key, filled by a trigger on every
+// insert and update, and the question compares the plain column (card_number_key = ...), which the
+// index (book_type, book_date, card_number_key) serves with the row policy in place.
+export const CARD_NUMBER_KEY_COLUMN='card_number_key';
+export const SAVED_CARD_NUMBER_INDEX='mis_log_books_card_number_key';
+// The expression indexes of the earlier attempts. They never narrowed by number and only slow saves.
+export const RETIRED_CARD_NUMBER_INDEXES=['mis_log_books_saved_card_number','mis_log_books_card_number_first','mis_log_books_card_number_day'];
+const CARD_NUMBER_KEY_TRIGGER='mis_log_books_card_number_key_fill';
+const CARD_NUMBER_KEY_FUNCTION=`CREATE OR REPLACE FUNCTION ${CARD_NUMBER_KEY_TRIGGER}() RETURNS trigger LANGUAGE plpgsql AS $card_key$
+BEGIN NEW.${CARD_NUMBER_KEY_COLUMN}:=${SAVED_NUMBER_SQL('NEW.')}; RETURN NEW; END $card_key$`;
 // CONCURRENTLY keeps log book saves running while the index is built; a build that stopped half
 // way leaves an invalid index, which is dropped and built again.
-// While one build runs its index is also "invalid", and on 15 Nov 2026 duplicate-saved stayed at
-// 0.6-3.3 s after release, as if the index was not there. Both Pulse-II slots and every instance
-// start this, so only the one that holds SAVED_CARD_NUMBER_LOCK may drop or build, and an index
-// another server is still building is never dropped. /api/health shows the outcome.
+// Both Pulse-II slots and every instance start this, so only the one that holds
+// SAVED_CARD_NUMBER_LOCK may change the table, fill it, drop or build, and an index another server
+// is still building is never dropped. /api/health shows the outcome.
 const SAVED_CARD_NUMBER_LOCK=709224190;
 const savedIndexState={state:'not-started'};
 export const savedCardNumberIndexState=()=>({...savedIndexState});
-const SAVED_INDEX_PROBE=`SELECT l.id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${SAVED_NUMBER_SQL('l.')}=ANY($3::text[])`;
-export async function ensureSavedCardNumberIndex(pool,{log=console,now=()=>Date.now()}={}){
+const INDEX_STATE_SQL='SELECT i.indisvalid AS valid FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid WHERE c.relname=$1';
+const SAVED_INDEX_PROBE=`SELECT l.id FROM mis_log_books l WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND l.${CARD_NUMBER_KEY_COLUMN}=ANY($3::text[])`;
+// The index is built only after every log book was filled (the trigger fills every later save), so
+// a valid index means the column is complete and the questions may compare it. Each server, app or
+// scan engine, looks this up for itself: once it is ready, or at most once a minute until then.
+const keyIndex={ready:false,checkedAt:0};
+const KEY_RECHECK_MS=60000;
+async function savedKeyReady(client){
+ if(keyIndex.ready)return true;
+ const at=Date.now();
+ if(at-keyIndex.checkedAt<KEY_RECHECK_MS)return false;
+ keyIndex.checkedAt=at;
+ try{keyIndex.ready=(await client.query(INDEX_STATE_SQL,[SAVED_CARD_NUMBER_INDEX])).rows?.[0]?.valid===true;}catch{keyIndex.ready=false;}
+ return keyIndex.ready;
+}
+const savedNumberSql=async client=>await savedKeyReady(client)?`l.${CARD_NUMBER_KEY_COLUMN}`:SAVED_NUMBER_SQL('l.');
+const changedRows=result=>Number(result?.rowCount??result?.affectedRows??0);
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+export async function ensureSavedCardNumberIndex(pool,{log=console,now=()=>Date.now(),fillRows=1000,fillPauseMs=100}={}){
  const client=typeof pool.connect==='function'?await pool.connect():pool;
  let locked=false;
+ const mark=(state,extra={})=>Object.assign(savedIndexState,{state,...extra,checkedAt:new Date(now()).toISOString()});
  try{
-  const state=async()=>(await client.query('SELECT i.indisvalid AS valid FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid WHERE c.relname=$1',[SAVED_CARD_NUMBER_INDEX])).rows[0];
-  let existing=await state();
-  if(!existing?.valid){
+  const state=async()=>(await client.query(INDEX_STATE_SQL,[SAVED_CARD_NUMBER_INDEX])).rows[0];
+  const retired=async()=>(await client.query('SELECT relname FROM pg_class WHERE relname=ANY($1::text[])',[RETIRED_CARD_NUMBER_INDEXES])).rows.map(row=>row.relname);
+  let existing=await state(),oldIndexes=await retired();
+  if(!existing?.valid||oldIndexes.length){
    locked=(await client.query('SELECT pg_try_advisory_lock($1) AS locked',[SAVED_CARD_NUMBER_LOCK])).rows[0].locked;
-   if(!locked){Object.assign(savedIndexState,{state:'building-elsewhere',checkedAt:new Date(now()).toISOString()});return 'busy';}
-   existing=await state();
+   if(locked){existing=await state();oldIndexes=await retired();}
+   else if(!existing?.valid){mark('building-elsewhere');return 'busy';}
   }
   let built=false;
   if(!existing?.valid){
    let buildingElsewhere=false;
    try{buildingElsewhere=Boolean((await client.query('SELECT 1 FROM pg_stat_progress_create_index p JOIN pg_class c ON c.oid=p.index_relid WHERE c.relname=$1',[SAVED_CARD_NUMBER_INDEX])).rows.length);}catch{buildingElsewhere=false;}
-   if(buildingElsewhere){Object.assign(savedIndexState,{state:'building-elsewhere',checkedAt:new Date(now()).toISOString()});return 'busy';}
-   Object.assign(savedIndexState,{state:'building',startedAt:new Date(now()).toISOString()});
+   if(buildingElsewhere){mark('building-elsewhere');return 'busy';}
    const started=now();
+   mark('preparing',{startedAt:new Date(started).toISOString()});
+   // The column and the trigger each take a short lock on the whole table. They wait at most 5 s for
+   // it, so log book saves never queue behind a long read; the server tries again 10 minutes later.
+   const hasColumn=(await client.query("SELECT 1 FROM pg_attribute WHERE attrelid='mis_log_books'::regclass AND attname=$1 AND NOT attisdropped",[CARD_NUMBER_KEY_COLUMN])).rows.length>0;
+   const hasTrigger=(await client.query("SELECT 1 FROM pg_trigger WHERE tgrelid='mis_log_books'::regclass AND tgname=$1",[CARD_NUMBER_KEY_TRIGGER])).rows.length>0;
+   await client.query(CARD_NUMBER_KEY_FUNCTION);
+   if(!hasColumn||!hasTrigger){
+    try{
+     await client.query('BEGIN');
+     await client.query("SET LOCAL lock_timeout='5s'");
+     if(!hasColumn)await client.query(`ALTER TABLE mis_log_books ADD COLUMN IF NOT EXISTS ${CARD_NUMBER_KEY_COLUMN} TEXT`);
+     if(!hasTrigger)await client.query(`CREATE TRIGGER ${CARD_NUMBER_KEY_TRIGGER} BEFORE INSERT OR UPDATE ON mis_log_books FOR EACH ROW EXECUTE FUNCTION ${CARD_NUMBER_KEY_TRIGGER}()`);
+     await client.query('COMMIT');
+    }catch(error){
+     await client.query('ROLLBACK').catch(()=>{});
+     if(error?.code==='55P03'){mark('waiting-for-table-lock');return 'busy';}
+     throw error;
+    }
+   }
+   // Fill the log books saved before the trigger, a thousand ids at a time with a pause between, so
+   // saves and reads keep going. A row already holding its number is not written again, so a fill
+   // that stopped half way (a restart) simply runs again. Every id above lastId was saved after the
+   // trigger existed (creating it waits for the saves in progress) and was filled by it.
+   const lastId=Number((await client.query('SELECT COALESCE(max(id),0)::bigint AS last FROM mis_log_books')).rows[0].last);
+   let filled=0;
+   mark('filling',{filled,filledUpTo:0,lastId});
+   for(let from=0;from<lastId;from+=fillRows){
+    filled+=changedRows(await client.query(`UPDATE mis_log_books SET ${CARD_NUMBER_KEY_COLUMN}=${SAVED_NUMBER_SQL()} WHERE id>$1 AND id<=$2 AND ${CARD_NUMBER_KEY_COLUMN} IS DISTINCT FROM ${SAVED_NUMBER_SQL()}`,[from,from+fillRows]));
+    Object.assign(savedIndexState,{filled,filledUpTo:Math.min(from+fillRows,lastId)});
+    if(fillPauseMs)await pause(fillPauseMs);
+   }
+   mark('building',{filled,filledUpTo:lastId,lastId});
    if(existing)await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${SAVED_CARD_NUMBER_INDEX}`);
-   await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,(${SAVED_NUMBER_SQL()})) WHERE deleted_at IS NULL`);
+   await client.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${SAVED_CARD_NUMBER_INDEX} ON mis_log_books (book_type,book_date,${CARD_NUMBER_KEY_COLUMN}) WHERE deleted_at IS NULL`);
    await client.query('ANALYZE mis_log_books');
    savedIndexState.buildMs=now()-started;
-   log.log?.(`Saved card number index built in ${savedIndexState.buildMs} ms.`);
+   log.log?.(`Saved card number index built in ${savedIndexState.buildMs} ms (${filled} log books filled).`);
    built=true;
   }
-  // Whether the planner reads the saved-record question through the index (no rows are read).
+  if(locked&&oldIndexes.length){
+   for(const name of oldIndexes)await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${name}`);
+   savedIndexState.retiredDropped=oldIndexes;
+  }
+  keyIndex.ready=true;
+  // Whether the planner searches the index by type, date and card number together (no rows are
+  // read). The table's row policy applies to this question as to every other one.
   const plan=(await client.query('EXPLAIN '+SAVED_INDEX_PROBE,['vehicle',[new Date(now()).toISOString().slice(0,10)],['0']])).rows.map(row=>Object.values(row)[0]).join('\n');
-  Object.assign(savedIndexState,{state:'valid',usedByPlanner:plan.includes(SAVED_CARD_NUMBER_INDEX),checkedAt:new Date(now()).toISOString()});
+  delete savedIndexState.error;
+  mark('valid',{usedByPlanner:/Index Cond:.*card_number_key/.test(plan)});
   return built;
  }catch(error){
-  Object.assign(savedIndexState,{state:'failed',error:String(error?.message||error).slice(0,200),checkedAt:new Date(now()).toISOString()});
+  mark('failed',{error:String(error?.message||error).slice(0,200)});
   throw error;
  }finally{
   if(locked)await client.query('SELECT pg_advisory_unlock($1)',[SAVED_CARD_NUMBER_LOCK]).catch(()=>{});
@@ -226,7 +295,7 @@ export async function preloadDuplicateChecks(client,batch,cards,{lap=()=>{}}={})
   const number=NUMBER_KEY_SQL("NULLIF(c.draft->>'aFormNo',''),c.draft->>'jobCardNo'");
   siblings=(await client.query(`SELECT c.id,c.batch_id,b.name AS batch_name,c.ordinal,c.created_at,c.draft->>'bookDate' AS book_date,${number} AS number,CASE WHEN c.raw_fields ? '__caliberUtf8JsonV1' THEN c.raw_fields ELSE jsonb_build_object('door',c.raw_fields->'door') END AS raw_fields,CASE WHEN c.draft ? '__caliberUtf8JsonV1' THEN c.draft ELSE jsonb_build_object('doorTextWritten',c.draft->'doorTextWritten','doorText',c.draft->'doorText','door',c.draft->'door') END AS draft,l.book_no FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.deleted_at IS NULL WHERE c.batch_id=ANY($1::uuid[]) AND c.duplicate_of IS NULL AND c.status NOT IN('rejected','posted') AND ${number}=ANY($2::text[]) ORDER BY c.created_at,c.id`,[batches.map(b=>b.id),numbers])).rows.map(row=>decodeScanRow(row));lap('duplicate-cards');
   if(dates.length){
-   const savedNumber=SAVED_NUMBER_SQL('l.');
+   const savedNumber=await savedNumberSql(client);
    savedRows=(await client.query(`SELECT l.id,l.book_no,to_char(l.book_date,'YYYY-MM-DD') AS book_date,${savedNumber} AS number,jsonb_build_object('door',l.data->'door','doorText',l.data->'doorText',${CONTINUATION_FIELDS.map(field=>`'${field}',l.data->'${field}'`).join(',')}) AS data,l.data->>'scanCardId' AS scan_card_id,oc.id AS origin_id,oc.batch_id AS origin_batch_id,ob.name AS origin_batch_name,oc.ordinal AS origin_ordinal FROM mis_log_books l LEFT JOIN mis_scan_cards oc ON oc.id=CASE WHEN l.data->>'scanCardId' ~ ${UUID_SQL} THEN (l.data->>'scanCardId')::uuid END LEFT JOIN mis_scan_batches ob ON ob.id=oc.batch_id WHERE l.book_type=$1 AND l.book_date=ANY($2::date[]) AND l.deleted_at IS NULL AND ${savedNumber}=ANY($3::text[]) ORDER BY l.id`,[batch.expected_context?.logBookKind==='lmv'?'lmv':kind,dates,numbers])).rows;lap('duplicate-saved');
   }
  }
