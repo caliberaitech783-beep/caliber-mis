@@ -8,7 +8,8 @@
 //  P1+3, P1+2 …   two or more duties that day; the colour is the OT & Multiple Duties colour of those duties
 //  TR             no duty here, but a duty at another site that day
 //  A              no duty anywhere, and every shift of the site that day is locked (batch closed)
-//  ?              no duty yet, and a batch of that day is still open, not created, or the shift has not ended
+//  ?              the site's day is not locked yet: a batch of that day is still open (or reopened), not created, or the
+//                 shift has not ended. Nothing saved that day is counted until every shift of it is locked.
 //  (blank)        a date after today
 // The register has no weekly-off, holiday or leave list yet, so such a day shows as A once the day is locked.
 
@@ -52,13 +53,16 @@ export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[
  };
  const linesBy=new Map();for(const l of lines){const k=l.employeeKey+'|'+l.date;(linesBy.get(k)||linesBy.set(k,[]).get(k)).push(l);}
  // One person's day at one site.
+ // Locked days only (owner, 16 Nov 2026): until every shift of the site's day is locked the day is "?", whatever was saved.
  const dayOf=(person,siteKey,date)=>{
+  const state=dayState(siteKey,date);
+  if(state==='future')return {date,code:'',kind:'future',flag:'',lines:[]};
+  if(state!=='locked')return {date,code:'?',kind:'pending',flag:'',lines:[]};
   const all=linesBy.get(person.employeeKey+'|'+date)||[],here=all.filter(l=>l.siteKey===siteKey).sort((a,b)=>byText(a.shift,b.shift));
   if(here.length)return {date,code:'P'+here.map(l=>shiftDigit(l.shift)).join('+'),kind:'present',flag:strongest(here.map(l=>l.flag)),lines:here,shifts:here.map(l=>l.shift)};
   const away=all.filter(l=>l.siteKey!==siteKey);
   if(away.length)return {date,code:'TR',kind:'away',flag:'',lines:away,where:[...new Set(away.map(l=>l.site))].join(', ')};
-  const state=dayState(siteKey,date);
-  return state==='future'?{date,code:'',kind:'future',flag:'',lines:[]}:state==='locked'?{date,code:'A',kind:'absent',flag:'',lines:[]}:{date,code:'?',kind:'pending',flag:'',lines:[]};
+  return {date,code:'A',kind:'absent',flag:'',lines:[]};
  };
  const shiftCodes=[...new Set(['S1','S2','S3',...lines.map(l=>l.shift)])].sort(byText);
  const register=siteKey=>{

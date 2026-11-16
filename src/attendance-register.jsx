@@ -17,7 +17,7 @@ const blank=v=>v===null||v===undefined||v==='';
 const shown=v=>blank(v)?'—':v;
 // The OT & Multiple Duties colours, then blue for present with 0 trips.
 const COLOURS=[['red','Red','Back-to-back shifts, or all three shifts'],['orange','Orange','Shift 1 and Shift 3 with a gap'],['review','Brown','Shift pattern needs review'],['zero','Blue','Present with 0 trips']];
-export const CODE_LEGEND=[['P1 / P2 / P3','Present in Shift 1 / 2 / 3 (saved card)','present'],['P1+3','Two duties in one day; colour as in OT & Multiple Duties','double'],['A','Absent: no card anywhere, every batch of the day locked','absent'],['?','Pending: a batch of the day is open, not created or the shift has not ended','pending'],['TR','Worked at another site that day','away']];
+export const CODE_LEGEND=[['P1 / P2 / P3','Present in Shift 1 / 2 / 3 (saved card)','present'],['P1+3','Two duties in one day; colour as in OT & Multiple Duties','double'],['A','Absent: no card anywhere, every batch of the day locked','absent'],['?','Not locked: a batch of the day is open, reopened, not created or the shift has not ended. Nothing of that day is counted until every shift is locked','pending'],['TR','Worked at another site that day','away']];
 const cols=list=>list.map(([key,label,value])=>({key,label,value:value||(r=>shown(r[key]))}));
 
 function Legend(){
@@ -88,7 +88,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
    </span>;};
   const flat=dateShiftExport(grid,{shiftLabel:shiftName,cellText:list=>list[0]?list[0].present+' present · '+STATUS[list[0].status]:'',dayColumns});
   const step2=<ReportSection key={'ar-dates-'+query+'-'+open} title={'Step 2 · '+site.site+' · date by shift · '+dateLabel} category="attendance-dates"
-   description="In each box: the people present in that batch, the colours among them, and the batch state. Press a box to see that batch by equipment category."
+   description="In each box: the people present in that batch, the colours among them, and the batch state. Only locked days are counted: until every shift of a day is locked, its boxes show 0. Press a box to see that batch by equipment category."
    rows={flat.rows} columns={flat.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <DateShiftGrid grid={grid} renderCell={cell} dayColumns={dayColumns} shiftLabel={shiftName} isPicked={r=>r.date===pick.date&&r.shift===pick.shift} ariaLabel="People present by date and shift" emptyMessage="No shift in these dates."/>
   </ReportSection>;
@@ -104,7 +104,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const step3=<ReportSection key={'ar-categories-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+batchWhere+' · by equipment category'} category="attendance-categories"
    description={many(present.length,'person')+' present · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · One line per equipment category (the machine’s group in the Equipment master); a person on machines of two categories is in both. Press a category for its people.'}
    rows={present.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
-   isTotalRow={r=>r.id==='*'} onRowClick={r=>setEquipment(equipment===r.id?'':r.id)} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage="Nobody has a saved duty in this batch."/>;
+   isTotalRow={r=>r.id==='*'} onRowClick={r=>setEquipment(equipment===r.id?'':r.id)} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage={model.dayState(open,pick.date)==='locked'?'Nobody has a saved duty in this batch.':'This day is not locked yet. Its people are counted once every shift of the day is locked.'}/>;
   const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)):[];
   const missing=model.dayPeople(open,pick.date).filter(x=>x.cell.kind!=='present').map(({person,cell})=>{const last=person.lines.filter(l=>l.date<pick.date).map(l=>l.date).sort().at(-1);
    return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});

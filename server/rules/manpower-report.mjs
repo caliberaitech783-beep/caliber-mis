@@ -53,6 +53,23 @@ const meter=(data,kind)=>{const a=number(data['opening'+kind]),b=number(data['cl
 export const LOG_BOOKS=[['vehicle','VLB'],['equipment','ELB'],['lmv','LMV']];
 const logBookCode=kind=>LOG_BOOKS.find(([id])=>id===kind)?.[1]||'ELB';
 const flagTally=events=>Object.fromEntries(['red','orange','review'].map(severity=>[severity,events.filter(e=>e.severity===severity).length]));
+const activeShiftRow=s=>!s.sourceMissing&&text(s.status).toLowerCase()!=='inactive';
+// The shifts a site runs on a date by the Shift Master; Shift 1 to 3 when the master holds none for it.
+const masterShiftCodes=(shifts,siteKey,date)=>{const codes=unique(shifts.filter(s=>activeShiftRow(s)&&canonicalSiteName(s.site||s.siteName)===siteKey&&(!s.effectiveFrom||s.effectiveFrom<=date)&&(!s.effectiveTo||date<=s.effectiveTo)).map(s=>bookShiftCode(s.shiftCode)||bookShiftCode(s.shiftName||s.name||s.shift)));return codes.length?codes:['S1','S2','S3'];};
+// Locked days only (owner, 16 Nov 2026): a site's day counts only when every shift it runs that day has a batch and every
+// batch it holds that day is fully closed (VLB, LMV and ELB locked). One open, reopened or missing shift keeps the whole
+// site-day out, so no figure is ever shown from a day that can still change. Returns "siteKey|date" keys.
+export function lockedSiteDays(shifts,batches){
+ const bySiteDay=new Map();
+ for(const b of batches){const siteKey=canonicalSiteName(b.site),date=b.report_date;if(!siteKey||!date)continue;const k=siteKey+'|'+date;if(!bySiteDay.has(k))bySiteDay.set(k,{siteKey,date,list:[]});bySiteDay.get(k).list.push(b);}
+ const locked=new Set();
+ for(const [k,{siteKey,date,list}] of bySiteDay){
+  if(list.some(b=>!b.closed_at))continue;
+  const held=new Set(list.map(b=>bookShiftCode(b.shift)||text(b.shift)));
+  if(masterShiftCodes(shifts,siteKey,date).every(code=>held.has(code)))locked.add(k);
+ }
+ return locked;
+}
 const sourceLabel=r=>r.batchNames.join('; ')||`Saved ${logBookCode(r.kind)} (no site batch)`;
 // Shift Attendance Equipment Wise names a duty after the machine's group in the Equipment master.
 // Spelling differences ("Water Tanker" / "WATER TANKER") become one name; the master is never rewritten.
@@ -70,7 +87,8 @@ const rowMatches=(r,f,{dates=true}={})=>(!dates||r.date>=f.from&&r.date<=f.to)&&
 
 // parts 'attendance' builds only what the attendance register shows (duty lines, presence, batches, sites, review items);
 // the tables of the other Manpower views come back empty.
-export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters,now=Date.now(),parts='all'}){
+export function buildManpowerReport({records=[],attendance=[],assets=[],employees=[],shifts=[],batches=[],filters,now=Date.now(),parts='all',lockedOnly=false}){
+ const lockedDays=lockedOnly?lockedSiteDays(shifts,batches):null,dayLocked=(site,date)=>!lockedDays||lockedDays.has(canonicalSiteName(site)+'|'+date);
  const hr=parts==='hr-attendance',full=!hr&&parts!=='attendance',f=manpowerFilters(filters),exceptions=[],rows=[],resolveEmployee=identityIndex(employees),assetMap=new Map(assets.map(a=>[String(a.id),a]));
  const addIssue=(r,reason)=>{r.issues.push(reason);exceptions.push({id:`${r.id}:${r.issues.length}`,date:r.date,site:r.site,shift:r.shift,door:r.door,employeeId:r.employeeId||r.savedEmployeeId,employeeName:r.employeeName,book:r.book,batches:sourceLabel(r),reason,record:r});};
  const assetDoors=new Map();
@@ -78,7 +96,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const seenIds=new Set();
  for(const record of records){
   const d=record.data||{},date=record.book_date||d.bookDate,site=record.site||d.location;
-  if(record.deleted_at||!operationalDate(date)||date<f.contextFrom||date>f.contextTo)continue;
+  if(record.deleted_at||!operationalDate(date)||date<f.contextFrom||date>f.contextTo||!dayLocked(site,date))continue;
   const r={id:String(record.id),book:record.book_no,date,site,kind:record.book_type,shift:bookShiftCode(d.bookShiftCode||d.cardShift||d.shiftName),door:text(d.door),savedEmployeeId:text(d.caliberId),employeeId:'',employeeName:text(d.employeeName),employeeKey:'',caliberCode:'',designation:'',assetKey:'',category:'Unresolved category',group:'Unresolved group',make:'Unresolved make',model:'Unresolved model',batchIds:(record.batches||[]).map(b=>String(b.id)),batchNames:(record.batches||[]).map(b=>b.name),batchStatus:unique((record.batches||[]).map(b=>b.closed_at?'Closed':'Open')).join('; '),issues:[],data:d,performanceValid:true,eligible:true};
   if(!r.batchIds.length&&d.scanBatchId){r.batchIds=[String(d.scanBatchId)];r.batchNames=[record.scan_batch_name||String(d.scanBatchId)];r.batchStatus='Saved scan';}
   if(seenIds.has(r.id)){addIssue(r,'Repeated saved record omitted from totals.');continue;}seenIds.add(r.id);
@@ -172,6 +190,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
   }
  }
  for(const entry of attendance){
+  if(!dayLocked(entry.site,entry.date))continue;
   const person=resolveEmployee({employeeId:entry.employee_id});
   if(person.error)continue;
   const asset=assetMap.get(String(entry.asset_id));
@@ -242,7 +261,7 @@ export function buildManpowerReport({records=[],attendance=[],assets=[],employee
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now)),days=[];
  for(let day=f.from;day<=f.to;day=nextReportDate(day))days.push(day);
  const attendanceShifts=attendanceSites.flatMap(({siteKey,site})=>days.flatMap(date=>{
-  const master=unique(shifts.filter(s=>activeShift(s)&&canonicalSiteName(s.site||s.siteName)===siteKey&&(!s.effectiveFrom||s.effectiveFrom<=date)&&(!s.effectiveTo||date<=s.effectiveTo)).map(s=>bookShiftCode(s.shiftCode)||bookShiftCode(s.shiftName||s.name||s.shift)));
+  const master=masterShiftCodes(shifts,siteKey,date);
   const held=[...batchesOf.keys()].map(k=>JSON.parse(k)).filter(([key,day])=>key===siteKey&&day===date).map(([,,code])=>code);
   return unique([...(master.length?master:['S1','S2','S3']),...held]).sort().filter(code=>!f.shift||code===f.shift).map(code=>{
    const list=batchesOf.get(JSON.stringify([siteKey,date,code]))||[],open=list.find(b=>!b.closed_at),window=shiftWindow(shifts,site,date,code);
@@ -309,8 +328,17 @@ export function joinAttendanceReports(parts,filters){
  const lines=field=>parts.flatMap(({report})=>report[field]||[]);
  const ot=parts.flatMap(({window,report},i)=>(report.ot||[]).filter(e=>i===0||e.startDate>=window.from)).sort((a,b)=>a.dates.localeCompare(b.dates)||a.employeeId.localeCompare(b.employeeId));
  const sitesOf=field=>[...new Map(lines(field).map(s=>[s.siteKey,s.site]))].sort((a,b)=>a[1].localeCompare(b[1]));
- return {filters,otDuties:lines('otDuties'),attendanceEquipment:lines('attendanceEquipment'),attendanceShifts:lines('attendanceShifts'),exceptions:lines('exceptions'),ot,
-  otSites:otSiteTally(sitesOf('otSites'),ot),attendanceSites:sitesOf('attendanceSites').map(([siteKey,site])=>({siteKey,site})),notes:parts[0]?.report.notes||[]};
+ const attendanceSites=sitesOf('attendanceSites').map(([siteKey,site])=>({siteKey,site})),order=new Map(attendanceSites.map((s,i)=>[s.siteKey,i]));
+ // Batch boxes site by site, then date, as one build lists them (the sort keeps each day's shift order).
+ const attendanceShifts=lines('attendanceShifts').sort((a,b)=>(order.get(a.siteKey)??order.size)-(order.get(b.siteKey)??order.size)||a.date.localeCompare(b.date));
+ return {filters,otDuties:lines('otDuties'),attendanceEquipment:lines('attendanceEquipment'),attendanceShifts,exceptions:lines('exceptions'),ot,
+  otSites:otSiteTally(sitesOf('otSites'),ot),attendanceSites,notes:parts[0]?.report.notes||[]};
+}
+// Site-days with a shift not yet locked (open in any stage, not created, or not ended), from the batch boxes.
+export function pendingSiteDays(attendanceShifts){
+ const days=new Map();
+ for(const s of attendanceShifts){if(s.state==='closed')continue;const k=s.siteKey+'|'+s.date;if(!days.has(k))days.set(k,{siteKey:s.siteKey,date:s.date,shifts:[]});days.get(k).shifts.push({shift:s.shift,state:s.state});}
+ return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.siteKey.localeCompare(b.siteKey));
 }
 // Earlier repeats are looked up only on request. The look-back is bounded so a
 // click cannot read the whole logbook history.

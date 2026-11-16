@@ -30,24 +30,26 @@ const codes=(register,siteKey)=>Object.fromEntries(register.register(siteKey).ma
 test('a day is P with its shifts, TR at another site, A only once every batch of the day is locked, ? before that, blank later',()=>{
  const r=build();
  assert.deepEqual(r.days,['2026-11-10','2026-11-11','2026-11-12','2026-11-13']);
+ // Locked days only (owner, 16 Nov 2026): the 11th at Jayant has Shift 1 and 2 locked but Shift 3 open, so even the duties
+ // saved in its locked shifts are not counted; the whole day is ? until Shift 3 is locked too.
  assert.deepEqual(codes(r,JAYANT),{
-  'CMLL101':'P1+3 P1 ? ',   // 12th: Shift 2 has no batch and Shift 3 has not ended, so the day is pending, not absent
-  'CMLL102':'P2 TR ? ',     // 11th worked at Dudhichua
-  'CMLL103':'A P1 P1 ',     // 10th: every Jayant batch locked and no card anywhere
-  'CMLL104':'P1 ? ? ',      // zero-trip entry counts as present; 11th Shift 3 still open
+  'CMLL101':'P1+3 ? ? ',    // 11th: P1 saved, but the day is not locked; 12th: Shift 2 has no batch, Shift 3 not ended
+  'CMLL102':'P2 ? ? ',      // 11th worked at Dudhichua, but the Jayant day is not locked, so ? and not TR
+  'CMLL103':'A ? ? ',       // 10th: every Jayant batch locked and no card anywhere
+  'CMLL104':'P1 ? ? ',      // zero-trip entry counts as present
  });
  const p101=r.register(JAYANT).find(p=>p.caliberCode==='CMLL101');
  assert.equal(p101.cells[0].flag,'orange','a double duty carries the OT colour of its duties');
- assert.deepEqual([p101.duties,p101.shiftCounts.S1,p101.shiftCounts.S3,p101.double,p101.present,p101.absent,p101.pending,p101.hours,p101.trips,p101.km],[3,2,1,1,2,0,1,21,30,150]);
+ assert.deepEqual([p101.duties,p101.shiftCounts.S1,p101.shiftCounts.S3,p101.double,p101.present,p101.absent,p101.pending,p101.hours,p101.trips,p101.km],[2,1,1,1,1,0,2,14,20,100]);
  const p103=r.register(JAYANT).find(p=>p.caliberCode==='CMLL103');
- assert.deepEqual([p103.present,p103.absent,p103.attendance,p103.trips],[2,1,'66.7%',null],'attendance % = present ÷ (present + absent); ELB has no trips');
+ assert.deepEqual([p103.present,p103.absent,p103.attendance,p103.trips],[0,1,'0%',null],'attendance % = present ÷ (present + absent); ELB has no trips');
  assert.equal(r.register(JAYANT).find(p=>p.caliberCode==='CMLL104').cells[0].flag,'zero');
  assert.deepEqual(codes(r,DUDHI),{'CMLL102':'TR P2 A '},'the Dudhichua register shows the Jayant day as TR');
 });
 
 test('Step 1 counts people, duties, shifts, double-duty days, absent and pending person-days and locked batches per site',()=>{
  const r=build(),jayant=r.siteRows.find(s=>s.siteKey===JAYANT);
- assert.deepEqual([jayant.people,jayant.duties,jayant.S1,jayant.S2,jayant.S3,jayant.double,jayant.present,jayant.absent,jayant.pending,jayant.locked,jayant.due,jayant.attendance],[4,7,5,1,1,1,6,1,4,6,8,'85.7%']);
+ assert.deepEqual([jayant.people,jayant.duties,jayant.S1,jayant.S2,jayant.S3,jayant.double,jayant.present,jayant.absent,jayant.pending,jayant.locked,jayant.due,jayant.attendance],[4,4,2,1,1,1,3,1,8,6,8,'75%']);
  assert.deepEqual(r.siteRows.map(s=>s.site),['Dudhichua OC','Jayant OC']);
  assert.equal(r.allSites.people,5,'a person at two sites is counted at each');
 });
@@ -121,10 +123,11 @@ test('Batch-wise draws Step 1, the date by shift table, the batch by equipment c
 });
 
 test('Month-wise Step 2 (owner, 16 Nov 2026): the site\'s people by equipment category, a person on two categories in both',()=>{
- const r=buildAttendanceRegister({duties:[...duties,duty('101',days[1],'S2',{id:'101x',equipment:'Excavator'})],presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
+ const r=buildAttendanceRegister({duties:[...duties,duty('101',days[0],'S2',{id:'101x',equipment:'Excavator'})],presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
  const {rows,total}=registerCategories(r.register(JAYANT));
- assert.deepEqual(rows.map(c=>[c.equipment,c.people,c.duties]),[['Tipper',4,7],['Excavator',1,1]],'most people first; duties are on that category');
- assert.deepEqual([total.equipment,total.people,total.duties],['All categories',4,8],'each person once in All categories');
+ // Only the locked 10th counts at Jayant: 101 (three shifts, one on an excavator), 102 and 104 on tippers.
+ assert.deepEqual(rows.map(c=>[c.equipment,c.people,c.duties]),[['Tipper',3,4],['Excavator',1,1]],'most people first; duties are on that category');
+ assert.deepEqual([total.equipment,total.people,total.duties],['All categories',4,5],'each person once in All categories');
  assert.deepEqual(personCategories(r.register(JAYANT).find(p=>p.caliberCode==='CMLL101')),['Tipper','Excavator']);
 });
 

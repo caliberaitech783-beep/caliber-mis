@@ -1,5 +1,5 @@
 import {canonicalSiteName} from '../../shared/site-location.mjs';
-import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
+import {manpowerFilters,buildManpowerReport,attendanceWindows,joinAttendanceReports,pendingSiteDays,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally,OT_HISTORY_DAYS} from '../rules/manpower-report.mjs';
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
@@ -95,7 +95,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    if(attendance.length>50000)throw Object.assign(new Error('This range contains too many attendance entries. Select a shorter date range.'),{status:400});
    const masters=await reportMasters(client);
    const batches=(await client.query(`SELECT id,name,site,book_date::text AS report_date,closed_at,shift,stage FROM mis_vlb_batches
-    WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.from,filters.to])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
+    WHERE deleted_at IS NULL AND archived_at IS NULL AND book_date BETWEEN $1 AND $2`,[filters.contextFrom,filters.contextTo])).rows.filter(b=>siteAllowed(req.logBookScope,b.site));
    const present=attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),parts=[];
    // One week of cards at a time from the same snapshot (each with its adjoining days), so a month of every site
    // neither reaches the card read limit nor sits in memory at once. Every week sees the whole range's batches,
@@ -103,7 +103,7 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    for(const window of attendanceWindows(filters.from,filters.to)){
     const range=manpowerFilters(window),rows=(await slimCards(client,range,sites,ATTENDANCE_CARD_FIELDS)).filter(r=>siteAllowed(req.logBookScope,r.site));
     const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance'})});
+    parts.push({window,report:buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:present.filter(r=>r.date>=window.from&&r.date<=window.to),...masters,batches,filters:range,parts:hr?'hr-attendance':'attendance',lockedOnly:true})});
    }
    await client.query('COMMIT');
    client.release();client=null;
@@ -115,7 +115,10 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     performance:report.otDuties.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','start','end','km'])),
     details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
     exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
-    ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule']))
+    ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule'])),
+    // Only locked site-days are sent. These are the days left out because a shift is still open, reopened or has no batch;
+    // nobody is absent on them, the figures come once the day is locked.
+    pendingDays:pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)))
    };
    const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
    return {filters:report.filters,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
