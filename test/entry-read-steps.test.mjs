@@ -17,3 +17,18 @@ test('entry read steps add up per step, keep the slowest reads and only names an
  for(let n=0;n<5;n++){const l=steps.start(clock([0,1,1]));l('queue');l.done({cards:1,partial:true});}
  assert.equal(steps.stats().reads,3,'only the latest reads are kept');
 });
+
+test('saves in the first 10 minutes after start are left out of afterWarmup only',()=>{
+ let t=0;const steps=createEntryReadSteps({keep:3,clock:()=>t});
+ const save=(at,ms)=>{t=at;const lap=steps.start();t=at+ms;lap('card-fill');lap.done({cards:1,partial:false});};
+ save(60000,13000);save(120000,6000);
+ let stats=steps.stats();
+ assert.equal(stats.reads,2,'/api/health still shows every save');
+ assert.deepEqual(stats.afterWarmup,{reads:0,total:null,steps:{},slowest:[],warmupMinutes:10,warmupSkipped:2});
+ save(11*60000,200);save(12*60000,400);
+ stats=steps.stats();
+ assert.deepEqual(stats.afterWarmup.total,{avgMs:300,maxMs:400});
+ assert.equal(stats.afterWarmup.warmupSkipped,1,'the oldest cold save has dropped out of the kept 3');
+ save(13*60000,300);
+ assert.equal(steps.stats().afterWarmup.warmupSkipped,0);
+});

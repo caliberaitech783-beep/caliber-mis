@@ -12,7 +12,8 @@ import {displaySiteName} from '../../shared/region-scope.mjs';
 // 16:00 -> 21:00). Batches and card reading are read from the database, so they are complete for
 // the whole period. Server freezes and database waits are measured in memory by this server, so
 // they cover the period only from the server's last start (a release restarts it); the message
-// says so. Card saving shows the last 40 saves, as on /api/health.
+// says so. Card saving shows the last 40 saves, as on /api/health, without saves in the first
+// 10 minutes after a restart (cold memory).
 //
 // It runs on the live slot only. Server instances share one claim per window
 // (mis_health_reports), so one message is sent. A report is sent only in the first 30 minutes after
@@ -118,9 +119,10 @@ export function healthReportMessage({window,figures:f,sample=false}){
  lines.push('',`<b>💾 Card saving (last ${s?.reads||0} saves)</b>`);
  if(s?.reads){
   lines.push(`⚡ ${ms(s.averageMs)} avg · slowest ${ms(s.slowestMs)}`);
+  if(s.warmupSkipped)lines.push(`🧊 ${s.warmupSkipped} save${s.warmupSkipped===1?'':'s'} in the first ${s.warmupMinutes} min after restart left out`);
   if(s.duplicate)lines.push(`🔎 Duplicate check ${ms(s.duplicate.avgMs)} avg · ${ms(s.duplicate.maxMs)} slowest`);
   if(s.largest)lines.push(`🧩 Largest step: ${escapeHtml(stepName(s.largest.name))} ${ms(s.largest.avgMs)} avg · ${ms(s.largest.maxMs)} slowest`);
- }else lines.push('No card saved since the server started');
+ }else lines.push(s?.warmupSkipped?`Only ${s.warmupSkipped} save${s.warmupSkipped===1?'':'s'} so far, all in the first ${s.warmupMinutes} min after restart (left out)`:'No card saved since the server started');
  if(srv||f.queue||f.engines||f.pulseCopy)lines.push('',`<b>🖥 Server${srv?.measuredFrom>window.from?` (since restart ${escapeHtml(clock(srv.measuredFrom))})`:''}</b>`);
  if(srv)lines.push(`🧊 Freezes ${srv.freezes}${srv.freezes?` · longest ${ms(srv.longestFreezeMs)}`:''}`,
   `🔌 Database: ${srv.free} free, ${srv.waitingNow} waiting now · most waiting ${srv.mostWaiting}`);
@@ -171,11 +173,14 @@ export function liveFigures({performance,scanning,pool,pulseCopy},from){
  const measuredFrom=Math.max(from,Date.parse(performance?.measuredSince)||from);
  const server=performance?{measuredFrom,freezes:minutes.reduce((s,m)=>s+(m.freezes||0),0),longestFreezeMs:Math.max(0,...minutes.map(m=>m.longestFreezeMs||0)),
   mostWaiting:Math.max(0,...minutes.map(m=>m.poolMaxWaiting||0),pool?.waiting||0),free:pool?.idle??0,waitingNow:pool?.waiting??0}:null;
- const steps=scanning?.entryReadSteps;
+ // Saves in the first minutes after a restart run on cold memory, so the report leaves them out
+ // (owner's choice, 16 Nov 2026); /api/health still shows them.
+ const allSteps=scanning?.entryReadSteps,steps=allSteps?.afterWarmup||allSteps;
  const entries=Object.entries(steps?.steps||{}).filter(([name])=>!['queue','connection'].includes(name));
  const largest=entries.sort((a,b)=>b[1].avgMs-a[1].avgMs)[0];
  const saving=steps?{reads:steps.reads,averageMs:steps.total?.avgMs??null,slowestMs:steps.total?.maxMs??most((steps.slowest||[]).map(s=>s.totalMs)),
-  duplicate:steps.steps?.['duplicate-saved']||null,largest:largest?{name:largest[0],...largest[1]}:null}:null;
+  duplicate:steps.steps?.['duplicate-saved']||null,largest:largest?{name:largest[0],...largest[1]}:null,
+  warmupMinutes:steps.warmupMinutes??null,warmupSkipped:steps.warmupSkipped||0}:null;
  const outages=scanning?.outages||[];
  return {server,saving,
   queue:scanning?.entryReadLane?{slots:scanning.entryReadLane.slots,active:scanning.entryReadLane.active,waiting:scanning.entryReadLane.waiting}:null,
