@@ -2,7 +2,9 @@ import {scanFleetBlockingMessage} from './scan-fleet-assignment.mjs';
 import {manualScanIssues} from '../src/scan-manual-fields.mjs';
 
 // "Sheet 2/2 of this trip card: …" says where its trips go when saved; it is information, not a problem to fix.
-const OPTIONAL_WARNINGS=[/^No Work Order selected\./,/^Batch values applied\./,/^Sheet \d+\/\d+ of this trip card: /];
+// "Shift continuation: …" (owner's rule, 15 Nov 2026) says the driver continued from another shift, which
+// is OT, not a duplicate; the card saves as it is.
+const OPTIONAL_WARNINGS=[/^No Work Order selected\./,/^Batch values applied\./,/^Sheet \d+\/\d+ of this trip card: /,/^Shift continuation: /];
 export const blockingScanWarnings=warnings=>(warnings||[]).filter(message=>!OPTIONAL_WARNINGS.some(pattern=>pattern.test(String(message))));
 
 export function canAutoSaveScanCard(card,kind,options=null,lmv=false){
