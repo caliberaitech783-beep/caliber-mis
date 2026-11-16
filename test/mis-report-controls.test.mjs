@@ -273,102 +273,147 @@ test('manpower reports export complete selected data, separate shift hours, and 
 });
 
 
-test('shift attendance equipment wise opens sites by shift, then equipment, then the coloured driver list',async()=>{
+// Owner, 16 Nov 2026: Shift Attendance in steps like OT. Step 1 sites, Step 2 the site date by shift (red = batch not created,
+// orange outline = batch open), Step 3 one box by equipment, Step 4 the drivers, then a driver's month-wise history.
+test('shift attendance equipment wise opens sites, then date by shift, then equipment, then the coloured driver list',async()=>{
+ const gridSource=readFileSync(new URL('../src/date-shift-grid.jsx',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
+ const grid=new Function('React',(await transformWithOxc(gridSource,'date-shift-grid.jsx',{jsx:{runtime:'classic'}})).code+';return {DateShiftGrid,dateShiftGrid};')(React);
+ // The date table is a component of its own: draw it in place so its boxes can be pressed.
+ const DateShiftGrid=()=>null,gridOf=tree=>nodes(tree,DateShiftGrid).map(n=>grid.DateShiftGrid(n.props));
  const filters={from:'2026-11-10',to:'2026-11-10',site:'',shift:'',batch:'',employee:'',asset:''};
- const duty=(n,siteKey,site,shift,equipment,flag='normal',actual=true)=>({id:'d'+n,date:filters.from,shift,site,siteKey,employeeKey:'E'+n,employeeId:'E'+n,caliberCode:'C'+n,employeeName:'Driver '+n,equipment,doors:'V'+n,makeModel:'VOLVO FMX',status:'Present',trips:1,actual,actualLabel:actual?'Yes':'No — second machine',flag,flagLabel:flag==='red'?'RED — Back-to-back OT':'Normal duty',note:'',reason:'',remarks:''});
+ const duty=(n,siteKey,site,shift,equipment,flag='normal',actual=true,date=filters.from)=>({id:'d'+n,date,shift,site,siteKey,employeeKey:'E'+n,employeeId:'E'+n,caliberCode:'C'+n,employeeName:'Driver '+n,equipment,doors:'V'+n,makeModel:'VOLVO FMX',status:'Present',trips:1,actual,actualLabel:actual?'Yes':'No — second machine',flag,flagLabel:flag==='red'?'RED — Back-to-back OT':'Normal duty',note:'',reason:'',remarks:''});
  const sasti=['sasti ob','Sasti OC'],rows=[duty(1,...sasti,'S1','Volvo Tippers'),duty(2,...sasti,'S1','Volvo Tippers','red'),duty(7,...sasti,'S1','Volvo Tippers'),duty(3,...sasti,'S1','Graders','zero'),duty(4,...sasti,'S1','Graders','normal',false),duty(5,...sasti,'S2','Volvo Tippers','review'),duty(6,'jayant ob','Jayant OC','S3','Excavator','orange')];
  const sites=[{siteKey:'dhoptala',site:'Dhoptala OC'},{siteKey:'jayant ob',site:'Jayant OC'},{siteKey:'sasti ob',site:'Sasti OC'}];
  // The batch behind each site and shift: Dhoptala has none for the shift that ended, Jayant and Sasti each have one still open, Sasti misses Shift 3.
- const batch=(siteKey,shift,state,name='')=>({siteKey,date:filters.from,shift,state,batch:name});
+ const batch=(siteKey,shift,state,name='',date=filters.from)=>({siteKey,date,shift,state,batch:name});
  const shiftBatches=[batch('dhoptala','S1','none'),batch('dhoptala','S2','not_due'),batch('dhoptala','S3','not_due'),batch('jayant ob','S1','closed','J1'),batch('jayant ob','S2','lmv_open','JAYANT-S2'),batch('jayant ob','S3','vlb_open','JAYANT-S3'),batch('sasti ob','S1','closed','S1'),batch('sasti ob','S2','elb_open','SASTI-S2'),batch('sasti ob','S3','none')];
- const payload=(attendanceSites=sites,attendanceShifts=shiftBatches)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment:rows,attendanceSites,attendanceShifts,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
- const blank={key:'',data:null,error:''};
- const mount=async({pick,chosen=filters,data=payload(),tally=blank,driverOpen=''}={})=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[chosen,{query:new URLSearchParams(chosen).toString(),payload:data},'',false,0,{},false,false,'',tally,driverOpen,...(pick?[pick]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
+ const payload=(attendanceSites=sites,attendanceShifts=shiftBatches,attendanceEquipment=rows)=>({summary:[],details:[],performance:[],ot:[],otSites:[],shiftAttendance:[],attendanceEquipment,attendanceSites,attendanceShifts,exceptions:[],totals:{},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'});
+ const blank={key:'',data:null,error:''},closed={siteKey:'',mark:'',scope:false,at:'',date:'',shift:'',equipment:'',flag:''};
+ const mount=async({pick,chosen=filters,data=payload(),tally=blank,driverOpen=''}={})=>{const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01',DateShiftGrid,dateShiftGrid:grid.dateShiftGrid},[chosen,{query:new URLSearchParams(chosen).toString(),payload:data},'',false,0,{},false,false,'',tally,driverOpen,...(pick?[{...closed,...pick}]:[])]);return ()=>render({session:{token:'test'},reportId:'attendance',onSelect:()=>{}});};
  const buttons=(tree,name)=>nodes(tree,'button').filter(n=>new RegExp('(^| )'+name+'( |$)').test(n.props.className||''));
  const categories=tree=>nodes(tree,ReportSection).map(n=>n.props.category);
- const press=(tree,label)=>nodes(tree,'button').find(n=>n.props['aria-label']===label).props.onClick();
+ const step=(tree,category)=>nodes(tree,ReportSection).find(n=>n.props.category===category);
+ const press=(tree,label)=>{const found=[...nodes(tree,'button'),...nodes(gridOf(tree),'button')].find(n=>n.props['aria-label']===label);assert.ok(found,'no button '+label);found.props.onClick();};
+ const labels=(tree,name)=>buttons(tree,name).map(n=>n.props['aria-label']);
  assert.equal(operations.operationReports.find(r=>r.id==='attendance').title,'Shift Attendance Equipment Wise');
 
- // Step 1: every assigned site by shift, counting actual duties. A box is red while its batch is missing and
- // outlined orange while the batch is open; the totals only carry the note. A shift not yet due stays a plain zero.
+ // Step 1: one line per site, then All sites. A shift not yet due is not counted; the second machine of a driver is not another actual duty.
  const view=await mount(),first=view();
  assert.equal(nodes(first,'h1')[0].props.children,'Shift Attendance Equipment Wise');
- assert.deepEqual(nodes(first,'th').filter(n=>n.props.scope==='row').map(n=>n.props.children),['Dhoptala OC','Jayant OC','Sasti OC','All sites']);
- assert.deepEqual(buttons(first,'mp-att-count').map(n=>n.props['aria-label']),[
-  '0 actual duties · Dhoptala OC · Shift 1 · No batch','0 actual duties · Dhoptala OC · All shifts · 1 shift no batch',
-  '0 actual duties · Jayant OC · Shift 2 · LMV open','1 actual duty · Jayant OC · Shift 3 · VLB open','1 actual duty · Jayant OC · All shifts · 2 open',
-  '4 actual duties · Sasti OC · Shift 1','1 actual duty · Sasti OC · Shift 2 · ELB open','0 actual duties · Sasti OC · Shift 3 · No batch','5 actual duties · Sasti OC · All shifts · 1 shift no batch · 1 open',
-  '4 actual duties · All sites · Shift 1 · 1 shift no batch','1 actual duty · All sites · Shift 2 · 2 open','1 actual duty · All sites · Shift 3 · 1 shift no batch · 1 open','6 actual duties · All sites · All shifts · 2 shifts no batch · 3 open'],'the second machine of one driver is not another actual duty');
- assert.deepEqual(buttons(first,'mp-att-none').map(n=>n.props['aria-label'].split(' · ').slice(1,3).join(' ')),['Dhoptala OC Shift 1','Sasti OC Shift 3'],'only the box of one site and shift is painted red');
- assert.deepEqual(buttons(first,'mp-att-open').map(n=>n.props['aria-label'].split(' · ').slice(1,3).join(' ')),['Jayant OC Shift 2','Jayant OC Shift 3','Sasti OC Shift 2']);
+ assert.deepEqual(categories(first),['shift-attendance-sites'],'only Step 1 before a site is chosen');
+ const sitesStep=step(first,'shift-attendance-sites').props;
+ assert.equal(sitesStep.title,'Step 1 · All sites · 10-11-26 · actual duties');assert.equal(sitesStep.showSearch,false);
+ assert.deepEqual(sitesStep.rows.map(r=>[r.site,r.actual,r.duties,r.due,r.closed,r.none,r.open]),[['Dhoptala OC',0,0,1,0,1,0],['Jayant OC',1,1,3,1,0,2],['Sasti OC',5,6,3,1,1,1],['All sites',6,7,7,2,2,3]]);
+ assert.deepEqual(sitesStep.columns.map(c=>c.label),['Site','Actual duties','Equipment-wise duties','Shifts due','Batch closed','Batch not created','Batch open']);
+ assert.deepEqual(buttons(first,'mp-cat-open').map(n=>n.props.children),['Dhoptala OC','Jayant OC','Sasti OC','All sites']);
+ assert.deepEqual(labels(first,'mp-att-none'),['1 shift without a batch · Dhoptala OC','1 shift without a batch · Sasti OC','2 shifts without a batch · All sites']);
+ assert.deepEqual(labels(first,'mp-att-open'),['2 batches open · Jayant OC','1 batch open · Sasti OC','3 batches open · All sites']);
  assert.deepEqual(nodes(nodes(first,'p').find(n=>n.props.className==='mp-att-status'),'span').slice(0,2).map(n=>[].concat(n.props.children).join('')),['2 shifts without a batch','3 batches open']);
- assert.deepEqual(categories(first),[],'no driver list before a site and shift are chosen');
- assert.equal(buttons(first,'mp-cat-open').length,0);
 
- // Step 2: pressing Shift 1 of a site lists its equipment with both totals and the four colours.
- press(first,'4 actual duties · Sasti OC · Shift 1');
+ // Step 2: a site opens date by shift, under Step 1. Each box is the actual duties; red = no batch, orange outline = open.
+ press(first,'5 actual duties · Sasti OC');
  const second=view();
- assert.deepEqual(buttons(second,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);
- assert.deepEqual(buttons(second,'mp-cat-count').map(n=>n.props['aria-label']),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 second machine · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 second machine · All equipment','1 Red · All equipment','1 Blue · All equipment'],'Second machine is equipment-wise minus actual duties; a zero is not a button');
- assert.match(nodes(second,'p').find(n=>n.props.className==='mp-att-foot').props.children.join(''),/^1 duty here is a second machine/);
- assert.equal(nodes(second,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).length,0,'a closed batch needs no line');
- assert.deepEqual(categories(second),[]);
- // The Second machine number lists only the drivers for whom this equipment was a second machine in the shift.
- press(second,'1 second machine · Graders');
- {const extra=nodes(view(),ReportSection)[0].props;assert.equal(extra.title,'Shift Attendance Equipment Wise · Sasti OC · Shift 1 · 10-11-26 · Graders · Second machine only');
-  assert.deepEqual(extra.rows.map(r=>[r.equipment,r.actual,r.actualLabel]),[['Graders',false,'No — second machine']]);assert.equal(extra.description.split(' · ').slice(0,2).join(' · '),'1 equipment-wise duty · 0 actual duties');
-  assert.equal(buttons(view(),'mp-cat-count').find(n=>n.props['aria-label']==='1 second machine · Graders').props['aria-pressed'],true);}
- press(view(),'1 second machine · Graders');assert.deepEqual(categories(view()),[],'pressing the same number again closes the list');
+ assert.deepEqual(categories(second),['shift-attendance-sites','shift-attendance-dates']);
+ const datesStep=step(second,'shift-attendance-dates').props;
+ assert.equal(datesStep.title,'Step 2 · Sasti OC · date by shift · 10-11-26');
+ assert.deepEqual(datesStep.rows.map(r=>[r.dateLabel,r.shiftLabel,r.stateLabel,r.batch,r.actual,r.duties]),[['10-11-26','Shift 1','Closed','S1',4,5],['10-11-26','Shift 2','ELB open','SASTI-S2',1,1],['10-11-26','Shift 3','Batch not created','',0,0]],'Smart Print gets one line per shift');
+ assert.deepEqual(labels(gridOf(second),'mp-att-count'),['4 actual duties · 10-11-26 · Shift 1','1 actual duty · 10-11-26 · Shift 2 · ELB open','0 actual duties · 10-11-26 · Shift 3 · No batch']);
+ assert.deepEqual(labels(gridOf(second),'mp-att-none'),['0 actual duties · 10-11-26 · Shift 3 · No batch']);
+ assert.deepEqual(labels(gridOf(second),'mp-att-open'),['1 actual duty · 10-11-26 · Shift 2 · ELB open']);
+ assert.ok(labels(gridOf(second),'mp-ot-duties').includes('5 actual duties · 10-11-26 · All shifts'),'the day total opens the whole day');
 
- // Step 3: pressing an equipment lists its drivers; date, site and shift are in the heading, not in the columns.
- buttons(second,'mp-cat-open')[0].props.onClick();
- const list=nodes(view(),ReportSection)[0].props;
- assert.equal(list.category,'shift-attendance');assert.equal(list.rows.length,3);assert.equal(list.recordDateFilter,false);
- assert.equal(list.title,'Shift Attendance Equipment Wise · Sasti OC · Shift 1 · 10-11-26 · Volvo Tippers');
+ // Step 3: a box opens that date and shift by equipment, with both totals and the four colours.
+ press(second,'4 actual duties · 10-11-26 · Shift 1');
+ const third=view(),equipmentStep=step(third,'shift-attendance-equipment');
+ assert.deepEqual(categories(third),['shift-attendance-sites','shift-attendance-dates','shift-attendance-equipment']);
+ assert.equal(equipmentStep.props.title,'Step 3 · Sasti OC · 10-11-26 · Shift 1 · by equipment');
+ assert.deepEqual(equipmentStep.props.rows.map(r=>[r.equipment,r.duties,r.actual,r.second,r.red,r.zero]),[['Volvo Tippers',3,3,0,1,0],['Graders',2,1,1,0,1],['All equipment',5,4,1,1,1]]);
+ assert.deepEqual(buttons(equipmentStep,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);
+ assert.deepEqual(labels(equipmentStep,'mp-cat-count'),['3 equipment-wise duties · Volvo Tippers','1 Red · Volvo Tippers','2 equipment-wise duties · Graders','1 second machine · Graders','1 Blue · Graders','5 equipment-wise duties · All equipment','1 second machine · All equipment','1 Red · All equipment','1 Blue · All equipment'],'Second machine is equipment-wise minus actual duties; a zero is not a button');
+ assert.match(nodes(equipmentStep,'p').find(n=>n.props.className==='mp-att-foot').props.children.join(''),/^1 duty here is a second machine/);
+ assert.equal(nodes(equipmentStep,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).length,0,'a closed batch needs no warning');
+ assert.ok(nodes(equipmentStep,'p').some(n=>[].concat(n.props.children).join('')==='Batch S1 · closed.'),'the closed batch is named');
+
+ // The Second machine number lists only the drivers for whom this equipment was a second machine in the shift.
+ press(third,'1 second machine · Graders');
+ {const extra=step(view(),'shift-attendance').props;assert.equal(extra.title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Graders · Second machine only · drivers');
+  assert.deepEqual(extra.rows.map(r=>[r.equipment,r.actual,r.actualLabel]),[['Graders',false,'No — second machine']]);assert.equal(extra.description.split(' · ').slice(0,2).join(' · '),'1 equipment-wise duty · 0 actual duties');}
+ press(view(),'1 second machine · Graders');assert.equal(step(view(),'shift-attendance'),undefined,'pressing the same number again closes the list');
+
+ // Step 4: an equipment lists its drivers; date, site and shift are in the heading, not in the columns.
+ buttons(step(view(),'shift-attendance-equipment'),'mp-cat-open')[0].props.onClick();
+ const list=step(view(),'shift-attendance').props;
+ assert.equal(list.rows.length,3);assert.equal(list.recordDateFilter,false);
+ assert.equal(list.title,'Step 4 · Sasti OC · 10-11-26 · Shift 1 · Volvo Tippers · drivers');
  assert.equal(list.description,'3 equipment-wise duties · 3 actual duties · Saved records only · Press a name for the month-wise history');
  assert.deepEqual(list.columns.map(c=>c.key),['employeeId','caliberCode','employeeName','otMonth','otYear','doors','makeModel','status','trips','actualLabel','flagLabel','note','reason','remarks']);
  assert.deepEqual(list.rows.map(list.rowClassName),['mp-duty-normal','mp-duty-red','mp-duty-normal']);
  assert.match(list.columns.find(c=>c.key==='flagLabel').render(list.rows[1]).props.className,/mp-flag-red/);
  press(view(),'1 Red · Volvo Tippers');
- {const red=nodes(view(),ReportSection)[0].props;assert.equal(red.rows.length,1);assert.match(red.title,/Volvo Tippers · Red only$/);}
+ {const red=step(view(),'shift-attendance').props;assert.equal(red.rows.length,1);assert.match(red.title,/Volvo Tippers · Red only · drivers$/);}
 
- // A shift with no batch still opens, and says so in words.
- press(view(),'0 actual duties · Sasti OC · Shift 3 · No batch');
- {const empty=view(),lines=nodes(empty,'p').filter(n=>/mp-att-batch/.test(n.props.className||''));assert.deepEqual(lines.map(n=>n.props.className),['mp-att-batch mp-att-batch-none']);assert.equal(lines[0].props.children.at(-1),'this shift');assert.equal(buttons(empty,'mp-cat-open').length,0);}
- press(view(),'5 actual duties · Sasti OC · All shifts · 1 shift no batch · 1 open');
- {const lines=nodes(view(),'p').filter(n=>/mp-att-batch/.test(n.props.className||''));assert.deepEqual(lines.map(n=>n.props.children.at(-1)),['Shift 3','Shift 2 SASTI-S2 (ELB open)']);}
+ // A box without a batch still opens, and says so in words; the day total opens every shift of the day.
+ press(view(),'0 actual duties · 10-11-26 · Shift 3 · No batch');
+ {const empty=step(view(),'shift-attendance-equipment'),lines=nodes(empty,'p').filter(n=>/mp-att-batch/.test(n.props.className||''));assert.deepEqual(lines.map(n=>n.props.className),['mp-att-batch mp-att-batch-none']);assert.equal(lines[0].props.children.at(-1),'this shift');assert.deepEqual(empty.props.rows,[]);assert.equal(step(view(),'shift-attendance'),undefined);}
+ press(view(),'5 actual duties · 10-11-26 · All shifts');
+ {const day=step(view(),'shift-attendance-equipment');assert.equal(day.props.title,'Step 3 · Sasti OC · 10-11-26 · All shifts · by equipment');
+  assert.deepEqual(nodes(day,'p').filter(n=>/mp-att-batch/.test(n.props.className||'')).map(n=>n.props.children.at(-1)),['Shift 3','Shift 2 SASTI-S2 (ELB open)']);}
 
- // Driver history: month and year OT beside the name, and the name opens the month-wise history.
- {const volvo={siteKey:'sasti ob',shift:'S1',equipment:'Volvo Tippers',flag:''},event={id:'a',date:'2026-11-09',dates:'2026-11-09',severity:'red',reason:'RED — fixture',shifts:'2026-11-09 S1; 2026-11-09 S2',logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:15,books:'CARD'};
+ // Driver history (Step 5): month and year OT beside the name, and the name opens the month-wise history.
+ {const volvo={siteKey:'sasti ob',scope:true,at:'sasti ob',date:'2026-11-10',shift:'S1',equipment:'Volvo Tippers'},event={id:'a',date:'2026-11-09',dates:'2026-11-09',severity:'red',reason:'RED — fixture',shifts:'2026-11-09 S1; 2026-11-09 S2',logBook:'VLB',equipment:'Tipper / Volvo',combinedHours:15,books:'CARD'};
   const yearData={year:'2026',month:'2026-11',yearFrom:'2026-11-01',yearTo:'2026-11-10',monthFrom:'2026-11-01',monthTo:'2026-11-10',drivers:[{employeeKey:'E2',siteKey:'sasti ob',month:{red:1,orange:0,review:0,total:1},year:{red:1,orange:0,review:0,total:1},events:[event],duties:{'2026-11':8}},{employeeKey:'E1',siteKey:'sasti ob',month:{red:0,orange:0,review:0,total:0},year:{red:0,orange:0,review:0,total:0},events:[],duties:{'2026-11':10}}]};
-  const rowsOf=view=>nodes(view(),ReportSection)[0].props;
+  const rowsOf=view=>step(view(),'shift-attendance').props;
   assert.deepEqual(rowsOf(await mount({pick:volvo})).rows.map(r=>r.otMonth),['Checking…','Checking…','Checking…'],'counts are never shown as zero before they load');
   const history=await mount({pick:volvo,tally:{key:'sasti ob|2026-11|0',data:yearData,error:''}});
   assert.deepEqual(rowsOf(history).rows.map(r=>[r.employeeId,r.otMonth,r.otYear]),[['E1',0,0],['E2',1,1],['E7',0,0]]);
   assert.deepEqual(rowsOf(history).columns.slice(3,5).map(c=>c.label),['OT in Nov 2026','OT in 2026']);
   const name=rowsOf(history).columns.find(c=>c.key==='employeeName'),button=name.render(rowsOf(history).rows[1]);assert.equal(button.props['aria-label'],'History of Driver 2');assert.equal(name.value(rowsOf(history).rows[1]),'Driver 2','exports keep the plain name');
-  button.props.onClick();assert.deepEqual(categories(history()),['shift-attendance','manpower-ot-driver-history']);
+  button.props.onClick();assert.deepEqual(categories(history()).slice(-2),['shift-attendance','manpower-ot-driver-history']);
   const table=nodes(nodes(history(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr').map(row=>[].concat(row.props.children).map(cell=>cell.props.children));
   assert.deepEqual(table,[['Month','Duties','Red','Orange','Brown','OT times','OT % of duties'],['Nov 2026',8,1,0,0,1,'25%'],[['Year ','2026'],8,1,0,0,1,'25%']]);
-  assert.deepEqual(nodes(history(),ReportSection)[1].props.rows.map(r=>r.id),['a']);
+  assert.deepEqual(step(history(),'manpower-ot-driver-history').props.rows.map(r=>r.id),['a']);
   // A driver with duties and no OT still has a history.
   rowsOf(history).columns.find(c=>c.key==='employeeName').render(rowsOf(history).rows[0]).props.onClick();
   assert.deepEqual(nodes(nodes(history(),'div').find(n=>/mp-driver-history/.test(n.props.className||'')),'tr')[1].props.children.map(cell=>cell.props.children),['Nov 2026',10,0,0,0,0,'0%']);}
 
- // A wider selection brings back the columns that no longer fit in the heading.
- {const all=nodes((await mount({pick:{siteKey:'*',shift:'',equipment:'*',flag:'zero'}}))(),ReportSection)[0].props;
-  assert.equal(all.title,'Shift Attendance Equipment Wise · All sites · All shifts · 10-11-26 · All equipment · Blue only');assert.equal(all.rows.length,1);
+ // All sites: each line of Step 2 is one site on one date, and a box opens that site; every column returns in the driver list.
+ {const every=await mount({pick:{siteKey:'*'}}),tree=every();
+  assert.deepEqual(nodes(tree,DateShiftGrid)[0].props.grid.lines.map(l=>[l.label,l.sub]),[['Dhoptala OC','10-11-26 TUE'],['Jayant OC','10-11-26 TUE'],['Sasti OC','10-11-26 TUE']]);
+  assert.ok(nodes(gridOf(tree),'span').some(n=>n.props.children==='Not due'),'a shift still running says Not due');
+  press(tree,'1 actual duty · Jayant OC · 10-11-26 · Shift 3 · VLB open');
+  assert.equal(step(every(),'shift-attendance-equipment').props.title,'Step 3 · Jayant OC · 10-11-26 · Shift 3 · by equipment');
+  const all=step((await mount({pick:{siteKey:'*',scope:true,at:'*',equipment:'*',flag:'zero'}}))(),'shift-attendance').props;
+  assert.equal(all.title,'Step 4 · All sites · 10-11-26 · All shifts · All equipment · Blue only · drivers');assert.equal(all.rows.length,1);
   assert.deepEqual(all.columns.map(c=>c.key).filter(key=>['date','site','shift','equipment'].includes(key)),['site','shift','equipment']);
   assert.equal(all.rows[0].otYear,'Press the name','in a list of every site the counts are read for the driver whose name is pressed');}
- {const range={...filters,to:'2026-11-12'},later=[...shiftBatches,{siteKey:'sasti ob',date:'2026-11-11',shift:'S1',state:'none',batch:''},{siteKey:'sasti ob',date:'2026-11-12',shift:'S1',state:'none',batch:''}];
-  const tree=(await mount({pick:{siteKey:'sasti ob',shift:'S1',equipment:'Graders',flag:''},chosen:range,data:payload(sites,later)}))(),days=nodes(tree,ReportSection)[0].props;
-  assert.equal(days.columns[0].key,'date');assert.match(days.title,/10-11-26 to 12-11-26 · Graders$/);assert.equal(days.description,'2 equipment-wise duties · 1 actual duty · Saved records only · Press a name for the month-wise history');
-  assert.ok(buttons(tree,'mp-att-none').some(n=>n.props['aria-label']==='4 actual duties · Sasti OC · Shift 1 · 2 days no batch'),'over several days the box counts the days without a batch');
-  assert.equal(nodes(tree,'p').find(n=>n.props.className==='mp-att-batch mp-att-batch-none').props.children.at(-1),'11-11-26 · 12-11-26');}
+
+ // Several dates: the red number of Step 1 keeps only the dates with a shift without a batch.
+ {const range={...filters,to:'2026-11-12'},later=[...shiftBatches,batch('sasti ob','S1','closed','S1-11','2026-11-11'),batch('sasti ob','S1','none','','2026-11-12')],moreRows=[...rows,duty(8,...sasti,'S1','Graders','normal',true,'2026-11-11')];
+  const view=await mount({chosen:range,data:payload(sites,later,moreRows)});
+  press(view(),'2 shifts without a batch · Sasti OC');
+  const marked=view();assert.match(step(marked,'shift-attendance-dates').props.title,/10-11-26 to 12-11-26 · Batch not created$/);
+  assert.deepEqual(nodes(marked,DateShiftGrid)[0].props.grid.lines.map(l=>l.label),['10-11-26','12-11-26']);
+  assert.deepEqual(nodes(nodes(marked,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props['aria-label']),['All dates · 3','Batch not created · 2','Batch open · 1']);
+  press(marked,'All dates · 3');assert.equal(nodes(view(),DateShiftGrid)[0].props.grid.lines.length,3);
+  // The All dates line carries each shift over every date and opens it.
+  press(view(),'5 actual duties · Sasti OC · All dates · Shift 1 · 1 no batch');assert.equal(step(view(),'shift-attendance-equipment').props.title,'Step 3 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · by equipment');
+  const tree=(await mount({pick:{siteKey:'sasti ob',scope:true,at:'sasti ob',shift:'S1',equipment:'Graders'},chosen:range,data:payload(sites,later,moreRows)}))(),days=step(tree,'shift-attendance').props;
+  assert.equal(days.columns[0].key,'date');assert.equal(days.title,'Step 4 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · Graders · drivers');assert.equal(days.description,'3 equipment-wise duties · 2 actual duties · Saved records only · Press a name for the month-wise history');
+  assert.equal(nodes(step(tree,'shift-attendance-equipment'),'p').find(n=>n.props.className==='mp-att-batch mp-att-batch-none').props.children.at(-1),'12-11-26');}
+
+ // A Day or Night shift only in the Shift Master is left out at a site working Shift 1 to 3, and the screen names it.
+ // At a site that works nothing else it stays red.
+ {const extra=[...shiftBatches,batch('jayant ob','D','none'),batch('jayant ob','N','none'),batch('dhoptala','D','none')];
+  const tree=(await mount({data:payload(sites,extra)}))(),rowsNow=step(tree,'shift-attendance-sites').props.rows;
+  assert.deepEqual(rowsNow.map(r=>[r.site,r.none]),[['Dhoptala OC',2],['Jayant OC',0],['Sasti OC',1],['All sites',3]]);
+  assert.match(nodes(step(tree,'shift-attendance-sites'),'p').find(n=>n.props.className==='mp-category-hint').props.children.join(''),/^Not shown: Jayant OC Day shift, Jayant OC Night shift\./);
+  const worked=(await mount({data:payload(sites,[...extra.filter(b=>!(b.siteKey==='jayant ob'&&b.shift==='D')),batch('jayant ob','D','closed','J-D')])}))();
+  assert.deepEqual(step(worked,'shift-attendance-sites').props.rows.map(r=>[r.site,r.none]).slice(0,2),[['Dhoptala OC',2],['Jayant OC',0]]);
+  assert.match(nodes(step(worked,'shift-attendance-sites'),'p').find(n=>n.props.className==='mp-category-hint').props.children.join(''),/^Not shown: Jayant OC Night shift\. The Shift Master holds this shift/,'a Day shift with a batch is shown again');}
 
  // One site in the report opens by itself; a stale choice is ignored.
- {const only=(await mount({chosen:{...filters,site:'Sasti OC'},data:payload([sites[2]],shiftBatches.filter(b=>b.siteKey==='sasti ob'))}))();assert.deepEqual(buttons(only,'mp-cat-open').map(n=>n.props.children),['Volvo Tippers','Graders','All equipment']);assert.equal(nodes(only,'th').filter(n=>n.props.scope==='row').length,1);}
- {const stale=(await mount({pick:{siteKey:'not a site',shift:'S1',equipment:'Volvo Tippers',flag:''}}))();assert.deepEqual(categories(stale),[]);assert.equal(buttons(stale,'mp-cat-open').length,0);}
+ {const only=(await mount({chosen:{...filters,site:'Sasti OC'},data:payload([sites[2]],shiftBatches.filter(b=>b.siteKey==='sasti ob'))}))();assert.deepEqual(categories(only),['shift-attendance-sites','shift-attendance-dates']);assert.equal(step(only,'shift-attendance-sites').props.rows.length,1);}
+ {const stale=(await mount({pick:{siteKey:'not a site',scope:true,at:'not a site',shift:'S1',equipment:'Volvo Tippers'}}))();assert.deepEqual(categories(stale),['shift-attendance-sites']);}
 });
 
 test('manpower by category opens sites, then date by shift, then equipment category, and the two lists follow',async()=>{

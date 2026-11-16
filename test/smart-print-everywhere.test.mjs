@@ -61,8 +61,9 @@ test('Dashboard: the card pop-ups, the last 6, 12 and 24 hours table, each list 
 test('Reports: the tables that had no print option now have the menu',()=>{
   const manpower=read('manpower-reports.jsx');
   assert.match(manpower,/<TableSmartPrint row title=\{driver\.employeeName\+' · history '\+year\+' · month by month'\}\/><table>/,'driver history, in Shift Attendance and in OT');
-  assert.match(manpower,/<TableSmartPrint row title=\{'Shift Attendance · All sites, shift-wise · '\+dateLabel\+' · actual duties'\}\/>/);
-  assert.match(manpower,/<TableSmartPrint row title=\{'Shift Attendance · '\+heading\+' · duties by equipment'\}\/>/);
+  // Shift Attendance (16 Nov 2026): every table is now a Step ReportSection, which carries Smart Print itself.
+  assert.match(manpower,/<ReportSection key=\{'att-sites-'\+query\} title=\{'Step 1 · All sites · '\+dateLabel\+' · actual duties'\}/);
+  assert.match(manpower,/title=\{'Step 3 · '\+heading\+' · by equipment'\}/);
   const mismatch=read('equipment-pulse-mismatch.jsx');
   assert.match(mismatch,/<h3>Where the counts differ<\/h3><TableSmartPrint row /);
   assert.match(mismatch,/<h3>Machines that differ<\/h3><TableSmartPrint row /);

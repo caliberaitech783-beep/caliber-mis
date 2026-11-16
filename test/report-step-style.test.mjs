@@ -46,7 +46,7 @@ test('a report step has no search box, record count, Rows or Actions, and shows 
 });
 
 test('Step 2 of every drill-down report is the date by shift table',()=>{
- for(const file of ['src/trip-timing-report.jsx','src/loading-machine-report.jsx','src/batch-status-report.jsx']){
+ for(const file of ['src/trip-timing-report.jsx','src/loading-machine-report.jsx','src/batch-status-report.jsx','src/manpower-reports.jsx']){
   const screen=read(file);
   assert.match(screen,/from '\.\/date-shift-grid\.jsx'/,file);
   assert.match(screen,/<DateShiftGrid grid=\{shiftGrid\}/,file);

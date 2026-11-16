@@ -62,3 +62,6 @@
 
 .mp-rc thead th small{white-space:normal;max-width:15ch}.mp-rc-active{color:#17663a}.mp-rc-zero,.mp-rc-zeroKm{color:#984800}.mp-rc-none{color:#a31f20}
 .mp-rc-row-none td:first-of-type,.mp-rc-row-zero td:first-of-type,.mp-rc-row-outside td:first-of-type{font-weight:700}
+/* Shift Attendance Step 1: the site names read like the dates of Step 2, not like a column heading. */
+.mp-att-sites tbody th[scope=row]{font-size:14px;font-weight:700;color:#4d5b74;text-transform:none;letter-spacing:0;white-space:normal}.mp-att-sites tbody th .mp-cat-open{text-align:left}
+:root[data-theme="dark"] .mp-att-sites tbody th[scope=row]{color:#eef3fb}:root[data-theme="dark"] .mp-att-sites tbody tr.mp-on th[scope=row]{background:#3a2d5c}

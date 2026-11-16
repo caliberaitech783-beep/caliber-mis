@@ -50,6 +50,6 @@ test('drill-down reports show a Back button one step up, and the top-bar arrow t
     assert.match(src,/\{back&&<StepBackButton onBack=\{back\} label=\{backTo\}\/>\}/,file);
     assert.doesNotMatch(src,/onBack=\{back\} backLabel=/,'one Back per step: the step line only, not again beside Search');
   }
-  assert.equal((read('manpower-reports.jsx').match(/<StepBackButton onBack=/g)||[]).length,3,'OT, manpower and reconciliation trails');
+  assert.equal((read('manpower-reports.jsx').match(/<StepBackButton onBack=/g)||[]).length,4,'OT, manpower, reconciliation and Shift Attendance trails');
   assert.match(read('vlb-batch-card-details.jsx'),/<StepBackButton onBack=\{onClose\} label="Back to batch report"\/>/);
 });

@@ -43,7 +43,7 @@ export function dateShiftExport(grid,{count,countLabel,boxes=[],dayColumns=[],sh
  return {columns,rows:[...grid.lines.map(l=>({...l,id:l.key})),...all]};
 }
 
-export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayColumns=[],onOpen,onOpenAll,isPicked=()=>false,pickedBox='',allPicked=false,cellNote=null,shiftLabel=s=>s,label='Date',ariaLabel='By date and shift',emptyMessage='Nothing in these dates.',hint=null}){
+export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,renderTotal=null,dayColumns=[],onOpen,onOpenAll,isPicked=()=>false,pickedBox='',allPicked=false,cellNote=null,shiftLabel=s=>s,label='Date',ariaLabel='By date and shift',emptyMessage='Nothing in these dates.',hint=null}){
  if(!grid.lines.length)return <div className="reports-detail-table dsg">{hint}<p className="dsg-empty">{emptyMessage}</p></div>;
  const cell=(list,where)=>{
   if(!list?.length)return <span className="dsg-zero">0</span>;
@@ -68,7 +68,7 @@ export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayC
    </tr>)}</tbody>
    {grid.lines.length>1&&<tfoot><tr className={'dsg-total'+(allPicked?' report-row-picked':'')}>
     <th scope="row">{onOpenAll?<button type="button" className="dsg-all" aria-pressed={allPicked} onClick={onOpenAll}>All dates</button>:'All dates'}</th>
-    {grid.shifts.map(s=><td key={s}>{renderCell?null:totalCell(grid.shiftTotals[s])}</td>)}
+    {grid.shifts.map(s=><td key={s}>{renderCell?renderTotal?.(grid.shiftTotals[s],s)??null:totalCell(grid.shiftTotals[s])}</td>)}
     {dayColumns.map(c=><td key={c.key}>{dayCell(c,grid.all,null)}</td>)}
    </tr></tfoot>}
   </table>

@@ -61,6 +61,16 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 2. **Duties by equipment.** Pressing a number lists that site and shift by equipment, with two totals and four colour counts.
 3. **Driver list.** Pressing an equipment (or a colour count) lists its drivers. Date, site and shift are in the heading and the export title; each returns as a column only when the list covers more than one (a date range, All sites, All shifts, All equipment).
 
+**16 Nov 2026, owner's request: five steps, like OT & Multiple Duties.** The one-screen "All sites, shift-wise" table is replaced; each step opens under the one above it.
+
+1. **Step 1 · All sites.** One line per site, then All sites: Actual duties, Equipment-wise duties, Shifts due (ended by the Shift Master times), Batch closed, Batch not created (red), Batch open (orange). A site name or number opens Step 2; the red or orange number opens Step 2 with only the dates where that happened.
+2. **Step 2 · site · date by shift** (`DateShiftGrid`). Dates down the side, shifts across. Each box is the actual duties of that site, date and shift: red with "No batch" when no batch was created, outlined orange with the stage (VLB, LMV or ELB open) while the batch is open, "Not due" while the shift is still running. Day columns: actual duties for the day (opens the whole day), Batch not created, Batch open. The All dates line carries each shift over every date. A strip above keeps All dates, only Batch not created, or only Batch open. With All sites open, each line is one site on one date.
+3. **Step 3 · box · by equipment.** The batch is named (closed, not created, or not closed with its stage), then the equipment table with the two totals, Second machine and the four colours.
+4. **Step 4 · drivers.** As in point 3 above.
+5. **Step 5 · driver history.** The driver's name opens the month-wise history.
+
+A Day or Night shift that the Shift Master holds at a site working Shift 1 to 3, with no duty and no batch in the selected dates, is left out (it would otherwise be red every day) and named on screen under "Not shown". Shift 1 to 3 are never left out, so a missed batch stays red even when only one day is chosen.
+
 Two totals:
 
 - **Actual duties**: one per driver per date and shift, whatever number of machines were driven. This is the number to use for salary.
