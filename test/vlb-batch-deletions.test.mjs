@@ -177,6 +177,23 @@ test('an active batch and its cards can be permanently deleted in one approved s
  const fresh=await h.create();assert.equal((await h.call('vlb-batches/'+fresh.id)).status,200,'the same site, date and shift can be batched again');
 });
 
+test('the same card image saved in another batch does not block deleting this batch',async t=>{
+ const h=await setup(t),first=await h.create('S1'),card=await h.add(first,{hash:'same-card'});await h.call('vlb-batches/'+first.id+'/close','POST');
+ const second=await h.create('S2'),copy=await h.add(second,{hash:'same-card'});
+ const p=await h.preview(first);assert.equal(p.status,200,JSON.stringify(p.data));
+ assert.deepEqual(p.data.manifest.target.scans.map(s=>s.id),[card.scanId],'the other batch keeps its copy');
+ assert.equal((await h.send(p.data)).status,200);assert.equal((await h.confirm(p.data)).status,200);
+ assert.equal((await h.db.query('SELECT logbook_id FROM mis_scan_cards WHERE id=$1',[copy.scanId])).rows[0].logbook_id+"",String(copy.id));
+ assert.equal((await h.call('vlb-batches/'+second.id)).status,200);
+});
+
+test('a scan in this batch upload saved outside the batch names the card and record',async t=>{
+ const h=await setup(t),b=await h.create(),card=await h.add(b);
+ const stray=(await h.db.query("INSERT INTO mis_log_books(book_no,book_type,site,book_date,data,created_by) VALUES('VLB/STRAY','vehicle',$1,$2,'{}','alice') RETURNING id",[b.site,b.report_date])).rows[0];
+ await h.db.query("INSERT INTO mis_scan_cards VALUES($1,$2,2,'stray.png','posted',1,$3,$4,'stray-hash',NULL,'{}','{}')",[randomUUID(),card.scanBatch,stray.id,Buffer.from('x')]);
+ const p=await h.preview(b);assert.equal(p.status,409);assert.match(p.data.error,/stray\.png.*VLB\/STRAY/);
+});
+
 test('new recovery endpoints require VLB application access',()=>{
  const session={permissions:{separateMisCredentials:true,misDesktopAccess:['Vehicle Log Book']}};
  assert.ok(misRequestAllowed(session,{path:'/api/vlb-batch-deletions/preview',method:'POST'}));
