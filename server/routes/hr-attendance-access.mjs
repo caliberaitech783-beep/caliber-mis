@@ -47,5 +47,7 @@ export const requireHrAttendance = (fetcher = fetch) => async (req, res, next) =
   const scope = hrAttendanceScope(profile);
   if (!scope) return res.status(403).json({error: 'Employee Master access is required.'});
   req.logBookScope = scope;
+  // The database policy requires an authenticated identity before applying the site scope.
+  req.securitySession = profile;
   return next();
 };
