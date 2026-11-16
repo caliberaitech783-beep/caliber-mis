@@ -144,7 +144,7 @@ export default function LogBookForm({kind,session,onExit,onBulkScan,vlbBatch,ini
  const tripEquipmentOptions=datedAssets.filter(asset=>asset.kind==='equipment'&&form.location&&canonicalSiteName(asset.site)===canonicalSiteName(form.location));
  const tripEquipmentValues=new Set(tripEquipmentOptions.map(asset=>machineLabel(asset.door||asset.name)));
  const equipmentValidation=vehicle?validateTripEquipment({...form,trips:form.trips.filter(row=>!isEmptyTripPlaceholder(row))},datedAssets):{draft:form,issues:{}};
- const replacedKmr=vehicle&&kmrMeterReplaced(form);
+ const replacedKmr=vehicle&&kmrMeterReplaced(form,kind);
  const meterIssues=vehicle?shiftMeterIssues(form,kind):{};
  const kmr=replacedKmr?delta(0,form.replacementKmr??''):delta(form.openingKmr,form.closingKmr),hmr=delta(form.openingHmr,form.closingHmr);
 

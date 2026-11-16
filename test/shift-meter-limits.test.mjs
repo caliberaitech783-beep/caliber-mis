@@ -5,6 +5,7 @@ import {normalizeLogBook} from '../server/routes/log-book.mjs';
 import {scanFieldIssues} from '../src/scan-field-review.mjs';
 import {applyScanContext} from '../shared/scan-batch-context.mjs';
 import {extractCard} from '../server/rules/scan-extraction.mjs';
+import {canAutoSaveScanCard} from '../shared/scan-auto-save.mjs';
 const base={bookDate:'2026-12-30',location:'Sasti OC',assetId:1,employeeId:2,shiftId:3,shiftHours:8,openingHmr:100.1,closingHmr:108.1,openingKmr:1000,closingKmr:1250,trips:[],aFormNo:'123'};
 for(const hours of [8,12])test(`${hours}-hour limits allow equality and block 0.001 excess in manual and scan paths`,()=>{
  const valid={...base,shiftHours:hours,closingHmr:100.1+hours,closingKmr:1250};
@@ -98,4 +99,37 @@ test('a genuine new meter on a large odometer still asks for the actual distance
  const far={...base,openingKmr:'292146.5',closingKmr:'15000'};
  assert.deepEqual(kmrMissingDigitReadings(far),[]);
  assert.equal(kmrMeterReplaced(far),true);
+});
+
+test('V281 trip card 2268 flags dropped KMR decimals and requires reviewed readings before auto-save',()=>{
+ const common={...base,bookDate:'2026-11-11',location:'Jayant OB',doorText:'V281',aFormNo:'2268',cardShift:'III',openingHmr:'18407',closingHmr:'18414'};
+ const card=draft=>({status:'review',checks:{errors:[],warnings:[]},draft});
+ const extracted=extractCard('', 'vehicle', [], {
+  cardShift:'III',
+  meterReadings:{openingKmr:{value:'2870123'},closingKmr:{value:'2871511'}},
+ }).draft;
+ assert.deepEqual([extracted.openingKmr,extracted.closingKmr],['2870123','2871511']);
+ const raw={...common,openingKmr:extracted.openingKmr,closingKmr:extracted.closingKmr};
+ const corrected={...common,openingKmr:'287012.3',closingKmr:'287151.1'};
+ for(const draft of [raw,{...raw,openingKmr:corrected.openingKmr},{...raw,closingKmr:corrected.closingKmr}]){
+  const issues=scanFieldIssues(draft);
+  assert.match(issues.closingKmr,/Possible dropped decimal.*287012\.3.*287151\.1.*138\.8 km/);
+  assert.equal(issues.replacementKmr,undefined);
+  assert.equal(kmrMeterReplaced(draft),false);
+  assert.equal(canAutoSaveScanCard(card(draft),'vehicle'),false);
+ }
+ assert.deepEqual(scanFieldIssues(corrected),{});
+ assert.equal(canAutoSaveScanCard(card(corrected),'vehicle'),true);
+ assert.equal(normalizeLogBook('vehicle',corrected).totalRunningKmr,138.8);
+});
+
+test('V281 partial closing KMR stays in correction mode throughout the edit',()=>{
+ for(const [openingKmr,closingKmr] of [['2870123','28715'],...['','2','28','287','2871','28715'].map(value=>['287012.3',value])]){
+  const draft={...base,openingKmr,closingKmr,replacementKmr:25};
+  const issues=scanFieldIssues(draft);
+  assert.ok(issues.closingKmr);
+  assert.equal(issues.replacementKmr,undefined);
+  assert.equal(kmrMeterReplaced(draft),false);
+  assert.throws(()=>normalizeLogBook('vehicle',draft),/Closing KMR/);
+ }
 });

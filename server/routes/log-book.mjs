@@ -90,7 +90,7 @@ export function normalizeLogBook(kind,input={},{manualEntry=false}={}){
  const openingHmr=number(input.openingHmr,'Opening HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:0),closingHmr=number(input.closingHmr,'Closing HMR',{signed:true,optional:nonWorking||optionalHmr})??(optionalHmr?null:openingHmr);
 const openingKmr=vehicle?number(input.openingKmr,'Opening KMR',{signed:true}):null,closingKmr=vehicle?number(input.closingKmr,'Closing KMR',{signed:true}):null;
 if(vehicle){const limits=Object.values(shiftMeterIssues(input,meterKind));if(limits.length)fail(limits.join(' '));}
-const replacementKmr=vehicle&&kmrMeterReplaced(input)?number(input.replacementKmr,'Actual KMR distance'):null;
+const replacementKmr=vehicle&&kmrMeterReplaced(input,meterKind)?number(input.replacementKmr,'Actual KMR distance'):null;
 const timeMode=input.timeMode==='without'?'without':'with';
  if(!Array.isArray(input.trips??[]))fail('Trip details must be a list.');
  if((input.trips||[]).length>300)fail('A log book can contain up to 300 trip rows.');
