@@ -3,6 +3,7 @@ import {manpowerFilters,buildManpowerReport,otHistoryWindows,otHistorySummary,ot
 import {siteAllowed,filterLogBookSites,requireLogBookSite} from '../../shared/log-book-access.mjs';
 import {directLane,reportKey} from '../services/report-lane.mjs';
 import {linkVlbTripHandovers} from '../../shared/vlb-trip-handover.mjs';
+import {requireHrAttendance} from './hr-attendance-access.mjs';
 
 const HISTORY_CARD_FIELDS=['bookDate','location','bookShiftCode','cardShift','shiftName','shiftId','masterShiftStart','door','assetId','employeeId','caliberId','employeeName','openingHmr','closingHmr','openingKmr','closingKmr','completedTrips','totalTrips','scanBatchId','scanCardId'];
 const todayIst=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -78,11 +79,11 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
  // Attendance Batch-wise and Month-wise: the same duties as the full report, without the card data, batch list per card,
  // trip-handover links and tables those two screens never show. Trip counts come from each card's own trip rows, as in
  // the full report; handover links between cards do not change them.
- app.get('/api/reports/manpower/attendance',...protect,async(req,res,next)=>{
+ const readAttendance=hr=>async(req,res,next)=>{
   try{
    const filters=manpowerFilters({from:req.query.from,to:req.query.to});
    await ensureBooks();
-   const body=await lane.run(reportKey('manpower-attendance',req),async()=>{
+   const body=await lane.run(reportKey(hr?'hr-attendance':'manpower-attendance',req),async()=>{
    let client;
    try{
    client=await pool.connect();
@@ -99,7 +100,16 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    await client.query('COMMIT');
    client.release();client=null;
    const vehicles=linkVlbTripHandovers(rows.filter(r=>r.book_type==='vehicle'));
-   const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,batches,filters,parts:'attendance'});
+   const report=buildManpowerReport({records:[...vehicles,...rows.filter(r=>r.book_type!=='vehicle')],attendance:attendance.filter(r=>siteAllowed(req.logBookScope,r.site)),...masters,batches,filters,parts:hr?'hr-attendance':'attendance'});
+   if(hr)return {
+    attendanceEquipment:report.attendanceEquipment.map(row=>pick(row,[...PRESENCE_FIELDS,'status','reason','remarks','logBooks'])),
+    attendanceShifts:report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),
+    otDuties:report.otDuties.map(row=>pick(row,[...DUTY_FIELDS,'logBooks'])),
+    performance:report.otDuties.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','start','end','km'])),
+    details:report.otDuties.filter(row=>row.scanned).map(row=>({...pick(row,['date','site','siteKey','shift','employeeId','employeeName']),batchStatus:'Saved scan'})),
+    exceptions:report.exceptions.map(row=>pick(row,['date','site','siteKey','shift','employeeId','employeeName','reason'])),
+    ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule']))
+   };
    const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
    return {filters:report.filters,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
     // Only presence the duty lines do not already hold: a zero-trip entry without a card, or the second operator of a card.
@@ -112,7 +122,9 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
    });
    res.set('Cache-Control','private, no-store').json(body);
   }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error);}
- });
+ };
+ app.get('/api/reports/manpower/attendance',...protect,readAttendance(false));
+ app.get('/api/integrations/hr/attendance',requireHrAttendance(),readAttendance(true));
  // Earlier red / orange repeats per driver, read only when someone asks for them.
  // Only the card fields that decide a duty are read, one week at a time, from all three log books.
  app.get('/api/reports/manpower/ot-history',...protect,async(req,res,next)=>{

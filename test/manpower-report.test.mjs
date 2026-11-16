@@ -113,7 +113,7 @@ test('range validation includes calendar dates, cutoff, length and query types',
 
 function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
  const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
- const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
+ const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
 test('API uses scope, excludes deleted cards, and reads one private consistent snapshot',async()=>{
@@ -140,6 +140,17 @@ test('attendance-only build skips the other tables and keeps the same duty lines
  assert.deepEqual(slim.otDuties,all.otDuties);assert.deepEqual(slim.attendanceEquipment,all.attendanceEquipment);assert.deepEqual(slim.attendanceShifts,all.attendanceShifts);assert.deepEqual(slim.otSites,all.otSites);
  assert.deepEqual([slim.details,slim.summary,slim.performance,slim.shiftAttendance,slim.fleet,slim.fleetWork,slim.options.employees],[[],[],[],[],[],[],[]]);
  assert.ok(all.details.length&&all.performance.length&&all.options.employees.length);
+});
+test('HR attendance receives saved sources and effective schedules without exposing card data',async()=>{
+ const h=apiHarness(undefined,[card(1,1,{scanCardId:'scan-one'}),card(2,2,{}, {site:'Jayant OC'})]);
+ const {result,status}=await h.run({from:date,to:date},'/api/integrations/hr/attendance');
+ assert.equal(status,200);
+ assert.equal(result.otDuties.length,1);
+ assert.deepEqual(result.otDuties[0].logBooks,['VLB']);
+ assert.equal(result.details[0].batchStatus,'Saved scan');
+ assert.ok(result.performance[0].start);
+ assert.ok(result.attendanceShifts.find(shift=>shift.shift==='S1').end);
+ assert.ok(!('fleet' in result));
 });
 test('API rejects unassigned sites and malformed dates before reading records',async()=>{
  const h=apiHarness();assert.equal((await h.run({from:date,to:date,site:'Jayant OC'})).status,403);assert.equal((await h.run({from:'bad',to:date})).status,400);assert.equal(h.calls.length,0);
