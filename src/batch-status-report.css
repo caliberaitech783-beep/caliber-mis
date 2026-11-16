@@ -10,11 +10,12 @@
 .batch-status-report .bs-stage-vlb_open,.batch-status-report .bs-stage-lmv_open,.batch-status-report .bs-stage-elb_open{background:#fff0d8;color:#8a4a00}
 .batch-status-report .bs-late{display:inline-block;padding:2px 8px;border-radius:6px;background:#ffe6e5;color:#a31f20;font-weight:750}
 .batch-status-report .bs-rating{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;font-size:15px;font-weight:750;border:1px solid currentColor;text-align:center;white-space:nowrap}
-.batch-status-report .bs-rating-good{background:#e3f4e6;color:#1f6b33}
-.batch-status-report .bs-rating-average{background:#fff0d8;color:#8a4a00}
-.batch-status-report .bs-rating-poor{background:#ffe6e5;color:#a31f20}
-.batch-status-report tr.bs-band-good td:first-child{border-left:5px solid #2f8a45}
-.batch-status-report tr.bs-band-average td:first-child{border-left:5px solid #d97100}
+/* Owner, 16 Nov 2026: solid boxes with white figures, as in Trip Timing. Here the top level is good news, so it is green. */
+.batch-status-report .bs-rating-good{background:#1f7a3d;border-color:#17602b;color:#fff}
+.batch-status-report .bs-rating-average{background:#d46a00;border-color:#a85400;color:#fff}
+.batch-status-report .bs-rating-poor{background:#c92c2c;border-color:#a31f20;color:#fff}
+.batch-status-report tr.bs-band-good td:first-child{border-left:5px solid #1f7a3d}
+.batch-status-report tr.bs-band-average td:first-child{border-left:5px solid #d46a00}
 .batch-status-report tr.bs-band-poor td:first-child{border-left:5px solid #c92c2c}
 .batch-status-report tr.bs-total td{font-weight:750}
 .batch-status-report tr.bs-row-none td:first-child{border-left:5px solid #c92c2c}

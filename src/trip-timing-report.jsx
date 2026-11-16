@@ -1,4 +1,4 @@
-import React,{useMemo,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {tableLayoutAccount} from './table-layouts.mjs';
@@ -59,7 +59,40 @@ export const cardColumns=[column('sr','Tr.Sr.No'),column('machine','Loading mach
  column('remark','Remark',e=>entryRemark(e)||'—')];
 const itemLabel=(group,row)=>group==='driver'?`${row.driver} · ${row.caliberId}`:group==='door'?'Door '+row.door:'Loading machine '+row.machine;
 
+// Owner, 16 Nov 2026: the Step 2 heading stays in view while the dates scroll under it, and so does the line with the
+// shifts and the minutes of each colour. The app's top bar grows to two lines on narrow screens, so its height is measured,
+// not assumed. The shift line stays only when the table fits the width; a wider table keeps its own sideways scroll.
+const STEP2='[data-category="operations-timing-shifts"]';
+function useStep2InView(){
+ const [node,setNode]=useState(null),placing=useRef(null);
+ useEffect(()=>{
+  if(!node||typeof ResizeObserver==='undefined')return undefined;
+  const bar=document.querySelector('main.content>.top'),seen=new Set();
+  const watch=new ResizeObserver(()=>place());
+  const look=el=>{if(el&&!seen.has(el)){seen.add(el);watch.observe(el);}};
+  function place(){
+   const stuck=bar&&['sticky','fixed'].includes(getComputedStyle(bar).position);
+   const below=stuck?Math.max(0,Math.ceil(bar.getBoundingClientRect().height+(parseFloat(getComputedStyle(bar).top)||0))):0;
+   const head=node.querySelector(STEP2+'>.reports-section-heading'),table=node.querySelector(STEP2+' .dsg');
+   look(head);look(table);
+   node.style.setProperty('--tt-stick',below+'px');
+   node.style.setProperty('--tt-head',(head?Math.ceil(head.getBoundingClientRect().height):0)+'px');
+   if(table){const fits=table.scrollWidth<=table.clientWidth+1;if(fits!==table.hasAttribute('data-tt-fits'))table.toggleAttribute('data-tt-fits',fits);}
+  }
+  watch.observe(node);if(bar)watch.observe(bar);
+  window.addEventListener('resize',place);
+  place();placing.current=place;
+  return ()=>{watch.disconnect();window.removeEventListener('resize',place);placing.current=null;};
+ },[node]);
+ // A step opened or closed: measure again at once, without waiting for the size watcher.
+ useEffect(()=>{placing.current?.();});
+ return setNode;
+}
+// The minutes of each colour, written above it in Step 2: "15–20 min", "20–30 min", "30+ min".
+export const bandRange=b=>b.upTo===Infinity?b.above+'+ min':b.above+'–'+b.upTo+' min';
+
 export default function TripTimingReport({records=[],loading='',period='',ReportSection,dataReady=true,rowsView=null}){
+ const step2InView=useStep2InView();
  const [mode,setMode]=useState('load-unload'),[group,setGroup]=useState('driver'),[site,setSite]=useState(''),[item,setItem]=useState(null),[band,setBand]=useState(''),[card,setCard]=useState(''),[slot,setSlot]=useState(null);
  // Exception time: the signed-in user's own periods (blasting, breakfast) and whether his personalised view is open.
  // Kept on this device for each login, as the table layouts are; nobody else's report changes.
@@ -92,7 +125,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  const summaryLine=t=>(t.timed?`${t.over} of ${t.timed} timed ${m.noun}s (${t.percent}%) took more than ${DELAY_LIMIT} minutes ${what}: ${BANDS.map(b=>t[b.key]+' in '+b.label).join(', ')}.${t.notJudged?' '+t.notJudged+' could not be judged.':''}`:`No ${m.noun} with both times written in these dates and filters.`)+exceptionLine(t);
  const withTotal=(rows,total)=>rows.length?[...rows,total]:[];
  // Step 2 is the date by shift table of the OT report: a colour chosen above it keeps only that colour in the boxes.
- const gridBoxes=[...BANDS,...(exception?[{key:EXCEPTION_KEY,label:EXCEPTION_LABEL}]:[])].filter(b=>!band||b.key===band).map(b=>({key:b.key,label:LABELS[b.key],className:'tt-band tt-'+b.key}));
+ const gridBoxes=[...BANDS,...(exception?[{key:EXCEPTION_KEY,label:EXCEPTION_LABEL}]:[])].filter(b=>!band||b.key===band).map(b=>({key:b.key,label:LABELS[b.key],range:b.key===EXCEPTION_KEY?'Exception':bandRange(b),className:'tt-band tt-'+b.key}));
  const shiftGrid=dateShiftGrid(shiftsListed,{sumKeys:['timed','ok',...BANDS.map(b=>b.key),'over','notJudged',EXCEPTION_KEY]});
  const overShare=t=>t.timed?Math.round(t.over/t.timed*1000)/10+'%':'—';
  const shiftDay=[{key:'timed',label:'Day '+m.noun+'s',value:t=>t.timed},{key:'over',label:'Over '+DELAY_LIMIT+' min',sub:'Any colour',value:t=>t.over},{key:'percent',label:'Over '+DELAY_LIMIT+' min %',value:overShare}];
@@ -137,7 +170,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
  </section>;
  // One step back: the step before the one on screen, as in the line of steps above the table.
  const back=level>1?crumbs[level-2][1]:null,backTo=level>1?'Back to '+crumbs[level-2][0]:'';
- return <div className="tt-report">{tabs}
+ return <div className="tt-report" ref={step2InView}>{tabs}
   <nav className="tt-crumbs" aria-label="Steps">{back&&<StepBackButton onBack={back} label={backTo}/>}{crumbs.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span aria-hidden="true">›</span>}{go&&i<crumbs.length-1?<button type="button" onClick={go}>{label}</button>:<strong aria-current="step">{label}</strong>}</React.Fragment>)}</nav>
   {exceptionPanel}
   {<>
@@ -148,7 +181,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
   {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total.over,key=>shifts.total[key])}
-   <ReportSection key={'tt-shifts-'+mode+site+band+exception} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date by shift · '+period+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-shifts" description={'In each box: '+m.noun+'s timed, then the yellow, orange and red '+m.noun+'s among them. Press a box for the drivers of that shift; press a colour for only those. Press All dates for every date together.'+viewNote}
+   <ReportSection key={'tt-shifts-'+mode+site+band+exception} reportKey={'Trip timing shifts '+mode} dataReady={dataReady} title={'Step 2 · '+m.label+' · '+siteLabel+' · date by shift · '+period+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-shifts" description={'In each box: '+m.noun+'s timed, then the '+m.noun+'s among them by minutes taken; the minutes of each colour are written above it. Press a box for the drivers of that shift; press a colour for only those. Press All dates for every date together.'+viewNote}
     rows={shiftExport.rows} columns={shiftExport.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <DateShiftGrid grid={shiftGrid} count={r=>r.timed} countLabel={m.unit} boxes={gridBoxes} dayColumns={shiftDay} onOpen={(r,b)=>openSlot(r,b||band)} onOpenAll={()=>openSlot(shifts.total)}
      isPicked={r=>slot?.key===r.key} pickedBox={band} allPicked={slot?.key===EVERY} ariaLabel={m.unit+' by date and shift'} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
@@ -171,7 +204,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Loading → Unloading is the unloading time minus the loading time of the same trip row.</li>
    <li>Unloading → next Loading is the loading time of a trip row minus the unloading time of the row above it on the same card. The first trip of a card has no gap and is not counted.</li>
-   <li>{DELAY_LIMIT} minutes or less is not a delay. Yellow is more than {DELAY_LIMIT} and up to 20 minutes, orange is more than 20 and up to 30, red is more than 30.</li>
+   <li>{DELAY_LIMIT} minutes or less is not a delay. Blue is more than {DELAY_LIMIT} and up to 20 minutes, orange is more than 20 and up to 30, red is more than 30.</li>
    <li>Date and shift are the Book Date and the shift saved on the card.</li>
    <li>Not judged: a time is not written, the card was saved without times, or the time works out longer than a shift. These are never counted as delays.</li>
    <li>Times that cross 12 at night are counted forward. Tea and meal breaks are not removed in the Standard view. A row that carries several trips is counted once.</li>
