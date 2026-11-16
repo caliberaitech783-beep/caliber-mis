@@ -20,7 +20,7 @@ const EVENT_PREFIX={
  'equipment-mismatch':'equipment-mismatch','pulse-pending':'pulse-pending',
  'alias-otp':'alias-otp','alias-shadow':'alias-suspended','alias-weekly':'alias-weekly',
  'transfer-otp':'transfer-otp','equipment-otp':'equipment-otp','vlb-approval-otp':'vlb-approval-otp',
- created:'mis-ticket',resolved:'mis-ticket','scan-batch-report':'scan-batch-report',
+ created:'mis-ticket',resolved:'mis-ticket','scan-batch-report':'scan-batch-report','health-report':'health-report',
 };
 // Pulse Telegram / WhatsApp message purpose -> automation key.
 const PURPOSE={

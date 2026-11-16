@@ -26,6 +26,7 @@ import {createReleaseOtpDelivery,createReleaseApprovalDelivery,createReleaseAppr
 import {registerReleaseReport} from './server/routes/release-report.mjs';
 import {createReleaseWindowTrigger} from './server/services/release-window-trigger.mjs';
 import {createScanBatchReporter,scanBatchReportEnabled} from './server/services/scan-batch-report.mjs';
+import {createHealthReporter,healthReportEnabled,isLiveSlot} from './server/services/health-report.mjs';
 import {createGithubOidcVerifier} from './server/services/github-oidc.mjs';
 import {scanBlobConfig,createScanBlobStorage} from './server/services/scan-blob-storage.mjs';
 import {enforceContentDeletionPolicy,CONTENT_DELETION_POLICY} from './server/rules/content-deletion-policy.mjs';
@@ -8110,18 +8111,25 @@ const automationCentre=createAutomationCentre({pool,ensureSchema:()=>logBooks.in
  const [whatsappSettings,whatsappEnv,misBot,vlbAlerts,deletion]=await Promise.all([storedWhatsAppReportSettings(),metaWhatsAppRuntimeEnv(),integrationSecrets.read('mis-telegram').catch(()=>null),readAlertSettings(pool),
   pool.query('SELECT setting_value FROM app_settings WHERE setting_key=$1',['mis_deletion_whatsapp']).then(result=>result.rows[0]?.setting_value,()=>null)]);
  return {whatsappSettings,whatsappConfigured:metaWhatsAppConfiguration(whatsappEnv).configured,misTelegram:{enabled:Boolean(misBot?.enabled&&misBot?.webhookReady)},
-  pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),
+  pulseTelegram:telegramConfiguration(),pulseTelegramPurpose:purpose=>telegramPurposeEnabled(whatsappSettings,purpose),vlbAlerts,vlbAlertsRunning:process.env.VLB_BATCH_ALERTS!=='0',scanBatchReportRunning:scanBatchReportEnabled(),healthReportRunning:healthReportEnabled()&&isLiveSlot(),
   scheduledJobs:scheduledJobsEnabled,emailConfigured:ticketEmailConfiguration().configured,deletionWhatsApp:deletion?.enabled===true};
 }});
 // Site-wise batch completion report on Telegram to the owner: one message per VLB batch when it is closed (MIS_SCAN_BATCH_REPORT=off stops it).
 // The Automation Centre sends a sample of it on request.
 const scanBatchReporter=createScanBatchReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()})});
-registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter});
+// Speed report on Telegram to the owner at 10:00, 16:00 and 21:00 IST (A25): slow or not, batches closed, the longest batch.
+// Live slot only; MIS_HEALTH_REPORT=off stops it. The live figures are read when a report is made (bulkScanning starts below).
+const healthReporter=createHealthReporter({pool,telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),live:()=>({
+ performance:performanceMonitor.snapshot(),pool:{idle:pool.idleCount,waiting:pool.waitingCount},
+ scanning:(()=>{try{return bulkScanning.status();}catch{return null;}})(),
+ pulseCopy:pulseBreakdownMirror?pulseBreakdownMirror.status():{enabled:false}})});
+registerAutomationCentre(app,{pool,requireSession,requireAdministrator:requireMisAdministrator,centre:automationCentre,mismatchWorker:equipmentMismatch,scanBatchReporter,healthReporter});
 scheduleBackgroundStart(()=>automationCentre.start(),180000);
 // Equipment alias OTP rule (EQUIPMENT_ALIAS_OTP): aliases saved on a reviewer's choice alone go back to pending once the rule is on; weekly mapping summary to the approver and the MIS managers.
 if(aliasOtpEnabled())scheduleBackgroundStart(()=>demoteUnapprovedAliases(pool).catch(e=>console.error('Alias demotion failed:',e?.message||e)),60000);
 if(process.env.VLB_BATCH_ALERTS!=='0')scheduleBackgroundStart(()=>{const tick=()=>sendAliasWeeklySummary(pool,{telegram:telegramOutboxSender(pool,{drain:()=>misTelegram.drain()}),recipients:aliasAlertLogins}).catch(e=>console.error('Alias weekly summary failed:',e?.message||e));void tick();const timer=setInterval(tick,30*60000);timer.unref?.();},120000);
 if(scanBatchReportEnabled())scheduleBackgroundStart(()=>scanBatchReporter.start(),90000);
+if(healthReportEnabled()&&isLiveSlot())scheduleBackgroundStart(()=>healthReporter.start(),100000);
 const pulseTripVerification=registerTripVerification(app,{pool,pulse:pulseMasterSync,requireSession,requireAdministrator,getSiteScope:logBookScope,enabled:false});
 const scannerConnectorAuth=registerScannerConnectorAuth(app,{pool,requireSession,requireAdministrator,localEnabled:process.env.LOCAL_SCAN_ENABLED==='true'});
 if(scanImageStorage)void scanImageStorage.check().then(()=>{scanBlobReady=true;console.log('Private Hot scan storage ready.')}).catch(error=>{scanBlobReady=false;console.error('Hot scan storage unavailable:',error.message)});
