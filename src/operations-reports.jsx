@@ -17,13 +17,13 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'n
 // dates, so the second one shares the first one's reading of the log books instead of reading the month again. A reading
 // is shared for one minute; Refresh always reads again. It is stopped only when no screen is waiting for it any more.
 const sharedReadings=new Map();
-// parts 'logbooks': the log books without the scanned cards (Trip Timing & Gap, Loading Equipment-wise); '' reads everything.
-// A full reading already held for the same dates also serves a screen that needs only the log books.
+// parts 'logbooks': the log books with their trip rows, without the scanned cards (Trip Timing & Gap, Loading Equipment-wise);
+// '' reads the other reports' data. Since 16 Nov 2026 the full reading keeps only the trip counts of each trip row, so it can
+// no longer serve a screen that needs the log books with their trip rows: each kind of reading is held apart.
 const OPERATIONS_LOGBOOKS_ONLY=new Set(['timing','loading']);
 function operationsData(from,to,token,fresh,parts=''){
  const base=from+'|'+to+'|'+token,usable=held=>held&&Date.now()-held.at<=60000;
- let key=base+'|'+parts,entry=sharedReadings.get(key);
- if(!fresh&&parts&&!usable(entry)&&usable(sharedReadings.get(base+'|'))){key=base+'|';entry=sharedReadings.get(key);}
+ const key=base+'|'+parts;let entry=sharedReadings.get(key);
  if(!entry||fresh||!usable(entry)){
   const controller=new AbortController();entry={at:Date.now(),users:0,done:false,controller};
   entry.promise=fetch('/api/reports/operations?'+new URLSearchParams(parts?{from,to,parts}:{from,to}),{headers:{Authorization:`Bearer ${token}`},signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'Report data unavailable');return result;}).finally(()=>{entry.done=true;});

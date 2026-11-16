@@ -1,4 +1,5 @@
 import {validShiftHours,isJayantSecondShift} from '../../shared/site-shift-hours.mjs';
+import {sendJsonInChunks} from '../services/chunked-json.mjs';
 import {readReportBreakdowns} from '../rules/report-pulse-breakdowns.mjs';
 import {attachTransferHistory,assetAtSiteOnDate,assetForSiteOnDate} from '../../shared/equipment-transfer-history.mjs';
 import {isManualShift,manualShiftHours,manualShiftWindow} from '../../shared/manual-shift.mjs';
@@ -252,6 +253,28 @@ export function logBooksForTiming(records){
   return {...record,data};
  });
 }
+// The full reading (every Operations report except Trip Timing & Gap and Loading Equipment-wise) builds its tables in
+// src/operations-report-model.mjs, which never reads the fields above nor the breakdowns copied onto ELB cards, and reads
+// a card's trip rows only to count trips. On 16 Nov 2026 one day of this reading was 32 MB (trip rows 8.8 MB, scanned
+// cards 9.4 MB) and month-to-date froze the live server, so the full reading keeps of each trip row only its counts and
+// of each scanned card only what the Scans report and the filter lists show
+// (test/operations-reports-api.test.mjs checks these lists against the model).
+export const OPERATIONS_UNUSED_CARD_FIELDS=[...TIMING_UNUSED_CARD_FIELDS,'pulseBreakdowns'];
+export const OPERATIONS_TRIP_FIELDS=['completedTrips','tripCount'];
+export const OPERATIONS_SCAN_CARD_FIELDS=['id','filename','status','error','logbook_id','book_no','kind','scanned_date'];
+export const OPERATIONS_SCAN_DRAFT_FIELDS=['bookDate','location','caliberId','employeeName','employeeId','shiftId','shiftName','assetId','door','workOrderContract'];
+const pick=(row,fields)=>{const kept={};for(const field of fields)if(row[field]!==undefined)kept[field]=row[field];return kept;};
+export function logBooksForOperations(records){
+ return records.map(record=>{
+  if(!record.data||typeof record.data!=='object')return record;
+  const data={...record.data};for(const field of OPERATIONS_UNUSED_CARD_FIELDS)delete data[field];
+  if(Array.isArray(data.trips))data.trips=data.trips.map(trip=>trip&&typeof trip==='object'?pick(trip,OPERATIONS_TRIP_FIELDS):trip);
+  return {...record,data};
+ });
+}
+export function scanCardsForOperations(cards){
+ return cards.map(card=>({...pick(card,OPERATIONS_SCAN_CARD_FIELDS),draft:card.draft&&typeof card.draft==='object'?pick(card.draft,OPERATIONS_SCAN_DRAFT_FIELDS):card.draft??null}));
+}
 // lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror=null,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
@@ -293,7 +316,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const permittedSites=await filterLogBookSites(pool,req.logBookScope);
      const linked=await withVlbTripHandovers(pool,visibleRecords.filter(r=>r.book_type==='vehicle'),permittedSites);
      const allRecords=[...linked,...visibleRecords.filter(r=>r.book_type!=='vehicle')];
-     const records=withScans?allRecords:logBooksForTiming(allRecords);
+     const records=withScans?logBooksForOperations(allRecords):logBooksForTiming(allRecords);
      const masters=(await pool.query("SELECT id,master_name,record_data FROM master_records WHERE master_name=ANY($1::text[])",[['Equipment master','Shift Master']])).rows;
      const assets=masters.filter(r=>r.master_name==='Equipment master').map(({id,record_data:r})=>({id:String(id),door:equipmentDoorNumber(r),site:text(r.currentLocation||r.site||r.location),kind:assetBookKind(r),group:text(r.group||r.equipmentGroup),name:text(r.equipmentName||r.equipment||r.name),chassis:text(r.chassisNo||r.chassis)}));
      // Loading Equipment-wise Report: the stage of every batch in the dates, and the site machines of those batches with no saved ELB.
@@ -303,14 +326,16 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const shifts=masters.filter(r=>r.master_name==='Shift Master').map(({id,record_data:r})=>({id:String(id),name:text(r.shiftName||r.name||r.shift),site:text(r.site||r.siteName)}));
      const exists=withScans?(await pool.query("SELECT to_regclass('mis_scan_cards') AS cards,to_regclass('mis_scan_batches') AS batches")).rows[0]:null;
      const scanRows=exists?.cards&&exists?.batches?(await pool.query("SELECT c.id,c.filename,c.status,c.draft,c.error,c.logbook_id,l.book_no,b.kind,to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') AS scanned_date FROM mis_scan_cards c JOIN mis_scan_batches b ON b.id=c.batch_id LEFT JOIN mis_log_books l ON l.id=c.logbook_id AND l.book_date>=$$2026-11-01$$ WHERE COALESCE(to_jsonb(b)->'expected_context'->>'logBookKind','')<>'lmv' AND (c.draft->>'bookDate' BETWEEN $1 AND $2 OR to_char(c.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD') BETWEEN $1 AND $2 OR c.draft ? '__caliberUtf8JsonV1') ORDER BY c.created_at,c.ordinal",[from,to])).rows:[];
-     const cards=scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(req.logBookScope,c.draft?.location);});
+     const cards=scanCardsForOperations(scanRows.map(decodeScanRow).filter(c=>{const date=c.draft?.bookDate||c.scanned_date;return date>=from&&date<=to&&siteAllowed(req.logBookScope,c.draft?.location);}));
      // scanConnected is null when the scanned cards were not asked for, so a screen cannot read it as "not connected".
      return {records,assets:assets.filter(r=>siteAllowed(req.logBookScope,r.site)),shifts:shifts.filter(r=>siteAllowed(req.logBookScope,r.site)),batches,fleet,cards,scanConnected:withScans?Boolean(exists?.cards&&exists?.batches):null};
      });
      // Loading Equipment-wise Report: the breakdowns in Pulse now, for each person apart (Pulse reads are per sign-in and
      // reused for a short while), so that a breakdown entered or closed after the ELB was saved still shows.
      const pulse=!withScans&&pulseMasterSync?await readReportBreakdowns(()=>pulseMasterSync.readBreakdownRequests({actor:req.session.login||req.session.name}),{from,to,siteAllowed:site=>siteAllowed(req.logBookScope,site)}):{pulseBreakdowns:null,pulseBreakdownsError:withScans?'':'Pulse is not connected.'};
-     res.set('Cache-Control','no-store').json({...body,...pulse});
+     // Written in pieces so that a month of cards does not stop the server for seconds (chunked-json.mjs).
+     res.set('Cache-Control','no-store');
+     await sendJsonInChunks(res,{...body,...pulse});
    }catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}
  });
  app.get(['/api/log-books/options','/api/shift-attendance'],requireSession,(req,res,next)=>req.path==='/api/shift-attendance'?attendanceAccess(req,res,next):requireAdministrator(req,res,next),batchScope,async(req,res,next)=>{
