@@ -106,3 +106,7 @@
 .crumb .crumb-page-link { display: inline-flex; min-width: 0; max-width: 100%; overflow: hidden; appearance: none; background: none; border: 0; padding: 2px 4px; margin: 0 -4px; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
 .crumb .crumb-page-link:hover > b, .crumb .crumb-page-link:focus-visible > b { text-decoration: underline; text-underline-offset: 3px; }
 .crumb .crumb-page-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+/* On every other page a "Dashboard" link takes the place of "Operations"
+   (Dashboard > page) and goes to the Dashboard. */
+.crumb .crumb-page-link.crumb-dashboard-link { flex: none; white-space: nowrap; font-weight: 600; }
+.crumb .crumb-page-link.crumb-dashboard-link:hover, .crumb .crumb-page-link.crumb-dashboard-link:focus-visible { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }

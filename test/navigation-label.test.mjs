@@ -18,7 +18,16 @@ test("renaming the display label leaves the stored access key untouched", () => 
 test("navigation, breadcrumb, page title and access checkboxes render the label", () => {
   const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   assert.match(source, /import \{navigationLabel\} from "\.\.\/shared\/navigation-visibility\.mjs";/);
-  assert.match(source, /Operations <ChevronRight \/> <button type="button" className="crumb-page-link" onClick=\{reopenPage\}[^>]*><b>\{navigationLabel\(active\)\}<\/b><\/button>/);
+  assert.match(source, /: <>Operations <ChevronRight \/> <\/>\}<button type="button" className="crumb-page-link" onClick=\{reopenPage\}[^>]*><b>\{navigationLabel\(active\)\}<\/b><\/button>/);
+});
+
+test("every other page shows a Dashboard link in the breadcrumb", () => {
+  const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+  // Dashboard > <page> on every other page (it takes the place of "Operations",
+  // so long page names keep their room); the Dashboard itself stays Operations > Dashboard.
+  assert.match(source, /\{active !== "Dashboard" && canOpenAdminPage\("Dashboard"\)\s*\? <><button type="button" className="crumb-page-link crumb-dashboard-link" onClick=\{\(\) => \{setMenu\(false\);selectMenu\("Dashboard"\);\}\}[^>]*>Dashboard<\/button> <ChevronRight \/> <\/>\s*: <>Operations <ChevronRight \/> <\/>\}/);
+  const css = fs.readFileSync(new URL("../src/back-button-motion.css", import.meta.url), "utf8");
+  assert.match(css, /\.crumb \.crumb-page-link\.crumb-dashboard-link \{ flex: none; white-space: nowrap;/);
   // WhatsApp menu icons carry the navigation label as their name and tooltip.
   assert.match(source, /labelFor=\{navigationLabel\}/);
   assert.match(source, /<h1>\{navigationLabel\(type\)\}<\/h1>/);
