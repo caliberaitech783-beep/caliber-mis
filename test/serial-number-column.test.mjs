@@ -53,7 +53,8 @@ test("print and Excel downloads carry the serial column and the record count", (
   assert.match(main, /const serial = withSerialColumn\(columns, exportRows\);\r?\n  const headings = serial\.columns\.map/);
   assert.match(main, /colspan="\$\{serial\.columns\.length\}">No records available/);
   assert.ok(main.includes('const summaryRows = headerRows?.length ? headerRows.map(row=>Array.isArray(row)?row:[row]) : [[sheetTitle || title || "Caliber Pulse-II report"], [recordCountLine(exportRows.length, formatDisplayDateTime(new Date()))]];'));
-  assert.match(main, /const worksheetRows = \[\.\.\.summaryRows, labels, \.\.\.serial\.rows\];/);
+  // The rows under the headings are the serial rows (or one "No records" line, so Excel opens an empty report).
+  assert.match(main, /const bodyRows = xlsxTableRows\(serial\.rows, labels\.length\);\s*const worksheetRows = \[\.\.\.summaryRows, labels, \.\.\.bodyRows\];/);
   const server = read("../server.mjs");
   assert.match(server, /const dataColumnCount=requestedColumns\.length-\(String\(requestedColumns\[0\]\?\.label\?\?''\)\.trim\(\)==='Sr\. No\.'\?1:0\);/);
 });
