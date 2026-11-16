@@ -75,7 +75,7 @@ test("a failed profile request cannot turn an otherwise valid fleet response int
   const dashboard=source.slice(source.indexOf("function Dashboard({"),source.indexOf("function BreakdownTable"));
 
   assert.match(app,/fetch\("\/api\/me\/profile"[\s\S]*\.catch\(\(\) => \{\}\)/);
-  assert.match(app,/<MisDashboard key=\{`dashboard-\$\{dashboardOpenCount\}`\} goto=\{selectMenu\}[\s\S]*requests=\{requests\} requestsError=\{requestsError\} requestsUpdatedAt=\{requestState.updatedAt\}/);
+  assert.match(app,/<MisDashboard goto=\{selectMenu\}[\s\S]*requests=\{requests\} requestsError=\{requestsError\} requestsUpdatedAt=\{requestState.updatedAt\}/);
   assert.match(normal,/<MisDashboard requests=\{misDashboardRequests\} requestsError=\{dashboardRequestsError\} requestsUpdatedAt=\{dashboardRequestsUpdatedAt\}/);
   assert.match(normal,/dashboardRequestsReady\s*\? <MisDashboard/);
   assert.match(app,/requestsLoaded\s*\? <MisDashboard/);

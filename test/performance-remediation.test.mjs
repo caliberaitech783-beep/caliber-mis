@@ -57,7 +57,8 @@ test('navigation yields expensive page mounts and isolates unrelated root update
   assert.match(client,/function NavigationLoadTimeToast/);
   assert.match(client,/const AppBackgroundServices = React\.memo/);
   assert.match(client,/const adminPageContent = useMemo/);
-  assert.match(client,/<div className="body">\s*\{adminPageContent\}/);
+  // The keyed wrapper only changes when the header page name is clicked.
+  assert.match(client,/<div className="body">\s*<React\.Fragment key=\{`page-open-\$\{pageOpenCount\}`\}>\{adminPageContent\}<\/React\.Fragment>/);
   assert.match(client,/preloadNavigationFeature\(name\)/);
   assert.match(client,/<nav onPointerOver=\{warmNavigationFeature\} onPointerDownCapture=\{warmNavigationFeature\} onFocusCapture=\{warmNavigationFeature\}>/);
   assert.match(client,/window\.requestIdleCallback\(run,\{timeout:1000\}\)/);

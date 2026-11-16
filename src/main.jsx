@@ -430,6 +430,13 @@ const PREFERRED_LANGUAGE_KEY = "nerveCenterPreferredLanguage";
 const SECONDARY_LANGUAGE_KEY = "nerveCenterSecondaryLanguage";
 const SESSION_EXPIRED_PARAM = "session-expired";
 const LOGIN_LANDING_PAGE = "Dashboard";
+// Entry and scan pages: opening them again from the header page name could
+// clear cards or form values that are not saved yet, so the click asks first.
+const PAGES_ASKING_BEFORE_REOPEN = new Set([
+  "Vehicle Log Book", "Equipment Log Book", "LMV Manual", "LMV Scan",
+  "Trip Card Bulk Scan", "Job Card Bulk Scan", "Create VLB Batch",
+  "Purchase Order", "Accounts Transactions", "Employee Transfer",
+]);
 const requestedScanPage=()=>requestedMisPage(window.location.search);
 const DEVICE_ID_STORAGE_KEY = "nerveCenterDeviceId";
 const clientDeviceId = (() => {
@@ -11519,7 +11526,7 @@ function App() {
     [sidebarAutoSaved,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
     [sidebarPeek,setSidebarPeek]=useState(false),
     [canGoBack, setCanGoBack] = useState(false),
-    [dashboardOpenCount, setDashboardOpenCount] = useState(0),
+    [pageOpenCount, setPageOpenCount] = useState(0),
     [theme, setTheme] = useState(() => {
       const saved = localStorage.getItem("nerveCenterTheme");
       if (saved === "light" || saved === "dark") return saved;
@@ -11724,12 +11731,26 @@ function App() {
     recordUserActivity({module:"Navigation",action:"Open page",targetReference:active});
   }, [active,session?.token]);
   const stepBack = useStepBack();
-  // Clicking "Dashboard" in the header opens the Dashboard again from the
-  // start: drill-downs and steps close and the page is built fresh.
-  const reopenDashboard = () => {
+  // Clicking the page name in the header (Operations > <page>) opens that
+  // page again from the start: drill-downs and steps close and the page is
+  // built fresh. On entry and scan pages a click could clear work that is not
+  // saved yet, so those ask first.
+  const reopenPage = () => {
+    const page = active;
+    if (PAGES_ASKING_BEFORE_REOPEN.has(page) && !window.confirm(`Open ${navigationLabel(page)} again from the start?\n\nAnything on this page that is not saved yet will be cleared.`)) return;
     setMenu(false);
-    setDashboardOpenCount(count => count + 1);
-    selectMenu("Dashboard");
+    if (page === "Equipment master") {
+      setEquipmentFilter("all");
+      setEquipmentLocation("");
+      setEquipmentCategory("all");
+      setEquipmentLocations([]);
+    }
+    if (page === "Breakdown master") {
+      setBreakdownFleetFilter("");
+      setBreakdownFleetSites([]);
+    }
+    setPageOpenCount(count => count + 1);
+    selectMenu(page);
   };
   const goBack = () => {
     if (pageHistory.current.length <= 1) return;
@@ -11969,7 +11990,7 @@ function App() {
   // not change the current page. Preserve the page element across those root
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
-    requestsLoaded ? <MisDashboard key={`dashboard-${dashboardOpenCount}`} goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
+    requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
   ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
@@ -12068,7 +12089,7 @@ function App() {
     renderedActive, renderedReportCategory, adminPermissions, renderedBreakdownFleetFilter, renderedBreakdownFleetSites,
     renderedEquipmentCategory, renderedEquipmentFilter, renderedEquipmentLocation, renderedEquipmentLocations, profileDesignationKey,
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
-    session, theme, dashboardOpenCount,
+    session, theme,
   ]);
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
   if (session?.token&&locationGate.phase!=='open') return <SignInLocationScreen gate={locationGate} onSignOut={logout}/>;
@@ -12165,9 +12186,7 @@ function App() {
             >
               <ArrowLeft />
             </button>
-            Operations <ChevronRight /> {active === "Dashboard"
-              ? <button type="button" className="crumb-page-link" onClick={reopenDashboard} title="Open Dashboard again" aria-label="Open Dashboard again"><b>{navigationLabel(active)}</b></button>
-              : <b>{navigationLabel(active)}</b>}
+            Operations <ChevronRight /> <button type="button" className="crumb-page-link" onClick={reopenPage} title={`Open ${navigationLabel(active)} again`} aria-label={`Open ${navigationLabel(active)} again`}><b>{navigationLabel(active)}</b></button>
             <span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick={logout} aria-label="Sign out" title="Sign out"><DoorExitIcon /><span>Sign out</span></button></span>
           </div>
           <HeaderClock />
@@ -12182,7 +12201,7 @@ function App() {
           </div>
         </div>
         <div className="body">
-          {adminPageContent}
+          <React.Fragment key={`page-open-${pageOpenCount}`}>{adminPageContent}</React.Fragment>
         </div>
       </main>
       <NavigationLoadTimeToast key={active} active={active} startedAt={menuLoadStartedAt} />
