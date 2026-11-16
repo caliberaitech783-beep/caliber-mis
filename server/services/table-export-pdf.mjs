@@ -17,10 +17,17 @@ function collect(doc){
   return new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject)});
 }
 
-function columnWidths(columns,width){
+// A column's share of the page follows its heading and, since 16 Nov 2026, its text too (the longest line of most of its
+// cells), so a long reason or breakdown column gets room to wrap in a few lines while dates and shifts stay narrow.
+const typicalLength=(rows,index)=>{
+  // Measured on the text as the PDF draws it (arrows written as -> and so on).
+  const lengths=rows.slice(0,400).map(row=>Math.max(0,...clean(row[index],'').split('\n').map(line=>line.length))).sort((a,b)=>a-b);
+  return lengths.length?lengths[Math.floor((lengths.length-1)*.9)]:0;
+};
+function columnWidths(columns,width,rows=[]){
   const minimum=Math.min(columns.length>16?39:48,width/Math.max(1,columns.length));
   const remaining=Math.max(0,width-(minimum*columns.length));
-  const weights=columns.map((column)=>Math.max(.75,Math.min(2.2,clean(column.label,'Field').length/12)));
+  const weights=columns.map((column,index)=>Math.max(.75,Math.min(3.2,Math.max(clean(column.label,'Field').length/12,typicalLength(rows,index)/14))));
   const total=weights.reduce((sum,value)=>sum+value,0);
   return weights.map((weight)=>minimum+(remaining*(weight/total)));
 }
@@ -47,10 +54,12 @@ function drawColumnHeader(doc,columns,widths,fontSize=6.6){
   doc.font('Helvetica-Bold').fontSize(headerSize);
   const height=Math.max(25,...columns.map((column,index)=>doc.font(fontFor(column.label,true)).heightOfString(clean(column.label,'Field'),{width:widths[index]-8,lineGap:1})+9));
   let x=left;
+  // Owner, 16 Nov 2026: PDF, Excel and print styled alike. The heading row is navy with white bold text wrapped inside
+  // its column and centred, as the Excel heading row is.
   columns.forEach((column,index)=>{
-    doc.rect(x,y,widths[index],height).fill(COLORS.white);
+    doc.rect(x,y,widths[index],height).fill(COLORS.navy);
     doc.strokeColor(COLORS.line).lineWidth(.45).rect(x,y,widths[index],height).stroke();
-    doc.fillColor('#000000').font(fontFor(column.label,true)).fontSize(headerSize).text(clean(column.label,'Field'),x+4,y+4,{width:widths[index]-8,height:height-8,lineGap:1});
+    doc.fillColor(COLORS.white).font(fontFor(column.label,true)).fontSize(headerSize).text(clean(column.label,'Field'),x+4,y+4,{width:widths[index]-8,height:height-8,lineGap:1,align:'center'});
     x+=widths[index];
   });
   doc.y=y+height;
@@ -75,7 +84,7 @@ function drawTable(doc,{title,columns=[],rows=[],highlights=[]},drawHeading=()=>
   ({columns,rows}=withSerialColumn(columns,rows.map(row=>row.map(reportTime12))));
   const highlighted=new Set(highlights);
   const fontSize=tableFontSize(columns.length);
-  const width=doc.page.width-doc.page.margins.left-doc.page.margins.right,widths=columnWidths(columns,width),bottom=doc.page.height-doc.page.margins.bottom-22;
+  const width=doc.page.width-doc.page.margins.left-doc.page.margins.right,widths=columnWidths(columns,width,rows),bottom=doc.page.height-68;// clear of the logo and page line at the foot (the logo starts 62 pt above the edge)
   let pageStart=drawTablePage(doc,drawHeading,columns,widths,fontSize),y=pageStart;
   const newTablePage=()=>{doc.addPage();pageStart=drawTablePage(doc,drawHeading,columns,widths,fontSize);y=pageStart;};
   if(!rows.length)doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(10).text('No records are available for this report.',doc.page.margins.left,y+16,{width});

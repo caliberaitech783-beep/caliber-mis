@@ -80,7 +80,9 @@ export const PRINT_PAGE_SIZES=[
   {name:'A4',detail:'297 × 210 mm landscape',widthMm:297,heightMm:210},
   {name:'A3',detail:'420 × 297 mm landscape',widthMm:420,heightMm:297},
 ];
-export const printPageSize=name=>PRINT_PAGE_SIZES.find(page=>page.name===String(name||'').trim().toUpperCase())||PRINT_PAGE_SIZES[0];
+// Every report prints and exports on A3 landscape (owner, 16 Nov 2026); A4 stays known for the print helper's paper list.
+export const REPORT_PAGE_SIZE='A3';
+export const printPageSize=name=>PRINT_PAGE_SIZES.find(page=>page.name===String(name||'').trim().toUpperCase())||PRINT_PAGE_SIZES.find(page=>page.name===REPORT_PAGE_SIZE);
 
 // Print options asked after the page size. They apply when the print helper sends the job itself;
 // the browser print window, used as a fallback, has its own pages and sides settings.
@@ -198,7 +200,8 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
     const remembered=loadPrintOptions();
     const state={pages:'',pagesMode:'all',duplex:remembered.duplex,copies:remembered.copies,printer:''};
     const panel=make('div',undefined,'smart-print-page-size smart-print-options');panel.setAttribute('role','group');panel.setAttribute('aria-label','Print options');
-    panel.append(make('h3',`Print options · ${pageSize}`),make('p','Choose the pages, the sides and the number of copies. These apply when the report goes straight to the printer.'));
+    const page=printPageSize(pageSize);
+    panel.append(make('h3',`Print options · ${page.name} · ${page.detail}`),make('p','The report prints on A3 landscape with its text wrapped inside each column. Choose the pages, the sides and the number of copies; these apply when the report goes straight to the printer.'));
     const field=(legend)=>{const box=make('fieldset');box.append(make('legend',legend));panel.append(box);return box;};
     const radio=(parent,name,value,label,checked,onPick)=>{
       const wrap=make('label',undefined,'smart-print-radio');const input=make('input');input.type='radio';input.name=name;input.value=value;input.checked=checked;input.onchange=()=>onPick(value);
@@ -248,13 +251,14 @@ export function openSmartPrint({title,columns=[],rows=[],highlightRow,reportGrou
     button('Back',dismiss,actions);
     pagePrompt.replaceChildren(panel);
   };
+  // Owner, 16 Nov 2026: Smart Print, PDF and Excel are all A3, text wrapped and styled. Print no longer asks for a paper
+  // size; it goes straight to the print options on A3 landscape.
   const printSelection=()=>{
     if(!snapshot&&!currentReport().chosen.length)return;
-    askChoice('Select page size to print','The report is scaled to the selected page so no columns are cut off. With the print helper installed it goes straight to the printer on this paper size; otherwise, in the print window keep Paper size set to the same size.','Select page size',PRINT_PAGE_SIZES.map(page=>({label:`${page.name} · ${page.detail}`,value:page.name})),pageSize=>{
-      askPrintOptions(pageSize,printOptions=>{
-        const {reportTitle,chosen,appendices}=printableReport();if(!snapshot&&!chosen.length)return;
-        close();onPrint({title:reportTitle,columns:chosen,rows,highlightRow,reportGrouping,appendices,pageSize,printOptions});
-      });
+    const pageSize=REPORT_PAGE_SIZE;
+    askPrintOptions(pageSize,printOptions=>{
+      const {reportTitle,chosen,appendices}=printableReport();if(!snapshot&&!chosen.length)return;
+      close();onPrint({title:reportTitle,columns:chosen,rows,highlightRow,reportGrouping,appendices,pageSize,printOptions});
     });
   };
   let exporting=false;
