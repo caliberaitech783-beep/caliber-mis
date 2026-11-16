@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerFilters,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 
@@ -118,8 +118,11 @@ test('range validation includes calendar dates, cutoff, length and query types',
  assert.equal(manpowerFilters({from:'2026-11-01',to:'2026-11-30'}).contextFrom,'2026-11-01');
 });
 
-function apiHarness(scope={sites:['sasti ob']},cards=[card()]){
- const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
+// Every shift of both sites locked from 1 to 17 Nov; a test may reopen some (`open`: "site|date|S3" keys).
+const lockedBatches=(open=[])=>Array.from({length:17},(_,i)=>'2026-11-'+String(i+1).padStart(2,'0')).flatMap(day=>[site,'Jayant OC'].flatMap(name=>['S1','S2','S3'].map(shift=>{
+ const k=[name,day,shift].join('|');return {id:k,name:'BATCH '+k,site:name,report_date:day,shift,stage:open.includes(k)?'vlb_open':'closed',closed_at:open.includes(k)?null:day+'T23:00:00Z'};})));
+function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[]}={}){
+ const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
  const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
@@ -128,7 +131,7 @@ test('API uses scope, excludes deleted cards, and reads one private consistent s
 });
 test('attendance API reads slim card fields and returns the register duties of the full report',async()=>{
  const split=card(2,2,{operatorSplit:{secondOperatorId:22,secondOperatorCaliberId:'102'},trips:[{tripCount:3,loadingTime:'06:10',unloadingTime:'06:40'}]});
- const cards=[card(1,1),split],h=apiHarness({sites:null},cards),r=await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance');
+ const cards=[card(1,1),split],h=apiHarness({sites:null},cards,{batches:lockedBatches()}),r=await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance');
  assert.equal(r.status,200);assert.equal(r.released,true);assert.equal(r.headers['Cache-Control'],'private, no-store');
  const read=h.calls.find(c=>c.sql.includes('SELECT l.id'));
  assert.ok(read.sql.includes('FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])'),'only the listed card fields are read');assert.doesNotMatch(read.sql,/mis_vlb_batch_entries/,'no batch list per card');
@@ -142,6 +145,46 @@ test('attendance API reads slim card fields and returns the register duties of t
  assert.ok(Array.isArray(r.result.attendanceShifts)&&Array.isArray(r.result.otSites)&&Array.isArray(r.result.notes));
  assert.equal((await h.run({from:'bad',to:date},'/api/reports/manpower/attendance')).status,400);
 });
+test('attendance over a month is read a week at a time and joins to the same register as one build',async()=>{
+ // 16 Nov 2026: Attendance Month-wise for every site from 1 to 16 Nov passed 50,000 cards in one read and stopped.
+ const on=(id,day,shift,patch={})=>card(id,shift,{bookDate:day,...patch});
+ const cards=[on(1,'2026-11-02',1),on(2,'2026-11-07',3),on(3,'2026-11-08',1),on(4,'2026-11-10',2),on(5,'2026-11-16',1,{employeeId:22,caliberId:'102'})];
+ const range={from:'2026-11-01',to:'2026-11-16'},one=buildManpowerReport({records:linkVlbTripHandovers(cards),assets,employees,shifts,filters:manpowerFilters(range),parts:'attendance',batches:lockedBatches(),lockedOnly:true});
+ assert.ok(one.ot.some(e=>e.dutyDates.includes('2026-11-07')&&e.dutyDates.includes('2026-11-08')),'the fixture has an OT case across the week edge');
+ const h=apiHarness({sites:null},cards,{batches:lockedBatches()}),r=await h.run({...range,view:'attendance'},'/api/reports/manpower/attendance');
+ assert.equal(r.status,200);assert.equal(r.released,true);
+ assert.deepEqual(h.calls.filter(c=>c.sql.includes('SELECT l.id')).map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],'three weeks, each with its adjoining days');
+ assert.equal(h.calls.at(-1).sql,'COMMIT');
+ const fields=Object.keys(r.result.otDuties[0]);
+ assert.deepEqual(r.result.otDuties,one.otDuties.map(d=>Object.fromEntries(fields.map(k=>[k,d[k]]))));
+ assert.deepEqual(r.result.attendanceShifts,one.attendanceShifts);assert.deepEqual(r.result.otSites,one.otSites);assert.deepEqual(r.result.attendanceSites,one.attendanceSites);
+ assert.deepEqual(r.result.filters,manpowerFilters(range));
+ const hr=await h.run(range,'/api/integrations/hr/attendance');
+ assert.deepEqual(hr.result.ot,one.ot.map(e=>({site:e.site,siteKey:e.siteKey,employeeId:e.employeeId,schedule:e.schedule})),'an OT case across the week edge is sent once');
+});
+test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift keeps the whole site-day out until it is locked again',async()=>{
+ let open=['Sasti OC|2026-11-10|S3'],drop='';
+ const h=apiHarness({sites:null},[card(1,1),card(2,2)],{batches:()=>lockedBatches(open).filter(b=>b.id!==drop)});
+ const read=async()=>(await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance')).result;
+ let r=await read();
+ assert.deepEqual([r.otDuties.length,r.attendanceEquipment.length],[0,0],'Shift 3 open: nothing of the 10th counts, not even the locked Shift 1 and 2');
+ assert.notEqual(r.attendanceShifts.find(s=>s.siteKey==='sasti ob'&&s.shift==='S3').state,'closed');
+ const hr=(await h.run({from:date,to:date},'/api/integrations/hr/attendance')).result;
+ assert.deepEqual(hr.otDuties,[],'HR gets no figure of an unlocked day');
+ assert.deepEqual(hr.pendingDays.filter(d=>d.siteKey==='sasti ob').map(d=>[d.date,d.shifts.map(s=>s.shift)]),[[date,['S3']]],'and is told which day and shift are still open');
+ open=[];r=await read();
+ assert.equal(r.otDuties.length,2,'every shift locked: both duties count');
+ open=['Sasti OC|2026-11-10|S1'];r=await read();
+ assert.equal(r.otDuties.length,0,'Shift 1 reopened: the day is out again');
+ open=[];r=await read();
+ assert.equal(r.otDuties.length,2,'locked again: read again from the cards as they are now');
+ drop='Sasti OC|2026-11-10|S2';r=await read();
+ assert.equal(r.otDuties.length,0,'a shift the Shift Master runs that day but without any batch keeps the day out');
+});
+test('attendance weeks cover the range without gaps',()=>{
+ assert.deepEqual(attendanceWindows('2026-11-01','2026-11-30'),[{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-14'},{from:'2026-11-15',to:'2026-11-21'},{from:'2026-11-22',to:'2026-11-28'},{from:'2026-11-29',to:'2026-11-30'}]);
+ assert.deepEqual(attendanceWindows(date,date),[{from:date,to:date}]);
+});
 test('attendance-only build skips the other tables and keeps the same duty lines',()=>{
  const cards=[card(1,1),card(2,2)],all=report(cards),slim=report(cards,{parts:'attendance'});
  assert.deepEqual(slim.otDuties,all.otDuties);assert.deepEqual(slim.attendanceEquipment,all.attendanceEquipment);assert.deepEqual(slim.attendanceShifts,all.attendanceShifts);assert.deepEqual(slim.otSites,all.otSites);
@@ -149,7 +192,7 @@ test('attendance-only build skips the other tables and keeps the same duty lines
  assert.ok(all.details.length&&all.performance.length&&all.options.employees.length);
 });
 test('HR attendance receives saved sources and effective schedules without exposing card data',async()=>{
- const h=apiHarness(undefined,[card(1,1,{scanCardId:'scan-one'}),card(2,2,{}, {site:'Jayant OC'})]);
+ const h=apiHarness(undefined,[card(1,1,{scanCardId:'scan-one'}),card(2,2,{}, {site:'Jayant OC'})],{batches:lockedBatches()});
  const {result,status}=await h.run({from:date,to:date},'/api/integrations/hr/attendance');
  assert.equal(status,200);
  assert.equal(result.otDuties.length,1);
