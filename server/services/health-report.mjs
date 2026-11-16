@@ -124,7 +124,7 @@ export function healthReportMessage({window,figures:f,sample=false}){
   if(s.largest)lines.push(`🧩 Largest step: ${escapeHtml(stepName(s.largest.name))} ${ms(s.largest.avgMs)} avg · ${ms(s.largest.maxMs)} slowest`);
  }else lines.push(s?.warmupSkipped?`Only ${s.warmupSkipped} save${s.warmupSkipped===1?'':'s'} so far, all in the first ${s.warmupMinutes} min after restart (left out)`:'No card saved since the server started');
  if(srv||f.queue||f.engines||f.pulseCopy)lines.push('',`<b>🖥 Server${srv?.measuredFrom>window.from?` (since restart ${escapeHtml(clock(srv.measuredFrom))})`:''}</b>`);
- if(srv)lines.push(`🧊 Freezes ${srv.freezes}${srv.freezes?` · longest ${ms(srv.longestFreezeMs)}`:''}`,
+ if(srv)lines.push(`🧊 Freezes ${srv.freezes}${srv.freezes?` · longest ${ms(srv.longestFreezeMs)}`:''}${srv.warmupUntil?` (first ${srv.warmupMinutes} min after restart left out${srv.warmupFreezes?`: ${srv.warmupFreezes} freeze${srv.warmupFreezes===1?'':'s'}`:''})`:''}`,
   `🔌 Database: ${srv.free} free, ${srv.waitingNow} waiting now · most waiting ${srv.mostWaiting}`);
  if(f.queue)lines.push(`📥 Card read queue: ${f.queue.slots} slots, ${f.queue.active} busy, ${f.queue.waiting} waiting`);
  if(f.engines)lines.push(`🤖 Engines ${f.engines.live} live, ${f.engines.blocked?`${f.engines.blocked} blocked`:'none blocked'}, ${f.engines.reading} reading now`);
@@ -168,11 +168,19 @@ async function readingFigures(pool,from,to){
 
 // In-memory figures of this server: freezes and database waits in the period (per-minute history of
 // the performance monitor), card saving steps (last 40 saves) and the state now.
+// The first WARMUP_MS after a restart run on cold memory (16 Nov 2026 15:16: freezes up to 2.6 s in the
+// first 3 minutes), so freezes and database waits in those minutes are left out (owner's choice, 16 Nov).
+export const WARMUP_MS=10*60*1000;
 export function liveFigures({performance,scanning,pool,pulseCopy},from){
- const minutes=(performance?.minutes||[]).filter(m=>Date.parse(m.minute)>=from-60000);
- const measuredFrom=Math.max(from,Date.parse(performance?.measuredSince)||from);
+ const started=Date.parse(performance?.measuredSince);
+ const measuredFrom=Math.max(from,started||from);
+ const warmupUntil=Number.isFinite(started)&&started+WARMUP_MS>from?started+WARMUP_MS:null;
+ const inPeriod=(performance?.minutes||[]).filter(m=>Date.parse(m.minute)>=from-60000);
+ const minutes=warmupUntil?inPeriod.filter(m=>Date.parse(m.minute)>=warmupUntil):inPeriod;
+ const leftOut=inPeriod.filter(m=>!minutes.includes(m));
  const server=performance?{measuredFrom,freezes:minutes.reduce((s,m)=>s+(m.freezes||0),0),longestFreezeMs:Math.max(0,...minutes.map(m=>m.longestFreezeMs||0)),
-  mostWaiting:Math.max(0,...minutes.map(m=>m.poolMaxWaiting||0),pool?.waiting||0),free:pool?.idle??0,waitingNow:pool?.waiting??0}:null;
+  mostWaiting:Math.max(0,...minutes.map(m=>m.poolMaxWaiting||0),pool?.waiting||0),free:pool?.idle??0,waitingNow:pool?.waiting??0,
+  warmupUntil,warmupMinutes:WARMUP_MS/60000,warmupFreezes:leftOut.reduce((s,m)=>s+(m.freezes||0),0)}:null;
  // Saves in the first minutes after a restart run on cold memory, so the report leaves them out
  // (owner's choice, 16 Nov 2026); /api/health still shows them.
  const allSteps=scanning?.entryReadSteps,steps=allSteps?.afterWarmup||allSteps;

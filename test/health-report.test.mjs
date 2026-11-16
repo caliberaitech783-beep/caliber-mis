@@ -85,10 +85,33 @@ test('live figures take the period from the per-minute history and the whole sav
   scanning:{liveEngines:8,reading:1,outages:[],entryReadLane:{slots:4,active:0,waiting:0},
    entryReadSteps:{reads:40,total:{avgMs:150,maxMs:350},steps:{queue:{avgMs:500,maxMs:900},'card-check':{avgMs:73,maxMs:238},'duplicate-saved':{avgMs:3,maxMs:7}}}},
   pulseCopy:{fresh:true,ageSeconds:14}},from);
- assert.deepEqual(figures.server,{measuredFrom:from,freezes:3,longestFreezeMs:800,mostWaiting:2,free:10,waitingNow:0},'minutes before the period are left out');
+ assert.deepEqual(figures.server,{measuredFrom:from,freezes:3,longestFreezeMs:800,mostWaiting:2,free:10,waitingNow:0,
+  warmupUntil:null,warmupMinutes:10,warmupFreezes:0},'minutes before the period are left out; a restart long before the period changes nothing');
  assert.deepEqual(figures.saving.largest,{name:'card-check',avgMs:73,maxMs:238},'waiting in the queue is not a step of the save');
  assert.equal(figures.saving.averageMs,150);
  assert.deepEqual(figures.engines,{live:8,reading:1,blocked:0,blockedReason:''});
+});
+
+test('freezes and database waits in the first 10 minutes after a restart are left out and the report says so',()=>{
+ const window=reportWindow(ist('2026-11-16T16:00:00'));
+ const minute=(time,extra)=>({minute:new Date(ist(time)).toISOString(),freezes:0,longestFreezeMs:0,poolMaxWaiting:0,...extra});
+ // 16 Nov 2026: release restart at 15:16:16, freezes up to 2.6 s in the next 3 minutes.
+ const performance={measuredSince:new Date(ist('2026-11-16T15:16:16')).toISOString(),minutes:[
+  minute('2026-11-16T15:16:00',{freezes:2,longestFreezeMs:2613,poolMaxWaiting:6}),minute('2026-11-16T15:17:00',{freezes:2,longestFreezeMs:1160}),
+  minute('2026-11-16T15:18:00',{freezes:2,longestFreezeMs:1159}),minute('2026-11-16T15:26:00',{freezes:1,longestFreezeMs:3000}),
+  minute('2026-11-16T15:27:00',{freezes:1,longestFreezeMs:400})]};
+ const figures=liveFigures({performance,pool:{idle:8,waiting:0}},window.from);
+ assert.equal(figures.server.warmupUntil,ist('2026-11-16T15:26:16'));
+ assert.equal(figures.server.freezes,1,'15:26 starts inside the 10 minutes, so only 15:27 counts');
+ assert.equal(figures.server.longestFreezeMs,400);
+ assert.equal(figures.server.mostWaiting,0,'the 6 waiting at 15:16 is left out');
+ assert.equal(figures.server.warmupFreezes,7);
+ assert.equal(verdict({...calm,server:figures.server}).good,true);
+ const text=healthReportMessage({window,figures:{...calm,server:figures.server}});
+ assert.match(text,/Server \(since restart 15:16\)/);
+ assert.match(text,/🧊 Freezes 1 · longest 400 ms \(first 10 min after restart left out: 7 freezes\)/);
+ const late=liveFigures({performance:{...performance,minutes:[...performance.minutes,minute('2026-11-16T15:40:00',{freezes:1,longestFreezeMs:2500})]},pool:{idle:8,waiting:0}},window.from);
+ assert.equal(verdict({...calm,server:late.server}).good,false,'a freeze after the 10 minutes still counts');
 });
 
 test('the report leaves out card saves in the first 10 minutes after a restart and says so',()=>{
