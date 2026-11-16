@@ -69,7 +69,7 @@ The new calculation and API tests cover approved patterns, midnight boundaries, 
 4. **Step 4 · drivers.** As in point 3 above.
 5. **Step 5 · driver history.** The driver's name opens the month-wise history.
 
-A Day or Night shift that the Shift Master holds at a site working Shift 1 to 3, with no duty and no batch in the selected dates, is left out (it would otherwise be red every day) and named on screen under "Not shown". Shift 1 to 3 are never left out, so a missed batch stays red even when only one day is chosen.
+Every shift the Shift Master holds is shown, Day and Night included, even with 0 duties and no batch (owner, 16 Nov 2026: "even if zero, show"). A shift that has ended without a batch is red, so Day and Night at a site working Shift 1 to 3 count in Batch not created.
 
 Two totals:
 

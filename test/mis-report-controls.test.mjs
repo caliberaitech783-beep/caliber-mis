@@ -401,15 +401,14 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
   assert.equal(days.columns[0].key,'date');assert.equal(days.title,'Step 4 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · Graders · drivers');assert.equal(days.description,'3 equipment-wise duties · 2 actual duties · Saved records only · Press a name for the month-wise history');
   assert.equal(nodes(step(tree,'shift-attendance-equipment'),'p').find(n=>n.props.className==='mp-att-batch mp-att-batch-none').props.children.at(-1),'12-11-26');}
 
- // A Day or Night shift only in the Shift Master is left out at a site working Shift 1 to 3, and the screen names it.
- // At a site that works nothing else it stays red.
+ // Owner, 16 Nov 2026: every Shift Master shift is shown, Day and Night too, even with 0 duties and no batch,
+ // also at a site working Shift 1 to 3. Nothing is left out, so there is no "Not shown" line.
  {const extra=[...shiftBatches,batch('jayant ob','D','none'),batch('jayant ob','N','none'),batch('dhoptala','D','none')];
   const tree=(await mount({data:payload(sites,extra)}))(),rowsNow=step(tree,'shift-attendance-sites').props.rows;
-  assert.deepEqual(rowsNow.map(r=>[r.site,r.none]),[['Dhoptala OC',2],['Jayant OC',0],['Sasti OC',1],['All sites',3]]);
-  assert.match(nodes(step(tree,'shift-attendance-sites'),'p').find(n=>n.props.className==='mp-category-hint').props.children.join(''),/^Not shown: Jayant OC Day shift, Jayant OC Night shift\./);
-  const worked=(await mount({data:payload(sites,[...extra.filter(b=>!(b.siteKey==='jayant ob'&&b.shift==='D')),batch('jayant ob','D','closed','J-D')])}))();
-  assert.deepEqual(step(worked,'shift-attendance-sites').props.rows.map(r=>[r.site,r.none]).slice(0,2),[['Dhoptala OC',2],['Jayant OC',0]]);
-  assert.match(nodes(step(worked,'shift-attendance-sites'),'p').find(n=>n.props.className==='mp-category-hint').props.children.join(''),/^Not shown: Jayant OC Night shift\. The Shift Master holds this shift/,'a Day shift with a batch is shown again');}
+  assert.deepEqual(rowsNow.map(r=>[r.site,r.none]),[['Dhoptala OC',2],['Jayant OC',2],['Sasti OC',1],['All sites',5]]);
+  assert.equal(nodes(tree,'p').some(n=>String([n.props.children].flat().join('')).startsWith('Not shown')),false);
+  const jayant=(await mount({pick:{siteKey:'jayant ob'},data:payload(sites,extra)}))();
+  assert.deepEqual(nodes(jayant,DateShiftGrid)[0].props.grid.shifts,['D','N','S1','S2','S3'],'Day and Night stay in the grid with 0 duties');}
 
  // One site in the report opens by itself; a stale choice is ignored.
  {const only=(await mount({chosen:{...filters,site:'Sasti OC'},data:payload([sites[2]],shiftBatches.filter(b=>b.siteKey==='sasti ob'))}))();assert.deepEqual(categories(only),['shift-attendance-sites','shift-attendance-dates']);assert.equal(step(only,'shift-attendance-sites').props.rows.length,1);}
