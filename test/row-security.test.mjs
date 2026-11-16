@@ -1,5 +1,25 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';
 import {rowSecurityPool,rowSecurityContext,initializeRowSecurity} from '../server/services/row-security.mjs';
+import {requireHrAttendance} from '../server/routes/hr-attendance-access.mjs';
+
+test('validated HR attendance can read earlier saved cards only at its assigned sites',async t=>{
+ const db=new PGlite();t.after(()=>db.close());
+ await db.exec(`CREATE ROLE mis_app NOSUPERUSER NOBYPASSRLS;
+ GRANT CREATE,USAGE ON SCHEMA public TO mis_app;GRANT CREATE ON DATABASE postgres TO mis_app;
+ SET ROLE mis_app;CREATE TABLE mis_log_books(id SERIAL PRIMARY KEY,site TEXT NOT NULL,book_date DATE NOT NULL);
+ INSERT INTO mis_log_books(site,book_date) VALUES('Jayant OC','2026-11-07'),('Sasti OC','2026-11-07'),('Jayant OC','2026-11-14');`);
+ const native={query:db.query.bind(db),connect:async()=>({query:db.query.bind(db),release(){}})};
+ await initializeRowSecurity(native,{enabled:true});
+ const pool=rowSecurityPool(native,{enabled:true,resolveScope:req=>req.logBookScope});
+ const guard=requireHrAttendance(async()=>Response.json({profile:{
+  login:'site-hr',permissions:{application:'HR',hrDesktopAccess:['Employee Master'],site:'NCL-JAYANT'}
+ }}));
+ const req={headers:{authorization:'Bearer '+'a'.repeat(43)}};
+ const result=await rowSecurityContext(req,null,()=>guard(req,{set(){}},()=>
+  pool.query("SELECT site,book_date::text AS date FROM mis_log_books WHERE book_date<'2026-11-15' ORDER BY book_date")
+ ));
+ assert.deepEqual(result.rows,[{site:'Jayant OC',date:'2026-11-07'},{site:'Jayant OC',date:'2026-11-14'}]);
+});
 test('forced database RLS isolates sites, rejects cross-site writes and never leaks pooled scope',async t=>{
  const db=new PGlite();t.after(()=>db.close());await db.exec(`CREATE ROLE mis_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
  GRANT CREATE,USAGE ON SCHEMA public TO mis_app;GRANT CREATE ON DATABASE postgres TO mis_app;
