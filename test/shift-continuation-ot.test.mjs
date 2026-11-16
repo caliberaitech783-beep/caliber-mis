@@ -50,3 +50,10 @@ test('a Shift 2 scan of the same trip card and driver is a continuation, not a d
  await insert(shift2);
  await assert.rejects(()=>insert({...saved,closingHmr:107}),error=>/duplicate key|unique/i.test(error.message));
 });
+
+test('the shift continuation note does not stop the card from saving',async()=>{
+ const {blockingScanWarnings}=await import('../shared/scan-auto-save.mjs');
+ const note=continuationNote({bookNo:'VLB_S/12TH-NOV26/S1/009',shift:'S1'});
+ assert.deepEqual(blockingScanWarnings([note]),[]);
+ assert.deepEqual(blockingScanWarnings([note,'Check the HMR.']),['Check the HMR.']);
+});
