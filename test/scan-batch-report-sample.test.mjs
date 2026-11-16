@@ -29,3 +29,14 @@ test('the A24 line has the Send sample to Telegram button',()=>{
  assert.match(source,/row\.key==='scan-batch-report'&&<button[^>]*onClick=\{\(\)=>void sendSample\(row\)\}>Send sample to Telegram<\/button>/);
  assert.match(source,/request\('\/scan-batch-report\/sample','POST',\{\}\)/);
 });
+
+// A MIS login with separate credentials is checked against the MIS route list too (fix, 16 Nov 2026):
+// without this the button answered "This MIS menu is not assigned to your login."
+test('MIS administrators may send the sample; other MIS logins may not',async()=>{
+ const {misRequestAllowed}=await import('../shared/mis-application-access.mjs');
+ const session=pages=>({role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:pages}});
+ const sample={path:'/api/automation-centre/scan-batch-report/sample',method:'POST'};
+ assert.equal(misRequestAllowed(session(['Users & employees']),sample),true);
+ assert.equal(misRequestAllowed(session(['Reports']),sample),false);
+ assert.equal(misRequestAllowed(session(['Users & employees']),{...sample,method:'GET'}),false);
+});

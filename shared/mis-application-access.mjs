@@ -30,6 +30,8 @@ export function misRequestAllowed(session,req){
  if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test'));
  if(route==='/api/automation-centre')return read&&isMisAdministrator(session);
  if(route==='/api/automation-centre/equipment-mismatch'||route==='/api/automation-centre/switch')return req.method==='PUT'&&isMisAdministrator(session);
+ // A24 "Send sample to Telegram" (16 Nov 2026).
+ if(route==='/api/automation-centre/scan-batch-report/sample')return req.method==='POST'&&isMisAdministrator(session);
  if(route==='/api/print-helper/certificate')return read;
  if(route==='/api/print-helper/sign')return req.method==='POST';
  if(['/api/print-helper/setup','/api/print-helper/setup/override.crt'].includes(route))return isMisAdministrator(session)&&(read||req.method==='POST'&&route==='/api/print-helper/setup');
