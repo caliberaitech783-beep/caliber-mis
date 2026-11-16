@@ -8,9 +8,10 @@ import './loading-machine-report.css';
 
 // Loading Equipment-wise Report: every loading machine of a site in a shift, with its trips, the share of the shift it
 // worked and its idle stops between loadings. A machine in BD is a red line; a machine with no hours and not in BD is brown.
-// It drills down like the Trip Timing & Gap Report: all sites; one site date by date and shift by shift, with its machines
-// under the grid (every date and shift until a box is pressed); one machine as an 8-hour strip per shift, one under the
-// other; one shift full width with the clock time of every change of colour and every loading; the full trip card.
+// It drills down like the Trip Timing & Gap Report: all sites; one site date by date and shift by shift, with its
+// machines by equipment category under the grid (every date and shift until a box is pressed; owner, 16 Nov 2026); the
+// machines of a category; one machine as an 8-hour strip per shift, one under the other; one shift full width with the
+// clock time of every change of colour and every loading; the full trip card.
 // A report only: it reads the saved log books already loaded by the shared operations screen.
 const EVERY='*';
 // More shifts than this are not drawn one under the other; the list below them still carries every loading.
@@ -39,7 +40,8 @@ const stateBadge=r=>r.state&&r.state!=='mixed'?<span className={'lm-status lm-st
 
 const identity={
  site:[column('site','Site'),column('machineShifts','Machine shifts')],
- shift:[column('date','Date',r=>r.total?'ALL DATES':day(r.date)),column('shift','Shift'),column('stageLabel','Entry stage'),column('machineShifts','Machines')]
+ shift:[column('date','Date',r=>r.total?'ALL DATES':day(r.date)),column('shift','Shift'),column('stageLabel','Entry stage'),column('machineShifts','Machines')],
+ category:[column('category','Equipment category'),column('machineCount','Machines'),column('machineShifts','Machine shifts')]
 };
 // The table sorts itself by any column it takes for a duration (a key such as `hours`, a heading such as "BD hours"). The lines
 // here have their own order, so these keys and headings are chosen to stay clear of that rule.
@@ -177,10 +179,12 @@ export function ShiftTimelines({entries=[],title='',step='',onPick=()=>{},onOpen
 
 export default function LoadingMachineReport({records=[],assets=[],fleet=[],batches=[],pulseBreakdowns=null,pulseBreakdownsError='',filters={},loading='',period='',ReportSection,dataReady=true,rowsView=null}){
  const [mode,setMode]=useState('idle'),[site,setSite]=useState(''),[slot,setSlot]=useState(null),[item,setItem]=useState(null),[strip,setStrip]=useState(''),[only,setOnly]=useState(''),[card,setCard]=useState('');
+ // Step 3: the equipment category opened ({key,label}); kept after the other state.
+ const [category,setCategory]=useState(null);
  const entries=useMemo(()=>machineShifts(records,{assets,fleet,batches,filters,pulseBreakdowns}),[records,assets,fleet,batches,filters,pulseBreakdowns]);
  const visible=useMemo(()=>loading?entries.filter(e=>e.names.includes(loading)||e.door===loading):entries,[entries,loading]);
  const cardRows=useMemo(()=>card?tripEntries(records).filter(e=>e.recordId===card):[],[records,card]),cardHead=cardRows[0];
- const reset=()=>{setSite('');setSlot(null);setItem(null);setStrip('');setOnly('');setCard('');};
+ const reset=()=>{setSite('');setSlot(null);setCategory(null);setItem(null);setStrip('');setOnly('');setCard('');};
  const tabs=<nav className="production-tabs tt-tabs" aria-label="Report view">{[['idle','Machine working and idle time'],['rows','All machines list']].map(([key,label])=><button key={key} type="button" aria-current={mode===key?'page':undefined} onClick={()=>{setMode(key);reset();}}>{label}</button>)}</nav>;
  if(mode==='rows')return <div className="tt-report lm-report">{tabs}{rowsView}</div>;
  const band=isBand(only)?only:'';
@@ -192,28 +196,33 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const shifts=summarise(siteEntries,'shift'),shiftsListed=upper?shifts.rows.filter(r=>r[upper]>0):shifts.rows;
  // Step 3 sits under the grid as soon as a site is open: every date and shift of the site until a box narrows it to one.
  const slotEntries=!site?[]:!slot?siteEntries:siteEntries.filter(e=>groupKey('shift',e)===slot.key),allShifts=!slot;
- const machines=summarise(slotEntries,'machine'),machinesListed=upper?machines.rows.filter(r=>r[upper]>0):machines.rows;
- const itemEntries=!item?[]:item.key===EVERY?slotEntries:slotEntries.filter(e=>groupKey('machine',e)===item.key);
+ // Step 3 by equipment category; Step 4 the machines of the category opened.
+ const categories=summarise(slotEntries,'category'),categoriesListed=upper?categories.rows.filter(r=>r[upper]>0):categories.rows;
+ const categoryEntries=!category?[]:category.key===EVERY?slotEntries:slotEntries.filter(e=>groupKey('category',e)===category.key);
+ const machines=summarise(categoryEntries,'machine'),machinesListed=upper?machines.rows.filter(r=>r[upper]>0):machines.rows;
+ const itemEntries=!item?[]:item.key===EVERY?categoryEntries:categoryEntries.filter(e=>groupKey('machine',e)===item.key);
  // A machine over many shifts (or many machines) is drawn as one 8-hour strip per shift; pressing a strip opens that
  // shift on its own. With one shift to draw, that shift is open at once.
  const drawable=itemEntries.filter(canDraw).sort(stripOrder),stacked=drawable.length>1;
  const focus=strip?itemEntries.find(e=>e.id===strip)||null:null;
  const shownEntries=focus?[focus]:itemEntries;
- const level=!site?1:!item?2:3;
+ const level=!site?1:!category?2:!item?3:4;
  // The list of loadings follows the strip: one shift, or every shift drawn; a colour chip or a coloured number keeps one colour only.
  // A machine that did not run in the lines opened has no loading to list: only what its ELB says is shown.
  const pick=band||(only==='ok'?'ok':''),ran=shownEntries.some(e=>e.state==='running'),notWorked=focus?[]:shiftsNotWorked(itemEntries);
  const lines=item?loadingLines(shownEntries,pick):[],opened=summarise(shownEntries,'machine').total,manyLines=shownEntries.length>1;
  const manyDates=new Set(shownEntries.map(e=>e.date)).size>1;
- // Step 3 with a band chosen also lists the stops of that band for all its machines, each with the tipper trips delayed in it.
- const bandStops=site&&band?loadingLines(slotEntries,band):[];
- const openSite=(row,pick='')=>{setSite(row.total?EVERY:row.key);setSlot(null);setItem(null);setStrip('');setOnly(pick);setCard('');};
- const openSlot=(row,pick=only)=>{setSlot(row.total?null:{key:row.key,label:day(row.date)+' · '+row.shift});setItem(null);setStrip('');setOnly(pick);setCard('');};
+ // Step 4 with a band chosen also lists the stops of that band for all its machines, each with the tipper trips delayed in it.
+ const bandStops=category&&band?loadingLines(categoryEntries,band):[];
+ const openSite=(row,pick='')=>{setSite(row.total?EVERY:row.key);setSlot(null);setCategory(null);setItem(null);setStrip('');setOnly(pick);setCard('');};
+ const openSlot=(row,pick=only)=>{setSlot(row.total?null:{key:row.key,label:day(row.date)+' · '+row.shift});setCategory(null);setItem(null);setStrip('');setOnly(pick);setCard('');};
+ const openCategory=(row,pick=only)=>{setCategory(row.total?{key:EVERY,label:'All categories'}:{key:row.key,label:row.category});setItem(null);setStrip('');setOnly(pick);setCard('');};
  const openItem=(row,pick=only)=>{setItem(row.total?{key:EVERY,label:'All machines'}:{key:row.key,label:'Machine '+row.door});setStrip('');setOnly(pick);setCard('');};
  const openStrip=e=>{setStrip(e.id);setOnly(o=>o==='ok'||isBand(o)?'':o);setCard('');};
  // The green chip belongs to the time-line of a machine only; the steps above it do not know it.
  const upward=()=>setOnly(o=>o==='ok'?'':o);
- const crumbs=[['All sites',reset],...(site?[[siteLabel,()=>{setSlot(null);setItem(null);setStrip('');setCard('');upward();}]]:[]),...(slot?[[slot.label,()=>{setItem(null);setStrip('');setCard('');upward();}]]:[]),
+ const crumbs=[['All sites',reset],...(site?[[siteLabel,()=>{setSlot(null);setCategory(null);setItem(null);setStrip('');setCard('');upward();}]]:[]),...(slot?[[slot.label,()=>{setCategory(null);setItem(null);setStrip('');setCard('');upward();}]]:[]),
+  ...(category?[[category.label,()=>{setItem(null);setStrip('');setCard('');upward();}]]:[]),
   ...(item?[[item.label,()=>{setStrip('');setCard('');}]]:[]),...(focus&&stacked?[[day(focus.date)+' · '+focus.shift+(item.key===EVERY?' · '+focus.door:''),()=>setCard('')]]:[]),...(card?[[cardHead?.book||'Trip card',null]]:[])];
  const chips=(total,withStates)=><nav className="tt-chips" aria-label="Show only">{[['','All machines',total.machineShifts,''],...(withStates?[['breakdown',STATES.breakdown,total.breakdown,'lm-breakdown'],['nohours',STATES.nohours,total.nohours,'lm-nohours']]:[]),...BANDS.map(b=>[b.key,'Idle '+b.label,total[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={upper===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
  const tripChips=<nav className="tt-chips" aria-label="Show only">{[['','All trips',opened.loadings,''],['ok','Green · '+BAND_LABELS.ok,opened.ok,'lm-ok'],...BANDS.map(b=>[b.key,'Idle '+b.label,opened[b.key],'lm-'+b.key])].map(([key,label,n,tone])=><button key={key||'all'} type="button" className={tone} aria-current={pick===key?'page':undefined} onClick={()=>setOnly(key)}>{label} · {n}</button>)}</nav>;
@@ -239,10 +248,10 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  const shiftDay=[{key:'machines',label:'Machine shifts',value:t=>t.machineShifts},{key:'trips',label:'Trips loaded',value:t=>t.trips},
   {key:'percent',label:'% of shift worked',value:t=>t.shiftHours?Math.round(t.judgedHours/t.shiftHours*1000)/10+'%':'—'},{key:'stops',label:'Idle stops',value:t=>t.stops}];
  const shiftExport=dateShiftExport(shiftGrid,{count:r=>r.machineShifts,countLabel:'machines',boxes:gridBoxes,dayColumns:shiftDay});
- const where=siteLabel+' · '+(slot?slot.label:'all dates and shifts');
- // Step 4 is the machine: one strip per shift when it has many, or its one shift full width. A strip pressed opens its
- // shift full width as Step 5. The list of loadings and the trip card come after whichever is open.
- const listStep=stacked&&focus?5:4,cardStep=listStep+1;
+ const slotWhere=siteLabel+' · '+(slot?slot.label:'all dates and shifts'),where=slotWhere+(category?' · '+category.label:'');
+ // Step 5 is the machine: one strip per shift when it has many, or its one shift full width. A strip pressed opens its
+ // shift full width as Step 6. The list of loadings and the trip card come after whichever is open.
+ const listStep=stacked&&focus?6:5,cardStep=listStep+1;
  const listWhere=!item?'':item.label+' · '+(focus?day(focus.date)+' · '+focus.shift+(item.key===EVERY?' · '+focus.door:''):where);
  // One step back: the step before the one on screen, as in the line of steps above the table.
  const back=crumbs.length>1?crumbs.at(-2)[1]:null,backTo=crumbs.length>1?'Back to '+crumbs.at(-2)[0]:'';
@@ -259,29 +268,34 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
   {level>=2&&<>
    <p className="tt-insight">{summaryLine(shifts.total)}</p>
    {chips(shifts.total,true)}
-   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date by shift · '+period+filtered} category="operations-loading-shifts" description="In each box: the machines of that shift, then the idle stops of each band (blue 5–10, orange 10–15, red 15–20, dark red 20+ min; the minutes are written inside each box and above it) and, last, the machines in BD and with no hours, with the entry stage under them. Press a box for the machines of that shift; press a colour for only those. Idle time is complete only after the VLB of the shift is locked."
+   <ReportSection key={'lm-shifts-'+site+upper} reportKey="Loading machines shifts" dataReady={dataReady} title={'Step 2 · Loading machines · '+siteLabel+' · date by shift · '+period+filtered} category="operations-loading-shifts" description="In each box: the machines of that shift, then the idle stops of each band (blue 5–10, orange 10–15, red 15–20, dark red 20+ min; the minutes are written inside each box and above it) and, last, the machines in BD and with no hours, with the entry stage under them. Press a box for that shift by equipment category; press a colour for only those. Idle time is complete only after the VLB of the shift is locked."
     rows={shiftExport.rows} columns={shiftExport.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
     <DateShiftGrid grid={shiftGrid} count={r=>r.machineShifts} countLabel="Machines" boxes={gridBoxes} dayColumns={shiftDay} cellNote={r=>r.stageLabel} onOpen={(r,b)=>openSlot(r,b||upper)} onOpenAll={()=>openSlot(shifts.total)}
      isPicked={r=>slot?.key===r.key} pickedBox={upper} allPicked={allShifts} ariaLabel="Loading machines by date and shift" emptyMessage="No shift with such a machine here."/>
    </ReportSection>
-   <p className="tt-insight">{summaryLine(machines.total)}</p>
-   <ReportSection key={'lm-machines-'+site+(slot?.key||EVERY)+upper} reportKey={'Loading machines of a shift'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 3 · Loading machines · '+where+filtered} category="operations-loading-machines" description={(allShifts?'Every loading machine of the site over all the dates and shifts above; press a box above for one shift only. ':'')+'One line per loading machine: the running machines first with the most idle on top, then the machines in BD in red, then the machines with no hours in brown. Press a line to see the machine as an 8-hour strip per shift: where it was green, where it turned orange and where red, by the clock. Press a coloured number to see only those stops.'}
-    rows={withTotal(machinesListed,upper?{...machines.total,id:'shown-total'}:machines.total)} columns={machineColumns(openItem,allShifts,manySites)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,item?.key)} isTotalRow={isTotal} onRowClick={r=>openItem(r)} emptyMessage="No such machine in this shift."/>
-   {band&&<ReportSection key={'lm-bandstops-'+site+(slot?.key||EVERY)+band} reportKey="Loading machines stops of a band" dataReady={dataReady} title={'Idle stops of '+BAND_LABELS[band]+' · every machine · '+where} category="operations-loading-bandstops" description={'Every stop of '+BAND_LABELS[band]+' of the machines above, with the tipper trips delayed in it. Press a line to see the shift time-line of that machine.'}
-    recordDateFilter={allShifts?null:false} rows={bandStops} columns={tripColumns(true,manySites)} rowKey={l=>l.id} rowClassName={lineClass} onRowClick={l=>openItem({key:l.machineKey,door:l.machine},band)} emptyMessage={'No stop of '+BAND_LABELS[band]+' here.'}/>}
+   <p className="tt-insight">{summaryLine(categories.total)}</p>
+   <ReportSection key={'lm-categories-'+site+(slot?.key||EVERY)+upper} reportKey={'Loading machines by category'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 3 · Loading machines · '+slotWhere+' · by equipment category'+filtered} category="operations-loading-categories" description={(allShifts?'Every loading machine of the site over all the dates and shifts above, by equipment category; press a box above for one shift only. ':'')+'One line per equipment category (the machine’s group in the Equipment master), the most idle on top. Press a category for its machines; press a coloured number for only those.'}
+    rows={withTotal(categoriesListed,upper?{...categories.total,id:'shown-total'}:categories.total)} columns={summaryColumns('category',openCategory)} rowKey={r=>r.id} rowClassName={r=>(r.total?'tt-total':'')+picked(r,category?.key)} isTotalRow={isTotal} onRowClick={r=>openCategory(r)} emptyMessage="No loading machine in this shift."/>
   </>}
   {level>=3&&<>
+   <p className="tt-insight">{summaryLine(machines.total)}</p>
+   <ReportSection key={'lm-machines-'+site+(slot?.key||EVERY)+category.key+upper} reportKey={'Loading machines of a shift'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 4 · Loading machines · '+where+filtered} category="operations-loading-machines" description={(allShifts?'Every loading machine of the category over all the dates and shifts above; press a box above for one shift only. ':'')+'One line per loading machine: the running machines first with the most idle on top, then the machines in BD in red, then the machines with no hours in brown. Press a line to see the machine as an 8-hour strip per shift: where it was green, where it turned orange and where red, by the clock. Press a coloured number to see only those stops.'}
+    rows={withTotal(machinesListed,upper?{...machines.total,id:'shown-total'}:machines.total)} columns={machineColumns(openItem,allShifts,manySites)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,item?.key)} isTotalRow={isTotal} onRowClick={r=>openItem(r)} emptyMessage="No such machine in this shift."/>
+   {band&&<ReportSection key={'lm-bandstops-'+site+(slot?.key||EVERY)+category.key+band} reportKey="Loading machines stops of a band" dataReady={dataReady} title={'Idle stops of '+BAND_LABELS[band]+' · every machine · '+where} category="operations-loading-bandstops" description={'Every stop of '+BAND_LABELS[band]+' of the machines above, with the tipper trips delayed in it. Press a line to see the shift time-line of that machine.'}
+    recordDateFilter={allShifts?null:false} rows={bandStops} columns={tripColumns(true,manySites)} rowKey={l=>l.id} rowClassName={lineClass} onRowClick={l=>openItem({key:l.machineKey,door:l.machine},band)} emptyMessage={'No stop of '+BAND_LABELS[band]+' here.'}/>}
+  </>}
+  {level>=4&&<>
    {stacked&&!focus&&<p className="tt-insight">{timelineLine(opened)}</p>}
-   {stacked&&<ShiftTimelines entries={itemEntries} step="Step 4 · " title={item.label+' · '+where} onOpen={openStrip} pickedId={strip}/>}
+   {stacked&&<ShiftTimelines entries={itemEntries} step="Step 5 · " title={item.label+' · '+where} onOpen={openStrip} pickedId={strip}/>}
    {(focus||!stacked)&&ran&&<p className="tt-insight">{timelineLine(opened)}</p>}
    {(focus||!stacked)&&ran&&<ShiftTimelines entries={shownEntries} step={'Step '+listStep+' · '} onPick={setOnly}/>}
    {ran&&tripChips}
    {ran&&<ReportSection key={'lm-trips-'+item.key+(slot?.key||EVERY)+strip+pick} reportKey={'Loading machine loadings'+(manyLines?' together':'')} dataReady={dataReady} title={'Step '+listStep+' · Every loading · '+listWhere+(pick?' · '+BAND_LABELS[pick]:'')} category="operations-loading-stops" description={'One line per loading in the order of the shift, with the minutes since the loading before: green up to '+IDLE_LIMIT+' minutes, orange up to '+RED_AFTER+', red above '+RED_AFTER+'. An idle stop shows the tipper trips delayed in it. Press a line to see the trip card of the tipper loaded.'}
     recordDateFilter={manyDates?null:false} rows={lines} columns={tripColumns(manyLines,manySites)} rowKey={l=>l.id} rowClassName={l=>lineClass(l)+(card&&l.to?.recordId===card?' report-row-picked':'')} onRowClick={l=>setCard(l.to.recordId)} emptyMessage={pick?'No loading of '+BAND_LABELS[pick]+' here.':'No loading with a time here.'}/>}
-   {notWorked.length>0&&<ReportSection key={'lm-notworked-'+item.key+(slot?.key||EVERY)} reportKey="Loading machine shifts not worked" dataReady={dataReady} title={(ran?'':'Step 4 · ')+'Shifts not worked · '+item.label+' · '+where} category="operations-loading-notworked" description="The shifts in which the machine did not run: in BD in red, no hours and not in BD in brown, with the reason on its ELB and the breakdown recorded in Pulse."
+   {notWorked.length>0&&<ReportSection key={'lm-notworked-'+item.key+(slot?.key||EVERY)} reportKey="Loading machine shifts not worked" dataReady={dataReady} title={(ran?'':'Step 5 · ')+'Shifts not worked · '+item.label+' · '+where} category="operations-loading-notworked" description="The shifts in which the machine did not run: in BD in red, no hours and not in BD in brown, with the reason on its ELB and the breakdown recorded in Pulse."
     rows={notWorked} columns={notWorkedColumns(manySites)} rowKey={e=>e.id} rowClassName={rowClass} emptyMessage="The machine ran in every shift."/>}
   </>}
-  {level>=3&&card&&cardHead&&<ReportSection key={'lm-card-'+card} reportKey="Loading machine trip card" dataReady={dataReady} showSearch={false} title={'Step '+cardStep+' · Trip card '+cardHead.book} category="operations-loading-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card`}
+  {level>=4&&card&&cardHead&&<ReportSection key={'lm-card-'+card} reportKey="Loading machine trip card" dataReady={dataReady} showSearch={false} title={'Step '+cardStep+' · Trip card '+cardHead.book} category="operations-loading-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card`}
    rows={cardRows} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Trips loaded are the trips of every tipper card row that names the machine. A row with only an unloading time belongs to the shift that loaded it.</li>
@@ -294,6 +308,7 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    <li>% of shift worked is the hours worked on the machine's ELB out of the hours of the shift: 8 hours in an 8-hour shift is 100%. On a line for many machines it is their hours together out of their shift hours together. A machine with no ELB is left out of it.</li>
    <li>Running: the machine loaded a trip or its ELB shows hours. In BD (red line): it did not run and its ELB is saved as Breakdown or Maintenance, or Pulse shows breakdown for the whole shift. No hours, not in BD (brown): it did not run and was not in BD, such as No operator, Not in use, or no ELB entered.</li>
    <li>Only loading machines are listed: excavators, loaders and shovels of the site, and any machine named on a tipper card in the chosen dates.</li>
+   <li>Equipment category is the machine's group in the Equipment master (the same names as OT &amp; Multiple Duties). A machine not found in the master is counted under “Group missing in master”.</li>
    <li>Tea and meal breaks are not removed. The wait before the first loading and after the last loading of the shift is not counted; the first and last loading times are shown.</li>
    <li>Not judged: the card was saved without times, the loading time is not written, or it falls far outside the shift. These trips are counted as loaded but make no idle stop and are not on the time-line.</li>
    <li>Until every tipper card of a shift is entered, a machine looks more idle than it was. Entry stage shows whether the VLB of the shift is locked.</li>

@@ -9,6 +9,7 @@ import {vlbRecordShift} from './vlb-batch-format.mjs';
 import {isUnloadingOnlyTrip,CARD_SHIFTS,normalizeCardShift} from './trip-card-rules.mjs';
 import {cardWorkingHmr} from './log-book-shared-shift.mjs';
 import {fleetDoorKey} from './scan-fleet-door.mjs';
+import {equipmentGroupName} from './equipment-group.mjs';
 import {tripSerialNumber} from './log-book-labels.mjs';
 import {siteLabels,minutesBetween,DELAY_LIMIT,DOUBTFUL_MINUTES} from './trip-timing-report.mjs';
 
@@ -191,7 +192,8 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
    });
    const door=text(asset?.door||last?.door||m.roster?.door)||[...m.names][0]||'Not recorded';
    out.push({id:slot.key+'|'+m.key,slotKey:slot.key,machineKey:m.key,site,date:slot.date,shiftCode:slot.code,shift,stage:slot.stage||'',
-    door,machineName,names:[...m.names],operator:unique(m.cards.flatMap(c=>[text(c.employeeName),text(c.operatorSplit?.secondOperatorName)])).join(', '),
+    // Equipment category (owner, 16 Nov 2026): the machine's group in the Equipment master, named as OT & Multiple Duties names it.
+    door,machineName,category:equipmentGroupName(group),names:[...m.names],operator:unique(m.cards.flatMap(c=>[text(c.employeeName),text(c.operatorSplit?.secondOperatorName)])).join(', '),
     state,status,statusLabel,reason:text(last?.statusReason||last?.remark),elbBooks:unique(m.cards.map(c=>text(c.book))).join(', '),
     breakdowns:(bdPeriods.length?bdPeriods.map(b=>[b.reference,b.reason,[b.started,b.ended||'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))
      :source.map(b=>[text(b.reference),text(b.reason),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))).join('; '),
@@ -203,7 +205,7 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
  return out;
 }
 
-const keyOf={site:e=>e.site,shift:e=>e.slotKey,machine:e=>e.machineKey};
+const keyOf={site:e=>e.site,shift:e=>e.slotKey,category:e=>e.category,machine:e=>e.machineKey};
 export const groupKey=(group,entry)=>keyOf[group](entry);
 function totals(list){
  const t={machineShifts:list.length,running:0,breakdown:0,nohours:0,trips:0,hours:null,shiftHours:0,percent:null,bdHours:null,bdMinutes:0,loadings:0,ok:0,b1:0,b2:0,b3:0,b4:0,gaps:0,stops:0,idleMinutes:0,longest:null,notJudged:0,delayed:0};
@@ -231,15 +233,17 @@ export function summarise(entries,group){
  for(const e of entries){const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
  const rows=[...groups.entries()].map(([key,list])=>{
   const f=list[0],t=totals(list),one=list.length===1,state=t.running===list.length?'running':t.breakdown===list.length?'breakdown':t.nohours===list.length?'nohours':'mixed';
-  return {id:group+':'+key,key,site:f.site,sites:unique(list.map(e=>e.site)).join(', '),date:f.date,shift:f.shift,stage:f.stage,stageLabel:STAGE_LABELS[f.stage]||STAGE_LABELS[''],door:f.door,machineName:f.machineName,operator:unique(list.flatMap(e=>e.operator.split(', '))).join(', '),state,
+  return {id:group+':'+key,key,site:f.site,sites:unique(list.map(e=>e.site)).join(', '),date:f.date,shift:f.shift,stage:f.stage,stageLabel:STAGE_LABELS[f.stage]||STAGE_LABELS[''],door:f.door,machineName:f.machineName,category:f.category,machineCount:new Set(list.map(e=>e.machineKey)).size,operator:unique(list.flatMap(e=>e.operator.split(', '))).join(', '),state,
    statusLabel:one?f.statusLabel:[t.running&&'Ran '+t.running+' shift'+(t.running===1?'':'s'),t.breakdown&&'In BD '+t.breakdown,t.nohours&&'No hours '+t.nohours].filter(Boolean).join(' · '),
    reason:one?f.reason:'',elbBooks:one?f.elbBooks:'',firstLoading:one?f.firstLoading:'',lastLoading:one?f.lastLoading:'',...t};
  });
  if(group==='site')rows.sort((a,b)=>a.site.localeCompare(b.site));
  else if(group==='shift')rows.sort((a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true}));
+ // Equipment categories: the most idle on top, as the machines.
+ else if(group==='category')rows.sort((a,b)=>b.idleMinutes-a.idleMinutes||b.machineShifts-a.machineShifts||a.category.localeCompare(b.category));
  // Running machines first, the most idle on top; then the machines in BD; then the machines with no hours.
  else rows.sort((a,b)=>STATE_ORDER[a.state]-STATE_ORDER[b.state]||b.idleMinutes-a.idleMinutes||b.stops-a.stops||b.trips-a.trips||a.door.localeCompare(b.door,undefined,{numeric:true}));
- return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',stage:'',stageLabel:'',door:'TOTAL',machineName:'',operator:'',state:'',statusLabel:'',reason:'',elbBooks:'',firstLoading:'',lastLoading:'',...totals(entries)}};
+ return {rows,total:{id:group+':total',key:null,total:true,site:'ALL SITES',date:'',shift:'ALL SHIFTS',stage:'',stageLabel:'',door:'TOTAL',machineName:'',category:'ALL CATEGORIES',machineCount:new Set(entries.map(e=>e.machineKey)).size,operator:'',state:'',statusLabel:'',reason:'',elbBooks:'',firstLoading:'',lastLoading:'',...totals(entries)}};
 }
 const shiftOrder=(a,b)=>String(b.date).localeCompare(String(a.date))||a.shift.localeCompare(b.shift,undefined,{numeric:true});
 // Every timed loading behind a line, newest shift first and in the order of the shift, each with the gap from the loading

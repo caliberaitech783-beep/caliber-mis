@@ -59,6 +59,16 @@ test('one line per loading machine and shift; machines that never load are left 
  assert.ok(!entries.some(e=>e.door==='DZ1'),'a dozer is not a loading machine, with an ELB or on the site list');
 });
 
+test('equipment category (owner, 16 Nov 2026): the machine\'s group in the Equipment master, one line per category',()=>{
+ assert.deepEqual(entries.map(e=>e.door+' '+e.category).sort(),['EX1 Excavator','EX1 Excavator','EX2 Excavator','EX3 Excavator','EX4 Excavator','EX5 Excavator','EX9 Group missing in master']);
+ const siteA=entries.filter(e=>e.site==='Site A'),categories=summarise(siteA,'category');
+ assert.deepEqual(categories.rows.map(r=>[r.category,r.machineCount,r.machineShifts]),[['Excavator',5,6]]);
+ assert.equal(categories.total.category,'ALL CATEGORIES');
+ const machines=summarise(siteA.filter(e=>e.category==='Excavator'),'machine');
+ assert.equal(machines.total.machineShifts,categories.rows[0].machineShifts,'the machines of a category add up to its line');
+ assert.equal(categories.rows[0].stops,machines.total.stops);
+});
+
 test('idle stops are the gaps between one loading and the next by the same machine, across all tippers',()=>{
  const ex1=find('EX1');
  assert.equal(ex1.state,'running');assert.equal(ex1.statusLabel,'Working');
@@ -254,7 +264,7 @@ test('the screen shows working and idle time first, keeps the old list as a seco
  assert.match(screen,/\[\['idle','Machine working and idle time'\],\['rows','All machines list'\]\]/);
  assert.match(screen,/const work=\[column\('trips','Trips loaded'\),column\('percent','% of shift worked'[^\n]*column\('hoursWorked','Hours worked'/,'% of shift worked sits between Trips loaded and Hours worked');
  // Step 2 is the date by shift table (owner, 15 Nov 2026), with its All dates line at the foot of the grid.
- assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,2,'site and machine tables keep their total line at the foot');
+ assert.equal(screen.match(/isTotalRow=\{isTotal\}/g).length,3,'site, category and machine tables keep their total line at the foot');
  assert.match(screen,/<DateShiftGrid grid=\{shiftGrid\}/);
  assert.match(screen,/r\.state==='breakdown'\?'lm-row-breakdown':r\.state==='nohours'\?'lm-row-nohours'/);
  assert.match(screen,/const idle=onPick=>\[\.\.\.BANDS\.map\(b=>banded\(b,onPick\)\)/,'every idle band carries its own percentage');
@@ -271,9 +281,13 @@ test('the screen shows working and idle time first, keeps the old list as a seco
 test('pressing a machine opens its shift time-line: the strip, then every loading in its colour with the tipper trips delayed',async()=>{
  const screen=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
  assert.match(screen,/\{\(focus\|\|!stacked\)&&ran&&<ShiftTimelines entries=\{shownEntries\}[^\n]*onPick=\{setOnly\}\/>\}\s*\{ran&&tripChips\}\s*\{ran&&<ReportSection key=\{'lm-trips-'/,'the strip, the colour chips, then the list');
- // A machine over many shifts: one strip per shift (Step 4); pressing one opens that shift full width (Step 5).
- assert.match(screen,/\{stacked&&<ShiftTimelines entries=\{itemEntries\} step="Step 4 · "[^\n]*onOpen=\{openStrip\}/);
- assert.match(screen,/const listStep=stacked&&focus\?5:4,cardStep=listStep\+1;/);
+ // A machine over many shifts: one strip per shift (Step 5); pressing one opens that shift full width (Step 6).
+ assert.match(screen,/\{stacked&&<ShiftTimelines entries=\{itemEntries\} step="Step 5 · "[^\n]*onOpen=\{openStrip\}/);
+ assert.match(screen,/const listStep=stacked&&focus\?6:5,cardStep=listStep\+1;/);
+ // Owner, 16 Nov 2026: Step 3 is the shift by equipment category; a category opens its machines as Step 4.
+ assert.match(screen,/title=\{'Step 3 · Loading machines · '\+slotWhere\+' · by equipment category'\+filtered\}/);
+ assert.match(screen,/columns=\{summaryColumns\('category',openCategory\)\}[^\n]*onRowClick=\{r=>openCategory\(r\)\}/);
+ assert.match(screen,/title=\{'Step 4 · Loading machines · '\+where\+filtered\}/);
  // Step 3 is under the grid as soon as a site is open, for every date and shift until a box is pressed.
  assert.match(screen,/const slotEntries=!site\?\[\]:!slot\?siteEntries:/);
  assert.match(screen,/onOpenAll=\{\(\)=>openSlot\(shifts\.total\)\}[^\n]*\n[^\n]*allPicked=\{allShifts\}/);
