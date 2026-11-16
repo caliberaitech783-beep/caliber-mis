@@ -57,7 +57,7 @@ test('the bell, sign out, search, avatar and theme switch are wired and styled e
 
 test('sign out sits beside the page name and gives way before the page name or the clock',()=>{
   const erp=read('../src/erp-layout.css');
-  assert.match(main,/<b>\{navigationLabel\(active\)\}<\/b>\s*<span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick=\{logout\} aria-label="Sign out" title="Sign out"><DoorExitIcon \/><span>Sign out<\/span><\/button><\/span>\s*<\/div>\s*<HeaderClock \/>/,'in the breadcrumb, straight after the page name, in reach while the side menu is hidden');
+  assert.match(main,/<b>\{navigationLabel\(active\)\}<\/b>\}\s*<span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick=\{logout\} aria-label="Sign out" title="Sign out"><DoorExitIcon \/><span>Sign out<\/span><\/button><\/span>\s*<\/div>\s*<HeaderClock \/>/,'in the breadcrumb, straight after the page name, in reach while the side menu is hidden');
   assert.match(motion,/\.crumb \.top-sign-out-slot \{ container: top-sign-out \/ inline-size; display: flex; flex: 0 999999 111px; min-width: 0; margin-left: -7px; overflow: hidden; \}/,'the slot takes the whole squeeze before the page name loses a pixel, and leaves no footprint when empty');
   assert.match(read('../src/style.css'),/\.crumb\{display:flex;align-items:center;gap:7px;/,'the -7px margin answers this gap');
   assert.match(motion,/\.crumb \.top-sign-out \{[^}]*flex: 0 0 auto;[^}]*width: 88px;[^}]*margin: 0 8px 0 15px;[^}]*white-space: nowrap;/,'15 + 88 + 8 = the 111px slot');

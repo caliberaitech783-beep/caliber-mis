@@ -18,10 +18,18 @@ test("renaming the display label leaves the stored access key untouched", () => 
 test("navigation, breadcrumb, page title and access checkboxes render the label", () => {
   const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
   assert.match(source, /import \{navigationLabel\} from "\.\.\/shared\/navigation-visibility\.mjs";/);
-  assert.match(source, /Operations <ChevronRight \/> <b>\{navigationLabel\(active\)\}<\/b>/);
+  assert.match(source, /Operations <ChevronRight \/> \{active === "Dashboard"\s*\? <button type="button" className="crumb-page-link" onClick=\{reopenDashboard\}[^>]*><b>\{navigationLabel\(active\)\}<\/b><\/button>\s*: <b>\{navigationLabel\(active\)\}<\/b>\}/);
   // WhatsApp menu icons carry the navigation label as their name and tooltip.
   assert.match(source, /labelFor=\{navigationLabel\}/);
   assert.match(source, /<h1>\{navigationLabel\(type\)\}<\/h1>/);
   assert.match(source, /<span>\{navigationLabel\(option\)\}<\/span>/);
   assert.match(source, /<h2>Daily site-wise reports dispatch<\/h2>/);
+});
+
+test("clicking Dashboard in the breadcrumb opens the Dashboard again from the start", () => {
+  const source = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+  assert.match(source, /const reopenDashboard = \(\) => \{\s*setMenu\(false\);\s*setDashboardOpenCount\(count => count \+ 1\);\s*selectMenu\("Dashboard"\);\s*\};/);
+  // A new key builds the Dashboard fresh, so drill-downs and steps close.
+  assert.match(source, /<MisDashboard key=\{`dashboard-\$\{dashboardOpenCount\}`\}/);
+  assert.match(source, /session, theme, dashboardOpenCount,\s*\]\);/);
 });
