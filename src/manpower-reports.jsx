@@ -3,6 +3,7 @@ import {compactLogBookLabel} from '../shared/log-book-labels.mjs';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
 import TableSmartPrint from './table-smart-print.jsx';
+import {DateShiftGrid,dateShiftGrid} from './date-shift-grid.jsx';
 import AttendanceRegister from './attendance-register.jsx';
 import {canonicalSiteName} from '../shared/site-location.mjs';
 import {OPERATIONAL_START,monthStartDate} from '../shared/operational-start.mjs';
@@ -44,7 +45,7 @@ const detailColumns=columns([...context,['door','Door / equipment'],...classific
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
 const performanceColumns=columns([...context,...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
 const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','What to correct']]);
-const noPick={siteKey:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
+const noPick={siteKey:'',mark:'',scope:false,at:'',date:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
 const noRcPick={siteKey:'',scope:false,date:'',shift:'',equipment:'',status:''};
 const noMpPick={siteKey:'',scope:false,date:'',shift:'',equipment:''};
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
@@ -196,84 +197,149 @@ function otOverview({report,filters,query,ReportSection,sites,otPick,setOtPick,l
  </>;
 }
 
-// Shift Attendance Equipment Wise: every site by shift, then one site and shift by equipment, then its drivers.
-// Plain render function: its state lives in ManpowerReports.
+// Shift Attendance Equipment Wise in five steps (owner, 16 Nov 2026): every site; one site date by shift, each box red while
+// its batch is missing and outlined orange while the batch is open; one date and shift by equipment; its drivers; a driver's
+// month-wise history. Plain render function: its state lives in ManpowerReports.
 function attendanceOverview({report,filters,query,ReportSection,pick,setPick,tally,tallyKey,tallySite,driverOpen,setDriverOpen,historyBox}){
- const rows=report.attendanceEquipment||[],sites=report.attendanceSites||[],batches=report.attendanceShifts||[];
- const shifts=filters.shift?[filters.shift]:[...new Set(['S1','S2','S3',...rows.map(r=>r.shift),...batches.map(b=>b.shift)])].sort();
- const within=(site,code)=>rows.filter(r=>(site===EVERY||r.siteKey===site)&&(!code||r.shift===code));
- // The batch behind a site and shift: missing ("none"), still open, closed, or not yet due.
- const batchesOf=(site,code)=>batches.filter(b=>(site===EVERY||b.siteKey===site)&&(!code||b.shift===code));
- const waiting=list=>({none:list.filter(b=>b.state==='none').length,open:list.filter(batchOpen).length});
+ const rows=report.attendanceEquipment||[],sites=report.attendanceSites||[],held=report.attendanceShifts||[];
+ // A site working Shift 1 to 3 does not also work a Day or Night shift. Such a shift with no duty and no batch in the
+ // selected dates is only in the Shift Master, so it is left out instead of being counted as missing its batch every day.
+ const used=new Set([...rows.map(r=>r.siteKey+'|'+r.shift),...held.filter(b=>!['none','not_due'].includes(b.state)).map(b=>b.siteKey+'|'+b.shift)]);
+ const threeShifts=new Set([...used].filter(k=>/\|S[123]$/.test(k)).map(k=>k.slice(0,k.lastIndexOf('|'))));
+ const unused=b=>['D','N'].includes(b.shift)&&threeShifts.has(b.siteKey)&&!used.has(b.siteKey+'|'+b.shift);
+ const batches=held.filter(b=>!unused(b));
+ const siteLabel=key=>key===EVERY?'All sites':sites.find(s=>s.siteKey===key)?.site||key;
+ const leftOut=[...new Set(held.filter(unused).map(b=>b.siteKey+'|'+b.shift))].map(k=>{const at=k.lastIndexOf('|');return siteLabel(k.slice(0,at))+' '+shiftName(k.slice(at+1));});
+ const hiddenNote=leftOut.length>0&&<p className="mp-category-hint">Not shown: {leftOut.join(', ')}. The Shift Master holds {leftOut.length===1?'this shift':'these shifts'}, but the site works Shift 1 to 3 and has no duty or batch in {leftOut.length===1?'it':'them'} in these dates.</p>;
  // An actual duty is one driver in one shift on one date; a second machine in the same shift is not another one.
  const actual=list=>list.filter(r=>r.actual).length;
- const siteKey=openSite(sites,pick.siteKey);
- const shift=siteKey&&shifts.includes(pick.shift)?pick.shift:'',chosen=siteKey?within(siteKey,shift):[];
- const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
- const open=pick.equipment===EVERY||equipment.some(e=>e.equipment===pick.equipment)?pick.equipment:'',flag=open?pick.flag:'';
+ const days=filters.from!==filters.to,dateLabel=days?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
+ const zero=<span className="mp-zero">0</span>;
+
+ // Step 1: one line per site, then All sites. Every number opens that site date by shift.
+ const siteTally=(site,name)=>{const list=rows.filter(r=>site===EVERY||r.siteKey===site),mine=batches.filter(b=>site===EVERY||b.siteKey===site);
+  return {id:site,siteKey:site,site:name,actual:actual(list),duties:list.length,due:mine.filter(b=>b.state!=='not_due').length,closed:mine.filter(b=>b.state==='closed').length,none:mine.filter(b=>b.state==='none').length,open:mine.filter(batchOpen).length};};
+ const siteRows=[...sites.map(s=>siteTally(s.siteKey,s.site)),...(sites.length>1?[siteTally(EVERY,'All sites')]:[])],all=siteRows.at(-1)||siteTally(EVERY,'All sites');
+ const siteKey=openSite(sites,pick.siteKey),mark=siteKey&&['none','open'].includes(pick.mark)?pick.mark:'';
+ const openSiteAt=(site,which='')=>setPick(siteKey===site&&mark===which&&sites.length>1?noPick:{...noPick,siteKey:site,mark:which});
+
+ // Step 2: the open site date by shift. One box per site, date and shift: the actual duties, red while no batch was
+ // created, outlined orange while the batch is open. With every site open, each line is one site on one date.
+ const slots=new Map(),slotOf=(site,date,code)=>site+'|'+date+'|'+code;
+ if(siteKey){
+  for(const b of batches)if(siteKey===EVERY||b.siteKey===siteKey)slots.set(slotOf(b.siteKey,b.date,b.shift),{siteKey:b.siteKey,date:b.date,shift:b.shift,state:b.state,batch:b.batch,list:[]});
+  for(const r of rows)if(siteKey===EVERY||r.siteKey===siteKey){const k=slotOf(r.siteKey,r.date,r.shift);if(!slots.has(k))slots.set(k,{siteKey:r.siteKey,date:r.date,shift:r.shift,state:'',batch:'',list:[]});slots.get(k).list.push(r);}
+ }
+ const stateLabel=s=>s.state==='none'?'Batch not created':s.state==='not_due'?'Not due yet':s.state==='closed'?'Closed':batchOpen(s)?stageName(s.state):'—';
+ const slotRows=[...slots.values()].map(s=>({...s,id:slotOf(s.siteKey,s.date,s.shift),site:siteLabel(s.siteKey),shiftLabel:shiftName(s.shift),dateLabel:shortDate(s.date),stateLabel:stateLabel(s),actual:actual(s.list),duties:s.list.length,none:s.state==='none'?1:0,open:batchOpen(s)?1:0}));
+ const lineOf=r=>siteKey===EVERY?{key:r.date+'|'+r.site,label:r.site,sub:shortDate(r.date)+' '+weekday(r.date).toUpperCase()}:{key:r.date,label:shortDate(r.date),sub:weekday(r.date).toUpperCase()};
+ // Batch not created or Batch open on the strip keeps only the dates where that happened.
+ const marked=new Set(slotRows.filter(r=>mark&&r[mark]).map(r=>lineOf(r).key));
+ const shown=mark?slotRows.filter(r=>marked.has(lineOf(r).key)):slotRows;
+ const shiftGrid=siteKey?dateShiftGrid(shown,{sumKeys:['actual','duties','none','open'],lineOf}):null;
+
+ // Step 3: a box (one site, date and shift), a whole day, or every date, by equipment.
+ const at=siteKey&&pick.scope&&(pick.at===siteKey||siteKey===EVERY&&sites.some(s=>s.siteKey===pick.at))?pick.at:'',scope=Boolean(at);
+ const date=scope&&pick.date>=filters.from&&pick.date<=filters.to?pick.date:'',shift=scope?pick.shift||'':'';
+ const inScope=r=>(at===EVERY||r.siteKey===at)&&(!date||r.date===date)&&(!shift||r.shift===shift);
+ const chosen=scope?rows.filter(inScope):[],here=scope?batches.filter(inScope):[];
+ const equipment=(()=>{const out=new Map();for(const r of chosen){const e=out.get(r.equipment)||{id:r.equipment,equipment:r.equipment,duties:0,actual:0,red:0,orange:0,review:0,zero:0};e.duties++;if(r.actual)e.actual++;if(dutyFlags.some(([id])=>id===r.flag))e[r.flag]++;out.set(r.equipment,e);}return [...out.values()].map(e=>({...e,second:e.duties-e.actual})).sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment));})();
+ const totals={id:EVERY,equipment:'All equipment',duties:chosen.length,actual:actual(chosen),second:chosen.length-actual(chosen),...Object.fromEntries(dutyFlags.map(([id])=>[id,chosen.filter(r=>r.flag===id).length]))};
+ const heading=[siteLabel(at||siteKey),date?shortDate(date):dateLabel,shift?shiftName(shift):'All shifts'].join(' · ');
+ const where=b=>[at===EVERY&&siteLabel(b.siteKey),!date&&days&&shortDate(b.date),!shift&&shiftName(b.shift)].filter(Boolean).join(' ');
+ const missing=here.filter(b=>b.state==='none'),stillOpen=here.filter(batchOpen),closedHere=here.filter(b=>b.state==='closed');
+
+ // Step 4: the drivers of one equipment (or of all), or of one colour.
+ const open=scope&&(pick.equipment===EVERY||equipment.some(e=>e.equipment===pick.equipment))?pick.equipment:'',flag=open?pick.flag:'';
  const reader=tallyReader(tally,tallyKey,tallySite),month=filters.to.slice(0,7),year=filters.to.slice(0,4);
  const listed=(open?chosen.filter(r=>(open===EVERY||r.equipment===open)&&(!flag||(flag==='second'?!r.actual:r.flag===flag))):[]).map(r=>{const driverId=r.employeeKey+'|'+r.siteKey;return {...r,driverId,otMonth:reader.count(driverId,r.siteKey,'month'),otYear:reader.count(driverId,r.siteKey,'year')};});
  const opened=listed.find(r=>r.driverId===driverOpen);
- const days=filters.from!==filters.to,dateLabel=days?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
- const siteLabel=key=>sites.find(s=>s.siteKey===key)?.site||key;
- const heading=[siteKey===EVERY?'All sites':siteLabel(siteKey),shift?shiftName(shift):'All shifts',dateLabel].join(' · ');
  const openLabel=open===EVERY?'All equipment':open,flagName=flag==='second'?'Second machine':dutyFlags.find(([id])=>id===flag)?.[1]||'';
- const choose=(site,code)=>setPick(siteKey===site&&shift===code?noPick:{...noPick,siteKey:site,shift:code});
- const list=(name,colour='')=>setPick(open===name&&flag===colour?{...noPick,siteKey,shift}:{siteKey,shift,equipment:name,flag:colour});
- // One box per site and shift. The whole box is red while its batch is missing and outlined orange while the batch is open;
- // the total boxes only carry the note.
- const box=(site,code,label)=>{
-  const n=actual(within(site,code)),held=batchesOf(site,code),w=waiting(held),one=site!==EVERY&&Boolean(code),state=w.none?'none':w.open?'open':'';
-  const note=one&&!days?(w.none?'No batch':w.open?stageName(held.find(batchOpen)?.state):''):[w.none&&many(w.none,one?'day':'shift')+' no batch',w.open&&w.open+' open'].filter(Boolean).join(' · ');
-  if(!n&&!state)return <span className="mp-zero">0</span>;
-  return <button type="button" className={'mp-att-count'+(one&&state?' mp-att-'+state:'')} aria-pressed={siteKey===site&&shift===code} aria-label={[dutyCount(n,'actual'),label,note].filter(Boolean).join(' · ')} onClick={()=>choose(site,code)}>{n}{note&&<small>{note}</small>}</button>;
- };
- const line=(name,label,e,total)=><tr key={name} className={[total&&'mp-att-total',open===name&&'mp-on'].filter(Boolean).join(' ')||undefined}>
-  <td><button type="button" className="mp-cat-open" aria-pressed={open===name&&!flag} onClick={()=>list(name)}>{label}</button></td>
-  <td><button type="button" className="mp-cat-count" aria-pressed={open===name&&!flag} aria-label={dutyCount(e.duties,'equipment-wise')+' · '+label} onClick={()=>list(name)}>{e.duties}</button></td>
+
+ const base={...noPick,siteKey,mark},scoped={...base,scope:true,at,date,shift};
+ const show=(site,day,code)=>setPick(scope&&at===site&&date===day&&shift===code&&!open?base:{...base,scope:true,at:site,date:day,shift:code});
+ const list=(name,colour='')=>setPick(open===name&&flag===colour?scoped:{...scoped,equipment:name,flag:colour});
+ const back=open?()=>setPick(scoped):scope?()=>setPick(base):siteKey&&sites.length>1?()=>setPick(noPick):null;
+
+ // A number of Step 1: red for shifts without a batch, orange for batches open.
+ const siteNumber=(s,key,which,said,className='mp-cat-count mp-ot-duties')=>{const pressed=siteKey===s.siteKey&&mark===which;
+  return s[key]?<button type="button" className={className} aria-pressed={pressed} aria-label={said(s[key])+' · '+s.site} onClick={()=>openSiteAt(s.siteKey,which)}>{s[key]}</button>:zero;};
+ const siteLine=s=>{const total=s.siteKey===EVERY&&sites.length>1;return <tr key={s.siteKey} className={[total&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+  <th scope="row"><button type="button" className="mp-cat-open" aria-pressed={siteKey===s.siteKey&&!mark} onClick={()=>openSiteAt(s.siteKey)}>{s.site}</button></th>
+  <td>{siteNumber(s,'actual','',n=>dutyCount(n,'actual'))}</td>
+  <td>{s.duties}</td><td>{s.due}</td><td>{s.closed}</td>
+  <td>{siteNumber(s,'none','none',n=>many(n,'shift')+' without a batch','mp-att-count mp-att-none')}</td>
+  <td>{siteNumber(s,'open','open',n=>n===1?'1 batch open':n+' batches open','mp-att-count mp-att-open')}</td>
+ </tr>;};
+ const siteColumns=columns([['site','Site'],['actual','Actual duties'],['duties','Equipment-wise duties'],['due','Shifts due'],['closed','Batch closed'],['none','Batch not created'],['open','Batch open']]);
+
+ // One box of Step 2. A shift still running shows Not due unless duties are already saved in it.
+ const slotName=r=>[siteKey===EVERY&&r.site,shortDate(r.date),shiftName(r.shift)].filter(Boolean).join(' · ');
+ const cell=list=>{const r=list[0],note=r.state==='none'?'No batch':batchOpen(r)?stageName(r.state):r.state==='not_due'?'Not due':'';
+  if(r.state==='not_due'&&!r.duties)return <span className="mp-zero" title="The shift has not ended yet">Not due</span>;
+  return <button type="button" className={'mp-att-count'+(r.state==='none'?' mp-att-none':batchOpen(r)?' mp-att-open':'')} aria-pressed={scope&&at===r.siteKey&&date===r.date&&shift===r.shift} aria-label={[dutyCount(r.actual,'actual'),slotName(r),note].filter(Boolean).join(' · ')} onClick={()=>show(r.siteKey,r.date,r.shift)}>{r.actual}{note&&<small>{note}</small>}</button>;};
+ const dayColumns=[
+  {key:'actual',label:'Day actual duties',sub:'All shifts',value:t=>t.actual,render:(t,line)=>{const r=line?.list[0],site=r?r.siteKey:siteKey,day=r?r.date:'',name=r?[siteKey===EVERY&&r.site,shortDate(r.date)].filter(Boolean).join(' · '):'All dates';
+   return <button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={scope&&at===site&&date===day&&!shift} aria-label={dutyCount(t.actual,'actual')+' · '+name+' · All shifts'} onClick={()=>show(site,day,'')}>{t.actual}</button>;}},
+  {key:'none',label:'Batch not created',value:t=>t.none,render:t=>t.none?<span className="mp-flag mp-att-none">{t.none}</span>:zero},
+  {key:'open',label:'Batch open',value:t=>t.open,render:t=>t.open?<span className="mp-flag mp-att-open">{t.open}</span>:zero}];
+ const dateColumns=columns([['dateLabel','Date'],...(siteKey===EVERY?[['site','Site']]:[]),['shiftLabel','Shift'],['stateLabel','Batch'],['batch','Batch name'],['actual','Actual duties'],['duties','Equipment-wise duties']]);
+ const step2Title='Step 2 · '+siteLabel(siteKey)+' · date by shift · '+dateLabel+(mark==='none'?' · Batch not created':mark==='open'?' · Batch open':'');
+
+ const line=(e,total)=><tr key={e.id} className={[total&&'mp-att-total',open===e.id&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+  <td><button type="button" className="mp-cat-open" aria-pressed={open===e.id&&!flag} onClick={()=>list(e.id)}>{e.equipment}</button></td>
+  <td><button type="button" className="mp-cat-count" aria-pressed={open===e.id&&!flag} aria-label={dutyCount(e.duties,'equipment-wise')+' · '+e.equipment} onClick={()=>list(e.id)}>{e.duties}</button></td>
   <td>{e.actual}</td>
   {/* Equipment-wise duties minus actual duties: the rows where this equipment was the driver's second machine in the shift. */}
-  <td>{e.duties-e.actual?<button type="button" className="mp-cat-count" aria-pressed={open===name&&flag==='second'} aria-label={(e.duties-e.actual)+' second machine · '+label} onClick={()=>list(name,'second')}>{e.duties-e.actual}</button>:0}</td>
-  {dutyFlags.map(([id,colour])=><td key={id}>{e[id]?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={open===name&&flag===id} aria-label={e[id]+' '+colour+' · '+label} onClick={()=>list(name,id)}>{e[id]}</button>:0}</td>)}
+  <td>{e.second?<button type="button" className="mp-cat-count" aria-pressed={open===e.id&&flag==='second'} aria-label={e.second+' second machine · '+e.equipment} onClick={()=>list(e.id,'second')}>{e.second}</button>:0}</td>
+  {dutyFlags.map(([id,colour])=><td key={id}>{e[id]?<button type="button" className={'mp-cat-count mp-flag-'+id} aria-pressed={open===e.id&&flag===id} aria-label={e[id]+' '+colour+' · '+e.equipment} onClick={()=>list(e.id,id)}>{e[id]}</button>:0}</td>)}
  </tr>;
- const totals={duties:chosen.length,actual:actual(chosen),...Object.fromEntries(dutyFlags.map(([id])=>[id,chosen.filter(r=>r.flag===id).length]))},second=totals.duties-totals.actual;
- // Which batches are behind the open site and shift, in words: the missing ones first.
- const all=waiting(batches),here=siteKey?batchesOf(siteKey,shift):[];
- const where=b=>[siteKey===EVERY&&siteLabel(b.siteKey),days&&shortDate(b.date),!shift&&shiftName(b.shift)].filter(Boolean).join(' ');
- const missing=here.filter(b=>b.state==='none'),stillOpen=here.filter(batchOpen);
+ const equipmentColumns=columns([['equipment','Equipment'],['duties','Equipment-wise duties'],['actual','Actual duties'],['second','Second machine'],...dutyFlags.map(([id,colour])=>[id,colour])]);
+ const trail=[siteKey&&sites.length>1&&['All sites',()=>setPick(noPick)],siteKey&&[siteLabel(siteKey),()=>setPick(base)],scope&&[[siteKey===EVERY?siteLabel(at):'',date?shortDate(date):'All dates',shift?shiftName(shift):'All shifts'].filter(Boolean).join(' · '),()=>setPick(scoped)],open&&[openLabel+(flagName?' · '+flagName+' only':''),null]].filter(Boolean);
+
  return <>
   <p className="mp-notice">{dutyCount(actual(rows),'actual')} · {dutyCount(rows.length,'equipment-wise')}. An actual duty is one driver in one shift on one date. A driver on two equipment types in one shift is counted on both machines and once in actual duties.</p>
-  <div className="mp-category mp-att" role="group" aria-label="Actual duties by site and shift">
-   <h2>All sites, shift-wise · {dateLabel} · actual duties</h2>
-   {sites.length?<>
-    <p className="mp-att-status">{all.none>0&&<span className="mp-flag mp-att-none">{many(all.none,'shift')} without a batch</span>}{all.open>0&&<span className="mp-flag mp-att-open">{all.open===1?'1 batch open':all.open+' batches open'}</span>}{!all.none&&!all.open&&<span>Every shift that has ended has a closed batch.</span>}<span>Red box: batch not created. Orange outline: batch not closed. Press a number to see that site and shift by equipment.</span></p>
-    <TableSmartPrint row title={'Shift Attendance · All sites, shift-wise · '+dateLabel+' · actual duties'}/>
-    <table><thead><tr><th scope="col">Site</th>{shifts.map(code=><th key={code} scope="col">{shiftName(code)}</th>)}<th scope="col">All shifts</th></tr></thead>
-     <tbody>{sites.map(s=><tr key={s.siteKey} className={siteKey===s.siteKey?'mp-on':undefined}><th scope="row">{s.site}</th>{shifts.map(code=><td key={code}>{box(s.siteKey,code,s.site+' · '+shiftName(code))}</td>)}<td>{box(s.siteKey,'',s.site+' · All shifts')}</td></tr>)}
-     {sites.length>1&&<tr className={'mp-att-total'+(siteKey===EVERY?' mp-on':'')}><th scope="row">All sites</th>{shifts.map(code=><td key={code}>{box(EVERY,code,'All sites · '+shiftName(code))}</td>)}<td>{box(EVERY,'','All sites · All shifts')}</td></tr>}</tbody>
-    </table>
-   </>:<p>No site is available for these selections.</p>}
-  </div>
-  {siteKey?<>
-   <div className="mp-category mp-att">
-    <h2>{heading} · duties by equipment</h2>
-    {missing.length>0&&<p className="mp-att-batch mp-att-batch-none"><strong>Batch not created:</strong> {missing.length===1&&!where(missing[0])?'this shift':missing.slice(0,60).map(where).join(' · ')+(missing.length>60?' · and '+(missing.length-60)+' more':'')}</p>}
-    {stillOpen.length>0&&<p className="mp-att-batch mp-att-batch-open"><strong>Batch not closed:</strong> {stillOpen.slice(0,60).map(b=>[where(b),b.batch,'('+stageName(b.state)+')'].filter(Boolean).join(' ')).join(' · ')}</p>}
-    {equipment.length?<>
-     <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick({...noPick,siteKey,shift})}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
-     <TableSmartPrint row title={'Shift Attendance · '+heading+' · duties by equipment'}/>
-     <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th><th scope="col" title="Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift">Second machine</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
-      <tbody>{equipment.map(e=>line(e.equipment,e.equipment,e,false))}{line(EVERY,'All equipment',totals,true)}</tbody>
+  {siteKey&&<p className="mp-trail" aria-label="Where you are">{back&&<StepBackButton onBack={back}/>}{trail.map(([label,go],i)=><React.Fragment key={i}>{i>0&&<span>›</span>}{go&&i<trail.length-1?<button type="button" onClick={go}>{label}</button>:<strong>{label}</strong>}</React.Fragment>)}</p>}
+  <ReportSection key={'att-sites-'+query} title={'Step 1 · All sites · '+dateLabel+' · actual duties'} category="shift-attendance-sites" description="One line per site. Shifts due are the shifts that have ended by the Shift Master times. Press a site or a number to open it date by shift; the red or orange number opens only the dates with a shift without a batch, or with a batch still open." rows={siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   <div className="mp-category mp-att" role="group" aria-label="Actual duties and batches by site">
+    {sites.length?<>
+     <p className="mp-att-status">{all.none>0&&<span className="mp-flag mp-att-none">{many(all.none,'shift')} without a batch</span>}{all.open>0&&<span className="mp-flag mp-att-open">{all.open===1?'1 batch open':all.open+' batches open'}</span>}{!all.none&&!all.open&&<span>Every shift that has ended has a closed batch.</span>}<span>Red: batch not created. Orange outline: batch not closed.</span></p>
+     {hiddenNote}
+     <table><thead><tr><th scope="col">Site</th><th scope="col">Actual duties<small>One driver, one shift</small></th><th scope="col">Equipment-wise duties<small>Each machine worked</small></th><th scope="col">Shifts due<small>Ended by Shift Master times</small></th><th scope="col">Batch closed</th><th scope="col">Batch not created</th><th scope="col">Batch open<small>VLB, LMV or ELB open</small></th></tr></thead>
+      <tbody>{siteRows.map(siteLine)}</tbody>
      </table>
-     {second>0&&<p className="mp-att-foot">{second} {second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties. Press a number under Second machine to list those drivers.</p>}
-    </>:<p>No duty saved in this selection.</p>}
+    </>:<p>No site is available for these selections.</p>}
    </div>
+  </ReportSection>
+  {siteKey?<>
+   <ReportSection key={'att-dates-'+query+'-'+siteKey+'-'+mark} title={step2Title} category="shift-attendance-dates" description="In each box: the actual duties of that shift. Red = batch not created (no card can be saved without a batch, so it shows 0). Orange outline = batch created but not closed, with the stage it waits in. Not due = the shift has not ended yet. Press a box for its equipment, a day total for the whole day." rows={shown} columns={dateColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att mp-att-grid">
+     <div className="mp-book-pick" role="group" aria-label="Dates shown">{[['','All dates',slotRows.length?new Set(slotRows.map(r=>lineOf(r).key)).size:0],['none','Batch not created',slotRows.reduce((n,r)=>n+r.none,0)],['open','Batch open',slotRows.reduce((n,r)=>n+r.open,0)]].map(([id,name,n])=><button key={id||'all'} type="button" aria-pressed={mark===id} aria-label={name+' · '+n} onClick={()=>setPick({...noPick,siteKey,mark:id})}>{name} <small>{n}</small></button>)}</div>
+     {hiddenNote}
+     <DateShiftGrid grid={shiftGrid} renderCell={cell} dayColumns={dayColumns} shiftLabel={shiftName} label={siteKey===EVERY?'Site · date':'Date'}
+      isPicked={r=>scope&&at===r.siteKey&&date===r.date} onOpenAll={()=>show(siteKey,'','')} allPicked={scope&&at===siteKey&&!date&&!shift} ariaLabel="Actual duties by date and shift" emptyMessage={mark?'No date matches this choice.':'No shift in these dates.'}/>
+    </div>
+   </ReportSection>
+   {scope?<ReportSection key={'att-equipment-'+query+'-'+siteKey+'-'+at+'-'+date+'-'+shift} title={'Step 3 · '+heading+' · by equipment'} category="shift-attendance-equipment" description="Equipment-wise duties count the driver on every machine worked; actual duties once per shift. Press an equipment or a number for its drivers." rows={equipment.length?[...equipment,totals]:[]} columns={equipmentColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att">
+     {missing.length>0&&<p className="mp-att-batch mp-att-batch-none"><strong>Batch not created:</strong> {missing.length===1&&!where(missing[0])?'this shift':missing.slice(0,60).map(where).join(' · ')+(missing.length>60?' · and '+(missing.length-60)+' more':'')}</p>}
+     {stillOpen.length>0&&<p className="mp-att-batch mp-att-batch-open"><strong>Batch not closed:</strong> {stillOpen.slice(0,60).map(b=>[where(b),b.batch,'('+stageName(b.state)+')'].filter(Boolean).join(' ')).join(' · ')}</p>}
+     {closedHere.length===1&&!missing.length&&!stillOpen.length&&closedHere[0].batch&&<p className="mp-category-hint">Batch {closedHere[0].batch} · closed.</p>}
+     {equipment.length?<>
+      <p className="mp-category-hint">{open?<>Showing <strong>{openLabel}{flagName?' · '+flagName+' only':''}</strong> below. <button type="button" onClick={()=>setPick(scoped)}>Close the driver list</button></>:'Press an equipment or a number to list its drivers below.'}</p>
+      <table><thead><tr><th scope="col">Equipment</th><th scope="col">Equipment-wise duties</th><th scope="col">Actual duties</th><th scope="col" title="Equipment-wise duties minus actual duties: drivers for whom this equipment was a second machine in the shift">Second machine</th>{dutyFlags.map(([id,colour,meaning])=><th key={id} scope="col" title={meaning}>{colour}</th>)}</tr></thead>
+       <tbody>{equipment.map(e=>line(e,false))}{line(totals,true)}</tbody>
+      </table>
+      {totals.second>0&&<p className="mp-att-foot">{totals.second} {totals.second===1?'duty here is':'duties here are'} a second machine for the driver: counted on each machine, once in actual duties. Press a number under Second machine to list those drivers.</p>}
+     </>:<p>No duty saved in this selection.</p>}
+    </div>
+   </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment, then an equipment for its drivers, then a driver’s name for the month-wise history.</p>}
    {open&&<>
     <div className="mp-legend" aria-label="Row colours"><span className="mp-flag mp-flag-normal">White · Normal duty</span>{dutyFlags.map(([id,colour,meaning])=><span key={id} className={'mp-flag mp-flag-'+id}>{colour} · {meaning}</span>)}</div>
-    <ReportSection key={'attendance-'+query+'-'+siteKey+'-'+shift+'-'+open+'-'+flag} title={'Shift Attendance Equipment Wise · '+heading+' · '+openLabel+(flagName?' · '+flagName+' only':'')} category="shift-attendance" description={dutyCount(listed.length,'equipment-wise')+' · '+dutyCount(actual(listed),'actual')+' · Saved records only · Press a name for the month-wise history'} rows={listed} columns={attendanceColumns({days,sites:siteKey===EVERY,shifts:!shift,equipment:open===EVERY,month,year,opened:opened?.driverId||'',openDriver:setDriverOpen})} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} recordDateFilter={false} emptyMessage="No duty matches this selection."/>
+    <ReportSection key={'attendance-'+query+'-'+siteKey+'-'+at+'-'+date+'-'+shift+'-'+open+'-'+flag} title={'Step 4 · '+heading+' · '+openLabel+(flagName?' · '+flagName+' only':'')+' · drivers'} category="shift-attendance" description={dutyCount(listed.length,'equipment-wise')+' · '+dutyCount(actual(listed),'actual')+' · Saved records only · Press a name for the month-wise history'} rows={listed} columns={attendanceColumns({days:!date&&days,sites:at===EVERY,shifts:!shift,equipment:open===EVERY,month,year,opened:opened?.driverId||'',openDriver:setDriverOpen})} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} recordDateFilter={false} emptyMessage="No duty matches this selection."/>
     {opened&&driverHistory({driver:opened,detail:opened.equipment,reader,year,close:()=>setDriverOpen(''),historyBox,ReportSection,sectionKey:'attendance-history-'+query+'-'+opened.driverId})}
    </>}
-  </>:<p className="mp-notice">Press a number above to see the duties by equipment, then the drivers.</p>}
+  </>:<p className="mp-notice">Press a site above to see it date by shift, then a box for its equipment, then an equipment for its drivers.</p>}
  </>;
 }
 
@@ -456,7 +522,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const siteKey=canonicalSiteName(filters.site),otSites=!report?[]:siteKey?report.otSites.filter(s=>s.siteKey===siteKey):report.otSites;
  // Month and year counts and a driver's history are read for one site at a time, only while that site's drivers are listed.
  // In a list of every site, the site is the one of the driver whose name was pressed.
- const listSite=!report?'':reportId==='ot'?openSite(otSites,otPick.siteKey):reportId==='attendance'&&pick.equipment?openSite(report.attendanceSites||[],pick.siteKey):'';
+ const listSite=!report?'':reportId==='ot'?openSite(otSites,otPick.siteKey):reportId==='attendance'&&pick.equipment?(pick.at&&pick.at!==EVERY?pick.at:openSite(report.attendanceSites||[],pick.siteKey)):'';
  const tallySite=listSite===EVERY?driverOpen.split('|')[1]||'':listSite;
  const tallyKey=tallySite+'|'+filters.to.slice(0,7)+'|'+refresh,tallyWanted=valid&&Boolean(tallySite);
  useEffect(()=>{
