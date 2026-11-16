@@ -10,9 +10,22 @@
 .tt-report .tt-insight{margin:0;padding:12px 16px;border:1px solid #ead9a3;border-radius:10px;background:#fff8e1;color:#3d3214;font-weight:650;line-height:1.6}
 .tt-report .tt-band{display:inline-block;min-width:34px;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font:inherit;font-size:13px;font-weight:750;text-align:center;white-space:nowrap}
 .tt-report button.tt-band{cursor:pointer}
-.tt-report .tt-b1{background:#fff3c4;color:#6b5200}
-.tt-report .tt-b2{background:#ffe0bf;color:#8a4a00}
-.tt-report .tt-b3{background:#ffe0df;color:#a31f20}
+/* Owner, 16 Nov 2026: solid boxes with white figures, as the red "no batch" box of Manpower shift-wise; blue, then an
+   orange kept clearly lighter than the red, then the same red. */
+.tt-report .tt-b1{background:#2f6fd0;border-color:#2558a8;color:#fff}
+.tt-report .tt-b2{background:#d46a00;border-color:#a85400;color:#fff}
+.tt-report .tt-b3{background:#c92c2c;border-color:#a31f20;color:#fff}
+.tt-report .dsg-ranged .tt-band{border-radius:8px;line-height:1.2}
+.tt-report .dsg-ranged .tt-band small{display:block;margin-top:1px;color:inherit;font-size:11px;font-weight:600}
+/* Above the boxes the minutes are written in the box colour, without a fill, so the heading does not read as a figure. */
+.tt-report .dsg-ranged thead .tt-band{background:none;border-color:transparent}
+.tt-report .dsg-ranged thead .tt-b1{color:#2f6fd0}
+.tt-report .dsg-ranged thead .tt-b2{color:#b85c00}
+.tt-report .dsg-ranged thead .tt-b3{color:#c92c2c}
+:root[data-theme="dark"] .tt-report .dsg-ranged thead .tt-b1{color:#8db6f2}
+:root[data-theme="dark"] .tt-report .dsg-ranged thead .tt-b2{color:#f3a456}
+:root[data-theme="dark"] .tt-report .dsg-ranged thead .tt-b3{color:#f08a8a}
+@media print{.tt-report .tt-band{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
 .tt-report tr.tt-total td{font-weight:750;background:rgba(89,51,139,.07)}
 .tt-report .tt-notes{font-size:13px;color:#4f4660}
 .tt-report .tt-notes summary{cursor:pointer;font-weight:700}

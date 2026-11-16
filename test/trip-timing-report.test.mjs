@@ -197,7 +197,9 @@ test('Step 2 writes the minutes of each colour above it and keeps every colour i
  assert.match(head,/Trips timed<\/small><span class="dsg-box dsg-range tt-band tt-b1"[^>]*>15–20 min<\/span><span[^>]*>20–30 min<\/span><span[^>]*>30\+ min<\/span>/);
  assert.match(html,/class="report-filter-table dsg-table dsg-ranged"/);
  const first=html.slice(html.indexOf('<tbody'),html.indexOf('</tr>',html.indexOf('<tbody')));
- assert.match(first,/>36<\/button><span class="dsg-box dsg-box-gap" aria-hidden="true"><\/span>/,'no red on 01-11: an empty place keeps the columns under their minutes');
+ assert.match(first,/>36<small aria-hidden="true">20–30 min<\/small><\/button><span class="dsg-box dsg-box-gap" aria-hidden="true"><\/span>/,'the minutes are inside the box, and with no red on 01-11 an empty place keeps the columns under their minutes');
+ const css0=fs.readFileSync(new URL('../src/trip-timing-report.css',import.meta.url),'utf8');
+ assert.match(css0,/\.tt-b1\{background:#2f6fd0;[^}]*color:#fff\}/);assert.match(css0,/\.tt-b2\{background:#d46a00;[^}]*color:#fff\}/);assert.match(css0,/\.tt-b3\{background:#c92c2c;[^}]*color:#fff\}/);
  assert.match(first,/title="15 to 20 min"[^>]*>191</,'pointing at a colour also says its minutes');
  const plain=renderToStaticMarkup(React.createElement(DateShiftGrid,{grid,count:r=>r.timed,countLabel:'Trips timed',boxes:boxes.map(({range,...b})=>b),onOpen:()=>{}}));
  assert.ok(!plain.includes('dsg-box-gap')&&plain.includes('Trips timed · colours'),'reports without ranges draw as before');

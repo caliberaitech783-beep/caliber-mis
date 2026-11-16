@@ -50,17 +50,19 @@ export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayC
  // figures stay under their range.
  const ranged=boxes.some(b=>b.range);
  const gap=b=>ranged?<span key={b.key} className="dsg-box dsg-box-gap" aria-hidden="true"/>:null;
+ // The range is written inside each box too, under its figure (owner, 16 Nov 2026), so a box read alone still says its minutes.
+ const inside=b=>b.range?<small aria-hidden="true">{b.range}</small>:null;
  const cell=(list,where)=>{
   if(!list?.length)return <span className="dsg-zero">0</span>;
   if(renderCell)return renderCell(list,where);
   const r=list[0],on=isPicked(r),n=count(r);
   return <span className="dsg-cell">
    <button type="button" className="dsg-count" aria-pressed={on&&!pickedBox} aria-label={n+' '+countLabel+' · '+where} onClick={()=>onOpen(r,'')}>{n}</button>
-   {boxes.map(b=>r[b.key]>0?<button key={b.key} type="button" className={'dsg-box '+b.className} aria-pressed={on&&pickedBox===b.key} title={b.label} aria-label={r[b.key]+' '+b.label+' · '+where} onClick={()=>onOpen(r,b.key)}>{r[b.key]}</button>:gap(b))}
+   {boxes.map(b=>r[b.key]>0?<button key={b.key} type="button" className={'dsg-box '+b.className} aria-pressed={on&&pickedBox===b.key} title={b.label} aria-label={r[b.key]+' '+b.label+' · '+where} onClick={()=>onOpen(r,b.key)}>{r[b.key]}{inside(b)}</button>:gap(b))}
    {cellNote&&cellNote(r)?<small className="dsg-note">{cellNote(r)}</small>:null}
   </span>;
  };
- const totalCell=t=>t?<span className="dsg-cell"><span className="dsg-count">{count(t)}</span>{boxes.map(b=>t[b.key]>0?<span key={b.key} className={'dsg-box '+b.className} title={b.label}>{t[b.key]}</span>:gap(b))}</span>:null;
+ const totalCell=t=>t?<span className="dsg-cell"><span className="dsg-count">{count(t)}</span>{boxes.map(b=>t[b.key]>0?<span key={b.key} className={'dsg-box '+b.className} title={b.label}>{t[b.key]}{inside(b)}</span>:gap(b))}</span>:null;
  const dayCell=(c,sums,line)=>c.render?c.render(sums,line):c.value(sums,line);
  return <div className="reports-detail-table dsg" role="group" aria-label={ariaLabel}>
   {hint}

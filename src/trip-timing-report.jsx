@@ -204,7 +204,7 @@ export default function TripTimingReport({records=[],loading='',period='',Report
   <details className="tt-notes"><summary>How this report counts</summary><ul>
    <li>Loading → Unloading is the unloading time minus the loading time of the same trip row.</li>
    <li>Unloading → next Loading is the loading time of a trip row minus the unloading time of the row above it on the same card. The first trip of a card has no gap and is not counted.</li>
-   <li>{DELAY_LIMIT} minutes or less is not a delay. Yellow is more than {DELAY_LIMIT} and up to 20 minutes, orange is more than 20 and up to 30, red is more than 30.</li>
+   <li>{DELAY_LIMIT} minutes or less is not a delay. Blue is more than {DELAY_LIMIT} and up to 20 minutes, orange is more than 20 and up to 30, red is more than 30.</li>
    <li>Date and shift are the Book Date and the shift saved on the card.</li>
    <li>Not judged: a time is not written, the card was saved without times, or the time works out longer than a shift. These are never counted as delays.</li>
    <li>Times that cross 12 at night are counted forward. Tea and meal breaks are not removed in the Standard view. A row that carries several trips is counted once.</li>
