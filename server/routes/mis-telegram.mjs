@@ -121,7 +121,11 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  const sendPhoto=async(config,fields,png)=>{
   const form=new FormData();for(const [k,v] of Object.entries(fields))if(v)form.append(k,String(v));
   form.append('photo',new Blob([png],{type:'image/png'}),'site.png');
-  const response=await fetchImpl(`https://api.telegram.org/bot${config.botToken}/sendPhoto`,{method:'POST',body:form,signal:AbortSignal.timeout(30000)});
+  // The live fetch (telegramFetch, IPv4 only) sends a body as bytes; a FormData object would arrive as the
+  // text "[object FormData]" and Telegram refused every photo (16 Nov 2026). Encode the multipart body first.
+  const encoded=new Response(form);
+  const body=Buffer.from(await encoded.arrayBuffer());
+  const response=await fetchImpl(`https://api.telegram.org/bot${config.botToken}/sendPhoto`,{method:'POST',headers:{'Content-Type':encoded.headers.get('content-type')},body,signal:AbortSignal.timeout(30000)});
   const data=await response.json().catch(()=>null);if(!response.ok||data?.ok!==true)throw Error('Telegram refused the photo');
  };
  async function deliverRow(config,row){

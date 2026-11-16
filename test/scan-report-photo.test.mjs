@@ -6,6 +6,17 @@ import {registerMisTelegram} from '../server/routes/mis-telegram.mjs';
 import {telegramOutboxSender} from '../server/services/otp-delivery.mjs';
 import {siteReportBanner} from '../server/services/site-report-banner.mjs';
 
+// The live fetch (telegramFetch) can send only bytes, so a photo must arrive as an encoded multipart
+// body, never as a FormData object (16 Nov 2026: every photo reached Telegram as "[object FormData]").
+const readBody=async options=>{
+ if(options.body instanceof FormData)throw Error('A photo must be sent as encoded bytes, not a FormData object.');
+ if(!Buffer.isBuffer(options.body))return JSON.parse(options.body);
+ assert.match(options.headers['Content-Type'],/^multipart\/form-data; boundary=/);
+ const form=await new Response(options.body,{headers:{'Content-Type':options.headers['Content-Type']}}).formData();
+ // A multipart text field carries its line breaks as \r\n (form encoding); Telegram shows them as new lines.
+ return Object.fromEntries([...form.entries()].map(([k,v])=>[k,typeof v==='string'?v.replace(/\r\n/g,'\n'):v.type]));
+};
+
 // Owner, 15 Nov 2026: the site picture comes first, the report is its caption with a bold title.
 test('a batch completion report goes as the site picture with the report as its bold caption',async t=>{
  const db=new PGlite();t.after(()=>db.close());
@@ -13,7 +24,7 @@ test('a batch completion report goes as the site picture with the report as its 
  const calls=[];let photoFails=false;
  const service=registerMisTelegram(express(),{pool,store:{read:async()=>({enabled:true,webhookReady:true,botToken:'1:x'})},requireSession:(q,r,n)=>n(),
   fetchImpl:async(url,options)=>{const method=url.split('/').at(-1);
-   calls.push({method,body:options.body instanceof FormData?Object.fromEntries([...options.body.entries()].map(([k,v])=>[k,typeof v==='string'?v:v.type])):JSON.parse(options.body)});
+   calls.push({method,body:await readBody(options)});
    const ok=!(method==='sendPhoto'&&photoFails);return {ok,status:ok?200:400,json:async()=>({ok,result:true})};}});
  await service.initialize();t.after(()=>service.stop());
  await db.query("INSERT INTO mis_telegram_links(login_name,chat_id) VALUES('owner','42')");
@@ -46,7 +57,7 @@ test('a report card goes as one picture with a short caption, and the full text 
  const calls=[];let photoFails=false;
  const service=registerMisTelegram(express(),{pool,store:{read:async()=>({enabled:true,webhookReady:true,botToken:'1:x'})},requireSession:(q,r,n)=>n(),
   fetchImpl:async(url,options)=>{const method=url.split('/').at(-1);
-   calls.push({method,body:options.body instanceof FormData?Object.fromEntries([...options.body.entries()].map(([k,v])=>[k,typeof v==='string'?v:v.type])):JSON.parse(options.body)});
+   calls.push({method,body:await readBody(options)});
    const ok=!(method==='sendPhoto'&&photoFails);return {ok,status:ok?200:400,json:async()=>({ok,result:true})};}});
  await service.initialize();t.after(()=>service.stop());
  await db.query("INSERT INTO mis_telegram_links(login_name,chat_id) VALUES('owner','42')");
