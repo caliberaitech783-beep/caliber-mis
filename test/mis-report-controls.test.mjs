@@ -395,6 +395,8 @@ test('shift attendance equipment wise opens sites, then date by shift, then equi
   assert.deepEqual(nodes(marked,DateShiftGrid)[0].props.grid.lines.map(l=>l.label),['10-11-26','12-11-26']);
   assert.deepEqual(nodes(nodes(marked,'div').find(n=>n.props.className==='mp-book-pick'),'button').map(n=>n.props['aria-label']),['All dates · 3','Batch not created · 2','Batch open · 1']);
   press(marked,'All dates · 3');assert.equal(nodes(view(),DateShiftGrid)[0].props.grid.lines.length,3);
+  // The All dates line carries each shift over every date and opens it.
+  press(view(),'5 actual duties · Sasti OC · All dates · Shift 1 · 1 no batch');assert.equal(step(view(),'shift-attendance-equipment').props.title,'Step 3 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · by equipment');
   const tree=(await mount({pick:{siteKey:'sasti ob',scope:true,at:'sasti ob',shift:'S1',equipment:'Graders'},chosen:range,data:payload(sites,later,moreRows)}))(),days=step(tree,'shift-attendance').props;
   assert.equal(days.columns[0].key,'date');assert.equal(days.title,'Step 4 · Sasti OC · 10-11-26 to 12-11-26 · Shift 1 · Graders · drivers');assert.equal(days.description,'3 equipment-wise duties · 2 actual duties · Saved records only · Press a name for the month-wise history');
   assert.equal(nodes(step(tree,'shift-attendance-equipment'),'p').find(n=>n.props.className==='mp-att-batch mp-att-batch-none').props.children.at(-1),'12-11-26');}
