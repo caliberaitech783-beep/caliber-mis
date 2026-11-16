@@ -26,6 +26,12 @@ const presence=[{actual:true,employeeKey:'CMLL104',employeeId:'CMLL104',caliberC
 const sites=[{siteKey:DUDHI,site:'Dudhichua OC'},{siteKey:JAYANT,site:'Jayant OC'}];
 const build=()=>buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
 const codes=(register,siteKey)=>Object.fromEntries(register.register(siteKey).map(p=>[p.caliberCode,p.cells.map(c=>c.code).join(' ')]));
+test('the server\'s locked days decide a day, whatever the batch boxes show (Day and Night shift without a batch)',()=>{
+ // The 11th at Jayant: the boxes show Shift 3 open, but the server's list says the day is locked.
+ const r=buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12',lockedDays:[JAYANT+'|2026-11-10',JAYANT+'|2026-11-11']});
+ assert.equal(codes(r,JAYANT).CMLL101,'P1+3 P1 ? ');
+ assert.equal(buildAttendanceRegister({duties,presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12',lockedDays:[]}).register(JAYANT).find(p=>p.caliberCode==='CMLL101').cells[0].code,'?','a day the server does not list is not locked');
+});
 
 test('a day is P with its shifts, TR at another site, A only once every batch of the day is locked, ? before that, blank later',()=>{
  const r=build();

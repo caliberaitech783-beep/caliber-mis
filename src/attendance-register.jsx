@@ -40,7 +40,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  // The equipment category opened ('*' for all of them): batch-wise Step 3, month-wise Step 2; kept after the other state.
  const [equipment,setEquipment]=useState('');
  const today=todayIst();
- const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today}),[report,sites,filters.from,filters.to,today]);
+ const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today,lockedDays:report.lockedDays}),[report,sites,filters.from,filters.to,today]);
  const month=mode==='attendance-month';
  const allowed=new Set(sites.map(s=>s.siteKey));
  const siteRows=model.siteRows.filter(s=>!sites.length||allowed.has(s.siteKey));

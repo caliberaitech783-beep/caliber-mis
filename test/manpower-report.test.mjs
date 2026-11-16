@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildManpowerReport,manpowerFilters,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
+import {buildManpowerReport,manpowerFilters,lockedSiteDays,pendingSiteDays,attendanceWindows,otHistoryWindows,otHistorySummary,otYearWindows,otDriverTally} from '../server/rules/manpower-report.mjs';
 import {registerManpowerReports} from '../server/routes/manpower-report-api.mjs';
 import {linkVlbTripHandovers} from '../shared/vlb-trip-handover.mjs';
 
@@ -183,6 +183,30 @@ test('locked days only (owner, 16 Nov 2026): an open, reopened or missing shift 
  assert.equal(r.otDuties.length,2,'locked again: read again from the cards as they are now');
  drop='Sasti OC|2026-11-10|S2';r=await read();
  assert.equal(r.otDuties.length,0,'a shift the Shift Master runs that day but without any batch keeps the day out');
+});
+test('a locked day is a whole day: Shift 1-3 even where the Shift Master also lists Day and Night shift (live, 16 Nov 2026)',()=>{
+ // Jayant and Dudhichua East list Day and Night shift beside Shift 1 to 3 but run only Shift 1 to 3; their days never locked.
+ const both=[...shifts,{id:'40',site,shiftCode:'D',shiftName:'Day shift',startTime:'06:00',endTime:'18:00',status:'Active'},{id:'41',site,shiftCode:'N',shiftName:'Night shift',startTime:'18:00',endTime:'06:00',status:'Active'}];
+ const b=(shift,closed=true)=>({id:shift,site,report_date:date,shift,closed_at:closed?date+'T23:00:00Z':null});
+ const locked=list=>lockedSiteDays(both,list).has('sasti ob|'+date);
+ assert.equal(locked([b('S1'),b('S2'),b('S3')]),true,'Shift 1, 2 and 3 locked: the whole day, Day and Night shift unused');
+ assert.equal(locked([b('D'),b('N')]),true,'Day and Night shift locked: the whole day');
+ assert.equal(locked([b('S1'),b('S2')]),false,'Shift 3 never created');
+ assert.equal(locked([b('S1'),b('S2'),b('S3'),b('D',false)]),false,'any batch of the day still open');
+ assert.equal(locked([b('S1'),b('S2'),b('S3',false)]),false);
+ // A site whose Shift Master runs only two shifts that day: both locked is its whole day.
+ const two=[{id:'50',site,shiftCode:'A',shiftName:'Shift A',startTime:'06:00',endTime:'14:00',status:'Active'},{id:'51',site,shiftCode:'B',shiftName:'Shift B',startTime:'14:00',endTime:'22:00',status:'Active'}];
+ assert.equal(lockedSiteDays(two,[b('S1'),b('S2')]).has('sasti ob|'+date),true);
+ // The report counts the day, and the HR pending list leaves it out although Day and Night shift have no batch.
+ const r=buildManpowerReport({records:[card(1,1),card(2,2)],assets,employees,shifts:both,batches:[b('S1'),b('S2'),b('S3')].map(x=>({...x,name:x.id})),filters:manpowerFilters({from:date,to:date}),parts:'attendance',lockedOnly:true});
+ assert.equal(r.otDuties.length,2);
+ assert.ok(r.attendanceShifts.some(s=>s.shift==='D'&&s.state!=='closed'),'the unused Day shift still shows as a box without a batch');
+ assert.deepEqual(pendingSiteDays(r.attendanceShifts,lockedSiteDays(both,[b('S1'),b('S2'),b('S3')])),[]);
+});
+test('the attendance API sends the locked site-days of the selected dates',async()=>{
+ const h=apiHarness({sites:null},[card(1,1)],{batches:lockedBatches(['Sasti OC|2026-11-11|S2'])});
+ const r=(await h.run({from:'2026-11-10',to:'2026-11-11',view:'attendance'},'/api/reports/manpower/attendance')).result;
+ assert.deepEqual(r.lockedDays,['jayant ob|2026-11-10','jayant ob|2026-11-11','sasti ob|2026-11-10']);
 });
 test('attendance weeks cover the range without gaps',()=>{
  assert.deepEqual(attendanceWindows('2026-11-01','2026-11-30'),[{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-14'},{from:'2026-11-15',to:'2026-11-21'},{from:'2026-11-22',to:'2026-11-28'},{from:'2026-11-29',to:'2026-11-30'}]);

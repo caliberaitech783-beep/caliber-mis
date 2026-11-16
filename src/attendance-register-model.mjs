@@ -35,7 +35,8 @@ const batchState=state=>state==='closed'?'locked':/_open$/.test(String(state))?'
 // `duties`: the OT report's duty lines (all three log books). `presence`: Shift Attendance lines; an actual duty there that
 // is not a duty line (a zero-trip entry without a card, or the second operator of a split card) also counts as present.
 // `shifts`: the server's batch list per site, date and shift. `today` (YYYY-MM-DD, IST) blanks later dates.
-export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[],from,to,today}){
+// `lockedDays`: the server's locked site-days ("siteKey|date"); when given, it alone decides whether a day is locked.
+export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[],from,to,today,lockedDays=null}){
  const lines=duties.map(d=>({...d,source:'card'})),held=new Set(lines.map(dutyKey));
  for(const p of presence){
   if(!p.actual||!p.employeeKey||!p.shift)continue;const k=dutyKey(p);if(held.has(k))continue;held.add(k);
@@ -45,9 +46,12 @@ export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[
  const siteList=[...new Map([...sites.map(s=>[s.siteKey,s.site]),...lines.map(l=>[l.siteKey,l.site])]).entries()].map(([siteKey,site])=>({siteKey,site})).sort((a,b)=>byText(a.site,b.site));
  const batchRows=shifts.map(s=>({...s,status:batchState(s.state)}));
  const batchIndex=new Map();for(const b of batchRows){const k=b.siteKey+'|'+b.date;(batchIndex.get(k)||batchIndex.set(k,[]).get(k)).push(b);}
- // A day at a site is locked when every shift it runs that day has a closed batch.
+ // A day at a site is locked when every shift it runs that day has a closed batch. The server's list decides when it is
+ // sent: there three locked shifts are the whole day even where the Shift Master also lists Day and Night shift.
+ const lockedSet=Array.isArray(lockedDays)?new Set(lockedDays):null;
  const dayState=(siteKey,date)=>{
   if(today&&date>today)return 'future';
+  if(lockedSet)return lockedSet.has(siteKey+'|'+date)?'locked':'pending';
   const list=batchIndex.get(siteKey+'|'+date)||[];
   return list.length&&list.every(b=>b.status==='locked')?'locked':'pending';
  };

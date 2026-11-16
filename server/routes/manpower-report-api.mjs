@@ -119,10 +119,12 @@ export function registerManpowerReports(app,{pool,protect,ensureBooks,withHandov
     ot:report.ot.map(row=>pick(row,['site','siteKey','employeeId','schedule'])),
     // Only locked site-days are sent. These are the days left out because a shift is still open, reopened or has no batch;
     // nobody is absent on them, the figures come once the day is locked.
-    pendingDays:pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)))
+    pendingDays:pendingSiteDays(report.attendanceShifts.filter(row=>siteAllowed(req.logBookScope,row.siteKey)),locked)
    };
    const dutyKey=d=>[d.employeeKey,d.siteKey,d.date,d.shift].join('|'),held=new Set(report.otDuties.map(dutyKey));
-   return {filters:report.filters,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
+   // The locked site-days of the selected dates, so the register marks a day ? or counts it by the same rule as the server.
+   const lockedDays=[...locked].filter(k=>{const date=k.slice(k.lastIndexOf('|')+1);return date>=filters.from&&date<=filters.to&&siteAllowed(req.logBookScope,k.slice(0,k.lastIndexOf('|')));}).sort();
+   return {filters:report.filters,lockedDays,otDuties:report.otDuties.map(d=>pick(d,DUTY_FIELDS)),
     // Only presence the duty lines do not already hold: a zero-trip entry without a card, or the second operator of a card.
     attendanceEquipment:report.attendanceEquipment.filter(r=>r.actual&&r.employeeKey&&r.shift&&!held.has(dutyKey(r))).map(r=>pick(r,PRESENCE_FIELDS)),
     attendanceShifts:report.attendanceShifts.filter(s=>siteAllowed(req.logBookScope,s.siteKey)),
