@@ -1,19 +1,39 @@
 /* Loading Equipment-wise Report: idle band colours, the shift time-line, and the red (in BD) and brown (no hours) machine lines.
    The sub-tabs, step trail and chips are those of the Trip Timing & Gap Report (trip-timing-report.css). */
-/* Green up to 5 minutes, orange in three shades up to 20, red above 20: the same on the numbers, the strip and the lines. */
+/* Up to 5 minutes is not a delay and stays pale green. The idle bands are solid boxes with white figures, as in Trip Timing
+   (owner, 16 Nov 2026): blue 5–10, orange 10–15, red 15–20 and dark red above 20. The 8-hour strip and the loading lines
+   keep their own green, orange and red by the clock. */
 .lm-report .lm-ok{background:#d6f0dd;color:#17602b}
-.lm-report .lm-b1{background:#ffeccb;color:#7a4300}
-.lm-report .lm-b2{background:#ffd9a3;color:#703800}
-.lm-report .lm-b3{background:#ffc078;color:#5e2c00}
-.lm-report .lm-b4{background:#ffc9c2;color:#8f1a12}
+.lm-report .lm-b1{background:#2f6fd0;border-color:#2558a8;color:#fff}
+.lm-report .lm-b2{background:#d46a00;border-color:#a85400;color:#fff}
+.lm-report .lm-b3{background:#c92c2c;border-color:#a31f20;color:#fff}
+.lm-report .lm-b4{background:#8f1d1d;border-color:#6f1414;color:#fff}
 /* The chips carry the colour of what they show. */
 .lm-report .tt-chips button.lm-ok{background:#d6f0dd;color:#17602b;border-color:#3aa863}
-.lm-report .tt-chips button.lm-b1{background:#ffeccb;color:#7a4300;border-color:#f0b060}
-.lm-report .tt-chips button.lm-b2{background:#ffd9a3;color:#703800;border-color:#f0a040}
-.lm-report .tt-chips button.lm-b3{background:#ffc078;color:#5e2c00;border-color:#f28a2e}
-.lm-report .tt-chips button.lm-b4{background:#ffc9c2;color:#8f1a12;border-color:#d6362f}
+.lm-report .tt-chips button.lm-b1{background:#2f6fd0;color:#fff;border-color:#2558a8}
+.lm-report .tt-chips button.lm-b2{background:#d46a00;color:#fff;border-color:#a85400}
+.lm-report .tt-chips button.lm-b3{background:#c92c2c;color:#fff;border-color:#a31f20}
+.lm-report .tt-chips button.lm-b4{background:#8f1d1d;color:#fff;border-color:#6f1414}
 .lm-report .tt-chips button.lm-breakdown{background:#fbd5d5;color:#9b1c1c;border-color:#b42323}
 .lm-report .tt-chips button.lm-nohours{background:#e7d3bd;color:#5c3310;border-color:#6e3f14}
+/* Step 2 writes the minutes inside each box and above it in the shift heading, as in Trip Timing; the heading carries the
+   colour as text, without a fill, so it does not read as a figure. */
+.lm-report .dsg-ranged :is(.tt-band,.lm-count){border-radius:8px;line-height:1.2}
+.lm-report .dsg-ranged :is(.tt-band,.lm-count) small{display:block;margin-top:1px;color:inherit;font-size:11px;font-weight:600}
+.lm-report .dsg-ranged thead :is(.tt-band,.lm-count){background:none;border-color:transparent}
+/* Four bands in three shifts: the boxes are a little narrower than in Trip Timing, and In BD and No hours, which keep no place
+   of their own, go under the count when a shift has them, so the table still fits the screen. */
+.lm-report .generated-report-section .dsg-ranged .dsg-box{width:60px;min-width:60px}
+.lm-report .generated-report-section .dsg-ranged .dsg-box small{font-size:10.5px}
+.lm-report .generated-report-section .dsg-ranged tbody .dsg-cell,.lm-report .generated-report-section .dsg-ranged tfoot .dsg-cell{flex-wrap:wrap;max-width:320px;row-gap:4px}
+.lm-report .dsg-ranged thead .lm-b1{color:#2f6fd0}
+.lm-report .dsg-ranged thead .lm-b2{color:#b85c00}
+.lm-report .dsg-ranged thead .lm-b3{color:#c92c2c}
+.lm-report .dsg-ranged thead .lm-b4{color:#8f1d1d}
+:root[data-theme="dark"] .lm-report .dsg-ranged thead .lm-b1{color:#8db6f2}
+:root[data-theme="dark"] .lm-report .dsg-ranged thead .lm-b2{color:#f3a456}
+:root[data-theme="dark"] .lm-report .dsg-ranged thead .lm-b3{color:#f08a8a}
+:root[data-theme="dark"] .lm-report .dsg-ranged thead .lm-b4{color:#e06a6a}
 /* The count of an idle band with its own percentage just beside it, always on one line. */
 .lm-report .lm-banded{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .lm-report .lm-share{font-size:14px;font-weight:700;white-space:nowrap}

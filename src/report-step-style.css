@@ -164,6 +164,16 @@
 .generated-report-section .dsg-ranged .dsg-cell { flex-wrap: nowrap; }
 .generated-report-section .dsg-ranged .dsg-box { box-sizing: border-box; flex: 0 0 auto; width: 66px; min-width: 66px; padding: 4px 2px; text-align: center; }
 .generated-report-section .dsg-ranged .dsg-box-gap { visibility: hidden; }
+/* With ranges the shifts read from the left: the count, then every colour under its minutes, then any box with only a note
+   (Loading Equipment: In BD, No hours), so a box at the end never pushes the others out of line. */
+.generated-report-section .dsg-ranged :is(tbody, tfoot) td,
+.generated-report-section .dsg-ranged thead th:not(:first-child) { text-align: left; }
+.generated-report-section .dsg-ranged .dsg-cell { justify-content: flex-start; }
+.generated-report-section .dsg-ranged .dsg-cell > .dsg-count,
+.generated-report-section .dsg-table thead .dsg-legend > small { box-sizing: border-box; flex: 0 0 auto; width: 54px; min-width: 54px; margin: 0; text-align: center; }
+.generated-report-section .dsg-table thead .dsg-legend { gap: 6px; }
+/* The step look pads coloured counts 7px a side; a box with its minutes inside needs that room for the words. */
+.generated-report-section[data-step-look] .dsg-table.dsg-ranged .dsg-box { padding: 4px 1px; }
 .generated-report-section .dsg-table thead .dsg-legend { display: flex; margin-top: 6px; }
 .generated-report-section .dsg-table thead .dsg-legend small { margin: 0 4px 0 0; white-space: nowrap; }
 .generated-report-section .dsg-table thead .dsg-range { padding: 3px 2px; font-size: 11px; font-weight: 750; letter-spacing: 0; line-height: 1.3; text-transform: none; white-space: nowrap; }

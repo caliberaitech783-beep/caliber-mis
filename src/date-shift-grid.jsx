@@ -48,10 +48,12 @@ export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayC
  // A box with a `range` (owner, 16 Nov 2026: "above 36 it should write from which to which") puts that range above its
  // colour in the shift heading; every colour then keeps its own place in the box, an empty place where it is 0, so the
  // figures stay under their range.
+ // A box with only a `note` (Loading Equipment: In BD, No hours) is written inside but keeps no place and no heading: such
+ // boxes come last, so the ranged ones before them stay in line and the table still fits the screen.
  const ranged=boxes.some(b=>b.range);
- const gap=b=>ranged?<span key={b.key} className="dsg-box dsg-box-gap" aria-hidden="true"/>:null;
+ const gap=b=>ranged&&b.range?<span key={b.key} className="dsg-box dsg-box-gap" aria-hidden="true"/>:null;
  // The range is written inside each box too, under its figure (owner, 16 Nov 2026), so a box read alone still says its minutes.
- const inside=b=>b.range?<small aria-hidden="true">{b.range}</small>:null;
+ const inside=b=>ranged&&(b.range||b.note)?<small aria-hidden="true">{b.range||b.note}</small>:null;
  const cell=(list,where)=>{
   if(!list?.length)return <span className="dsg-zero">0</span>;
   if(renderCell)return renderCell(list,where);
@@ -68,7 +70,7 @@ export function DateShiftGrid({grid,count,countLabel='',boxes=[],renderCell,dayC
   {hint}
   <table className={'report-filter-table dsg-table'+(ranged?' dsg-ranged':'')}>
    <thead><tr><th scope="col">{label}</th>{grid.shifts.map(s=><th key={s} scope="col">{shiftLabel(s)}{ranged
-    ?<span className="dsg-cell dsg-legend"><small>{countLabel}</small>{boxes.map(b=><span key={b.key} className={'dsg-box dsg-range '+b.className} title={b.label}>{b.range}</span>)}</span>
+    ?<span className="dsg-cell dsg-legend"><small>{countLabel}</small>{boxes.filter(b=>b.range).map(b=><span key={b.key} className={'dsg-box dsg-range '+b.className} title={b.label}>{b.range}</span>)}</span>
     :countLabel&&<small>{countLabel}{boxes.length?' · colours':''}</small>}</th>)}{dayColumns.map(c=><th key={c.key} scope="col">{c.label}{c.sub&&<small>{c.sub}</small>}</th>)}</tr></thead>
    <tbody>{grid.lines.map(l=><tr key={l.key} className={l.list.some(isPicked)?'report-row-picked':undefined}>
     <th scope="row">{l.label}{l.sub&&<small>{l.sub}</small>}</th>
