@@ -11513,6 +11513,7 @@ function App() {
     [sidebarAutoSaved,setSidebarAuto]=useState(()=>{try{return localStorage.getItem("caliberSidebarAutoHide")==="true";}catch{return false;}}),
     [sidebarPeek,setSidebarPeek]=useState(false),
     [canGoBack, setCanGoBack] = useState(false),
+    [dashboardOpenCount, setDashboardOpenCount] = useState(0),
     [theme, setTheme] = useState(() => {
       const saved = localStorage.getItem("nerveCenterTheme");
       if (saved === "light" || saved === "dark") return saved;
@@ -11717,6 +11718,13 @@ function App() {
     recordUserActivity({module:"Navigation",action:"Open page",targetReference:active});
   }, [active,session?.token]);
   const stepBack = useStepBack();
+  // Clicking "Dashboard" in the header opens the Dashboard again from the
+  // start: drill-downs and steps close and the page is built fresh.
+  const reopenDashboard = () => {
+    setMenu(false);
+    setDashboardOpenCount(count => count + 1);
+    selectMenu("Dashboard");
+  };
   const goBack = () => {
     if (pageHistory.current.length <= 1) return;
     pageHistory.current.pop();
@@ -11955,7 +11963,7 @@ function App() {
   // not change the current page. Preserve the page element across those root
   // renders so opening navigation cannot rebuild a large dashboard or table.
   const adminPageContent = useMemo(() => renderedActive === "Dashboard" ? (
-    requestsLoaded ? <MisDashboard goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
+    requestsLoaded ? <MisDashboard key={`dashboard-${dashboardOpenCount}`} goto={selectMenu} gotoEquipment={gotoEquipment} gotoBreakdownFleet={gotoBreakdownFleet} requests={requests} requestsError={requestsError} requestsUpdatedAt={requestState.updatedAt} onRefreshRequests={loadRequests} theme={theme} session={session} ReportSection={ReportSection} printDashboard={printDashboardReport} /> : <RequestDataState error={requestsError} retry={loadRequests} />
   ) : renderedActive==='Fleet reconciliation' ? (<details open className="scan-fleet-reconciliation"><summary>Site fleet · VLB / LMV / ELB, breakdown and idle details</summary><FleetReconciliation session={session}/></details>) : renderedActive==='Employee Current Location' ? (<EmployeeCurrentLocation session={session}/>) : renderedActive==='Employee master' ? (<EmployeeMaster session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>) : ['Work Order master','Financial Year master','Company master'].includes(renderedActive) ? (
     <ErpMasters key={renderedActive} name={renderedActive} session={session} ExportMenu={ExportMenu} PrintButton={PrintButton} parseCsv={parseCsv}/>
   ) : renderedActive==='Pulse Master Sync' ? (
@@ -12054,7 +12062,7 @@ function App() {
     renderedActive, renderedReportCategory, adminPermissions, renderedBreakdownFleetFilter, renderedBreakdownFleetSites,
     renderedEquipmentCategory, renderedEquipmentFilter, renderedEquipmentLocation, renderedEquipmentLocations, profileDesignationKey,
     profileLocation, requests, requestsError, requestsLoaded, requestState.updatedAt, responsiveMobile,
-    session, theme,
+    session, theme, dashboardOpenCount,
   ]);
   if (session?.token&&(accountSecurity.loading||accountSecurity.required&&!accountSecurity.verified)) return <AccountSecurityGate state={accountSecurity} token={session.token}/>;
   if (session?.token&&locationGate.phase!=='open') return <SignInLocationScreen gate={locationGate} onSignOut={logout}/>;
@@ -12151,7 +12159,9 @@ function App() {
             >
               <ArrowLeft />
             </button>
-            Operations <ChevronRight /> <b>{navigationLabel(active)}</b>
+            Operations <ChevronRight /> {active === "Dashboard"
+              ? <button type="button" className="crumb-page-link" onClick={reopenDashboard} title="Open Dashboard again" aria-label="Open Dashboard again"><b>{navigationLabel(active)}</b></button>
+              : <b>{navigationLabel(active)}</b>}
             <span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick={logout} aria-label="Sign out" title="Sign out"><DoorExitIcon /><span>Sign out</span></button></span>
           </div>
           <HeaderClock />

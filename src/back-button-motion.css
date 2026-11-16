@@ -101,3 +101,8 @@
   .crumb .page-back > svg, .modal-back-button > span, .dashboard-breakdown-day-back > svg,
   .crumb .page-back::before, .modal-back-button::before, .crumb .page-back::after, .modal-back-button::after { animation: none !important; transition: none !important; }
 }
+
+/* "Dashboard" in the header crumb opens the Dashboard again from the start. */
+.crumb .crumb-page-link { display: inline-flex; min-width: 0; max-width: 100%; overflow: hidden; appearance: none; background: none; border: 0; padding: 2px 4px; margin: 0 -4px; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
+.crumb .crumb-page-link:hover > b, .crumb .crumb-page-link:focus-visible > b { text-decoration: underline; text-underline-offset: 3px; }
+.crumb .crumb-page-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
