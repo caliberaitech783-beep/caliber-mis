@@ -5,7 +5,7 @@ import express from 'express';
 import {PGlite} from '@electric-sql/pglite';
 import {transformWithOxc} from 'vite';
 import path from 'node:path';
-import {registerLogBooks,LOG_BOOK_SCHEMA,logBooksForTiming,TIMING_UNUSED_CARD_FIELDS,TIMING_UNUSED_TRIP_FIELDS} from '../server/routes/log-book.mjs';
+import {registerLogBooks,LOG_BOOK_SCHEMA,logBooksForTiming,TIMING_UNUSED_CARD_FIELDS,TIMING_UNUSED_TRIP_FIELDS,OPERATIONS_UNUSED_CARD_FIELDS} from '../server/routes/log-book.mjs';
 import {encodeScanJson} from '../server/rules/scan-text-storage.mjs';
 import {createReportLane} from '../server/services/report-lane.mjs';
 import {normalise,buildOperationReport} from '../src/operations-report-model.mjs';
@@ -84,7 +84,7 @@ test('the shared reading is kept for the lane\'s short window only',async t=>{
  assert.equal(readings(app.statements),3,'the full reading with scanned cards is a reading of its own');
 });
 
-test('the screens ask for the log books only for Trip Timing and Loading Equipment-wise, and reuse a full reading',async()=>{
+test('the screens ask for the log books only for Trip Timing and Loading Equipment-wise, each kind of reading held apart',async()=>{
  const source=fs.readFileSync(new URL('../src/operations-reports.jsx',import.meta.url),'utf8');
  assert.match(source,/const OPERATIONS_LOGBOOKS_ONLY=new Set\(\['timing','loading'\]\);/);
  assert.match(source,/const parts=OPERATIONS_LOGBOOKS_ONLY\.has\(id\)\?'logbooks':'';/);
@@ -104,8 +104,9 @@ test('the screens ask for the log books only for Trip Timing and Loading Equipme
  await daily.promise;
  const other=operationsData('2026-11-02','2026-11-14','token',false);await other.promise;
  const reuse=operationsData('2026-11-02','2026-11-14','token',false,'logbooks');
- assert.equal(urls.length,3,'a full reading already held for the same dates serves Trip Timing too');
- assert.equal(reuse.promise,other.promise);
+ assert.equal(urls.length,4,'since 16 Nov 2026 the full reading keeps only trip counts, so it cannot serve Trip Timing');
+ assert.notEqual(reuse.promise,other.promise);
+ assert.equal(urls.at(-1),'/api/reports/operations?from=2026-11-02&to=2026-11-14&parts=logbooks');
  const refreshed=operationsData('2026-11-02','2026-11-14','token',true,'logbooks');
  assert.equal(urls.at(-1),'/api/reports/operations?from=2026-11-02&to=2026-11-14&parts=logbooks','Refresh reads again, without the scanned cards');
  for(const reading of [timing,loading,daily,other,reuse,refreshed])reading.release();
@@ -120,13 +121,18 @@ const handover={handoverLinks:[{card:'VLB_S9',row:24,equipmentName:'EX9'}]};
 
 test('the log-books-only reading leaves out the scan and entry details and keeps everything else',async t=>{
  const trips=[{equipmentName:'EX1',loadingTime:'05:10',unloadingTime:'05:30',tripCount:1,...handover}];
- const app=await server(t,createReportLane({cacheMs:0}),{...scanDetails,scanCardId:'card',statusReason:'Kept for Loading',pulseBreakdowns:[{reference:'BD-1'}],trips});
+ const saved={...scanDetails,scanCardId:'card',statusReason:'Kept for Loading',pulseBreakdowns:[{reference:'BD-1'}],trips};
+ const app=await server(t,createReportLane({cacheMs:0}),saved);
  const full=(await app.get()).body.records[0],slim=(await app.get('&parts=logbooks')).body.records[0];
- for(const field of TIMING_UNUSED_CARD_FIELDS){assert.ok(field in full.data,field+' is still in the full reading');assert.ok(!(field in slim.data),field+' is left out');}
- assert.ok('handoverLinks' in full.data.trips[0]);assert.ok(!('handoverLinks' in slim.data.trips[0]));
  const without=(row,fields)=>Object.fromEntries(Object.entries(row).filter(([key])=>!fields.includes(key)));
- assert.deepEqual({...slim,data:{...slim.data,trips:null}},{...full,data:{...without(full.data,TIMING_UNUSED_CARD_FIELDS),trips:null}},'every other field, including scanCardId, statusReason and pulseBreakdowns, is unchanged');
- assert.deepEqual(slim.data.trips,full.data.trips.map(trip=>without(trip,TIMING_UNUSED_TRIP_FIELDS)));
+ for(const field of TIMING_UNUSED_CARD_FIELDS)assert.ok(!(field in slim.data),field+' is left out');
+ assert.ok(!('handoverLinks' in slim.data.trips[0]));
+ assert.deepEqual(without(slim.data,['trips']),{...without(full.data,['trips']),...without(saved,[...TIMING_UNUSED_CARD_FIELDS,'trips'])},'every other field, including scanCardId, statusReason and pulseBreakdowns, is kept');
+ assert.deepEqual(slim.data.trips.map(trip=>without(trip,['completedTrips','tripStatus'])),trips.map(trip=>without(trip,TIMING_UNUSED_TRIP_FIELDS)));
+ // The full reading (16 Nov 2026): the same details and the copied breakdowns left out, trip rows down to their counts.
+ for(const field of OPERATIONS_UNUSED_CARD_FIELDS)assert.ok(!(field in full.data),field+' is left out of the full reading');
+ assert.equal(full.data.scanCardId,'card');assert.equal(full.data.statusReason,'Kept for Loading');
+ assert.deepEqual(full.data.trips,slim.data.trips.map(({completedTrips,tripCount})=>({completedTrips,tripCount})));
 });
 
 test('Trip Timing & Gap and Loading Equipment-wise show the same figures from the trimmed reading',()=>{
