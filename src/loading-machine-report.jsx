@@ -1,6 +1,6 @@
 import React,{useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {StepBackButton} from './step-back.jsx';
-import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
+import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine} from './date-shift-grid.jsx';
 import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt,breakdownText} from '../shared/loading-machine-report.mjs';
 import {tripEntries} from '../shared/trip-timing-report.mjs';
 import './trip-timing-report.css';
@@ -57,16 +57,18 @@ const printOnly=c=>({...c,printOnly:true});
 // Over many shifts a machine has had many operators: the screen names the first and counts the rest (all of them in the
 // pop-up), so that the line stays one line high; Smart Print, PDF and Excel carry every name.
 const operatorShort=r=>{const names=String(r.operator||'').split(', ').filter(Boolean);return names.length>2?<span title={r.operator}>{names[0]} +{names.length-1} more</span>:r.operator||'—';};
-export function machineColumns(onPick,manyShifts=false){
- return [column('door','Door no.'),column('machineName','Machine'),column('operator','Operator',null,manyShifts?operatorShort:null),...(manyShifts?[column('machineShifts','Shifts')]:[]),column('statusLabel','Status',null,stateBadge),
+// Owner, 16 Nov 2026: a list opened from All sites names the site of every line (Site column), on screen and in Excel.
+const siteColumn=(manySites,key='site')=>manySites?[column(key,'Site')]:[];
+export function machineColumns(onPick,manyShifts=false,manySites=false){
+ return [...siteColumn(manySites,'sites'),column('door','Door no.'),column('machineName','Machine'),column('operator','Operator',null,manyShifts?operatorShort:null),...(manyShifts?[column('machineShifts','Shifts')]:[]),column('statusLabel','Status',null,stateBadge),
   ...work,...idle(onPick),...(manyShifts?[]:[column('firstLoading','First loading'),column('lastLoading','Last loading')].map(printOnly)),column('tipperCount','Tippers loaded'),...more.map(printOnly),column('reason','Remark')];
 }
 // One line per loading: when the machine loaded, how long after the loading before, in which colour, and for an idle stop
 // the tipper trips delayed in it. `many` adds the date, shift and machine, for a list across shifts or machines.
 const colourText=l=>l.band==='first'?'First loading':TONE_LABELS[l.tone]+' · '+BAND_LABELS[l.band];
 const waitingText=l=>l.delayed.map(d=>d.door+' · '+d.waited+' min').join(', ')||'—';
-export function tripColumns(many=false){
- return [...(many?[column('date','Date',l=>day(l.date)),column('shift','Shift'),column('machine','Loading machine')]:[]),
+export function tripColumns(many=false,manySites=false){
+ return [...(many?[column('date','Date',l=>day(l.date)),column('shift','Shift')]:[]),...siteColumn(manySites),...(many?[column('machine','Loading machine')]:[]),
   column('fromClock','Loading before at',l=>l.from?.clock||'—'),column('toClock','Loaded at',l=>l.to.clock),
   column('gapAll','Gap from loading before (min)',l=>l.band==='first'?'—':l.gap??l.minutes,null,l=>l.gap??-1),
   column('bdIn','Of it in BD (min)',l=>l.bdMinutes>0?l.bdMinutes:'—',l=>l.bdMinutes>0?<span className="lm-count lm-bdcount">{l.bdMinutes}</span>:'—',l=>l.bdMinutes||0),
@@ -75,7 +77,7 @@ export function tripColumns(many=false){
   column('delayedCount','Tipper trips delayed',l=>l.band==='first'||l.band==='ok'?'—':l.delayed.length,l=>l.delayed.length>0?<span className="lm-count lm-delayed">{l.delayed.length}</span>:l.band==='first'||l.band==='ok'?'—':0,l=>l.delayed.length),
   column('waiting','Tippers delayed · unloading to loading',waitingText),column('breakdown','Breakdown in Pulse',l=>l.breakdown||'—'),column('book','Book no.',l=>l.to.book)];
 }
-export const notWorkedColumns=[column('date','Date',e=>day(e.date)),column('shift','Shift'),column('door','Door no.'),column('machineName','Machine'),column('statusLabel','Status',null,stateBadge),column('reason','Reason'),
+export const notWorkedColumns=(manySites=false)=>[column('date','Date',e=>day(e.date)),column('shift','Shift'),...siteColumn(manySites),column('door','Door no.'),column('machineName','Machine'),column('statusLabel','Status',null,stateBadge),column('reason','Reason'),
  column('hoursWorked','Hours worked',e=>blank(e.hours)?'—':e.hours),column('bdHours','Hours in BD'),column('elbBooks','ELB book no.'),column('breakdowns','Breakdown in Pulse')];
 export const cardColumns=[column('sr','Tr.Sr.No'),column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time')];
 // The line for all of them stays at the foot of the table, whatever the table is sorted by.
@@ -231,7 +233,9 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  // Step 2 is the date by shift table of the OT report: a colour chosen above it keeps only that colour in the boxes.
  const gridBoxes=[...BANDS.map(b=>({key:b.key,label:'Idle '+b.label,range:bandRange(b),className:'tt-band lm-'+b.key})),{key:'breakdown',label:STATES.breakdown,note:'In BD',className:'lm-count lm-breakdown'},{key:'nohours',label:STATES.nohours,note:'No hours',className:'lm-count lm-nohours'}].filter(b=>!upper||b.key===upper);
  // The share worked counts only the machine shifts whose ELB gives both hours, as on the lines themselves.
- const shiftGrid=dateShiftGrid(shiftsListed.map(r=>({...r,judgedHours:r.percent===null?0:r.percent*r.shiftHours/100})),{sumKeys:['machineShifts','running','breakdown','nohours','trips','judgedHours','shiftHours','stops','idleMinutes',...BANDS.map(b=>b.key)]});
+ const manySites=site===EVERY;
+ const shiftGrid=dateShiftGrid(shiftsListed.map(r=>({...r,judgedHours:r.percent===null?0:r.percent*r.shiftHours/100})),{sumKeys:['machineShifts','running','breakdown','nohours','trips','judgedHours','shiftHours','stops','idleMinutes',...BANDS.map(b=>b.key)],
+  lineOf:r=>manySites?{...dateLine(r),key:r.date+'|'+r.site,label:dateLine(r).label+' · '+r.site}:dateLine(r)});
  const shiftDay=[{key:'machines',label:'Machine shifts',value:t=>t.machineShifts},{key:'trips',label:'Trips loaded',value:t=>t.trips},
   {key:'percent',label:'% of shift worked',value:t=>t.shiftHours?Math.round(t.judgedHours/t.shiftHours*1000)/10+'%':'—'},{key:'stops',label:'Idle stops',value:t=>t.stops}];
  const shiftExport=dateShiftExport(shiftGrid,{count:r=>r.machineShifts,countLabel:'machines',boxes:gridBoxes,dayColumns:shiftDay});
@@ -262,9 +266,9 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    </ReportSection>
    <p className="tt-insight">{summaryLine(machines.total)}</p>
    <ReportSection key={'lm-machines-'+site+(slot?.key||EVERY)+upper} reportKey={'Loading machines of a shift'+(allShifts?' together':'')} dataReady={dataReady} title={'Step 3 · Loading machines · '+where+filtered} category="operations-loading-machines" description={(allShifts?'Every loading machine of the site over all the dates and shifts above; press a box above for one shift only. ':'')+'One line per loading machine: the running machines first with the most idle on top, then the machines in BD in red, then the machines with no hours in brown. Press a line to see the machine as an 8-hour strip per shift: where it was green, where it turned orange and where red, by the clock. Press a coloured number to see only those stops.'}
-    rows={withTotal(machinesListed,upper?{...machines.total,id:'shown-total'}:machines.total)} columns={machineColumns(openItem,allShifts)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,item?.key)} isTotalRow={isTotal} onRowClick={r=>openItem(r)} emptyMessage="No such machine in this shift."/>
+    rows={withTotal(machinesListed,upper?{...machines.total,id:'shown-total'}:machines.total)} columns={machineColumns(openItem,allShifts,manySites)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+picked(r,item?.key)} isTotalRow={isTotal} onRowClick={r=>openItem(r)} emptyMessage="No such machine in this shift."/>
    {band&&<ReportSection key={'lm-bandstops-'+site+(slot?.key||EVERY)+band} reportKey="Loading machines stops of a band" dataReady={dataReady} title={'Idle stops of '+BAND_LABELS[band]+' · every machine · '+where} category="operations-loading-bandstops" description={'Every stop of '+BAND_LABELS[band]+' of the machines above, with the tipper trips delayed in it. Press a line to see the shift time-line of that machine.'}
-    recordDateFilter={allShifts?null:false} rows={bandStops} columns={tripColumns(true)} rowKey={l=>l.id} rowClassName={lineClass} onRowClick={l=>openItem({key:l.machineKey,door:l.machine},band)} emptyMessage={'No stop of '+BAND_LABELS[band]+' here.'}/>}
+    recordDateFilter={allShifts?null:false} rows={bandStops} columns={tripColumns(true,manySites)} rowKey={l=>l.id} rowClassName={lineClass} onRowClick={l=>openItem({key:l.machineKey,door:l.machine},band)} emptyMessage={'No stop of '+BAND_LABELS[band]+' here.'}/>}
   </>}
   {level>=3&&<>
    {stacked&&!focus&&<p className="tt-insight">{timelineLine(opened)}</p>}
@@ -273,9 +277,9 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    {(focus||!stacked)&&ran&&<ShiftTimelines entries={shownEntries} step={'Step '+listStep+' · '} onPick={setOnly}/>}
    {ran&&tripChips}
    {ran&&<ReportSection key={'lm-trips-'+item.key+(slot?.key||EVERY)+strip+pick} reportKey={'Loading machine loadings'+(manyLines?' together':'')} dataReady={dataReady} title={'Step '+listStep+' · Every loading · '+listWhere+(pick?' · '+BAND_LABELS[pick]:'')} category="operations-loading-stops" description={'One line per loading in the order of the shift, with the minutes since the loading before: green up to '+IDLE_LIMIT+' minutes, orange up to '+RED_AFTER+', red above '+RED_AFTER+'. An idle stop shows the tipper trips delayed in it. Press a line to see the trip card of the tipper loaded.'}
-    recordDateFilter={manyDates?null:false} rows={lines} columns={tripColumns(manyLines)} rowKey={l=>l.id} rowClassName={l=>lineClass(l)+(card&&l.to?.recordId===card?' report-row-picked':'')} onRowClick={l=>setCard(l.to.recordId)} emptyMessage={pick?'No loading of '+BAND_LABELS[pick]+' here.':'No loading with a time here.'}/>}
+    recordDateFilter={manyDates?null:false} rows={lines} columns={tripColumns(manyLines,manySites)} rowKey={l=>l.id} rowClassName={l=>lineClass(l)+(card&&l.to?.recordId===card?' report-row-picked':'')} onRowClick={l=>setCard(l.to.recordId)} emptyMessage={pick?'No loading of '+BAND_LABELS[pick]+' here.':'No loading with a time here.'}/>}
    {notWorked.length>0&&<ReportSection key={'lm-notworked-'+item.key+(slot?.key||EVERY)} reportKey="Loading machine shifts not worked" dataReady={dataReady} title={(ran?'':'Step 4 · ')+'Shifts not worked · '+item.label+' · '+where} category="operations-loading-notworked" description="The shifts in which the machine did not run: in BD in red, no hours and not in BD in brown, with the reason on its ELB and the breakdown recorded in Pulse."
-    rows={notWorked} columns={notWorkedColumns} rowKey={e=>e.id} rowClassName={rowClass} emptyMessage="The machine ran in every shift."/>}
+    rows={notWorked} columns={notWorkedColumns(manySites)} rowKey={e=>e.id} rowClassName={rowClass} emptyMessage="The machine ran in every shift."/>}
   </>}
   {level>=3&&card&&cardHead&&<ReportSection key={'lm-card-'+card} reportKey="Loading machine trip card" dataReady={dataReady} showSearch={false} title={'Step '+cardStep+' · Trip card '+cardHead.book} category="operations-loading-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card`}
    rows={cardRows} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}

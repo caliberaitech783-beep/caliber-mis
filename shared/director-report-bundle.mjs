@@ -2,6 +2,7 @@ import {requestStatusLabel} from '../src/request-status.mjs';
 import {transferReportTimingColumns} from './transfer-report-timing.mjs';
 import {requestShiftColumns,requestShiftLabel} from './request-shift.mjs';
 import {REPORT_XLSX_STYLES, styleReportSheets} from './report-xlsx-style.mjs';
+import {XLSX_PAGE_SETUP,xlsxColumnWidth,xlsxFooter,xlsxHeadingHeight,xlsxNumericColumns,xlsxPlainNumber} from './xlsx-layout.mjs';
 import {requestsWithDoorNumbers,equipmentDoorNumber} from './equipment-door.mjs';
 import {liveEquipmentRoadStatus} from './dashboard-equipment-metrics.mjs';
 import {equipmentGroupValue,normalizeEquipmentGroup} from './equipment-group.mjs';
@@ -313,12 +314,17 @@ function xlsxWorksheetXml(columns=[],rows=[],preserveWhitespace=false,title='Cal
   // Title and record count first, matching the PDF heading and the print subtitle.
   const worksheetRows=[[title||'Caliber Pulse report'],[recordCountLine(rows.length,formatDisplayDateTime(new Date()))],headings,...rows];
   const escapeText=preserveWhitespace?escapeXlsxText:escapeXml;
-  const sheetData=worksheetRows.map((row,rowIndex)=>`<row r="${rowIndex+1}">${row.map((value,columnIndex)=>`<c r="${excelCellReference(columnIndex,rowIndex)}" t="inlineStr"><is><t${preserveWhitespace?' xml:space="preserve"':''}>${escapeText(value)}</t></is></c>`).join('')}</row>`).join('');
-  const widths=headings.map((label,index)=>{
-    const maxLength=rows.reduce((maximum,row)=>Math.max(maximum,String(row[index]||'').length),String(label||'').length);
-    return `<col min="${index+1}" max="${index+1}" width="${Math.min(48,Math.max(12,maxLength+2))}" customWidth="1"/>`;
-  }).join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${widths}</cols><sheetData>${sheetData}</sheetData></worksheet>`;
+  // Same layout as the report Excel in the browser (shared/xlsx-layout.mjs): headings wrap in narrow columns, number
+  // columns are numbers, A3 landscape on one page width with the heading row repeated and the page number at the foot.
+  const columnWidths=headings.map((label,index)=>xlsxColumnWidth(label,rows.map(row=>row[index])));
+  const numericColumns=xlsxNumericColumns(rows,headings.length);
+  const headingRow=` ht="${xlsxHeadingHeight(headings,columnWidths)}" customHeight="1"`;
+  const sheetData=worksheetRows.map((row,rowIndex)=>`<row r="${rowIndex+1}"${rowIndex===2?headingRow:''}>${row.map((value,columnIndex)=>{
+    const reference=excelCellReference(columnIndex,rowIndex),number=rowIndex>2&&numericColumns[columnIndex]?xlsxPlainNumber(value):null;
+    return number!==null?`<c r="${reference}"><v>${number}</v></c>`:`<c r="${reference}" t="inlineStr"><is><t${preserveWhitespace?' xml:space="preserve"':''}>${escapeText(value)}</t></is></c>`;
+  }).join('')}</row>`).join('');
+  const widths=columnWidths.map((width,index)=>`<col min="${index+1}" max="${index+1}" width="${width}" customWidth="1"/>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData>${sheetData}</sheetData><printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/>${XLSX_PAGE_SETUP}${xlsxFooter(title)}</worksheet>`;
 }
 
 function xlsxSheetsWorkbookBuffer(title,sheets,escapeText=escapeXml){
@@ -330,8 +336,9 @@ function xlsxSheetsWorkbookBuffer(title,sheets,escapeText=escapeXml){
     {name:'docProps/core.xml',content:`<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${workbookTitle}</dc:title><dc:creator>Caliber Pulse</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`},
     {name:'docProps/app.xml',content:'<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Caliber Pulse</Application></Properties>'},
     {name:'xl/_rels/workbook.xml.rels',content:`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,index)=>`<Relationship Id="rId${index+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index+1}.xml"/>`).join('')}<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
-    {name:'xl/workbook.xml',content:`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sheet,index)=>`<sheet name="${escapeText(sheet.name)}" sheetId="${index+1}" r:id="rId${index+1}"/>`).join('')}</sheets></workbook>`},
-    {name:'xl/styles.xml',content:REPORT_XLSX_STYLES.replaceAll('wrapText="1"','wrapText="0"')},
+    {name:'xl/workbook.xml',content:`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sheet,index)=>`<sheet name="${escapeText(sheet.name)}" sheetId="${index+1}" r:id="rId${index+1}"/>`).join('')}</sheets><definedNames>${sheets.map((sheet,index)=>`<definedName name="_xlnm.Print_Titles" localSheetId="${index}">${escapeText("'"+String(sheet.name).replaceAll("'","''")+"'!$3:$3")}</definedName>`).join('')}</definedNames></workbook>`},
+    // Long text wraps inside its column, as in the browser export.
+    {name:'xl/styles.xml',content:REPORT_XLSX_STYLES},
     ...sheets.flatMap((sheet,index)=>[
       {name:`xl/tables/table${index+1}.xml`,content:sheet.table},
       {name:`xl/worksheets/_rels/sheet${index+1}.xml.rels`,content:`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table${index+1}.xml"/></Relationships>`},

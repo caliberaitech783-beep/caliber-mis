@@ -231,7 +231,7 @@ export function summarise(entries,group){
  for(const e of entries){const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
  const rows=[...groups.entries()].map(([key,list])=>{
   const f=list[0],t=totals(list),one=list.length===1,state=t.running===list.length?'running':t.breakdown===list.length?'breakdown':t.nohours===list.length?'nohours':'mixed';
-  return {id:group+':'+key,key,site:f.site,date:f.date,shift:f.shift,stage:f.stage,stageLabel:STAGE_LABELS[f.stage]||STAGE_LABELS[''],door:f.door,machineName:f.machineName,operator:unique(list.flatMap(e=>e.operator.split(', '))).join(', '),state,
+  return {id:group+':'+key,key,site:f.site,sites:unique(list.map(e=>e.site)).join(', '),date:f.date,shift:f.shift,stage:f.stage,stageLabel:STAGE_LABELS[f.stage]||STAGE_LABELS[''],door:f.door,machineName:f.machineName,operator:unique(list.flatMap(e=>e.operator.split(', '))).join(', '),state,
    statusLabel:one?f.statusLabel:[t.running&&'Ran '+t.running+' shift'+(t.running===1?'':'s'),t.breakdown&&'In BD '+t.breakdown,t.nohours&&'No hours '+t.nohours].filter(Boolean).join(' · '),
    reason:one?f.reason:'',elbBooks:one?f.elbBooks:'',firstLoading:one?f.firstLoading:'',lastLoading:one?f.lastLoading:'',...t};
  });

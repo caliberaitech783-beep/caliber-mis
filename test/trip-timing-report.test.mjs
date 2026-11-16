@@ -225,3 +225,21 @@ test('Step 2 writes the minutes of each colour above it and keeps every colour i
  assert.match(css,/\[data-category="operations-timing-shifts"\]>\.reports-section-heading\{position:sticky;top:var\(--tt-stick,0px\)/);
  assert.match(css,/\.dsg\[data-tt-fits\] thead th\{position:sticky;top:calc\(var\(--tt-stick,0px\) \+ var\(--tt-head,0px\)\)/);
 });
+
+test('over All sites a driver who worked at two sites is one line per site, with a Site column',async()=>{
+ const {groupKey}=await import('../shared/trip-timing-report.mjs');
+ const entries=tripEntries(records),first=entries[0];
+ const moved=[...entries,...entries.filter(e=>e.driverKey===first.driverKey).map(e=>({...e,site:'Site Z',id:e.id+'-z'}))];
+ const together=summarise(moved,'load-unload','driver'),apart=summarise(moved,'load-unload','driver',true);
+ assert.equal(apart.rows.length,together.rows.length+1);
+ const lines=apart.rows.filter(r=>r.driver===first.driver);
+ assert.deepEqual(lines.map(r=>r.site).sort(),[first.site,'Site Z'].sort());
+ // Opening a line keeps only that site's trips.
+ const zLine=lines.find(r=>r.site==='Site Z');
+ assert.ok(moved.filter(e=>groupKey('driver',e,true)===zLine.key).every(e=>e.site==='Site Z'));
+ assert.equal(apart.total.timed,together.total.timed);
+ const screen=fs.readFileSync(new URL('../src/trip-timing-report.jsx',import.meta.url),'utf8');
+ assert.match(screen,/return \[\.\.\.\(manySites&&group!=='site'\?\[column\('site','Site'\)\]:\[\]\),\.\.\.identity\[group\]/);
+ assert.match(screen,/column\('shift','Shift'\),\.\.\.\(manySites\?\[column\('site','Site'\)\]:\[\]\),column\('book','Book no\.'\)/);
+ assert.match(screen,/categoryEntries\.filter\(e=>groupKey\(item\.group,e,manySites\)===item\.key\)/);
+});

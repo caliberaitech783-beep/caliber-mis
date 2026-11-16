@@ -278,10 +278,15 @@ test('pressing a machine opens its shift time-line: the strip, then every loadin
  assert.match(screen,/const slotEntries=!site\?\[\]:!slot\?siteEntries:/);
  assert.match(screen,/onOpenAll=\{\(\)=>openSlot\(shifts\.total\)\}[^\n]*\n[^\n]*allPicked=\{allShifts\}/);
  assert.match(screen,/const openSlot=\(row,pick=only\)=>\{setSlot\(row\.total\?null:/);
- assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines\)\}[^\n]*rowClassName=\{l=>lineClass\(l\)[^\n]*onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
+ assert.match(screen,/rows=\{lines\} columns=\{tripColumns\(manyLines,manySites\)\}[^\n]*rowClassName=\{l=>lineClass\(l\)[^\n]*onRowClick=\{l=>setCard\(l\.to\.recordId\)\}/);
  assert.match(screen,/column\('delayedCount','Tipper trips delayed'/);assert.match(screen,/column\('breakdown','Breakdown in Pulse'/);
  // With a band chosen, the machines of the shift are followed by the stops of that band, so the delayed trips show without another press.
- assert.match(screen,/\{band&&<ReportSection key=\{'lm-bandstops-'[^\n]*\n[^\n]*rows=\{bandStops\} columns=\{tripColumns\(true\)\}/);
+ assert.match(screen,/\{band&&<ReportSection key=\{'lm-bandstops-'[^\n]*\n[^\n]*rows=\{bandStops\} columns=\{tripColumns\(true,manySites\)\}/);
+ // Owner, 16 Nov 2026: every list opened from All sites names the site; Step 2 keeps one line per date and site.
+ assert.match(screen,/const manySites=site===EVERY;/);
+ assert.match(screen,/lineOf:r=>manySites\?\{\.\.\.dateLine\(r\),key:r\.date\+'\|'\+r\.site,label:dateLine\(r\)\.label\+' · '\+r\.site\}:dateLine\(r\)/);
+ assert.match(screen,/columns=\{machineColumns\(openItem,allShifts,manySites\)\}/);
+ assert.match(screen,/columns=\{notWorkedColumns\(manySites\)\}/);
  const {isDurationColumn}=await import('../src/duration-sort.mjs');
  for(const [,key,label] of screen.matchAll(/column\('([^']+)','([^']+)'/g))assert.ok(!isDurationColumn(label,key),label+' must not be taken for a duration, or the table reorders the lines');
  const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
@@ -421,4 +426,16 @@ test('a tag near the end of a narrow strip reads leftwards instead of running of
  assert.match(screen,/new ResizeObserver\(measure\)/);
  const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
  assert.match(css,/\.lm-hour-counts\{display:flex;flex-wrap:wrap;/,'the BD minutes of an hour wrap instead of being cut off');
+});
+
+test('All-sites lists carry a Site column and a machine line names every site it worked at',()=>{
+ const source=fs.readFileSync(new URL('../src/loading-machine-report.jsx',import.meta.url),'utf8');
+ assert.match(source,/const siteColumn=\(manySites,key='site'\)=>manySites\?\[column\(key,'Site'\)\]:\[\];/);
+ assert.match(source,/export function machineColumns\(onPick,manyShifts=false,manySites=false\)\{\r?\n return \[\.\.\.siteColumn\(manySites,'sites'\),column\('door','Door no\.'\)/);
+ assert.match(source,/column\('date','Date',l=>day\(l\.date\)\),column\('shift','Shift'\)\]:\[\]\),\.\.\.siteColumn\(manySites\),\.\.\.\(many\?\[column\('machine','Loading machine'\)\]:\[\]\)/);
+ assert.match(source,/export const notWorkedColumns=\(manySites=false\)=>\[column\('date','Date',e=>day\(e\.date\)\),column\('shift','Shift'\),\.\.\.siteColumn\(manySites\),/);
+ // One machine seen at two sites in the chosen dates stays one line that names both.
+ const one=entries[0],moved=[one,{...one,site:'Site Z',slotKey:one.slotKey+'-z',id:one.id+'-z'}];
+ assert.equal(summarise(moved,'machine').rows[0].sites,one.site+', Site Z');
+ assert.equal(summarise([one],'machine').rows[0].sites,one.site);
 });
