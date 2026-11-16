@@ -165,6 +165,12 @@ test('MIS logins reach the Automation Centre only as administrators',()=>{
  const toggle={path:'/api/automation-centre/switch',method:'PUT'};
  assert.equal(misRequestAllowed(session(['Users & employees']),toggle),true);
  assert.equal(misRequestAllowed(session(['Reports']),toggle),false);
+ // "Send sample to Telegram" on A24 and A25 (16 Nov 2026: refused to the owner's MIS login before this).
+ for(const path of ['/api/automation-centre/scan-batch-report/sample','/api/automation-centre/health-report/sample']){
+  assert.equal(misRequestAllowed(session(['Users & employees']),{path,method:'POST'}),true,path);
+  assert.equal(misRequestAllowed(session(['Users & employees']),{path,method:'GET'}),false,path);
+  assert.equal(misRequestAllowed(session(['Reports']),{path,method:'POST'}),false,path);
+ }
  assert.equal(misRequestAllowed(session(['Reports']),{path:'/api/reports/equipment-pulse-mismatch/notice',method:'GET'}),true);
  assert.equal(misRequestAllowed(session(['Dashboard']),{path:'/api/reports/equipment-pulse-mismatch',method:'GET'}),false);
 });
