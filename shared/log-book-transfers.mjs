@@ -1,6 +1,6 @@
 import {canonicalSiteName} from './site-location.mjs';
 import {indiaDateTimeEpoch} from './report-date-range.mjs';
-import {transferForAsset} from './equipment-transfer-history.mjs';
+import {transferForAsset,pendingTransfers} from './equipment-transfer-history.mjs';
 
 const day=86400000;
 const hours=3600000;
@@ -29,6 +29,13 @@ export function assignmentWindows(asset,transfers){
   unknownStart=move.start!==move.end;
  }
  windows.push({site:moves.at(-1).destination,start,end:null,unknownStart});
+ // A pending transfer opens its destination from the transfer time (or date); the source, still
+ // the Vehicle Master site, stays open until the transfer completes.
+ for(const transfer of pendingTransfers(asset,transfers)){
+  const effective=indiaDateTimeEpoch(transfer.transferEffectiveAt);
+  const exact=Number.isFinite(effective)?Math.floor(effective/1000)*1000:clockTime(transfer.transferTime)?indiaDateTimeEpoch(transfer.transferDate+'T'+transfer.transferTime):null;
+  windows.push({site:transfer.destination,start:exact??indiaDateTimeEpoch(transfer.transferDate),end:null,unknownStart:exact===null});
+ }
  return windows;
 }
 

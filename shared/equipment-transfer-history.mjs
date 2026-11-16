@@ -13,6 +13,18 @@ export function transferForAsset(transfer={},asset={}){
  return [asset.door,asset.doorNo].map(clean).filter(Boolean).some(value=>candidates.includes(value));
 }
 
+const PENDING=new Set(['Awaiting source approval','Awaiting destination MIS verification','Awaiting destination PM acceptance']);
+
+// A transfer waiting for its approvals (often about three days, 16 Nov 2026) leaves the Vehicle
+// Master at the source site while the machine already works at the destination. Such a transfer
+// lets its destination enter log books from the transfer date on; the source keeps its own dates.
+export function pendingTransfers(asset={},transfers=[]){
+ const current=canonicalSiteName(asset.currentLocation||asset.site||asset.location);
+ if(!current)return [];
+ return transfers.filter(t=>transferForAsset(t,asset)&&PENDING.has(String(t.status||'').trim())&&date(t.transferDate)
+  &&canonicalSiteName(t.source)===current&&canonicalSiteName(t.destination)&&canonicalSiteName(t.destination)!==current);
+}
+
 // Walk backwards from the present assignment; only a continuous, completed transfer
 // chain is evidence. On the transfer date both sites can have valid cards.
 export function assetAtSiteOnDate(asset={},transfers=[],site='',bookDate=''){
@@ -20,6 +32,7 @@ export function assetAtSiteOnDate(asset={},transfers=[],site='',bookDate=''){
  if(!target||!day)return false;
  let current=canonicalSiteName(asset.currentLocation||asset.site||asset.location);
  if(!current)return false;
+ if(pendingTransfers(asset,transfers).some(t=>canonicalSiteName(t.destination)===target&&day>=t.transferDate))return true;
  const history=transfers.filter(t=>transferForAsset(t,asset)&&(!t.status||t.status==='Completed')&&date(t.transferDate)&&canonicalSiteName(t.source)&&canonicalSiteName(t.destination))
   .sort((a,b)=>b.transferDate.localeCompare(a.transferDate));
  for(const transfer of history){
