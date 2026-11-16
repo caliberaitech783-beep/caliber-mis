@@ -43,11 +43,11 @@ const driverHistoryColumns=columns([['date','Duty date'],['reason','OT flag / re
 const classification=[['category','Category'],['group','Equipment group'],['make','Make'],['model','Model']];
 const detailColumns=columns([...context,['door','Door / equipment'],...classification,...person,['assignment','Assignment'],['batches','Source batches'],['batchStatus','Batch status'],['book','Saved card'],['remarks','Remarks / review']]);
 const summaryColumns=columns([...context,...classification,['assets','Distinct vehicles / equipment'],['employees','Distinct employees'],['unresolved','Unresolved assignment records'],['doors','Door numbers'],['batches','Source batches']]);
-const performanceColumns=columns([...context,...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
 const exceptionColumns=columns([...context,['door','Door / equipment'],['employeeId','Employee ID'],['employeeName','Driver / operator'],['book','Saved card'],['logBook','Log book'],['batches','Source batches'],['reason','What to correct']]);
 const noPick={siteKey:'',mark:'',scope:false,at:'',date:'',shift:'',equipment:'',flag:''},noOtPick={siteKey:'',filter:'',scope:false,date:'',shift:'',equipment:'',flag:''};
 const noRcPick={siteKey:'',scope:false,date:'',shift:'',equipment:'',status:''};
 const noMpPick={siteKey:'',scope:false,date:'',shift:'',equipment:''};
+const noPfPick={siteKey:'',scope:false,date:'',shift:'',equipment:''};
 const remembered=key=>{try{return localStorage.getItem(key)==='true';}catch{return false;}};
 const remember=(key,value)=>{try{localStorage.setItem(key,String(value));}catch{}};
 
@@ -494,6 +494,78 @@ function reconciliationOverview({report,filters,query,ReportSection,sites,rcPick
  </>;
 }
 
+// Shift Performance in steps (owner, 16 Nov 2026), as OT & Multiple Duties: every site, one site date by shift, one date and
+// shift by equipment category, then the duties of a category. A duty on machines of two categories is in both lines and once
+// in All categories. Plain render function: its state lives in ManpowerReports.
+const pfMeasures=[['duties','Duties','One driver, one shift'],['employees','Drivers / operators','Different persons'],['hours','HMR hours','Machine performance'],['trips','Completed trips','VLB'],['km','Kilometres','VLB']];
+function performanceOverview({report,filters,query,description,ReportSection,sites,pfPick,setPfPick}){
+ const lines=report.performance||[],sum=(list,key)=>{const values=list.map(r=>r[key]).filter(v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v)));return values.length?Math.round(values.reduce((a,b)=>a+Number(b),0)*100)/100:0;};
+ const tallyOf=list=>({duties:list.length,employees:new Set(list.map(r=>r.employeeKey||r.employeeId)).size,hours:sum(list,'hours'),trips:sum(list,'trips'),km:sum(list,'km')});
+ const within=site=>lines.filter(r=>site===EVERY||r.siteKey===site);
+ const siteKey=openSite(sites,pfPick.siteKey),inSite=siteKey?within(siteKey):[];
+ const span=[];for(let day=filters.from;day<=filters.to&&span.length<32;day=nextDay(day))span.push(day);
+ const gridDates=[...new Set([...span,...inSite.map(r=>r.date)])].sort(),gridShifts=[...new Set(['S1','S2','S3',...inSite.map(r=>r.shift).filter(Boolean)])].sort();
+ const scope=Boolean(siteKey&&pfPick.scope),date=scope&&gridDates.includes(pfPick.date)?pfPick.date:'',shift=scope&&gridShifts.includes(pfPick.shift)?pfPick.shift:'';
+ const at=(day,code)=>inSite.filter(r=>(!day||r.date===day)&&(!code||r.shift===code)),scoped=scope?at(date,shift):[];
+ const categoriesOf=r=>r.categories?.length?r.categories:['Group missing in master'];
+ const groups=new Map();for(const r of scoped)for(const name of categoriesOf(r)){if(!groups.has(name))groups.set(name,[]);groups.get(name).push(r);}
+ const categories=[...groups].map(([equipment,list])=>({id:equipment,equipment,...tallyOf(list)})).sort((a,b)=>b.duties-a.duties||a.equipment.localeCompare(b.equipment)),everyCategory={id:EVERY,equipment:'All categories',...tallyOf(scoped)};
+ const open=scope&&(pfPick.equipment===EVERY||groups.has(pfPick.equipment))?pfPick.equipment:'';
+ const listed=open?scoped.filter(r=>open===EVERY||categoriesOf(r).includes(open)):[];
+ const siteLabel=siteKey===EVERY?'All sites':sites.find(s=>s.siteKey===siteKey)?.site||'',oneDate=gridDates.length===1;
+ const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
+ const scopeLabel=[date?shortDate(date):oneDate?shortDate(gridDates[0]):'All dates',shift?shiftName(shift):'All shifts'].join(' · ');
+ const openLabel=open===EVERY?'All categories':open;
+ const base={...noPfPick,siteKey};
+ const openSiteAt=site=>setPfPick(siteKey===site&&sites.length>1?noPfPick:{...noPfPick,siteKey:site});
+ const show=(day,code)=>setPfPick(scope&&date===day&&shift===code&&!open?base:{...base,scope:true,date:day,shift:code});
+ const list=name=>setPfPick(open===name?{...base,scope:true,date,shift}:{...base,scope:true,date,shift,equipment:name});
+ const zero=<span className="mp-zero">0</span>;
+ const siteRows=[...sites.map(s=>({id:s.siteKey,siteKey:s.siteKey,site:s.site,...tallyOf(within(s.siteKey))})),...(sites.length>1?[{id:EVERY,siteKey:EVERY,site:'All sites',...tallyOf(lines)}]:[])];
+ const dayRows=[...gridDates.map(day=>({id:day,day,date:shortDate(day)})),...(oneDate?[]:[{id:'all',day:'',date:'All dates'}])].map(row=>{const out={...row,...tallyOf(at(row.day,''))};for(const code of gridShifts){const t=tallyOf(at(row.day,code));out[code+'_duties']=t.duties;out[code+'_hours']=t.hours;}return out;});
+ // The figures of one line; the duty count opens what is below it.
+ const figures=(row,label,press,pressed)=>pfMeasures.map(([key],i)=><td key={key}>{i===0&&row.duties?<button type="button" className="mp-cat-count mp-ot-duties" aria-pressed={pressed} aria-label={duties(row.duties)+' · '+label} onClick={press}>{row.duties}</button>:row[key]||0}</td>);
+ const heads=pfMeasures.map(([key,label,meaning])=><th key={key} scope="col">{label}<small>{meaning}</small></th>);
+ const box=(row,code)=>{const label=row.date+' · '+shiftName(code);if(!row[code+'_duties'])return zero;
+  return <button type="button" className="mp-att-count" aria-pressed={scope&&date===row.day&&shift===code} aria-label={duties(row[code+'_duties'])+' · '+label} onClick={()=>show(row.day,code)}>{row[code+'_duties']}<small>{row[code+'_hours']} HMR h</small></button>;};
+ const measureColumns=pfMeasures.map(([key,label])=>[key,label]);
+ const dayColumns=columns([['date','Date'],...gridShifts.flatMap(code=>[[code+'_duties',shiftName(code)+' duties'],[code+'_hours',shiftName(code)+' HMR hours']]),...measureColumns]);
+ const dutyColumns=columns([...(date||oneDate?[]:[['date','Duty date']]),...(siteKey===EVERY?[['site','Site']]:[]),...(shift?[]:[['shift','Shift']]),...person,['doors','Doors worked'],['equipment','Equipment / make / model'],['hours','HMR performance hours'],['trips','Completed trips'],['km','Kilometres'],['start','Scheduled start (IST)'],['end','Scheduled end (IST)'],['batches','Source batches'],['books','Saved cards'],['remarks','Remarks / review']]);
+ return <>
+  <p className="mp-notice">One duty is one employee, one site, one date and one shift. Changing vehicles within a shift remains one duty. HMR hours are machine performance.</p>
+  {siteKey&&<p className="mp-trail" aria-label="Where you are">{(open||scope||sites.length>1)&&<StepBackButton onBack={()=>setPfPick(open?{...base,scope:true,date,shift}:scope?base:noPfPick)}/>}{sites.length>1&&<><button type="button" onClick={()=>setPfPick(noPfPick)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>setPfPick(base)}>{siteLabel}</button>{scope&&<><span>›</span><button type="button" onClick={()=>setPfPick({...base,scope:true,date,shift})}>{scopeLabel}</button></>}{open&&<><span>›</span><strong>{openLabel}</strong></>}</p>}
+  <ReportSection key={'pf-sites-'+query} title={'Step 1 · All sites · '+dateLabel} category="manpower-performance-sites" description="One line per site: duties, different drivers and operators, HMR hours, completed trips and kilometres. Press the duties to open that site date by shift." rows={siteRows} columns={columns([['site','Site'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+   <div className="mp-category mp-att" role="group" aria-label="Shift performance by site">
+    {sites.length?<table><thead><tr><th scope="col">Site</th>{heads}</tr></thead>
+     <tbody>{siteRows.map(s=><tr key={s.id} className={[s.siteKey===EVERY&&sites.length>1&&'mp-att-total',siteKey===s.siteKey&&'mp-on'].filter(Boolean).join(' ')||undefined}><th scope="row">{s.site}</th>{figures(s,s.site,()=>openSiteAt(s.siteKey),siteKey===s.siteKey)}</tr>)}</tbody>
+    </table>:<p>No site is available for these selections.</p>}
+   </div>
+  </ReportSection>
+  {siteKey?<>
+   <ReportSection key={'pf-dates-'+query+'-'+siteKey} title={'Step 2 · '+siteLabel+' · date by shift · '+dateLabel} category="manpower-performance-dates" description="In each box: the duties of that shift, and under it their HMR hours. Press a box to see it by equipment category." rows={dayRows} columns={dayColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att mp-ot-grid" role="group" aria-label="Shift performance by date and shift">
+     {scope&&<p className="mp-category-hint">Showing <strong>{scopeLabel}</strong> below. <button type="button" onClick={()=>setPfPick(base)}>Close</button></p>}
+     <table><thead><tr><th scope="col">Date</th>{gridShifts.map(code=><th key={code} scope="col">{shiftName(code)}<small>Duties · HMR hours</small></th>)}{heads}</tr></thead>
+      <tbody>{dayRows.map(row=>{const total=!row.day&&!oneDate;return <tr key={row.id} className={[total&&'mp-att-total',!total&&scope&&date===row.day&&'mp-on'].filter(Boolean).join(' ')||undefined}>
+       <th scope="row">{row.date}{row.day&&<small>{weekday(row.day)}</small>}</th>
+       {gridShifts.map(code=><td key={code}>{box(row,code)}</td>)}
+       {figures(row,row.date,()=>show(row.day,''),scope&&date===row.day&&!shift)}
+      </tr>;})}</tbody>
+     </table>
+    </div>
+   </ReportSection>
+   {scope?<ReportSection key={'pf-categories-'+query+'-'+siteKey+'-'+date+'-'+shift} title={'Step 3 · '+siteLabel+' · '+scopeLabel+' · by equipment category'} category="manpower-performance-categories" description="One line per equipment category (the machine’s group in the Equipment master); a duty on machines of two categories is in both lines. Press a category or its duties for the duties below." rows={[...categories,everyCategory]} columns={columns([['equipment','Equipment category'],...measureColumns])} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
+    <div className="mp-category mp-att mp-ot-categories" role="group" aria-label="Shift performance by equipment category">
+     {categories.length?<table><thead><tr><th scope="col">Equipment category</th>{heads}</tr></thead>
+      <tbody>{[...categories,everyCategory].map(c=><tr key={c.id} className={[c.id===EVERY&&'mp-att-total',open===c.id&&'mp-on'].filter(Boolean).join(' ')||undefined}><td><button type="button" className="mp-cat-open" aria-pressed={open===c.id} onClick={()=>list(c.id)}>{c.equipment}</button></td>{figures(c,c.equipment,()=>list(c.id),open===c.id)}</tr>)}</tbody>
+     </table>:<p>No duty in this selection.</p>}
+    </div>
+   </ReportSection>:<p className="mp-notice">Press a box in the date table to see that date and shift by equipment category, then a category for its duties.</p>}
+   {open&&<ReportSection key={'pf-duties-'+query+'-'+siteKey+'-'+date+'-'+shift+'-'+open} title={['Step 4',siteLabel,scopeLabel,openLabel,'duties'].join(' · ')} category="manpower-performance" description={description+' · '+duties(listed.length)+' · Each shift is separate; HMR is machine performance'} rows={listed} columns={dutyColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No duty matches this selection."/>}
+  </>:<p className="mp-notice">Press the duties of a site above to open it date by shift.</p>}
+ </>;
+}
+
 // On the dashboard (embedded) the report stands alone: it opens on the dates given and shows no tabs for the other views.
 export default function ManpowerReports({session,reportId='manpower',onSelect,ReportSection,embedded=false,initialFrom=''}){
  const [filters,setFilters]=useState(()=>{const date=today();return {from:initialFrom||monthStartDate(date),to:date,site:'',shift:'',batch:'',employee:'',asset:''};});
@@ -501,6 +573,8 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
  const [autoHide,setAutoHide]=useState(()=>remembered('caliberReportFiltersAutoHide')),[filtersOpen,setFiltersOpen]=useState(false),filterBox=useRef(null),historyBox=useRef(null);
  const [logBook,setLogBook]=useState(''),[tally,setTally]=useState({key:'',data:null,error:''}),[driverOpen,setDriverOpen]=useState('');
  const [pick,setPick]=useState(noPick),[otPick,setOtPick]=useState(noOtPick),[mpPick,setMpPick]=useState(noMpPick),[rcPick,setRcPick]=useState(noRcPick);
+ // Shift Performance steps; kept after the other state.
+ const [pfPick,setPfPick]=useState(noPfPick);
  // The OT view always loads every assigned site; the Site selection there narrows the list of sites.
  // The attendance register reads every shift of every site: a day is coded from all its shifts and a person's other sites.
  const register=['attendance-batch','attendance-month'].includes(reportId);
@@ -568,8 +642,7 @@ export default function ManpowerReports({session,reportId='manpower',onSelect,Re
    </>:reportId==='manpower-reconciliation'?<>
     {reconciliationOverview({report,filters,query,ReportSection,sites:otSites,rcPick,setRcPick})}
    </>:reportId==='employee'?<>
-    <p className="mp-notice">One row per employee, site, date and shift. Changing vehicles within a shift remains one duty. Vehicle and batch selections show the complete matching duty.</p>
-    <ReportSection key={'performance-'+query} title="Shift Performance" category="manpower-performance" description={description+' · Each shift is separate; HMR is machine performance'} rows={report.performance} columns={performanceColumns} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="No saved duties with a resolved employee identity match these selections."/>
+    {performanceOverview({report,filters,query,description,ReportSection,sites:otSites,pfPick,setPfPick})}
    </>:<>
     {manpowerOverview({report,filters,query,description,ReportSection,sites:otSites,mpPick,setMpPick})}
    </>}
