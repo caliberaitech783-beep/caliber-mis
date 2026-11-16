@@ -12186,7 +12186,9 @@ function App() {
             >
               <ArrowLeft />
             </button>
-            Operations <ChevronRight /> <button type="button" className="crumb-page-link" onClick={reopenPage} title={`Open ${navigationLabel(active)} again`} aria-label={`Open ${navigationLabel(active)} again`}><b>{navigationLabel(active)}</b></button>
+            {active !== "Dashboard" && canOpenAdminPage("Dashboard")
+              ? <><button type="button" className="crumb-page-link crumb-dashboard-link" onClick={() => {setMenu(false);selectMenu("Dashboard");}} title="Go to Dashboard" aria-label="Go to Dashboard">Dashboard</button> <ChevronRight /> </>
+              : <>Operations <ChevronRight /> </>}<button type="button" className="crumb-page-link" onClick={reopenPage} title={`Open ${navigationLabel(active)} again`} aria-label={`Open ${navigationLabel(active)} again`}><b>{navigationLabel(active)}</b></button>
             <span className="top-sign-out-slot"><button type="button" className="top-sign-out" onClick={logout} aria-label="Sign out" title="Sign out"><DoorExitIcon /><span>Sign out</span></button></span>
           </div>
           <HeaderClock />
