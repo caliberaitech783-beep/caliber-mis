@@ -10,6 +10,8 @@ import {whatsappPurposeEnabled} from '../../shared/whatsapp-report-settings.mjs'
 // count: outbox = MIS Telegram outbox event prefixes; history = Pulse message history report types.
 // Every line also has an ON/OFF switch on the page (server/services/automation-switches.mjs);
 // A01's switch is the "Automation switched on" box of its own settings.
+// channel:true = the line can be linked to a Telegram channel (server/services/automation-channels.mjs).
+// Only lines sent by the Pulse-II (MIS) bot can; approval codes never can.
 
 const state=value=>value?'on':'off';
 const misBot=context=>context.misTelegram.enabled;
@@ -36,7 +38,7 @@ const requestAlert=(code,key,name,rule,purpose,event)=>({code,key,name,category:
  count:{history:['System notification'],shared:'Breakdown alerts A12 to A17 are counted together'},event});
 
 export const AUTOMATIONS=[
- {code:'A01',key:'equipment-mismatch',name:'Equipment list mismatch',category:'Masters',editable:'equipment-mismatch',
+ {code:'A01',key:'equipment-mismatch',channel:true,name:'Equipment list mismatch',category:'Masters',editable:'equipment-mismatch',
   rule:'Equipment Deployment (Pulse-II) differs from the Pulse equipment list: a machine missing on one side, at a different site, or in a different group',
   trigger:context=>'Every '+context.mismatch.intervalHours+' hours, repeated until the lists match',
   people:context=>context.mismatch.logins.length?context.mismatch.logins.join(', '):'MIS managers (no login list set)',
@@ -45,19 +47,19 @@ export const AUTOMATIONS=[
   whatsapp:context=>state(context.mismatch.enabled&&context.mismatch.whatsapp&&context.whatsappConfigured),
   popup:context=>state(context.mismatch.enabled&&context.mismatch.popup),count:{outbox:['equipment-mismatch']},
   why:context=>[need(context.mismatch.telegram||context.mismatch.whatsapp,'Telegram and WhatsApp are both unticked in Change settings'),context.mismatch.telegram?misBotWhy(context):'',context.mismatch.whatsapp?whatsappWhy(context):'']},
- {code:'A02',key:'vlb-batch-not-created',name:'VLB batch not created',category:'Log books',
+ {code:'A02',key:'vlb-batch-not-created',channel:true,name:'VLB batch not created',category:'Log books',
   rule:context=>'No batch exists '+context.vlbAlerts.createdByHours+' hours after the shift ended',
   trigger:context=>'Checked every minute, reminder every '+context.vlbAlerts.reminderHours+' hours',
   people:'Site Project Managers, production head',format:'Site, date, shift, hours late',controlledIn:TELEGRAM_PAGE,
   telegram:context=>state(context.vlbAlertsRunning&&context.vlbAlerts.enabled&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['vlb-alert/not_created']},
   why:context=>[...vlbWhy(context),misBotWhy(context)]},
- {code:'A03',key:'vlb-batch-not-closed',name:'VLB batch still open',category:'Log books',
+ {code:'A03',key:'vlb-batch-not-closed',channel:true,name:'VLB batch still open',category:'Log books',
   rule:context=>'Batch not closed '+context.vlbAlerts.closedByHours+' hours after the shift ended',
   trigger:context=>'Checked every minute, reminder every '+context.vlbAlerts.reminderHours+' hours',
   people:'Site Project Managers, production head',format:'Site, date, shift, batch name, stage, cards so far',controlledIn:TELEGRAM_PAGE,
   telegram:context=>state(context.vlbAlertsRunning&&context.vlbAlerts.enabled&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['vlb-alert/not_closed']},
   why:context=>[...vlbWhy(context),misBotWhy(context)]},
- {code:'A04',key:'pulse-pending',name:'Pending in Pulse reminder',category:'Masters',
+ {code:'A04',key:'pulse-pending',channel:true,name:'Pending in Pulse reminder',category:'Masters',
   rule:'Express transfers or new machines approved in Pulse-II are still not entered in Pulse',trigger:'Once a day at 09:00',
   people:context=>context.vlbAlerts.pulseAdminLogins.length?context.vlbAlerts.pulseAdminLogins.join(', '):'No Pulse administrator login set',
   format:'List of pending transfers and machines',controlledIn:TELEGRAM_PAGE,
@@ -67,10 +69,10 @@ export const AUTOMATIONS=[
   trigger:'At once, on request',people:'Alias approver, site Project Manager',format:'6-digit code with the label and machine',controlledIn:'Rule EQUIPMENT_ALIAS_OTP',
   telegram:context=>state(misBot(context)),whatsapp:context=>state(context.whatsappConfigured),popup:()=>null,count:{outbox:['alias-otp']},
   why:context=>[misBotWhy(context),whatsappWhy(context)],offWarning:CODE_WARNING},
- {code:'A06',key:'alias-suspended',name:'Equipment alias suspended',category:'Masters',rule:'Pulse now has a real machine with the same number as a remembered label',
+ {code:'A06',key:'alias-suspended',channel:true,name:'Equipment alias suspended',category:'Masters',rule:'Pulse now has a real machine with the same number as a remembered label',
   trigger:'After each Pulse master sync',people:'Alias approver, MIS managers',format:'Label, machine, reason',controlledIn:'This page',
   telegram:context=>state(misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['alias-shadow']},why:context=>[misBotWhy(context)]},
- {code:'A07',key:'alias-weekly',name:'Equipment alias weekly summary',category:'Masters',rule:'Summary of remembered machine labels',
+ {code:'A07',key:'alias-weekly',channel:true,name:'Equipment alias weekly summary',category:'Masters',rule:'Summary of remembered machine labels',
   trigger:'Monday 09:00',people:'Alias approver, MIS managers',format:'Counts and new labels of the week',controlledIn:'Runs with VLB batch alerts',
   telegram:context=>state(context.vlbAlertsRunning&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['alias-weekly']},
   why:context=>[need(context.vlbAlertsRunning,'app setting VLB_BATCH_ALERTS is 0'),misBotWhy(context)]},
@@ -86,7 +88,7 @@ export const AUTOMATIONS=[
   trigger:'At once, on request',people:'Site Project Manager',format:'6-digit code with batch name',controlledIn:'This page',
   telegram:context=>state(misBot(context)),whatsapp:context=>state(context.whatsappConfigured),popup:()=>null,count:{outbox:['vlb-approval-otp']},
   why:context=>[misBotWhy(context),whatsappWhy(context)],offWarning:CODE_WARNING},
- {code:'A11',key:'mis-ticket',name:'MIS ticket created / resolved',category:'Tickets',rule:'A support ticket is raised or resolved in Pulse-II',
+ {code:'A11',key:'mis-ticket',channel:true,name:'MIS ticket created / resolved',category:'Tickets',rule:'A support ticket is raised or resolved in Pulse-II',
   trigger:'At once',people:'MIS admin chat; the person who raised it, on resolution',format:'Ticket number, site, priority, message',controlledIn:TELEGRAM_PAGE,
   telegram:context=>state(misBot(context)),whatsapp:()=>null,popup:()=>'on',count:{outbox:['created','resolved']},why:context=>[misBotWhy(context)]},
  requestAlert('A12','request-opened','Breakdown opened','A breakdown request is raised','requestOpened'),
@@ -121,13 +123,13 @@ export const AUTOMATIONS=[
  {code:'A23',key:'deletion-otp',name:'Deletion approval code',category:'Approvals',rule:'A log book, batch or scanned card is to be deleted',trigger:'At once, on request',
   people:'The fixed deletion approver',format:'One-time code',controlledIn:'Deletion page',telegram:()=>null,whatsapp:context=>state(context.deletionWhatsApp),popup:()=>null,count:{},
   why:context=>[need(context.deletionWhatsApp,'deletion WhatsApp is not set up')],offWarning:CODE_WARNING},
- {code:'A24',key:'scan-batch-report',name:'Site-wise batch completion report',category:'Log books',
+ {code:'A24',key:'scan-batch-report',channel:true,name:'Site-wise batch completion report',category:'Log books',
   rule:'A scan entry has every card read; a VLB batch (site, date, shift) is closed',trigger:'Checked every minute, once per entry and once per batch',
   people:'Owner (logins with the owner\'s registered mobile)',format:'Site, cards, total time, queue wait, time per card, auto-check, accuracy, corrected fields, model',
   controlledIn:'App setting MIS_SCAN_BATCH_REPORT (on unless off)',
   telegram:context=>state(context.scanBatchReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['scan-batch-report']},
   why:context=>[need(context.scanBatchReportRunning!==false,'app setting MIS_SCAN_BATCH_REPORT is off'),misBotWhy(context)]},
- {code:'A25',key:'health-report',name:'Speed report (slow or not)',category:'Reports',
+ {code:'A25',key:'health-report',channel:true,name:'Speed report (slow or not)',category:'Reports',
   rule:'Is Pulse-II slow or not since the last report; batches closed; the batch that took longest from start to close, with the usernames that started and locked it',
   trigger:'10:00, 16:00 and 21:00 IST, each covering the time since the last report',
   people:'Owner (logins with the owner\'s registered mobile) and the people on the Speed report people tab',
@@ -139,7 +141,18 @@ export const AUTOMATIONS=[
 export const AUTOMATION_KEYS=new Set(AUTOMATIONS.map(item=>item.key));
 
 const resolve=(value,context)=>typeof value==='function'?value(context):value;
+// Why a line has no channel button.
+const channelNote=item=>item.channel?'':item.offWarning===CODE_WARNING||/otp$/.test(item.key)?'Approval codes are personal and are never posted in a channel.'
+ :item.telegram({misTelegram:{},pulseTelegram:{},pulseTelegramPurpose:()=>false,vlbAlerts:{},mismatch:{},whatsappSettings:{}})===null?'This automation does not use Telegram.'
+ :'Sent by the Pulse bot: a channel is not available for it yet.';
 const sentence=text=>text.charAt(0).toUpperCase()+text.slice(1)+'.';
+// The channel linked to a line (no chat id goes to the page), and its posts sent to date.
+function channelRow(item,context){
+ if(!item.channel)return {allowed:false,note:channelNote(item),linked:null};
+ const linked=context.channels?.[item.key]||null,posts=context.channelPosts?.[item.key]||null;
+ return {allowed:true,note:'',linked:linked?{title:linked.title,inviteLink:linked.inviteLink,linkedBy:linked.linkedBy,linkedAt:linked.linkedAt,lost:Boolean(linked.lostAt),lostAt:linked.lostAt}:null,
+  postsSent:posts?.sent||0,lastPostAt:posts?.lastSentAt||null};
+}
 export function automationRows(context,counts={}){
  const switches=context.switches||{};
  return AUTOMATIONS.map((item,index)=>{
@@ -159,6 +172,7 @@ export function automationRows(context,counts={}){
    notSendingReason:switchedOn&&!sending?(reasons.length?sentence('Nothing goes out: '+reasons.slice(0,2).join('; ')):'Nothing goes out: its channels are off.'):'',
    channels,active:switchedOn&&Object.values(channels).includes('on'),
    sent:count?count.sent:null,sentTelegram:count?.telegram??null,sentWhatsApp:count?.whatsapp??null,sentEmail:count?.email??null,
-   lastSentAt:count?.lastSentAt||null,countedFrom:count?.from||null,countNote:item.count.shared||(Object.keys(item.count).length?'':'Not counted: these codes leave no delivery record')};
+   lastSentAt:count?.lastSentAt||null,countedFrom:count?.from||null,countNote:item.count.shared||(Object.keys(item.count).length?'':'Not counted: these codes leave no delivery record'),
+   channel:channelRow(item,context)};
  });
 }

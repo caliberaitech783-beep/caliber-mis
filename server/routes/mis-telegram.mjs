@@ -4,9 +4,13 @@ import {telegramFetch} from '../services/telegram-fetch.mjs';
 import {automationOn} from '../services/automation-switches.mjs';
 import {siteReportBanner,speedReportBanner} from '../services/site-report-banner.mjs';
 import {batchReportCard} from '../services/batch-report-card.mjs';
+import {AUTOMATION_CHANNELS_SCHEMA,linkChannelFromPost,noteChannelMembership,queueChannelCopy} from '../services/automation-channels.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
+// channel_post + my_chat_member (16 Nov 2026): linking an automation's Telegram channel by a posted code,
+// and noticing when the bot is removed from such a channel.
+export const MIS_TELEGRAM_UPDATES=['message','callback_query','channel_post','my_chat_member'];
 const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&x.length>0&&timingSafeEqual(x,y)};
 export const MIS_TELEGRAM_SCHEMA=`
  CREATE TABLE IF NOT EXISTS mis_telegram_links(login_name TEXT PRIMARY KEY,chat_id TEXT NOT NULL,linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -58,7 +62,7 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
   if(info.url&&info.url!==webhook)invalid('This bot is connected to a different application. Use a dedicated MIS bot to keep that application working.');
   config.botUsername=bot.username;config.webhookSecret=old.webhookSecret||randomBytes(32).toString('base64url');config.webhookReady=false;
   await store.write(key,config);
-  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message','callback_query'],drop_pending_updates:false});
+  await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false});
   config.webhookReady=true;await store.write(key,config);res.json(view(config));
  }));
  app.get('/api/mis-telegram/me',requireSession,wrap(async(req,res)=>{
@@ -101,6 +105,16 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
     }
    }catch{answer='Could not record this. Please try again.';}
    await call(config,'answerCallbackQuery',{callback_query_id:String(query.id),text:answer.slice(0,190)}).catch(()=>{});
+   return res.json({ok:true});
+  }
+  // A post in a channel: a one-time code links that channel to an automation (Automation Centre).
+  if(req.body?.channel_post){
+   if(config.enabled)try{await linkChannelFromPost(pool,req.body.channel_post,{call:(method,body)=>call(config,method,body)});}catch{/* a failed link is retried by posting a new code */}
+   return res.json({ok:true});
+  }
+  // The bot added to, or removed from, a channel.
+  if(req.body?.my_chat_member){
+   try{await noteChannelMembership(pool,req.body.my_chat_member);}catch{}
    return res.json({ok:true});
   }
   const message=req.body?.message,match=/^\/start(?:@\w+)? mis_([A-Za-z0-9_-]{32})$/.exec(message?.text||'');
@@ -162,10 +176,15 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  }
  // Webhooks saved before 15 Nov 2026 only asked Telegram for messages; buttons need callback_query too.
  async function ensureWebhook(){
-  try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken)await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:['message','callback_query'],drop_pending_updates:false});}catch{}
+  try{const config=await read();if(config.enabled&&config.webhookReady&&config.botToken)await call(config,'setWebhook',{url:webhook,secret_token:config.webhookSecret,allowed_updates:MIS_TELEGRAM_UPDATES,drop_pending_updates:false});}catch{}
  }
  return {
-  async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);},
+  async initialize(){await pool.query(MIS_TELEGRAM_SCHEMA);await pool.query(AUTOMATION_CHANNELS_SCHEMA);},
+  // The bot's name and state, for the Automation Centre channel steps. No token.
+  async botInfo(){const config=await read();return {ready:Boolean(config.enabled&&config.webhookReady&&config.botToken),botUsername:config.botUsername||''};},
+  // A test post to a linked channel, sent at once so the page can show Telegram's answer.
+  async postNow(chatId,text){const config=await read();if(!config.enabled||!config.webhookReady)invalid('Enable the Pulse-II Telegram bot first (Telegram Integration page).');
+   await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true});return true;},
   start(){if(!timer){timer=setInterval(()=>void drain(),10000);timer.unref?.();void ensureWebhook();}},
   // Sends at once (not through the outbox) a message with buttons to one private chat.
   async sendButtons(chatId,text,buttons,{parse_mode}={}){const config=await read();if(!config.enabled||!config.webhookReady)return false;await call(config,'sendMessage',{chat_id:String(chatId),text:String(text).slice(0,4000),disable_web_page_preview:true,...(parse_mode?{parse_mode}:{}),reply_markup:{inline_keyboard:buttons}});return true;},
@@ -177,6 +196,8 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
    if(event==='resolved'){const {rows}=await pool.query('SELECT chat_id FROM mis_telegram_links WHERE login_name=$1',[String(ticket.creatorLogin||'').toLowerCase()]);if(rows[0])targets.add(rows[0].chat_id);}
    const text=`Caliber Pulse-II MIS\nTicket ${ticket.reference} ${event==='resolved'?'resolved':'created'}\nSite: ${ticket.site}\nPriority: ${ticket.priority}\n${event==='resolved'?String(ticket.resolutionMessage||'Resolution available in MIS.'):String(ticket.message||'Audio description available in MIS.')}\nhttps://pulse-ll.cmll.in/?page=tickets`.slice(0,4000);
    for(const chatId of targets)await pool.query('INSERT INTO mis_telegram_outbox(event_key,chat_id,message) VALUES($1,$2,$3) ON CONFLICT(event_key) DO NOTHING',[`${event}:${ticket.reference}:${chatId}`,chatId,text]);
+   // A11's Telegram channel, when linked: once per ticket event.
+   await queueChannelCopy(pool,{eventKey:`${event}:${ticket.reference}`,message:text}).catch(()=>{});
    void drain();
   }
  };

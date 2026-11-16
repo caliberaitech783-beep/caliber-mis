@@ -57,3 +57,25 @@
 :root[data-theme="dark"] .automation-table th,:root[data-theme="dark"] .automation-total-row td{background:#2a2540;color:#c9bde6}
 :root[data-theme="dark"] .automation-table :is(th,td){border-color:#3a3550}
 :root[data-theme="dark"] .automation-centre :is(small,.automation-note,.automation-totals dt){color:#c9bde6}
+/* Telegram channel of an automation (16 Nov 2026) */
+.automation-table small.automation-channel-line{color:#0b6b4c}
+.automation-table small.automation-channel-line.is-lost{color:#a32445}
+.automation-table small.automation-channel-note{color:#7b7391}
+.automation-dialog-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:rgba(24,34,59,.45)}
+.automation-dialog{display:grid;gap:14px;width:min(720px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:20px;border-radius:12px;background:var(--panel,#fff);color:var(--ink,#18223b);box-shadow:0 18px 50px rgba(24,34,59,.3)}
+.automation-dialog header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.automation-dialog h2{margin:0;font-size:19px;line-height:1.35}
+.automation-dialog p{margin:0;line-height:1.5}
+.automation-dialog-facts{display:grid;gap:8px;margin:0}
+.automation-dialog-facts div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px}
+.automation-dialog-facts dt{font-weight:700;color:#5b4a7a}
+.automation-dialog-facts dd{margin:0;overflow-wrap:anywhere}
+.automation-steps{display:grid;gap:12px;margin:0;padding-left:22px;line-height:1.55}
+.automation-steps code{padding:1px 6px;border-radius:5px;background:#f3eefa;font-size:14px;overflow-wrap:anywhere}
+.automation-steps .automation-link-code{font-size:17px;font-weight:800;letter-spacing:.03em;white-space:nowrap}
+.automation-steps .automation-waiting{list-style:none;margin-left:-22px}
+.automation-centre .automation-inline{min-height:30px;padding:3px 10px;margin-left:6px;font-size:13px}
+.automation-button-link{display:inline-flex;align-items:center;min-height:40px;padding:9px 16px;border:1px solid #d9c9ef;border-radius:8px;color:var(--purple,#56309a);font-weight:700;text-decoration:none}
+:root[data-theme="dark"] .automation-dialog{background:#221a33;color:#f1edf7}
+:root[data-theme="dark"] .automation-steps code{background:#33284a}
+:root[data-theme="dark"] .automation-table small.automation-channel-line{color:#7fd3ae}

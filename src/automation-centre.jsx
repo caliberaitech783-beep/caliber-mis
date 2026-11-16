@@ -1,16 +1,26 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
 import TableSmartPrint from './table-smart-print.jsx';
+import AutomationChannelDialog from './automation-channel-dialog.jsx';
 import './automation-centre.css';
 
 const TABS=['Overview','Rules','Messages sent','Equipment mismatch settings','Speed report people'];
 const stamp=value=>value?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)).replace(/\//g,'-').replace(',',''):'';
 const day=value=>value?stamp(value).slice(0,10):'';
 const number=value=>value===null||value===undefined?'—':Number(value).toLocaleString('en-IN');
+// The Telegram channel of a line: its name and posts, or the button to create one (16 Nov 2026).
+const ChannelLine=({row,onOpen})=>{
+ const channel=row.channel;
+ if(!channel?.allowed)return channel?.note?<small className="automation-channel-note" data-print-hide="">Telegram channel: {channel.note}</small>:null;
+ if(!channel.linked)return <button type="button" className="automation-link" data-print-hide="" onClick={onOpen}>Create Telegram channel</button>;
+ return <><small className={'automation-channel-line'+(channel.linked.lost?' is-lost':'')}>Telegram channel: <b>{channel.linked.title}</b> · {channel.linked.lost?'bot removed, nothing posted':Number(channel.postsSent||0).toLocaleString('en-IN')+' post'+(channel.postsSent===1?'':'s')}</small>
+  <button type="button" className="automation-link" data-print-hide="" onClick={onOpen}>Channel options</button></>;
+};
 const Channel=({state})=>state===null?<span className="automation-channel is-none">Not used</span>:<span className={'automation-channel '+(state==='on'?'is-on':'is-off')}>{state==='on'?'ON':'OFF'}</span>;
 
 export default function AutomationCentre({session,onOpenPage}){
  // A25 people (16 Nov 2026): Pulse-II logins or mobile numbers who get the speed report besides the owner.
  const [people,setPeople]=useState(null),[peopleText,setPeopleText]=useState('');
+ const [channelRow,setChannelRow]=useState(null);
  const [data,setData]=useState(null),[error,setError]=useState(''),[tab,setTab]=useState(TABS[0]),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[form,setForm]=useState(null),[category,setCategory]=useState('All');
  const request=useCallback(async(route='',method='GET',body)=>{
   const response=await fetch('/api/automation-centre'+route,{method,cache:'no-store',headers:{Authorization:'Bearer '+session.token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -68,7 +78,8 @@ export default function AutomationCentre({session,onOpenPage}){
     <thead><tr><th>#</th><th>Automation</th><th>Category</th><th>Switch</th><th>Telegram</th><th>WhatsApp</th><th>Pop-up</th><th>Email</th><th>Sent to date</th><th>People</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.code}>
      <td>{row.number}</td>
-     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}{row.key==='health-report'&&<><button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendHealthSample(row)}>Send sample to Telegram</button><button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Speed report people')}>Change people</button></>}</td>
+     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}{row.key==='health-report'&&<><button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendHealthSample(row)}>Send sample to Telegram</button><button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Speed report people')}>Change people</button></>}
+      <ChannelLine row={row} onOpen={()=>setChannelRow(row)}/></td>
      <td>{row.category}</td><td><button type="button" role="switch" aria-checked={row.switchedOn} aria-label={'Switch '+row.code+' '+(row.switchedOn?'off':'on')} disabled={busy} className={'automation-switch '+(row.switchedOn?'is-on':'is-off')} onClick={()=>void toggle(row)}><span aria-hidden="true"></span>{row.switchedOn?'ON':'OFF'}</button>
       {row.notSendingReason&&<small className="automation-why">{row.notSendingReason}</small>}
       {!row.switchedOn&&row.switchChangedBy&&<small>Switched off by {row.switchChangedBy}{row.switchChangedAt?' on '+stamp(row.switchChangedAt):''}</small>}</td>
@@ -118,5 +129,6 @@ export default function AutomationCentre({session,onOpenPage}){
     <div className="automation-actions"><button type="submit" disabled={busy||!people}>{busy?'Saving…':'Save'}</button><button type="button" onClick={()=>onOpenPage?.('Telegram Integration')}>Open Telegram Integration</button></div>
    </form>}
   </>}
+  {channelRow&&<AutomationChannelDialog row={channelRow} request={request} onClose={()=>setChannelRow(null)} onChanged={()=>void load()}/>}
  </section>;
 }
