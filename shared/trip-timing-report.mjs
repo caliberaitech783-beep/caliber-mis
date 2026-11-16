@@ -72,7 +72,10 @@ export function tripEntries(records,{assets=[]}={}){
 
 const keyOf={site:e=>e.site,shift:e=>JSON.stringify([e.date,e.shift]),category:e=>e.category,driver:e=>e.driverKey,door:e=>e.door,machine:e=>e.machine};
 const OTHER={'load-unload':'unload-load','unload-load':'load-unload'};
-export const groupKey=(group,entry)=>keyOf[group](entry);
+// `bySite`: over All sites a driver, door or machine that worked at two sites is one line per site (owner, 16 Nov 2026:
+// every All-sites list names the site of each line).
+const keyFor=(group,bySite)=>bySite&&group!=='site'?e=>JSON.stringify([e.site,keyOf[group](e)]):keyOf[group];
+export const groupKey=(group,entry,bySite=false)=>keyFor(group,bySite)(entry);
 function counts(entries,mode){
  const c={timed:0,ok:0,b1:0,b2:0,b3:0,over:0,percent:null,longest:null,notJudged:0,[EXCEPTION_KEY]:0};const late=new Set();
  for(const e of entries){const m=e[mode];if(!m.counted)continue;if(!m.band){c.notJudged++;continue;}c.timed++;c[m.band]++;if(m.rawBand!==m.band)c[EXCEPTION_KEY]++;if(c.longest===null||m.minutes>c.longest)c.longest=m.minutes;if(m.band!=='ok'){c.over++;late.add(e.driverKey);}}
@@ -81,9 +84,9 @@ function counts(entries,mode){
  c.otherOver=entries.filter(e=>{const o=e[OTHER[mode]];return o.counted&&o.band&&o.band!=='ok';}).length;return c;
 }
 // One line per site, date and shift, driver, door or loading machine, with the count in each band. `total` is the line for all of them.
-export function summarise(entries,mode,group){
- const groups=new Map();
- for(const e of entries){const key=keyOf[group](e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
+export function summarise(entries,mode,group,bySite=false){
+ const groups=new Map(),keyOfEntry=keyFor(group,bySite);
+ for(const e of entries){const key=keyOfEntry(e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
  const rows=[...groups.entries()].map(([key,list])=>{const f=list[0];return {id:group+':'+key,key,site:f.site,date:f.date,shift:f.shift||'Not recorded',caliberId:f.caliberId||'ID not recorded',driver:f.driver||'Name not recorded',door:f.door,machine:f.machine,category:f.category,
   doors:[...new Set(list.map(e=>e.door))].join(', '),driverCount:new Set(list.map(e=>e.driverKey)).size,vehicleCount:new Set(list.map(e=>e.door)).size,...counts(list,mode)};}).filter(r=>r.timed+r.notJudged+r.otherOver>0);
  if(group==='site')rows.sort((a,b)=>a.site.localeCompare(b.site));

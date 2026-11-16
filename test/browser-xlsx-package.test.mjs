@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { recordCountLine, withSerialColumn } from "../shared/serial-column.mjs";
+import * as xlsxLayout from "../shared/xlsx-layout.mjs";
 
 function storedFiles(buffer) {
   const files = new Map();
@@ -26,9 +27,9 @@ function browserXlsxBuilder() {
   const end = source.indexOf("// Smart Print goes straight to the printer", start);
   assert.ok(start >= 0 && end > start, "browser XLSX builder source is present");
   return new Function(
-    "withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText",
+    "withSerialColumn", "recordCountLine", "formatDisplayDateTime", "prepareXlsxExportSheets", "exportCellText", ...Object.keys(xlsxLayout),
     `${source.slice(start, end)}; return { buildXlsxSheetsWorkbook, escapeXlsxText };`,
-  )(withSerialColumn, recordCountLine, () => "12:00 PM 22-09-26", () => [], String);
+  )(withSerialColumn, recordCountLine, () => "12:00 PM 22-09-26", () => [], String, ...Object.values(xlsxLayout));
 }
 
 test("browser XLSX worksheets use Excel's required element order and safe SpreadsheetML text", async () => {
@@ -76,4 +77,31 @@ test("shared XLSX builder leaves the filter to the table so Excel opens the file
   assert.doesNotMatch(files.get("xl/worksheets/sheet1.xml"), /<autoFilter/);
   assert.match(files.get("xl/worksheets/sheet1.xml"), /tableParts count="1"/);
   assert.match(files.get("xl/tables/table1.xml"), /<autoFilter ref="A3:C5"\/>/);
+});
+
+test("report Excel prints A3, wraps long headings in narrow columns and saves number columns as numbers", async () => {
+  const { buildXlsxSheetsWorkbook } = browserXlsxBuilder();
+  const blob = buildXlsxSheetsWorkbook("Step 4 · Every loading", [{
+    name: "Report", title: "Step 4 · Every loading · All sites",
+    columns: [{ label: "Site" }, { label: "Door no." }, { label: "Gap from loading before (min)" }, { label: "Of it in BD (min)" }, { label: "Caliber ID" }],
+    rows: [["Sasti OC", "128", "71", "—", "00123"], ["Majri OC", "V-840", "25", "4", "00456"]],
+  }]);
+  const files = storedFiles(Buffer.from(await blob.arrayBuffer()));
+  const sheet = files.get("xl/worksheets/sheet1.xml");
+  assert.match(sheet, /<pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="0"\/>/);
+  assert.match(sheet, /<oddFooter>&amp;L&amp;8Step 4 · Every loading · All sites&amp;C&amp;8Page &amp;P of &amp;N&amp;R&amp;8&amp;D<\/oddFooter>/);
+  // The 29-letter heading gets a 13-wide column (three lines), not a 31-wide one; the heading row is tall enough.
+  assert.match(sheet, /<col min="4" max="4" width="13" customWidth="1"\/>/);
+  assert.equal(xlsxLayout.xlsxHeadingLines("Gap from loading before (min)", 13), 3);
+  assert.match(sheet, /<row r="3" ht="45" customHeight="1">/);
+  // Gap and BD are number columns ("—" stays text); door numbers and leading-zero IDs stay text.
+  assert.match(sheet, /<c r="D4" s="6"><v>71<\/v><\/c>/);
+  assert.match(sheet, /<c r="E5" s="1"><v>4<\/v><\/c>/);
+  assert.match(sheet, /<c r="E4" s="6" t="inlineStr"><is><t xml:space="preserve">—<\/t>/);
+  assert.match(sheet, /<c r="C4" s="6" t="inlineStr"><is><t xml:space="preserve">128<\/t>/);
+  assert.match(sheet, /<c r="F4" s="6" t="inlineStr"><is><t xml:space="preserve">00123<\/t>/);
+  assert.match(sheet, /<c r="A4" s="6"><v>1<\/v><\/c>/);
+  // Heading row: white bold on navy.
+  assert.match(files.get("xl/styles.xml"), /<b\/><sz val="10"\/><color rgb="FFFFFFFF"\/>/);
+  assert.match(files.get("xl/styles.xml"), /fgColor rgb="FF10284C"/);
 });

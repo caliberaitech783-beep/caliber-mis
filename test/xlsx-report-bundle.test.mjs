@@ -25,7 +25,8 @@ const sheetNames=files=>[...files.get('xl/workbook.xml').matchAll(/<sheet name="
   assert.equal(match[2],match[3]);
   return unescapeXml(match[1]).replace(/_x([0-9a-f]{4})_/gi,(_,code)=>String.fromCharCode(parseInt(code,16)));
 });
-const cells=xml=>[...xml.matchAll(/<c r="([A-Z]+\d+)"(?: s="\d+")? t="inlineStr"><is><t(?: xml:space="preserve")?>([\s\S]*?)<\/t><\/is><\/c>/g)].map((match)=>({reference:match[1],value:unescapeXml(match[2])}));
+// Text cells and number cells (a column of plain numbers is saved as numbers).
+const cells=xml=>[...xml.matchAll(/<c r="([A-Z]+\d+)"(?: s="\d+")?(?: t="inlineStr"><is><t(?: xml:space="preserve")?>([\s\S]*?)<\/t><\/is>|><v>([^<]*)<\/v>)<\/c>/g)].map((match)=>({reference:match[1],value:unescapeXml(match[2]??match[3])}));
 
 test('every server workbook carries Light 15 tables, explicit grey banding and black borders',()=>{
   for(const buffer of [buildXlsxWorkbookBuffer('Report',[{label:'Door'}],[['V1'],['V2']]),buildXlsxReportBundleBuffer({tables:[{title:'Report',columns:[{label:'Door'}],rows:[['V1'],['V2']]}]})]){
@@ -57,7 +58,7 @@ test('XLSX bundle has one ordered worksheet per selected report with complete re
     assert.match(xml,new RegExp(`<row r="2"><c r="A2" s="4" t="inlineStr"><is><t xml:space="preserve">${table.rows.length} record${table.rows.length===1?'':'s'} · Generated `));
     const widths=[...xml.matchAll(/<col min="(\d+)" max="(\d+)" width="([\d.]+)" customWidth="1"\/>/g)];
     assert.equal(widths.length,table.columns.length+1);
-    widths.forEach((match)=>{assert.equal(match[1],match[2]);assert.ok(Number(match[3])>=12&&Number(match[3])<=48);});
+    widths.forEach((match)=>{assert.equal(match[1],match[2]);assert.ok(Number(match[3])>=8&&Number(match[3])<=48);});
   });
   assert.deepEqual(cells(files.get('xl/worksheets/sheet1.xml')).map((cell)=>cell.value).slice(2),['Sr. No.','User','Activity at','1','Operator A','5:00 PM 15-09-26']);
   assert.equal(cells(files.get('xl/worksheets/sheet1.xml'))[0].value,'Site activity');
@@ -73,7 +74,7 @@ test('XLSX bundle retains empty selected tables and supplies a valid worksheet w
   assert.deepEqual(sheetNames(files),['Site activity','Empty optional report','No columns or rows']);
   assert.deepEqual(cells(files.get('xl/worksheets/sheet1.xml')).slice(2),[{reference:'A3',value:'Sr. No.'},{reference:'B3',value:'User'}]);
   assert.deepEqual(cells(files.get('xl/worksheets/sheet2.xml')).slice(2),[{reference:'A3',value:'Sr. No.'},{reference:'B3',value:'Reference'}]);
-  assert.match(files.get('xl/worksheets/sheet3.xml'),/<row r="3"><c r="A3" s="5" t="inlineStr"><is><t xml:space="preserve">Sr\. No\.<\/t><\/is><\/c><\/row><\/sheetData>/);
+  assert.match(files.get('xl/worksheets/sheet3.xml'),/<row r="3"[^>]*><c r="A3" s="5" t="inlineStr"><is><t xml:space="preserve">Sr\. No\.<\/t><\/is><\/c><\/row><\/sheetData>/);
   for(const options of [undefined,{title:'Empty',tables:[]}]){
     const empty=storedFiles(buildXlsxReportBundleBuffer(options));
     assert.deepEqual(sheetNames(empty),['Report']);
@@ -147,4 +148,17 @@ test('server exports define full print areas and repeat headings with page-width
   assert.match(sheet,/orientation="landscape" fitToWidth="1" fitToHeight="0"/);
   assert.match(files.get('xl/workbook.xml'), /name="_xlnm.Print_Area" localSheetId="0">&#39;Vendor&#39;&#39;s ledger&#39;!\$A\$1:\$B\$5/);
   assert.match(files.get('xl/workbook.xml'), /name="_xlnm.Print_Titles" localSheetId="0">&#39;Vendor&#39;&#39;s ledger&#39;!\$1:\$3/);
+});
+
+test('emailed report workbooks print A3 landscape with the heading row repeated, wrapped text and number columns',()=>{
+  const files=storedFiles(buildXlsxReportBundleBuffer({title:'Site report',tables:[{title:'Open breakdowns',columns:[{label:'Door'},{label:'Breakdown hours so far (total)'}],rows:[['V1','12'],['V-2','—']]}]}));
+  const xml=files.get('xl/worksheets/sheet1.xml');
+  assert.match(xml,/<pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="0"\/><headerFooter>/);
+  assert.match(xml,/<pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"\/>/);
+  assert.match(xml,/<c r="C4" s="6"><v>12<\/v><\/c>/);
+  assert.match(xml,/<row r="3" ht="\d+" customHeight="1">/);
+  assert.match(xml,/<\/headerFooter><tableParts count="1">/);
+  assert.match(files.get('xl/workbook.xml'),/<definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;Open breakdowns&apos;!\$3:\$3<\/definedName>/);
+  assert.match(files.get('xl/styles.xml'),/wrapText="1"/);
+  assert.doesNotMatch(files.get('xl/styles.xml'),/wrapText="0"/);
 });

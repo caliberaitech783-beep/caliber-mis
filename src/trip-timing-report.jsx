@@ -33,18 +33,19 @@ const identity={
  machine:[column('machine','Loading machine'),column('vehicleCount','Vehicles loaded')]
 };
 // `exception`: the personalised view is on, so one more column counts the trips its exception time moved to a lower band.
-export function summaryColumns(group,mode,onBand,exception=false){
+// `manySites`: the list was opened from All sites, so each line names its site.
+export function summaryColumns(group,mode,onBand,exception=false,manySites=false){
  const number=band=>column(band,LABELS[band],null,r=>r[band]>0?(onBand?<button type="button" className={'tt-band tt-'+band} title={'Show only '+LABELS[band]} onClick={e=>{e.stopPropagation();onBand(r,band);}}>{r[band]}</button>:pill(band,r[band])):r[band]);
- return [...identity[group],column('timed',MODES[mode].unit),column('ok',BAND_LABELS.ok),...BANDS.map(b=>number(b.key)),column('over','Total over '+DELAY_LIMIT+' min'),
+ return [...(manySites&&group!=='site'?[column('site','Site')]:[]),...identity[group],column('timed',MODES[mode].unit),column('ok',BAND_LABELS.ok),...BANDS.map(b=>number(b.key)),column('over','Total over '+DELAY_LIMIT+' min'),
   column('percent','% over '+DELAY_LIMIT+' min',r=>blank(r.percent)?'—':r.percent+'%'),...(exception?[number(EXCEPTION_KEY)]:[]),column('longest','Longest (min)'),
   // The same driver's (or shift's) delays in the other timing, so that everything against a name is on one line.
   column('otherOver','Also over '+DELAY_LIMIT+' min in '+MODES[OTHER[mode]].label),column('notJudged','Not judged')];
 }
 // `exception`: the personalised view is on, so the minutes as written, the minutes inside the exception time and the
 // minutes counted are three columns.
-export function delayedColumns(mode,withDriver,exception=false){
+export function delayedColumns(mode,withDriver,exception=false,manySites=false){
  const who=withDriver?[column('caliberId','Caliber ID'),column('driver','Driver')]:[];
- const start=[column('date','Date',e=>day(e.date)),column('shift','Shift'),column('book','Book no.'),column('door','Door no.'),...who,column('sr','Tr.Sr.No')];
+ const start=[column('date','Date',e=>day(e.date)),column('shift','Shift'),...(manySites?[column('site','Site')]:[]),column('book','Book no.'),column('door','Door no.'),...who,column('sr','Tr.Sr.No')];
  const band=column('band','Band',e=>BAND_LABELS[e[mode].band],e=>pill(e[mode].band,BAND_LABELS[e[mode].band]));
  const counted=label=>exception
   ?[column('rawMinutes',label,e=>written(e,mode)),column('excepted','In exception time (min)',e=>e[mode].excepted||0),column('minutes','Counted (min)',e=>minutes(e,mode),e=>pill(e[mode].band,minutes(e,mode)))]
@@ -118,8 +119,9 @@ export default function TripTimingReport({records=[],assets=[],loading='',period
  // Step 3: the shift by equipment category; Step 4: the drivers (doors, machines) of the category opened.
  const categories=summarise(slotEntries,mode,'category'),categoriesListed=band?categories.rows.filter(r=>r[band]>0):categories.rows;
  const categoryEntries=!category?[]:category.key===EVERY?slotEntries:slotEntries.filter(e=>e.category===category.key);
- const lines=summarise(categoryEntries,mode,group),listed=band?lines.rows.filter(r=>r[band]>0):lines.rows;
- const itemEntries=!item?[]:item.key===EVERY?categoryEntries:categoryEntries.filter(e=>groupKey(item.group,e)===item.key);
+ const manySites=site===EVERY;
+ const lines=summarise(categoryEntries,mode,group,manySites),listed=band?lines.rows.filter(r=>r[band]>0):lines.rows;
+ const itemEntries=!item?[]:item.key===EVERY?categoryEntries:categoryEntries.filter(e=>groupKey(item.group,e,manySites)===item.key);
  const delayed=delayedEntries(itemEntries,mode,band),allDelayed=band?delayedEntries(itemEntries,mode):delayed;
  const cardEntries=card?entries.filter(e=>e.recordId===card):[],cardHead=cardEntries[0];
  const level=!site?1:!slot?2:!category?3:!item?4:!card?5:6;
@@ -207,12 +209,12 @@ export default function TripTimingReport({records=[],assets=[],loading='',period
    <p className="tt-insight">{summaryLine(lines.total)}</p>
    {chips(lines.total.over,key=>lines.total[key])}
    <ReportSection key={'tt-lines-'+mode+group+site+slot.key+category.key+band+exception} reportKey={'Trip timing '+group+' '+mode} dataReady={dataReady} title={'Step 4 · '+m.label+' · '+where+' · '+GROUPS[group]+(band?' · '+LABELS[band]:'')+viewTitle} category={'operations-timing-'+group} description={'One line per '+(group==='driver'?'driver':group==='door'?'door number':'loading machine')+', worst first, with every band against the name. Press a line to see its delayed '+m.noun+'s.'+viewNote}
-    rows={withTotal(listed,band?{...lines.total,id:'shown-total'}:lines.total)} columns={summaryColumns(group,mode,openItem,exception)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+(item?.group===group?picked(r,item.key):'')} onRowClick={r=>openItem(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
+    rows={withTotal(listed,band?{...lines.total,id:'shown-total'}:lines.total)} columns={summaryColumns(group,mode,openItem,exception,manySites)} rowKey={r=>r.id} rowClassName={r=>rowClass(r)+(item?.group===group?picked(r,item.key):'')} onRowClick={r=>openItem(r)} emptyMessage={'No '+m.noun+' over '+DELAY_LIMIT+' minutes here.'}/>
   </>}
   {level>=5&&<>
    {chips(allDelayed.length,key=>key===EXCEPTION_KEY?delayedEntries(itemEntries,mode,EXCEPTION_KEY).length:allDelayed.filter(e=>e[mode].band===key).length)}
    <ReportSection key={'tt-delayed-'+mode+item.group+item.key+slot.key+category.key+band+exception} reportKey={'Trip timing delayed '+mode+(item.group==='driver'&&item.key!==EVERY?'':' with driver')} dataReady={dataReady} title={'Step 5 · '+m.label+' · '+item.label+' · '+where+(band?' · '+LABELS[band]:'')+viewTitle} category="operations-timing-delayed" description={(band===EXCEPTION_KEY?'Every '+m.noun+' your exception time moved to a lower band, newest first.':'Every '+m.noun+' over '+DELAY_LIMIT+' minutes, newest first.')+' Press a line to see the full trip card.'+viewNote}
-    rows={delayed} columns={delayedColumns(mode,item.group!=='driver'||item.key===EVERY,exception)} rowKey={e=>e.id} rowClassName={e=>card&&e.recordId===card?'report-row-picked':''} onRowClick={e=>setCard(e.recordId)} emptyMessage={'No '+m.noun+' in this band.'}/>
+    rows={delayed} columns={delayedColumns(mode,item.group!=='driver'||item.key===EVERY,exception,manySites)} rowKey={e=>e.id} rowClassName={e=>card&&e.recordId===card?'report-row-picked':''} onRowClick={e=>setCard(e.recordId)} emptyMessage={'No '+m.noun+' in this band.'}/>
   </>}
   {level>=6&&cardHead&&<ReportSection key={'tt-card-'+card+exception} reportKey="Trip timing card" dataReady={dataReady} showSearch={false} title={'Step 6 · Trip card '+cardHead.book+viewTitle} category="operations-timing-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card with both timings`}
    rows={cardEntries} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}

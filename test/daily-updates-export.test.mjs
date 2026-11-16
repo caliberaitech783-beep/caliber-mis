@@ -117,7 +117,8 @@ test("Excel and print output preserve and wrap multiline daily updates", async (
   assert.match(main, /<alignment wrapText="1" vertical="top"\/>/);
   assert.ok(main.includes('<pane ySplit="${firstDataRow}" topLeftCell="A${firstDataRow+1}"'));
   assert.match(main, /<autoFilter ref=/);
-  assert.match(main, /orientation="landscape" fitToWidth="1"/);
+  assert.match(main, /\$\{XLSX_PAGE_SETUP\}/);
+  assert.match(await readFile(new URL("../shared/xlsx-layout.mjs", import.meta.url), "utf8"), /paperSize="8" orientation="landscape" fitToWidth="1"/);
   assert.match(main, /prepareXlsxExportSheets\(\{ title, sheets, formatCell: exportCellText \}\)/);
   assert.match(main, /td\{white-space:pre-wrap\}/);
   assert.match(pdf, /split\(\/\\r\?\\n\/\)/);
