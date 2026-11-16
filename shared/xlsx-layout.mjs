@@ -7,6 +7,20 @@
 
 export const XLSX_PAGE_SETUP = '<pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="0"/>';
 
+// Owner, 16 Nov 2026: "Excel reports are still not downloading in Smart Print". Opened in Excel on a PC, three kinds of
+// report made Excel refuse the whole file: a column heading with a line break or tab in it, a table with no row under
+// its headings (a report with no records), and a cell longer than 32,767 characters. Every workbook passes its headings,
+// rows and cells through these three.
+export const XLSX_CELL_LIMIT = 32767;
+export const xlsxHeadingText = (label) => String(label ?? "").replace(/\s+/g, " ").trim();
+const CUT_NOTE = " … (cut here: an Excel cell holds at most 32,767 characters)";
+export function xlsxCellText(value) {
+  const text = String(value ?? "");
+  return text.length <= XLSX_CELL_LIMIT ? text : text.slice(0, XLSX_CELL_LIMIT - CUT_NOTE.length) + CUT_NOTE;
+}
+// An Excel table needs at least one row under its headings: a report with no records gets one line that says so.
+export const xlsxTableRows = (rows = [], width = 1) => rows.length ? rows : [Array.from({ length: Math.max(1, width) }, (_, index) => index === Math.min(1, width - 1) ? "No records" : "")];
+
 const longestLine = (value) => {
   let longest = 0;
   for (const line of String(value ?? "").split(/\r?\n/)) longest = Math.max(longest, line.length);

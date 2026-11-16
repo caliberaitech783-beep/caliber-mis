@@ -300,7 +300,7 @@ test('pressing a machine opens its shift time-line: the strip, then every loadin
  assert.match(screen,/const manySites=site===EVERY;/);
  assert.match(screen,/lineOf:r=>manySites\?\{\.\.\.dateLine\(r\),key:r\.date\+'\|'\+r\.site,label:dateLine\(r\)\.label\+' · '\+r\.site\}:dateLine\(r\)/);
  assert.match(screen,/columns=\{machineColumns\(openItem,allShifts,manySites\)\}/);
- assert.match(screen,/columns=\{notWorkedColumns\(manySites\)\}/);
+ assert.match(screen,/columns=\{notWorkedColumns\(manySites,openBd\)\}/);
  const {isDurationColumn}=await import('../src/duration-sort.mjs');
  for(const [,key,label] of screen.matchAll(/column\('([^']+)','([^']+)'/g))assert.ok(!isDurationColumn(label,key),label+' must not be taken for a duration, or the table reorders the lines');
  const css=fs.readFileSync(new URL('../src/loading-machine-report.css',import.meta.url),'utf8');
@@ -447,7 +447,7 @@ test('All-sites lists carry a Site column and a machine line names every site it
  assert.match(source,/const siteColumn=\(manySites,key='site'\)=>manySites\?\[column\(key,'Site'\)\]:\[\];/);
  assert.match(source,/export function machineColumns\(onPick,manyShifts=false,manySites=false\)\{\r?\n return \[\.\.\.siteColumn\(manySites,'sites'\),column\('door','Door no\.'\)/);
  assert.match(source,/column\('date','Date',l=>day\(l\.date\)\),column\('shift','Shift'\)\]:\[\]\),\.\.\.siteColumn\(manySites\),\.\.\.\(many\?\[column\('machine','Loading machine'\)\]:\[\]\)/);
- assert.match(source,/export const notWorkedColumns=\(manySites=false\)=>\[column\('date','Date',e=>day\(e\.date\)\),column\('shift','Shift'\),\.\.\.siteColumn\(manySites\),/);
+ assert.match(source,/export const notWorkedColumns=\(manySites=false,onBreakdown=null\)=>\[column\('date','Date',e=>day\(e\.date\)\),column\('shift','Shift'\),\.\.\.siteColumn\(manySites\),/);
  // One machine seen at two sites in the chosen dates stays one line that names both.
  const one=entries[0],moved=[one,{...one,site:'Site Z',slotKey:one.slotKey+'-z',id:one.id+'-z'}];
  assert.equal(summarise(moved,'machine').rows[0].sites,one.site+', Site Z');

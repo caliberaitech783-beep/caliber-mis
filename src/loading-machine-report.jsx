@@ -3,6 +3,8 @@ import {StepBackButton} from './step-back.jsx';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport,dateLine} from './date-shift-grid.jsx';
 import {BANDS,BAND_LABELS,IDLE_LIMIT,RED_AFTER,WAIT_LIMIT,STATES,TONE_LABELS,machineShifts,summarise,loadingLines,shiftTimeline,clockTags,shiftsNotWorked,idleText,groupKey,clockAt,breakdownText} from '../shared/loading-machine-report.mjs';
 import {tripEntries} from '../shared/trip-timing-report.mjs';
+import {formatDisplayDateTime} from '../shared/date-time-format.mjs';
+import {RequestTimelineContent} from './request-timeline.jsx';
 import './trip-timing-report.css';
 import './loading-machine-report.css';
 
@@ -79,9 +81,27 @@ export function tripColumns(many=false,manySites=false){
   column('delayedCount','Tipper trips delayed',l=>l.band==='first'||l.band==='ok'?'—':l.delayed.length,l=>l.delayed.length>0?<span className="lm-count lm-delayed">{l.delayed.length}</span>:l.band==='first'||l.band==='ok'?'—':0,l=>l.delayed.length),
   column('waiting','Tippers delayed · unloading to loading',waitingText),column('breakdown','Breakdown in Pulse',l=>l.breakdown||'—'),column('book','Book no.',l=>l.to.book)];
 }
-export const notWorkedColumns=(manySites=false)=>[column('date','Date',e=>day(e.date)),column('shift','Shift'),...siteColumn(manySites),column('door','Door no.'),column('machineName','Machine'),column('statusLabel','Status',null,stateBadge),column('reason','Reason'),
- column('hoursWorked','Hours worked',e=>blank(e.hours)?'—':e.hours),column('bdHours','Hours in BD'),column('elbBooks','ELB book no.'),column('breakdowns','Breakdown in Pulse')];
-export const cardColumns=[column('sr','Tr.Sr.No'),column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time')];
+// Owner, 16 Nov 2026: pressing Breakdown in Pulse (the red status, or the Pulse reference) opens the breakdown's details
+// in a step under the list. `onBreakdown` opens it; without it the list reads as before.
+export const hasPulseBreakdown=e=>(e.bdRequests?.length||0)>0;
+const bdButton=(e,onBreakdown,content)=><button type="button" className="lm-bd-open" title="Show the breakdown details from Pulse" onClick={ev=>{ev.stopPropagation();onBreakdown(e);}}>{content}</button>;
+export const notWorkedColumns=(manySites=false,onBreakdown=null)=>[column('date','Date',e=>day(e.date)),column('shift','Shift'),...siteColumn(manySites),column('door','Door no.'),column('machineName','Machine'),
+ column('statusLabel','Status',null,onBreakdown?e=>e.state==='breakdown'&&hasPulseBreakdown(e)?bdButton(e,onBreakdown,stateBadge(e)):stateBadge(e):stateBadge),column('reason','Reason'),
+ column('hoursWorked','Hours worked',e=>blank(e.hours)?'—':e.hours),column('bdHours','Hours in BD'),column('elbBooks','ELB book no.'),
+ column('breakdowns','Breakdown in Pulse',null,onBreakdown?e=>hasPulseBreakdown(e)?bdButton(e,onBreakdown,e.breakdowns||e.bdRequests.map(r=>r.reference).join(', ')):(e.breakdowns||'—'):null)];
+// The drill-down of one machine shift's Pulse breakdowns: one line per breakdown.
+const when=v=>v?formatDisplayDateTime(v):'—';
+export const breakdownDetailColumns=[column('reference','Pulse request',r=>r.reference||'—',r=>r.reference?<span className="lm-bd-ref">{r.reference}</span>:'—'),column('status','Status',r=>r.ongoing?'Still open in Pulse':r.status),column('reason','Reason'),
+ column('start','Breakdown started',r=>when(r.start)),column('end','Closed or moved to idle',r=>r.end?when(r.end):'Still open'),
+ column('totalMinutes','Total time in breakdown',r=>r.totalMinutes===null?'—':idleText(r.totalMinutes),null,r=>r.totalMinutes??-1),
+ column('inShift','In this shift (clock)',r=>r.inShift||'Outside the shift hours'),column('shiftMinutes','Time in this shift',r=>r.shiftMinutes>0?idleText(r.shiftMinutes):'—',null,r=>r.shiftMinutes),
+ column('site','Site'),column('date','Date',r=>day(r.date)),column('shift','Shift'),column('door','Door no.'),column('machineName','Machine')];
+// Owner, 16 Nov 2026: the trip card carries the gap from loading to unloading of each trip, with the site and date on every
+// line, in the order the trip happened (where and when, the card, the trip, its times, then the gap).
+export const GAP_LABEL='Gap time · loading to unloading (min)';
+const tripGap=e=>blank(e['load-unload']?.rawMinutes)?'—':e['load-unload'].rawMinutes;
+export const cardColumns=[column('site','Site'),column('date','Date',e=>day(e.date)),column('shift','Shift'),column('door','Door no.'),column('sr','Tr.Sr.No'),column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time'),
+ column('gapTime',GAP_LABEL,tripGap,null,e=>e['load-unload']?.rawMinutes??-1)];
 // The line for all of them stays at the foot of the table, whatever the table is sorted by.
 const isTotal=r=>Boolean(r.total);
 const rowClass=r=>r.total?'tt-total':r.state==='breakdown'?'lm-row-breakdown':r.state==='nohours'?'lm-row-nohours':'';
@@ -177,14 +197,16 @@ export function ShiftTimelines({entries=[],title='',step='',onPick=()=>{},onOpen
  </section>;
 }
 
-export default function LoadingMachineReport({records=[],assets=[],fleet=[],batches=[],pulseBreakdowns=null,pulseBreakdownsError='',filters={},loading='',period='',ReportSection,dataReady=true,rowsView=null}){
+export default function LoadingMachineReport({records=[],assets=[],fleet=[],batches=[],pulseBreakdowns=null,pulseBreakdownsError='',filters={},loading='',period='',ReportSection,dataReady=true,rowsView=null,token=''}){
  const [mode,setMode]=useState('idle'),[site,setSite]=useState(''),[slot,setSlot]=useState(null),[item,setItem]=useState(null),[strip,setStrip]=useState(''),[only,setOnly]=useState(''),[card,setCard]=useState('');
  // Step 3: the equipment category opened ({key,label}); kept after the other state.
  const [category,setCategory]=useState(null);
+ // The machine shift whose Pulse breakdowns are open under Shifts not worked, and the Pulse request opened in full under them.
+ const [bdShift,setBdShift]=useState(''),[bdRequest,setBdRequest]=useState('');
  const entries=useMemo(()=>machineShifts(records,{assets,fleet,batches,filters,pulseBreakdowns}),[records,assets,fleet,batches,filters,pulseBreakdowns]);
  const visible=useMemo(()=>loading?entries.filter(e=>e.names.includes(loading)||e.door===loading):entries,[entries,loading]);
  const cardRows=useMemo(()=>card?tripEntries(records).filter(e=>e.recordId===card):[],[records,card]),cardHead=cardRows[0];
- const reset=()=>{setSite('');setSlot(null);setCategory(null);setItem(null);setStrip('');setOnly('');setCard('');};
+ const reset=()=>{setSite('');setSlot(null);setCategory(null);setItem(null);setStrip('');setOnly('');setCard('');setBdShift('');setBdRequest('');};
  const tabs=<nav className="production-tabs tt-tabs" aria-label="Report view">{[['idle','Machine working and idle time'],['rows','All machines list']].map(([key,label])=><button key={key} type="button" aria-current={mode===key?'page':undefined} onClick={()=>{setMode(key);reset();}}>{label}</button>)}</nav>;
  if(mode==='rows')return <div className="tt-report lm-report">{tabs}{rowsView}</div>;
  const band=isBand(only)?only:'';
@@ -211,6 +233,10 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
  // A machine that did not run in the lines opened has no loading to list: only what its ELB says is shown.
  const pick=band||(only==='ok'?'ok':''),ran=shownEntries.some(e=>e.state==='running'),notWorked=focus?[]:shiftsNotWorked(itemEntries);
  const lines=item?loadingLines(shownEntries,pick):[],opened=summarise(shownEntries,'machine').total,manyLines=shownEntries.length>1;
+ // Breakdown in Pulse pressed on a shift not worked: that shift's Pulse breakdowns, one line each.
+ const bdEntry=bdShift?notWorked.find(e=>e.id===bdShift)||null:null;
+ const bdRows=bdEntry?(bdEntry.bdRequests||[]).map((r,i)=>({...r,id:bdEntry.id+'|bd|'+i,site:bdEntry.site,date:bdEntry.date,shift:bdEntry.shift,door:bdEntry.door,machineName:bdEntry.machineName})):[];
+ const openBd=e=>{setBdShift(bdShift===e.id?'':e.id);setBdRequest('');};
  const manyDates=new Set(shownEntries.map(e=>e.date)).size>1;
  // Step 4 with a band chosen also lists the stops of that band for all its machines, each with the tipper trips delayed in it.
  const bandStops=category&&band?loadingLines(categoryEntries,band):[];
@@ -293,7 +319,14 @@ export default function LoadingMachineReport({records=[],assets=[],fleet=[],batc
    {ran&&<ReportSection key={'lm-trips-'+item.key+(slot?.key||EVERY)+strip+pick} reportKey={'Loading machine loadings'+(manyLines?' together':'')} dataReady={dataReady} title={'Step '+listStep+' · Every loading · '+listWhere+(pick?' · '+BAND_LABELS[pick]:'')} category="operations-loading-stops" description={'One line per loading in the order of the shift, with the minutes since the loading before: green up to '+IDLE_LIMIT+' minutes, orange up to '+RED_AFTER+', red above '+RED_AFTER+'. An idle stop shows the tipper trips delayed in it. Press a line to see the trip card of the tipper loaded.'}
     recordDateFilter={manyDates?null:false} rows={lines} columns={tripColumns(manyLines,manySites)} rowKey={l=>l.id} rowClassName={l=>lineClass(l)+(card&&l.to?.recordId===card?' report-row-picked':'')} onRowClick={l=>setCard(l.to.recordId)} emptyMessage={pick?'No loading of '+BAND_LABELS[pick]+' here.':'No loading with a time here.'}/>}
    {notWorked.length>0&&<ReportSection key={'lm-notworked-'+item.key+(slot?.key||EVERY)} reportKey="Loading machine shifts not worked" dataReady={dataReady} title={(ran?'':'Step 5 · ')+'Shifts not worked · '+item.label+' · '+where} category="operations-loading-notworked" description="The shifts in which the machine did not run: in BD in red, no hours and not in BD in brown, with the reason on its ELB and the breakdown recorded in Pulse."
-    rows={notWorked} columns={notWorkedColumns(manySites)} rowKey={e=>e.id} rowClassName={rowClass} emptyMessage="The machine ran in every shift."/>}
+    rows={notWorked} columns={notWorkedColumns(manySites,openBd)} rowKey={e=>e.id} rowClassName={e=>rowClass(e)+(bdEntry?.id===e.id?' report-row-picked':'')} onRowClick={e=>hasPulseBreakdown(e)?openBd(e):undefined} emptyMessage="The machine ran in every shift."/>}
+   {bdEntry&&<ReportSection key={'lm-bd-'+bdEntry.id} reportKey="Loading machine breakdown in Pulse" dataReady={dataReady} showSearch={false} recordDateFilter={false} title={(ran?'':'Step 6 · ')+'Breakdown in Pulse · '+bdEntry.door+' · '+day(bdEntry.date)+' · '+bdEntry.shift+' · '+bdEntry.site} category="operations-loading-breakdown"
+    description={'Every breakdown recorded in Pulse for this machine that touches this shift: why, when it began and ended in Pulse, how long it lasted and how much of it fell inside the shift. Press a line for the complete Pulse request, with every step, update and time.'}
+    rows={bdRows} columns={breakdownDetailColumns} rowKey={r=>r.id} rowClassName={r=>bdRequest===r.reference?'report-row-picked':''} onRowClick={r=>r.reference&&setBdRequest(bdRequest===r.reference?'':r.reference)} emptyMessage="No breakdown recorded in Pulse for this shift."/>}
+   {bdEntry&&bdRequest&&bdRows.some(r=>r.reference===bdRequest)&&<section className="lm-bd-lifecycle" aria-label={'Pulse request '+bdRequest}>
+    <header><h3>Pulse request {bdRequest} · complete lifecycle</h3><button type="button" className="secondary" onClick={()=>setBdRequest('')}>Close</button></header>
+    {token?<RequestTimelineContent reference={bdRequest} token={token}/>:<p role="status">Sign in again to read this request from Pulse.</p>}
+   </section>}
   </>}
   {level>=4&&card&&cardHead&&<ReportSection key={'lm-card-'+card} reportKey="Loading machine trip card" dataReady={dataReady} showSearch={false} title={'Step '+cardStep+' · Trip card '+cardHead.book} category="operations-loading-card" description={`${cardHead.site} · ${day(cardHead.date)} · ${cardHead.shift} · Door ${cardHead.door} · ${cardHead.driver||'Name not recorded'} · ${cardHead.caliberId||'ID not recorded'} · every trip row of this card`}
    rows={cardRows} columns={cardColumns} rowKey={e=>e.id} emptyMessage="No trip rows on this card."/>}

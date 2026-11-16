@@ -56,12 +56,11 @@ test('dialog prompts for a report name, restores it, prints it, and can delete i
   assert.equal(nodes.find(n=>n.textContent==='Operations summary').value,'1');
   assert.match(nodes.find(n=>n.tag==='p'&&String(n.textContent).includes('Operations summary')).textContent,/Print saved layout/);
   nodes.find(n=>n.textContent==='Print saved layout').onclick();
-  // Print first asks for the page size; nothing prints until A4 or A3 is chosen.
-  assert.equal(printed.length,0);
+  // Owner, 16 Nov 2026: every print is A3, so no paper size is asked; the print options come at once.
   nodes=all(body.children.at(-1));
-  assert.deepEqual(nodes.filter(n=>n.tag==='button'&&/^A[34] · /.test(n.textContent)).map(n=>n.textContent.slice(0,2)),['A4','A3']);
-  nodes.find(n=>String(n.textContent).startsWith('A3 · ')).onclick();
-  // Then the print options: pages, sides and copies. Nothing prints until "Print now".
+  assert.equal(nodes.some(n=>n.tag==='button'&&/^A[34] · /.test(n.textContent)),false,'no paper size question');
+  assert.match(nodes.find(n=>n.tag==='h3'&&/^Print options/.test(n.textContent)).textContent,/^Print options · A3 · 420 × 297 mm landscape$/);
+  // The print options: pages, sides and copies. Nothing prints until "Print now".
   assert.equal(printed.length,0);
   nodes=all(body.children.at(-1));
   assert.deepEqual(nodes.filter(n=>n.tag==='legend').map(n=>n.textContent),['Printer','Pages','Sides','Copies']);
@@ -177,7 +176,7 @@ test('wide reports are scaled down to the page and never enlarged',()=>{
  assert.equal(printFitScale(0,1032),1);
  for(const width of [5000,10000,100000])assert.ok(width*printFitScale(width,1032)<=1032+.000001);
  assert.equal(printPageSize('a3').widthMm,420);
- assert.equal(printPageSize('unknown').name,'A4');
+ assert.equal(printPageSize('unknown').name,'A3','every report prints on A3 unless told otherwise');
  assert.deepEqual(PRINT_PAGE_SIZES.map(page=>page.name),['A4','A3']);
 });
 
@@ -225,7 +224,6 @@ test('Smart Print keeps the main report compact and puts every update in separat
   assert.ok(nodes.some(node=>String(node.textContent||'').includes('every update is included')));
 
   nodes.find(node=>node.textContent==='Print current selection').onclick();
-  nodes=all(body.children.at(-1));nodes.find(node=>String(node.textContent).startsWith('A4 · ')).onclick();
   nodes=all(body.children.at(-1));nodes.find(node=>node.textContent==='Print now').onclick();
   assert.equal(printed[0].appendices.length,1);
   assert.equal(printed[0].appendices[0].rows.length,2);
@@ -267,7 +265,6 @@ test('the printer list from the helper is offered, the last used printer is pres
   openSmartPrint({title:'Report',columns:[{label:'Door',value:r=>r.door}],rows:[{door:'1'}],onPrint:args=>printed.push(args),onListPrinters});
   let nodes=all(body.children.at(-1));
   nodes.find(n=>n.textContent==='Print current selection').onclick();
-  nodes=all(body.children.at(-1));nodes.find(n=>String(n.textContent).startsWith('A4 · ')).onclick();
   await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
   nodes=all(body.children.at(-1));
   const printerBox=nodes.find(n=>n.tag==='fieldset'&&n.children[0]?.textContent==='Printer');
@@ -306,11 +303,10 @@ test('a dashboard snapshot skips the column picker but keeps paper, printer, pag
   const print=nodes.find(n=>n.textContent==='Print as shown on screen');
   assert.equal(print.disabled,false,'printing is available without choosing columns');
   print.onclick();
-  nodes=all(body.children.at(-1));nodes.find(n=>String(n.textContent).startsWith('A3 · ')).onclick();
   nodes=all(body.children.at(-1));nodes.find(n=>n.textContent==='Print now').onclick();
   assert.equal(printed.length,1);
   assert.equal(printed[0].title,'Fleet control dashboard KPI report');
-  assert.equal(printed[0].pageSize,'A3','the chosen paper reaches the dashboard print');
+  assert.equal(printed[0].pageSize,'A3','A3 reaches the dashboard print');
   assert.equal(printed[0].printOptions.copies,1);
   assert.equal(printed[0].printOptions.duplex,'one-sided');
  } finally {globalThis.document=oldDocument;globalThis.window=oldWindow;}

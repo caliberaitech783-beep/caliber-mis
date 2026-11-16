@@ -1,3 +1,4 @@
+import {downloadBlob} from "./download-history.mjs";
 // Capture the rendered dashboard, not a separate table of KPI values.
 // A print keeps the screen's Day or Night palette and the clock row the dashboard sits under;
 // a PDF download stays on the Day palette.
@@ -183,7 +184,8 @@ export async function downloadDashboardPdf(dashboard, filename) {
     // Explicit browser JPEG encoding avoids PNG predictor/alpha corruption in PDF viewers.
     pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", 0, 0, pageWidth, pageHeight);
   }
-  pdf.save(filename);
+  // Download History keeps a copy (src/download-history.mjs).
+  downloadBlob(pdf.output("blob"), filename);
 }
 
 export async function printDashboard(dashboard, title, section = null) {

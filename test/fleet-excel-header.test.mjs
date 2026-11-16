@@ -12,7 +12,9 @@ test('fleet Excel exports site, shift and actual master sync time above detail a
   let blob,filename;const URL={createObjectURL(value){blob=value;return 'blob:test'},revokeObjectURL(){}};
   const document={createElement(){return {set download(value){filename=value},click(){}}}};
   const data={...rows[0],masterSync:{lastSuccess:'2026-11-04T12:32:34Z'}};
-  new Function('visibleColumns','activeHeadings','view','rows','summaryRows','data','headings','summaryHeadings','values','summaryValues','buildXlsxSheetsWorkbook','URL','document','setTimeout',source.match(/const exportExcel=\(\)=>\{(.*)\};/)[1])(visibleColumns,activeHeadings,view,rows,rows,data,headings,summaryHeadings,values,summaryValues,buildXlsxSheetsWorkbook,URL,document,()=>{});
+  // The file goes out through downloadBlob (src/download-history.mjs), which also keeps it in Download History.
+  const downloadBlob=(value,name)=>{blob=value;filename=name;};
+  new Function('visibleColumns','activeHeadings','view','rows','summaryRows','data','headings','summaryHeadings','values','summaryValues','buildXlsxSheetsWorkbook','URL','document','setTimeout','downloadBlob',source.match(/const exportExcel=\(\)=>\{(.*)\};/)[1])(visibleColumns,activeHeadings,view,rows,rows,data,headings,summaryHeadings,values,summaryValues,buildXlsxSheetsWorkbook,URL,document,()=>{},downloadBlob);
   assert.match(filename,/\.xlsx$/);const xml=new TextDecoder().decode(await blob.arrayBuffer());
   assert.ok(xml.includes('V1'));if(subset){assert.ok(!xml.includes('Driver unavailable'));assert.ok(!xml.includes('>Model<'));assert.ok(xml.includes('>Type<'));}
   assert.ok(xml.includes('SITE NAME -- SASTI OC'));assert.ok(xml.includes('SHIFT - (S1)'));

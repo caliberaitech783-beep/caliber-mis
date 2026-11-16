@@ -197,6 +197,9 @@ export function machineShifts(records,{assets=[],fleet=[],batches=[],filters={},
     state,status,statusLabel,reason:text(last?.statusReason||last?.remark),elbBooks:unique(m.cards.map(c=>text(c.book))).join(', '),
     breakdowns:(bdPeriods.length?bdPeriods.map(b=>[b.reference,b.reason,[b.started,b.ended||'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))
      :source.map(b=>[text(b.reference),text(b.reason),[stamp(b.start),b.end?stamp(b.end):'ongoing'].filter(Boolean).join(' to ')].filter(Boolean).join(' · '))).join('; '),
+    // Each Pulse breakdown of the machine that touches the shift, whole (owner, 16 Nov 2026: pressing Breakdown in Pulse
+    // shows its details), with the minutes and clock times it took inside this shift.
+    bdRequests:breakdownRequests(source,bdPeriods,now),
     trips:m.trips,tippers:[...m.tippers],hours,shiftHours,percent:percentWorked(hours,shiftHours),bdHours,bdMinutes,
     loadings:judged.length,gaps:Math.max(judged.length-1,0),firstLoading:judged[0]?.clock||'',lastLoading:judged.at(-1)?.clock||'',ok,...count,stops:stopList.length,idleMinutes:round1(idleMinutes),longest,notJudged:m.untimed+outside,delayed:kept.size,stopList,
     lines,bdPeriods,axis:{start:axisStart,known:start!==null,minutes:shiftMinutes}});
@@ -283,6 +286,20 @@ export function gapParts(from,to,down=[]){
  }
  if(to>at)run(at,to);
  return parts.map(p=>({from:round1(p.from),to:round1(p.to),tone:p.tone}));
+}
+// The Pulse breakdowns of one machine shift, one line per breakdown (the same reference and start once): when it began
+// and ended in Pulse, its whole length, and the part of it inside this shift (`periods`, minutes from the shift start).
+export function breakdownRequests(source=[],periods=[],now=Date.now()){
+ const seen=new Set(),out=[];
+ for(const b of source){
+  const reference=text(b.reference),key=reference+'|'+text(b.start);if(seen.has(key))continue;seen.add(key);
+  const a=Date.parse(b.start),z=b.end?Date.parse(b.end):now,inside=periods.filter(p=>p.reference===reference);
+  out.push({reference,reason:text(b.reason)||'Not written in Pulse',status:text(b.status)||(b.ongoing?'Ongoing':'Restored'),ongoing:Boolean(b.ongoing),
+   start:text(b.start),end:b.end?text(b.end):'',started:stamp(b.start),ended:b.end?stamp(b.end):'',
+   totalMinutes:Number.isFinite(a)&&Number.isFinite(z)&&z>=a?round1((z-a)/60000):null,
+   shiftMinutes:round1(inside.reduce((s,p)=>s+p.minutes,0)),inShift:inside.map(p=>p.fromClock+' to '+p.toClock).join(', ')});
+ }
+ return out.sort((x,y)=>String(x.start).localeCompare(String(y.start)));
 }
 // The wording of a breakdown, for its pop-up and the line under the strip when it is pressed.
 export function breakdownText(b){

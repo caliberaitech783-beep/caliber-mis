@@ -56,8 +56,10 @@ export function delayedColumns(mode,withDriver,exception=false,manySites=false){
   :[...start,column('previousUnloadingTime','Unloaded at (previous trip)'),column('loadingTime','Loaded again at'),column('machine','Loading machine'),...counted('Gap minutes'),band,...before];
 }
 // The card shows the minutes as written; the colour follows the band counted, and the Remark says what an exception time took out.
-export const cardColumns=[column('sr','Tr.Sr.No'),column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time'),
- column('taken','Loading → Unloading (min)',e=>written(e,'load-unload'),e=>pill(e['load-unload'].band,written(e,'load-unload'))),
+// Owner, 16 Nov 2026: the site and date on every line of the card, and the loading-to-unloading minutes named Gap time,
+// as on the Loading Equipment-wise trip card.
+export const cardColumns=[column('site','Site'),column('date','Date',e=>day(e.date)),column('shift','Shift'),column('door','Door no.'),column('sr','Tr.Sr.No'),column('machine','Loading machine'),column('trips','Trips'),column('loadingTime','Loading time'),column('unloadingTime','Unloading time'),
+ column('taken','Gap time · loading to unloading (min)',e=>written(e,'load-unload'),e=>pill(e['load-unload'].band,written(e,'load-unload'))),
  column('gap','Unloading → this loading (min)',e=>e.first?'—':written(e,'unload-load'),e=>e.first?'—':pill(e['unload-load'].band,written(e,'unload-load'))),
  column('remark','Remark',e=>entryRemark(e)||'—')];
 const itemLabel=(group,row)=>group==='driver'?`${row.driver} · ${row.caliberId}`:group==='door'?'Door '+row.door:'Loading machine '+row.machine;
