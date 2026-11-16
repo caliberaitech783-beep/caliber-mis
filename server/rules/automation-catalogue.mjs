@@ -127,6 +127,14 @@ export const AUTOMATIONS=[
   controlledIn:'App setting MIS_SCAN_BATCH_REPORT (on unless off)',
   telegram:context=>state(context.scanBatchReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['scan-batch-report']},
   why:context=>[need(context.scanBatchReportRunning!==false,'app setting MIS_SCAN_BATCH_REPORT is off'),misBotWhy(context)]},
+ {code:'A25',key:'health-report',name:'Speed report (slow or not)',category:'Reports',
+  rule:'Is Pulse-II slow or not since the last report; batches closed; the batch that took longest from start to close, with the usernames that started and locked it',
+  trigger:'10:00, 16:00 and 21:00 IST, each covering the time since the last report',
+  people:'Owner (logins with the owner\'s registered mobile)',
+  format:'Verdict (green / amber / red) with reasons, batches closed, longest batch, card reading, card saving, server, engines',
+  controlledIn:'App setting MIS_HEALTH_REPORT (on unless off); live server only',
+  telegram:context=>state(context.healthReportRunning!==false&&misBot(context)),whatsapp:()=>null,popup:()=>null,count:{outbox:['health-report']},
+  why:context=>[need(context.healthReportRunning!==false,'app setting MIS_HEALTH_REPORT is off, or this is not the live server'),misBotWhy(context)]},
 ];
 export const AUTOMATION_KEYS=new Set(AUTOMATIONS.map(item=>item.key));
 

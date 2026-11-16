@@ -74,7 +74,7 @@ export function createAutomationCentre({pool,context,ensureSchema=async()=>{},lo
  return {overview,rollUp,counts,start,stop,ensure};
 }
 
-export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null,scanBatchReporter=null}){
+export function registerAutomationCentre(app,{pool,requireSession,requireAdministrator,centre,mismatchWorker=null,scanBatchReporter=null,healthReporter=null}){
  const guard=[requireSession,requireAdministrator];
  const people=async settings=>mismatchWorker?.recipientCheck?mismatchWorker.recipientCheck(settings).catch(()=>null):null;
  app.get('/api/automation-centre',...guard,async(req,res,next)=>{try{req.audit=false;const settings=await readMismatchSettings(pool);res.set('Cache-Control','private, no-store').json({...await centre.overview(),mismatchSettings:settings,recipientCheck:await people(settings)});}catch(e){next(e);}});
@@ -94,6 +94,15 @@ export function registerAutomationCentre(app,{pool,requireSession,requireAdminis
   if(!result.batch)return res.status(404).json({error:'No closed batch with scanned cards was found to make a sample from.'});
   if(!result.people)return res.status(409).json({error:'Nobody can receive it: no MIS login on the owner\'s mobile number has connected Telegram.'});
   if(!result.sent)return res.status(409).json({error:'The sample was not sent. A24 may be switched OFF, or the owner\'s Telegram is not connected.'});
+  res.set('Cache-Control','private, no-store').json(result);
+ }catch(e){next(e);}});
+ // A25 "Send sample to Telegram": the speed report of the time since the last report time, made now.
+ app.post('/api/automation-centre/health-report/sample',...guard,async(req,res,next)=>{try{
+  if(!healthReporter)return res.status(503).json({error:'The speed report is not running on this server.'});
+  const result=await healthReporter.sendSample();
+  req.audit={eventType:'Administration',module:'Automation Centre',action:'Send sample A25 Speed report',targetReference:'health-report',details:result};
+  if(!result.people)return res.status(409).json({error:'Nobody can receive it: no MIS login on the owner\'s mobile number has connected Telegram.'});
+  if(!result.sent)return res.status(409).json({error:'The sample was not sent. A25 may be switched OFF, or the owner\'s Telegram is not connected.'});
   res.set('Cache-Control','private, no-store').json(result);
  }catch(e){next(e);}});
  // The ON/OFF switch of one automation. A01 keeps its switch in its own settings.

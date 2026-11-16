@@ -33,6 +33,11 @@ export default function AutomationCentre({session,onOpenPage}){
   if(!window.confirm(`Send a sample of ${row.code} ${row.name} to Telegram?\n\nThe report of the most recently closed batch goes to the same people as the real report. The real report of each batch is not changed.`))return;
   setBusy(true);setError('');setNotice('');
   try{const result=await request('/scan-batch-report/sample','POST',{});setNotice(`Sample sent on Telegram (${result.sent} chat${result.sent===1?'':'s'}): ${result.batch}.`)}catch(e){setError(e.message)}finally{setBusy(false)}};
+ // A25: send the speed report of the time since the last report time, made now.
+ const sendHealthSample=async row=>{
+  if(!window.confirm(`Send a sample of ${row.code} ${row.name} to Telegram?\n\nThe report of the time since the last report time goes to the same people as the real report. The 10:00, 16:00 and 21:00 reports are not changed.`))return;
+  setBusy(true);setError('');setNotice('');
+  try{const result=await request('/health-report/sample','POST',{});setNotice(`Sample sent on Telegram (${result.sent} chat${result.sent===1?'':'s'}): ${result.verdict}.`)}catch(e){setError(e.message)}finally{setBusy(false)}};
  const categories=useMemo(()=>['All',...new Set((data?.rows||[]).map(row=>row.category))],[data]);
  const rows=(data?.rows||[]).filter(row=>category==='All'||row.category===category);
  const totals=data?.totals;
@@ -57,7 +62,7 @@ export default function AutomationCentre({session,onOpenPage}){
     <thead><tr><th>#</th><th>Automation</th><th>Category</th><th>Switch</th><th>Telegram</th><th>WhatsApp</th><th>Pop-up</th><th>Email</th><th>Sent to date</th><th>People</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.code}>
      <td>{row.number}</td>
-     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}</td>
+     <td><span className="automation-code">{row.code}</span> <b>{row.name}</b><small>{row.rule}</small>{row.editable&&<button type="button" className="automation-link" data-print-hide="" onClick={()=>setTab('Equipment mismatch settings')}>Change settings</button>}{row.key==='scan-batch-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendSample(row)}>Send sample to Telegram</button>}{row.key==='health-report'&&<button type="button" className="automation-link" data-print-hide="" disabled={busy} onClick={()=>void sendHealthSample(row)}>Send sample to Telegram</button>}</td>
      <td>{row.category}</td><td><button type="button" role="switch" aria-checked={row.switchedOn} aria-label={'Switch '+row.code+' '+(row.switchedOn?'off':'on')} disabled={busy} className={'automation-switch '+(row.switchedOn?'is-on':'is-off')} onClick={()=>void toggle(row)}><span aria-hidden="true"></span>{row.switchedOn?'ON':'OFF'}</button>
       {row.notSendingReason&&<small className="automation-why">{row.notSendingReason}</small>}
       {!row.switchedOn&&row.switchChangedBy&&<small>Switched off by {row.switchChangedBy}{row.switchChangedAt?' on '+stamp(row.switchChangedAt):''}</small>}</td>
