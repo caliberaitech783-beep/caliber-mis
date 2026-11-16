@@ -84,3 +84,27 @@ test('MIS client forwards separate credentials only to the fixed HTTPS issuer an
 });
 
 test('Deletion is granted explicitly or through both book workflows and cannot bypass site controls',()=>{const session=pages=>({permissions:{separateMisCredentials:true,misDesktopAccess:pages}});assert.equal(misPageAllowed(session(['Vehicle Log Book']),'Deletion','desktop'),false);assert.equal(misPageAllowed(session(['Vehicle Log Book','Equipment Log Book']),'Deletion','desktop'),true);assert.equal(misPageAllowed(session(['Deletion']),'Deletion','desktop'),true);assert.equal(misRequestAllowed(session(['Deletion']),{path:'/api/log-book-deletions/entries',method:'GET'}),true);assert.equal(misRequestAllowed(session(['Scan Backup']),{path:'/api/log-book-deletions/entries',method:'GET'}),false);});
+
+// 16 Nov 2026: the owner's MIS login opened "Create Telegram channel" and got
+// "This MIS menu is not assigned to your login".
+test('an MIS administrator can use every Telegram channel route; other MIS logins cannot',()=>{
+ const admin={role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees']}};
+ const user={permissions:{separateMisCredentials:true,misDesktopAccess:['Reports']}};
+ const calls=[['GET','/api/automation-centre/channel'],['DELETE','/api/automation-centre/channel'],['POST','/api/automation-centre/channel/code'],['POST','/api/automation-centre/channel/test']];
+ for(const [method,path] of calls){
+  assert.equal(misRequestAllowed(admin,{method,path}),true,method+' '+path);
+  assert.equal(misRequestAllowed(user,{method,path}),false,method+' '+path);
+ }
+ assert.equal(misRequestAllowed(admin,{method:'PUT',path:'/api/automation-centre/channel'}),false);
+ assert.equal(misRequestAllowed(admin,{method:'GET',path:'/api/automation-centre/channel/code'}),false);
+});
+
+// Every route the Automation Centre page calls must be on the MIS list, or an MIS login is refused.
+test('every Automation Centre route is reachable by an MIS administrator',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../server/routes/automation-centre.mjs',import.meta.url),'utf8');
+ const admin={role:'super',permissions:{separateMisCredentials:true,misDesktopAccess:['Users & employees']}};
+ const routes=[...source.matchAll(/app\.(get|post|put|delete)\('([^']+)'/g)].map(([,method,path])=>[method.toUpperCase(),path]);
+ assert.ok(routes.length>=10);
+ for(const [method,path] of routes)assert.equal(misRequestAllowed(admin,{method,path}),true,method+' '+path);
+});

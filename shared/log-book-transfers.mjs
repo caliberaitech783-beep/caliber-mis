@@ -9,15 +9,17 @@ const clockTime=value=>/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value||''
 
 export function assignmentWindows(asset,transfers){
  const moves=transfers.filter(transfer=>transferForAsset(transfer,asset)&&(!transfer.status||transfer.status==="Completed")).flatMap(transfer=>{
-  const {source,destination,transferDate,transferTime,sourceApprovedAt,transferEffectiveAt}=transfer;
+  const {source,destination,transferDate,transferTime,sourceApprovedAt,destinationAcceptedAt,transferEffectiveAt}=transfer;
   const date=indiaDateTimeEpoch(transferDate);
   if(!canonicalSiteName(source)||!canonicalSiteName(destination)||canonicalSiteName(source)===canonicalSiteName(destination)||!Number.isFinite(date))return [];
-  const approval=indiaDateTimeEpoch(sourceApprovedAt);
-  // Date-only imports have an unknown cutoff. Keep the rest of the history usable.
+  // Owner, 16 Nov 2026: the source site enters up to the transfer time, the destination from it.
+  // With no transfer time, the moment the transfer was completed (destination acceptance) on the
+  // transfer date is the cutoff, then the source approval. Date-only imports stay unknown.
+  const sameDay=value=>{const at=indiaDateTimeEpoch(value);return at>=date&&at<date+day?Math.floor(at/1000)*1000:null;};
   const effective=indiaDateTimeEpoch(transferEffectiveAt);
   const exact=Number.isFinite(effective)?Math.floor(effective/1000)*1000
    :clockTime(transferTime)?indiaDateTimeEpoch(transferDate+'T'+transferTime)
-   :approval>=date&&approval<date+day?Math.floor(approval/1000)*1000:null;
+   :sameDay(destinationAcceptedAt)??sameDay(sourceApprovedAt);
   return [{source,destination,start:exact??date,end:exact??date+day}];
  }).sort((a,b)=>a.start-b.start||a.end-b.end);
  if(!moves.some(move=>move.start===move.end))return [];

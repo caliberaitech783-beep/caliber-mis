@@ -177,7 +177,8 @@ export async function resolveLogBookData(client,kind,input,{enforceEmployeeSite=
      Object.assign(data,{door:text(asset.door||asset.doorNo||equipmentDoorNumber(asset)),assetName:text(asset.equipmentName||asset.equipment||asset.name||asset.group),registration:text(asset.registration||asset.reg),employeeName:employee?text(employee.employee||employee.name||employee.login):'',caliberId:employee?employeeCode(employee):'',shiftName:text(shift?.shiftName||shift?.name||shift?.shift||(manualLmvShift==='day'?'Day':manualLmvShift==='night'?'Night':'')),masterShiftStart:text(shift?.startTime||shift?.start)});
  if(kind==='vehicle'){data.bookShiftCode=bookShiftCode(data.cardShift)||(optionalShift?bookShiftCode(input.bookShiftCode):'')||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName);if(!data.bookShiftCode)fail('Select a marked Trip Card shift (I, II, III, Day or Night) for the book number.');}
  else data.bookShiftCode=(kind==='lmv'&&manualEntry?'':bookShiftCode(input.bookShiftCode))||bookShiftCode(data.cardShift)||bookShiftCode(shift?.shiftCode)||bookShiftCode(data.shiftName)||'';
- if(kind!=='lmv'){
+ // LMV follows the same transfer-time split as VLB and ELB (owner, 16 Nov 2026); an LMV entry with no shift start keeps the date check above.
+ if(kind!=='lmv'||data.masterShiftStart){
   const windows=assignmentWindows(historicalRecord||{...asset,id:data.assetId},historicalRecord?.transferHistory||[]);
   const shiftStart=data.masterShiftStart||CARD_SHIFTS[normalizeCardShift(data.bookShiftCode)]?.start;
   const portion=logBookAssignment(windows,data.location,data.bookDate,shiftStart,data.shiftHours);
@@ -353,7 +354,7 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      const allowed=site=>siteAllowed(req.logBookScope,site);
      const historyAssets=attachTransferHistory(rows.filter(r=>r.master_name==='Equipment master').map(r=>({...r.record_data,id:String(r.id)})),rows.filter(r=>r.master_name==='Vehicle transfers').map(r=>r.record_data));
      const historyById=new Map(historyAssets.map(asset=>[asset.id,asset.transferHistory]));
-     for(const asset of assets)asset.transferHistory=(historyById.get(asset.id)||[]).map(t=>({equipmentMasterId:asset.id,source:t.source,destination:t.destination,transferDate:t.transferDate,transferTime:t.transferTime,transferEffectiveAt:t.transferEffectiveAt,sourceApprovedAt:t.sourceApprovedAt,status:t.status}));
+     for(const asset of assets)asset.transferHistory=(historyById.get(asset.id)||[]).map(t=>({equipmentMasterId:asset.id,source:t.source,destination:t.destination,transferDate:t.transferDate,transferTime:t.transferTime,transferEffectiveAt:t.transferEffectiveAt,sourceApprovedAt:t.sourceApprovedAt,destinationAcceptedAt:t.destinationAcceptedAt,status:t.status}));
      const sites=displaySiteSelection(regionSites).filter(allowed).sort();
      const siteNames=new Map(sites.map(site=>[canonicalSiteName(site),site]));
      const siteLabel=site=>siteNames.get(canonicalSiteName(site))||displaySiteName(site);
