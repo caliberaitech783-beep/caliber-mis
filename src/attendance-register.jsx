@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {StepBackButton} from './step-back.jsx';
-import {buildAttendanceRegister,batchPeople} from './attendance-register-model.mjs';
+import {buildAttendanceRegister,batchPeople,batchCategories} from './attendance-register-model.mjs';
 import './attendance-register.css';
 
 // Attendance Batch-wise and Attendance Month-wise (owner, 15 Nov 2026): the uKnowva-style attendance report built from
@@ -27,6 +27,8 @@ function Legend(){
 
 export default function AttendanceRegister({report,filters,mode='attendance-batch',ReportSection,sites=[],query=''}){
  const [siteKey,setSiteKey]=useState(''),[pick,setPick]=useState({date:'',shift:''}),[personKey,setPersonKey]=useState('');
+ // Batch-wise Step 3: the equipment category opened ('*' for all of them); kept after the other state.
+ const [equipment,setEquipment]=useState('');
  const today=todayIst();
  const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today}),[report,sites,filters.from,filters.to,today]);
  const month=mode==='attendance-month';
@@ -37,9 +39,11 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  const site=siteRows.find(s=>s.siteKey===open);
  const people=open?model.register(open):[];
  const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
- const openSite=key=>{setSiteKey(siteKey===key&&siteRows.length>1?'':key);setPick({date:'',shift:''});setPersonKey('');};
- const level=!open?1:month?(people.some(p=>p.employeeKey===personKey)?3:2):(pick.date&&pick.shift?3:2);
- const back=level===3?()=>{setPick({date:'',shift:''});setPersonKey('');}:level===2&&siteRows.length>1?()=>openSite(open):null;
+ const openSite=key=>{setSiteKey(siteKey===key&&siteRows.length>1?'':key);setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
+ const closeBatch=()=>{setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
+ const level=!open?1:month?(people.some(p=>p.employeeKey===personKey)?3:2):!(pick.date&&pick.shift)?2:equipment?4:3;
+ const back=level===4?()=>setEquipment(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null;
+ const equipmentLabel=equipment==='*'?'All categories':equipment;
 
  // Step 1: one line per site, then All sites.
  const shiftCols=model.shiftCodes.map(code=>[code,shiftName(code)]);
@@ -49,11 +53,12 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   rows={siteRows.length>1?[...siteRows,{...model.allSites,id:'all-sites'}]:siteRows} columns={siteColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
   isTotalRow={r=>r.id==='all-sites'} onRowClick={r=>r.siteKey&&openSite(r.siteKey)} rowClassName={r=>(r.id==='all-sites'?'mp-att-total':'')+(r.siteKey&&r.siteKey===open?' report-row-picked':'')} emptyMessage="No site is available for these selections."/>;
 
- const trail=open&&<p className="mp-trail" aria-label="Where you are">{back&&<StepBackButton onBack={back}/>}{siteRows.length>1&&<><button type="button" onClick={()=>openSite(open)}>All sites</button><span>›</span></>}<button type="button" onClick={()=>{setPick({date:'',shift:''});setPersonKey('');}}>{site?.site}</button>
-  {level===3&&<><span>›</span><strong>{month?people.find(p=>p.employeeKey===personKey)?.employeeName:shortDate(pick.date)+' · '+shiftName(pick.shift)}</strong></>}</p>;
+ const trail=open&&<p className="mp-trail" aria-label="Where you are">{back&&<StepBackButton onBack={back}/>}{siteRows.length>1&&<><button type="button" onClick={()=>openSite(open)}>All sites</button><span>›</span></>}<button type="button" onClick={closeBatch}>{site?.site}</button>
+  {level===3&&<><span>›</span><strong>{month?people.find(p=>p.employeeKey===personKey)?.employeeName:shortDate(pick.date)+' · '+shiftName(pick.shift)}</strong></>}
+  {level===4&&<><span>›</span><button type="button" onClick={()=>setEquipment('')}>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</button><span>›</span><strong>{equipmentLabel}</strong></>}</p>;
 
  return <div className="ar-register">
-  <p className="mp-notice">{month?'Month-wise attendance: one line per person, one column per day.':'Batch-wise attendance: site, then date by shift (one box per batch), then the people of that batch.'} Read from saved VLB, ELB and LMV cards and zero-trip entries. Weekly off, holidays and leave are not in the system yet, so such a day shows as A once the day is locked.</p>
+  <p className="mp-notice">{month?'Month-wise attendance: one line per person, one column per day.':'Batch-wise attendance: site, then date by shift (one box per batch), then that batch by equipment category, then the people of a category.'} Read from saved VLB, ELB and LMV cards and zero-trip entries. Weekly off, holidays and leave are not in the system yet, so such a day shows as A once the day is locked.</p>
   <Legend/>
   {trail}
   {step1}
@@ -66,7 +71,7 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const day=new Map(model.days.map(date=>{const list=model.dayPeople(open,date),n=kind=>list.filter(x=>x.cell.kind===kind).length;return [date,{present:n('present'),absent:n('absent'),pending:n('pending'),away:n('away')}];}));
   const dayTotal=key=>[...day.values()].reduce((s,d)=>s+d[key],0);
   const dayColumns=[['present','People present'],['absent','Absent (A)'],['pending','Pending (?)'],['away','At another site (TR)']].map(([key,label])=>({key,label,value:(t,line)=>line&&day.has(line.key)?day.get(line.key)[key]:dayTotal(key)}));
-  const choose=r=>{setPick(pick.date===r.date&&pick.shift===r.shift?{date:'',shift:''}:{date:r.date,shift:r.shift});};
+  const choose=r=>{setPick(pick.date===r.date&&pick.shift===r.shift?{date:'',shift:''}:{date:r.date,shift:r.shift});setEquipment('');};
   const cell=(list,where)=>{const r=list[0],on=pick.date===r.date&&pick.shift===r.shift;
    return <span className="dsg-cell">
     <button type="button" className={'dsg-count ar-batch ar-batch-'+r.status} aria-pressed={on} aria-label={many(r.present,'person')+' present · '+where+' · '+STATUS[r.status]} onClick={()=>choose(r)}>{r.present}</button>
@@ -75,20 +80,32 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
    </span>;};
   const flat=dateShiftExport(grid,{shiftLabel:shiftName,cellText:list=>list[0]?list[0].present+' present · '+STATUS[list[0].status]:'',dayColumns});
   const step2=<ReportSection key={'ar-dates-'+query+'-'+open} title={'Step 2 · '+site.site+' · date by shift · '+dateLabel} category="attendance-dates"
-   description="In each box: the people present in that batch, the colours among them, and the batch state. Press a box to list the people of that batch."
+   description="In each box: the people present in that batch, the colours among them, and the batch state. Press a box to see that batch by equipment category."
    rows={flat.rows} columns={flat.columns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    <DateShiftGrid grid={grid} renderCell={cell} dayColumns={dayColumns} shiftLabel={shiftName} isPicked={r=>r.date===pick.date&&r.shift===pick.shift} ariaLabel="People present by date and shift" emptyMessage="No shift in these dates."/>
   </ReportSection>;
-  if(level<3)return <>{step2}<p className="mp-notice">Press a box in the date table to see who was present in that batch, and who was absent or pending that day.</p></>;
-  const listed=batchPeople(model,{siteKey:open,date:pick.date,shift:pick.shift});
+  if(level<3)return <>{step2}<p className="mp-notice">Press a box in the date table to see that batch by equipment category, then a category for the people present, and who was absent or pending that day.</p></>;
+  const present=batchPeople(model,{siteKey:open,date:pick.date,shift:pick.shift});
   const batch=lines.find(r=>r.date===pick.date&&r.shift===pick.shift);
+  const batchWhere=site.site+' · '+shortDate(pick.date)+' · '+shiftName(pick.shift);
+  // Step 3: the batch by equipment category; a line opens its people as Step 4.
+  const categories=batchCategories(present);
+  const flagBox=(id,name)=>r=>r[id]>0?<span className={'dsg-box mp-flag mp-flag-'+id} title={name}>{r[id]}</span>:r[id];
+  const categoryColumns=[...cols([['equipment','Equipment category'],['present','People present'],['double','Double duty (P1+3)']]),
+   ...COLOURS.map(([id,name])=>({key:id,label:name,value:r=>r[id],render:flagBox(id,name)}))];
+  const step3=<ReportSection key={'ar-categories-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+batchWhere+' · by equipment category'} category="attendance-categories"
+   description={many(present.length,'person')+' present · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · One line per equipment category (the machine’s group in the Equipment master); a person on machines of two categories is in both. Press a category for its people.'}
+   rows={present.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
+   isTotalRow={r=>r.id==='*'} onRowClick={r=>setEquipment(equipment===r.id?'':r.id)} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage="Nobody has a saved duty in this batch."/>;
+  const listed=level===4?present.filter(p=>equipment==='*'||p.categories.includes(equipment)):[];
   const missing=model.dayPeople(open,pick.date).filter(x=>x.cell.kind!=='present').map(({person,cell})=>{const last=person.lines.filter(l=>l.date<pick.date).map(l=>l.date).sort().at(-1);
    return {id:person.id,caliberCode:person.caliberCode,employeeName:person.employeeName,category:person.category||'—',code:cell.code,meaning:cell.kind==='absent'?'Absent':cell.kind==='pending'?'Pending':'At '+cell.where,last:last?shortDate(last):'—'};});
   const peopleColumns=cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['code','Day code'],['flagLabel','Colour / reason'],['books','Saved cards']]);
-  return <>{step2}
-   <ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift} title={'Step 3 · '+site.site+' · '+shortDate(pick.date)+' · '+shiftName(pick.shift)+' · people'} category="attendance-people"
-    description={many(listed.length,'person')+' present · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Day code is the whole day: P1+3 means Shift 1 and Shift 3.'}
-    rows={listed} columns={peopleColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="Nobody has a saved duty in this batch."/>
+  return <>{step2}{step3}
+   {level===4?<ReportSection key={'ar-people-'+query+'-'+open+'-'+pick.date+'-'+pick.shift+'-'+equipment} title={'Step 4 · '+batchWhere+' · '+equipmentLabel+' · people'} category="attendance-people"
+    description={many(listed.length,'person')+' present · '+equipmentLabel+' · Batch '+(batch?.batch||'not created')+' · '+STATUS[batch?.status||'none']+' · Day code is the whole day: P1+3 means Shift 1 and Shift 3.'}
+    rows={listed} columns={peopleColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="Nobody of this category has a saved duty in this batch."/>
+    :<p className="mp-notice">Press a category above, or All categories, to list its people.</p>}
    <ReportSection key={'ar-missing-'+query+'-'+open+'-'+pick.date} title={site.site+' · '+shortDate(pick.date)+' · not on any card here that day'} category="attendance-not-present"
     description="People of this site with no duty here on this date: A when every batch of the day is locked, ? while one is open or missing, TR when they worked at another site."
     rows={missing} columns={cols([['caliberCode','Caliber ID'],['employeeName','Name'],['category','Category'],['code','Code'],['meaning','Meaning'],['last','Last duty here before this date']])} rowKey={r=>r.id} recordDateFilter={false} emptyMessage="Everyone of this site worked here that day."/>

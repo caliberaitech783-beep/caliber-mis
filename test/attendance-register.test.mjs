@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {buildAttendanceRegister,batchPeople,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
+import {buildAttendanceRegister,batchPeople,batchCategories,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 
 const JAYANT='jayant oc',DUDHI='dudhichua oc';
@@ -62,6 +62,16 @@ test('Step 2 batch-wise: one line per batch with the people present, colours and
  assert.deepEqual(r.dayPeople(JAYANT,days[0]).filter(x=>x.cell.kind!=='present').map(x=>[x.person.caliberCode,x.cell.code]),[['CMLL103','A']]);
 });
 
+test('Step 3 batch-wise (owner, 16 Nov 2026): the batch by equipment category, a person on two categories in both',()=>{
+ const r=buildAttendanceRegister({duties:[...duties,duty('106',days[0],'S1',{equipment:'Excavator',flag:'red',flagLabel:'RED'}),duty('107',days[0],'S1',{id:'107a',equipment:''}),
+  duty('108',days[0],'S1',{id:'108a',equipment:'Excavator'}),duty('108',days[0],'S1',{id:'108b',equipment:'Tipper'})],presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
+ const people=batchPeople(r,{siteKey:JAYANT,date:days[0],shift:'S1'});
+ assert.deepEqual(people.map(p=>[p.caliberCode,p.categories.join('+')]),[['CMLL101','Tipper'],['CMLL104','Tipper'],['CMLL106','Excavator'],['CMLL107','Group missing in master'],['CMLL108','Excavator+Tipper']]);
+ const {rows,total}=batchCategories(people);
+ assert.deepEqual(rows.map(c=>[c.equipment,c.present,c.double,c.red,c.orange,c.zero]),[['Tipper',3,2,0,1,1],['Excavator',2,1,1,0,0],['Group missing in master',1,0,0,0,0]],'most people first; two cards in one shift is a double day (P1+1), as in the register');
+ assert.deepEqual([total.equipment,total.present,total.red,total.orange,total.zero],['All categories',5,1,1,1],'each person once in All categories');
+});
+
 test('small rules: shift digits, strongest colour, at most 32 days',()=>{
  assert.deepEqual(['S1','S2','S3','D'].map(shiftDigit),['1','2','3','D']);
  assert.equal(strongest(['normal','orange','zero']),'orange');assert.equal(strongest(['zero','normal']),'zero');
@@ -91,19 +101,23 @@ async function screen(state){
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
  const ReportSection=({title,rows,columns,children})=>React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},String(c.value(r)))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
- const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople};
+ const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
  const report={otDuties:duties,attendanceEquipment:presence,attendanceShifts:shifts};
  return mode=>{slot=0;return renderToStaticMarkup(React.createElement(Register,{report,filters:{from:days[0],to:'2026-11-13'},mode,ReportSection,sites,query:'q'}));};
 }
 
-test('Batch-wise draws Step 1, the date by shift table and the people of the pressed batch, one below the other',async()=>{
+test('Batch-wise draws Step 1, the date by shift table, the batch by equipment category and its people, one below the other',async()=>{
  const html=(await screen([JAYANT,{date:days[0],shift:'S1'},'']))('attendance-batch');
  const titles=[...html.matchAll(/data-title="([^"]+)"/g)].map(m=>m[1]);
- assert.deepEqual(titles.slice(0,3),['Step 1 · All sites · 10-11-26 to 13-11-26','Step 2 · Jayant OC · date by shift · 10-11-26 to 13-11-26','Step 3 · Jayant OC · 10-11-26 · Shift 1 · people']);
+ assert.deepEqual(titles.slice(0,3),['Step 1 · All sites · 10-11-26 to 13-11-26','Step 2 · Jayant OC · date by shift · 10-11-26 to 13-11-26','Step 3 · Jayant OC · 10-11-26 · Shift 1 · by equipment category']);
+ assert.ok(!titles.some(t=>t.startsWith('Step 4')),'the people wait for a category');
  assert.match(html,/aria-label="2 persons present · 10-11-26 · Shift 1 · Locked"/);
- assert.match(html,/<td>CMLL101<\/td><td>Driver 101<\/td>/,'Caliber ID and Name side by side');
+ assert.match(html,/<td>Tipper<\/td><td>2<\/td>/);
  assert.match(html,/not on any card here that day/);
+ const opened=(await screen([JAYANT,{date:days[0],shift:'S1'},'','Tipper']))('attendance-batch');
+ assert.ok(opened.includes('data-title="Step 4 · Jayant OC · 10-11-26 · Shift 1 · Tipper · people"'));
+ assert.match(opened,/<td>CMLL101<\/td><td>Driver 101<\/td>/,'Caliber ID and Name side by side');
 });
 
 test('Month-wise draws the register grid with Caliber ID beside Name, day codes and totals, and a person’s duties',async()=>{
