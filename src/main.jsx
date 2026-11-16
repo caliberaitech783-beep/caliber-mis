@@ -7422,8 +7422,14 @@ function VehicleRepairHistoryPage({ vehicle, rows = [], onBack, backLabel = "Bac
 }
 // Steps sit one below the other (Step 1, Step 2, Step 3...). A step that opens below the screen is brought into view
 // once, when it first appears: one function for every step, so React calls it only when the step mounts.
+// When one press opens two steps at once (a site opens Step 2 and Step 3 together), only the first of them is brought
+// into view, so the page stops at Step 2 and not at the last step drawn (owner, 16 Nov 2026).
+let stepOpenedInThisPress = false;
 function showOpenedStep(node) {
   if (!node?.scrollIntoView || typeof window === "undefined") return;
+  if (stepOpenedInThisPress) return;
+  stepOpenedInThisPress = true;
+  setTimeout(() => { stepOpenedInThisPress = false; }, 0);
   if (node.getBoundingClientRect().top > window.innerHeight * 0.6) node.scrollIntoView({ block: "start" });
 }
 function ReportSection({ title, description, category = "general", icon: ReportIcon = FileBarChart, rows = [], columns = [], query = "", showSearch = true, emptyMessage = "No records available", rowKey, rowClassName, isTotalRow, isSubtotalRow, headingControl = null, controls = null, exportLabel = "Smart Print", smartPrintAction = false, onResetSearch = null, recordDateFilter = null, reportKey = "", dataReady = true, rowAction, rowEditor, onRowClick = null, onBack = null, backLabel = "Back", children }) {

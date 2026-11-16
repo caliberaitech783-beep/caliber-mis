@@ -28,6 +28,22 @@ test('a step that opens below the screen is brought into view',()=>{
  assert.match(show,/scrollIntoView\(\{ block: "start" \}\)/,'no smooth scrolling: the app has no motion');
 });
 
+// Owner, 16 Nov 2026: pressing a site in Step 1 of Loading Equipment-wise opened Step 2 and Step 3 together and the
+// page landed on Step 3. Only the first step opened by one press is brought into view.
+test('one press that opens two steps stops at the first of them',async()=>{
+ const main=read('src/main.jsx');
+ const code=main.slice(main.indexOf('let stepOpenedInThisPress'),main.indexOf('function ReportSection('));
+ const window={innerHeight:800};
+ const show=new Function('window',code+'\nreturn showOpenedStep;')(window);
+ const scrolled=[];
+ const step=(name,top)=>({getBoundingClientRect:()=>({top}),scrollIntoView:()=>scrolled.push(name)});
+ show(step('Step 2',900));show(step('Step 3',1600));
+ assert.deepEqual(scrolled,['Step 2']);
+ await new Promise(done=>setTimeout(done,5));
+ show(step('Step 4',1200));
+ assert.deepEqual(scrolled,['Step 2','Step 4'],'the next press brings its own step into view');
+});
+
 // Owner's rule, 15 Nov 2026 (second note, with the sample of Step 1, Step 2 date by shift and Step 3 one below the other):
 // every report step shows only its title and Smart Print, no search box, record count, Rows or Actions, and every line.
 test('a report step has no search box, record count, Rows or Actions, and shows every line',()=>{
