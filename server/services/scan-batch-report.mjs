@@ -150,6 +150,26 @@ export function batchClosedMessage(batch,entries){
  ].join('\n');
 }
 
+// The report as one picture (batch-report-card.mjs; owner, 16 Nov 2026): the same
+// figures as the text above, with the sub batches in a table. The text above stays
+// as the fallback when the picture cannot be sent.
+const subBatchParts=name=>{const parts=String(name||'').split('/').map(p=>p.trim()).filter(Boolean);
+ return parts.length>=5?{code:parts.at(-1),operator:parts.at(-2)}:{code:parts.join('/')||'-',operator:''};};
+export function batchReportCardData(batch,entries){
+ const all=summarize(entries.flatMap(e=>e.facts));
+ const kinds=[...new Set(entries.map(kindLabel))].join('+')||'VLB';
+ const subs=entries.map(e=>{const s=summarize(e.facts);return {...subBatchParts(e.name),total:s.cards,auto:s.autoCleared,error:s.cards-s.autoCleared};});
+ return {site:displaySiteName(batch.site)||'',kind:kinds,batchName:batch.name||'',
+  batchLine:`${kinds} · ${batchLineName(batch.name,batch.creator)}`,
+  scanned:all.cards,trips:all.trips,extracted:all.read-all.errors,processed:all.saved,
+  subs:subs.slice(0,MAX_SUB_BATCH_LINES),more:Math.max(0,subs.length-MAX_SUB_BATCH_LINES),
+  all:{total:all.cards,auto:all.autoCleared,error:all.cards-all.autoCleared},
+  time:`${clock(all.firstUpload)} → ${clock(all.lastRead)} · ${duration(all.wallMs)}`,
+  perCard:duration(all.readAverageMs),accuracy:all.saved?`${all.accuracy}%`:'-',model:all.models.join(', ')||'-'};
+}
+// The short text under the picture, so the chat list and notifications name the batch.
+export const batchReportCaption=card=>`<b>${REPORT_TITLE}</b>\n📋 ${escapeHtml(card.batchLine)}`;
+
 // Cards that count: the same filter as the scan history export (no duplicates,
 // no cards removed or deleted by hand).
 const CARD_FILTER=alias=>`${operationalScanSql(alias)} AND ${alias}.duplicate_of IS NULL
@@ -176,8 +196,9 @@ export function createScanBatchReporter({pool,telegram,recipients=()=>ownerTeleg
   const cards=await cardsOf(entries.map(e=>e.id));
   return entries.map(e=>({name:e.name,kind:e.kind,context:e.expected_context||{},facts:cards.filter(c=>c.batch_id===e.id).map(cardFacts)})).filter(e=>e.facts.length);
  }
- const deliverBatch=(key,batch,withFacts)=>deliver(key,batchClosedMessage(batch,withFacts),
-  {site:displaySiteName(batch.site)||'',kind:[...new Set(withFacts.map(kindLabel))].join('+'),batch:batch.name||''});
+ // The report picture with a short caption; the full text goes only if the picture cannot be sent.
+ const deliverBatch=(key,batch,withFacts)=>{const card=batchReportCardData(batch,withFacts);
+  return deliver(key,batchClosedMessage(batch,withFacts),{card,caption:batchReportCaption(card)});};
 
  async function reportClosedBatches(){
   const {rows}=await pool.query(`SELECT ${BATCH_COLUMNS} FROM mis_vlb_batches v,mis_scan_batch_report_start s

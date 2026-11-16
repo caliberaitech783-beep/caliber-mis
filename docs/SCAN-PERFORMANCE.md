@@ -398,21 +398,24 @@ entry once read). `server/services/scan-batch-report.mjs` checks every minute on
 Pulse-II and sends, on the MIS Telegram bot, to every MIS login whose registered
 mobile is the owner's number (the same rule as the urgent release OTP).
 
-Layout (owner, 16 November 2026): every text line fits on one line of a phone
-screen. A site picture first (`server/services/site-report-banner.mjs`: the site
-name, the log book kind and the full batch name on a Pulse-II card), with the
-report as its caption: **SITE-WISE BATCH COMPLETION REPORT** in bold; the log book
-kind, batch name without "CMLL" and the site, and the login of the user who made
-the batch (`VLB · 9TH -NOV-26/S1/B01 · teklalmahto`; the full name is too wide
-for one line and is on the picture); cards scanned and trips; extracted
-and processed; the sub batches (scan entries), one line each with total, ✅
-auto-cleared and ❌ error, then the line for all of them; start and end time with
-the total time; average time per card with accuracy; the model.
+Layout (owner, 16 November 2026): the whole report is **one picture**
+(`server/services/batch-report-card.mjs`), so it looks the same on every phone and
+the sub batches can be a table, which Telegram text cannot hold. A purple header
+with the Pulse-II logo, the site name, the log book kind and the full batch name;
+then **SITE-WISE BATCH COMPLETION REPORT**; Batch (log book kind, batch name
+without "CMLL" and the site, and the login of the user who made the batch, e.g.
+`VLB · 9TH -NOV-26/S1/B01 · teklalmahto`); Cards (scanned, trips); Status
+(extracted, processed); a table of the sub batches (scan entries): SUB BATCH,
+OPERATOR, TOTAL, AUTO (green), ERROR (red), with an "All" line in a purple band;
+then Time (start → end · total), Speed (average per card · accuracy) and Model.
+Under the picture a short caption (the bold title and the Batch line) names the
+batch in the chat list and notifications. If the picture cannot be sent, the same
+report goes as Telegram text instead.
 Auto-cleared = read and not flagged for review; Error = failed to read or flagged
 for review, so the two add up to the total. Trips are the trip rows as saved by
-the operator, else as read. Up to 12 sub batches are listed by name. A caption
-longer than Telegram's 1024 characters goes as the picture, then the text; if the
-picture cannot be sent, the text still goes.
+the operator, else as read. Up to 12 sub batches are listed by name, then "+N
+more". The Automation Centre's A24 line has **Send sample to Telegram**, which
+sends this report for the most recently closed batch.
 
 Accuracy is the share of saved cards whose door or machine, employee, card
 number, shift, closing KMR, closing HMR and trip rows equal Gemini's own reading

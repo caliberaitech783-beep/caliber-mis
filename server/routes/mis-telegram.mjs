@@ -3,6 +3,7 @@ import {requireMisAdministrator} from '../../shared/mis-admin-access.mjs';
 import {telegramFetch} from '../services/telegram-fetch.mjs';
 import {automationOn} from '../services/automation-switches.mjs';
 import {siteReportBanner} from '../services/site-report-banner.mjs';
+import {batchReportCard} from '../services/batch-report-card.mjs';
 const digest=value=>createHash('sha256').update(String(value)).digest('hex');
 const key='mis-telegram';
 const webhook='https://pulse-ll.cmll.in/api/mis-telegram/webhook';
@@ -126,11 +127,18 @@ export function registerMisTelegram(app,{pool,store,requireSession,fetchImpl=tel
  async function deliverRow(config,row){
   const parse_mode=row.parse_mode||undefined;
   if(row.photo){
-   // A caption holds 1024 characters: a longer report goes as the picture, then the text.
-   const fits=String(row.message).length<=1024;
-   try{const photo=typeof row.photo==='string'?JSON.parse(row.photo):row.photo;
-    await sendPhoto(config,fits?{chat_id:row.chat_id,caption:row.message,parse_mode}:{chat_id:row.chat_id},await siteReportBanner(photo));if(fits)return;}
-   catch{/* falls back to text below */}
+   const photo=(()=>{try{return typeof row.photo==='string'?JSON.parse(row.photo):row.photo;}catch{return null;}})();
+   // The whole report as one picture with a short caption (owner, 16 Nov 2026); the full text only if it fails.
+   if(photo?.card){
+    try{await sendPhoto(config,{chat_id:row.chat_id,caption:String(photo.caption||'').slice(0,1024),parse_mode},await batchReportCard(photo.card));return;}
+    catch{/* falls back to text below */}
+   }else if(photo){
+    // Rows queued before the report card: the site picture with the report as its caption.
+    // A caption holds 1024 characters: a longer report goes as the picture, then the text.
+    const fits=String(row.message).length<=1024;
+    try{await sendPhoto(config,fits?{chat_id:row.chat_id,caption:row.message,parse_mode}:{chat_id:row.chat_id},await siteReportBanner(photo));if(fits)return;}
+    catch{/* falls back to text below */}
+   }
   }
   await call(config,'sendMessage',{chat_id:row.chat_id,text:row.message,disable_web_page_preview:true,...(parse_mode?{parse_mode}:{})});
  }

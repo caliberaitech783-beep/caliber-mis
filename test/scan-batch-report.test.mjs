@@ -99,7 +99,13 @@ test('one message per closed batch, sent once, only after the feature started',a
  assert.match(sent[0].message,/🗂 Scanned 3 · Trips 3\n🔍 Extracted 3 · Processed 3\n/);
  assert.match(sent[0].message,/📦 1 sub batch · ✅ auto · ❌ error\n• VLB entry 1 · 3 · ✅3 · ❌0\n/);
  assert.match(sent[0].message,/Accuracy 100%/);
- assert.deepEqual(sent[0].options,{html:true,photo:{site:'DIPKA',kind:'VLB',batch:'CMLL/DIPKA/15 -NOV-26/S1'}},'the site picture with the full batch name goes first');
+ // The report goes as one picture (the full text above is the fallback), with a short caption.
+ const {card:report,caption}=sent[0].options.photo;assert.equal(sent[0].options.html,true);
+ assert.equal(caption,'<b>SITE-WISE BATCH COMPLETION REPORT</b>\n📋 VLB · 15 -NOV-26/S1 · teklalmahto');
+ assert.deepEqual({...report,time:''},{site:'DIPKA',kind:'VLB',batchName:'CMLL/DIPKA/15 -NOV-26/S1',batchLine:'VLB · 15 -NOV-26/S1 · teklalmahto',
+  scanned:3,trips:3,extracted:3,processed:3,subs:[{code:'VLB entry 1',operator:'',total:3,auto:3,error:0}],more:0,
+  all:{total:3,auto:3,error:0},time:'',perCard:'12 s',accuracy:'100%',model:'gemini-3.1-flash-lite'});
+ assert.match(report.time,/^\d\d:\d\d → \d\d:\d\d · /);
  // A sample is the same report of the latest closed batch, sent again under its own key each time.
  assert.deepEqual(await reporter.sendSample(),{batch:'CMLL/DIPKA/15 -NOV-26/S1',people:1,sent:1});
  assert.equal(sent.length,2);assert.match(sent[1].key,/^scan-batch-report:sample:00000000-0000-4000-8000-000000000501:\d+:owner$/);
