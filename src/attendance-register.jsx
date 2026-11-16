@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {DateShiftGrid,dateShiftGrid,dateShiftExport} from './date-shift-grid.jsx';
 import {StepBackButton} from './step-back.jsx';
-import {buildAttendanceRegister,batchPeople,batchCategories} from './attendance-register-model.mjs';
+import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories} from './attendance-register-model.mjs';
 import './attendance-register.css';
 
 // Attendance Batch-wise and Attendance Month-wise (owner, 15 Nov 2026): the uKnowva-style attendance report built from
@@ -27,7 +27,7 @@ function Legend(){
 
 export default function AttendanceRegister({report,filters,mode='attendance-batch',ReportSection,sites=[],query=''}){
  const [siteKey,setSiteKey]=useState(''),[pick,setPick]=useState({date:'',shift:''}),[personKey,setPersonKey]=useState('');
- // Batch-wise Step 3: the equipment category opened ('*' for all of them); kept after the other state.
+ // The equipment category opened ('*' for all of them): batch-wise Step 3, month-wise Step 2; kept after the other state.
  const [equipment,setEquipment]=useState('');
  const today=todayIst();
  const model=useMemo(()=>buildAttendanceRegister({duties:report.otDuties||[],presence:report.attendanceEquipment||[],shifts:report.attendanceShifts||[],sites,from:filters.from,to:filters.to,today}),[report,sites,filters.from,filters.to,today]);
@@ -37,12 +37,15 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
  // Only one site: it opens by itself.
  const open=siteRows.length===1?siteRows[0].siteKey:siteRows.some(s=>s.siteKey===siteKey)?siteKey:'';
  const site=siteRows.find(s=>s.siteKey===open);
- const people=open?model.register(open):[];
+ const register=open?model.register(open):[];
+ // Month-wise: the register of the equipment category opened (a person on two categories is in both).
+ const people=month&&equipment&&equipment!=='*'?register.filter(p=>personCategories(p).includes(equipment)):register;
  const dateLabel=filters.from!==filters.to?shortDate(filters.from)+' to '+shortDate(filters.to):shortDate(filters.from);
  const openSite=key=>{setSiteKey(siteKey===key&&siteRows.length>1?'':key);setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
  const closeBatch=()=>{setPick({date:'',shift:''});setPersonKey('');setEquipment('');};
- const level=!open?1:month?(people.some(p=>p.employeeKey===personKey)?3:2):!(pick.date&&pick.shift)?2:equipment?4:3;
- const back=level===4?()=>setEquipment(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null;
+ const level=!open?1:month?(!equipment?2:people.some(p=>p.employeeKey===personKey)?4:3):!(pick.date&&pick.shift)?2:equipment?4:3;
+ const back=month?(level===4?()=>setPersonKey(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null)
+  :level===4?()=>setEquipment(''):level===3?closeBatch:level===2&&siteRows.length>1?()=>openSite(open):null;
  const equipmentLabel=equipment==='*'?'All categories':equipment;
 
  // Step 1: one line per site, then All sites.
@@ -54,11 +57,16 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   isTotalRow={r=>r.id==='all-sites'} onRowClick={r=>r.siteKey&&openSite(r.siteKey)} rowClassName={r=>(r.id==='all-sites'?'mp-att-total':'')+(r.siteKey&&r.siteKey===open?' report-row-picked':'')} emptyMessage="No site is available for these selections."/>;
 
  const trail=open&&<p className="mp-trail" aria-label="Where you are">{back&&<StepBackButton onBack={back}/>}{siteRows.length>1&&<><button type="button" onClick={()=>openSite(open)}>All sites</button><span>›</span></>}<button type="button" onClick={closeBatch}>{site?.site}</button>
-  {level===3&&<><span>›</span><strong>{month?people.find(p=>p.employeeKey===personKey)?.employeeName:shortDate(pick.date)+' · '+shiftName(pick.shift)}</strong></>}
-  {level===4&&<><span>›</span><button type="button" onClick={()=>setEquipment('')}>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</button><span>›</span><strong>{equipmentLabel}</strong></>}</p>;
+  {month?<>
+   {level===3&&<><span>›</span><strong>{equipmentLabel}</strong></>}
+   {level===4&&<><span>›</span><button type="button" onClick={()=>setPersonKey('')}>{equipmentLabel}</button><span>›</span><strong>{people.find(p=>p.employeeKey===personKey)?.employeeName}</strong></>}
+  </>:<>
+   {level===3&&<><span>›</span><strong>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</strong></>}
+   {level===4&&<><span>›</span><button type="button" onClick={()=>setEquipment('')}>{shortDate(pick.date)+' · '+shiftName(pick.shift)}</button><span>›</span><strong>{equipmentLabel}</strong></>}
+  </>}</p>;
 
  return <div className="ar-register">
-  <p className="mp-notice">{month?'Month-wise attendance: one line per person, one column per day.':'Batch-wise attendance: site, then date by shift (one box per batch), then that batch by equipment category, then the people of a category.'} Read from saved VLB, ELB and LMV cards and zero-trip entries. Weekly off, holidays and leave are not in the system yet, so such a day shows as A once the day is locked.</p>
+  <p className="mp-notice">{month?'Month-wise attendance: site, then its people by equipment category, then one line per person, one column per day.':'Batch-wise attendance: site, then date by shift (one box per batch), then that batch by equipment category, then the people of a category.'} Read from saved VLB, ELB and LMV cards and zero-trip entries. Weekly off, holidays and leave are not in the system yet, so such a day shows as A once the day is locked.</p>
   <Legend/>
   {trail}
   {step1}
@@ -121,7 +129,16 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
   const presentOn=i=>people.filter(p=>p.cells[i].kind==='present').length;
   const tip=c=>c.kind==='present'?c.lines.map(l=>shiftName(l.shift)+' · '+[l.doors,l.equipment,l.logBook].filter(Boolean).join(' · ')+(blank(l.hours)?'':' · '+l.hours+' h')+(blank(l.trips)?'':' · '+l.trips+' trips')).join('\n')+(c.lines[0]?.flagLabel&&c.flag!=='normal'?'\n'+[...new Set(c.lines.map(l=>l.flagLabel))].join('; '):''):c.kind==='away'?'Worked at '+c.where:c.kind==='absent'?'Absent: no saved card, day locked':c.kind==='pending'?'Pending: a batch of this day is open, not created or not ended':'';
   const sum=key=>{const values=people.map(p=>valueOf(p,key)).filter(v=>!blank(v)&&typeof v==='number');return values.length?Math.round(values.reduce((a,b)=>a+b,0)*100)/100:'—';};
-  const step2=<ReportSection key={'ar-month-'+query+'-'+open} title={'Step 2 · '+site.site+' · month-wise register · '+dateLabel} category="attendance-month"
+  // Step 2 (owner, 16 Nov 2026): the site's people by equipment category; a line opens its month-wise register as Step 3.
+  const categories=registerCategories(register);
+  const categoryColumns=cols([['equipment','Equipment category'],['people','People'],['duties','Duties'],['double','Double-duty days'],['present','Days present'],['absent','Absent (A)'],['pending','Pending (?)'],['attendance','Attendance %']]);
+  const shownCategory=equipment==='*'?categories.total:categories.rows.find(c=>c.id===equipment);
+  const step2=<ReportSection key={'ar-month-categories-'+query+'-'+open} title={'Step 2 · '+site.site+' · by equipment category · '+dateLabel} category="attendance-month-categories"
+   description="One line per equipment category (the machine’s group in the Equipment master). People are those with a duty on that category in these dates; a person on two categories is in both. Duties are on that category; days present, absent and pending are the person’s own days. Press a category for its month-wise register."
+   rows={register.length?[...categories.rows,categories.total]:[]} columns={categoryColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}
+   isTotalRow={r=>r.id==='*'} onRowClick={r=>{setEquipment(equipment===r.id?'':r.id);setPersonKey('');}} rowClassName={r=>(r.id==='*'?'mp-att-total':'')+(r.id===equipment?' report-row-picked':'')} emptyMessage="No saved duty at this site in these dates."/>;
+  if(!equipment)return <>{step2}<p className="mp-notice">Press a category above, or All categories, for its month-wise register.</p></>;
+  const step3=<ReportSection key={'ar-month-'+query+'-'+open+'-'+equipment} title={'Step 3 · '+site.site+' · '+equipmentLabel+' · month-wise register · '+dateLabel} category="attendance-month"
    description={many(people.length,'person')+' · Press a name for that person’s duties. Hover a day for the shift, door, hours and trips. Sundays are shaded.'}
    rows={people} columns={exportColumns} rowKey={r=>r.id} showSearch={false} recordDateFilter={false}>
    {people.length?<div className="ar-grid-wrap" role="group" aria-label="Month-wise register">
@@ -136,15 +153,15 @@ export default function AttendanceRegister({report,filters,mode='attendance-batc
       {totals.map(([key])=><td key={key} className={'ar-total'+(key==='absent'&&p.absent?' ar-total-absent':'')+(key==='double'&&p.double?' ar-total-double':'')}>{shown(valueOf(p,key))}</td>)}
      </tr>)}</tbody>
      <tfoot><tr className="ar-foot"><td className="ar-sticky ar-id"></td><th scope="row" className="ar-sticky ar-name">Present that day</th>{days.map((d,i)=><td key={d} className="ar-code">{d>today?'':presentOn(i)}</td>)}
-      {totals.map(([key])=><td key={key} className="ar-total">{key==='attendance'?site.attendance:sum(key)}</td>)}</tr></tfoot>
+      {totals.map(([key])=><td key={key} className="ar-total">{key==='attendance'?(shownCategory?.attendance??site.attendance):sum(key)}</td>)}</tr></tfoot>
     </table>
-   </div>:<p>No saved duty at this site in these dates.</p>}
+   </div>:<p>No saved duty for this category in these dates.</p>}
   </ReportSection>;
   const person=people.find(p=>p.employeeKey===personKey);
-  if(!person)return step2;
+  if(!person)return <>{step2}{step3}</>;
   const dutyColumns=cols([['date','Date',r=>shortDate(r.date)],['shift','Shift',r=>shiftName(r.shift)],['logBook','Log book'],['doors','Door / equipment'],['equipment','Equipment'],['hours','HMR hours'],['trips','Trips'],['km','KM'],['flagLabel','Colour / reason'],['books','Saved cards']]);
-  return <>{step2}
-   <ReportSection key={'ar-person-'+query+'-'+open+'-'+person.employeeKey} title={'Step 3 · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
+  return <>{step2}{step3}
+   <ReportSection key={'ar-person-'+query+'-'+open+'-'+person.employeeKey} title={'Step 4 · '+person.caliberCode+' · '+person.employeeName+' · duties at '+site.site} category="attendance-person"
     description={[person.category,person.duties+(person.duties===1?' duty':' duties'),person.present+' days present',person.absent+' absent',person.attendance+' attendance'].filter(Boolean).join(' · ')}
     rows={[...person.lines].sort((a,b)=>a.date.localeCompare(b.date)||a.shift.localeCompare(b.shift))} columns={dutyColumns} rowKey={r=>r.id} rowClassName={r=>'mp-duty-'+r.flag} showSearch={false} recordDateFilter={false} emptyMessage="No duty in these dates."/>
   </>;

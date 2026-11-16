@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformWithOxc} from 'vite';
-import {buildAttendanceRegister,batchPeople,batchCategories,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
+import {buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories,shiftDigit,strongest,registerDays} from '../src/attendance-register-model.mjs';
 import {operationReports} from '../src/operations-report-model.mjs';
 
 const JAYANT='jayant oc',DUDHI='dudhichua oc';
@@ -101,7 +101,7 @@ async function screen(state){
  const parts=new Function('React',grid+';return {DateShiftGrid,dateShiftGrid,dateShiftExport};')(React);
  const ReportSection=({title,rows,columns,children})=>React.createElement('section',{'data-title':title},React.createElement('h2',null,title),children||React.createElement('table',null,React.createElement('tbody',null,rows.map((r,i)=>React.createElement('tr',{key:i},columns.map(c=>React.createElement('td',{key:c.key},String(c.value(r)))))))));
  let slot=0;const useState=initial=>{const value=state[slot++]??(typeof initial==='function'?initial():initial);return [value,()=>{}];};
- const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories};
+ const env={React,useMemo:fn=>fn(),useState,...parts,StepBackButton:()=>null,buildAttendanceRegister,batchPeople,batchCategories,registerCategories,personCategories};
  const Register=new Function(...Object.keys(env),register+';return AttendanceRegister;')(...Object.values(env));
  const report={otDuties:duties,attendanceEquipment:presence,attendanceShifts:shifts};
  return mode=>{slot=0;return renderToStaticMarkup(React.createElement(Register,{report,filters:{from:days[0],to:'2026-11-13'},mode,ReportSection,sites,query:'q'}));};
@@ -120,12 +120,23 @@ test('Batch-wise draws Step 1, the date by shift table, the batch by equipment c
  assert.match(opened,/<td>CMLL101<\/td><td>Driver 101<\/td>/,'Caliber ID and Name side by side');
 });
 
-test('Month-wise draws the register grid with Caliber ID beside Name, day codes and totals, and a person’s duties',async()=>{
- const html=(await screen([JAYANT,{date:'',shift:''},'CMLL101']))('attendance-month');
- assert.match(html,/Step 2 · Jayant OC · month-wise register/);
+test('Month-wise Step 2 (owner, 16 Nov 2026): the site\'s people by equipment category, a person on two categories in both',()=>{
+ const r=buildAttendanceRegister({duties:[...duties,duty('101',days[1],'S2',{id:'101x',equipment:'Excavator'})],presence,shifts,sites,from:days[0],to:'2026-11-13',today:'2026-11-12'});
+ const {rows,total}=registerCategories(r.register(JAYANT));
+ assert.deepEqual(rows.map(c=>[c.equipment,c.people,c.duties]),[['Tipper',4,7],['Excavator',1,1]],'most people first; duties are on that category');
+ assert.deepEqual([total.equipment,total.people,total.duties],['All categories',4,8],'each person once in All categories');
+ assert.deepEqual(personCategories(r.register(JAYANT).find(p=>p.caliberCode==='CMLL101')),['Tipper','Excavator']);
+});
+
+test('Month-wise draws its categories, then the register grid with Caliber ID beside Name, day codes and totals, and a person’s duties',async()=>{
+ const first=(await screen([JAYANT,{date:'',shift:''},'']))('attendance-month');
+ assert.match(first,/data-title="Step 2 · Jayant OC · by equipment category · 10-11-26 to 13-11-26"/);
+ assert.doesNotMatch(first,/data-title="Step 3/,'the register waits for a category');
+ const html=(await screen([JAYANT,{date:'',shift:''},'CMLL101','*']))('attendance-month');
+ assert.match(html,/Step 3 · Jayant OC · All categories · month-wise register/);
  assert.match(html,/<td class="ar-sticky ar-id">CMLL101<\/td><th scope="row" class="ar-sticky ar-name">/);
  assert.match(html,/class="ar-code ar-present ar-flag-orange"[^>]*>P1\+3<\/td>/);
  assert.match(html,/class="ar-code ar-absent"[^>]*>A<\/td>/);
  assert.match(html,/class="ar-code ar-pending[^"]*"[^>]*>\?<\/td>/);
- assert.match(html,/Step 3 · CMLL101 · Driver 101 · duties at Jayant OC/);
+ assert.match(html,/Step 4 · CMLL101 · Driver 101 · duties at Jayant OC/);
 });

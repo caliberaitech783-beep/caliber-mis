@@ -125,3 +125,18 @@ export function batchCategories(people){
  const rows=[...groups].map(([name,list])=>line(name,name,list)).sort((a,b)=>b.present-a.present||byText(a.equipment,b.equipment));
  return {rows,total:line('*','All categories',people)};
 }
+
+// Month-wise Step 2 (owner, 16 Nov 2026): the people of a site's register by equipment category. A person belongs to every
+// category of the machines they worked in these dates, so they are in each of those lines and once in All categories. Duties are
+// the duties on that category; days present, absent and pending are the person's own days, as in the register.
+const categoryOf=line=>String(line.equipment||'').trim()||NO_CATEGORY;
+export const personCategories=person=>[...new Set(person.lines.map(categoryOf))];
+export function registerCategories(people){
+ const groups=new Map();
+ for(const p of people)for(const name of personCategories(p)){if(!groups.has(name))groups.set(name,[]);groups.get(name).push(p);}
+ const line=(id,equipment,list,duties)=>{const sum=key=>list.reduce((n,p)=>n+p[key],0),present=sum('present'),absent=sum('absent');
+  return {id,equipment,people:list.length,duties,double:sum('double'),present,absent,pending:sum('pending'),attendance:percent(present,present+absent)};};
+ const rows=[...groups].map(([name,list])=>line(name,name,list,list.reduce((n,p)=>n+p.lines.filter(l=>categoryOf(l)===name).length,0)))
+  .sort((a,b)=>b.people-a.people||byText(a.equipment,b.equipment));
+ return {rows,total:line('*','All categories',people,people.reduce((n,p)=>n+p.duties,0))};
+}
