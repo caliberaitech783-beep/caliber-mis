@@ -1,6 +1,7 @@
 // Attendance register (owner's request, 15 Nov 2026, from a uKnowva HRMS "Attendance Report" photo): who came, day by day
 // and shift by shift, read from saved log book duties. Two views share these rules:
-//  - Batch-wise: Step 1 sites, Step 2 one site date by shift (one box per batch), Step 3 the people of that batch.
+//  - Batch-wise: Step 1 sites, Step 2 one site date by shift (one box per batch), Step 3 that batch by equipment category
+//    (owner, 16 Nov 2026, as OT & Multiple Duties), Step 4 the people of a category.
 //  - Month-wise: Step 1 sites, Step 2 one site as a month grid (people down the side, days across), Step 3 one person.
 // A day's code for a person at a site:
 //  P1 / P2 / P3   present in Shift 1 / 2 / 3 (a saved VLB, ELB or LMV card, or a zero-trip entry, with his Employee ID)
@@ -101,11 +102,26 @@ export function buildAttendanceRegister({duties=[],presence=[],shifts=[],sites=[
  return {days,sites:siteList,siteRows,allSites,shiftCodes,register:siteKey=>registers.get(siteKey)||[],batchLines,dayPeople,dayState};
 }
 
-// Step 3 of the batch-wise view: the people present in one shift, one line each (a person on two machines is one line).
+// The equipment category of a duty: its machine's group in the Equipment master, as OT & Multiple Duties names it.
+export const NO_CATEGORY='Group missing in master';
+// Step 4 of the batch-wise view: the people present in one shift, one line each (a person on two machines is one line).
+// `categories`: the equipment categories the person worked in that shift.
 export function batchPeople(register,{siteKey,date,shift}){
  const i=register.days.indexOf(date);
  return register.register(siteKey).flatMap(p=>{const cell=p.cells[i];if(!cell||cell.kind!=='present'||!cell.shifts.includes(shift))return [];
   const list=cell.lines.filter(l=>l.shift===shift);
-  return [{id:p.id+'|'+date+'|'+shift,employeeKey:p.employeeKey,caliberCode:p.caliberCode,employeeName:p.employeeName,category:p.category||'—',logBook:[...new Set(list.map(l=>l.logBook))].join(' + '),doors:[...new Set(list.map(l=>l.doors).filter(Boolean))].join('; '),equipment:[...new Set(list.map(l=>l.equipment).filter(Boolean))].join('; '),
+  return [{id:p.id+'|'+date+'|'+shift,employeeKey:p.employeeKey,caliberCode:p.caliberCode,employeeName:p.employeeName,category:p.category||'—',categories:[...new Set(list.map(l=>String(l.equipment||'').trim()||NO_CATEGORY))],logBook:[...new Set(list.map(l=>l.logBook))].join(' + '),doors:[...new Set(list.map(l=>l.doors).filter(Boolean))].join('; '),equipment:[...new Set(list.map(l=>l.equipment).filter(Boolean))].join('; '),
    hours:total(list.map(l=>l.hours)),trips:total(list.map(l=>l.trips)),km:total(list.map(l=>l.km)),code:cell.code,flag:cell.flag,flagLabel:cell.lines.length>1?[...new Set(cell.lines.map(l=>l.flagLabel).filter(Boolean))].join('; ')||'Two duties this day':list[0].flagLabel||'Normal duty',books:list.map(l=>l.books).filter(Boolean).join('; ')}];});
+}
+
+// Step 3 of the batch-wise view: the people of one shift (from batchPeople) by equipment category, most people first, then
+// All categories. A person who worked machines of two categories in the shift is in both lines and once in All categories.
+// The colours are the person's day colour, as in the Step 2 boxes.
+export function batchCategories(people){
+ const groups=new Map();
+ for(const p of people)for(const name of p.categories){if(!groups.has(name))groups.set(name,[]);groups.get(name).push(p);}
+ const line=(id,equipment,list)=>({id,equipment,present:list.length,double:list.filter(p=>p.code.includes('+')).length,
+  red:list.filter(p=>p.flag==='red').length,orange:list.filter(p=>p.flag==='orange').length,review:list.filter(p=>p.flag==='review').length,zero:list.filter(p=>p.flag==='zero').length});
+ const rows=[...groups].map(([name,list])=>line(name,name,list)).sort((a,b)=>b.present-a.present||byText(a.equipment,b.equipment));
+ return {rows,total:line('*','All categories',people)};
 }
