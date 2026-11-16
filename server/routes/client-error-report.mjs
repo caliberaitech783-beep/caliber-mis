@@ -20,7 +20,8 @@ export const CLIENT_ERROR_SCHEMA=`
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  CREATE INDEX IF NOT EXISTS mis_client_errors_created_at ON mis_client_errors(created_at DESC);`;
 
-export const CLIENT_ERROR_KINDS=['render','window','promise','chunk'];
+// export: an Excel or PDF export that failed, or an Excel that could not be written where the user chose (16 Nov 2026).
+export const CLIENT_ERROR_KINDS=['render','window','promise','chunk','export'];
 export const CLIENT_ERROR_RETENTION_DAYS=90;
 const LIMITS={message:2000,stack:16000,componentStack:8000,url:2000,screen:200,uiVersion:64,userAgent:400};
 const text=(value,limit)=>String(value??'').replace(/\0/g,'').slice(0,limit);
