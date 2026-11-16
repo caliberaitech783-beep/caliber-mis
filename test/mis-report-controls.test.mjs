@@ -164,11 +164,20 @@ test('manpower reports export complete selected data, separate shift hours, and 
  const sites=[{site:'Jayant OC',siteKey:'jayant ob',...none,books:{VLB:none,ELB:none,LMV:none}},{site:'Sasti OC',siteKey:'sasti ob',...reds(137),books:{VLB:reds(46),ELB:reds(47),LMV:reds(45)}}];
  const payload={summary:rows,details:rows,performance:rows,ot:rows,otSites:sites,exceptions:[],totals:{assets:137,employees:137,duties:137,exceptions:0},notes:[],options:{},generatedAt:'2026-11-10T10:00:00Z'};
  const render=await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},[filters,{query,payload},'',false,0,{}]);
- for(const reportId of ['manpower','employee']){
-  const tree=render({session:{token:'test'},reportId,onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,reportId==='manpower'?4:2);
-  for(const section of sections.filter(n=>!['manpower-review','manpower-sites'].includes(n.props.category)))assert.equal(section.props.rows.length,137,'export receives every matching row');
-  if(reportId==='employee'){const cols=sections[0].props.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));}
- }
+ {const tree=render({session:{token:'test'},reportId:'manpower',onSelect:()=>{}}),sections=nodes(tree,ReportSection);assert.equal(sections.length,4);
+  for(const section of sections.filter(n=>!['manpower-review','manpower-sites'].includes(n.props.category)))assert.equal(section.props.rows.length,137,'export receives every matching row');}
+ // Shift Performance in steps (owner, 16 Nov 2026): sites, date by shift, equipment category, then the duties. All sites,
+ // all dates and All categories opened hand every duty to the export.
+ {const closedPf={siteKey:'',scope:false,date:'',shift:'',equipment:''},state=pf=>[filters,{query,payload},'',false,0,{},false,false,'',{key:'',data:null,error:''},'',undefined,undefined,undefined,undefined,pf];
+  const first=(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},state(closedPf)))({session:{token:'test'},reportId:'employee',onSelect:()=>{}});
+  assert.deepEqual(nodes(first,ReportSection).map(n=>n.props.category),['manpower-performance-sites','manpower-review'],'only the site lines before a site is opened');
+  const all=(await component('manpower-reports.jsx','ManpowerReports',{OPERATIONAL_START:'2026-11-01'},state({...closedPf,siteKey:'*',scope:true,equipment:'*'})))({session:{token:'test'},reportId:'employee',onSelect:()=>{}});
+  const sections=nodes(all,ReportSection);
+  assert.deepEqual(sections.map(n=>n.props.category),['manpower-performance-sites','manpower-performance-dates','manpower-performance-categories','manpower-performance','manpower-review']);
+  assert.deepEqual(sections.slice(0,3).map(n=>n.props.title),['Step 1 · All sites · 10-11-26','Step 2 · All sites · date by shift · 10-11-26','Step 3 · All sites · 10-11-26 · All shifts · by equipment category']);
+  const listed=sections[3].props;assert.equal(listed.rows.length,137,'export receives every matching row');assert.match(listed.title,/^Step 4 · All sites · 10-11-26 · All shifts · All categories · duties$/);
+  const cols=listed.columns;assert.equal(cols.find(c=>c.key==='hours').value(rows[0]),0);assert.equal(cols.find(c=>c.key==='trips').value(rows[0]),'—');assert.ok(!cols.some(c=>c.key==='combinedHours'));
+  assert.deepEqual(sections[2].props.rows.map(r=>[r.equipment,r.duties]),[['Group missing in master',137],['All categories',137]],'a duty without a machine group is counted, not dropped');}
  // OT view in five steps: every site, one site date by shift, a date and shift by equipment category, the drivers of a category, one driver's history.
  // Cases two in three are Shift 1 + Shift 2 (91), the rest Shift 2 + Shift 3 (46); odd drivers work a Tipper, even ones an Excavator.
  // Ten more Tipper drivers worked a normal Shift 1. So 284 duties: Shift 1 = 91 red + 10 normal, Shift 2 = 137 red, Shift 3 = 46 red.

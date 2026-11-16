@@ -37,6 +37,13 @@ test('ten Volvo vehicles count once each despite trip rows and repeated records'
 test('empty created batch supplies a selector, never fabricated assignments',()=>{
  const r=report([],{batches:[{id:'empty',name:'EMPTY BATCH',site,report_date:date}]});assert.equal(r.totals.assets,0);assert.equal(r.summary.length,0);assert.equal(r.options.batches[0].value,'empty');
 });
+test('Shift Performance steps (owner, 16 Nov 2026): each duty carries its site key and its machines\' equipment categories',()=>{
+ const r=report([card(1,1),card(2,1,{assetId:2,door:'V2'})],{assets:[assets[0],{...assets[1],group:'WATER TANKER'}]});
+ assert.equal(r.performance.length,1,'two vehicles in one shift stay one duty');
+ assert.deepEqual([r.performance[0].siteKey,r.performance[0].categories],['sasti ob',['Tipper','Water Tanker']]);
+ assert.ok(r.performance[0].employeeKey);
+});
+
 test('performance separates 8 and 7 hours; only OT combines to 15',()=>{
  const r=report([card(1,1),card(2,2,{closingHmr:107})]);assert.deepEqual(r.performance.map(d=>d.hours),[8,7]);assert.ok(r.performance.every(d=>!Object.hasOwn(d,'combinedHours')));assert.equal(r.ot[0].combinedHours,15);assert.equal(r.ot[0].severity,'red');assert.match(r.ot[0].shiftHours,/S1: 8.*S2: 7/);
 });
