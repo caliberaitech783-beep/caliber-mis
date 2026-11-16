@@ -27,10 +27,16 @@ export function misRequestAllowed(session,req){
  if(route==='/api/mis-admin/backup')return isMisAdministrator(session)&&req.method==='POST';
  if(route==='/api/mis-admin/status')return isMisAdministrator(session)&&read;
  if(route==='/api/mis-telegram/me'||route==='/api/mis-telegram/link')return read&&route.endsWith('/me')||req.method==='POST'&&route.endsWith('/link');
- if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test'));
+ if(route.startsWith('/api/mis-telegram/'))return isMisAdministrator(session)&&((read&&route==='/api/mis-telegram/settings')||(req.method==='PUT'&&route==='/api/mis-telegram/settings')||(req.method==='POST'&&route==='/api/mis-telegram/test')
+  // 16 Nov 2026: "Send sample release approval" and the list of who has connected Telegram were refused to the owner's MIS login.
+  ||(req.method==='POST'&&route==='/api/mis-telegram/test-release-approval')||(read&&route==='/api/mis-telegram/links'));
  if(route==='/api/automation-centre')return read&&isMisAdministrator(session);
  if(route==='/api/automation-centre/equipment-mismatch'||route==='/api/automation-centre/switch')return req.method==='PUT'&&isMisAdministrator(session);
  if(route==='/api/automation-centre/health-report/people')return (read||req.method==='PUT')&&isMisAdministrator(session);
+ // VLB batch alerts on the Telegram Integration page (16 Nov 2026: "This MIS menu is not assigned to your login" for the owner's MIS login).
+ if(route==='/api/vlb-batch-alerts/settings')return (read||req.method==='PUT')&&isMisAdministrator(session);
+ if(route==='/api/vlb-batch-alerts/state')return read&&isMisAdministrator(session);
+ if(route==='/api/vlb-batch-alerts/run')return req.method==='POST'&&isMisAdministrator(session);
  // "Send sample to Telegram" on A24 and A25.
  if(route==='/api/automation-centre/scan-batch-report/sample'||route==='/api/automation-centre/health-report/sample')return req.method==='POST'&&isMisAdministrator(session);
  if(route==='/api/print-helper/certificate')return read;
