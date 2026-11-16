@@ -1,5 +1,6 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {SITE_ALIASES,canonicalSiteName} from '../../shared/site-location.mjs';
+import {ATTENDANCE_DAY_STORE_SCHEMA} from './attendance-day-store.mjs';
 const requests=new AsyncLocalStorage();
 let rlsReady=false;
 export const rowSecurityContext=(req,_res,next)=>requests.run({req},next);
@@ -31,6 +32,14 @@ export async function initializeRowSecurity(pool,{enabled=false}={}){
  await client.query(`CREATE POLICY mis_log_book_site_scope ON mis_log_books AS RESTRICTIVE USING(mis_security.site_allowed(site)) WITH CHECK(mis_security.site_allowed(site))`);
  await client.query('ALTER TABLE mis_log_books ENABLE ROW LEVEL SECURITY');
  await client.query('ALTER TABLE mis_log_books FORCE ROW LEVEL SECURITY');
+ // The stored locked days hold card fields, so they carry the same site rule as the log books they come from.
+ await client.query(ATTENDANCE_DAY_STORE_SCHEMA);
+ await client.query('DROP POLICY IF EXISTS mis_attendance_day_site_scope ON mis_attendance_day_cards');
+ await client.query('DROP POLICY IF EXISTS mis_attendance_day_backend ON mis_attendance_day_cards');
+ await client.query(`CREATE POLICY mis_attendance_day_backend ON mis_attendance_day_cards AS PERMISSIVE TO "${role.name.replaceAll('"','""')}" USING(true) WITH CHECK(true)`);
+ await client.query('CREATE POLICY mis_attendance_day_site_scope ON mis_attendance_day_cards AS RESTRICTIVE USING(mis_security.site_allowed(site)) WITH CHECK(mis_security.site_allowed(site))');
+ await client.query('ALTER TABLE mis_attendance_day_cards ENABLE ROW LEVEL SECURITY');
+ await client.query('ALTER TABLE mis_attendance_day_cards FORCE ROW LEVEL SECURITY');
  await client.query('COMMIT');rlsReady=true;
  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }

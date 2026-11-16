@@ -121,8 +121,10 @@ test('range validation includes calendar dates, cutoff, length and query types',
 // Every shift of both sites locked from 1 to 17 Nov; a test may reopen some (`open`: "site|date|S3" keys).
 const lockedBatches=(open=[])=>Array.from({length:17},(_,i)=>'2026-11-'+String(i+1).padStart(2,'0')).flatMap(day=>[site,'Jayant OC'].flatMap(name=>['S1','S2','S3'].map(shift=>{
  const k=[name,day,shift].join('|');return {id:k,name:'BATCH '+k,site:name,report_date:day,shift,stage:open.includes(k)?'vlb_open':'closed',closed_at:open.includes(k)?null:day+'T23:00:00Z'};})));
+// The card signature read of the stored locked days: count, id sum and revision sum per card site and date.
+const signatureRows=(cards,[from,to,sites])=>{const out=new Map();for(const c of cards){if(c.book_date<from||c.book_date>to||sites&&!sites.includes(c.site))continue;const k=c.site+'|'+c.book_date,row=out.get(k)||{site:c.site,date:c.book_date,n:0,ids:0,revs:0};row.n++;row.ids+=Number(c.id);row.revs+=Number(c.revision||1);out.set(k,row);}return [...out.values()].map(r=>({...r,ids:String(r.ids),revs:String(r.revs)}));};
 function apiHarness(scope={sites:['sasti ob']},cards=[card()],{batches=[]}={}){
- const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
+ const handlers={};const calls=[];let released=false;const client={async query(sql,args){calls.push({sql,args});if(sql.startsWith('SELECT DISTINCT site'))return {rows:[{site},{site:'Jayant OC'}]};if(sql.includes('GROUP BY site,book_date'))return {rows:signatureRows(cards,args)};if(sql.includes('SELECT l.id')&&sql.includes('unnest('))return {rows:cards.filter(c=>args[0].some((name,i)=>name===c.site&&args[1][i]===c.book_date))};if(sql.includes('SELECT l.id'))return {rows:cards};if(sql.includes('FROM mis_vlb_batches'))return {rows:typeof batches==='function'?batches():batches};if(sql.startsWith('SELECT id,master_name'))return {rows:[...assets.map(record_data=>({id:record_data.id,master_name:'Equipment master',record_data})),...employees.map(record_data=>({id:record_data.id,master_name:'Employee master',record_data})),...shifts.map(record_data=>({id:record_data.id,master_name:'Shift Master',record_data}))]};return {rows:[]};},release(){released=true;}};
  const protect=[()=>{},()=>{},()=>{}];registerManpowerReports({get(path,...steps){if(path==='/api/integrations/hr/attendance')assert.equal(steps.length,2);else assert.deepEqual(steps.slice(0,3),protect);handlers[path]=steps.at(-1);}},{pool:{connect:async()=>client},protect,ensureBooks:async()=>{},withHandovers:async(_,rows)=>rows,today:()=>'2026-11-12'});
  return {calls,async run(query={from:date,to:date},path='/api/reports/manpower'){let result,status=200;const headers={};await handlers[path]({query,logBookScope:scope},{set(k,v){headers[k]=v;return this;},status(s){status=s;return this;},json(value){result=value;}},e=>{throw e;});return {result,status,headers,released};}};
 }
@@ -134,9 +136,9 @@ test('attendance API reads slim card fields and returns the register duties of t
  const cards=[card(1,1),split],h=apiHarness({sites:null},cards,{batches:lockedBatches()}),r=await h.run({from:date,to:date,view:'attendance'},'/api/reports/manpower/attendance');
  assert.equal(r.status,200);assert.equal(r.released,true);assert.equal(r.headers['Cache-Control'],'private, no-store');
  const read=h.calls.find(c=>c.sql.includes('SELECT l.id'));
- assert.ok(read.sql.includes('FROM jsonb_each(l.data) AS field WHERE field.key=ANY($4::text[])'),'only the listed card fields are read');assert.doesNotMatch(read.sql,/mis_vlb_batch_entries/,'no batch list per card');
- for(const field of ['trips','operatorSplit','fleetTrips','employeeId','closingHmr'])assert.ok(read.args[3].includes(field),field);
- assert.equal(read.args[2],null,'an all-sites login reads every site');assert.equal(h.calls.at(-1).sql,'COMMIT');
+ assert.ok(read.sql.includes('FROM jsonb_each(l.data) AS field WHERE field.key=ANY($5::text[])'),'only the listed card fields are read');assert.doesNotMatch(read.sql,/mis_vlb_batch_entries/,'no batch list per card');
+ for(const field of ['trips','operatorSplit','fleetTrips','employeeId','closingHmr'])assert.ok(read.args[4].includes(field),field);
+ assert.equal(h.calls.find(c=>c.sql.includes('GROUP BY site,book_date')).args[2],null,'an all-sites login reads every site');assert.equal(h.calls.at(-1).sql,'COMMIT');
  const full=report(linkVlbTripHandovers(cards)),fields=Object.keys(r.result.otDuties[0]);
  assert.deepEqual(r.result.otDuties,full.otDuties.map(d=>Object.fromEntries(fields.map(k=>[k,d[k]]))));
  assert.equal(r.result.otDuties[1].trips,3,'trip count from the card rows');
@@ -153,7 +155,8 @@ test('attendance over a month is read a week at a time and joins to the same reg
  assert.ok(one.ot.some(e=>e.dutyDates.includes('2026-11-07')&&e.dutyDates.includes('2026-11-08')),'the fixture has an OT case across the week edge');
  const h=apiHarness({sites:null},cards,{batches:lockedBatches()}),r=await h.run({...range,view:'attendance'},'/api/reports/manpower/attendance');
  assert.equal(r.status,200);assert.equal(r.released,true);
- assert.deepEqual(h.calls.filter(c=>c.sql.includes('SELECT l.id')).map(c=>[c.args[0],c.args[1]]),[['2026-11-01','2026-11-08'],['2026-11-07','2026-11-15'],['2026-11-14','2026-11-17']],'three weeks, each with its adjoining days');
+ // Only saved, locked days are read: each week's cards with its adjoining days (2, 7, 8 · 7, 8, 10 · 16).
+ assert.deepEqual(h.calls.filter(c=>c.sql.includes('SELECT l.id')).map(c=>[c.args[2],c.args[3]]),[['2026-11-02','2026-11-08'],['2026-11-07','2026-11-10'],['2026-11-16','2026-11-16']],'three weeks, each with its adjoining days');
  assert.equal(h.calls.at(-1).sql,'COMMIT');
  const fields=Object.keys(r.result.otDuties[0]);
  assert.deepEqual(r.result.otDuties,one.otDuties.map(d=>Object.fromEntries(fields.map(k=>[k,d[k]]))));

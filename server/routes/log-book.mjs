@@ -12,6 +12,7 @@ import {withEquipmentAliases,aliasOtpEnabled} from '../../shared/equipment-alias
 import {recordMeterCorrection} from '../../shared/scan-meter-history.mjs';
 import {requireOperationalDate} from '../../shared/operational-start.mjs';
 import {assetBookKind,allowsLogBookKind,isLmv} from '../../shared/equipment-kind.mjs';
+import {ATTENDANCE_DAY_STORE_SCHEMA,attendanceDayStoreSweep} from '../services/attendance-day-store.mjs';
 export {assetBookKind} from '../../shared/equipment-kind.mjs';
 import {validateTripEquipment} from '../../shared/trip-equipment-validation.mjs';
 import {normalizeManualDetails} from '../../shared/manual-log-book-details.mjs';
@@ -279,7 +280,7 @@ export function scanCardsForOperations(cards){
 // lane: the report lane that the heavy report readings (operations, Manpower, Batch Status) go through; tests may pass their own.
 export function registerLogBooks(app,{pool,requireSession,requireAdministrator,pulseMasterSync,breakdownMirror=null,sendDeletionOtp,imageStorage,approvalOtp={},getSiteScope=async session=>logBookSiteScope(session),lane=reportLane}){
  let ready;
- const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA).catch(error=>{ready=null;throw error}));
+ const ensure=()=>ready??=(pool.query(LOG_BOOK_SCHEMA+SHIFT_ATTENDANCE_SCHEMA+ATTENDANCE_DAY_STORE_SCHEMA).catch(error=>{ready=null;throw error}));
  const protect=[requireSession,requireAdministrator,async(req,res,next)=>{try{req.logBookScope=await getSiteScope(req.session);next()}catch(error){if(error.status)return res.status(error.status).json({error:error.message});next(error)}}];
  registerLogBookDashboard(app,{pool,protect,ensureBooks:ensure});
  registerFleetReconciliation(app,{pool,protect,ensureBooks:ensure,pulseMasterSync});
@@ -523,7 +524,9 @@ export function registerLogBooks(app,{pool,requireSession,requireAdministrator,p
      res.json({deleted:true});
    }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});if(error.status)return res.status(error.status).json({error:error.message});next(error)}finally{client?.release();}
  });
- return {initialize:ensure,readHours,readBreakdownRows};
+ // Stored locked days for the attendance register; server.mjs starts the sweep.
+ const attendanceDayStore=attendanceDayStoreSweep({pool,ensure});
+ return {initialize:ensure,readHours,readBreakdownRows,attendanceDayStore};
 }
 
 
