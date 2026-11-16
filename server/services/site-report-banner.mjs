@@ -39,3 +39,24 @@ export async function siteReportBanner({site,kind='VLB',batch='',subtitle='Site-
   ctx.fillStyle='#ffffff';ctx.font=`${s}px PulseBanner, sans-serif`;ctx.textBaseline='middle';ctx.fillText(text,x,361);}
  return canvas.encode('png');
 }
+
+// Headline picture of the speed report A25 (owner, 16 Nov 2026): "SPEED GOOD" big on green, or
+// "SPEED SLOW" big on red, with the period and the main reasons. Telegram text has no colour or size.
+export async function speedReportBanner({good=true,period='',reasons=[]}={}){
+ fonts();
+ const canvas=createCanvas(W,H),ctx=canvas.getContext('2d');
+ const bg=ctx.createLinearGradient(0,0,W,H);
+ if(good){bg.addColorStop(0,'#14532d');bg.addColorStop(1,'#16a34a');}else{bg.addColorStop(0,'#7f1d1d');bg.addColorStop(1,'#dc2626');}
+ ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='rgba(255,255,255,0.07)';ctx.beginPath();ctx.arc(W-90,70,260,0,Math.PI*2);ctx.fill();
+ const image=await pulseLogo();
+ if(image){ctx.save();ctx.beginPath();ctx.roundRect(60,50,96,96,20);ctx.clip();ctx.drawImage(image,60,50,96,96);ctx.restore();}
+ ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.font='32px PulseBannerBold, sans-serif';ctx.fillText('CALIBER PULSE-II · SPEED REPORT',182,82);
+ ctx.fillStyle='rgba(255,255,255,0.85)';ctx.font='26px PulseBanner, sans-serif';ctx.fillText(String(period),182,120);
+ const headline=good?'SPEED GOOD':'SPEED SLOW';
+ const size=fit(ctx,headline,W-120,150,60,'PulseBannerBold, sans-serif');
+ ctx.fillStyle='#ffffff';ctx.font=`${size}px PulseBannerBold, sans-serif`;ctx.textBaseline='alphabetic';ctx.fillText(headline,60,300);
+ const why=(reasons||[]).slice(0,2).join(' · ');
+ if(why){const s=fit(ctx,why,W-120,30,18,'PulseBanner, sans-serif');ctx.font=`${s}px PulseBanner, sans-serif`;ctx.textBaseline='middle';ctx.fillText(why,60,365);}
+ return canvas.encode('png');
+}
